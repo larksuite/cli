@@ -103,9 +103,9 @@ lark-cli calendar +agenda
 npm install -g @larksuite/cli
 ```
 
-**第 2 步 — 安装 Skills（整个流程的核心步骤）**
+**第 2 步 — 安装 Skills（核心步骤，请勿跳过）**
 
-> **这是整个安装流程中最关键的一步。** Skills 是教会 AI Agent 有哪些命令可用、如何调用的指令文件。CLI 本身只是一个二进制工具，真正让 Agent 具备操作飞书能力的是 Skills。**跳过此步骤，Agent 将完全无法使用 lark-cli。**
+> Skills 是告诉 AI Agent 有哪些命令可用及如何调用的指令文件，是 Agent 使用 lark-cli 的前提。
 
 ```bash
 npx skills add larksuite/cli --all -y
