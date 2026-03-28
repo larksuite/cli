@@ -49,6 +49,46 @@ Before you start, make sure you have:
 - Node.js (`npm`/`npx`)
 - Go `v1.23`+ and Python 3 (only required for building from source)
 
+### Quick Start (AI Agent)
+
+> The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
+
+**Step 1 — Install CLI**
+
+```bash
+npm install -g @larksuite/cli
+```
+
+**Step 2 — Install Skills (core step, do not skip)**
+
+> Skills are the instruction files that tell the AI Agent what commands are available and how to call them.
+
+```bash
+npx skills add larksuite/cli -y -g
+```
+
+**Step 3 — Configure app credentials**
+
+> Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
+
+```bash
+lark-cli config init --new
+```
+
+**Step 4 — Login**
+
+> Same as above: run in the background, extract the authorization URL and send it to the user.
+
+```bash
+lark-cli auth login --recommend
+```
+
+**Step 5 — Verify**
+
+```bash
+lark-cli auth status
+```
+
 ### Quick Start (Human Users)
 
 #### Install CLI
@@ -96,46 +136,6 @@ lark-cli auth login --recommend
 
 # 3. Start using
 lark-cli calendar +agenda
-```
-
-## Quick Start (AI Agent)
-
-> The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
-
-**Step 1 — Install CLI**
-
-```bash
-npm install -g @larksuite/cli
-```
-
-**Step 2 — Install Skills (core step, do not skip)**
-
-> Skills are the instruction files that tell the AI Agent what commands are available and how to call them.
-
-```bash
-npx skills add larksuite/cli -y -g
-```
-
-**Step 3 — Configure app credentials**
-
-> Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
-
-```bash
-lark-cli config init --new
-```
-
-**Step 4 — Login**
-
-> Same as above: run in the background, extract the authorization URL and send it to the user.
-
-```bash
-lark-cli auth login --recommend
-```
-
-**Step 5 — Verify**
-
-```bash
-lark-cli auth status
 ```
 
 ## Agent Skills
