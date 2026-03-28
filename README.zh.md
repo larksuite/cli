@@ -97,22 +97,39 @@ lark-cli calendar +agenda
 
 > 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
 
+**第 1 步 — 安装 CLI**
+
 ```bash
-# 1. 安装 CLI
 npm install -g @larksuite/cli
+```
 
-# 2. 安装 Skills（使 AI Agent 能够使用本 CLI）
+**第 2 步 — 安装 Skills（必需）**
+
+> **Skills 是结构化的指令文件，告诉 AI Agent 有哪些命令可用以及如何调用。不安装 Skills，Agent 将无法知道可用的命令和参数——此步骤必须执行。**
+
+```bash
 npx skills add larksuite/cli --all -y
+```
 
-# 3. 配置应用凭证
-# 重要：在后台运行此命令，命令会输出一个授权链接，提取该链接并发送给用户，用户在浏览器中完成配置后命令会自动退出。
+**第 3 步 — 配置应用凭证**
+
+> 在后台运行此命令，命令会输出一个授权链接，提取该链接并发送给用户，用户在浏览器中完成配置后命令会自动退出。
+
+```bash
 lark-cli config init --new
+```
 
-# 4. 登录
-# 同上，后台运行，提取授权链接发给用户
+**第 4 步 — 登录**
+
+> 同上，后台运行，提取授权链接发给用户。
+
+```bash
 lark-cli auth login --recommend
+```
 
-# 5. 验证
+**第 5 步 — 验证**
+
+```bash
 lark-cli auth status
 ```
 

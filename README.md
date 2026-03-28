@@ -97,22 +97,39 @@ lark-cli calendar +agenda
 
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
 
+**Step 1 — Install CLI**
+
 ```bash
-# 1. Install CLI
 npm install -g @larksuite/cli
+```
 
-# 2. Install Skills (enables AI Agent to use this CLI)
+**Step 2 — Install Skills (REQUIRED)**
+
+> **Skills are structured instruction files that tell the AI Agent which commands exist and how to call them. Without Skills, the Agent does not know the available commands or their parameters — you MUST run this step.**
+
+```bash
 npx skills add larksuite/cli --all -y
+```
 
-# 3. Configure app credentials
-# Important: run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in browser.
+**Step 3 — Configure app credentials**
+
+> Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
+
+```bash
 lark-cli config init --new
+```
 
-# 4. Login
-# Same as above: run in the background, extract the authorization URL and send it to the user.
+**Step 4 — Login**
+
+> Same as above: run in the background, extract the authorization URL and send it to the user.
+
+```bash
 lark-cli auth login --recommend
+```
 
-# 5. Verify
+**Step 5 — Verify**
+
+```bash
 lark-cli auth status
 ```
 
