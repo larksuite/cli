@@ -619,30 +619,21 @@ func readMp4Duration(f *os.File, fileSize int64) int64 {
 // Steps:
 //  1. Extract code blocks with placeholders to protect them
 //  2. Downgrade headings: H1 → H4, H2~H6 → H5 (only when H1~H3 present)
-//  3. Add <br> between consecutive headings
-//  4. Add spacing around tables with <br>
-//  5. Restore code blocks with <br> wrappers
-//  6. Compress excess blank lines
-//  7. Strip invalid image references (keep only img_xxx keys)
+//  3. Normalize spacing between consecutive headings and tables with blank lines
+//  4. Restore code blocks
+//  5. Compress excess blank lines
+//  6. Strip invalid image references (keep only img_xxx keys)
 var (
-	reH2toH6       = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
-	reH1           = regexp.MustCompile(`(?m)^# (.+)$`)
-	reHasH1toH3    = regexp.MustCompile(`(?m)^#{1,3} `)
-	reConsecH      = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
-	reTableNoGap   = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
-	reTableBefore  = regexp.MustCompile(`\n\n((?:\|.+\|[^\S\n]*\n?)+)`)
-	reTableAfter   = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
-	reTableTxtPre  = regexp.MustCompile(`(?m)^([^\n]+)\n\n(<br>)\n\n(\|)`)
-	reTableBoldPre = regexp.MustCompile(`(?m)^(\*\*.+)\n\n(<br>)\n\n(\|)`)
-	reTableTxtPost = regexp.MustCompile(`(?m)(\|[^\n]*\n)\n(<br>\n)([^\n]+)`)
-	reExcessNL     = regexp.MustCompile(`\n{3,}`)
-	reInvalidImg   = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
-	reCodeBlock    = regexp.MustCompile("```[\\s\\S]*?```")
+	reH2toH6     = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
+	reH1         = regexp.MustCompile(`(?m)^# (.+)$`)
+	reHasH1toH3  = regexp.MustCompile(`(?m)^#{1,3} `)
+	reConsecH    = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
+	reTableNoGap = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
+	reTableAfter = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
+	reExcessNL   = regexp.MustCompile(`\n{3,}`)
+	reInvalidImg = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
+	reCodeBlock  = regexp.MustCompile("```[\\s\\S]*?```")
 )
-
-func isTableSpacingProtectedLine(line string) bool {
-	return strings.HasPrefix(line, "#### ") || strings.HasPrefix(line, "##### ") || strings.HasPrefix(line, "**")
-}
 
 func optimizeMarkdownStyle(text string) string {
 	const mark = "___CB_"
@@ -659,29 +650,13 @@ func optimizeMarkdownStyle(text string) string {
 		r = reH1.ReplaceAllString(r, "#### $1")
 	}
 
-	r = reConsecH.ReplaceAllString(r, "$1\n<br>\n$2")
+	r = reConsecH.ReplaceAllString(r, "$1\n\n$2")
 
 	r = reTableNoGap.ReplaceAllString(r, "$1\n\n$2")
-	r = reTableBefore.ReplaceAllString(r, "\n\n<br>\n\n$1")
-	r = reTableAfter.ReplaceAllString(r, "$1\n<br>\n")
-	r = reTableTxtPre.ReplaceAllStringFunc(r, func(m string) string {
-		sub := reTableTxtPre.FindStringSubmatch(m)
-		if len(sub) != 4 || isTableSpacingProtectedLine(sub[1]) {
-			return m
-		}
-		return sub[1] + "\n" + sub[2] + "\n" + sub[3]
-	})
-	r = reTableBoldPre.ReplaceAllString(r, "$1\n$2\n\n$3")
-	r = reTableTxtPost.ReplaceAllStringFunc(r, func(m string) string {
-		sub := reTableTxtPost.FindStringSubmatch(m)
-		if len(sub) != 4 || isTableSpacingProtectedLine(sub[3]) {
-			return m
-		}
-		return sub[1] + sub[2] + sub[3]
-	})
+	r = reTableAfter.ReplaceAllString(r, "$1\n")
 
 	for i, block := range codeBlocks {
-		r = strings.Replace(r, fmt.Sprintf("%s%d___", mark, i), "\n<br>\n"+block+"\n<br>\n", 1)
+		r = strings.Replace(r, fmt.Sprintf("%s%d___", mark, i), block, 1)
 	}
 
 	r = reExcessNL.ReplaceAllString(r, "\n\n")

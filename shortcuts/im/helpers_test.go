@@ -282,7 +282,7 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 		{
 			name:  "heading downgrade H1 and H2",
 			input: "# Title\n## Section\ntext",
-			want:  "#### Title\n<br>\n##### Section\ntext",
+			want:  "#### Title\n\n##### Section\ntext",
 		},
 		{
 			name:  "no downgrade when no H1-H3",
@@ -292,17 +292,17 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 		{
 			name:  "code block protected",
 			input: "# Title\n```\n# not a heading\n```\ntext",
-			want:  "#### Title\n\n<br>\n```\n# not a heading\n```\n<br>\n\ntext",
+			want:  "#### Title\n```\n# not a heading\n```\ntext",
 		},
 		{
 			name:  "table spacing",
 			input: "text\n| A | B |\n| - | - |\n| 1 | 2 |\nafter",
-			want:  "text\n<br>\n| A | B |\n| - | - |\n| 1 | 2 |\n<br>\nafter",
+			want:  "text\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nafter",
 		},
 		{
 			name:  "table spacing keeps heading separation",
 			input: "# Title\n| A | B |\n| - | - |\n| 1 | 2 |\n## Next",
-			want:  "#### Title\n\n<br>\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<br>\n##### Next",
+			want:  "#### Title\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n##### Next",
 		},
 		{
 			name:  "excess blank lines compressed",
