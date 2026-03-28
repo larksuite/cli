@@ -38,6 +38,10 @@
 
 ## 安装与快速开始
 
+> **AI 助手提示：** 如果您正在帮助用户安装 lark-cli，请直接跳转至
+> [AI Agent 快速开始](#快速开始ai-agent) — 其中包含您需要执行的所有步骤。
+> 请跳过下方面向人类用户的安装说明。
+
 ### 环境要求
 
 开始之前，请确保具备以下条件：
@@ -45,9 +49,61 @@
 - Node.js（`npm`/`npx`）
 - Go `v1.23`+ 和 Python 3（仅源码构建需要）
 
-### 快速开始（人类用户）
+### 快速开始（AI Agent）
 
-> **Note for AI assistants:** 如果你是 AI Agent 且正在协助用户执行安装，请直接跳转到[快速开始（AI Agent）](#快速开始ai-agent)执行，那里包含你需要完成的所有步骤。
+> **前置条件：** 请确认已安装 Node.js（执行 `node -v` 应成功返回版本号）。
+
+> 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
+
+**第 1 步 — 安装 CLI**
+
+```bash
+npm install -g @larksuite/cli
+```
+
+预期输出：npm 打印 `added 1 package` 或类似的成功信息。
+
+**第 2 步 — 安装 Skills（核心步骤，请勿跳过）**
+
+> Skills 是告诉 AI Agent 有哪些命令可用及如何调用的指令文件，是 Agent 使用 lark-cli 的前提。
+
+```bash
+npx skills add larksuite/cli -y -g
+```
+
+预期输出：显示已安装的 skill 列表（如 `✓ lark-shared`、`✓ lark-calendar` 等）。
+
+**第 3 步 — 配置应用凭证**
+
+> 执行此命令，等待终端输出授权 URL。
+> URL 格式类似：`https://open.feishu.cn/open-apis/authen/...`
+> 将 URL 复制并发送给用户，让用户在浏览器中打开完成授权。
+> 用户完成授权后，命令自动退出。
+
+```bash
+lark-cli config init --new
+```
+
+**第 4 步 — 登录**
+
+> 执行此命令，等待终端输出授权 URL。
+> URL 格式类似：`https://open.feishu.cn/open-apis/authen/...`
+> 将 URL 复制并发送给用户，让用户在浏览器中打开并确认权限。
+> 用户完成授权后，命令自动退出。
+
+```bash
+lark-cli auth login --recommend
+```
+
+**第 5 步 — 验证**
+
+```bash
+lark-cli auth status
+```
+
+预期输出中包含 `Logged in as: <用户名>` 即表示安装配置完成。
+
+### 快速开始（人类用户）
 
 #### 安装 CLI
 
@@ -94,46 +150,6 @@ lark-cli auth login --recommend
 
 # 3. 开始使用
 lark-cli calendar +agenda
-```
-
-### 快速开始（AI Agent）
-
-> 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
-
-**第 1 步 — 安装 CLI**
-
-```bash
-npm install -g @larksuite/cli
-```
-
-**第 2 步 — 安装 Skills（核心步骤，请勿跳过）**
-
-> Skills 是告诉 AI Agent 有哪些命令可用及如何调用的指令文件，是 Agent 使用 lark-cli 的前提。
-
-```bash
-npx skills add larksuite/cli -y -g
-```
-
-**第 3 步 — 配置应用凭证**
-
-> 在后台运行此命令，命令会输出一个授权链接，提取该链接并发送给用户，用户在浏览器中完成配置后命令会自动退出。
-
-```bash
-lark-cli config init --new
-```
-
-**第 4 步 — 登录**
-
-> 同上，后台运行，提取授权链接发给用户。
-
-```bash
-lark-cli auth login --recommend
-```
-
-**第 5 步 — 验证**
-
-```bash
-lark-cli auth status
 ```
 
 
