@@ -148,6 +148,7 @@ lark-cli auth status
 | `lark-skill-maker`              | Custom skill creation framework                                                       |
 | `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                              |
 | `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                       |
+| `lark-openclaw`                 | OpenClaw agent integration: sandbox install, credential isolation, native-vs-CLI decision tree |
 
 ## Authentication
 
