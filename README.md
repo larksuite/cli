@@ -38,6 +38,10 @@ A command-line tool for [Lark/Feishu](https://www.larksuite.com/) Open Platform 
 
 ## Installation & Quick Start
 
+> **AI assistants:** If you are helping a user install lark-cli, go directly to
+> [Quick Start (AI Agent)](#quick-start-ai-agent) — it contains all steps you need.
+> Skip the human-oriented section below.
+
 ### Requirements
 
 Before you start, make sure you have:
