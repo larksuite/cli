@@ -101,7 +101,7 @@ func Execute() int {
 	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
-	rootCmd.AddCommand(completion.NewCmdCompletion(f))
+	rootCmd.AddCommand(completion.NewCmdCompletion())
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
 

@@ -34,6 +34,7 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 		},
 	}
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 

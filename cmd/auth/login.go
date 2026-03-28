@@ -67,6 +67,7 @@ browser. Run it in the background and retrieve the verification URL from its out
 		return completeDomain(toComplete), cobra.ShellCompDirectiveNoFileComp
 	})
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 

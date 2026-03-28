@@ -33,6 +33,7 @@ func NewCmdConfigShow(f *cmdutil.Factory, runF func(*ConfigShowOptions) error) *
 		},
 	}
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 

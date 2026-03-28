@@ -450,15 +450,9 @@ func TestServiceMethod_BotMode_PageAll_JSON(t *testing.T) {
 	}
 }
 
-func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+func TestServiceMethod_UnknownFormat_Rejected(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-fmt", AppSecret: "test-secret-fmt", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(tokenStub())
-	reg.Register(&httpmock.Stub{
-		URL:  "/open-apis/svc/v1/items",
-		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	})
 
 	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
@@ -466,11 +460,12 @@ func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--format", "unknown"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown format, got nil")
 	}
-	if !strings.Contains(stderr.String(), "warning: unknown format") {
-		t.Errorf("expected format warning in stderr, got:\n%s", stderr.String())
+	if !strings.Contains(err.Error(), "invalid argument") {
+		t.Errorf("expected 'invalid argument' error, got: %v", err)
 	}
 }
 

@@ -60,6 +60,7 @@ verification URL from its output.`,
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
 	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh or en)")
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 
