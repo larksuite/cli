@@ -83,6 +83,7 @@ var DocsCreate = common.Shortcut{
 			return err
 		}
 
+		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
 		runtime.Out(result, nil)
 		return nil
 	},
