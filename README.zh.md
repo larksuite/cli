@@ -1,7 +1,6 @@
 # lark-cli
 
 [![Awesome for Agents](https://img.shields.io/badge/Awesome%20for-Agents-6f42c1)](#为什么选-lark-cli)
-[![GitHub stars](https://img.shields.io/github/stars/larksuite/cli?label=stars)](https://github.com/larksuite/cli/stargazers)
 [![npm downloads](https://img.shields.io/npm/dw/%40larksuite%2Fcli?label=npm%20downloads)](https://www.npmjs.com/package/@larksuite/cli)
 [![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
