@@ -27,7 +27,7 @@ Built-in shortcuts for commonly used Lark APIs, enabling concise commands like `
 - **Drive** — Upload, download, and manage cloud documents.
 - **Docs** — Work with Lark documents.
 - **Sheets** — Interact with spreadsheets.
-- **Base (Bitable)** — Manage multi-dimensional tables.
+- **Base** — Manage multi-dimensional tables.
 - **Calendar** — Create and manage calendar events.
 - **Mail** — Send and manage emails.
 - **Contact** — Look up users and departments.

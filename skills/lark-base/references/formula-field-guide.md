@@ -1,4 +1,4 @@
-# Bitable Formula Writing Guide
+# Base Formula Writing Guide
 
 ## Mandatory Read Acknowledgement
 
@@ -121,7 +121,7 @@ When using comparison operators (`>`, `>=`, `<`, `<=`, `=`, `!=`), **both sides 
 
 ## Section 4: Operators
 
-Bitable formulas **only allow** the following operators. `like`, `in`, `<>`, `**`, `^` etc. are prohibited.
+Base formulas **only allow** the following operators. `like`, `in`, `<>`, `**`, `^` etc. are prohibited.
 
 | Category      | Operators                  | Description                                                                |
 | ------------- | -------------------------- | -------------------------------------------------------------------------- |
