@@ -257,6 +257,10 @@ lark-cli schema im.messages.delete
 
 请您充分知悉全部使用风险，使用本工具即视为您自愿承担相关所有责任。
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
+
 ## 贡献
 
 欢迎社区贡献！如果你发现 bug 或有功能建议，请提交 [Issue](https://github.com/larksuite/cli/issues) 或 [Pull Request](https://github.com/larksuite/cli/pulls)。

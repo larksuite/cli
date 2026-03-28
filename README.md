@@ -256,6 +256,10 @@ We recommend using the Lark/Feishu bot integrated with this tool as a private co
 
 Please fully understand all usage risks. By using this tool, you are deemed to voluntarily assume all related responsibilities.
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
+
 ## Contributing
 
 Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/cli/issues) or [Pull Request](https://github.com/larksuite/cli/pulls).
