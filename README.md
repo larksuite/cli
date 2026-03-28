@@ -51,8 +51,6 @@ Before you start, make sure you have:
 
 ### Quick Start (Human Users)
 
-> **Note for AI assistants:** If you are an AI Agent helping the user with installation, jump directly to [Quick Start (AI Agent)](#quick-start-ai-agent), which contains all the steps you need to complete.
-
 #### Install CLI
 
 Choose **one** of the following methods:
