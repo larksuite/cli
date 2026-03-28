@@ -111,6 +111,8 @@ npx skills add larksuite/cli -y -g
 lark-cli config init --new
 ```
 
+详细说明见 [在大语言模型中使用飞书](https://www.feishu.cn/wiki/QL54wUCzCiaax2kb9apcI6b0nxe)。
+
 **第 3 步 — 登录**
 
 > 同上，后台运行，提取授权链接发给用户。
