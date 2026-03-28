@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
 [![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
+[![npm downloads](https://img.shields.io/npm/dw/%40larksuite%2Fcli?label=npm%20downloads)](https://www.npmjs.com/package/@larksuite/cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
