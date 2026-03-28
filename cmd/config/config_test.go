@@ -157,3 +157,54 @@ func TestConfigRemoveCmd_FlagParsing(t *testing.T) {
 		t.Fatal("expected factory to be preserved in options")
 	}
 }
+
+func TestConfigInitRun_NewPropagatesBrandFlagToCreateFlow(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	opts := &ConfigInitOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		New:     true,
+		Brand:   "lark",
+		Lang:    "en",
+	}
+
+	oldRunCreateAppFlow := runCreateAppFlowFn
+	defer func() {
+		runCreateAppFlowFn = oldRunCreateAppFlow
+	}()
+
+	var gotBrand core.LarkBrand
+	runCreateAppFlowFn = func(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, msg *initMsg) (*configInitResult, error) {
+		gotBrand = brandOverride
+		return &configInitResult{
+			Mode:      "create",
+			Brand:     brandOverride,
+			AppID:     "cli_test_lark",
+			AppSecret: "secret123",
+		}, nil
+	}
+
+	if err := configInitRun(opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotBrand != core.BrandLark {
+		t.Fatalf("runCreateAppFlow received brand %q, want %q", gotBrand, core.BrandLark)
+	}
+
+	cfg, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("failed to load saved config: %v", err)
+	}
+	if len(cfg.Apps) != 1 {
+		t.Fatalf("expected exactly one app in config, got %d", len(cfg.Apps))
+	}
+	if cfg.Apps[0].Brand != core.BrandLark {
+		t.Fatalf("saved config brand = %q, want %q", cfg.Apps[0].Brand, core.BrandLark)
+	}
+	if !strings.Contains(stdout.String(), `"brand": "lark"`) {
+		t.Fatalf("stdout = %q, want JSON output to include saved lark brand", stdout.String())
+	}
+}
