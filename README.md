@@ -1,11 +1,11 @@
 # lark-cli
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
-[![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
-[![npm downloads](https://img.shields.io/npm/dw/%40larksuite%2Fcli?label=npm%20downloads)](https://www.npmjs.com/package/@larksuite/cli)
-[![GitHub stars](https://img.shields.io/github/stars/larksuite/cli?label=stars)](https://github.com/larksuite/cli/stargazers)
 [![Awesome for Agents](https://img.shields.io/badge/Awesome%20for-Agents-6f42c1)](#why-lark-cli)
+[![GitHub stars](https://img.shields.io/github/stars/larksuite/cli?label=stars)](https://github.com/larksuite/cli/stargazers)
+[![npm downloads](https://img.shields.io/npm/dw/%40larksuite%2Fcli?label=npm%20downloads)](https://www.npmjs.com/package/@larksuite/cli)
+[![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
+[![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
