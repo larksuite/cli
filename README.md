@@ -103,9 +103,9 @@ lark-cli calendar +agenda
 npm install -g @larksuite/cli
 ```
 
-**Step 2 — Install Skills (REQUIRED)**
+**Step 2 — Install Skills (this is the core step)**
 
-> **Skills are structured instruction files that tell the AI Agent which commands exist and how to call them. Without Skills, the Agent does not know the available commands or their parameters — you MUST run this step.**
+> **This is the most important step in the entire setup.** Skills are the instruction files that teach the AI Agent what commands are available and how to call them. The CLI alone is just a binary — it is the Skills that give the Agent the knowledge to actually operate Lark. **Skipping this step means the Agent will not be able to use lark-cli at all.**
 
 ```bash
 npx skills add larksuite/cli --all -y
