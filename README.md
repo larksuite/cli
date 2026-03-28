@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
@@ -46,7 +47,7 @@ Before you start, make sure you have:
 
 ### Quick Start (Human Users)
 
-> **Tip:** If you have an AI Agent, you can hand this README to it and let the AI handle installation and setup — jump to [Quick Start (AI Agent)](#quick-start-ai-agent).
+> **Note for AI assistants:** If you are an AI Agent helping the user with installation, jump directly to [Quick Start (AI Agent)](#quick-start-ai-agent), which contains all the steps you need to complete.
 
 #### Install CLI
 
@@ -69,6 +70,8 @@ make install
 ```
 
 #### Install AI Agent Skills
+
+> **This is a critical step — do not skip it.** Skills are required for AI Agents to use this CLI properly. Without them, no Lark capabilities can be invoked.
 
 [Skills](./skills/) are structured instruction documents that enable AI Agents to use this CLI:
 
@@ -105,10 +108,10 @@ npm install -g @larksuite/cli
 
 **Step 2 — Install Skills (core step, do not skip)**
 
-> Skills are the instruction files that tell the AI Agent what commands are available and how to call them. This step is essential for the Agent to work with lark-cli.
+> Skills are the instruction files that tell the AI Agent what commands are available and how to call them.
 
 ```bash
-npx skills add larksuite/cli --all -y
+npx skills add larksuite/cli -y -g
 ```
 
 **Step 3 — Configure app credentials**

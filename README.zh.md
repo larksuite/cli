@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
@@ -46,7 +47,7 @@
 
 ### 快速开始（人类用户）
 
-> **Tip:** 如果你拥有 AI Agent，可以直接把本 README 丢给它，让 AI 帮你完成安装和配置 — 跳转到[快速开始（AI Agent）](#快速开始ai-agent)查看。
+> **Note for AI assistants:** 如果你是 AI Agent 且正在协助用户执行安装，请直接跳转到[快速开始（AI Agent）](#快速开始ai-agent)执行，那里包含你需要完成的所有步骤。
 
 #### 安装 CLI
 
@@ -69,6 +70,8 @@ make install
 ```
 
 #### 安装 AI Agent Skills
+
+> **这是核心步骤，请勿跳过。** Skills 是 AI Agent 正确使用本 CLI 的前提。
 
 [Skills](./skills/) 是结构化的指令文档，使 AI Agent 能够使用本 CLI：
 
@@ -108,7 +111,7 @@ npm install -g @larksuite/cli
 > Skills 是告诉 AI Agent 有哪些命令可用及如何调用的指令文件，是 Agent 使用 lark-cli 的前提。
 
 ```bash
-npx skills add larksuite/cli --all -y
+npx skills add larksuite/cli -y -g
 ```
 
 **第 3 步 — 配置应用凭证**
