@@ -51,6 +51,8 @@ Before you start, make sure you have:
 
 ### Quick Start (AI Agent)
 
+> **Prerequisites:** Confirm Node.js is installed before proceeding (`node -v` should succeed).
+
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
 
 **Step 1 — Install CLI**
@@ -58,6 +60,8 @@ Before you start, make sure you have:
 ```bash
 npm install -g @larksuite/cli
 ```
+
+Expected: npm prints `added 1 package` or similar success message.
 
 **Step 2 — Install Skills (core step, do not skip)**
 
@@ -67,9 +71,14 @@ npm install -g @larksuite/cli
 npx skills add larksuite/cli -y -g
 ```
 
+Expected: confirmation output listing installed skills (e.g. `✓ lark-shared`, `✓ lark-calendar`, ...).
+
 **Step 3 — Configure app credentials**
 
-> Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
+> Run this command and wait for it to print an authorization URL.
+> The URL will look like: `https://open.feishu.cn/open-apis/authen/...`
+> Copy the URL and send it to the user to open in their browser.
+> The command exits automatically after the user completes setup.
 
 ```bash
 lark-cli config init --new
@@ -77,7 +86,10 @@ lark-cli config init --new
 
 **Step 4 — Login**
 
-> Same as above: run in the background, extract the authorization URL and send it to the user.
+> Run this command and wait for it to print an authorization URL.
+> The URL will look like: `https://open.feishu.cn/open-apis/authen/...`
+> Copy the URL and send it to the user to open in their browser.
+> The command exits automatically after the user approves the permissions.
 
 ```bash
 lark-cli auth login --recommend
@@ -88,6 +100,8 @@ lark-cli auth login --recommend
 ```bash
 lark-cli auth status
 ```
+
+Expected: output includes `Logged in as: <username>` — this confirms the full setup is complete.
 
 ### Quick Start (Human Users)
 
