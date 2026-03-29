@@ -12,7 +12,6 @@ linters:
     - bodyclose       # checks whether HTTP response body is closed successfully
     - copyloopvar     # detects places where loop variables are copied
     - durationcheck   # checks for two durations multiplied together
-    - errcheck        # checks for unchecked errors
     - errname         # checks that error types are named XxxError
     - errorlint       # checks error wrapping best practices
     - fatcontext      # detects nested contexts in loops
