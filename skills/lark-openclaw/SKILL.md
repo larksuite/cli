@@ -45,10 +45,17 @@ lark-cli config init          # 首次使用，按提示配置 appId/appSecret
 在 Agent 的 Dockerfile 中添加：
 
 ```dockerfile
-RUN apt-get update -qq && \
-    apt-get install -y -qq --no-install-recommends nodejs npm && \
-    npm install -g @larksuite/cli && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# 推荐：使用官方 Node.js 18+ LTS 基础镜像，避免 apt 默认安装旧版 Node
+FROM node:18-slim AS base
+RUN npm install -g @larksuite/cli
+
+# 如果需要在现有镜像中添加 Node.js，使用 NodeSource 显式指定版本：
+# RUN apt-get update -qq && \
+#     apt-get install -y -qq --no-install-recommends curl && \
+#     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+#     apt-get install -y -qq --no-install-recommends nodejs && \
+#     npm install -g @larksuite/cli && \
+#     apt-get clean && rm -rf /var/lib/apt/lists/*
 ```
 
 ### 场景 3：多 Bot 凭据隔离
@@ -83,9 +90,9 @@ echo "$FEISHU_APP_AUTH" | lark-cli config init \
 | `mail +send` | 起草邮件（默认存草稿，`--confirm-send` 发送） | user |
 | `mail +reply` | 回复邮件 | user |
 | `mail +thread` | 读整个邮件会话 | user |
-| `mail +search` | 搜索邮件 | user |
-| `vc +meetings-list` | 列出已结束的会议记录 | user |
-| `vc +note` | 获取会议纪要（摘要、待办、章节） | user |
+| `mail +triage --query ...` | 搜索邮件 | user |
+| `vc +search` | 列出已结束的会议记录 | user |
+| `vc +notes` | 获取会议纪要（摘要、待办、章节） | user |
 | `contact user list` | 批量导出用户列表 | bot |
 | `contact department list` | 列出部门树 | bot |
 
@@ -148,7 +155,7 @@ lark-cli auth scopes
 ### 发起授权（user 身份）
 
 ```bash
-lark-cli auth login --scope "mail:mail.message:readonly"   # 按 scope（推荐）
+lark-cli auth login --scope "mail:user_mailbox.message:readonly"   # 按 scope（推荐）
 lark-cli auth login --domain mail                           # 按业务域
 ```
 
@@ -156,8 +163,8 @@ lark-cli auth login --domain mail                           # 按业务域
 
 | 功能域 | scope | 身份 |
 |--------|-------|------|
-| 邮件读取 | `mail:mail.message:readonly` | user |
-| 邮件发送 | `mail:mail.message:send` | user |
+| 邮件读取 | `mail:user_mailbox.message:readonly` | user |
+| 邮件发送 | `mail:user_mailbox.message:send` | user |
 | 视频会议 | `vc:meeting:readonly` | user |
 | 通讯录 | `contact:user.base:readonly` | bot/user |
 | 审批 | `approval:approval:readonly` | bot/user |
