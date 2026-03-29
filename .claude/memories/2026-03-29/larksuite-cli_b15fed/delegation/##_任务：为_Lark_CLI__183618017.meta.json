@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "file": {
+    "date_bucket": "2026-03-29",
+    "workspace_slug": "larksuite-cli_b15fed",
+    "stream": "delegation",
+    "topic_slug": "##_任务：为_Lark_CLI",
+    "uniq": "183618017",
+    "jsonl": "##_任务：为_Lark_CLI__183618017.meta.jsonl"
+  },
+  "topic": {
+    "raw": "## 任务：为 Lark CLI 的 `docs +create` 添加表格列宽自适应功能\n\n### 背景\nLark CLI 的 `docs +create --markdown` 创建的飞书文档，表格列宽全部等宽，没有根据内容自适应。社区版 feishu-cli 已有此功能（根据中英文内容智能计算列宽，最小 80px，最大 400px）。\n\n### 仓库信息\n- 仓库路径：`/Users/bytedance/Develop/larksuite-cli`（已 clone 自 https://github.com/larksuite/cli）\n- 语言：Go 1.23+\n- 核心文件：`shortcuts/doc/docs_create.go` — 调用 MCP 服务端 `create-doc` 工具\n\n### 架构约束\n`docs +create` 通过 `common.CallMCPTool(runtime, \"create-doc\", args)` 将 markdown 发给服务端处理。**表格转换在服务端完成**，CLI 不直接控制列宽。\n\n因此策略是：**创建文档后，CLI 侧做后处理**——查询文档的 table blocks → 计算最优列宽 → 调用飞书 API 更新。\n\n### 你需要做的\n\n1. **调研飞书 API**\n   - 查看 `docs_create.go` 的返回值，获取 `document_id`\n   - 查看飞书 docx API 如何列出文档中的所有 blocks（`GET /open-apis/docx/v1/documents/{document_id}/blocks`）\n   - 查看 table block 的数据结构，特别是 `table.property.column_size` 或类似字段\n   - 查看如何通过 `PATCH batch_update` 更新 table block 的列宽\n   - 参考已有代码中的 API 调用模式（如 `doc_media_insert.go` 中的 `runtime.CallAPI`）\n\n2. **实现列宽计算算法**\n   - 参考 feishu-cli 的思路：遍历表格每列的单元格内容，按中英文字符宽度计算\n   - 中文字符算 2 个单位宽度，英文/数字算 1 个单位\n   - 最小列宽 80px，最大列宽 400px\n   - 总宽度约束在表格容器宽度内（飞书文档宽度约 700px）\n\n3. **实现后处理逻辑**\n   - 在 `docs_create.go` 的 `Execute` 函数中，文档创建成功后：\n     a. 获取文档所有 blocks\n     b. 找到所有 table 类型的 blocks\n     c. 对每个 table：解析单元格内容 → 计算列宽 → 调用 API 更新\n   - 如果后处理失败，不影响文档创建结果（降级为等宽，打印 warning）\n\n4. **同样处理 `docs +update`**\n   - 检查 `docs_update.go`，如果也有表格创建场景，同样添加后处理\n\n5. **创建 git 分支并提交**\n   - 分支名：`feat/table-auto-width`\n   - commit message 用英文\n   - 确保代码风格与项目一致\n   - 添加必要的测试\n\n6. **验证**\n   - `go build ./...` 确保编译通过\n   - `go test ./shortcuts/doc/...` 确保测试通过\n   - 如果可以运行，用测试文档验证效果\n\n### 参考\n- `doc_media_insert.go`：API 调用模式参考\n- `helpers.go`：辅助函数参考\n- 飞书 docx API 文档：https://open.feishu.cn/document/server-docs/docs/docx-v1\n",
+    "slug": "##_任务：为_Lark_CLI",
+    "slug_source": "fallback"
+  },
+  "cwd": "/Users/bytedance/Develop/larksuite-cli",
+  "ids": {
+    "thread": {
+      "chat_id": "delegation:7j5l4wicjp",
+      "thread_root_id": "2k23dic76l",
+      "anchor_message_id": null
+    },
+    "task": {
+      "task_id": "7j5l4wicjp",
+      "run_id": "2k23dic76l"
+    }
+  },
+  "created_at": "2026-03-29 18:36:18.017",
+  "updated_at": "2026-03-29 18:36:18.017"
+}

@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "file": {
+    "date_bucket": "2026-03-29",
+    "workspace_slug": "larksuite-cli_b15fed",
+    "stream": "delegation",
+    "topic_slug": "##_任务：为_Lark_CLI",
+    "uniq": "183643168",
+    "jsonl": "##_任务：为_Lark_CLI__183643168.meta.jsonl"
+  },
+  "topic": {
+    "raw": "## 任务：为 Lark CLI 的 `docs +create` 添加本地图片上传支持\n\n### 背景\nLark CLI 的 `docs +create --markdown` 创建文档时，markdown 中的本地图片路径（相对路径或绝对路径）会被服务端当作 URL 下载，导致全部失败。社区版 feishu-cli 支持 `--upload-images` 参数，能解析相对路径并上传本地图片。\n\n### 仓库信息\n- 仓库路径：`/Users/bytedance/Develop/larksuite-cli`（已 clone 自 https://github.com/larksuite/cli）\n- 语言：Go 1.23+\n- 核心文件：\n  - `shortcuts/doc/docs_create.go` — 文档创建入口\n  - `shortcuts/doc/doc_media_insert.go` — 已有图片上传逻辑（`uploadMediaFile` 函数）\n  - `shortcuts/doc/helpers.go` — 辅助函数\n\n### 架构分析\n`docs +create` 将 markdown 字符串发给服务端 MCP 工具 `create-doc`。服务端遇到 `![alt](path)` 时会尝试 HTTP 下载该 URL。\n\n**策略：在发送 markdown 到服务端之前，CLI 侧预处理**：\n1. 解析 markdown 中的图片引用 `![alt](path)`\n2. 判断 path 是本地文件还是 URL\n3. 如果是本地文件：上传到飞书 drive → 获取 file_token → 替换 markdown 中的路径\n4. 将处理后的 markdown 发给服务端\n\n### 你需要做的\n\n1. **理解现有图片上传逻辑**\n   - 读取 `doc_media_insert.go` 中的 `uploadMediaFile` 函数——它已经实现了完整的文件上传到飞书 drive 的流程\n   - 理解上传后获取的 `file_token` 如何使用\n   - **注意**：`+media-insert` 上传图片需要已有文档（需要 `parent_node`），而预处理阶段文档还没创建\n\n2. **调研飞书图片上传 API**\n   - 图片上传到飞书可能有两个路径：\n     a. `POST /open-apis/drive/v1/medias/upload_all`（需要 parent_node，即已有文档）\n     b. `POST /open-apis/im/v1/images`（消息图片，不需要关联文档，但可能有限制）\n   - 需要找到一种方式：**在文档创建前上传图片，创建后图片能在文档中正常显示**\n   - 可能的方案：先创建空文档 → 上传图片 → 再 update markdown 内容；或者用服务端支持的图片 token 格式\n\n3. **实现方案**\n\n   **方案 A（推荐）：两阶段创建**\n   - 第一阶段：创建空文档（只传 title）\n   - 上传图片到该文档（使用 `uploadMediaFile`，parent_node 用文档 ID）\n   - 替换 markdown 中的图片路径为 file_token 格式\n   - 第二阶段：update 文档内容（使用 `docs +update` 的 replace_all 模式）\n\n   **方案 B：预上传到公共空间**\n   - 上传图片到用户的 drive 空间\n   - 获取可访问的 URL\n   - 替换 markdown 中的路径\n\n   请先调研哪个方案可行，然后实施。\n\n4. **添加 `--base-dir` flag**\n   - 用于指定图片相对路径的基准目录\n   - 默认值：当前工作目录（CWD）\n   - 用法：`lark-cli docs +create --markdown \"$(cat doc.md)\" --base-dir /path/to/doc/dir`\n\n5. **图片路径解析逻辑**\n   - 正则匹配 markdown 图片语法：`!\\[.*?\\]\\((.*?)\\)`\n   - 判断路径是 URL（以 http:// 或 https:// 开头）还是本地路径\n   - 本地路径：相对于 `--base-dir` 解析为绝对路径\n   - 检查文件存在性，不存在则 warning 跳过\n   - 验证文件大小不超过 20MB\n\n6. **创建 git 分支并提交**\n   - 分支名：`feat/local-image-upload`\n   - commit message 用英文\n   - 确保代码风格与项目一致\n   - 添加测试\n\n7. **验证**\n   - `go build ./...` 确保编译通过\n   - `go test ./shortcuts/doc/...` 确保测试通过\n   - 如果可以运行，用 `/Users/bytedance/Dev/lucky_tag/doc/快速检查最终评估报告.md` 验证（5 张图片在 `case_images/` 目录下）\n\n### 安全注意\n- 使用 `validate.SafeInputPath` 验证文件路径（参考 `doc_media_insert.go`）\n- 限制文件大小（maxFileSize = 20MB）\n- 只上传常见图片格式（jpg, jpeg, png, gif, bmp, webp）\n",
+    "slug": "##_任务：为_Lark_CLI",
+    "slug_source": "fallback"
+  },
+  "cwd": "/Users/bytedance/Develop/larksuite-cli",
+  "ids": {
+    "thread": {
+      "chat_id": "delegation:8hidg17ggr",
+      "thread_root_id": "v350ifjpwt",
+      "anchor_message_id": null
+    },
+    "task": {
+      "task_id": "8hidg17ggr",
+      "run_id": "v350ifjpwt"
+    }
+  },
+  "created_at": "2026-03-29 18:36:43.168",
+  "updated_at": "2026-03-29 18:36:43.168"
+}
