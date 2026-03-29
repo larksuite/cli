@@ -28,7 +28,7 @@ A command-line tool for [Lark/Feishu](https://www.larksuite.com/) Open Platform 
 | 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media |
 | 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards          |
 | 📁 Drive      | Upload and download files, search docs & wiki, manage comments                      |
-| 📊 Base       | Create and manage tables, fields, records, views, dashboards, data aggregation & analytics |
+| 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
 | 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                      |
 | ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders |
 | 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                            |
