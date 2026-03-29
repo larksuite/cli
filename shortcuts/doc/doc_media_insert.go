@@ -98,7 +98,7 @@ var DocMediaInsert = common.Shortcut{
 			return output.ErrValidation("unsafe file path: %s", pathErr)
 		}
 
-		documentID, err := resolveDocxDocumentID(runtime, docInput)
+		documentID, err := resolveDocxDocumentID(runtime, docInput, "docs +media-insert")
 		if err != nil {
 			return err
 		}
@@ -234,46 +234,6 @@ func buildDeleteBlockData(index int) map[string]interface{} {
 	return map[string]interface{}{
 		"start_index": index,
 		"end_index":   index + 1,
-	}
-}
-
-func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string, error) {
-	docRef, err := parseDocumentRef(input)
-	if err != nil {
-		return "", err
-	}
-
-	switch docRef.Kind {
-	case "docx":
-		return docRef.Token, nil
-	case "doc":
-		return "", output.ErrValidation("docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx")
-	case "wiki":
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
-		data, err := runtime.CallAPI(
-			"GET",
-			"/open-apis/wiki/v2/spaces/get_node",
-			map[string]interface{}{"token": docRef.Token},
-			nil,
-		)
-		if err != nil {
-			return "", err
-		}
-
-		node := common.GetMap(data, "node")
-		objType := common.GetString(node, "obj_type")
-		objToken := common.GetString(node, "obj_token")
-		if objType == "" || objToken == "" {
-			return "", output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data")
-		}
-		if objType != "docx" {
-			return "", output.ErrValidation("wiki resolved to %q, but docs +media-insert only supports docx documents", objType)
-		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to docx: %s\n", common.MaskToken(objToken))
-		return objToken, nil
-	default:
-		return "", output.ErrValidation("docs +media-insert only supports docx documents")
 	}
 }
 

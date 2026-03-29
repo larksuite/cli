@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -112,6 +113,24 @@ var DocsUpdate = common.Shortcut{
 		}
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
+
+		if shouldAutoResizeAfterUpdate(runtime.Str("mode"), runtime.Str("markdown")) {
+			docID := common.GetString(result, "doc_id")
+			if docID == "" {
+				resolvedDocID, resolveErr := resolveDocxDocumentID(runtime, runtime.Str("doc"), "table auto-width")
+				if resolveErr != nil {
+					fmt.Fprintf(runtime.IO().ErrOut, "warning: table auto-width skipped: %v\n", resolveErr)
+				} else {
+					docID = resolvedDocID
+				}
+			}
+			if docID != "" {
+				if warn := autoResizeTableColumns(runtime, docID); warn != "" {
+					fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
+				}
+			}
+		}
+
 		runtime.Out(result, nil)
 		return nil
 	},
@@ -155,4 +174,49 @@ func normalizeBoardTokens(raw interface{}) []string {
 	default:
 		return []string{}
 	}
+}
+
+func shouldAutoResizeAfterUpdate(mode, markdown string) bool {
+	if mode == "delete_range" || strings.TrimSpace(markdown) == "" {
+		return false
+	}
+	return markdownLikelyContainsTable(markdown)
+}
+
+func markdownLikelyContainsTable(markdown string) bool {
+	lower := strings.ToLower(markdown)
+	if strings.Contains(lower, "<table") {
+		return true
+	}
+
+	lines := strings.Split(markdown, "\n")
+	for i := 0; i < len(lines)-1; i++ {
+		if isMarkdownTableRow(lines[i]) && isMarkdownTableSeparator(lines[i+1]) {
+			return true
+		}
+	}
+	return false
+}
+
+func isMarkdownTableRow(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if strings.Count(trimmed, "|") < 1 {
+		return false
+	}
+	return strings.Trim(trimmed, "| :-\t") != ""
+}
+
+func isMarkdownTableSeparator(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if strings.Count(trimmed, "|") < 2 || !strings.Contains(trimmed, "-") {
+		return false
+	}
+	for _, r := range trimmed {
+		switch r {
+		case '|', ':', '-', ' ', '\t':
+		default:
+			return false
+		}
+	}
+	return true
 }
