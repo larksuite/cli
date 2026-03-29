@@ -241,7 +241,7 @@ func TestExtractDocumentID(t *testing.T) {
 		},
 		{
 			name:   "from URL",
-			result: map[string]interface{}{"url": "https://example.com/docx/abc456"},
+			result: map[string]interface{}{"doc_url": "https://example.com/docx/abc456"},
 			want:   "abc456",
 		},
 		{

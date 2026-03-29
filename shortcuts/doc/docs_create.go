@@ -125,7 +125,7 @@ var DocsCreate = common.Shortcut{
 		}
 
 		// Post-process: auto-resize table column widths
-		if docID := common.GetString(result, "document_id"); docID != "" {
+		if docID := common.GetString(result, "doc_id"); docID != "" {
 			if warn := autoResizeTableColumns(runtime, docID); warn != "" {
 				fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
 			}

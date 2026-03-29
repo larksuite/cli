@@ -243,11 +243,14 @@ func uploadAndReplaceImages(ctx context.Context, runtime *common.RuntimeContext,
 
 // extractDocumentID tries to get document_id from a create-doc MCP result.
 func extractDocumentID(result map[string]interface{}) string {
+	// MCP create-doc returns "doc_id"
+	if id := common.GetString(result, "doc_id"); id != "" {
+		return id
+	}
 	if id := common.GetString(result, "document_id"); id != "" {
 		return id
 	}
-	if id := common.GetString(result, "url"); id != "" {
-		// Try to extract from URL
+	if id := common.GetString(result, "doc_url"); id != "" {
 		if ref, err := parseDocumentRef(id); err == nil {
 			return ref.Token
 		}

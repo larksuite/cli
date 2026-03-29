@@ -117,7 +117,7 @@ var DocsUpdate = common.Shortcut{
 		// Post-process: auto-resize table columns for modes that create tables
 		mode := runtime.Str("mode")
 		if mode == "overwrite" || mode == "append" {
-			if docID := common.GetString(result, "document_id"); docID != "" {
+			if docID := common.GetString(result, "doc_id"); docID != "" {
 				if warn := autoResizeTableColumns(runtime, docID); warn != "" {
 					fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
 				}
