@@ -63,11 +63,61 @@ func registerDriveBotTokenStub(reg *httpmock.Registry) {
 	})
 }
 
-func TestDriveUploadRejectsLargeFile(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
+	// Use a distinct AppID to avoid Lark SDK global token cache collision with other tests.
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	registerDriveBotTokenStub(reg)
+
+	// Step 1: upload_prepare
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"upload_id":  "test-upload-id",
+				"block_size": float64(maxDriveUploadFileSize),
+				"block_num":  float64(2),
+			},
+		},
+	})
+
+	// Step 2: upload_part (block 0)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	// Step 2: upload_part (block 1)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	// Step 3: upload_finish
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "file_multipart_token",
+			},
+		},
+	})
 
 	tmpDir := t.TempDir()
-	withDriveWorkingDir(t, tmpDir)
+	// Use Chdir directly (not withDriveWorkingDir) to avoid cleanup order interference with other tests.
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error: %v", err)
+	}
+	defer os.Chdir(origDir)
 
 	fh, err := os.Create("large.bin")
 	if err != nil {
@@ -84,12 +134,12 @@ func TestDriveUploadRejectsLargeFile(t *testing.T) {
 		"+upload",
 		"--file", "large.bin",
 		"--as", "bot",
-	}, f, nil)
-	if err == nil {
-		t.Fatal("expected size limit error, got nil")
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected multipart upload to succeed, got error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "exceeds 20MB limit") {
-		t.Fatalf("unexpected error: %v", err)
+	if !strings.Contains(stdout.String(), "file_multipart_token") {
+		t.Fatalf("stdout missing file_token: %s", stdout.String())
 	}
 }
 
