@@ -856,6 +856,54 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
+
+	t.Run("set-visible-fields-array", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		registerTokenStub(reg)
+		updateStub := &httpmock.Stub{
+			Method: "PUT",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_1/visible_fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": []interface{}{"fld_primary", "fld_status"},
+			},
+		}
+		reg.Register(updateStub)
+		if err := runShortcut(t, BaseViewSetVisibleFields, []string{"+view-set-visible-fields", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_1", "--json", `["fld_status"]`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"visible_fields"`) || !strings.Contains(got, `"fld_primary"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(updateStub.CapturedBody)
+		if !strings.Contains(body, `"visible_fields":["fld_status"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
+	t.Run("set-visible-fields-object", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		registerTokenStub(reg)
+		updateStub := &httpmock.Stub{
+			Method: "PUT",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_1/visible_fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": []interface{}{"fld_primary", "fld_status"},
+			},
+		}
+		reg.Register(updateStub)
+		if err := runShortcut(t, BaseViewSetVisibleFields, []string{"+view-set-visible-fields", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_1", "--json", `{"visible_fields":["fld_status"]}`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := string(updateStub.CapturedBody)
+		if !strings.Contains(body, `"visible_fields":["fld_status"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+		if strings.Contains(body, `{"visible_fields":{"visible_fields":`) {
+			t.Fatalf("request body double wrapped: %s", body)
+		}
+	})
 }
 
 func TestBaseTableExecuteListFallbackShapes(t *testing.T) {
