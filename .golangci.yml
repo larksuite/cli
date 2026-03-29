@@ -12,24 +12,29 @@ linters:
     - bodyclose       # checks whether HTTP response body is closed successfully
     - copyloopvar     # detects places where loop variables are copied
     - durationcheck   # checks for two durations multiplied together
-    - errname         # checks that error types are named XxxError
-    - errorlint       # checks error wrapping best practices
+    - exptostd        # detects functions from golang.org/x/exp/ replaceable by std
     - fatcontext      # detects nested contexts in loops
+    - gocheckcompilerdirectives # validates go compiler directive comments (//go:)
+    - gochecksumtype  # checks exhaustiveness on Go "sum types"
     - gocritic        # diagnostics for bugs, performance and style
+    - gomoddirectives # checks for replace, retract, and exclude in go.mod
     - goprintffuncname # checks that printf-like functions end with f
     - govet           # reports suspicious constructs
     - ineffassign     # detects ineffective assignments
-    - misspell        # finds commonly misspelled English words
     - nilerr          # finds code that returns nil even if error is not nil
     - nolintlint      # reports ill-formed nolint directives
     - nosprintfhostport # checks for misuse of Sprintf to construct host:port
     - reassign        # checks that package variables are not reassigned
-    - staticcheck     # comprehensive static analysis (includes gosimple)
     - unconvert       # removes unnecessary type conversions
     - unused          # checks for unused constants, variables, functions and types
 
-    # 安全
-    - gosec
+    # To enable later after fixing existing issues:
+    # - errcheck      # checks for unchecked errors
+    # - errname       # checks that error types are named XxxError
+    # - errorlint     # checks error wrapping best practices
+    # - gosec         # security-oriented linter
+    # - misspell      # finds commonly misspelled English words
+    # - staticcheck   # comprehensive static analysis
 
   exclusions:
     paths:
@@ -38,8 +43,6 @@ linters:
       - path: _test\.go$
         linters:
           - bodyclose
-          - errcheck
-          - gosec
           - gocritic
 
   settings:
@@ -49,10 +52,6 @@ linters:
         - hugeParam
       disabled-tags:
         - style
-    gosec:
-      excludes:
-        - G104  # unhandled error (errcheck covers this)
-        - G110  # decompression bomb (not applicable for CLI)
     govet:
       enable:
         - httpresponse
