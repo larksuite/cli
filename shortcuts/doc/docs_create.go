@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -81,6 +82,13 @@ var DocsCreate = common.Shortcut{
 		result, err := common.CallMCPTool(runtime, "create-doc", args)
 		if err != nil {
 			return err
+		}
+
+		// Post-process: auto-resize table column widths
+		if docID := common.GetString(result, "document_id"); docID != "" {
+			if warn := autoResizeTableColumns(runtime, docID); warn != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
+			}
 		}
 
 		runtime.Out(result, nil)
