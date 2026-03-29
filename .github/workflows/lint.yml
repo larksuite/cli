@@ -48,10 +48,7 @@ jobs:
           fi
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6
-        with:
-          version: v2.1.6
-          only-new-issues: true
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run
 
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
