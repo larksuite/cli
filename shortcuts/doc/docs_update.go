@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -112,6 +113,17 @@ var DocsUpdate = common.Shortcut{
 		}
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
+
+		// Post-process: auto-resize table columns for modes that create tables
+		mode := runtime.Str("mode")
+		if mode == "overwrite" || mode == "append" {
+			if docID := common.GetString(result, "document_id"); docID != "" {
+				if warn := autoResizeTableColumns(runtime, docID); warn != "" {
+					fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
+				}
+			}
+		}
+
 		runtime.Out(result, nil)
 		return nil
 	},
