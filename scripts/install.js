@@ -85,20 +85,60 @@ function download(downloadUrl, destPath, redirectCount = 0) {
   });
 }
 
+function getExpectedChecksum(archiveFilename) {
+  const checksumPath = path.join(__dirname, "..", "checksums.txt");
+  if (!fs.existsSync(checksumPath)) {
+    throw new Error("Checksum file not found. Package may be corrupted.");
+  }
+
+  const content = fs.readFileSync(checksumPath, "utf-8");
+  const lines = content.trim().split(/\r?\n/);
+  for (const line of lines) {
+    // goreleaser format: "<sha256hex>  <filename>"
+    const separatorIndex = line.indexOf("  ");
+    if (separatorIndex === -1) continue;
+    const hash = line.substring(0, separatorIndex);
+    const filename = line.substring(separatorIndex + 2).trim();
+    if (filename === archiveFilename) {
+      return hash;
+    }
+  }
+
+  throw new Error(`No checksum entry for ${archiveFilename}.`);
+}
+
+function verifyChecksum(filePath, expectedHash) {
+  const fileBuffer = fs.readFileSync(filePath);
+  const actualHash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+  if (actualHash !== expectedHash) {
+    throw new Error(
+      `Checksum verification failed!\n` +
+      `  Expected: ${expectedHash}\n` +
+      `  Actual:   ${actualHash}\n` +
+      `This may indicate a corrupted download or tampered binary. Please retry or install from source.`
+    );
+  }
+}
+
 async function install() {
+  const expectedHash = getExpectedChecksum(archiveName);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-"));
   const archivePath = path.join(tmpDir, archiveName);
 
   try {
     await download(url, archivePath);
+    verifyChecksum(archivePath, expectedHash);
 
     if (isWindows) {
-      execSync(
-        `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'"`,
-        { stdio: "ignore" }
-      );
+      const script =
+        `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${tmpDir.replace(/'/g, "''")}'`;
+      const scriptPath = path.join(tmpDir, "extract.ps1");
+      fs.writeFileSync(scriptPath, script);
+      execFileSync("powershell", ["-ExecutionPolicy", "Bypass", "-File", scriptPath], {
+        stdio: "ignore",
+      });
     } else {
-      execSync(`tar -xzf "${archivePath}" -C "${tmpDir}"`, {
+      execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], {
         stdio: "ignore",
       });
     }
