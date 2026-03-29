@@ -28,6 +28,7 @@
   "files": [
     "scripts/install.js",
     "scripts/run.js",
+    "checksums.txt",
     "CHANGELOG.md"
   ]
 }
