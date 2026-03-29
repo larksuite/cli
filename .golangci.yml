@@ -1,0 +1,68 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - asasalint       # checks for pass []any as any in variadic func(...any)
+    - asciicheck      # checks that code does not contain non-ASCII identifiers
+    - bidichk         # checks for dangerous unicode character sequences
+    - bodyclose       # checks whether HTTP response body is closed successfully
+    - copyloopvar     # detects places where loop variables are copied
+    - durationcheck   # checks for two durations multiplied together
+    - errcheck        # checks for unchecked errors
+    - errname         # checks that error types are named XxxError
+    - errorlint       # checks error wrapping best practices
+    - fatcontext      # detects nested contexts in loops
+    - gocritic        # diagnostics for bugs, performance and style
+    - goprintffuncname # checks that printf-like functions end with f
+    - govet           # reports suspicious constructs
+    - ineffassign     # detects ineffective assignments
+    - misspell        # finds commonly misspelled English words
+    - nilerr          # finds code that returns nil even if error is not nil
+    - nolintlint      # reports ill-formed nolint directives
+    - nosprintfhostport # checks for misuse of Sprintf to construct host:port
+    - reassign        # checks that package variables are not reassigned
+    - staticcheck     # comprehensive static analysis (includes gosimple)
+    - unconvert       # removes unnecessary type conversions
+    - unused          # checks for unused constants, variables, functions and types
+
+    # 安全
+    - gosec
+
+  exclusions:
+    paths:
+      - generated
+    rules:
+      - path: _test\.go$
+        linters:
+          - bodyclose
+          - errcheck
+          - gosec
+          - gocritic
+
+  settings:
+    gocritic:
+      disabled-checks:
+        - appendAssign
+        - hugeParam
+      disabled-tags:
+        - style
+    gosec:
+      excludes:
+        - G104  # unhandled error (errcheck covers this)
+        - G110  # decompression bomb (not applicable for CLI)
+    govet:
+      enable:
+        - httpresponse
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
