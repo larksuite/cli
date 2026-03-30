@@ -7,7 +7,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"os"
 )
 
 // FormatAsCSV formats data as CSV (with header) and writes it to w.
@@ -71,6 +70,6 @@ func writeCSVRows(w io.Writer, rows []map[string]string, cols []string, writeHea
 func flushCSV(cw *csv.Writer) {
 	cw.Flush()
 	if err := cw.Error(); err != nil {
-		fmt.Fprintf(os.Stderr, "csv write error: %v\n", err)
+		writeErrorf("csv write error: %v\n", err)
 	}
 }
