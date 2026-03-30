@@ -220,6 +220,7 @@ func mustHTTPClient(f *cmdutil.Factory) *http.Client {
 }
 
 // versionCheck queries GitHub for the latest release and compares.
+// Uses a 5s timeout to avoid blocking doctor longer than other network checks.
 func versionCheck(opts *DoctorOptions) []checkResult {
 	current := build.Version
 	if current == "DEV" || current == "" {
@@ -229,7 +230,10 @@ func versionCheck(opts *DoctorOptions) []checkResult {
 		return []checkResult{skip("version_latest", "skipped (--offline)")}
 	}
 
-	result := update.CheckForUpdate(opts.Ctx, &http.Client{Timeout: 5 * time.Second})
+	ctx, cancel := context.WithTimeout(opts.Ctx, 5*time.Second)
+	defer cancel()
+
+	result := update.CheckForUpdate(ctx, &http.Client{Timeout: 5 * time.Second})
 	if result == nil {
 		return []checkResult{pass("version_latest", fmt.Sprintf("up to date (%s)", current))}
 	}

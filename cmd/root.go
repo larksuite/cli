@@ -126,7 +126,7 @@ func Execute() int {
 	// Print update notification after command output (non-blocking, best-effort).
 	select {
 	case result := <-updateResultCh:
-		if result.IsNewer() {
+		if result != nil && result.IsNewer() {
 			fmt.Fprintf(f.IOStreams.ErrOut,
 				"\nA new version of lark-cli is available: %s → %s\nRun: %s\n",
 				result.Current, result.Latest, result.UpdateCommand())
