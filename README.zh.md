@@ -1,9 +1,12 @@
 # lark-cli
 
+[![Official](https://img.shields.io/badge/Official-飞书%20%2F%20Lark-blue)](https://github.com/larksuite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
 
 [中文版](./README.zh.md) | [English](./README.md)
+
+> **飞书开放平台官方 CLI 工具**，由 [larksuite](https://github.com/larksuite) 飞书/Lark 开放平台团队维护。
 
 飞书/Lark 开放平台命令行工具 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、日历、邮箱、任务、会议等核心业务域，提供 200+ 命令及 19 个 AI Agent [Skills](./skills/)。
 

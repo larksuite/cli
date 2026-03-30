@@ -1,9 +1,12 @@
 # lark-cli
 
+[![Official](https://img.shields.io/badge/Official-Lark%20%2F%20Feishu-blue)](https://github.com/larksuite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
 
 [中文版](./README.zh.md) | [English](./README.md)
+
+> **Official CLI tool** maintained by the [Lark/Feishu Open Platform](https://open.larksuite.com/) team at [larksuite](https://github.com/larksuite).
 
 A command-line tool for [Lark/Feishu](https://www.larksuite.com/) Open Platform — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Calendar, Mail, Tasks, Meetings, and more, with 200+ commands and 19 AI Agent [Skills](./skills/).
 
