@@ -73,7 +73,8 @@ cd cli
 make install
 
 # 安装 CLI SKILL（必需）
-npx skills add larksuite/cli -y -g
+cd skills
+npx skills add .
 ```
 
 #### 配置与使用
