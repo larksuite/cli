@@ -214,7 +214,7 @@ Call any Lark Open Platform endpoint directly, covering 2500+ APIs.
 
 ```bash
 lark-cli api GET /open-apis/calendar/v4/calendars
-lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_id"}' --body '{"receive_id":"oc_xxx","msg_type":"text","content":"{\"text\":\"Hello\"}"}'
+lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_id"}' --data '{"receive_id":"oc_xxx","msg_type":"text","content":"{\"text\":\"Hello\"}"}'
 ```
 
 ## Advanced Usage

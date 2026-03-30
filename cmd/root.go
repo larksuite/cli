@@ -40,7 +40,7 @@ EXAMPLES:
     lark-cli calendar +agenda
 
     # List calendar events
-    lark-cli calendar events list --params '{"calendar_id":"primary"}'
+    lark-cli calendar events instance_view --params '{"calendar_id":"primary"}'
 
     # Search users
     lark-cli contact +search-user --query "John"
