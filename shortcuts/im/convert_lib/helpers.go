@@ -151,7 +151,7 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 // batchResolveByBasicContact resolves user names via POST /contact/v3/users/basic_batch.
 // This API has lighter permission requirements and works with user identity
 // even when the target user is not in the app's visible range.
-// Response uses "users" (not "items") and "user_id" (not "open_id").
+// Response uses "users" (not "items") and "open_id" as the user identifier.
 func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
 	const batchSize = 50
 	for i := 0; i < len(missingIDs); i += batchSize {
@@ -173,10 +173,10 @@ func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []str
 		users, _ := data["users"].([]interface{})
 		for _, item := range users {
 			user, _ := item.(map[string]interface{})
-			userID, _ := user["user_id"].(string)
+			openID, _ := user["open_id"].(string)
 			name, _ := user["name"].(string)
-			if userID != "" && name != "" {
-				nameMap[userID] = name
+			if openID != "" && name != "" {
+				nameMap[openID] = name
 			}
 		}
 	}
