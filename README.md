@@ -1,6 +1,5 @@
 # lark-cli
 
-[![Official](https://img.shields.io/badge/Official-Lark%20%2F%20Feishu-blue)](https://github.com/larksuite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
 
