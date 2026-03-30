@@ -12,6 +12,12 @@ lark-cli base +field-update \
   --table-id tbl_xxx \
   --field-id fld_xxx \
   --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}'
+
+lark-cli base +field-update \
+  --base-token app_xxx \
+  --table-id tbl_xxx \
+  --field-id fld_xxx \
+  --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人；协作约定可参考[团队字段约定](https://example.com/field-spec)"}'
 ```
 
 ## 参数
@@ -33,8 +39,8 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## JSON 值规范
 
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
-- 如需字段说明，直接在 `--json.description` 里传入；支持 Markdown 链接文本。
 - 更新语义是 `PUT`（全量字段配置更新），不要只传零散片段；至少显式包含 `name`、`type`，并补齐该类型所需关键配置。
+- 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
 - `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
@@ -55,6 +61,17 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 }
 ```
 
+**字段说明示例**
+
+```json
+{
+  "name": "负责人",
+  "type": "user",
+  "multiple": false,
+  "description": "用于标记记录的直接负责人；协作约定可参考[团队字段约定](https://example.com/field-spec)"
+}
+```
+
 ## 返回重点
 
 - 返回 `field` 和 `updated: true`。
@@ -69,7 +86,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
 - ⚠️ 这是写入操作，执行前必须确认。
-- ⚠️ 当 `--json.type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
+- ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
 
 ## 参考
 

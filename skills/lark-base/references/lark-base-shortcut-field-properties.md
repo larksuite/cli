@@ -8,16 +8,24 @@
 
 - `--json` 必须是 JSON 对象。
 - 顶层统一使用：`type` + `name` + 类型特有字段。
-- 字段说明直接写在 `--json.description`；支持普通文本和 Markdown 链接。
+- 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
 - `+field-update` 是 `PUT` 语义，建议先 `+field-get` 再全量提交目标字段配置。
 - `type=formula` 或 `type=lookup` 创建时，必须先读对应 guide。
+
+```json
+{
+  "type": "text",
+  "name": "需求背景",
+  "description": "记录需求背景与已知约束；填写口径可参考[说明模板](https://example.com/spec)"
+}
+```
 
 ## 2. 各类型格式与示例
 
 ### 2.1 text
 
-**要求**：`name` 必填；`style.type` 可选，默认 `plain`。
+**要求**：`name` 必填；可选传 `description`；`style.type` 可选，默认 `plain`。
 
 ```json
 {
