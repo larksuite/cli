@@ -62,6 +62,10 @@ func fail(name, msg, hint string) checkResult {
 	return checkResult{Name: name, Status: "fail", Message: msg, Hint: hint}
 }
 
+func warn(name, msg, hint string) checkResult {
+	return checkResult{Name: name, Status: "warn", Message: msg, Hint: hint}
+}
+
 func skip(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "skip", Message: msg}
 }
@@ -237,7 +241,7 @@ func versionCheck(opts *DoctorOptions) []checkResult {
 	if result == nil {
 		return []checkResult{pass("version_latest", fmt.Sprintf("up to date (%s)", current))}
 	}
-	return []checkResult{fail(
+	return []checkResult{warn(
 		"version_latest",
 		fmt.Sprintf("update available: %s → %s", result.Current, result.Latest),
 		"run: "+result.UpdateCommand(),
