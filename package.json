@@ -6,7 +6,8 @@
     "lark-cli": "scripts/run.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node scripts/install.js",
+    "test": "node --test scripts/__tests__/install.test.js"
   },
   "os": [
     "darwin",
