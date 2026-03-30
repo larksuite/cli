@@ -23,7 +23,7 @@ var CalendarRsvp = common.Shortcut{
 	Command:     "+rsvp",
 	Description: "Reply to a calendar event invitation (accept, decline, or tentative)",
 	Risk:        "write",
-	Scopes:      []string{"calendar:calendar.event:update"},
+	Scopes:      []string{"calendar:calendar.event:reply"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "event-id", Desc: "event ID (from +agenda output)", Required: true},
