@@ -126,12 +126,11 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 
 	// All other structured errors normalize to ExitError.
 	if exitErr := asExitError(err); exitErr != nil {
-		if exitErr.Raw {
-			// Raw errors (e.g. from `api` command) already printed the full API
-			// response to stdout; skip enrichment and duplicate stderr envelope.
-			return exitErr.Code
+		if !exitErr.Raw {
+			// Raw errors (e.g. from `api` command) preserve the original API
+			// error detail; skip enrichment which would clear it.
+			enrichPermissionError(f, exitErr)
 		}
-		enrichPermissionError(f, exitErr)
 		output.WriteErrorEnvelope(errOut, exitErr, string(f.ResolvedIdentity))
 		return exitErr.Code
 	}

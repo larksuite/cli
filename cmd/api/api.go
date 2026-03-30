@@ -198,15 +198,12 @@ func apiRun(opts *APIOptions) error {
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
 	})
-	// MarkRaw tells root error handler that the API response was already written
-	// to stdout, so it should skip the stderr error envelope. Only apply when
-	// HandleResponse actually wrote output (i.e. returned a business/API error
-	// after printing JSON to stdout). Non-JSON HTTP errors (e.g. 404 text/plain)
-	// produce no stdout output and need the envelope.
-	if err != nil && client.IsJSONContentType(resp.Header.Get("Content-Type")) {
+	// MarkRaw tells root error handler to skip enrichPermissionError,
+	// preserving the original API error detail (log_id, troubleshooter, etc.).
+	if err != nil {
 		return output.MarkRaw(err)
 	}
-	return err
+	return nil
 }
 
 func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
