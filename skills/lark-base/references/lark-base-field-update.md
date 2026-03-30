@@ -22,7 +22,6 @@ lark-cli base +field-update \
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--field-id <id_or_name>` | 是 | 字段 ID 或字段名 |
 | `--json <body>` | 是 | 字段属性 JSON 对象 |
-
 ## API 入参详情
 
 **HTTP 方法和路径：**
@@ -34,6 +33,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## JSON 值规范
 
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
+- 如需字段说明，直接在 `--json.description` 里传入；支持 Markdown 链接文本。
 - 更新语义是 `PUT`（全量字段配置更新），不要只传零散片段；至少显式包含 `name`、`type`，并补齐该类型所需关键配置。
 - `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
 - `link` 更新限制：

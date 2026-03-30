@@ -33,7 +33,6 @@ lark-cli base +field-create \
 | `--base-token <token>` | 是 | Base Token |
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--json <body>` | 是 | 字段属性 JSON 对象 |
-
 ## API 入参详情
 
 **HTTP 方法和路径：**
@@ -46,6 +45,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义，不要再套一层。
 - 顶层最少包含：`name`、`type`。
+- 如需字段说明，直接在 `--json.description` 里传入；支持 Markdown 链接文本。
 - `type` 不同，必填子字段不同：
   - `select`：用 `multiple` + `options`（`options` 里只传 `name/hue/lightness`，不要传 `id`）。
   - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。

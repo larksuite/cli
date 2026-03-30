@@ -8,6 +8,7 @@
 
 - `--json` 必须是 JSON 对象。
 - 顶层统一使用：`type` + `name` + 类型特有字段。
+- 字段说明直接写在 `--json.description`；支持普通文本和 Markdown 链接。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
 - `+field-update` 是 `PUT` 语义，建议先 `+field-get` 再全量提交目标字段配置。
 - `type=formula` 或 `type=lookup` 创建时，必须先读对应 guide。
