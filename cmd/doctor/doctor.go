@@ -49,7 +49,7 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 // checkResult represents one diagnostic check.
 type checkResult struct {
 	Name    string `json:"name"`
-	Status  string `json:"status"` // "pass", "fail", "skip"
+	Status  string `json:"status"` // "pass", "fail", "warn", "skip"
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
 }

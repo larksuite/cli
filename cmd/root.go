@@ -145,8 +145,13 @@ func Execute() int {
 // shouldShowUpdateNotification returns false for commands whose output
 // must stay machine-parseable (e.g. shell completion scripts, --version).
 func shouldShowUpdateNotification(rootCmd *cobra.Command) bool {
-	// After Execute(), CalledAs() on the root returns "" when a subcommand ran.
-	// We need to walk the command tree to find what actually executed.
+	// --version is a root flag, not a subcommand — Find() won't catch it.
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			return false
+		}
+	}
+	// Suppress for commands whose output must stay machine-parseable.
 	cmd, _, _ := rootCmd.Find(os.Args[1:])
 	if cmd == nil {
 		return true
