@@ -126,6 +126,74 @@ describe("install.js E2E tests", () => {
     }
   });
 
+  // Test #1b: Integration — install() end-to-end via direct call
+  it("should complete full install() flow with mock server", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "install-integ-"));
+    const outputDir = path.join(tmpDir, "bin");
+    const archiveDir = path.join(tmpDir, "archive");
+    const binaryName = "lark-cli";
+
+    const savedEnvs = {};
+    const envKeys = [
+      "LARK_CLI_TEST_BASE_URL",
+      "LARK_CLI_TEST_CHECKSUM_PATH",
+      "LARK_CLI_TEST_OUTPUT_DIR",
+    ];
+    for (const k of envKeys) savedEnvs[k] = process.env[k];
+
+    try {
+      // Create a fake binary and archive
+      fs.mkdirSync(archiveDir, { recursive: true });
+      fs.writeFileSync(path.join(archiveDir, binaryName), "#!/bin/sh\necho fake-integ\n");
+      fs.chmodSync(path.join(archiveDir, binaryName), 0o755);
+
+      const pkg = require("../../package.json");
+      const platformName = process.platform === "win32" ? "windows" : process.platform;
+      const archMap = { x64: "amd64", arm64: "arm64" };
+      const archiveName = `lark-cli-${pkg.version}-${platformName}-${archMap[process.arch]}.tar.gz`;
+      const archivePath = path.join(tmpDir, archiveName);
+      execFileSync("tar", ["-czf", archivePath, "-C", archiveDir, binaryName]);
+
+      const sha256 = crypto.createHash("sha256").update(fs.readFileSync(archivePath)).digest("hex");
+      const checksumPath = path.join(tmpDir, "checksums.txt");
+      fs.writeFileSync(checksumPath, `${sha256}  ${archiveName}\n`);
+
+      const archiveContent = fs.readFileSync(archivePath);
+      setRoute((req, res) => {
+        if (req.url.endsWith(archiveName)) {
+          res.writeHead(200, {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": archiveContent.length,
+          });
+          res.end(archiveContent);
+        } else {
+          res.writeHead(404);
+          res.end("Not found");
+        }
+      });
+
+      // Set env vars for install() to use mock server
+      process.env.LARK_CLI_TEST_BASE_URL = serverUrl("");
+      process.env.LARK_CLI_TEST_CHECKSUM_PATH = checksumPath;
+      process.env.LARK_CLI_TEST_OUTPUT_DIR = outputDir;
+
+      // Call install() directly — exercises the full flow
+      await installModule.install();
+
+      // Verify binary was installed
+      const installedBinary = path.join(outputDir, binaryName);
+      assert.ok(fs.existsSync(installedBinary), "Binary should be installed by install()");
+      const result = execFileSync(installedBinary, { encoding: "utf-8" });
+      assert.match(result, /fake-integ/);
+    } finally {
+      for (const k of envKeys) {
+        if (savedEnvs[k] !== undefined) process.env[k] = savedEnvs[k];
+        else delete process.env[k];
+      }
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   // Test #2: HTTPS enforcement — redirect to http:// rejected
   it("should reject redirect to non-HTTPS URL", async () => {
     setRoute((req, res) => {
