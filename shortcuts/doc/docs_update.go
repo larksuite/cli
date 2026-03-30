@@ -5,10 +5,13 @@ package doc
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+var docsCallMCPTool = common.CallMCPTool
 
 var validModes = map[string]bool{
 	"append":        true,
@@ -66,22 +69,7 @@ var DocsUpdate = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		args := map[string]interface{}{
-			"doc_id": runtime.Str("doc"),
-			"mode":   runtime.Str("mode"),
-		}
-		if v := runtime.Str("markdown"); v != "" {
-			args["markdown"] = v
-		}
-		if v := runtime.Str("selection-with-ellipsis"); v != "" {
-			args["selection_with_ellipsis"] = v
-		}
-		if v := runtime.Str("selection-by-title"); v != "" {
-			args["selection_by_title"] = v
-		}
-		if v := runtime.Str("new-title"); v != "" {
-			args["new_title"] = v
-		}
+		args := buildDocsUpdateArgs(runtime)
 		return common.NewDryRunAPI().
 			POST(common.MCPEndpoint(runtime.Config.Brand)).
 			Desc("MCP tool: update-doc").
@@ -89,24 +77,12 @@ var DocsUpdate = common.Shortcut{
 			Set("mcp_tool", "update-doc").Set("args", args)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		args := map[string]interface{}{
-			"doc_id": runtime.Str("doc"),
-			"mode":   runtime.Str("mode"),
-		}
-		if v := runtime.Str("markdown"); v != "" {
-			args["markdown"] = v
-		}
-		if v := runtime.Str("selection-with-ellipsis"); v != "" {
-			args["selection_with_ellipsis"] = v
-		}
-		if v := runtime.Str("selection-by-title"); v != "" {
-			args["selection_by_title"] = v
-		}
-		if v := runtime.Str("new-title"); v != "" {
-			args["new_title"] = v
+		args, err := resolveTitleSelection(runtime, buildDocsUpdateArgs(runtime))
+		if err != nil {
+			return err
 		}
 
-		result, err := common.CallMCPTool(runtime, "update-doc", args)
+		result, err := docsCallMCPTool(runtime, "update-doc", args)
 		if err != nil {
 			return err
 		}
@@ -115,6 +91,186 @@ var DocsUpdate = common.Shortcut{
 		runtime.Out(result, nil)
 		return nil
 	},
+}
+
+func buildDocsUpdateArgs(runtime *common.RuntimeContext) map[string]interface{} {
+	args := map[string]interface{}{
+		"doc_id": runtime.Str("doc"),
+		"mode":   runtime.Str("mode"),
+	}
+	if v := runtime.Str("markdown"); v != "" {
+		args["markdown"] = v
+	}
+	if v := runtime.Str("selection-with-ellipsis"); v != "" {
+		args["selection_with_ellipsis"] = v
+	}
+	if v := runtime.Str("selection-by-title"); v != "" {
+		args["selection_by_title"] = v
+	}
+	if v := runtime.Str("new-title"); v != "" {
+		args["new_title"] = v
+	}
+	return args
+}
+
+func resolveTitleSelection(runtime *common.RuntimeContext, args map[string]interface{}) (map[string]interface{}, error) {
+	rawSelection, ok := args["selection_by_title"].(string)
+	if !ok || strings.TrimSpace(rawSelection) == "" {
+		return args, nil
+	}
+
+	docID, _ := args["doc_id"].(string)
+	if strings.TrimSpace(docID) == "" {
+		return args, nil
+	}
+
+	result, err := docsCallMCPTool(runtime, "fetch-doc", map[string]interface{}{"doc_id": docID})
+	if err != nil {
+		// Keep the existing server-side title path if the fetch workaround is unavailable.
+		return args, nil
+	}
+
+	markdown, _ := result["markdown"].(string)
+	section, ok := sectionMarkdownByTitle(markdown, rawSelection)
+	if !ok {
+		return args, nil
+	}
+
+	rewritten := make(map[string]interface{}, len(args))
+	for k, v := range args {
+		if k == "selection_by_title" {
+			continue
+		}
+		rewritten[k] = v
+	}
+	rewritten["selection_with_ellipsis"] = escapeSelectionLiteral(section)
+	return rewritten, nil
+}
+
+type markdownHeading struct {
+	level int
+	title string
+	start int
+	end   int
+}
+
+var headingLinePattern = regexp.MustCompile(`^\s{0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$`)
+
+func sectionMarkdownByTitle(markdown, selection string) (string, bool) {
+	headings := collectMarkdownHeadings(markdown)
+	if len(headings) == 0 {
+		return "", false
+	}
+
+	title, level, exactLevel := parseTitleSelection(selection)
+	if title == "" {
+		return "", false
+	}
+
+	for _, heading := range headings {
+		if heading.title != title {
+			continue
+		}
+		if exactLevel && heading.level != level {
+			continue
+		}
+		return markdown[heading.start:heading.end], true
+	}
+	return "", false
+}
+
+func collectMarkdownHeadings(markdown string) []markdownHeading {
+	var headings []markdownHeading
+	inFence := false
+	fenceMarker := ""
+
+	for start, line := range iterateMarkdownLines(markdown) {
+		trimmed := strings.TrimSpace(line)
+		if marker, ok := markdownFenceMarker(trimmed); ok {
+			if !inFence {
+				inFence = true
+				fenceMarker = marker
+			} else if marker == fenceMarker {
+				inFence = false
+				fenceMarker = ""
+			}
+			continue
+		}
+		if inFence {
+			continue
+		}
+		matches := headingLinePattern.FindStringSubmatch(trimmed)
+		if len(matches) != 3 {
+			continue
+		}
+		title := strings.TrimSpace(matches[2])
+		level := len(matches[1])
+		if title == "" {
+			continue
+		}
+		headings = append(headings, markdownHeading{
+			level: level,
+			title: title,
+			start: start,
+			end:   len(markdown),
+		})
+	}
+
+	for i := range headings {
+		for j := i + 1; j < len(headings); j++ {
+			if headings[j].level <= headings[i].level {
+				headings[i].end = headings[j].start
+				break
+			}
+		}
+	}
+	return headings
+}
+
+func iterateMarkdownLines(markdown string) func(func(int, string) bool) {
+	return func(yield func(int, string) bool) {
+		start := 0
+		for start < len(markdown) {
+			end := start
+			for end < len(markdown) && markdown[end] != '\n' {
+				end++
+			}
+			if end < len(markdown) {
+				end++
+			}
+			if !yield(start, markdown[start:end]) {
+				return
+			}
+			start = end
+		}
+	}
+}
+
+func markdownFenceMarker(trimmedLine string) (string, bool) {
+	switch {
+	case strings.HasPrefix(trimmedLine, "```"):
+		return "```", true
+	case strings.HasPrefix(trimmedLine, "~~~"):
+		return "~~~", true
+	default:
+		return "", false
+	}
+}
+
+func parseTitleSelection(selection string) (title string, level int, exactLevel bool) {
+	trimmed := strings.TrimSpace(selection)
+	if trimmed == "" {
+		return "", 0, false
+	}
+	matches := headingLinePattern.FindStringSubmatch(trimmed)
+	if len(matches) == 3 {
+		return strings.TrimSpace(matches[2]), len(matches[1]), true
+	}
+	return trimmed, 0, false
+}
+
+func escapeSelectionLiteral(section string) string {
+	return strings.ReplaceAll(section, "...", `\.\.\.`)
 }
 
 func normalizeDocsUpdateResult(result map[string]interface{}, markdown string) {
