@@ -12,11 +12,30 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 )
 
+var errorSink io.Writer = os.Stderr
+
+// SetErrorSink replaces the package-level sink used by output helpers for
+// internal formatting failures. It returns the previous sink so callers can
+// restore it after redirecting output.
+func SetErrorSink(w io.Writer) io.Writer {
+	prev := errorSink
+	if w == nil {
+		errorSink = io.Discard
+		return prev
+	}
+	errorSink = w
+	return prev
+}
+
+func writeHelperError(format string, args ...interface{}) {
+	fmt.Fprintf(errorSink, format, args...)
+}
+
 // PrintJson prints data as formatted JSON to w.
 func PrintJson(w io.Writer, data interface{}) {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		writeHelperError("json marshal error: %v\n", err)
 		return
 	}
 	fmt.Fprintln(w, string(b))
@@ -27,7 +46,7 @@ func PrintNdjson(w io.Writer, data interface{}) {
 	emit := func(item interface{}) {
 		b, err := json.Marshal(item)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
+			writeHelperError("ndjson marshal error: %v\n", err)
 			return
 		}
 		fmt.Fprintln(w, string(b))
