@@ -28,3 +28,15 @@ jobs:
 
       - name: Run tests
         run: go test -v -race -count=1 -timeout=30s ./cmd/... ./internal/... ./shortcuts/...
+
+  install-script-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '18'
+
+      - name: Run install script tests
+        run: node --test scripts/__tests__/install.test.js
