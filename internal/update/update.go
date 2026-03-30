@@ -76,7 +76,7 @@ func CheckForUpdate(ctx context.Context, httpClient *http.Client) *Result {
 		}
 	}
 
-	// Fetch latest version from GitHub.
+	// Fetch latest version from npm registry.
 	latest, err := fetchLatestVersion(ctx, httpClient)
 	if err != nil {
 		return nil

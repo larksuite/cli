@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 
@@ -124,18 +125,34 @@ func Execute() int {
 	}
 
 	// Print update notification after command output (non-blocking, best-effort).
-	select {
-	case result := <-updateResultCh:
-		if result != nil && result.IsNewer() {
-			fmt.Fprintf(f.IOStreams.ErrOut,
-				"\nA new version of lark-cli is available: %s → %s\nRun: %s\n",
-				result.Current, result.Latest, result.UpdateCommand())
+	// Suppress for commands whose stdout/stderr must stay clean (e.g. shell completion).
+	if shouldShowUpdateNotification(rootCmd) {
+		select {
+		case result := <-updateResultCh:
+			if result != nil && result.IsNewer() {
+				fmt.Fprintf(f.IOStreams.ErrOut,
+					"\nA new version of lark-cli is available: %s → %s\nRun: %s\n",
+					result.Current, result.Latest, result.UpdateCommand())
+			}
+		default:
+			// Check hasn't finished yet — don't block.
 		}
-	default:
-		// Check hasn't finished yet — don't block.
 	}
 
 	return exitCode
+}
+
+// shouldShowUpdateNotification returns false for commands whose output
+// must stay machine-parseable (e.g. shell completion scripts, --version).
+func shouldShowUpdateNotification(rootCmd *cobra.Command) bool {
+	// After Execute(), CalledAs() on the root returns "" when a subcommand ran.
+	// We need to walk the command tree to find what actually executed.
+	cmd, _, _ := rootCmd.Find(os.Args[1:])
+	if cmd == nil {
+		return true
+	}
+	name := cmd.Name()
+	return name != "completion" && name != "__complete"
 }
 
 // handleRootError dispatches a command error to the appropriate handler

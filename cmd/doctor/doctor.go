@@ -219,7 +219,7 @@ func mustHTTPClient(f *cmdutil.Factory) *http.Client {
 	return c
 }
 
-// versionCheck queries GitHub for the latest release and compares.
+// versionCheck queries npm registry for the latest release and compares.
 // Uses a 5s timeout to avoid blocking doctor longer than other network checks.
 func versionCheck(opts *DoctorOptions) []checkResult {
 	current := build.Version
