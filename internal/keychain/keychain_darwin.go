@@ -11,9 +11,11 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +26,8 @@ const keychainTimeout = 5 * time.Second
 const masterKeyBytes = 32
 const ivBytes = 12
 const tagBytes = 16
+const goKeyringEncodedPrefix = "go-keyring-encoded:"
+const goKeyringBase64Prefix = "go-keyring-base64:"
 
 // StorageDir returns the storage directory for a given service name on macOS.
 func StorageDir(service string) string {
@@ -40,6 +44,35 @@ func safeFileName(account string) string {
 	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
 }
 
+func decodeMasterKeyValue(value string) ([]byte, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, false
+	}
+
+	candidates := []string{value}
+	switch {
+	case strings.HasPrefix(value, goKeyringBase64Prefix):
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(value, goKeyringBase64Prefix))
+		if err == nil {
+			candidates = append(candidates, strings.TrimSpace(string(decoded)))
+		}
+	case strings.HasPrefix(value, goKeyringEncodedPrefix):
+		decoded, err := hex.DecodeString(strings.TrimPrefix(value, goKeyringEncodedPrefix))
+		if err == nil {
+			candidates = append(candidates, strings.TrimSpace(string(decoded)))
+		}
+	}
+
+	for _, candidate := range candidates {
+		key, err := base64.StdEncoding.DecodeString(candidate)
+		if err == nil && len(key) == masterKeyBytes {
+			return key, true
+		}
+	}
+	return nil, false
+}
+
 func getMasterKey(service string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout)
 	defer cancel()
@@ -54,8 +87,7 @@ func getMasterKey(service string) ([]byte, error) {
 
 		encodedKey, err := keyring.Get(service, "master.key")
 		if err == nil {
-			key, decodeErr := base64.StdEncoding.DecodeString(encodedKey)
-			if decodeErr == nil && len(key) == masterKeyBytes {
+			if key, ok := decodeMasterKeyValue(encodedKey); ok {
 				resCh <- result{key: key, err: nil}
 				return
 			}
