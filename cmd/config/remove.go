@@ -4,7 +4,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -40,8 +42,11 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 	f := opts.Factory
 
 	config, err := core.LoadMultiAppConfig()
-	if err != nil || config == nil || len(config.Apps) == 0 {
-		return output.ErrValidation("not configured yet")
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return output.ErrValidation("not configured yet")
+		}
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Clean up keychain entries for all apps
