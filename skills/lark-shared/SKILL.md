@@ -73,6 +73,25 @@ lark-cli auth login --scope "calendar:calendar:readonly"
 ```
 
 
+## 更新检查
+
+lark-cli 命令执行后，如果检测到新版本，会在 stderr 输出类似如下提示：
+
+```
+A new version of lark-cli is available: 1.0.0 → 1.1.0
+Run: npm update -g @larksuite/cli && npx skills add larksuite/cli --all -y
+```
+
+**当你在 stderr 中看到此提示时，必须主动告知用户**，包含以下信息：
+1. 当前版本和最新版本号
+2. 更新命令（CLI 和 Skills 需要同时更新）：
+   ```bash
+   npm update -g @larksuite/cli && npx skills add larksuite/cli --all -y
+   ```
+3. 提醒用户：更新 Skills 后需要**重启 AI Agent**（如 Claude Code）才能生效
+
+**规则**：不要静默忽略更新提示。即使当前任务与更新无关，也应在完成用户请求后补充告知。
+
 ## 安全规则
 
 - **禁止输出密钥**（appSecret、accessToken）到终端明文。
