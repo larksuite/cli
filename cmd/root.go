@@ -4,12 +4,15 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
@@ -24,6 +27,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
@@ -92,6 +96,15 @@ func Execute() int {
 	}
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
+
+	// Start async update check before command execution.
+	updateResultCh := make(chan *update.Result, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		updateResultCh <- update.CheckForUpdate(ctx, &http.Client{Timeout: 5 * time.Second})
+	}()
+
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
 	}
@@ -105,10 +118,24 @@ func Execute() int {
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
 
+	exitCode := 0
 	if err := rootCmd.Execute(); err != nil {
-		return handleRootError(f, err)
+		exitCode = handleRootError(f, err)
 	}
-	return 0
+
+	// Print update notification after command output (non-blocking, best-effort).
+	select {
+	case result := <-updateResultCh:
+		if result.IsNewer() {
+			fmt.Fprintf(f.IOStreams.ErrOut,
+				"\nA new version of lark-cli is available: %s → %s\nRun: %s\n",
+				result.Current, result.Latest, result.UpdateCommand())
+		}
+	default:
+		// Check hasn't finished yet — don't block.
+	}
+
+	return exitCode
 }
 
 // handleRootError dispatches a command error to the appropriate handler

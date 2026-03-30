@@ -14,9 +14,11 @@ import (
 	"github.com/spf13/cobra"
 
 	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/update"
 )
 
 // DoctorOptions holds inputs for the doctor command.
@@ -67,6 +69,9 @@ func skip(name, msg string) checkResult {
 func doctorRun(opts *DoctorOptions) error {
 	f := opts.Factory
 	var checks []checkResult
+
+	// ── 0. Version check ──
+	checks = append(checks, versionCheck(opts)...)
 
 	// ── 1. Config file ──
 	_, err := core.LoadMultiAppConfig()
@@ -212,6 +217,27 @@ func mustHTTPClient(f *cmdutil.Factory) *http.Client {
 		return &http.Client{Timeout: 30 * time.Second}
 	}
 	return c
+}
+
+// versionCheck queries GitHub for the latest release and compares.
+func versionCheck(opts *DoctorOptions) []checkResult {
+	current := build.Version
+	if current == "DEV" || current == "" {
+		return []checkResult{skip("version_latest", "dev build, skipped")}
+	}
+	if opts.Offline {
+		return []checkResult{skip("version_latest", "skipped (--offline)")}
+	}
+
+	result := update.CheckForUpdate(opts.Ctx, &http.Client{Timeout: 5 * time.Second})
+	if result == nil {
+		return []checkResult{pass("version_latest", fmt.Sprintf("up to date (%s)", current))}
+	}
+	return []checkResult{fail(
+		"version_latest",
+		fmt.Sprintf("update available: %s → %s", result.Current, result.Latest),
+		"run: "+result.UpdateCommand(),
+	)}
 }
 
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
