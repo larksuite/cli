@@ -22,8 +22,8 @@ const (
 	// checkInterval is the minimum time between remote version checks.
 	checkInterval = 24 * time.Hour
 
-	// releaseURL is the GitHub API endpoint for the latest release.
-	releaseURL = "https://api.github.com/repos/larksuite/cli/releases/latest"
+	// registryURL is the npm registry endpoint for the latest version.
+	registryURL = "https://registry.npmjs.org/@larksuite/cli/latest"
 
 	// stateFile is the file name for persisting last-check state.
 	stateFile = "update-state.json"
@@ -137,9 +137,9 @@ func writeState(path string, s *state) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-// githubRelease is the subset of GitHub release JSON we care about.
-type githubRelease struct {
-	TagName string `json:"tag_name"`
+// npmPackage is the subset of npm registry JSON we care about.
+type npmPackage struct {
+	Version string `json:"version"`
 }
 
 func fetchLatestVersion(ctx context.Context, httpClient *http.Client) (string, error) {
@@ -149,11 +149,11 @@ func fetchLatestVersion(ctx context.Context, httpClient *http.Client) (string, e
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, registryURL, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -162,14 +162,14 @@ func fetchLatestVersion(ctx context.Context, httpClient *http.Client) (string, e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github: status %d", resp.StatusCode)
+		return "", fmt.Errorf("npm registry: status %d", resp.StatusCode)
 	}
 
-	var rel githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	var pkg npmPackage
+	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
 		return "", err
 	}
-	return strings.TrimPrefix(rel.TagName, "v"), nil
+	return pkg.Version, nil
 }
 
 // compareVersions compares two semver strings (without "v" prefix).

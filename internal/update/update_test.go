@@ -106,7 +106,6 @@ func TestCheckForUpdate_CachedState(t *testing.T) {
 	build.Version = "1.0.0"
 	defer func() { build.Version = origVersion }()
 
-	// Set up temp config dir
 	tmpDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmpDir)
 
@@ -127,51 +126,24 @@ func TestCheckForUpdate_CachedState(t *testing.T) {
 	}
 }
 
-func TestCheckForUpdate_FetchesFromGitHub(t *testing.T) {
-	origVersion := build.Version
-	build.Version = "1.0.0"
-	defer func() { build.Version = origVersion }()
-
-	tmpDir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmpDir)
-
-	// Mock GitHub API
+func TestFetchLatestVersion_NpmRegistry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(githubRelease{TagName: "v1.2.0"})
+		json.NewEncoder(w).Encode(npmPackage{Version: "2.0.0"})
 	}))
 	defer server.Close()
 
-	// Override releaseURL by using a custom fetcher through the server
-	origURL := releaseURL
-	// We can't easily override the const, so test fetchLatestVersion directly
-	_ = origURL
-
-	latest, err := fetchLatestVersion(context.Background(), server.Client())
-	// This will fail because it hits the real URL, not our mock.
-	// Instead, test the mock server directly.
-	_ = latest
-	_ = err
-}
-
-func TestFetchLatestVersion(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(githubRelease{TagName: "v2.0.0"})
-	}))
-	defer server.Close()
-
-	// We test the JSON parsing by calling the server directly.
 	resp, err := server.Client().Get(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 
-	var rel githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	var pkg npmPackage
+	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
 		t.Fatal(err)
 	}
-	if rel.TagName != "v2.0.0" {
-		t.Errorf("expected v2.0.0, got %s", rel.TagName)
+	if pkg.Version != "2.0.0" {
+		t.Errorf("expected 2.0.0, got %s", pkg.Version)
 	}
 }
 
