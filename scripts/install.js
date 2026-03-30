@@ -11,9 +11,19 @@ const NAME = "lark-cli";
 
 const MAX_REDIRECTS = 5;
 
+function isTestMode() {
+  return process.env.LARK_CLI_TEST_MODE === '1';
+}
+
 function isAllowedHost(hostname) {
-  return hostname === 'github.com' ||
-         hostname.endsWith('.githubusercontent.com');
+  if (hostname === 'github.com' || hostname.endsWith('.githubusercontent.com')) {
+    return true;
+  }
+  if (isTestMode() && process.env.LARK_CLI_TEST_ALLOWED_HOSTS) {
+    const extraHosts = process.env.LARK_CLI_TEST_ALLOWED_HOSTS.split(',').map(h => h.trim());
+    return extraHosts.includes(hostname);
+  }
+  return false;
 }
 
 const PLATFORM_MAP = {
@@ -40,11 +50,24 @@ if (!platform || !arch) {
 const isWindows = process.platform === "win32";
 const ext = isWindows ? ".zip" : ".tar.gz";
 const archiveName = `${NAME}-${VERSION}-${platform}-${arch}${ext}`;
-const url = `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
-const binDir = path.join(__dirname, "..", "bin");
-const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
-fs.mkdirSync(binDir, { recursive: true });
+function getDownloadUrl() {
+  if (isTestMode() && process.env.LARK_CLI_TEST_BASE_URL) {
+    return `${process.env.LARK_CLI_TEST_BASE_URL}/${archiveName}`;
+  }
+  return `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
+}
+
+function getBinDir() {
+  if (isTestMode() && process.env.LARK_CLI_TEST_OUTPUT_DIR) {
+    return process.env.LARK_CLI_TEST_OUTPUT_DIR;
+  }
+  return path.join(__dirname, "..", "bin");
+}
+
+function getDest() {
+  return path.join(getBinDir(), NAME + (isWindows ? ".exe" : ""));
+}
 
 function download(downloadUrl, destPath, redirectCount = 0) {
   return new Promise((resolve, reject) => {
@@ -86,7 +109,9 @@ function download(downloadUrl, destPath, redirectCount = 0) {
 }
 
 function getExpectedChecksum(archiveFilename) {
-  const checksumPath = path.join(__dirname, "..", "checksums.txt");
+  const checksumPath = isTestMode() && process.env.LARK_CLI_TEST_CHECKSUM_PATH
+    ? process.env.LARK_CLI_TEST_CHECKSUM_PATH
+    : path.join(__dirname, "..", "checksums.txt");
   if (!fs.existsSync(checksumPath)) {
     throw new Error("Checksum file not found. Package may be corrupted.");
   }
@@ -121,6 +146,12 @@ function verifyChecksum(filePath, expectedHash) {
 }
 
 async function install() {
+  const url = getDownloadUrl();
+  const binDir = getBinDir();
+  const dest = getDest();
+
+  fs.mkdirSync(binDir, { recursive: true });
+
   const expectedHash = getExpectedChecksum(archiveName);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-"));
   const archivePath = path.join(tmpDir, archiveName);
@@ -154,7 +185,18 @@ async function install() {
   }
 }
 
-install().catch((err) => {
-  console.error(`Failed to install ${NAME}:`, err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  install().catch((err) => {
+    console.error(`Failed to install ${NAME}:`, err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  isAllowedHost,
+  download,
+  getExpectedChecksum,
+  verifyChecksum,
+  install,
+  MAX_REDIRECTS,
+};
