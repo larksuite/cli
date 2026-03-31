@@ -28,8 +28,15 @@ jobs:
           node-version: '20'
 
       - name: Sync managed PR labels
+        id: sync_pr_labels
         # Labeling is best-effort and must not block PR merges.
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/pr-labels/index.js
+
+      - name: Warn when label sync fails
+        if: ${{ always() && steps.sync_pr_labels.outcome == 'failure' }}
+        run: |
+          echo "::warning::PR label sync failed; labels may be stale."
+          echo "⚠️ PR label sync failed; labels may be stale." >> "$GITHUB_STEP_SUMMARY"

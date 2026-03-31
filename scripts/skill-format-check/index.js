@@ -35,7 +35,14 @@ function checkSkillFormat() {
       return;
     }
 
-    const content = fs.readFileSync(skillFile, 'utf-8');
+    let content;
+    try {
+      content = fs.readFileSync(skillFile, 'utf-8');
+    } catch (err) {
+      console.error(`❌ [${skill}] Failed to read SKILL.md: ${err.message}`);
+      hasErrors = true;
+      return;
+    }
 
     // Normalize line endings to simplify parsing
     const normalizedContent = content.replace(/\r\n/g, '\n');

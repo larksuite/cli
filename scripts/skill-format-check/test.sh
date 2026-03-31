@@ -49,8 +49,9 @@ run_negative_test() {
     
     prepare_fixture "$test_name"
     
-    # Run the script and suppress error output since we expect it to fail
-    node "$INDEX_JS" "$TEMP_DIR" > /dev/null 2>&1
+    # Capture output for diagnostics while still treating non-zero as expected
+    local log_file="$TEMP_DIR/.validator.log"
+    node "$INDEX_JS" "$TEMP_DIR" > "$log_file" 2>&1
     local exit_code=$?
     
     if [ $exit_code -ne 0 ]; then
@@ -59,6 +60,10 @@ run_negative_test() {
         return 0
     else
         echo "❌ Failed! Expected $test_name to fail but it passed."
+        if [ -s "$log_file" ]; then
+            echo "--- Validator output ---"
+            cat "$log_file"
+        fi
         rm -rf "$TEMP_DIR"
         exit 1
     fi
