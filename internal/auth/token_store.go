@@ -5,9 +5,13 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/larksuite/cli/internal/configdir"
 	"github.com/larksuite/cli/internal/keychain"
 )
 
@@ -25,8 +29,32 @@ type StoredUAToken struct {
 
 const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
 
+var tokenKeychain = keychain.Default()
+
 func accountKey(appId, userOpenId string) string {
 	return fmt.Sprintf("%s:%s", appId, userOpenId)
+}
+
+func tokenConfigDir() string {
+	// Keep config dir resolution centralized in internal/configdir.
+	// New code should reuse configdir.Get() instead of duplicating env/home logic.
+	return configdir.Get()
+}
+
+func legacyManagedTokenFilePath(appId, userOpenId string) string {
+	return filepath.Join(tokenConfigDir(), "tokens", sanitizeID(accountKey(appId, userOpenId))+".json")
+}
+
+func readLegacyManagedToken(appId, userOpenId string) *StoredUAToken {
+	data, err := os.ReadFile(legacyManagedTokenFilePath(appId, userOpenId))
+	if err != nil {
+		return nil
+	}
+	var token StoredUAToken
+	if err := json.Unmarshal(data, &token); err != nil {
+		return nil
+	}
+	return &token
 }
 
 // MaskToken masks a token for safe logging.
@@ -39,9 +67,16 @@ func MaskToken(token string) string {
 
 // GetStoredToken reads the stored UAT for a given (appId, userOpenId) pair.
 func GetStoredToken(appId, userOpenId string) *StoredUAToken {
-	jsonStr := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
+	jsonStr, err := tokenKeychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
+	if err == nil && jsonStr != "" {
+		var token StoredUAToken
+		if err := json.Unmarshal([]byte(jsonStr), &token); err == nil {
+			return &token
+		}
+	}
+	jsonStr = keychain.GetFallback(keychain.LarkCliService, accountKey(appId, userOpenId))
 	if jsonStr == "" {
-		return nil
+		return readLegacyManagedToken(appId, userOpenId)
 	}
 	var token StoredUAToken
 	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
@@ -57,12 +92,34 @@ func SetStoredToken(token *StoredUAToken) error {
 	if err != nil {
 		return err
 	}
-	return keychain.Set(keychain.LarkCliService, key, string(data))
+	if err := tokenKeychain.Set(keychain.LarkCliService, key, string(data)); err == nil {
+		_ = keychain.RemoveFallback(keychain.LarkCliService, key)
+		_ = os.Remove(legacyManagedTokenFilePath(token.AppId, token.UserOpenId))
+		return nil
+	} else if !keychain.ShouldUseFallback(err) {
+		return fmt.Errorf("store token in keychain: %w", err)
+	}
+	if err := keychain.SetFallback(keychain.LarkCliService, key, string(data)); err != nil {
+		return fmt.Errorf("store token encrypted fallback: %w", err)
+	}
+	_ = os.Remove(legacyManagedTokenFilePath(token.AppId, token.UserOpenId))
+	return nil
 }
 
 // RemoveStoredToken removes a stored UAT.
 func RemoveStoredToken(appId, userOpenId string) error {
-	return keychain.Remove(keychain.LarkCliService, accountKey(appId, userOpenId))
+	key := accountKey(appId, userOpenId)
+	var errs []error
+	if err := keychain.RemoveFallback(keychain.LarkCliService, key); err != nil {
+		errs = append(errs, err)
+	}
+	if err := tokenKeychain.Remove(keychain.LarkCliService, key); err != nil {
+		errs = append(errs, err)
+	}
+	if err := os.Remove(legacyManagedTokenFilePath(appId, userOpenId)); err != nil && !os.IsNotExist(err) {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // TokenStatus determines the freshness of a stored token.

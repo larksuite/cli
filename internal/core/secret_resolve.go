@@ -18,7 +18,7 @@ func secretAccountKey(appId string) string {
 }
 
 // ResolveSecretInput resolves a SecretInput to a plain string.
-// SecretRef objects are resolved by source (file / keychain).
+// SecretRef objects are resolved by source (file / keychain / encrypted_file).
 func ResolveSecretInput(s SecretInput, kc keychain.KeychainAccess) (string, error) {
 	if s.Ref == nil {
 		return s.Plain, nil
@@ -30,6 +30,12 @@ func ResolveSecretInput(s SecretInput, kc keychain.KeychainAccess) (string, erro
 			return "", fmt.Errorf("failed to read secret file %s: %w", s.Ref.ID, err)
 		}
 		return strings.TrimSpace(string(data)), nil
+	case "encrypted_file":
+		value := keychain.GetFallback(keychain.LarkCliService, s.Ref.ID)
+		if value == "" {
+			return "", fmt.Errorf("failed to read encrypted fallback secret %s", s.Ref.ID)
+		}
+		return value, nil
 	case "keychain":
 		return kc.Get(keychain.LarkCliService, s.Ref.ID)
 	default:
@@ -47,15 +53,41 @@ func ForStorage(appId string, input SecretInput, kc keychain.KeychainAccess) (Se
 	}
 	key := secretAccountKey(appId)
 	if err := kc.Set(keychain.LarkCliService, key, input.Plain); err != nil {
-		return SecretInput{}, fmt.Errorf("keychain unavailable: %w\nhint: use file: reference in config to bypass keychain", err)
+		return SecretInput{}, fmt.Errorf("store secret in keychain: %w", err)
 	}
 	return SecretInput{Ref: &SecretRef{Source: "keychain", ID: key}}, nil
+}
+
+// ForStorageWithEncryptedFallback stores a plain secret in keychain when available,
+// or falls back to the shared encrypted file store.
+func ForStorageWithEncryptedFallback(appId string, input SecretInput, kc keychain.KeychainAccess) (SecretInput, error) {
+	if !input.IsPlain() {
+		return input, nil
+	}
+	key := secretAccountKey(appId)
+	if err := kc.Set(keychain.LarkCliService, key, input.Plain); err == nil {
+		return SecretInput{Ref: &SecretRef{Source: "keychain", ID: key}}, nil
+	} else if !keychain.ShouldUseFallback(err) {
+		return SecretInput{}, fmt.Errorf("store secret in keychain: %w", err)
+	}
+	if err := keychain.SetFallback(keychain.LarkCliService, key, input.Plain); err != nil {
+		return SecretInput{}, fmt.Errorf("store secret encrypted fallback: %w", err)
+	}
+	return SecretInput{Ref: &SecretRef{Source: "encrypted_file", ID: key}}, nil
 }
 
 // RemoveSecretStore cleans up keychain entries when an app is removed.
 // Errors are intentionally ignored — cleanup is best-effort.
 func RemoveSecretStore(input SecretInput, kc keychain.KeychainAccess) {
-	if input.IsSecretRef() && input.Ref.Source == "keychain" {
+	if !input.IsSecretRef() {
+		return
+	}
+	switch input.Ref.Source {
+	case "file":
+		return
+	case "keychain":
 		_ = kc.Remove(keychain.LarkCliService, input.Ref.ID)
+	case "encrypted_file":
+		_ = keychain.RemoveFallback(keychain.LarkCliService, input.Ref.ID)
 	}
 }

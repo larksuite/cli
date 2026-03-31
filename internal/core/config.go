@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/larksuite/cli/internal/configdir"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -58,15 +59,11 @@ type CliConfig struct {
 // GetConfigDir returns the config directory path.
 // If the home directory cannot be determined, it falls back to a relative path
 // and prints a warning to stderr.
+//
+// Kept as the legacy entrypoint for callers already depending on core.
+// New code should prefer configdir.Get(); see internal/configdir/config_dir.go.
 func GetConfigDir() string {
-	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
-		return dir
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-	return filepath.Join(home, ".lark-cli")
+	return configdir.Get()
 }
 
 // GetConfigPath returns the config file path.

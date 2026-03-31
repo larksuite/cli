@@ -99,7 +99,7 @@ func doctorRun(opts *DoctorOptions) error {
 	}
 	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
 	if stored == nil {
-		checks = append(checks, fail("token_exists", "no token in keychain for "+cfg.UserOpenId, "run: lark-cli auth login --help"))
+		checks = append(checks, fail("token_exists", "no token in local credential store for "+cfg.UserOpenId, "run: lark-cli auth login --help"))
 		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
 		return finishDoctor(f, checks)
 	}

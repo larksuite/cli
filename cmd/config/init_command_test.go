@@ -3,6 +3,9 @@
 
 package config
 
+// Command/flag/wiring tests for config init live here.
+// New storage/fallback/rollback behavior tests should go to init_storage_test.go.
+
 import (
 	"context"
 	"strings"
@@ -123,7 +126,6 @@ func TestHasAnyNonInteractiveFlag(t *testing.T) {
 
 func TestConfigInitRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
-	// TestFactory has IsTerminal=false by default
 	opts := &ConfigInitOptions{Factory: f, Ctx: context.Background(), Lang: "zh"}
 	err := configInitRun(opts)
 	if err == nil {

@@ -94,6 +94,49 @@ func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, 
 	return core.SaveMultiAppConfig(config)
 }
 
+func warnIfEncryptedSecretFallback(w io.Writer, secret core.SecretInput, original core.SecretInput) {
+	if !original.IsPlain() || !secret.IsSecretRef() || secret.Ref.Source != "encrypted_file" {
+		return
+	}
+	fmt.Fprintln(w, "warning: keychain unavailable, app secret stored in a local encrypted fallback managed by lark-cli")
+}
+
+func validateSecretReuse(appID string, secret core.SecretInput) error {
+	if !secret.IsSecretRef() || secret.Ref == nil {
+		return nil
+	}
+	if secret.Ref.Source == "file" {
+		return nil
+	}
+	expectedID := "appsecret:" + appID
+	if secret.Ref.ID == expectedID {
+		return nil
+	}
+	return output.ErrValidation("App Secret must be re-entered when App ID changes")
+}
+
+func storeAndSaveOnlyApp(existing *core.MultiAppConfig, f *cmdutil.Factory, appID string, plainSecret core.SecretInput, brand core.LarkBrand, lang string) error {
+	// Keep the secret persistence pipeline centralized here.
+	// New config-init branches should call this helper instead of reimplementing
+	// store -> save -> cleanup -> fallback-warning sequencing inline.
+	if err := validateSecretReuse(appID, plainSecret); err != nil {
+		return err
+	}
+	secret, err := core.ForStorageWithEncryptedFallback(appID, plainSecret, f.Keychain)
+	if err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "%v", err)
+	}
+	if err := saveAsOnlyApp(appID, secret, brand, lang); err != nil {
+		if plainSecret.IsPlain() {
+			core.RemoveSecretStore(secret, f.Keychain)
+		}
+		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+	}
+	cleanupOldConfig(existing, f, appID)
+	warnIfEncryptedSecretFallback(f.IOStreams.ErrOut, secret, plainSecret)
+	return nil
+}
+
 func configInitRun(opts *ConfigInitOptions) error {
 	f := opts.Factory
 
@@ -120,13 +163,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 	// Mode 1: Non-interactive
 	if opts.AppID != "" && opts.appSecret != "" {
 		brand := parseBrand(opts.Brand)
-		secret, err := core.ForStorage(opts.AppID, core.PlainSecret(opts.appSecret), f.Keychain)
-		if err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "%v", err)
-		}
-		cleanupOldConfig(existing, f, opts.AppID)
-		if err := saveAsOnlyApp(opts.AppID, secret, brand, opts.Lang); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		plainSecret := core.PlainSecret(opts.appSecret)
+		if err := storeAndSaveOnlyApp(existing, f, opts.AppID, plainSecret, brand, opts.Lang); err != nil {
+			return err
 		}
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": opts.AppID, "appSecret": "****", "brand": brand})
@@ -161,13 +200,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 			return output.ErrValidation("app creation returned no result")
 		}
 		existing, _ := core.LoadMultiAppConfig()
-		secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
-		if err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "%v", err)
-		}
-		cleanupOldConfig(existing, f, result.AppID)
-		if err := saveAsOnlyApp(result.AppID, secret, result.Brand, opts.Lang); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		plainSecret := core.PlainSecret(result.AppSecret)
+		if err := storeAndSaveOnlyApp(existing, f, result.AppID, plainSecret, result.Brand, opts.Lang); err != nil {
+			return err
 		}
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
 		return nil
@@ -187,17 +222,16 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 		if result.AppSecret != "" {
 			// New secret provided (either from "create" or "existing" with input)
-			secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
-			if err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "%v", err)
-			}
-			cleanupOldConfig(existing, f, result.AppID)
-			if err := saveAsOnlyApp(result.AppID, secret, result.Brand, opts.Lang); err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+			plainSecret := core.PlainSecret(result.AppSecret)
+			if err := storeAndSaveOnlyApp(existing, f, result.AppID, plainSecret, result.Brand, opts.Lang); err != nil {
+				return err
 			}
 		} else if result.Mode == "existing" && result.AppID != "" {
 			// Existing app with unchanged secret — update app ID and brand only
 			if existing != nil && len(existing.Apps) > 0 {
+				if err := validateSecretReuse(result.AppID, existing.Apps[0].AppSecret); err != nil {
+					return err
+				}
 				existing.Apps[0].AppId = result.AppID
 				existing.Apps[0].Brand = result.Brand
 				existing.Apps[0].Lang = opts.Lang
@@ -292,13 +326,8 @@ func configInitRun(opts *ConfigInitOptions) error {
 		return output.ErrValidation("App ID and App Secret cannot be empty")
 	}
 
-	storedSecret, err := core.ForStorage(resolvedAppId, resolvedSecret, f.Keychain)
-	if err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "%v", err)
-	}
-	cleanupOldConfig(existing, f, resolvedAppId)
-	if err := saveAsOnlyApp(resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+	if err := storeAndSaveOnlyApp(existing, f, resolvedAppId, resolvedSecret, parseBrand(resolvedBrand), opts.Lang); err != nil {
+		return err
 	}
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 	return nil
