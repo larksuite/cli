@@ -67,6 +67,28 @@ const CLASS_STANDARDS = {
   },
 };
 
+function printHelp() {
+  const lines = [
+    "Usage:",
+    "  node scripts/sync_pr_labels.js",
+    "  node scripts/sync_pr_labels.js --dry-run --pr-url <github-pr-url> [--token <token>] [--json]",
+    "  node scripts/sync_pr_labels.js --dry-run --repo <owner/name> --pr-number <number> [--token <token>] [--json]",
+    "",
+    "Modes:",
+    "  default    Read the GitHub Actions event payload and apply labels",
+    "  --dry-run  Fetch the PR, compute the managed label, and print the result without writing labels",
+    "",
+    "Options:",
+    "  --pr-url <url>       GitHub pull request URL, for example https://github.com/larksuite/cli/pull/123",
+    "  --repo <owner/name>  Repository name, used with --pr-number",
+    "  --pr-number <n>      Pull request number, used with --repo",
+    "  --token <token>      GitHub token override; falls back to GITHUB_TOKEN",
+    "  --json               Print dry-run output as JSON",
+    "  --help               Show this message",
+  ];
+  console.log(lines.join("\n"));
+}
+
 function log(message) {
   console.error(`sync-pr-labels: ${message}`);
 }
@@ -75,8 +97,12 @@ function normalizePath(input) {
   return String(input || "").trim().toLowerCase();
 }
 
+function envValue(name) {
+  return (process.env[name] || "").trim();
+}
+
 function envOrFail(name) {
-  const value = (process.env[name] || "").trim();
+  const value = envValue(name);
   if (!value) {
     throw new Error(`missing required environment variable: ${name}`);
   }
@@ -86,13 +112,73 @@ function envOrFail(name) {
 function buildHeaders(token, hasBody = false) {
   const headers = {
     Accept: "application/vnd.github+json",
-    Authorization: `Bearer ${token}`,
     "X-GitHub-Api-Version": "2022-11-28",
   };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   if (hasBody) {
     headers["Content-Type"] = "application/json";
   }
   return headers;
+}
+
+function parseArgs(argv) {
+  const options = {
+    dryRun: false,
+    json: false,
+    help: false,
+    prUrl: "",
+    repo: "",
+    prNumber: "",
+    token: "",
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+    } else if (arg === "--json") {
+      options.json = true;
+    } else if (arg === "--help" || arg === "-h") {
+      options.help = true;
+    } else if (arg === "--pr-url") {
+      options.prUrl = argv[i + 1] || "";
+      i += 1;
+    } else if (arg === "--repo") {
+      options.repo = argv[i + 1] || "";
+      i += 1;
+    } else if (arg === "--pr-number") {
+      options.prNumber = argv[i + 1] || "";
+      i += 1;
+    } else if (arg === "--token") {
+      options.token = argv[i + 1] || "";
+      i += 1;
+    } else {
+      throw new Error(`unknown argument: ${arg}`);
+    }
+  }
+
+  return options;
+}
+
+function parsePrUrl(prUrl) {
+  let parsed;
+  try {
+    parsed = new URL(prUrl);
+  } catch {
+    throw new Error(`invalid PR URL: ${prUrl}`);
+  }
+
+  const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/);
+  if (!match) {
+    throw new Error(`unsupported PR URL format: ${prUrl}`);
+  }
+
+  return {
+    repo: `${match[1]}/${match[2]}`,
+    prNumber: Number(match[3]),
+  };
 }
 
 async function githubRequest(url, token, options = {}) {
@@ -119,6 +205,11 @@ async function githubRequest(url, token, options = {}) {
 
 async function loadEventPayload(filePath) {
   return JSON.parse(await fs.readFile(filePath, "utf8"));
+}
+
+async function getPullRequest(repo, prNumber, token) {
+  const url = `${API_BASE}/repos/${repo}/pulls/${prNumber}`;
+  return githubRequest(url, token);
 }
 
 async function listPrFiles(repo, prNumber, token) {
@@ -426,18 +517,109 @@ async function writeStepSummary(prNumber, classification) {
   await fs.appendFile(summaryPath, `${lines.join("\n")}\n`, "utf8");
 }
 
-async function main() {
-  const token = envOrFail("GITHUB_TOKEN");
+function formatDryRunResult(repo, prNumber, classification) {
+  const standard = CLASS_STANDARDS[classification.label];
+  return {
+    repo,
+    prNumber,
+    label: classification.label,
+    prType: classification.prType,
+    totalChanges: classification.totalChanges,
+    effectiveChanges: classification.effectiveChanges,
+    lowRiskOnly: classification.lowRiskOnly,
+    domains: classification.domains,
+    coreAreas: classification.coreAreas,
+    reasons: classification.reasons,
+    channel: standard.channel,
+    gates: standard.gates,
+  };
+}
+
+function printDryRunResult(result, asJson) {
+  if (asJson) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const lines = [
+    `Repo: ${result.repo}`,
+    `PR: #${result.prNumber}`,
+    `Label: ${result.label}`,
+    `PR Type: ${result.prType}`,
+    `Total Changes: ${result.totalChanges}`,
+    `Effective Business/SKILL Changes: ${result.effectiveChanges}`,
+    `Low Risk Only: ${result.lowRiskOnly}`,
+    `Business Domains: ${result.domains.join(", ") || "-"}`,
+    `Core Areas: ${result.coreAreas.join(", ") || "-"}`,
+    `CI/CD Channel: ${result.channel}`,
+    "",
+    "Reasons:",
+    ...(result.reasons.length > 0 ? result.reasons : ["No higher-severity rule matched, so the PR defaults to medium classification"]).map((reason) => `- ${reason}`),
+    "",
+    "Pipeline Gates:",
+    ...result.gates.map((gate) => `- ${gate}`),
+  ];
+  console.log(lines.join("\n"));
+}
+
+async function resolveContext(options) {
+  if (options.prUrl) {
+    const { repo, prNumber } = parsePrUrl(options.prUrl);
+    const payload = {
+      repository: { full_name: repo },
+      pull_request: await getPullRequest(repo, prNumber, options.token),
+    };
+    return { repo, prNumber, payload };
+  }
+
+  if (options.repo || options.prNumber) {
+    if (!options.repo || !options.prNumber) {
+      throw new Error("--repo and --pr-number must be provided together");
+    }
+    const prNumber = Number(options.prNumber);
+    if (!Number.isInteger(prNumber) || prNumber <= 0) {
+      throw new Error(`invalid PR number: ${options.prNumber}`);
+    }
+    const payload = {
+      repository: { full_name: options.repo },
+      pull_request: await getPullRequest(options.repo, prNumber, options.token),
+    };
+    return { repo: options.repo, prNumber, payload };
+  }
+
   const eventPath = envOrFail("GITHUB_EVENT_PATH");
   const payload = await loadEventPayload(eventPath);
+  return {
+    repo: payload.repository.full_name,
+    prNumber: payload.pull_request.number,
+    payload,
+  };
+}
 
-  const repo = payload.repository.full_name;
-  const prNumber = payload.pull_request.number;
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  if (options.help) {
+    printHelp();
+    return;
+  }
 
-  const files = await listPrFiles(repo, prNumber, token);
+  options.token = options.token || envValue("GITHUB_TOKEN");
+  const { repo, prNumber, payload } = await resolveContext(options);
+
+  if (!options.dryRun && !options.token) {
+    throw new Error("missing required GitHub token; set GITHUB_TOKEN or pass --token");
+  }
+
+  const files = await listPrFiles(repo, prNumber, options.token);
   const classification = await classifyPr(payload, files);
+
+  if (options.dryRun) {
+    printDryRunResult(formatDryRunResult(repo, prNumber, classification), options.json);
+    return;
+  }
+
   const desired = new Set([classification.label]);
-  const current = await listIssueLabels(repo, prNumber, token);
+  const current = await listIssueLabels(repo, prNumber, options.token);
 
   const managedCurrent = [...current].filter((label) => MANAGED_LABELS.has(label));
   const toAdd = [...desired].filter((label) => !current.has(label)).sort();
@@ -445,13 +627,13 @@ async function main() {
 
   // Keep label metadata consistent even when labels already exist in the repository.
   for (const label of Object.keys(LABEL_DEFINITIONS)) {
-    await syncLabelDefinition(repo, token, label);
+    await syncLabelDefinition(repo, options.token, label);
   }
 
-  await addLabels(repo, prNumber, token, toAdd);
+  await addLabels(repo, prNumber, options.token, toAdd);
 
   for (const label of toRemove) {
-    await removeLabel(repo, prNumber, token, label);
+    await removeLabel(repo, prNumber, options.token, label);
   }
 
   await writeStepSummary(prNumber, classification);
