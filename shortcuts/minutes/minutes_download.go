@@ -12,15 +12,25 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// disableClientTimeout removes the global 30s client timeout for large media downloads.
-// The request is still bounded by the caller's context.
-const disableClientTimeout = 0
+const (
+	// disableClientTimeout removes the global 30s client timeout for large media downloads.
+	// The request is still bounded by the caller's context.
+	disableClientTimeout = 0
+
+	maxBatchSize           = 50
+	maxConcurrentDownloads = 3
+	maxDownloadRedirects   = 5
+	tokenSuffixLen         = 6
+)
 
 var MinutesDownload = common.Shortcut{
 	Service:     "minutes",
@@ -29,67 +39,251 @@ var MinutesDownload = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"minutes:minutes.media:export"},
 	AuthTypes:   []string{"user", "bot"},
+	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "minute-token", Desc: "minute token (from the minutes URL)", Required: true},
-		{Name: "output", Desc: "local save path (defaults to original filename from server response)"},
+		{Name: "minute-token", Desc: "single minute token (mutually exclusive with --minute-tokens)"},
+		{Name: "minute-tokens", Desc: "comma-separated minute tokens for batch download (max 50)"},
+		{Name: "output", Desc: "local save path (single mode only)"},
+		{Name: "output-dir", Desc: "output directory for batch download (default: current dir)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
-		{Name: "url-only", Type: "bool", Desc: "only print the download URL without downloading the file"},
+		{Name: "url-only", Type: "bool", Desc: "only print the download URL(s) without downloading"},
 	},
-	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		minuteToken := runtime.Str("minute-token")
-		outputPath := runtime.Str("output")
-		if outputPath == "" {
-			outputPath = minuteToken + ".media"
-		}
-		return common.NewDryRunAPI().
-			GET("/open-apis/minutes/v1/minutes/:minute_token/media").
-			Set("minute_token", minuteToken).Set("output", outputPath)
-	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		minuteToken := runtime.Str("minute-token")
-		outputPath := runtime.Str("output")
-		overwrite := runtime.Bool("overwrite")
-		urlOnly := runtime.Bool("url-only")
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		single := runtime.Str("minute-token")
+		batch := runtime.Str("minute-tokens")
 
-		if err := validate.ResourceName(minuteToken, "--minute-token"); err != nil {
-			return output.ErrValidation("%s", err)
+		if single == "" && batch == "" {
+			return output.ErrValidation("one of --minute-token or --minute-tokens is required")
+		}
+		if single != "" && batch != "" {
+			return output.ErrValidation("--minute-token and --minute-tokens are mutually exclusive")
 		}
 
-		// Step 1: get the download URL from the media API
-		data, err := runtime.DoAPIJSON(http.MethodGet,
-			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/media", validate.EncodePathSegment(minuteToken)),
-			nil, nil)
-		if err != nil {
-			return err
+		if batch != "" {
+			tokens := common.SplitCSV(batch)
+			if len(tokens) > maxBatchSize {
+				return output.ErrValidation("--minute-tokens: too many tokens (%d), maximum is %d", len(tokens), maxBatchSize)
+			}
+			if runtime.Str("output") != "" {
+				return output.ErrValidation("--output cannot be used with --minute-tokens; use --output-dir instead")
+			}
 		}
 
-		downloadURL := common.GetString(data, "download_url")
-		if downloadURL == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "API returned empty download_url")
+		if outDir := runtime.Str("output-dir"); outDir != "" {
+			if err := common.ValidateSafeOutputDir(outDir); err != nil {
+				return err
+			}
 		}
-
-		// --url-only mode: print download URL only
-		if urlOnly {
-			runtime.Out(map[string]interface{}{
-				"download_url": downloadURL,
-			}, nil)
-			return nil
-		}
-
-		// Step 2: download the file and resolve the output path
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading media: %s\n", common.MaskToken(minuteToken))
-
-		result, err := downloadMediaFile(ctx, runtime, downloadURL, outputPath, minuteToken, overwrite)
-		if err != nil {
-			return err
-		}
-
-		runtime.Out(map[string]interface{}{
-			"saved_path": result.savedPath,
-			"size_bytes": result.sizeBytes,
-		}, nil)
 		return nil
 	},
+	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		api := common.NewDryRunAPI().
+			GET("/open-apis/minutes/v1/minutes/:minute_token/media")
+
+		if token := runtime.Str("minute-token"); token != "" {
+			api.Set("minute_token", token)
+		}
+		if tokens := runtime.Str("minute-tokens"); tokens != "" {
+			api.Set("minute_tokens", common.SplitCSV(tokens))
+			api.Set("concurrent_downloads", maxConcurrentDownloads)
+		}
+		return api
+	},
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if tokens := runtime.Str("minute-tokens"); tokens != "" {
+			return executeBatch(ctx, runtime)
+		}
+		return executeSingle(ctx, runtime)
+	},
+}
+
+// executeSingle handles the single --minute-token mode.
+func executeSingle(ctx context.Context, runtime *common.RuntimeContext) error {
+	minuteToken := runtime.Str("minute-token")
+	outputPath := runtime.Str("output")
+	overwrite := runtime.Bool("overwrite")
+	urlOnly := runtime.Bool("url-only")
+
+	if err := validate.ResourceName(minuteToken, "--minute-token"); err != nil {
+		return output.ErrValidation("%s", err)
+	}
+
+	downloadURL, err := fetchDownloadURL(ctx, runtime, minuteToken)
+	if err != nil {
+		return err
+	}
+
+	if urlOnly {
+		runtime.Out(map[string]interface{}{
+			"download_url": downloadURL,
+		}, nil)
+		return nil
+	}
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Downloading media: %s\n", common.MaskToken(minuteToken))
+
+	result, err := downloadMediaFile(ctx, runtime, downloadURL, minuteToken, downloadOpts{
+		outputPath: outputPath,
+		overwrite:  overwrite,
+	})
+	if err != nil {
+		return err
+	}
+
+	runtime.Out(map[string]interface{}{
+		"saved_path": result.savedPath,
+		"size_bytes": result.sizeBytes,
+	}, nil)
+	return nil
+}
+
+// executeBatch handles the batch --minute-tokens mode.
+// Phase 1: sequentially fetch download URLs (RuntimeContext is not concurrency-safe).
+// Phase 2: concurrently download files (HTTP client is concurrency-safe).
+func executeBatch(ctx context.Context, runtime *common.RuntimeContext) error {
+	tokens := common.SplitCSV(runtime.Str("minute-tokens"))
+	overwrite := runtime.Bool("overwrite")
+	urlOnly := runtime.Bool("url-only")
+	outputDir := runtime.Str("output-dir")
+	errOut := runtime.IO().ErrOut
+
+	fmt.Fprintf(errOut, "[minutes +download] batch: %d token(s), concurrency=%d\n", len(tokens), maxConcurrentDownloads)
+
+	type batchResult struct {
+		MinuteToken string `json:"minute_token"`
+		SavedPath   string `json:"saved_path,omitempty"`
+		SizeBytes   int64  `json:"size_bytes,omitempty"`
+		DownloadURL string `json:"download_url,omitempty"`
+		Error       string `json:"error,omitempty"`
+	}
+
+	results := make([]batchResult, len(tokens))
+
+	// Phase 1: 串行获取所有 download URL（RuntimeContext 不是并发安全的）
+	type downloadTask struct {
+		index       int
+		token       string
+		downloadURL string
+	}
+	var tasks []downloadTask
+	seen := make(map[string]int) // 去重：token → 首次出现的 index
+
+	for i, token := range tokens {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := validate.ResourceName(token, "--minute-tokens"); err != nil {
+			results[i] = batchResult{MinuteToken: token, Error: err.Error()}
+			continue
+		}
+
+		// 跳过重复 token，指向首次结果
+		if firstIdx, dup := seen[token]; dup {
+			results[i] = batchResult{MinuteToken: token, Error: fmt.Sprintf("duplicate token, same as index %d", firstIdx)}
+			continue
+		}
+		seen[token] = i
+
+		downloadURL, err := fetchDownloadURL(ctx, runtime, token)
+		if err != nil {
+			results[i] = batchResult{MinuteToken: token, Error: err.Error()}
+			continue
+		}
+
+		if urlOnly {
+			results[i] = batchResult{MinuteToken: token, DownloadURL: downloadURL}
+			continue
+		}
+
+		tasks = append(tasks, downloadTask{index: i, token: token, downloadURL: downloadURL})
+	}
+
+	// Phase 2: 并发下载文件
+	if len(tasks) > 0 {
+		var usedNames sync.Map
+		var logMu sync.Mutex
+
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(maxConcurrentDownloads)
+
+		for _, task := range tasks {
+			task := task
+			g.Go(func() error {
+				logMu.Lock()
+				fmt.Fprintf(errOut, "[minutes +download] downloading: %s\n", common.MaskToken(task.token))
+				logMu.Unlock()
+
+				result, err := downloadMediaFile(gctx, runtime, task.downloadURL, task.token, downloadOpts{
+					outputDir: outputDir,
+					overwrite: overwrite,
+					usedNames: &usedNames,
+				})
+				if err != nil {
+					results[task.index] = batchResult{MinuteToken: task.token, Error: err.Error()}
+					return nil // partial failure
+				}
+
+				results[task.index] = batchResult{
+					MinuteToken: task.token,
+					SavedPath:   result.savedPath,
+					SizeBytes:   result.sizeBytes,
+				}
+				return nil
+			})
+		}
+		g.Wait()
+	}
+
+	// 统计
+	successCount := 0
+	for _, r := range results {
+		if r.Error == "" {
+			successCount++
+		}
+	}
+	fmt.Fprintf(errOut, "[minutes +download] done: %d total, %d succeeded, %d failed\n", len(results), successCount, len(results)-successCount)
+
+	outData := map[string]interface{}{"downloads": results}
+	runtime.OutFormat(outData, &output.Meta{Count: len(results)}, nil)
+
+	if successCount == 0 && len(results) > 0 {
+		return output.ErrAPI(0, fmt.Sprintf("all %d downloads failed", len(results)), nil)
+	}
+	return nil
+}
+
+// fetchDownloadURL retrieves the pre-signed download URL for a minute token.
+func fetchDownloadURL(ctx context.Context, runtime *common.RuntimeContext, minuteToken string) (string, error) {
+	data, err := runtime.DoAPIJSON(http.MethodGet,
+		fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/media", validate.EncodePathSegment(minuteToken)),
+		nil, nil)
+	if err != nil {
+		return "", err
+	}
+	downloadURL := common.GetString(data, "download_url")
+	if downloadURL == "" {
+		return "", output.Errorf(output.ExitAPI, "api_error", "API returned empty download_url for %s", minuteToken)
+	}
+	return downloadURL, nil
+}
+
+// deduplicateFilename ensures uniqueness by appending a token suffix on collision.
+// Returns the deduplicated filename (without directory prefix).
+func deduplicateFilename(name, minuteToken string, usedNames *sync.Map) string {
+	if _, loaded := usedNames.LoadOrStore(name, true); !loaded {
+		return name
+	}
+
+	// 冲突：在扩展名前插入 _<token前6位>
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	suffix := minuteToken
+	if len(suffix) > tokenSuffixLen {
+		suffix = suffix[:tokenSuffixLen]
+	}
+	deduped := base + "_" + suffix + ext
+	usedNames.Store(deduped, true)
+	return deduped
 }
 
 type downloadResult struct {
@@ -97,10 +291,18 @@ type downloadResult struct {
 	sizeBytes int64
 }
 
+// downloadOpts controls how downloadMediaFile resolves the output path.
+type downloadOpts struct {
+	outputPath string    // 用户指定的输出路径（单个模式），为空则从响应头解析
+	outputDir  string    // 输出目录前缀（批量模式）
+	overwrite  bool      // 是否覆盖已有文件
+	usedNames  *sync.Map // 批量模式下的文件名去重表，单个模式传 nil
+}
+
 // downloadMediaFile streams a media file from a pre-signed URL to disk.
-// When outputPath is empty, it resolves the filename from the Content-Disposition
-// header, falling back to Content-Type extension detection, then <token>.media.
-func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, downloadURL, outputPath, minuteToken string, overwrite bool) (*downloadResult, error) {
+// Output path resolution: opts.outputPath > Content-Disposition > Content-Type extension > <token>.media.
+// When opts.usedNames is non-nil (batch mode), deduplicates filenames by appending token suffix.
+func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, downloadURL, minuteToken string, opts downloadOpts) (*downloadResult, error) {
 	// SSRF: validate download URL before making any request
 	if err := validate.ValidateDownloadSourceURL(ctx, downloadURL); err != nil {
 		return nil, output.ErrValidation("blocked download URL: %s", err)
@@ -136,19 +338,23 @@ func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, down
 		return nil, output.ErrNetwork("download failed: HTTP %d", resp.StatusCode)
 	}
 
-	// resolve output path from response headers when --output is not specified
+	// 解析输出路径
+	outputPath := opts.outputPath
 	if outputPath == "" {
-		outputPath = resolveOutputFromResponse(resp, minuteToken)
+		filename := resolveOutputFromResponse(resp, minuteToken)
+		if opts.usedNames != nil {
+			filename = deduplicateFilename(filename, minuteToken, opts.usedNames)
+		}
+		outputPath = filepath.Join(opts.outputDir, filename)
 	}
 
 	safePath, err := validate.SafeOutputPath(outputPath)
 	if err != nil {
 		return nil, output.ErrValidation("unsafe output path: %s", err)
 	}
-	if err := common.EnsureWritableFile(safePath, overwrite); err != nil {
+	if err := common.EnsureWritableFile(safePath, opts.overwrite); err != nil {
 		return nil, err
 	}
-
 	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		return nil, output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
 	}
@@ -163,7 +369,6 @@ func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, down
 // resolveOutputFromResponse derives the output filename from HTTP response headers.
 // Priority: Content-Disposition filename > Content-Type extension > fallback to <token>.media.
 func resolveOutputFromResponse(resp *http.Response, minuteToken string) string {
-	// try Content-Disposition header for the original filename
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		if _, params, err := mime.ParseMediaType(cd); err == nil {
 			if filename := params["filename"]; filename != "" {
@@ -172,7 +377,6 @@ func resolveOutputFromResponse(resp *http.Response, minuteToken string) string {
 		}
 	}
 
-	// fall back to Content-Type extension detection
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		if mediaType, _, err := mime.ParseMediaType(ct); err == nil {
 			if exts, err := mime.ExtensionsByType(mediaType); err == nil && len(exts) > 0 {
@@ -183,8 +387,6 @@ func resolveOutputFromResponse(resp *http.Response, minuteToken string) string {
 
 	return minuteToken + ".media"
 }
-
-const maxDownloadRedirects = 5
 
 // safeRedirectPolicy prevents HTTPS→HTTP downgrade, limits redirect count,
 // and validates each redirect target against SSRF rules.

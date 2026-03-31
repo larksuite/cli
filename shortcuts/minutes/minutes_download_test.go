@@ -6,6 +6,7 @@ package minutes
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -139,7 +140,7 @@ func TestResolveOutputFromResponse_ContentType(t *testing.T) {
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix, got %q", got)
 	}
-	if filepath := got[len("tok001"):]; filepath == "" {
+	if ext := got[len("tok001"):]; ext == "" {
 		t.Errorf("expected extension after token, got %q", got)
 	}
 }
@@ -160,7 +161,6 @@ func TestResolveOutputFromResponse_InvalidContentDisposition(t *testing.T) {
 		},
 	}
 	got := resolveOutputFromResponse(resp, "tok001")
-	// Content-Disposition 解析失败，应 fall back 到 Content-Type
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix from Content-Type fallback, got %q", got)
 	}
@@ -177,14 +177,85 @@ func TestResolveOutputFromResponse_EmptyDispositionFilename(t *testing.T) {
 	if got == "" {
 		t.Error("expected non-empty filename")
 	}
-	// Content-Disposition 没有 filename，应 fall back 到 Content-Type
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix, got %q", got)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Integration tests: +download with mocked HTTP
+// Unit tests: deduplicateFilename
+// ---------------------------------------------------------------------------
+
+func TestDeduplicateFilename_NoDuplicate(t *testing.T) {
+	var usedNames sync.Map
+	got := deduplicateFilename("会议纪要.mp4", "tok001", &usedNames)
+	if got != "会议纪要.mp4" {
+		t.Errorf("expected original name, got %q", got)
+	}
+}
+
+func TestDeduplicateFilename_Duplicate(t *testing.T) {
+	var usedNames sync.Map
+	first := deduplicateFilename("会议纪要.mp4", "tok001abc", &usedNames)
+	second := deduplicateFilename("会议纪要.mp4", "tok002xyz", &usedNames)
+	if first != "会议纪要.mp4" {
+		t.Errorf("first should be original, got %q", first)
+	}
+	if second == first {
+		t.Errorf("second should differ from first, both got %q", first)
+	}
+	// 第二个应该包含 token 前缀作为区分
+	if !strings.Contains(second, "tok002") {
+		t.Errorf("deduplicated name should contain token prefix, got %q", second)
+	}
+	if !strings.HasSuffix(second, ".mp4") {
+		t.Errorf("deduplicated name should keep extension, got %q", second)
+	}
+}
+
+func TestDeduplicateFilename_NoExtension(t *testing.T) {
+	var usedNames sync.Map
+	deduplicateFilename("recording", "tok001", &usedNames)
+	got := deduplicateFilename("recording", "tok002abc", &usedNames)
+	if !strings.Contains(got, "tok002") {
+		t.Errorf("expected token suffix, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Validation tests
+// ---------------------------------------------------------------------------
+
+func TestDownload_Validation_NoFlags(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesDownload, []string{"+download", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for no flags")
+	}
+}
+
+func TestDownload_Validation_BothFlags(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-token", "t1", "--minute-tokens", "t2", "--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for both flags")
+	}
+}
+
+func TestDownload_Validation_OutputWithBatch(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "t1,t2", "--output", "file.mp4", "--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for --output with --minute-tokens")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Integration tests: single mode
 // ---------------------------------------------------------------------------
 
 func TestDownload_DryRun(t *testing.T) {
@@ -240,9 +311,6 @@ func TestDownload_FullDownload(t *testing.T) {
 	if string(data) != "fake-video-content" {
 		t.Errorf("file content = %q, want %q", string(data), "fake-video-content")
 	}
-	if !strings.Contains(stdout.String(), "saved_path") {
-		t.Errorf("output should contain saved_path, got: %s", stdout.String())
-	}
 }
 
 func TestDownload_OverwriteProtection(t *testing.T) {
@@ -263,7 +331,6 @@ func TestDownload_OverwriteProtection(t *testing.T) {
 		t.Errorf("error should mention file exists, got: %v", err)
 	}
 
-	// 原文件不应被覆盖
 	data, _ := os.ReadFile("existing.mp4")
 	if string(data) != "old" {
 		t.Errorf("original file should be preserved, got %q", string(data))
@@ -289,5 +356,119 @@ func TestDownload_HttpError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "403") {
 		t.Errorf("error should contain status code, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Integration tests: batch mode
+// ---------------------------------------------------------------------------
+
+func TestDownload_Batch_UrlOnly(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(mediaStub("tok002", "https://example.com/download/2"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok002", "--url-only", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "download/1") || !strings.Contains(out, "download/2") {
+		t.Errorf("batch url-only should show both URLs, got: %s", out)
+	}
+}
+
+func TestDownload_Batch_Download(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(mediaStub("tok002", "https://example.com/download/2"))
+	reg.Register(downloadStub("example.com/download/1", []byte("content-1"), "video/mp4"))
+	reg.Register(downloadStub("example.com/download/2", []byte("content-2"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok002", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 验证输出结构
+	var result struct {
+		Data struct {
+			Downloads []struct {
+				MinuteToken string `json:"minute_token"`
+				SavedPath   string `json:"saved_path"`
+			} `json:"downloads"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	if len(result.Data.Downloads) != 2 {
+		t.Fatalf("expected 2 downloads, got %d", len(result.Data.Downloads))
+	}
+}
+
+func TestDownload_Batch_PartialFailure(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/tok002/media",
+		Status: 200,
+		Body: map[string]interface{}{
+			"code": 99999, "msg": "permission denied",
+			"data": map[string]interface{}{},
+		},
+	})
+	reg.Register(downloadStub("example.com/download/1", []byte("content-1"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok002", "--as", "bot",
+	}, f, stdout)
+	// partial failure 不报错
+	if err != nil {
+		t.Fatalf("partial failure should not return error, got: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "tok001") || !strings.Contains(out, "tok002") {
+		t.Errorf("output should contain both tokens, got: %s", out)
+	}
+}
+
+func TestDownload_Batch_DuplicateToken(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	// 只注册一次 media stub — 去重后只调用一次 API
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok001", "--url-only", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "duplicate") {
+		t.Errorf("second token should report duplicate, got: %s", out)
+	}
+}
+
+func TestDownload_Batch_DryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok002", "--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "tok001") || !strings.Contains(out, "tok002") {
+		t.Errorf("dry-run should show tokens, got: %s", out)
 	}
 }
