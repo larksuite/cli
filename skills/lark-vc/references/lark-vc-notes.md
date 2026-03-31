@@ -75,11 +75,13 @@ lark-cli vc +notes --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 | 字段 | 说明 |
 |------|------|
-| `note_doc_token` | 主纪要文档 Token |
-| `verbatim_doc_token` | 逐字稿文档 Token |
+| `note_doc_token` | **智能纪要**文档 Token — 包含 AI 总结、待办、章节（用户说"纪要"时用这个） |
+| `verbatim_doc_token` | **逐字稿**文档 Token — 完整的逐句文字记录，含说话人和时间戳（用户说"逐字稿"时才用这个） |
 | `shared_doc_tokens` | 会中共享文档 Token 列表 |
 | `creator_id` | 创建者 ID |
 | `create_time` | 创建时间（格式化） |
+
+> **选择哪个 token？** 用户说"会议纪要""总结""待办""纪要内容" → 用 `note_doc_token`。用户说"逐字稿""完整记录""谁说了什么" → 用 `verbatim_doc_token`。意图不明确时，展示两个文档链接让用户选择。
 
 ### minute-tokens 路径的 AI 产物
 
