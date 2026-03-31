@@ -56,6 +56,7 @@ const PATH_TO_DOMAIN_MAP = {
   "skills/lark-base/": "base",
   "skills/lark-mail/": "mail",
   "skills/lark-calendar/": "calendar",
+  "skills/lark-task/": "task",
   "skills/lark-contact/": "contact",
 };
 
@@ -167,7 +168,9 @@ class GitHubClient {
 
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(`GitHub API ${method} ${url} failed: ${response.status} ${detail}`);
+      const error = new Error(`GitHub API ${method} ${url} failed: ${response.status} ${detail}`);
+      error.status = response.status;
+      throw error;
     }
 
     const text = await response.text();
@@ -211,7 +214,7 @@ class GitHubClient {
       });
       log(`created label ${name}`);
     } catch (error) {
-      if (!String(error.message || error).includes(" 422 ")) {
+      if (error.status !== 422) {
         throw error;
       }
       await this.request(updateUrl, {
@@ -668,11 +671,12 @@ async function main() {
   }
 
   options.token = options.token || envValue("GITHUB_TOKEN");
-  const { repo, prNumber, payload, client } = await resolveContext(options);
 
   if (!options.dryRun && !options.token) {
     throw new Error("missing required GitHub token; set GITHUB_TOKEN or pass --token");
   }
+
+  const { repo, prNumber, payload, client } = await resolveContext(options);
 
   const files = await client.listPrFiles();
   const classification = await classifyPr(payload, files);
