@@ -30,7 +30,7 @@ Minor modules like docs and tests are omitted to keep PR tags clean and focused 
 This script is designed to run in CI workflows. It automatically reads the `GITHUB_EVENT_PATH` payload to get the PR context.
 
 ```bash
-node scripts/sync-pr-labels/index.js
+node scripts/pr-labels/index.js
 ```
 
 ### Local Dry Run
@@ -38,10 +38,10 @@ You can test the labeling logic against an existing GitHub PR without actually a
 
 ```bash
 # Requires GITHUB_TOKEN environment variable or passing --token
-node scripts/sync-pr-labels/index.js --dry-run --repo larksuite/cli --pr-number 123
+node scripts/pr-labels/index.js --dry-run --repo larksuite/cli --pr-number 123
 ```
 
 To see the raw JSON output for programmatic use:
 ```bash
-node scripts/sync-pr-labels/index.js --dry-run --repo larksuite/cli --pr-number 123 --json
+node scripts/pr-labels/index.js --dry-run --repo larksuite/cli --pr-number 123 --json
 ```

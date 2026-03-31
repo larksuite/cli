@@ -30,4 +30,4 @@ jobs:
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/sync-pr-labels/index.js
+        run: node scripts/pr-labels/index.js

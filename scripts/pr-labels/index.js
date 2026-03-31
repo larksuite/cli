@@ -70,9 +70,9 @@ const CLASS_STANDARDS = {
 function printHelp() {
   const lines = [
     "Usage:",
-    "  node scripts/sync_pr_labels.js",
-    "  node scripts/sync_pr_labels.js --dry-run --pr-url <github-pr-url> [--token <token>] [--json]",
-    "  node scripts/sync_pr_labels.js --dry-run --repo <owner/name> --pr-number <number> [--token <token>] [--json]",
+    "  node scripts/pr-labels/index.js",
+    "  node scripts/pr-labels/index.js --dry-run --pr-url <github-pr-url> [--token <token>] [--json]",
+    "  node scripts/pr-labels/index.js --dry-run --repo <owner/name> --pr-number <number> [--token <token>] [--json]",
     "",
     "Modes:",
     "  default    Read the GitHub Actions event payload and apply labels",
