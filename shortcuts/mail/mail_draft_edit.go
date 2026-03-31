@@ -304,7 +304,7 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			{"op": "add_recipient", "shape": map[string]interface{}{"field": "to|cc|bcc", "address": "string", "name": "string(optional)"}},
 			{"op": "remove_recipient", "shape": map[string]interface{}{"field": "to|cc|bcc", "address": "string"}},
 			{"op": "set_body", "shape": map[string]interface{}{"value": "string (supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
-			{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
+			{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
 			{"op": "set_header", "shape": map[string]interface{}{"name": "string", "value": "string"}},
 			{"op": "remove_header", "shape": map[string]interface{}{"name": "string"}},
 			{"op": "add_attachment", "shape": map[string]interface{}{"path": "string(relative path)"}},
@@ -319,7 +319,7 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 				"ops": []map[string]interface{}{
 					{"op": "set_subject", "shape": map[string]interface{}{"value": "string"}},
 					{"op": "set_body", "shape": map[string]interface{}{"value": "string (supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
-					{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
+					{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
 				},
 			},
 			{
