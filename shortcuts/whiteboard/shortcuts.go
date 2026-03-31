@@ -11,6 +11,9 @@ import (
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		WhiteboardUpdate,
+		BoardImport,
+		BoardImage,
+		BoardNodes,
 	}
 }
 
