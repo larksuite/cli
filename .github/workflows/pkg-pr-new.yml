@@ -29,4 +29,4 @@ jobs:
         run: ./scripts/build-pkg-pr-new.sh
 
       - name: Publish to pkg.pr.new
-        run: npx pkg-pr-new publish ./.pkg-pr-new
+        run: npx pkg-pr-new publish --no-compact ./.pkg-pr-new
