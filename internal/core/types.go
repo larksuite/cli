@@ -3,6 +3,8 @@
 
 package core
 
+import "strings"
+
 // LarkBrand represents the Lark platform brand.
 // "feishu" targets China-mainland, "lark" targets international.
 // Any other string is treated as a custom base URL.
@@ -21,6 +23,9 @@ type Endpoints struct {
 }
 
 // ResolveEndpoints resolves endpoint URLs based on brand.
+// "feishu" targets China-mainland, "lark" targets international.
+// Any other string starting with "http" is treated as a custom base URL
+// for private deployments (e.g. "https://your-company.feishu.cn").
 func ResolveEndpoints(brand LarkBrand) Endpoints {
 	switch brand {
 	case BrandLark:
@@ -29,11 +34,20 @@ func ResolveEndpoints(brand LarkBrand) Endpoints {
 			Accounts: "https://accounts.larksuite.com",
 			MCP:      "https://mcp.larksuite.com",
 		}
-	default:
+	case BrandFeishu, "":
 		return Endpoints{
 			Open:     "https://open.feishu.cn",
 			Accounts: "https://accounts.feishu.cn",
 			MCP:      "https://mcp.feishu.cn",
+		}
+	default:
+		// Custom base URL for private deployments.
+		// All services share the same domain; paths differ per API.
+		base := strings.TrimRight(string(brand), "/")
+		return Endpoints{
+			Open:     base,
+			Accounts: base,
+			MCP:      base,
 		}
 	}
 }

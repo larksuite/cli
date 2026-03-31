@@ -4,6 +4,7 @@
 package cmdutil
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"os"
@@ -73,7 +74,9 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 
 func cachedHttpClientFunc() func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		var transport = http.DefaultTransport
+		var transport http.RoundTripper = &http.Transport{
+			TLSClientConfig: tlsConfig(),
+		}
 		transport = &RetryTransport{Base: transport}
 		transport = &SecurityHeaderTransport{Base: transport}
 
@@ -98,7 +101,9 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
 		// Build SDK transport chain
-		var sdkTransport = http.DefaultTransport
+		var sdkTransport http.RoundTripper = &http.Transport{
+			TLSClientConfig: tlsConfig(),
+		}
 		sdkTransport = &UserAgentTransport{Base: sdkTransport}
 		sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
 		opts = append(opts, lark.WithHttpClient(&http.Client{
@@ -110,4 +115,15 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 		client := lark.NewClient(cfg.AppID, cfg.AppSecret, opts...)
 		return client, nil
 	})
+}
+
+// tlsConfig returns a TLS config.
+// When LARK_TLS_INSECURE=1 is set, TLS verification is disabled.
+// This is intended for corporate proxy environments where the platform
+// TLS verifier (macOS Security framework) rejects valid proxy certificates.
+func tlsConfig() *tls.Config {
+	if os.Getenv("LARK_TLS_INSECURE") == "1" {
+		return &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+	}
+	return nil
 }

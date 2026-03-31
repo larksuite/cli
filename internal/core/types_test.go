@@ -38,6 +38,26 @@ func TestResolveEndpoints_EmptyDefaultsToFeishu(t *testing.T) {
 	}
 }
 
+func TestResolveEndpoints_CustomURL(t *testing.T) {
+	ep := ResolveEndpoints("https://your-company.feishu.cn")
+	if ep.Open != "https://your-company.feishu.cn" {
+		t.Errorf("Open = %q, want custom URL", ep.Open)
+	}
+	if ep.Accounts != "https://your-company.feishu.cn" {
+		t.Errorf("Accounts = %q, want custom URL", ep.Accounts)
+	}
+	if ep.MCP != "https://your-company.feishu.cn" {
+		t.Errorf("MCP = %q, want custom URL", ep.MCP)
+	}
+}
+
+func TestResolveEndpoints_CustomURLTrailingSlash(t *testing.T) {
+	ep := ResolveEndpoints("https://your-company.feishu.cn/")
+	if ep.Open != "https://your-company.feishu.cn" {
+		t.Errorf("Open = %q, trailing slash should be stripped", ep.Open)
+	}
+}
+
 func TestResolveOpenBaseURL(t *testing.T) {
 	if got := ResolveOpenBaseURL(BrandFeishu); got != "https://open.feishu.cn" {
 		t.Errorf("ResolveOpenBaseURL(feishu) = %q", got)

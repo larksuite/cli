@@ -72,7 +72,10 @@ func remoteMetaURL(version string) string {
 	switch configuredBrand {
 	case core.BrandLark:
 		base = "https://open.larksuite.com/api/tools/open/api_definition"
+	case core.BrandFeishu, "":
+		base = "https://open.feishu.cn/api/tools/open/api_definition"
 	default:
+		// Private deployments don't host the CLI schema registry; fall back to feishu.
 		base = "https://open.feishu.cn/api/tools/open/api_definition"
 	}
 	q := "protocol=meta&client_version=" + url.QueryEscape(build.Version)

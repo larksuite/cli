@@ -25,8 +25,13 @@ func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
 }
 
 func parseBrand(value string) core.LarkBrand {
-	if value == "lark" {
+	switch value {
+	case "lark":
 		return core.BrandLark
+	case "feishu", "":
+		return core.BrandFeishu
+	default:
+		// Custom base URL for private deployments (e.g. "https://your-company.feishu.cn")
+		return core.LarkBrand(value)
 	}
-	return core.BrandFeishu
 }
