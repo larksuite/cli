@@ -894,8 +894,12 @@ func isLocalFileSrc(src string) bool {
 // generateCID returns a random UUID string suitable for use as a Content-ID.
 // UUIDs contain only [0-9a-f-], which is inherently RFC-safe and unique,
 // avoiding all filename-derived encoding/collision issues.
-func generateCID() string {
-	return uuid.New().String()
+func generateCID() (string, error) {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate CID: %w", err)
+	}
+	return id.String(), nil
 }
 
 // resolveLocalImgSrc scans HTML for <img src="local/path"> references,
@@ -927,7 +931,10 @@ func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
 		cid, ok := pathToCID[resolvedPath]
 		if !ok {
 			fileName := filepath.Base(src)
-			cid = generateCID()
+			cid, err = generateCID()
+			if err != nil {
+				return "", err
+			}
 			pathToCID[resolvedPath] = cid
 
 			container, err = loadAndAttachInline(snapshot, src, cid, fileName, container)

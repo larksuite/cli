@@ -627,7 +627,10 @@ func TestIsLocalFileSrc(t *testing.T) {
 func TestGenerateCID(t *testing.T) {
 	seen := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		cid := generateCID()
+		cid, err := generateCID()
+		if err != nil {
+			t.Fatalf("generateCID() error = %v", err)
+		}
 		if cid == "" {
 			t.Fatal("generateCID() returned empty string")
 		}
