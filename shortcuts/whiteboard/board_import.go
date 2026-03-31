@@ -19,6 +19,9 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+// maxDiagramSize 限制图表文件最大 10MB，防止内存耗尽
+const maxDiagramSize = 10 * 1024 * 1024
+
 // syntaxType 映射：plantuml=1, mermaid=2
 func parseSyntaxType(s string) int {
 	switch strings.ToLower(s) {
@@ -83,6 +86,12 @@ var BoardImport = common.Shortcut{
 		if err := validate.RejectControlChars(runtime.Str("whiteboard-token"), "whiteboard-token"); err != nil {
 			return err
 		}
+		// 校验文件路径安全性，防止路径遍历攻击
+		if file := runtime.Str("file"); file != "" {
+			if _, err := validate.SafeInputPath(file); err != nil {
+				return err
+			}
+		}
 		// 必须提供 --file、--content 或 stdin 之一
 		file := runtime.Str("file")
 		content := runtime.Str("content")
@@ -115,15 +124,30 @@ var BoardImport = common.Shortcut{
 		case content != "":
 			code = content
 		case file != "":
-			data, err := os.ReadFile(file)
+			// 使用 SafeInputPath 解析安全路径
+			safePath, err := validate.SafeInputPath(file)
+			if err != nil {
+				return err
+			}
+			info, err := os.Stat(safePath)
+			if err != nil {
+				return output.Errorf(output.ExitValidation, "file", fmt.Sprintf("stat diagram file failed: %v", err))
+			}
+			if info.Size() > maxDiagramSize {
+				return output.Errorf(output.ExitValidation, "file", "diagram file exceeds 10 MB limit")
+			}
+			data, err := os.ReadFile(safePath)
 			if err != nil {
 				return output.Errorf(output.ExitValidation, "file", fmt.Sprintf("read diagram file failed: %v", err))
 			}
 			code = string(data)
 		default:
-			data, err := io.ReadAll(os.Stdin)
+			data, err := io.ReadAll(io.LimitReader(os.Stdin, maxDiagramSize+1))
 			if err != nil {
 				return output.Errorf(output.ExitValidation, "stdin", fmt.Sprintf("read stdin failed: %v", err))
+			}
+			if int64(len(data)) > maxDiagramSize {
+				return output.Errorf(output.ExitValidation, "stdin", "stdin input exceeds 10 MB limit")
 			}
 			code = string(data)
 		}

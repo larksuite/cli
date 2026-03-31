@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -32,7 +33,16 @@ var BoardImage = common.Shortcut{
 	},
 	HasFormat: false,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validate.RejectControlChars(runtime.Str("whiteboard-token"), "whiteboard-token")
+		if err := validate.RejectControlChars(runtime.Str("whiteboard-token"), "whiteboard-token"); err != nil {
+			return err
+		}
+		// 校验输出路径安全性，防止路径遍历攻击
+		if out := runtime.Str("output"); out != "" {
+			if _, err := validate.SafeOutputPath(out); err != nil {
+				return err
+			}
+		}
+		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token := runtime.Str("whiteboard-token")
@@ -44,7 +54,18 @@ var BoardImage = common.Shortcut{
 		token := runtime.Str("whiteboard-token")
 		outputPath := runtime.Str("output")
 		if outputPath == "" {
-			outputPath = token + ".png"
+			// 对 token 进行 sanitize，防止路径分隔符导致写入非预期目录
+			safeToken := strings.ReplaceAll(strings.ReplaceAll(token, "/", "_"), "\\", "_")
+			if safeToken == "" {
+				safeToken = "whiteboard"
+			}
+			outputPath = safeToken + ".png"
+		}
+
+		// 使用 SafeOutputPath 校验并解析为安全的绝对路径
+		safePath, err := validate.SafeOutputPath(outputPath)
+		if err != nil {
+			return err
 		}
 
 		resp, err := runtime.DoAPI(&larkcore.ApiReq{
@@ -59,18 +80,18 @@ var BoardImage = common.Shortcut{
 		}
 
 		// 确保目录存在
-		dir := filepath.Dir(outputPath)
+		dir := filepath.Dir(safePath)
 		if dir != "" && dir != "." {
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return output.Errorf(output.ExitInternal, "filesystem", fmt.Sprintf("create directory failed: %v", err))
 			}
 		}
 
-		if err := os.WriteFile(outputPath, resp.RawBody, 0644); err != nil {
+		if err := os.WriteFile(safePath, resp.RawBody, 0644); err != nil {
 			return output.Errorf(output.ExitInternal, "filesystem", fmt.Sprintf("write file failed: %v", err))
 		}
 
-		fmt.Fprintf(os.Stdout, "Image saved to %s (%d bytes)\n", outputPath, len(resp.RawBody))
+		fmt.Fprintf(runtime.IO().Out, "Image saved to %s (%d bytes)\n", outputPath, len(resp.RawBody))
 		return nil
 	},
 }
@@ -110,7 +131,18 @@ var BoardNodes = common.Shortcut{
 			return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
 		}
 
-		// 直接输出 JSON 响应
+		// 检查 API 层面错误码
+		var envelope struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+		}
+		if err := json.Unmarshal(resp.RawBody, &envelope); err != nil {
+			return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse response failed: %v", err))
+		}
+		if envelope.Code != 0 {
+			return output.ErrAPI(envelope.Code, envelope.Msg, nil)
+		}
+
 		var raw map[string]any
 		if err := json.Unmarshal(resp.RawBody, &raw); err != nil {
 			return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse response failed: %v", err))
