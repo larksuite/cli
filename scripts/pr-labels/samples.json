@@ -99,28 +99,6 @@
     "review_note": "Touches core area (cmd), bumping the size to L."
   },
   {
-    "name": "size-l-docs-rename-base",
-    "number": 11,
-    "title": "docs: rename user-facing Bitable references to Base",
-    "pr_url": "https://github.com/larksuite/cli/pull/11",
-    "status": "merged",
-    "merged_at": "2026-03-28T16:00:52Z",
-    "expected_label": "size/L",
-    "expected_domains": ["domain/base", "domain/ccm"],
-    "review_note": "Docs change but touches multiple business domains, making it L."
-  },
-  {
-    "name": "size-l-feat-local-image",
-    "number": 57,
-    "title": "feat(docs): support local image upload in docs +create",
-    "pr_url": "https://github.com/larksuite/cli/pull/57",
-    "status": "closed",
-    "merged_at": null,
-    "expected_label": "size/L",
-    "expected_domains": ["domain/ccm"],
-    "review_note": "Closed PR but useful as an L sample for effective lines exceeding 300."
-  },
-  {
     "name": "size-l-fix-cli",
     "number": 91,
     "title": "fix: correct CLI examples in root help and READMEs (closes #48)",
@@ -132,7 +110,7 @@
     "review_note": "Closed PR touching core area (cmd)."
   },
   {
-    "name": "size-l-skill-format-check",
+    "name": "size-m-skill-format-check",
     "number": 134,
     "title": "feat(ci): add skill format check workflow to ensure SKILL.md compliance",
     "pr_url": "https://github.com/larksuite/cli/pull/134",
@@ -143,7 +121,7 @@
     "review_note": "Includes updates to tests/bad-skill/SKILL.md inside skills-like paths, testing how skill mock files and test scripts are handled."
   },
   {
-    "name": "size-m-ccm-multi-path",
+    "name": "size-l-ccm-multi-path",
     "number": 57,
     "title": "feat(docs): support local image upload in docs +create",
     "pr_url": "https://github.com/larksuite/cli/pull/57",
@@ -154,7 +132,7 @@
     "review_note": "Touches docs_create_images.go and table_auto_width.go, representing multiple CCM sub-paths but resolving to a single ccm domain."
   },
   {
-    "name": "size-m-domain-rename",
+    "name": "size-l-domain-rename",
     "number": 11,
     "title": "docs: rename user-facing Bitable references to Base",
     "pr_url": "https://github.com/larksuite/cli/pull/11",
