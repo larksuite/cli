@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
@@ -890,39 +891,11 @@ func isLocalFileSrc(src string) bool {
 	return !uriSchemeRegexp.MatchString(trimmed)
 }
 
-// cidFromFileName derives a CID from a file name by stripping the extension
-// and replacing whitespace with hyphens to produce an RFC-safe token.
-// For example, "logo.png" → "logo", "my logo.png" → "my-logo".
-// If the result is empty, the original name is used.
-func cidFromFileName(name string) string {
-	ext := filepath.Ext(name)
-	base := strings.TrimSuffix(name, ext)
-	base = strings.TrimSpace(base)
-	if base == "" {
-		return name
-	}
-	base = strings.Map(func(r rune) rune {
-		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
-			return '-'
-		}
-		return r
-	}, base)
-	return base
-}
-
-// uniqueCID returns a CID that is not already in the usedCIDs set.
-// If baseCID is not taken, it is returned as-is. Otherwise, suffixes
-// -2, -3, ... are appended until a unique CID is found.
-func uniqueCID(baseCID string, usedCIDs map[string]bool) string {
-	if !usedCIDs[strings.ToLower(baseCID)] {
-		return baseCID
-	}
-	for i := 2; ; i++ {
-		candidate := fmt.Sprintf("%s-%d", baseCID, i)
-		if !usedCIDs[strings.ToLower(candidate)] {
-			return candidate
-		}
-	}
+// generateCID returns a random UUID string suitable for use as a Content-ID.
+// UUIDs contain only [0-9a-f-], which is inherently RFC-safe and unique,
+// avoiding all filename-derived encoding/collision issues.
+func generateCID() string {
+	return uuid.New().String()
 }
 
 // resolveLocalImgSrc scans HTML for <img src="local/path"> references,
@@ -932,13 +905,6 @@ func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
 	matches := imgSrcRegexp.FindAllStringSubmatchIndex(html, -1)
 	if len(matches) == 0 {
 		return html, nil
-	}
-
-	usedCIDs := make(map[string]bool)
-	for _, part := range flattenParts(snapshot.Body) {
-		if part != nil && part.ContentID != "" {
-			usedCIDs[strings.ToLower(part.ContentID)] = true
-		}
 	}
 
 	var container *Part
@@ -961,9 +927,7 @@ func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
 		cid, ok := pathToCID[resolvedPath]
 		if !ok {
 			fileName := filepath.Base(src)
-			baseCID := cidFromFileName(fileName)
-			cid = uniqueCID(baseCID, usedCIDs)
-			usedCIDs[strings.ToLower(cid)] = true
+			cid = generateCID()
 			pathToCID[resolvedPath] = cid
 
 			container, err = loadAndAttachInline(snapshot, src, cid, fileName, container)

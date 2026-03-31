@@ -5,6 +5,7 @@ package draft
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -36,16 +37,20 @@ Content-Type: text/html; charset=UTF-8
 		t.Fatal("HTML part not found")
 	}
 	body := string(htmlPart.Body)
-	if !strings.Contains(body, `src="cid:logo"`) {
-		t.Fatalf("expected src to be replaced with cid:logo, got: %s", body)
-	}
 	if strings.Contains(body, "./logo.png") {
 		t.Fatal("local path should have been replaced")
 	}
-	// Verify MIME inline part was created.
+	// Extract the generated CID from the HTML body.
+	cidRe := regexp.MustCompile(`src="cid:([^"]+)"`)
+	m := cidRe.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("expected src to contain a cid: reference, got: %s", body)
+	}
+	cid := m[1]
+	// Verify MIME inline part was created with the matching CID.
 	found := false
 	for _, part := range flattenParts(snapshot.Body) {
-		if part != nil && part.ContentID == "logo" {
+		if part != nil && part.ContentID == cid {
 			found = true
 			if part.MediaType != "image/png" {
 				t.Fatalf("expected image/png, got %q", part.MediaType)
@@ -53,7 +58,7 @@ Content-Type: text/html; charset=UTF-8
 		}
 	}
 	if !found {
-		t.Fatal("expected inline MIME part with CID 'logo' to be created")
+		t.Fatalf("expected inline MIME part with CID %q to be created", cid)
 	}
 }
 
@@ -82,8 +87,13 @@ Content-Type: text/html; charset=UTF-8
 	}
 	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
 	body := string(htmlPart.Body)
-	if !strings.Contains(body, `cid:a`) || !strings.Contains(body, `cid:b`) {
-		t.Fatalf("expected both CIDs in body, got: %s", body)
+	cidRe := regexp.MustCompile(`src="cid:([^"]+)"`)
+	matches := cidRe.FindAllStringSubmatch(body, -1)
+	if len(matches) != 2 {
+		t.Fatalf("expected 2 cid: references, got %d in: %s", len(matches), body)
+	}
+	if matches[0][1] == matches[1][1] {
+		t.Fatalf("expected different CIDs for different files, both got: %s", matches[0][1])
 	}
 }
 
@@ -154,11 +164,13 @@ Content-Type: text/html; charset=UTF-8
 	}
 	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
 	body := string(htmlPart.Body)
-	if !strings.Contains(body, `cid:logo`) {
-		t.Fatalf("expected cid:logo in body, got: %s", body)
+	cidRe := regexp.MustCompile(`src="cid:([^"]+)"`)
+	matches := cidRe.FindAllStringSubmatch(body, -1)
+	if len(matches) != 2 {
+		t.Fatalf("expected 2 cid: references, got %d in: %s", len(matches), body)
 	}
-	if !strings.Contains(body, `cid:logo-2`) {
-		t.Fatalf("expected cid:logo-2 for duplicate, got: %s", body)
+	if matches[0][1] == matches[1][1] {
+		t.Fatalf("expected different CIDs for different files, both got: %s", matches[0][1])
 	}
 }
 
@@ -187,8 +199,13 @@ Content-Type: text/html; charset=UTF-8
 	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
 	body := string(htmlPart.Body)
 	// Both references should resolve to the same CID.
-	if strings.Contains(body, "logo-2") {
-		t.Fatalf("expected same CID reused, but got logo-2: %s", body)
+	cidRe := regexp.MustCompile(`src="cid:([^"]+)"`)
+	matches := cidRe.FindAllStringSubmatch(body, -1)
+	if len(matches) != 2 {
+		t.Fatalf("expected 2 cid: references, got %d in: %s", len(matches), body)
+	}
+	if matches[0][1] != matches[1][1] {
+		t.Fatalf("expected same CID reused, got %q and %q", matches[0][1], matches[1][1])
 	}
 	// Count inline MIME parts — should be exactly 1.
 	var count int
@@ -298,7 +315,8 @@ cG5n
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	var foundOld, foundNew bool
+	var foundOld bool
+	var newInlineCount int
 	for _, part := range flattenParts(snapshot.Body) {
 		if part == nil {
 			continue
@@ -306,15 +324,15 @@ cG5n
 		if part.ContentID == "old" {
 			foundOld = true
 		}
-		if part.ContentID == "new" {
-			foundNew = true
+		if strings.EqualFold(part.ContentDisposition, "inline") && part.ContentID != "" && part.ContentID != "old" {
+			newInlineCount++
 		}
 	}
 	if foundOld {
 		t.Fatal("expected old inline part to be removed")
 	}
-	if !foundNew {
-		t.Fatal("expected new inline part to be created")
+	if newInlineCount != 1 {
+		t.Fatalf("expected 1 new inline part, got %d", newInlineCount)
 	}
 }
 
@@ -345,20 +363,25 @@ Content-Type: text/html; charset=UTF-8
 		t.Fatal("HTML part not found")
 	}
 	body := string(htmlPart.Body)
-	if !strings.Contains(body, `src="cid:photo"`) {
-		t.Fatalf("expected local path resolved to cid:photo, got: %s", body)
+	if strings.Contains(body, "./photo.png") {
+		t.Fatal("local path should have been replaced")
+	}
+	cidRe := regexp.MustCompile(`src="cid:([^"]+)"`)
+	m := cidRe.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("expected cid: reference in body, got: %s", body)
 	}
 	if !strings.Contains(body, "history-quote-wrapper") {
 		t.Fatalf("expected quote block preserved, got: %s", body)
 	}
 	found := false
 	for _, part := range flattenParts(snapshot.Body) {
-		if part != nil && part.ContentID == "photo" {
+		if part != nil && part.ContentID == m[1] {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("expected inline MIME part with CID 'photo' to be created")
+		t.Fatalf("expected inline MIME part with CID %q to be created", m[1])
 	}
 }
 
@@ -388,23 +411,23 @@ Content-Type: text/html; charset=UTF-8
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	var foundA, foundB bool
+	var foundA bool
+	var autoResolvedCount int
 	for _, part := range flattenParts(snapshot.Body) {
 		if part == nil {
 			continue
 		}
 		if part.ContentID == "a" {
 			foundA = true
-		}
-		if part.ContentID == "b" {
-			foundB = true
+		} else if strings.EqualFold(part.ContentDisposition, "inline") && part.ContentID != "" {
+			autoResolvedCount++
 		}
 	}
 	if !foundA {
 		t.Fatal("expected inline part 'a' from add_inline")
 	}
-	if !foundB {
-		t.Fatal("expected inline part 'b' from local path resolve")
+	if autoResolvedCount != 1 {
+		t.Fatalf("expected 1 auto-resolved inline part for b.png, got %d", autoResolvedCount)
 	}
 }
 
@@ -425,7 +448,7 @@ Content-Type: text/html; charset=UTF-8
 <div>empty</div>
 `)
 	// add_inline creates CID "logo", but body uses local path instead of cid:logo.
-	// resolve generates "logo-2" (since "logo" is taken), orphan cleanup removes "logo".
+	// resolve generates a UUID CID, orphan cleanup removes the unused "logo".
 	err := Apply(snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "add_inline", Path: "logo.png", CID: "logo"},
@@ -435,18 +458,20 @@ Content-Type: text/html; charset=UTF-8
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
-	body := string(htmlPart.Body)
 	// The explicitly added "logo" CID is orphaned (not referenced in HTML)
 	// and should be auto-removed. Only the auto-generated CID remains.
-	if strings.Contains(body, `cid:logo"`) && !strings.Contains(body, `cid:logo-2"`) {
-		t.Fatalf("expected auto-generated CID (logo-2), got: %s", body)
-	}
+	var foundLogo bool
 	var count int
 	for _, part := range flattenParts(snapshot.Body) {
 		if part != nil && strings.EqualFold(part.ContentDisposition, "inline") {
 			count++
+			if part.ContentID == "logo" {
+				foundLogo = true
+			}
 		}
+	}
+	if foundLogo {
+		t.Fatal("expected orphaned 'logo' inline part to be removed")
 	}
 	if count != 1 {
 		t.Fatalf("expected 1 inline part after orphan cleanup, got %d", count)
@@ -525,7 +550,8 @@ cG5n
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	var foundOld, foundNew bool
+	var foundOld bool
+	var newInlineCount int
 	for _, part := range flattenParts(snapshot.Body) {
 		if part == nil {
 			continue
@@ -533,15 +559,15 @@ cG5n
 		if part.ContentID == "old" {
 			foundOld = true
 		}
-		if part.ContentID == "new" {
-			foundNew = true
+		if strings.EqualFold(part.ContentDisposition, "inline") && part.ContentID != "" && part.ContentID != "old" {
+			newInlineCount++
 		}
 	}
 	if foundOld {
 		t.Fatal("expected old inline part to be removed")
 	}
-	if !foundNew {
-		t.Fatal("expected new inline part from local path resolve")
+	if newInlineCount != 1 {
+		t.Fatalf("expected 1 new inline part from local path resolve, got %d", newInlineCount)
 	}
 }
 
@@ -598,37 +624,20 @@ func TestIsLocalFileSrc(t *testing.T) {
 	}
 }
 
-func TestCidFromFileName(t *testing.T) {
-	tests := []struct {
-		name string
-		want string
-	}{
-		{"logo.png", "logo"},
-		{"photo.jpg", "photo"},
-		{"image.name.gif", "image.name"},
-		{".hidden", ".hidden"},
-		{"noext", "noext"},
-		{"my logo.png", "my-logo"},
-		{"a\tb.png", "a-b"},
-		{"  spaced  .png", "spaced"},
-	}
-	for _, tt := range tests {
-		if got := cidFromFileName(tt.name); got != tt.want {
-			t.Errorf("cidFromFileName(%q) = %q, want %q", tt.name, got, tt.want)
+func TestGenerateCID(t *testing.T) {
+	seen := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		cid := generateCID()
+		if cid == "" {
+			t.Fatal("generateCID() returned empty string")
 		}
-	}
-}
-
-func TestUniqueCID(t *testing.T) {
-	used := map[string]bool{"logo": true, "logo-2": true}
-	got := uniqueCID("logo", used)
-	if got != "logo-3" {
-		t.Fatalf("uniqueCID = %q, want %q", got, "logo-3")
-	}
-
-	got2 := uniqueCID("photo", used)
-	if got2 != "photo" {
-		t.Fatalf("uniqueCID = %q, want %q", got2, "photo")
+		if strings.ContainsAny(cid, " \t\r\n<>()") {
+			t.Fatalf("generateCID() returned CID with invalid characters: %q", cid)
+		}
+		if seen[cid] {
+			t.Fatalf("generateCID() returned duplicate CID: %q", cid)
+		}
+		seen[cid] = true
 	}
 }
 
