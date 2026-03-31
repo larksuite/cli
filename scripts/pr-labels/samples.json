@@ -132,36 +132,36 @@
     "review_note": "Closed PR touching core area (cmd)."
   },
   {
-    "name": "size-s-skill-docs-only",
-    "number": 140,
-    "title": "docs(skills): update lark-im skill frontmatter",
-    "pr_url": "https://github.com/larksuite/cli/pull/140",
-    "status": "merged",
-    "merged_at": "2026-03-31T09:00:00Z",
-    "expected_label": "size/S",
-    "expected_areas": ["area/im"],
-    "review_note": "A change purely to a SKILL.md file inside skills/**. This should be size/S because skill markdown files are documentation."
+    "name": "size-l-skill-format-check",
+    "number": 134,
+    "title": "feat(ci): add skill format check workflow to ensure SKILL.md compliance",
+    "pr_url": "https://github.com/larksuite/cli/pull/134",
+    "status": "closed",
+    "merged_at": null,
+    "expected_label": "size/L",
+    "expected_areas": [],
+    "review_note": "Includes updates to tests/bad-skill/SKILL.md inside skills-like paths, testing how skill mock files and test scripts are handled."
   },
   {
     "name": "size-m-ccm-multi-path",
-    "number": 141,
-    "title": "feat(ccm): update drive and docs handlers",
-    "pr_url": "https://github.com/larksuite/cli/pull/141",
-    "status": "merged",
-    "merged_at": "2026-03-31T09:30:00Z",
-    "expected_label": "size/M",
+    "number": 57,
+    "title": "feat(docs): support local image upload in docs +create",
+    "pr_url": "https://github.com/larksuite/cli/pull/57",
+    "status": "closed",
+    "merged_at": null,
+    "expected_label": "size/L",
     "expected_areas": ["area/ccm"],
-    "review_note": "A change touching multiple CCM sub-paths (doc, drive). Should stay M as it represents a single domain (CCM), not bumping to L as multiDomain."
+    "review_note": "Touches docs_create_images.go and table_auto_width.go, representing multiple CCM sub-paths but resolving to a single ccm domain."
   },
   {
     "name": "size-m-domain-rename",
-    "number": 142,
-    "title": "refactor: rename base shortcuts to bitable",
-    "pr_url": "https://github.com/larksuite/cli/pull/142",
+    "number": 11,
+    "title": "docs: rename user-facing Bitable references to Base",
+    "pr_url": "https://github.com/larksuite/cli/pull/11",
     "status": "merged",
-    "merged_at": "2026-03-31T10:00:00Z",
-    "expected_label": "size/M",
-    "expected_areas": ["area/base"],
+    "merged_at": "2026-03-28T16:00:52Z",
+    "expected_label": "size/L",
+    "expected_areas": ["area/base", "area/ccm"],
     "review_note": "A rename across paths. Since we track previous_filename to evaluate domains, this should properly capture the base domain."
   }
 ]
