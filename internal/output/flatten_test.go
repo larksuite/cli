@@ -119,15 +119,16 @@ func TestTruncateToWidth(t *testing.T) {
 	}{
 		{"hello", 10, "hello"},
 		{"hello", 5, "hello"},
-		{"hello", 4, "hell…"},
-		{"hello", 3, "hel…"},
-		{"hello", 1, "h…"},
+		{"hello", 4, "hel…"},
+		{"hello", 3, "he…"},
+		{"hello", 1, "…"},
 		{"hello", 0, ""},
 		// CJK: each char is width 2
 		{"你好世界", 8, "你好世界"},
-		{"你好世界", 6, "你好世…"},
-		{"你好世界", 4, "你好…"},
+		{"你好世界", 6, "你好…"},
+		{"你好世界", 4, "你…"},
 		{"你好世界", 3, "你…"},
+		{"你好世界", 2, "…"},
 	}
 
 	for _, tt := range tests {
@@ -135,6 +136,9 @@ func TestTruncateToWidth(t *testing.T) {
 			got := truncateToWidth(tt.input, tt.maxWidth)
 			if got != tt.want {
 				t.Errorf("truncateToWidth(%q, %d) = %q, want %q", tt.input, tt.maxWidth, got, tt.want)
+			}
+			if width := stringWidth(got); width > tt.maxWidth {
+				t.Errorf("truncateToWidth(%q, %d) width = %d, want <= %d", tt.input, tt.maxWidth, width, tt.maxWidth)
 			}
 		})
 	}

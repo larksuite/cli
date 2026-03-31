@@ -9,6 +9,7 @@ import (
 )
 
 const maxFlattenDepth = 3
+const ellipsis = "…"
 
 type flatEntry struct {
 	Key   string
@@ -113,15 +114,29 @@ func truncateToWidth(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
+	if stringWidth(s) <= maxWidth {
+		return s
+	}
+
+	ellipsisWidth := stringWidth(ellipsis)
+	if ellipsisWidth > maxWidth {
+		return ""
+	}
+
 	w := 0
+	cut := 0
 	for i, r := range s {
 		rw := runeWidth(r)
-		if w+rw > maxWidth {
-			return s[:i] + "…"
+		if w+rw+ellipsisWidth > maxWidth {
+			break
 		}
 		w += rw
+		cut = i + utf8.RuneLen(r)
 	}
-	return s
+	if cut == 0 {
+		return ellipsis
+	}
+	return s[:cut] + ellipsis
 }
 
 // flattenItem flattens a single item (object or other) into flatEntry pairs.
