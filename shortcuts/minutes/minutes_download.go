@@ -12,14 +12,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const defaultMediaDownloadTimeout = 300 * time.Second
+// disableClientTimeout removes the global 30s client timeout for large media downloads.
+// The request is still bounded by the caller's context.
+const disableClientTimeout = 0
 
 var MinutesDownload = common.Shortcut{
 	Service:     "minutes",
@@ -100,14 +101,20 @@ type downloadResult struct {
 // When outputPath is empty, it resolves the filename from the Content-Disposition
 // header, falling back to Content-Type extension detection, then <token>.media.
 func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, downloadURL, outputPath, minuteToken string, overwrite bool) (*downloadResult, error) {
+	// SSRF: validate download URL before making any request
+	if err := validate.ValidateDownloadSourceURL(ctx, downloadURL); err != nil {
+		return nil, output.ErrValidation("blocked download URL: %s", err)
+	}
+
 	httpClient, err := runtime.Factory.HttpClient()
 	if err != nil {
 		return nil, output.ErrNetwork("failed to get HTTP client: %s", err)
 	}
 
-	// clone the client with a longer timeout for large media files
+	// clone client: disable timeout for large files, add redirect safety policy
 	downloadClient := *httpClient
-	downloadClient.Timeout = defaultMediaDownloadTimeout
+	downloadClient.Timeout = disableClientTimeout
+	downloadClient.CheckRedirect = safeRedirectPolicy
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
@@ -175,4 +182,24 @@ func resolveOutputFromResponse(resp *http.Response, minuteToken string) string {
 	}
 
 	return minuteToken + ".media"
+}
+
+const maxDownloadRedirects = 5
+
+// safeRedirectPolicy prevents HTTPS→HTTP downgrade, limits redirect count,
+// and validates each redirect target against SSRF rules.
+func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxDownloadRedirects {
+		return fmt.Errorf("too many redirects")
+	}
+	if len(via) > 0 {
+		prev := via[len(via)-1]
+		if strings.EqualFold(prev.URL.Scheme, "https") && strings.EqualFold(req.URL.Scheme, "http") {
+			return fmt.Errorf("redirect from https to http is not allowed")
+		}
+	}
+	if err := validate.ValidateDownloadSourceURL(req.Context(), req.URL.String()); err != nil {
+		return fmt.Errorf("blocked redirect target: %w", err)
+	}
+	return nil
 }
