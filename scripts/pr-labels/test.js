@@ -6,6 +6,12 @@ const samplesPath = path.join(__dirname, 'samples.json');
 const indexPath = path.join(__dirname, 'index.js');
 const samples = JSON.parse(fs.readFileSync(samplesPath, 'utf8'));
 
+if (!process.env.GITHUB_TOKEN) {
+  console.error("❌ Error: GITHUB_TOKEN environment variable is required to run tests without hitting API rate limits.");
+  console.error("Please run: GITHUB_TOKEN=$(gh auth token) node scripts/pr-labels/test.js");
+  process.exit(1);
+}
+
 let passed = 0;
 let failed = 0;
 

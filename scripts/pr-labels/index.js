@@ -544,7 +544,6 @@ function printDryRunResult(result, options) {
     ...result.coreSignals.map((signal) => `core:${signal}`),
     ...result.sensitiveKeywords.map((keyword) => `keyword:${keyword}`),
     ...(result.domains.length > 0 ? [`domains:${result.domains.join(",")}`] : []),
-    ...(result.businessDomains.length > 0 ? [`domains:${result.businessDomains.join(",")}`] : []),
   ];
   const reasonParts = result.reasons.length > 0
     ? result.reasons
