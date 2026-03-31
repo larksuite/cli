@@ -46,7 +46,13 @@ You can test the labeling logic against an existing GitHub PR without actually a
 node scripts/pr-labels/index.js --dry-run --repo larksuite/cli --pr-number 123
 ```
 
-To see the raw JSON output for programmatic use:
+## Testing
+
+A regression test suite is available in `test.js` which verifies the output of the classification logic against historical PRs configured in `samples.json`.
+
 ```bash
-node scripts/pr-labels/index.js --dry-run --repo larksuite/cli --pr-number 123 --json
+# Requires GITHUB_TOKEN environment variable to avoid rate limits
+GITHUB_TOKEN=$(gh auth token) node scripts/pr-labels/test.js
 ```
+
+This test suite also runs automatically in CI via `.github/workflows/pr-labels-test.yml` when changes are made to this directory.
