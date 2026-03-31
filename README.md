@@ -8,7 +8,7 @@
 
 The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Calendar, Mail, Tasks, Meetings, and more, with 200+ commands and 19 AI Agent [Skills](./skills/).
 
-[Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
+[Install](#installation--quick-start) · [Update](#updating) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
 
 ## Why lark-cli?
 
@@ -124,6 +124,41 @@ lark-cli auth login --recommend
 ```bash
 lark-cli auth status
 ```
+
+## Updating
+
+When a new version of lark-cli is released, you need to update **both** the CLI binary and the Skills to stay in sync.
+
+### One-Liner (Recommended)
+
+```bash
+npm update -g @larksuite/cli && npx skills add larksuite/cli --all -y
+```
+
+### Step by Step
+
+```bash
+# 1. Update CLI binary
+npm update -g @larksuite/cli
+
+# 2. Update Skills (re-running the install command pulls the latest version)
+npx skills add larksuite/cli --all -y
+
+# 3. Verify
+lark-cli --version
+```
+
+### Check for Updates
+
+```bash
+# See your installed version
+lark-cli --version
+
+# See the latest version on npm
+npm view @larksuite/cli version
+```
+
+> **Tip for AI Agent users:** After updating, restart your AI Agent (e.g. Claude Code) to pick up the new Skills. The CLI binary is updated immediately, but Skills are loaded at Agent startup.
 
 ## Agent Skills
 

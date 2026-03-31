@@ -8,7 +8,7 @@
 
 飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、日历、邮箱、任务、会议等核心业务域，提供 200+ 命令及 19 个 AI Agent [Skills](./skills/)。
 
-[安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
+[安装](#安装与快速开始) · [升级](#升级) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
 
 ## 为什么选 lark-cli？
 
@@ -125,6 +125,41 @@ lark-cli auth login --recommend
 lark-cli auth status
 ```
 
+
+## 升级
+
+当 lark-cli 发布新版本时，需要**同时**更新 CLI 二进制和 Skills 以保持同步。
+
+### 一行命令（推荐）
+
+```bash
+npm update -g @larksuite/cli && npx skills add larksuite/cli --all -y
+```
+
+### 分步操作
+
+```bash
+# 1. 更新 CLI 二进制
+npm update -g @larksuite/cli
+
+# 2. 更新 Skills（重新运行安装命令即可拉取最新版本）
+npx skills add larksuite/cli --all -y
+
+# 3. 验证
+lark-cli --version
+```
+
+### 检查更新
+
+```bash
+# 查看当前安装版本
+lark-cli --version
+
+# 查看 npm 上的最新版本
+npm view @larksuite/cli version
+```
+
+> **AI Agent 用户提示：** 更新完成后，请重启你的 AI Agent（如 Claude Code）以加载最新的 Skills。CLI 二进制会立即生效，但 Skills 在 Agent 启动时加载。
 
 ## Agent Skills
 

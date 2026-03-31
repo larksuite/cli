@@ -14,9 +14,11 @@ import (
 	"github.com/spf13/cobra"
 
 	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/update"
 )
 
 // DoctorOptions holds inputs for the doctor command.
@@ -47,7 +49,7 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 // checkResult represents one diagnostic check.
 type checkResult struct {
 	Name    string `json:"name"`
-	Status  string `json:"status"` // "pass", "fail", "skip"
+	Status  string `json:"status"` // "pass", "fail", "warn", "skip"
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
 }
@@ -60,6 +62,10 @@ func fail(name, msg, hint string) checkResult {
 	return checkResult{Name: name, Status: "fail", Message: msg, Hint: hint}
 }
 
+func warn(name, msg, hint string) checkResult {
+	return checkResult{Name: name, Status: "warn", Message: msg, Hint: hint}
+}
+
 func skip(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "skip", Message: msg}
 }
@@ -67,6 +73,9 @@ func skip(name, msg string) checkResult {
 func doctorRun(opts *DoctorOptions) error {
 	f := opts.Factory
 	var checks []checkResult
+
+	// ── 0. Version check ──
+	checks = append(checks, versionCheck(opts)...)
 
 	// ── 1. Config file ──
 	_, err := core.LoadMultiAppConfig()
@@ -212,6 +221,31 @@ func mustHTTPClient(f *cmdutil.Factory) *http.Client {
 		return &http.Client{Timeout: 30 * time.Second}
 	}
 	return c
+}
+
+// versionCheck queries npm registry for the latest release and compares.
+// Uses a 5s timeout to avoid blocking doctor longer than other network checks.
+func versionCheck(opts *DoctorOptions) []checkResult {
+	current := build.Version
+	if current == "DEV" || current == "" {
+		return []checkResult{skip("version_latest", "dev build, skipped")}
+	}
+	if opts.Offline {
+		return []checkResult{skip("version_latest", "skipped (--offline)")}
+	}
+
+	ctx, cancel := context.WithTimeout(opts.Ctx, 5*time.Second)
+	defer cancel()
+
+	result := update.CheckForUpdate(ctx, &http.Client{Timeout: 5 * time.Second})
+	if result == nil {
+		return []checkResult{pass("version_latest", fmt.Sprintf("up to date (%s)", current))}
+	}
+	return []checkResult{warn(
+		"version_latest",
+		fmt.Sprintf("update available: %s → %s", result.Current, result.Latest),
+		"run: "+result.UpdateCommand(),
+	)}
 }
 
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
