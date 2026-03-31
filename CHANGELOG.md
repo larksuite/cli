@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.1] - 2026-03-31
+
+### Features
+
+- Add automatic CLI update detection and notification (#144)
+- Add npm publish job to release workflow (#145)
+- Support auto extension for downloads (#16)
+- Remove useless files (#131)
+- Normalize markdown message send/reply output (#28)
+- Add auto-pagination to messages search and update lark-im docs (#30)
+
+### Bug Fixes
+
+- **base**: Use base history read scope for record history list (#96)
+- Remove sensitive send scope from reply and forward shortcuts (#92)
+- Resolve silent failure in `lark-cli api` error output (#85)
+
+### Documentation
+
+- **base**: Clarify field description usage in json (#90)
+- Update Base description to include all capabilities (#61)
+- Add official badge to distinguish from third-party Lark CLI tools (#103)
+- Rename user-facing Bitable references to Base (#11)
+- Add star history chart to readmes (#12)
+- Simplify installation steps by merging CLI and Skills into one section (#26)
+- Add npm version badge and improve AI agent tip wording (#23)
+- Emphasize Skills installation as required for AI Agents (#19)
+- Clarify install methods as alternatives and add source build steps
+
+### CI
+
+- Improve CI workflows and add golangci-lint config (#71)
+
 ## [v1.0.0] - 2026-03-28
 
 ### Initial Release
@@ -54,4 +87,5 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.1]: https://github.com/larksuite/cli/releases/tag/v1.0.1
 [v1.0.0]: https://github.com/larksuite/cli/releases/tag/v1.0.0
