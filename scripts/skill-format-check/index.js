@@ -13,9 +13,16 @@ function checkSkillFormat() {
     process.exit(1);
   }
 
-  const skills = fs.readdirSync(SKILLS_DIR).filter(file => {
-    return fs.statSync(path.join(SKILLS_DIR, file)).isDirectory();
-  });
+  let skills;
+  try {
+    skills = fs
+      .readdirSync(SKILLS_DIR, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name);
+  } catch (err) {
+    console.error(`Failed to enumerate skills directory: ${err.message}`);
+    process.exit(1);
+  }
 
   let hasErrors = false;
 
