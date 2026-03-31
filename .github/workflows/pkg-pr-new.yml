@@ -42,7 +42,13 @@ jobs:
               throw new Error("No package URL found in output.json");
             }
 
-            const body = `npm i -g ${url}`;
+            const body = [
+              "Install preview globally:",
+              "",
+              "```bash",
+              `npm i -g ${url}`,
+              "```",
+            ].join("\n");
             const issueNumber = context.issue.number;
 
             const comments = await github.rest.issues.listComments({
@@ -55,7 +61,7 @@ jobs:
             const existing = comments.data.find((comment) =>
               comment.user?.login === "github-actions[bot]" &&
               typeof comment.body === "string" &&
-              comment.body.startsWith("npm i -g https://pkg.pr.new/")
+              comment.body.startsWith("Install preview globally:")
             );
 
             if (existing) {
