@@ -325,6 +325,14 @@ function skillDomainForPath(filePath) {
     : "";
 }
 
+function getImportantArea(filePath) {
+  const normalized = normalizePath(filePath);
+  if (normalized.startsWith("shortcuts/")) return "shortcuts";
+  if (normalized.startsWith("skills/") || normalized.startsWith("skill-template/")) return "skills";
+  if (normalized.startsWith("cmd/")) return "cmd";
+  return "";
+}
+
 async function detectNewShortcutDomain(files) {
   for (const item of files) {
     if (item.status !== "added") {
@@ -385,6 +393,7 @@ async function classifyPr(payload, files) {
   );
   const totalChanges = files.reduce((sum, item) => sum + (item.changes || 0), 0);
   const domains = new Set();
+  const importantAreas = new Set();
 
   for (const name of filenames) {
     const shortcutDomain = shortcutDomainForPath(name);
@@ -394,6 +403,11 @@ async function classifyPr(payload, files) {
     const skillDomain = skillDomainForPath(name);
     if (skillDomain) {
       domains.add(skillDomain);
+    }
+    
+    const area = getImportantArea(name);
+    if (area) {
+      importantAreas.add(area);
     }
   }
 
@@ -488,6 +502,7 @@ async function classifyPr(payload, files) {
     totalChanges,
     effectiveChanges,
     domains: [...domains].sort(),
+    importantAreas: [...importantAreas].sort(),
     coreAreas: [...coreAreas].sort(),
     coreSignals,
     sensitiveKeywords,
@@ -506,6 +521,7 @@ async function writeStepSummary(prNumber, classification) {
 
   const standard = CLASS_STANDARDS[classification.label];
   const domains = classification.domains.join(", ") || "-";
+  const areas = classification.importantAreas.join(", ") || "-";
   const coreAreas = classification.coreAreas.join(", ") || "-";
   const reasons = classification.reasons.length > 0
     ? classification.reasons
@@ -520,6 +536,7 @@ async function writeStepSummary(prNumber, classification) {
     `- Total Changes: \`${classification.totalChanges}\``,
     `- Effective Business/SKILL Changes: \`${classification.effectiveChanges}\``,
     `- Business Domains: \`${domains}\``,
+    `- Impacted Areas: \`${areas}\``,
     `- Core Areas: \`${coreAreas}\``,
     `- CI/CD Channel: \`${standard.channel}\``,
     `- Low Risk Only: \`${classification.lowRiskOnly}\``,
@@ -548,6 +565,7 @@ function formatDryRunResult(repo, prNumber, classification) {
     effectiveChanges: classification.effectiveChanges,
     lowRiskOnly: classification.lowRiskOnly,
     domains: classification.domains,
+    importantAreas: classification.importantAreas,
     coreAreas: classification.coreAreas,
     coreSignals: classification.coreSignals,
     sensitiveKeywords: classification.sensitiveKeywords,
@@ -567,6 +585,7 @@ function printDryRunResult(result, options) {
     ...result.coreSignals.map((signal) => `core:${signal}`),
     ...result.sensitiveKeywords.map((keyword) => `keyword:${keyword}`),
     ...(result.domains.length > 0 ? [`domains:${result.domains.join(",")}`] : []),
+    ...(result.importantAreas.length > 0 ? [`areas:${result.importantAreas.join(",")}`] : []),
   ];
   const reasonParts = result.reasons.length > 0
     ? result.reasons
@@ -634,11 +653,25 @@ async function main() {
   }
 
   const desired = new Set([classification.label]);
+  for (const area of classification.importantAreas) {
+    desired.add(`area/${area}`);
+  }
+
   const current = await listIssueLabels(repo, prNumber, options.token);
 
-  const managedCurrent = [...current].filter((label) => MANAGED_LABELS.has(label));
+  const managedCurrent = [...current].filter((label) => MANAGED_LABELS.has(label) || label.startsWith("area/"));
   const toAdd = [...desired].filter((label) => !current.has(label)).sort();
   const toRemove = managedCurrent.filter((label) => !desired.has(label)).sort();
+
+  for (const area of classification.importantAreas) {
+    const labelName = `area/${area}`;
+    if (!LABEL_DEFINITIONS[labelName]) {
+      LABEL_DEFINITIONS[labelName] = {
+        color: "1d76db",
+        description: `PR touches the ${area} area`,
+      };
+    }
+  }
 
   // Keep label metadata consistent even when labels already exist in the repository.
   for (const label of Object.keys(LABEL_DEFINITIONS)) {
