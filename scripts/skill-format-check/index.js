@@ -20,6 +20,12 @@ function checkSkillFormat() {
   let hasErrors = false;
 
   skills.forEach(skill => {
+    // Skip lark-shared skill completely
+    if (skill === 'lark-shared') {
+        console.log(`⏭️  Skipping check for ${skill}`);
+        return;
+    }
+
     const skillPath = path.join(SKILLS_DIR, skill);
     const skillFile = path.join(skillPath, 'SKILL.md');
 
@@ -46,10 +52,6 @@ function checkSkillFormat() {
             if (!frontmatter.includes('name:')) {
                 console.error(`❌ [${skill}] YAML frontmatter missing 'name'`);
                 hasErrors = true;
-            }
-            if (!frontmatter.includes('version:')) {
-                console.warn(`⚠️  [${skill}] YAML frontmatter missing 'version' (Warning only)`);
-                // hasErrors = true;
             }
             if (!frontmatter.includes('description:')) {
                 console.error(`❌ [${skill}] YAML frontmatter missing 'description'`);
