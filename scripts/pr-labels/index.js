@@ -35,6 +35,30 @@ const CORE_PREFIXES = ["internal/auth/", "internal/engine/", "internal/config/",
 const HEAD_BUSINESS_DOMAINS = new Set(["im", "contact", "ccm", "base", "docx"]);
 const LOW_RISK_TYPES = new Set(["docs", "ci", "test", "chore"]);
 
+// CODEOWNERS-based path to area label mapping
+// Maps shortcuts and skills paths to business area labels
+const PATH_TO_AREA_MAP = {
+  // shortcuts
+  "shortcuts/im/": "im",
+  "shortcuts/vc/": "vc",
+  "shortcuts/calendar/": "calendar",
+  "shortcuts/doc/": "ccm",
+  "shortcuts/sheets/": "ccm",
+  "shortcuts/drive/": "ccm",
+  "shortcuts/base/": "base",
+  "shortcuts/mail/": "mail",
+  "shortcuts/task/": "task",
+  "shortcuts/contact/": "contact",
+  // skills
+  "skills/lark-im/": "im",
+  "skills/lark-vc/": "vc",
+  "skills/lark-doc/": "ccm",
+  "skills/lark-base/": "base",
+  "skills/lark-mail/": "mail",
+  "skills/lark-calendar/": "calendar",
+  "skills/lark-contact/": "contact",
+};
+
 const SENSITIVE_PATTERN = /(^|\/)(auth|permission|permissions|security)(\/|_|\.|$)/;
 
 const CLASS_STANDARDS = {
@@ -253,11 +277,14 @@ function skillDomainForPath(filePath) {
     : "";
 }
 
-function getImportantArea(filePath) {
+// Get business area label based on CODEOWNERS path mapping
+function getBusinessArea(filePath) {
   const normalized = normalizePath(filePath);
-  if (normalized.startsWith("shortcuts/")) return "shortcuts";
-  if (normalized.startsWith("skills/") || normalized.startsWith("skill-template/")) return "skills";
-  if (normalized.startsWith("cmd/")) return "cmd";
+  for (const [prefix, area] of Object.entries(PATH_TO_AREA_MAP)) {
+    if (normalized.startsWith(prefix)) {
+      return area;
+    }
+  }
   return "";
 }
 
@@ -380,17 +407,17 @@ async function classifyPr(payload, files) {
   const totalChanges = files.reduce((sum, item) => sum + (item.changes || 0), 0);
   
   const domains = new Set();
-  const importantAreas = new Set();
+  const businessAreas = new Set();
 
   for (const name of filenames) {
     const shortcutDomain = shortcutDomainForPath(name);
     if (shortcutDomain) domains.add(shortcutDomain);
-    
+
     const skillDomain = skillDomainForPath(name);
     if (skillDomain) domains.add(skillDomain);
-    
-    const area = getImportantArea(name);
-    if (area) importantAreas.add(area);
+
+    const businessArea = getBusinessArea(name);
+    if (businessArea) businessAreas.add(businessArea);
   }
 
   const coreAreas = collectCoreAreas(filenames);
@@ -420,7 +447,7 @@ async function classifyPr(payload, files) {
     totalChanges,
     effectiveChanges,
     domains: [...domains].sort(),
-    importantAreas: [...importantAreas].sort(),
+    businessAreas: [...businessAreas].sort(),
     coreAreas: [...coreAreas].sort(),
     coreSignals,
     sensitiveKeywords,
@@ -441,7 +468,7 @@ async function writeStepSummary(prNumber, classification) {
 
   const standard = CLASS_STANDARDS[classification.label];
   const domains = classification.domains.join(", ") || "-";
-  const areas = classification.importantAreas.join(", ") || "-";
+  const areas = classification.businessAreas.join(", ") || "-";
   const coreAreas = classification.coreAreas.join(", ") || "-";
   const reasons = classification.reasons.length > 0
     ? classification.reasons
@@ -485,7 +512,7 @@ function formatDryRunResult(repo, prNumber, classification) {
     effectiveChanges: classification.effectiveChanges,
     lowRiskOnly: classification.lowRiskOnly,
     domains: classification.domains,
-    importantAreas: classification.importantAreas,
+    businessAreas: classification.businessAreas,
     coreAreas: classification.coreAreas,
     coreSignals: classification.coreSignals,
     sensitiveKeywords: classification.sensitiveKeywords,
@@ -505,7 +532,7 @@ function printDryRunResult(result, options) {
     ...result.coreSignals.map((signal) => `core:${signal}`),
     ...result.sensitiveKeywords.map((keyword) => `keyword:${keyword}`),
     ...(result.domains.length > 0 ? [`domains:${result.domains.join(",")}`] : []),
-    ...(result.importantAreas.length > 0 ? [`areas:${result.importantAreas.join(",")}`] : []),
+    ...(result.businessAreas.length > 0 ? [`areas:${result.businessAreas.join(",")}`] : []),
   ];
   const reasonParts = result.reasons.length > 0
     ? result.reasons
@@ -645,7 +672,7 @@ async function main() {
   }
 
   const desired = new Set([classification.label]);
-  for (const area of classification.importantAreas) {
+  for (const area of classification.businessAreas) {
     desired.add(`area/${area}`);
   }
 
@@ -654,7 +681,7 @@ async function main() {
   const toAdd = [...desired].filter((label) => !current.has(label)).sort();
   const toRemove = managedCurrent.filter((label) => !desired.has(label)).sort();
 
-  for (const area of classification.importantAreas) {
+  for (const area of classification.businessAreas) {
     const labelName = `area/${area}`;
     if (!LABEL_DEFINITIONS[labelName]) {
       LABEL_DEFINITIONS[labelName] = { color: "1d76db", description: `PR touches the ${area} area` };

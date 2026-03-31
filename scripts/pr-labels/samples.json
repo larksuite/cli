@@ -51,7 +51,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T11:40:18Z",
     "expected_label": "size/M",
-    "expected_areas": ["area/shortcuts"],
+    "expected_areas": ["area/base"],
     "review_note": "Small fix sample. Verify the lower edge of the M bucket within a single domain."
   },
   {
@@ -62,7 +62,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T10:19:11Z",
     "expected_label": "size/M",
-    "expected_areas": ["area/shortcuts", "area/skills"],
+    "expected_areas": ["area/mail"],
     "review_note": "Security-like wording in the title but stays in one business domain (mail)."
   },
   {
@@ -84,7 +84,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T15:00:41Z",
     "expected_label": "size/M",
-    "expected_areas": ["area/shortcuts", "area/skills"],
+    "expected_areas": ["area/im"],
     "review_note": "Single-domain feature with larger diff but effective changes stay in M."
   },
   {
@@ -95,7 +95,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T09:19:24Z",
     "expected_label": "size/L",
-    "expected_areas": ["area/cmd"],
+    "expected_areas": [],
     "review_note": "Touches core area (cmd), bumping the size to L."
   },
   {
@@ -106,7 +106,7 @@
     "status": "merged",
     "merged_at": "2026-03-28T16:00:52Z",
     "expected_label": "size/L",
-    "expected_areas": ["area/shortcuts", "area/skills"],
+    "expected_areas": ["area/base", "area/ccm"],
     "review_note": "Docs change but touches multiple business domains, making it L."
   },
   {
@@ -117,7 +117,7 @@
     "status": "closed",
     "merged_at": null,
     "expected_label": "size/L",
-    "expected_areas": ["area/shortcuts"],
+    "expected_areas": ["area/ccm"],
     "review_note": "Closed PR but useful as an L sample for effective lines exceeding 300."
   },
   {
@@ -128,7 +128,7 @@
     "status": "closed",
     "merged_at": null,
     "expected_label": "size/L",
-    "expected_areas": ["area/cmd", "area/skills"],
+    "expected_areas": [],
     "review_note": "Closed PR touching core area (cmd)."
   }
 ]
