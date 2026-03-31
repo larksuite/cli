@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const path = require('path');
 
 const samplesPath = path.join(__dirname, 'samples.json');
@@ -11,7 +11,11 @@ let failed = 0;
 
 for (const sample of samples) {
   try {
-    const output = execSync(`node ${indexPath} --dry-run --json --pr-url ${sample.pr_url}`, { encoding: 'utf8', env: process.env });
+    const output = execFileSync(
+      process.execPath,
+      [indexPath, '--dry-run', '--json', '--pr-url', sample.pr_url],
+      { encoding: 'utf8', env: process.env }
+    );
     const result = JSON.parse(output);
 
     const matchLabel = result.label === sample.expected_label;
