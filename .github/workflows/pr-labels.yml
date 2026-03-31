@@ -2,8 +2,12 @@ name: PR Labels
 
 on:
   pull_request_target:
+    # NOTE: This event runs with base-branch code and write permissions.
+    # Do NOT add `ref: github.event.pull_request.head.sha` to the checkout step,
+    # as that would execute untrusted PR code with elevated access.
     types:
       - opened
+      - edited
       - reopened
       - synchronize
       - ready_for_review
@@ -11,8 +15,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  # PR labels are managed through the issues API.
-  issues: write
 
 jobs:
   sync-pr-labels:

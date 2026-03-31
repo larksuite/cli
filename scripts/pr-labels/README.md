@@ -17,10 +17,15 @@ The script evaluates the "effective" lines of code changed (ignoring tests, docs
 - **`size/XL`**: Architectural overhauls, extremely large PRs (>1200 lines), or sensitive refactors.
 
 ### Area Tags (`area/*`)
-The script also identifies which high-level architectural modules a PR touches to give reviewers an immediate sense of the impact scope. Currently tracked important areas include:
-- `area/cmd`
-- `area/shortcuts`
-- `area/skills`
+The script also identifies which business areas a PR touches to give reviewers an immediate sense of the impact scope. Currently tracked areas include:
+- `area/im`
+- `area/vc`
+- `area/ccm`
+- `area/base`
+- `area/mail`
+- `area/calendar`
+- `area/task`
+- `area/contact`
 
 Minor modules like docs and tests are omitted to keep PR tags clean and focused on structural changes.
 

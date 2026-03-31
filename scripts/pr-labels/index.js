@@ -253,6 +253,7 @@ function isLowRiskPath(filePath) {
   const normalized = normalizePath(filePath);
   const basename = path.posix.basename(normalized);
 
+  if (normalized.startsWith("skills/lark-")) return false;
   if (DOC_SUFFIXES.some((suffix) => normalized.endsWith(suffix))) return true;
   if (LOW_RISK_FILENAMES.has(basename)) return true;
   if (LOW_RISK_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return true;
@@ -398,6 +399,13 @@ async function classifyPr(payload, files) {
   const title = pr.title || "";
   const prType = parsePrType(title);
   const filenames = files.map((item) => item.filename || "");
+  const impactedPaths = files.flatMap((item) => {
+    const paths = [item.filename || ""];
+    if (item.status === "renamed" && item.previous_filename) {
+      paths.push(item.previous_filename);
+    }
+    return paths.filter(Boolean);
+  });
   
   // Filter out docs, tests, and other low-risk paths so the size label tracks business impact.
   const effectiveChanges = files.reduce(
@@ -409,33 +417,37 @@ async function classifyPr(payload, files) {
   const domains = new Set();
   const businessAreas = new Set();
 
-  for (const name of filenames) {
+  for (const name of impactedPaths) {
+    const businessArea = getBusinessArea(name);
+    if (businessArea) {
+      businessAreas.add(businessArea);
+      domains.add(businessArea);
+      continue;
+    }
+
     const shortcutDomain = shortcutDomainForPath(name);
     if (shortcutDomain) domains.add(shortcutDomain);
 
     const skillDomain = skillDomainForPath(name);
     if (skillDomain) domains.add(skillDomain);
-
-    const businessArea = getBusinessArea(name);
-    if (businessArea) businessAreas.add(businessArea);
   }
 
-  const coreAreas = collectCoreAreas(filenames);
+  const coreAreas = collectCoreAreas(impactedPaths);
   const newShortcutDomain = await detectNewShortcutDomain(files);
   
-  const lowRiskOnly = filenames.length > 0 && filenames.every(isLowRiskPath);
+  const lowRiskOnly = impactedPaths.length > 0 && impactedPaths.every(isLowRiskPath);
   const singleDomain = domains.size <= 1;
   const multiDomain = domains.size >= 2;
   const headDomains = [...domains].filter((domain) => HEAD_BUSINESS_DOMAINS.has(domain));
   const coreSignals = [...coreAreas].sort();
-  const sensitiveKeywords = collectSensitiveKeywords(filenames);
+  const sensitiveKeywords = collectSensitiveKeywords(impactedPaths);
   const sensitive = coreSignals.length > 0 || sensitiveKeywords.length > 0;
 
   const context = {
     prType, effectiveChanges, lowRiskOnly,
     domains, headDomains, coreAreas, coreSignals,
     sensitiveKeywords, sensitive, newShortcutDomain,
-    singleDomain, multiDomain, filenames
+    singleDomain, multiDomain, filenames: impactedPaths
   };
 
   const { label, reasons } = evaluateRules(context);

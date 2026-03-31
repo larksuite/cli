@@ -38,8 +38,9 @@ run_negative_test() {
     
     # Run the script and suppress error output since we expect it to fail
     node "$INDEX_JS" "$DIR/tests/temp_test_dir" > /dev/null 2>&1
+    local exit_code=$?
     
-    if [ $? -eq 1 ]; then
+    if [ $exit_code -ne 0 ]; then
         echo "✅ Passed! (Correctly rejected $test_name)"
         rm -rf "$DIR/tests/temp_test_dir"
         return 0

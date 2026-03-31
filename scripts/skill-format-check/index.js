@@ -37,27 +37,30 @@ function checkSkillFormat() {
 
     const content = fs.readFileSync(skillFile, 'utf-8');
 
-    // 检查 YAML Frontmatter
-    if (!content.startsWith('---\n') && !content.startsWith('---\r\n')) {
+    // Normalize line endings to simplify parsing
+    const normalizedContent = content.replace(/\r\n/g, '\n');
+
+    // Check YAML Frontmatter
+    if (!normalizedContent.startsWith('---\n')) {
        console.error(`❌ [${skill}] SKILL.md must start with YAML frontmatter (---)`);
        hasErrors = true;
     } else {
-        // 兼容不同的换行符
-        let endOfFrontmatter = content.indexOf('\n---', 3);
+        // Handle different newline combinations
+        let endOfFrontmatter = normalizedContent.indexOf('\n---', 4);
         if (endOfFrontmatter === -1) {
              console.error(`❌ [${skill}] SKILL.md has unclosed YAML frontmatter`);
              hasErrors = true;
         } else {
-            const frontmatter = content.substring(3, endOfFrontmatter);
-            if (!frontmatter.includes('name:')) {
+            const frontmatter = normalizedContent.substring(4, endOfFrontmatter);
+            if (!/^name:/m.test(frontmatter)) {
                 console.error(`❌ [${skill}] YAML frontmatter missing 'name'`);
                 hasErrors = true;
             }
-            if (!frontmatter.includes('description:')) {
+            if (!/^description:/m.test(frontmatter)) {
                 console.error(`❌ [${skill}] YAML frontmatter missing 'description'`);
                 hasErrors = true;
             }
-            if (!frontmatter.includes('metadata:')) {
+            if (!/^metadata:/m.test(frontmatter)) {
                 console.warn(`⚠️  [${skill}] YAML frontmatter missing 'metadata' (Warning only)`);
                 // hasErrors = true; // Downgrade to warning to not fail on existing skills
             }
