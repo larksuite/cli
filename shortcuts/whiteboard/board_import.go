@@ -76,7 +76,7 @@ var BoardImport = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "whiteboard-token", Desc: "Whiteboard token (required)", Required: true},
 		{Name: "syntax", Desc: "Diagram syntax: plantuml | mermaid (default: plantuml)", Default: "plantuml", Enum: []string{"plantuml", "mermaid"}},
-		{Name: "diagram-type", Desc: "Diagram type: auto|mindmap|sequence|activity|class|er|flowchart|state|component (default: auto)", Default: "auto"},
+		{Name: "diagram-type", Desc: "Diagram type: auto|mindmap|sequence|activity|class|er|flowchart|state|component (default: auto)", Default: "auto", Enum: []string{"auto", "mindmap", "sequence", "activity", "class", "er", "flowchart", "state", "component"}},
 		{Name: "style", Desc: "Style: board | classic (default: board)", Default: "board", Enum: []string{"board", "classic"}},
 		{Name: "file", Desc: "Path to diagram file (reads from stdin if omitted)"},
 		{Name: "content", Desc: "Inline diagram code (alternative to --file or stdin)"},
@@ -122,6 +122,9 @@ var BoardImport = common.Shortcut{
 		var code string
 		switch {
 		case content != "":
+			if len(content) > maxDiagramSize {
+				return output.Errorf(output.ExitValidation, "content", "inline diagram code exceeds 10 MB limit")
+			}
 			code = content
 		case file != "":
 			// 使用 SafeInputPath 解析安全路径
