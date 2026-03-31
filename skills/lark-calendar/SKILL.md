@@ -1,7 +1,7 @@
 ---
 name: lark-calendar
 version: 1.0.0
-description: "飞书日历（calendar）：提供日历与日程（会议）的全面管理能力。核心场景包括：查看/搜索日程、创建/更新日程、管理参会人、查询忙闲状态及推荐空闲时段。高频操作请优先使用 Shortcuts：+agenda（快速概览今日/近期行程）、+create（创建日程并按需邀请参会人）、+freebusy（查询用户主日历的忙闲信息和rsvp的状态）、+suggestion（针对时间未确定的预约日程需求，提供多个时间推荐方案）。"
+description: "飞书日历（calendar）：提供日历与日程（会议）的全面管理能力。核心场景包括：查看/搜索日程、创建/更新日程、管理参会人、查询忙闲状态及推荐空闲时段。高频操作请优先使用 Shortcuts：+agenda（快速概览今日/近期行程）、+create（创建日程并按需邀请参会人）、+freebusy（查询用户主日历的忙闲信息和rsvp的状态）、+rsvp（回复日程邀请）、+suggestion（针对时间未确定的预约日程需求，提供多个时间推荐方案）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -81,6 +81,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli calendar +<verb> [flags]`
 | [`+agenda`](references/lark-calendar-agenda.md) | 查看日程安排（默认今天） |
 | [`+create`](references/lark-calendar-create.md) | 创建日程并邀请参会人（ISO 8601 时间） |
 | [`+freebusy`](references/lark-calendar-freebusy.md) | 查询用户主日历的忙闲信息和rsvp的状态 |
+| [`+rsvp`](references/lark-calendar-rsvp.md) | 回复日程（接受/拒绝/待定） |
 | [`+suggestion`](references/lark-calendar-suggestion.md) | 针对时间未确定的预约日程需求，提供多个时间推荐方案 |
 
 ## +suggestion 使用
