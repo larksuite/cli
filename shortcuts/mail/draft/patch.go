@@ -988,6 +988,9 @@ func postProcessInlineImages(snapshot *DraftSnapshot) error {
 	}
 
 	origHTML := string(htmlPart.Body)
+	// Note: if resolveLocalImgSrc returns an error after partially attaching
+	// inline parts to the snapshot, those parts are orphaned but will be
+	// cleaned up by removeOrphanedInlineParts on the next successful Apply.
 	html, err := resolveLocalImgSrc(snapshot, origHTML)
 	if err != nil {
 		return err

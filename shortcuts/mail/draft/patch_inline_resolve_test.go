@@ -679,6 +679,21 @@ func TestImgSrcRegexpSkipsDataSrc(t *testing.T) {
 			html: `<img x-src="other.png" src="./real.png" />`,
 			want: "./real.png",
 		},
+		{
+			name: "single-quoted src",
+			html: `<img src='./logo.png' />`,
+			want: "./logo.png",
+		},
+		{
+			name: "multiple spaces before src",
+			html: `<img  src="./logo.png" />`,
+			want: "./logo.png",
+		},
+		{
+			name: "newline before src",
+			html: "<img\nsrc=\"./logo.png\" />",
+			want: "./logo.png",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
