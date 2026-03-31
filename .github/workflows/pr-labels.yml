@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
   # PR labels are managed through the issues API.
   issues: write
 
