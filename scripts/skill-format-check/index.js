@@ -1,9 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 
-// Allow passing a target directory as the first argument, default to '../../skills'
-const targetDirArg = process.argv[2] || '../../skills';
-const SKILLS_DIR = path.resolve(__dirname, targetDirArg);
+// Allow passing a target directory as the first argument.
+// If provided, resolve against process.cwd() so it behaves as the user expects.
+// If not provided, default to '../../skills' relative to this script's directory.
+const targetDirArg = process.argv[2];
+const SKILLS_DIR = targetDirArg
+  ? path.resolve(process.cwd(), targetDirArg)
+  : path.resolve(__dirname, '../../skills');
 
 function checkSkillFormat() {
   console.log(`Checking skill format in ${SKILLS_DIR}...`);
