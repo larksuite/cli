@@ -593,6 +593,48 @@ Just plain text.
 }
 
 // ---------------------------------------------------------------------------
+// regression: HTML body with Content-ID must not be removed by orphan cleanup
+// ---------------------------------------------------------------------------
+
+func TestOrphanCleanupPreservesHTMLBodyWithContentID(t *testing.T) {
+	snapshot := mustParseFixtureDraft(t, `Subject: Test
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="rel"
+
+--rel
+Content-Type: text/html; charset=UTF-8
+Content-ID: <body-part>
+
+<div>hello world</div>
+--rel
+Content-Type: image/png; name=logo.png
+Content-Disposition: inline; filename=logo.png
+Content-ID: <logo>
+Content-Transfer-Encoding: base64
+
+cG5n
+--rel--
+`)
+	// A metadata-only edit should not destroy the HTML body part even though
+	// its Content-ID is not referenced by any <img src="cid:...">.
+	err := Apply(snapshot, Patch{
+		Ops: []PatchOp{{Op: "set_subject", Value: "Updated subject"}},
+	})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	htmlPart := findPrimaryBodyPart(snapshot.Body, "text/html")
+	if htmlPart == nil {
+		t.Fatal("HTML body part was deleted by orphan cleanup")
+	}
+	if !strings.Contains(string(htmlPart.Body), "hello world") {
+		t.Fatalf("HTML body content changed unexpectedly: %s", string(htmlPart.Body))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helper unit tests
 // ---------------------------------------------------------------------------
 

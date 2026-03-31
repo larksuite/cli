@@ -966,7 +966,7 @@ func removeOrphanedInlineParts(root *Part, referencedCIDs map[string]bool) {
 		if child == nil {
 			continue
 		}
-		if isInlinePart(child) && child.ContentID != "" {
+		if strings.EqualFold(child.ContentDisposition, "inline") && child.ContentID != "" {
 			if !referencedCIDs[strings.ToLower(child.ContentID)] {
 				root.Dirty = true
 				continue
