@@ -966,7 +966,7 @@ func removeOrphanedInlineParts(root *Part, referencedCIDs map[string]bool) {
 		if child == nil {
 			continue
 		}
-		if strings.EqualFold(child.ContentDisposition, "inline") && child.ContentID != "" {
+		if isInlinePart(child) && child.ContentID != "" {
 			if !referencedCIDs[strings.ToLower(child.ContentID)] {
 				root.Dirty = true
 				continue
@@ -982,7 +982,7 @@ func removeOrphanedInlineParts(root *Part, referencedCIDs map[string]bool) {
 //  2. Validates all CID references in HTML resolve to MIME parts.
 //  3. Removes orphaned inline MIME parts no longer referenced by HTML.
 func postProcessInlineImages(snapshot *DraftSnapshot) error {
-	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	htmlPart := findPrimaryBodyPart(snapshot.Body, "text/html")
 	if htmlPart == nil {
 		return nil
 	}
