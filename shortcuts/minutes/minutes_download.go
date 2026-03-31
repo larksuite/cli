@@ -14,8 +14,6 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -159,14 +157,14 @@ func executeBatch(ctx context.Context, runtime *common.RuntimeContext) error {
 
 	results := make([]batchResult, len(tokens))
 
-	// Phase 1: 串行获取所有 download URL（RuntimeContext 不是并发安全的）
+	// Phase 1: fetch all download URLs sequentially (RuntimeContext is not concurrency-safe)
 	type downloadTask struct {
 		index       int
 		token       string
 		downloadURL string
 	}
 	var tasks []downloadTask
-	seen := make(map[string]int) // 去重：token → 首次出现的 index
+	seen := make(map[string]int) // dedup: token -> index of first occurrence
 
 	for i, token := range tokens {
 		if err := ctx.Err(); err != nil {
@@ -177,7 +175,7 @@ func executeBatch(ctx context.Context, runtime *common.RuntimeContext) error {
 			continue
 		}
 
-		// 跳过重复 token，指向首次结果
+		// skip duplicate tokens, point to first occurrence
 		if firstIdx, dup := seen[token]; dup {
 			results[i] = batchResult{MinuteToken: token, Error: fmt.Sprintf("duplicate token, same as index %d", firstIdx)}
 			continue
@@ -198,28 +196,32 @@ func executeBatch(ctx context.Context, runtime *common.RuntimeContext) error {
 		tasks = append(tasks, downloadTask{index: i, token: token, downloadURL: downloadURL})
 	}
 
-	// Phase 2: 并发下载文件
+	// Phase 2: download files concurrently (WaitGroup + semaphore)
 	if len(tasks) > 0 {
 		var usedNames sync.Map
 		var logMu sync.Mutex
-
-		g, gctx := errgroup.WithContext(ctx)
-		g.SetLimit(maxConcurrentDownloads)
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, maxConcurrentDownloads)
 
 		for _, task := range tasks {
-			g.Go(func() error {
+			wg.Add(1)
+			go func(task downloadTask) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
 				logMu.Lock()
 				fmt.Fprintf(errOut, "[minutes +download] downloading: %s\n", common.MaskToken(task.token))
 				logMu.Unlock()
 
-				result, dlErr := downloadMediaFile(gctx, runtime, task.downloadURL, task.token, downloadOpts{
+				result, err := downloadMediaFile(ctx, runtime, task.downloadURL, task.token, downloadOpts{
 					outputDir: outputDir,
 					overwrite: overwrite,
 					usedNames: &usedNames,
 				})
-				if dlErr != nil {
-					results[task.index] = batchResult{MinuteToken: task.token, Error: dlErr.Error()}
-					return nil // partial failure: record error, don't abort other downloads
+				if err != nil {
+					results[task.index] = batchResult{MinuteToken: task.token, Error: err.Error()}
+					return
 				}
 
 				results[task.index] = batchResult{
@@ -227,13 +229,12 @@ func executeBatch(ctx context.Context, runtime *common.RuntimeContext) error {
 					SavedPath:   result.savedPath,
 					SizeBytes:   result.sizeBytes,
 				}
-				return nil
-			})
+			}(task)
 		}
-		g.Wait()
+		wg.Wait()
 	}
 
-	// 统计
+	// summary
 	successCount := 0
 	for _, r := range results {
 		if r.Error == "" {
@@ -273,7 +274,7 @@ func deduplicateFilename(name, minuteToken string, usedNames *sync.Map) string {
 		return name
 	}
 
-	// 冲突：在扩展名前插入 _<token前6位>
+	// collision: insert _<token_prefix> before extension
 	ext := filepath.Ext(name)
 	base := strings.TrimSuffix(name, ext)
 	suffix := minuteToken
@@ -292,10 +293,10 @@ type downloadResult struct {
 
 // downloadOpts controls how downloadMediaFile resolves the output path.
 type downloadOpts struct {
-	outputPath string    // 用户指定的输出路径（单个模式），为空则从响应头解析
-	outputDir  string    // 输出目录前缀（批量模式）
-	overwrite  bool      // 是否覆盖已有文件
-	usedNames  *sync.Map // 批量模式下的文件名去重表，单个模式传 nil
+	outputPath string    // explicit output path (single mode); empty = resolve from response headers
+	outputDir  string    // output directory prefix (batch mode)
+	overwrite  bool      // overwrite existing files
+	usedNames  *sync.Map // filename dedup table for batch mode; nil for single mode
 }
 
 // downloadMediaFile streams a media file from a pre-signed URL to disk.
@@ -337,7 +338,7 @@ func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, down
 		return nil, output.ErrNetwork("download failed: HTTP %d", resp.StatusCode)
 	}
 
-	// 解析输出路径
+	// resolve output path
 	outputPath := opts.outputPath
 	if outputPath == "" {
 		filename := resolveOutputFromResponse(resp, minuteToken)
