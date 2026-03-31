@@ -29,4 +29,47 @@ jobs:
         run: ./scripts/build-pkg-pr-new.sh
 
       - name: Publish to pkg.pr.new
-        run: npx pkg-pr-new publish --no-compact ./.pkg-pr-new
+        run: npx pkg-pr-new publish --no-compact --json output.json --comment=off ./.pkg-pr-new
+
+      - name: Comment install command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const output = JSON.parse(fs.readFileSync("output.json", "utf8"));
+            const url = output?.packages?.[0]?.url;
+            if (!url) {
+              throw new Error("No package URL found in output.json");
+            }
+
+            const body = `npm i -g ${url}`;
+            const issueNumber = context.issue.number;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            const existing = comments.data.find((comment) =>
+              comment.user?.login === "github-actions[bot]" &&
+              typeof comment.body === "string" &&
+              comment.body.startsWith("npm i -g https://pkg.pr.new/")
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }
