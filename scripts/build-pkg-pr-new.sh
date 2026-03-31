@@ -29,12 +29,13 @@ build_target() {
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$output" ./main.go
 }
 
-build_target darwin amd64
 build_target darwin arm64
 build_target linux amd64
-build_target linux arm64
+# build_target darwin amd64
+# build_target linux arm64
 build_target windows amd64
-build_target windows arm64
+# build_target windows arm64
+# TODO: Re-enable commented platforms after pr.pkg.new whitelist is approved.
 
 cat > "$OUT_DIR/scripts/run.js" <<'RUNJS'
 #!/usr/bin/env node
