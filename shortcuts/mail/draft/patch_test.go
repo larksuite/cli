@@ -460,7 +460,7 @@ func TestRemoveInlineFailsWhenHTMLStillReferencesCID(t *testing.T) {
 	}
 }
 
-func TestApplySetBodyOrphanedInlineCIDIsRejected(t *testing.T) {
+func TestApplySetBodyOrphanedInlineCIDIsAutoRemoved(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, `Subject: Inline
 From: Alice <alice@example.com>
 To: Bob <bob@example.com>
@@ -480,12 +480,18 @@ Content-Transfer-Encoding: base64
 cG5n
 --rel--
 `)
-	// set_body that drops the existing cid:logo reference → logo becomes orphaned
+	// set_body that drops the existing cid:logo reference → logo is auto-removed
 	err := Apply(snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<div>replaced body without cid reference</div>"}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "orphaned cids") {
-		t.Fatalf("expected orphaned cid error, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	// The orphaned inline part should be removed from the MIME tree.
+	for _, part := range flattenParts(snapshot.Body) {
+		if part != nil && part.ContentID == "logo" {
+			t.Fatal("expected orphaned inline part 'logo' to be removed")
+		}
 	}
 }
 
