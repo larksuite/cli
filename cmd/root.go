@@ -90,6 +90,7 @@ func Execute() int {
 		Long:    rootLong,
 		Version: build.Version,
 	}
+	rootCmd.SetVersionTemplate("lark-cli version {{.Version}}\nBuild date: " + buildDateForVersionOutput() + "\n")
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
@@ -280,6 +281,13 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 		}
 		exitErr.Detail.ConsoleURL = consoleURL
 	}
+}
+
+func buildDateForVersionOutput() string {
+	if build.Date == "" {
+		return "unknown"
+	}
+	return build.Date
 }
 
 // extractRequiredScopes extracts scope names from the API error's permission_violations field.
