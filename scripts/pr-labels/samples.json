@@ -130,5 +130,38 @@
     "expected_label": "size/L",
     "expected_areas": [],
     "review_note": "Closed PR touching core area (cmd)."
+  },
+  {
+    "name": "size-s-skill-docs-only",
+    "number": 140,
+    "title": "docs(skills): update lark-im skill frontmatter",
+    "pr_url": "https://github.com/larksuite/cli/pull/140",
+    "status": "merged",
+    "merged_at": "2026-03-31T09:00:00Z",
+    "expected_label": "size/S",
+    "expected_areas": ["area/im"],
+    "review_note": "A change purely to a SKILL.md file inside skills/**. This should be size/S because skill markdown files are documentation."
+  },
+  {
+    "name": "size-m-ccm-multi-path",
+    "number": 141,
+    "title": "feat(ccm): update drive and docs handlers",
+    "pr_url": "https://github.com/larksuite/cli/pull/141",
+    "status": "merged",
+    "merged_at": "2026-03-31T09:30:00Z",
+    "expected_label": "size/M",
+    "expected_areas": ["area/ccm"],
+    "review_note": "A change touching multiple CCM sub-paths (doc, drive). Should stay M as it represents a single domain (CCM), not bumping to L as multiDomain."
+  },
+  {
+    "name": "size-m-domain-rename",
+    "number": 142,
+    "title": "refactor: rename base shortcuts to bitable",
+    "pr_url": "https://github.com/larksuite/cli/pull/142",
+    "status": "merged",
+    "merged_at": "2026-03-31T10:00:00Z",
+    "expected_label": "size/M",
+    "expected_areas": ["area/base"],
+    "review_note": "A rename across paths. Since we track previous_filename to evaluate domains, this should properly capture the base domain."
   }
 ]

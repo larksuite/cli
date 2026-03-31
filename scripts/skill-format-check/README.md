@@ -4,9 +4,9 @@ This directory contains a script to validate the format of `SKILL.md` files loca
 
 ## Purpose
 
-The `index.js` script ensures that all `SKILL.md` files conform to the standard template defined in `skill-template/skill-template.md`. Specifically, it checks that the YAML frontmatter includes the following required fields:
-- `name`
-- `description`
+The `index.js` script ensures that all `SKILL.md` files conform to the standard template defined in `skill-template/skill-template.md`. Specifically, it checks that the YAML frontmatter includes the following fields:
+- `name` (required)
+- `description` (required)
 - `metadata` (outputs a warning if missing, does not fail the build)
 
 > **Note:** The `lark-shared` skill is explicitly excluded from these format checks.
