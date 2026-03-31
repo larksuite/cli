@@ -7,7 +7,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T12:15:45Z",
     "expected_label": "size/S",
-    "expected_areas": [],
+    "expected_domains": [],
     "review_note": "Pure docs sample. Useful to confirm low-risk paths stay in S even when total changed lines are not tiny."
   },
   {
@@ -18,7 +18,7 @@
     "status": "merged",
     "merged_at": "2026-03-28T09:33:24Z",
     "expected_label": "size/S",
-    "expected_areas": [],
+    "expected_domains": [],
     "review_note": "Docs sample, verifying docs changes remain in S."
   },
   {
@@ -29,7 +29,7 @@
     "status": "merged",
     "merged_at": "2026-03-28T16:00:15Z",
     "expected_label": "size/S",
-    "expected_areas": [],
+    "expected_domains": [],
     "review_note": "Docs sample, no effective business code changes."
   },
   {
@@ -40,7 +40,7 @@
     "status": "merged",
     "merged_at": "2026-03-28T03:43:44Z",
     "expected_label": "size/S",
-    "expected_areas": [],
+    "expected_domains": [],
     "review_note": "Docs sample, pure documentation clarification."
   },
   {
@@ -51,7 +51,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T11:40:18Z",
     "expected_label": "size/M",
-    "expected_areas": ["area/base"],
+    "expected_domains": ["domain/base"],
     "review_note": "Small fix sample. Verify the lower edge of the M bucket within a single domain."
   },
   {
@@ -62,7 +62,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T10:19:11Z",
     "expected_label": "size/M",
-    "expected_areas": ["area/mail"],
+    "expected_domains": ["domain/mail"],
     "review_note": "Security-like wording in the title but stays in one business domain (mail)."
   },
   {
@@ -73,7 +73,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T03:09:31Z",
     "expected_label": "size/M",
-    "expected_areas": [],
+    "expected_domains": [],
     "review_note": "CI workflow change that goes beyond S threshold."
   },
   {
@@ -84,7 +84,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T15:00:41Z",
     "expected_label": "size/M",
-    "expected_areas": ["area/im"],
+    "expected_domains": ["domain/im"],
     "review_note": "Single-domain feature with larger diff but effective changes stay in M."
   },
   {
@@ -95,7 +95,7 @@
     "status": "merged",
     "merged_at": "2026-03-30T09:19:24Z",
     "expected_label": "size/L",
-    "expected_areas": [],
+    "expected_domains": [],
     "review_note": "Touches core area (cmd), bumping the size to L."
   },
   {
@@ -106,7 +106,7 @@
     "status": "merged",
     "merged_at": "2026-03-28T16:00:52Z",
     "expected_label": "size/L",
-    "expected_areas": ["area/base", "area/ccm"],
+    "expected_domains": ["domain/base", "domain/ccm"],
     "review_note": "Docs change but touches multiple business domains, making it L."
   },
   {
@@ -117,7 +117,7 @@
     "status": "closed",
     "merged_at": null,
     "expected_label": "size/L",
-    "expected_areas": ["area/ccm"],
+    "expected_domains": ["domain/ccm"],
     "review_note": "Closed PR but useful as an L sample for effective lines exceeding 300."
   },
   {
@@ -128,7 +128,7 @@
     "status": "closed",
     "merged_at": null,
     "expected_label": "size/L",
-    "expected_areas": [],
+    "expected_domains": [],
     "review_note": "Closed PR touching core area (cmd)."
   },
   {
@@ -138,8 +138,8 @@
     "pr_url": "https://github.com/larksuite/cli/pull/134",
     "status": "closed",
     "merged_at": null,
-    "expected_label": "size/L",
-    "expected_areas": [],
+    "expected_label": "size/M",
+    "expected_domains": [],
     "review_note": "Includes updates to tests/bad-skill/SKILL.md inside skills-like paths, testing how skill mock files and test scripts are handled."
   },
   {
@@ -150,7 +150,7 @@
     "status": "closed",
     "merged_at": null,
     "expected_label": "size/L",
-    "expected_areas": ["area/ccm"],
+    "expected_domains": ["domain/ccm"],
     "review_note": "Touches docs_create_images.go and table_auto_width.go, representing multiple CCM sub-paths but resolving to a single ccm domain."
   },
   {
@@ -161,7 +161,7 @@
     "status": "merged",
     "merged_at": "2026-03-28T16:00:52Z",
     "expected_label": "size/L",
-    "expected_areas": ["area/base", "area/ccm"],
+    "expected_domains": ["domain/base", "domain/ccm"],
     "review_note": "A rename across paths. Since we track previous_filename to evaluate domains, this should properly capture the base domain."
   }
 ]
