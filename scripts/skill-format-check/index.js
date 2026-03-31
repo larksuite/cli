@@ -45,13 +45,12 @@ function checkSkillFormat() {
        console.error(`❌ [${skill}] SKILL.md must start with YAML frontmatter (---)`);
        hasErrors = true;
     } else {
-        // Handle different newline combinations
-        let endOfFrontmatter = normalizedContent.indexOf('\n---', 4);
-        if (endOfFrontmatter === -1) {
-             console.error(`❌ [${skill}] SKILL.md has unclosed YAML frontmatter`);
+        const frontmatterMatch = normalizedContent.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+        if (!frontmatterMatch) {
+             console.error(`❌ [${skill}] SKILL.md has unclosed or invalid YAML frontmatter`);
              hasErrors = true;
         } else {
-            const frontmatter = normalizedContent.substring(4, endOfFrontmatter);
+            const frontmatter = frontmatterMatch[1];
             if (!/^name:/m.test(frontmatter)) {
                 console.error(`❌ [${skill}] YAML frontmatter missing 'name'`);
                 hasErrors = true;
