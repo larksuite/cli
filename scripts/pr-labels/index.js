@@ -703,15 +703,27 @@ async function main() {
     }
   }
 
+  // Ensure labels to be added actually exist in the repository first
+  // If the label doesn't exist, GitHub API will return 422 Unprocessable Entity when trying to add it to a PR.
+  for (const label of toAdd) {
+    if (LABEL_DEFINITIONS[label]) {
+      try {
+        await client.syncLabelDefinition(label);
+      } catch (e) {
+        log(`Warning: Failed to bootstrap new label ${label}: ${e.message}`);
+      }
+    }
+  }
+
   await client.addLabels(toAdd);
 
   for (const label of toRemove) {
     await client.removeLabel(label);
   }
 
-  // Keep label metadata consistent even when labels already exist in the repository.
-  // This is best-effort trailing work done after the critical path of applying the labels.
+  // Keep other label metadata consistent. This is best-effort trailing work.
   for (const label of Object.keys(LABEL_DEFINITIONS)) {
+    if (toAdd.includes(label)) continue; // Already synced above
     try {
       await client.syncLabelDefinition(label);
     } catch (e) {
