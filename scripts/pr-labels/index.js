@@ -699,15 +699,20 @@ async function main() {
     }
   }
 
-  // Keep label metadata consistent even when labels already exist in the repository.
-  for (const label of Object.keys(LABEL_DEFINITIONS)) {
-    await client.syncLabelDefinition(label);
-  }
-
   await client.addLabels(toAdd);
 
   for (const label of toRemove) {
     await client.removeLabel(label);
+  }
+
+  // Keep label metadata consistent even when labels already exist in the repository.
+  // This is best-effort trailing work done after the critical path of applying the labels.
+  for (const label of Object.keys(LABEL_DEFINITIONS)) {
+    try {
+      await client.syncLabelDefinition(label);
+    } catch (e) {
+      log(`Warning: Failed to sync label definition for ${label}: ${e.message}`);
+    }
   }
 
   await writeStepSummary(prNumber, classification);
