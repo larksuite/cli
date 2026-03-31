@@ -17,7 +17,7 @@ import (
 
 // imgSrcRegexp matches <img ... src="value" ...> and captures the src value.
 // It handles both single and double quotes.
-var imgSrcRegexp = regexp.MustCompile(`(?i)<img\s[^>]*?src\s*=\s*["']([^"']+)["']`)
+var imgSrcRegexp = regexp.MustCompile(`(?i)<img\s(?:[^>]*?\s)?src\s*=\s*["']([^"']+)["']`)
 
 var protectedHeaders = map[string]bool{
 	"message-id":                true,
@@ -775,6 +775,9 @@ func newInlinePart(path string, content []byte, cid, fileName, contentType strin
 	if err := validate.RejectCRLF(cid, "inline cid"); err != nil {
 		return nil, err
 	}
+	if strings.ContainsAny(cid, " \t<>()") {
+		return nil, fmt.Errorf("inline cid %q contains invalid characters (spaces, tabs, angle brackets, or parentheses are not allowed)", cid)
+	}
 	if err := validate.RejectCRLF(fileName, "inline filename"); err != nil {
 		return nil, err
 	}
@@ -887,8 +890,10 @@ func isLocalFileSrc(src string) bool {
 	return !uriSchemeRegexp.MatchString(trimmed)
 }
 
-// cidFromFileName derives a CID from a file name by stripping the extension.
-// For example, "logo.png" → "logo". If the result is empty, the original name is used.
+// cidFromFileName derives a CID from a file name by stripping the extension
+// and replacing whitespace with hyphens to produce an RFC-safe token.
+// For example, "logo.png" → "logo", "my logo.png" → "my-logo".
+// If the result is empty, the original name is used.
 func cidFromFileName(name string) string {
 	ext := filepath.Ext(name)
 	base := strings.TrimSuffix(name, ext)
@@ -896,6 +901,12 @@ func cidFromFileName(name string) string {
 	if base == "" {
 		return name
 	}
+	base = strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			return '-'
+		}
+		return r
+	}, base)
 	return base
 }
 

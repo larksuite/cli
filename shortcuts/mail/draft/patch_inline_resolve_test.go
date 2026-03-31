@@ -608,6 +608,9 @@ func TestCidFromFileName(t *testing.T) {
 		{"image.name.gif", "image.name"},
 		{".hidden", ".hidden"},
 		{"noext", "noext"},
+		{"my logo.png", "my-logo"},
+		{"a\tb.png", "a-b"},
+		{"  spaced  .png", "spaced"},
 	}
 	for _, tt := range tests {
 		if got := cidFromFileName(tt.name); got != tt.want {
@@ -626,5 +629,76 @@ func TestUniqueCID(t *testing.T) {
 	got2 := uniqueCID("photo", used)
 	if got2 != "photo" {
 		t.Fatalf("uniqueCID = %q, want %q", got2, "photo")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// imgSrcRegexp — must not match data-src or similar attribute names
+// ---------------------------------------------------------------------------
+
+func TestImgSrcRegexpSkipsDataSrc(t *testing.T) {
+	tests := []struct {
+		name string
+		html string
+		want string // expected captured src value, empty if no match
+	}{
+		{
+			name: "plain src",
+			html: `<img src="./logo.png" />`,
+			want: "./logo.png",
+		},
+		{
+			name: "src with alt before",
+			html: `<img alt="pic" src="./logo.png" />`,
+			want: "./logo.png",
+		},
+		{
+			name: "data-src before real src",
+			html: `<img data-src="lazy.png" src="./logo.png" />`,
+			want: "./logo.png",
+		},
+		{
+			name: "only data-src, no src",
+			html: `<img data-src="lazy.png" />`,
+			want: "",
+		},
+		{
+			name: "x-src before real src",
+			html: `<img x-src="other.png" src="./real.png" />`,
+			want: "./real.png",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches := imgSrcRegexp.FindStringSubmatch(tt.html)
+			got := ""
+			if len(matches) > 1 {
+				got = matches[1]
+			}
+			if got != tt.want {
+				t.Errorf("imgSrcRegexp on %q: got %q, want %q", tt.html, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// newInlinePart — rejects CIDs with spaces or other invalid characters
+// ---------------------------------------------------------------------------
+
+func TestNewInlinePartRejectsInvalidCIDChars(t *testing.T) {
+	content := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+	for _, bad := range []string{"my logo", "a\tb", "cid<x>", "cid(x)"} {
+		_, err := newInlinePart("test.png", content, bad, "test.png", "image/png")
+		if err == nil {
+			t.Errorf("expected error for CID %q, got nil", bad)
+		}
+	}
+	// Valid CIDs should pass.
+	for _, good := range []string{"logo", "my-logo", "img_01", "photo.2"} {
+		_, err := newInlinePart("test.png", content, good, "test.png", "image/png")
+		if err != nil {
+			t.Errorf("unexpected error for CID %q: %v", good, err)
+		}
 	}
 }
