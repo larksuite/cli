@@ -11,6 +11,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -40,7 +41,7 @@ func safeFileName(account string) string {
 	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
 }
 
-func getMasterKey(service string) ([]byte, error) {
+func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout)
 	defer cancel()
 
@@ -59,25 +60,44 @@ func getMasterKey(service string) ([]byte, error) {
 				resCh <- result{key: key, err: nil}
 				return
 			}
+			// Key is found but invalid or corrupted
+			resCh <- result{key: nil, err: errors.New("keychain is corrupted")}
+			return
+		} else if !errors.Is(err, keyring.ErrNotFound) {
+			// Not ErrNotFound, which means access was denied or blocked by the system
+			resCh <- result{key: nil, err: errors.New("keychain access blocked")}
+			return
 		}
 
-		// Generate new master key if not found or invalid
+		// If ErrNotFound, check if we are allowed to create a new key
+		if !allowCreate {
+			// Creation not allowed (e.g., during Get operation), return error
+			resCh <- result{key: nil, err: errors.New("keychain is corrupted")}
+			return
+		}
+
+		// It's the first time and creation is allowed (Set operation), generate a new key
 		key := make([]byte, masterKeyBytes)
 		if _, randErr := rand.Read(key); randErr != nil {
 			resCh <- result{key: nil, err: randErr}
 			return
 		}
 
-		encodedKey = base64.StdEncoding.EncodeToString(key)
-		setErr := keyring.Set(service, "master.key", encodedKey)
-		resCh <- result{key: key, err: setErr}
+		encodedKeyStr := base64.StdEncoding.EncodeToString(key)
+		setErr := keyring.Set(service, "master.key", encodedKeyStr)
+		if setErr != nil {
+			resCh <- result{key: nil, err: setErr}
+			return
+		}
+		resCh <- result{key: key, err: nil}
 	}()
 
 	select {
 	case res := <-resCh:
 		return res.key, res.err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		// Timeout is usually caused by ignored/blocked permission prompts
+		return nil, errors.New("keychain access blocked")
 	}
 }
 
@@ -125,24 +145,24 @@ func decryptData(data []byte, key []byte) (string, error) {
 	return string(plaintext), nil
 }
 
-func platformGet(service, account string) string {
-	key, err := getMasterKey(service)
+func platformGet(service, account string) (string, error) {
+	key, err := getMasterKey(service, false)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	data, err := os.ReadFile(filepath.Join(StorageDir(service), safeFileName(account)))
 	if err != nil {
-		return ""
+		return "", err
 	}
 	plaintext, err := decryptData(data, key)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return plaintext
+	return plaintext, nil
 }
 
 func platformSet(service, account, data string) error {
-	key, err := getMasterKey(service)
+	key, err := getMasterKey(service, true)
 	if err != nil {
 		return err
 	}

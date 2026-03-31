@@ -9,6 +9,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,13 +41,17 @@ func safeFileName(account string) string {
 	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
 }
 
-func getMasterKey(service string) ([]byte, error) {
+func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	dir := StorageDir(service)
 	keyPath := filepath.Join(dir, "master.key")
 
 	key, err := os.ReadFile(keyPath)
 	if err == nil && len(key) == masterKeyBytes {
 		return key, nil
+	}
+
+	if !allowCreate {
+		return nil, errors.New("keychain is corrupted")
 	}
 
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -122,24 +127,24 @@ func decryptData(data []byte, key []byte) (string, error) {
 	return string(plaintext), nil
 }
 
-func platformGet(service, account string) string {
-	key, err := getMasterKey(service)
+func platformGet(service, account string) (string, error) {
+	key, err := getMasterKey(service, false)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	data, err := os.ReadFile(filepath.Join(StorageDir(service), safeFileName(account)))
 	if err != nil {
-		return ""
+		return "", err
 	}
 	plaintext, err := decryptData(data, key)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return plaintext
+	return plaintext, nil
 }
 
 func platformSet(service, account, data string) error {
-	key, err := getMasterKey(service)
+	key, err := getMasterKey(service, true)
 	if err != nil {
 		return err
 	}

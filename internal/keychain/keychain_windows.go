@@ -101,9 +101,12 @@ func freeDataBlob(b *windows.DataBlob) {
 	b.Size = 0
 }
 
-func platformGet(service, account string) string {
-	v, _ := registryGet(service, account)
-	return v
+func platformGet(service, account string) (string, error) {
+	v, ok := registryGet(service, account)
+	if !ok {
+		return "", fmt.Errorf("not found")
+	}
+	return v, nil
 }
 
 func platformSet(service, account, data string) error {
