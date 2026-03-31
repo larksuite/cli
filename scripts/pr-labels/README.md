@@ -4,7 +4,7 @@ This directory contains scripts and sample data for automatically classifying an
 
 ## Files
 
-- `index.js`: The main Node.js script. It fetches PR files, evaluates their risk level, calculates business impact, and uses GitHub APIs to add appropriate `size/*` and `area/*` labels.
+- `index.js`: The main Node.js script. It fetches PR files, evaluates their risk level, calculates business impact, and uses GitHub APIs to add appropriate `size/*` and `domain/*` labels.
 - `samples.json`: A collection of historical PRs used as test cases to verify the labeling logic (especially for regression testing the S/M/L thresholds).
 
 ## Features
@@ -16,16 +16,16 @@ The script evaluates the "effective" lines of code changed (ignoring tests, docs
 - **`size/L`**: Large features (>= 300 lines), cross-domain changes, or any changes touching core architecture paths (like `cmd/`).
 - **`size/XL`**: Architectural overhauls, extremely large PRs (>1200 lines), or sensitive refactors.
 
-### Area Tags (`area/*`)
-The script also identifies which business areas a PR touches to give reviewers an immediate sense of the impact scope. Currently tracked areas include:
-- `area/im`
-- `area/vc`
-- `area/ccm`
-- `area/base`
-- `area/mail`
-- `area/calendar`
-- `area/task`
-- `area/contact`
+### Domain Tags (`domain/*`)
+The script also identifies which business domains a PR touches to give reviewers an immediate sense of the impact scope. Currently tracked domains include:
+- `domain/im`
+- `domain/vc`
+- `domain/ccm`
+- `domain/base`
+- `domain/mail`
+- `domain/calendar`
+- `domain/task`
+- `domain/contact`
 
 Minor modules like docs and tests are omitted to keep PR tags clean and focused on structural changes.
 
