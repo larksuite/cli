@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/larksuite/cli/cmd/api"
@@ -24,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
@@ -65,7 +67,7 @@ AI AGENT SKILLS:
     teach the agent Lark API patterns, best practices, and workflows.
 
     Install all skills:
-        npx skills add larksuite/cli --all -y
+        npx skills add larksuite/cli -g -y
 
     Or pick specific domains:
         npx skills add larksuite/cli -s lark-calendar -y
@@ -105,10 +107,66 @@ func Execute() int {
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
 
+	// --- Update check (non-blocking) ---
+	if !isCompletionCommand(os.Args) {
+		setupUpdateNotice()
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		return handleRootError(f, err)
 	}
 	return 0
+}
+
+// setupUpdateNotice starts an async update check and wires the output decorator.
+func setupUpdateNotice() {
+	// Sync: check cache immediately (no network, fast).
+	if info := update.CheckCached(build.Version); info != nil {
+		update.SetPending(info)
+	}
+
+	// Async: refresh cache for this run (and future runs).
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "update check panic: %v\n", r)
+			}
+		}()
+		update.RefreshCache(build.Version)
+		// If cache was just populated for the first time, set pending now.
+		if update.GetPending() == nil {
+			if info := update.CheckCached(build.Version); info != nil {
+				update.SetPending(info)
+			}
+		}
+	}()
+
+	// Wire the output decorator so JSON envelopes include "_notice".
+	output.PendingNotice = func() map[string]interface{} {
+		info := update.GetPending()
+		if info == nil {
+			return nil
+		}
+		return map[string]interface{}{
+			"update": map[string]interface{}{
+				"current": info.Current,
+				"latest":  info.Latest,
+				"message": info.Message(),
+			},
+		}
+	}
+}
+
+// isCompletionCommand returns true if args indicate a shell completion request.
+// Update notifications must be suppressed for these to avoid corrupting
+// machine-parseable completion output.
+func isCompletionCommand(args []string) bool {
+	for _, arg := range args {
+		if arg == "completion" || arg == "__complete" {
+			return true
+		}
+	}
+	return false
 }
 
 // handleRootError dispatches a command error to the appropriate handler

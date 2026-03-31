@@ -5,18 +5,20 @@ package output
 
 // Envelope is the standard success response wrapper.
 type Envelope struct {
-	OK       bool        `json:"ok"`
-	Identity string      `json:"identity,omitempty"`
-	Data     interface{} `json:"data,omitempty"`
-	Meta     *Meta       `json:"meta,omitempty"`
+	OK       bool                   `json:"ok"`
+	Identity string                 `json:"identity,omitempty"`
+	Data     interface{}            `json:"data,omitempty"`
+	Meta     *Meta                  `json:"meta,omitempty"`
+	Notice   map[string]interface{} `json:"_notice,omitempty"`
 }
 
 // ErrorEnvelope is the standard error response wrapper.
 type ErrorEnvelope struct {
-	OK       bool       `json:"ok"`
-	Identity string     `json:"identity,omitempty"`
-	Error    *ErrDetail `json:"error"`
-	Meta     *Meta      `json:"meta,omitempty"`
+	OK       bool                   `json:"ok"`
+	Identity string                 `json:"identity,omitempty"`
+	Error    *ErrDetail             `json:"error"`
+	Meta     *Meta                  `json:"meta,omitempty"`
+	Notice   map[string]interface{} `json:"_notice,omitempty"`
 }
 
 // ErrDetail describes a structured error.
@@ -33,4 +35,18 @@ type ErrDetail struct {
 type Meta struct {
 	Count    int    `json:"count,omitempty"`
 	Rollback string `json:"rollback,omitempty"`
+}
+
+// PendingNotice, if set, returns system-level notices to inject as the
+// "_notice" field in JSON output envelopes. Set by cmd/root.go.
+// Returns nil when there is nothing to report.
+var PendingNotice func() map[string]interface{}
+
+// GetNotice returns the current pending notice for struct-based callers.
+// Returns nil when there is nothing to report.
+func GetNotice() map[string]interface{} {
+	if PendingNotice == nil {
+		return nil
+	}
+	return PendingNotice()
 }

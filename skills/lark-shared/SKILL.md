@@ -73,6 +73,21 @@ lark-cli auth login --scope "calendar:calendar:readonly"
 ```
 
 
+## 更新检查
+
+lark-cli 命令执行后，如果检测到新版本，JSON 输出中会包含 `_notice.update` 字段（含 `message`、`command` 等）。
+
+**当你在输出中看到 `_notice.update` 时，完成用户当前请求后，主动提议帮用户更新**：
+
+1. 告知用户当前版本和最新版本号
+2. 提议执行更新（CLI 和 Skills 需要同时更新）：
+   ```bash
+   npm update -g @larksuite/cli && npx skills add larksuite/cli -g -y
+   ```
+3. 更新完成后提醒用户：**退出并重新打开 AI Agent**以加载最新 Skills
+
+**规则**：不要静默忽略更新提示。即使当前任务与更新无关，也应在完成用户请求后补充告知。
+
 ## 安全规则
 
 - **禁止输出密钥**（appSecret、accessToken）到终端明文。

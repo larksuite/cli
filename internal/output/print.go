@@ -14,12 +14,38 @@ import (
 
 // PrintJson prints data as formatted JSON to w.
 func PrintJson(w io.Writer, data interface{}) {
+	injectNotice(data)
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
 		return
 	}
 	fmt.Fprintln(w, string(b))
+}
+
+// injectNotice adds a "_notice" field into CLI envelope maps.
+// Only modifies map[string]interface{} values that have an "ok" key
+// (e.g. doctor, auth, config commands that build map envelopes directly).
+//
+// Struct-based envelopes (Envelope, ErrorEnvelope) are NOT handled here —
+// callers must set the Notice field explicitly via GetNotice().
+// See: shortcuts/common/runner.go Out(), output/errors.go WriteErrorEnvelope().
+func injectNotice(data interface{}) {
+	if PendingNotice == nil {
+		return
+	}
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return
+	}
+	if _, isEnvelope := m["ok"]; !isEnvelope {
+		return
+	}
+	notice := PendingNotice()
+	if notice == nil {
+		return
+	}
+	m["_notice"] = notice
 }
 
 // PrintNdjson prints data as NDJSON (Newline Delimited JSON) to w.

@@ -14,9 +14,11 @@ import (
 	"github.com/spf13/cobra"
 
 	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/update"
 )
 
 // DoctorOptions holds inputs for the doctor command.
@@ -60,6 +62,10 @@ func fail(name, msg, hint string) checkResult {
 	return checkResult{Name: name, Status: "fail", Message: msg, Hint: hint}
 }
 
+func warn(name, msg, hint string) checkResult {
+	return checkResult{Name: name, Status: "warn", Message: msg, Hint: hint}
+}
+
 func skip(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "skip", Message: msg}
 }
@@ -67,6 +73,12 @@ func skip(name, msg string) checkResult {
 func doctorRun(opts *DoctorOptions) error {
 	f := opts.Factory
 	var checks []checkResult
+
+	// ── 0. CLI version & update check ──
+	checks = append(checks, pass("cli_version", build.Version))
+	if !opts.Offline {
+		checks = append(checks, checkCLIUpdate()...)
+	}
 
 	// ── 1. Config file ──
 	_, err := core.LoadMultiAppConfig()
@@ -212,6 +224,23 @@ func mustHTTPClient(f *cmdutil.Factory) *http.Client {
 		return &http.Client{Timeout: 30 * time.Second}
 	}
 	return c
+}
+
+// checkCLIUpdate actively queries the npm registry for the latest version.
+// Unlike the root-level async check, this does a synchronous fetch with timeout
+// and works regardless of build version (dev builds included).
+func checkCLIUpdate() []checkResult {
+	latest, err := update.FetchLatest()
+	if err != nil {
+		return []checkResult{warn("cli_update", "check failed: "+err.Error(), "")}
+	}
+	current := build.Version
+	if update.IsNewer(latest, current) {
+		return []checkResult{warn("cli_update",
+			fmt.Sprintf("%s → %s available", current, latest),
+			"run: npm update -g @larksuite/cli")}
+	}
+	return []checkResult{pass("cli_update", latest+" (up to date)")}
 }
 
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
