@@ -11,6 +11,16 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+func buildCreateFolderBody(runtime *common.RuntimeContext) (string, string, map[string]interface{}) {
+	name := strings.TrimSpace(runtime.Str("name"))
+	folderToken := strings.TrimSpace(runtime.Str("folder-token"))
+	body := map[string]interface{}{"name": name}
+	if folderToken != "" {
+		body["folder_token"] = folderToken
+	}
+	return name, folderToken, body
+}
+
 // DriveCreateFolder creates a folder in Drive.
 var DriveCreateFolder = common.Shortcut{
 	Service:     "drive",
@@ -30,27 +40,13 @@ var DriveCreateFolder = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		name := strings.TrimSpace(runtime.Str("name"))
-		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
-		body := map[string]interface{}{
-			"name": name,
-		}
-		if folderToken != "" {
-			body["folder_token"] = folderToken
-		}
+		_, _, body := buildCreateFolderBody(runtime)
 		return common.NewDryRunAPI().
 			POST("/open-apis/drive/v1/files/create_folder").
 			Body(body)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		name := strings.TrimSpace(runtime.Str("name"))
-		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
-		body := map[string]interface{}{
-			"name": name,
-		}
-		if folderToken != "" {
-			body["folder_token"] = folderToken
-		}
+		name, folderToken, body := buildCreateFolderBody(runtime)
 		data, err := runtime.DoAPIJSON(
 			"POST",
 			"/open-apis/drive/v1/files/create_folder",
@@ -62,12 +58,15 @@ var DriveCreateFolder = common.Shortcut{
 		}
 		token := common.GetString(data, "token")
 		url := common.GetString(data, "url")
-		runtime.Out(map[string]interface{}{
-			"token":        token,
-			"url":          url,
-			"name":         name,
-			"folder_token": folderToken,
-		}, nil)
+		out := map[string]interface{}{
+			"token": token,
+			"url":   url,
+			"name":  name,
+		}
+		if folderToken != "" {
+			out["folder_token"] = folderToken
+		}
+		runtime.Out(out, nil)
 		return nil
 	},
 }

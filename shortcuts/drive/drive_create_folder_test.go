@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -57,5 +58,30 @@ func TestDriveCreateFolder_DryRun(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "周报") {
 		t.Errorf("dry-run should show folder name, got: %s", stdout.String())
+	}
+}
+
+func TestDriveCreateFolder_Execute(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveBotTokenStub(reg)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"token": "fldNewToken",
+				"url":   "https://example.feishu.cn/drive/folder/fldNewToken",
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveCreateFolder,
+		[]string{"+create-folder", "--name", "测试目录", "--as", "bot"},
+		f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "fldNewToken") {
+		t.Errorf("expected token in output, got: %s", stdout.String())
 	}
 }
