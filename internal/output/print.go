@@ -12,11 +12,30 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 )
 
+var errorWriter io.Writer = os.Stderr
+
+// SetErrorWriter overrides the package-level error sink used by output helpers.
+// It returns a restore function for callers that need temporary redirection.
+func SetErrorWriter(w io.Writer) func() {
+	prev := errorWriter
+	errorWriter = w
+	return func() {
+		errorWriter = prev
+	}
+}
+
+func writeErrorf(format string, args ...interface{}) {
+	if errorWriter == nil {
+		return
+	}
+	fmt.Fprintf(errorWriter, format, args...)
+}
+
 // PrintJson prints data as formatted JSON to w.
 func PrintJson(w io.Writer, data interface{}) {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		writeErrorf("json marshal error: %v\n", err)
 		return
 	}
 	fmt.Fprintln(w, string(b))
@@ -27,7 +46,7 @@ func PrintNdjson(w io.Writer, data interface{}) {
 	emit := func(item interface{}) {
 		b, err := json.Marshal(item)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
+			writeErrorf("ndjson marshal error: %v\n", err)
 			return
 		}
 		fmt.Fprintln(w, string(b))
