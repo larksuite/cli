@@ -50,6 +50,9 @@ const platformMap = {
   win32: "windows",
 };
 
+// TODO: Keep broad platform mapping for now; with pkg.pr.new 20MB limit we only ship a subset of binaries.
+// Track upstream progress before tightening runtime handling: https://github.com/stackblitz-labs/pkg.pr.new/pull/484
+
 const archMap = {
   x64: "amd64",
   arm64: "arm64",
