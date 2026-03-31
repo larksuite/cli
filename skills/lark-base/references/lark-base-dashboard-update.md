@@ -1,6 +1,6 @@
 # base +dashboard-update
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [lark-base-dashboard.md](lark-base-dashboard.md) 了解整体工作流。
 
 更新仪表盘名称或主题。
 
@@ -9,7 +9,7 @@
 ```bash
 lark-cli base +dashboard-update \
   --base-token VwGhb**************fMnod \
-  --dashboard-id dshxxxxxxx \
+  --dashboard-id blkxxxxxxx \
   --name "新名称" \
   --theme-style default
 ```
@@ -37,31 +37,33 @@ lark-cli base +dashboard-update \
 | `deepDark` | 深色 |
 | `futuristic` | 未来感 |
 
-## API 入参详情
+## 返回示例
 
-**HTTP 方法和路径：**
-
+```json
+{
+  "dashboard": {
+    "dashboard_id": "blkxxxxxxxxxxxx",
+    "name": "新名称",
+    "theme": {
+      "theme_style": "default"
+    }
+  },
+  "updated": true
+}
 ```
-PATCH /open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id
-```
 
-**Request Body：**
+## 返回重点
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `name` | string | 仪表盘名称 |
-| `theme` | object | 主题配置 |
-| `theme.theme_style` | string | 主题风格 |
-
-## 工作流
+| 字段 | 说明 |
+|------|------|
+| `dashboard` | 更新后的仪表盘对象 |
+| `dashboard.name` | 新名称（如果更新了）|
+| `dashboard.theme.theme_style` | 新主题（如果更新了）|
+| `updated` | 是否更新成功 |
 
 > [!CAUTION]
 > 这是**写入操作** — 执行前必须向用户确认。
 
-## 坑点
-
-- **theme_style** 是嵌套在 `theme` 对象下的字段，shortcut 自动包装为 `{"theme": {"theme_style": "..."}}`。
-
 ## 参考
 
-- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 索引页
+- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块指引
