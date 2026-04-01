@@ -9,7 +9,6 @@ permissions:
   actions: read
   contents: read
   issues: write
-  pull-requests: write
 
 jobs:
   comment:
@@ -32,18 +31,43 @@ jobs:
             const fs = require("fs");
             const payload = JSON.parse(fs.readFileSync("pkg-pr-new-comment-payload.json", "utf8"));
             const url = payload?.url;
-            const issueNumber = payload?.pr;
+            const payloadPr = payload?.pr;
             const sourceRepo = payload?.sourceRepo;
             const sourceBranch = payload?.sourceBranch;
+            const issueNumber = context.payload.workflow_run?.pull_requests?.[0]?.number;
 
-            if (!url || !url.startsWith("https://pkg.pr.new/")) {
+            if (!Number.isInteger(issueNumber)) {
+              throw new Error(`Invalid PR number in workflow_run payload: ${issueNumber}`);
+            }
+            if (!Number.isInteger(payloadPr)) {
+              throw new Error(`Invalid PR number in artifact payload: ${payloadPr}`);
+            }
+            if (payloadPr !== issueNumber) {
+              throw new Error(
+                `PR number mismatch between workflow_run (${issueNumber}) and artifact payload (${payloadPr})`,
+              );
+            }
+
+            if (typeof url !== "string" || url.trim() !== url || /[\u0000-\u001F\u007F]/.test(url)) {
               throw new Error(`Invalid package URL in payload: ${url}`);
             }
-            if (!Number.isInteger(issueNumber)) {
-              throw new Error(`Invalid PR number in payload: ${issueNumber}`);
+            let parsedUrl;
+            try {
+              parsedUrl = new URL(url);
+            } catch {
+              throw new Error(`Invalid package URL in payload: ${url}`);
+            }
+            if (parsedUrl.protocol !== "https:" || parsedUrl.hostname !== "pkg.pr.new") {
+              throw new Error(`Invalid package URL in payload: ${url}`);
             }
 
-            const hasSkillSource = Boolean(sourceRepo && sourceBranch);
+            const safeRepoPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+            const safeBranchPattern = /^[A-Za-z0-9._\/-]+$/;
+            const hasSkillSource =
+              typeof sourceRepo === "string" &&
+              typeof sourceBranch === "string" &&
+              safeRepoPattern.test(sourceRepo) &&
+              safeBranchPattern.test(sourceBranch);
             const skillSection = hasSkillSource
               ? [
                   "",
