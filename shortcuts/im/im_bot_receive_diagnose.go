@@ -321,8 +321,15 @@ func diagnoseBotReceiveWebsocket(ctx context.Context, runtime *common.RuntimeCon
 
 	select {
 	case err := <-errCh:
-		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if err == nil {
 			return passBotReceiveCheck("endpoint_ws", fmt.Sprintf("event WebSocket for %s did not fail within %s", eventType, timeout))
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return warnBotReceiveCheck(
+				"endpoint_ws",
+				fmt.Sprintf("event WebSocket for %s did not fail within %s, but readiness was not confirmed", eventType, timeout),
+				"retry with a larger --timeout or verify that long-lived WebSocket connections are allowed by the network/proxy",
+			)
 		}
 		return failBotReceiveCheck(
 			"endpoint_ws",
@@ -330,7 +337,11 @@ func diagnoseBotReceiveWebsocket(ctx context.Context, runtime *common.RuntimeCon
 			"check event subscription settings, bot receive permission, and network/proxy settings for long connections",
 		)
 	case <-wsCtx.Done():
-		return passBotReceiveCheck("endpoint_ws", fmt.Sprintf("event WebSocket for %s did not fail within %s", eventType, timeout))
+		return warnBotReceiveCheck(
+			"endpoint_ws",
+			fmt.Sprintf("event WebSocket for %s did not fail within %s, but readiness was not confirmed", eventType, timeout),
+			"retry with a larger --timeout or verify that long-lived WebSocket connections are allowed by the network/proxy",
+		)
 	}
 }
 

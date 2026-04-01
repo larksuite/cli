@@ -74,7 +74,9 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	path := fileMasterKeyPath(service)
 	if key, err := readFileMasterKey(path); err == nil {
 		return key, nil
-	} else if err != nil && !os.IsNotExist(err) && !errors.Is(err, errInvalidMasterKey) {
+	} else if errors.Is(err, errInvalidMasterKey) {
+		return nil, fmt.Errorf("master key file %s exists but is corrupt; remove it manually to reset", path)
+	} else if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 

@@ -33,6 +33,7 @@ func mailTestConfig() *core.CliConfig {
 func mailShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_KEYCHAIN_MASTER_KEY", "file")
 
 	cfg := mailTestConfig()
 	token := &auth.StoredUAToken{
