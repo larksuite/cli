@@ -10,25 +10,25 @@
 ```bash
 # 移动文件到指定文件夹
 lark-cli drive +move \
-  --file-token boxcn_xxx \
+  --file-token <FILE_TOKEN> \
   --type file \
-  --folder-token fldbc_xxx
+  --folder-token <TARGET_FOLDER_TOKEN>
 
 # 移动文档到指定文件夹
 lark-cli drive +move \
-  --file-token doccn_xxx \
+  --file-token <DOCX_TOKEN> \
   --type docx \
-  --folder-token fldbc_xxx
+  --folder-token <TARGET_FOLDER_TOKEN>
 
 # 移动文件夹（异步操作，会自动有限轮询任务状态）
 lark-cli drive +move \
-  --file-token fldbc_xxx \
+  --file-token <FOLDER_TOKEN> \
   --type folder \
-  --folder-token fldbc_yyy
+  --folder-token <TARGET_FOLDER_TOKEN>
 
 # 移动到根文件夹（不指定 --folder-token）
 lark-cli drive +move \
-  --file-token boxcn_xxx \
+  --file-token <FILE_TOKEN> \
   --type file
 ```
 
@@ -58,7 +58,7 @@ lark-cli drive +move \
 - **普通文件移动**：同步操作，立即完成
 - **文件夹移动**：异步操作，接口返回 `task_id`，shortcut 会先做有限轮询；如果在轮询窗口内完成，则直接返回成功结果
 - **轮询超时不是失败**：文件夹移动内置最多轮询 30 次、每次间隔 2 秒；如果轮询结束任务仍未完成，会返回 `task_id`、`status`、`ready=false`、`timed_out=true` 和 `next_command`
-- **继续查询**：当看到 `next_command` 时，改用 `lark-cli drive +task_result --scenario task_check --task-id <task_id>` 继续查询
+- **继续查询**：当看到 `next_command` 时，改用 `lark-cli drive +task_result --scenario task_check --task-id <TASK_ID>` 继续查询
 - **目标文件夹**：如果不指定 `--folder-token`，文件将被移动到用户的根文件夹（"我的空间"）
 - **权限要求**：需要被移动文件的可管理权限、被移动文件所在位置的编辑权限、目标位置的编辑权限
 
@@ -67,14 +67,14 @@ lark-cli drive +move \
 ```bash
 # 第一步：先直接移动文件夹
 lark-cli drive +move \
-  --file-token "<FOLDER_TOKEN>" \
+  --file-token <FOLDER_TOKEN> \
   --type folder \
-  --folder-token "<TARGET_FOLDER_TOKEN>"
+  --folder-token <TARGET_FOLDER_TOKEN>
 
 # 如果返回 ready=false / timed_out=true，再继续查
 lark-cli drive +task_result \
   --scenario task_check \
-  --task-id "<TASK_ID>"
+  --task-id <TASK_ID>
 ```
 
 ## 限制

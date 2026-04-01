@@ -14,6 +14,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// DriveExport exports Drive-native documents to local files and falls back to
+// a follow-up command when the async export task does not finish in time.
 var DriveExport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+export",
@@ -49,6 +51,8 @@ var DriveExport = common.Shortcut{
 			FileExtension: runtime.Str("file-extension"),
 			SubID:         runtime.Str("sub-id"),
 		}
+		// Markdown export is a special case: docx markdown comes from docs content
+		// directly instead of the Drive export task API.
 		if spec.FileExtension == "markdown" {
 			return common.NewDryRunAPI().
 				Desc("2-step orchestration: fetch docx markdown -> write local file").
@@ -84,6 +88,8 @@ var DriveExport = common.Shortcut{
 		outputDir := runtime.Str("output-dir")
 		overwrite := runtime.Bool("overwrite")
 
+		// Markdown export bypasses the async export task and writes the fetched
+		// markdown content directly to disk.
 		if spec.FileExtension == "markdown" {
 			fmt.Fprintf(runtime.IO().ErrOut, "Exporting docx as markdown: %s\n", common.MaskToken(spec.Token))
 			data, err := runtime.CallAPI(
@@ -100,6 +106,8 @@ var DriveExport = common.Shortcut{
 				return err
 			}
 
+			// Prefer the remote title for the exported file name, but still fall
+			// back to the token if metadata is empty.
 			title, err := fetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
 			if err != nil {
 				return err
@@ -128,6 +136,8 @@ var DriveExport = common.Shortcut{
 		fmt.Fprintf(runtime.IO().ErrOut, "Created export task: %s\n", ticket)
 
 		var lastStatus driveExportStatus
+		// Keep the command responsive by polling for a bounded window. If the task
+		// is still running after that, return a resume command instead of blocking.
 		for attempt := 1; attempt <= driveExportPollAttempts; attempt++ {
 			if attempt > 1 {
 				time.Sleep(driveExportPollInterval)
@@ -135,6 +145,8 @@ var DriveExport = common.Shortcut{
 
 			status, err := getDriveExportStatus(runtime, spec.Token, ticket)
 			if err != nil {
+				// Treat polling failures as transient so short-lived backend hiccups
+				// do not immediately fail an otherwise healthy export task.
 				fmt.Fprintf(runtime.IO().ErrOut, "Export status attempt %d/%d failed: %v\n", attempt, driveExportPollAttempts, err)
 				continue
 			}
@@ -166,6 +178,8 @@ var DriveExport = common.Shortcut{
 		}
 
 		nextCommand := driveExportTaskResultCommand(ticket, spec.Token)
+		// Return the last observed status so callers can resume from a known task
+		// state instead of losing all progress information on timeout.
 		runtime.Out(map[string]interface{}{
 			"ticket":          ticket,
 			"token":           spec.Token,

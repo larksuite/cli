@@ -31,6 +31,33 @@ func TestParseDriveTaskCheckStatusFallback(t *testing.T) {
 	}
 }
 
+func TestDriveTaskCheckStatusPendingAndUnknownLabel(t *testing.T) {
+	t.Parallel()
+
+	status := driveTaskCheckStatus{}
+	if !status.Pending() {
+		t.Fatal("expected empty status to be treated as pending")
+	}
+	if got := status.StatusLabel(); got != "unknown" {
+		t.Fatalf("StatusLabel() = %q, want %q", got, "unknown")
+	}
+}
+
+func TestValidateDriveMoveSpecRejectsUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	err := validateDriveMoveSpec(driveMoveSpec{
+		FileToken: "file_token_test",
+		FileType:  "unsupported_type",
+	})
+	if err == nil {
+		t.Fatal("expected unsupported type error, got nil")
+	}
+	if got := err.Error(); !bytes.Contains([]byte(got), []byte("unsupported file type")) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDriveMoveDryRunFolderIncludesTaskCheckParams(t *testing.T) {
 	t.Parallel()
 

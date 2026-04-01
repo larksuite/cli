@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// DriveTaskResult exposes a unified read path for the async task types produced
+// by Drive import, export, and folder move flows.
 var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
 	Command:     "+task_result",
@@ -105,6 +107,8 @@ var DriveTaskResult = common.Shortcut{
 		var result map[string]interface{}
 		var err error
 
+		// Each scenario maps to a different backend API, but this shortcut keeps
+		// the CLI surface uniform for resume-on-timeout workflows.
 		switch scenario {
 		case "import":
 			result, err = queryImportTask(runtime, ticket)
@@ -123,7 +127,7 @@ var DriveTaskResult = common.Shortcut{
 	},
 }
 
-// queryImportTask queries import task result
+// queryImportTask returns a stable, shortcut-friendly view of the import task.
 func queryImportTask(runtime *common.RuntimeContext, ticket string) (map[string]interface{}, error) {
 	status, err := getDriveImportStatus(runtime, ticket)
 	if err != nil {
@@ -145,7 +149,8 @@ func queryImportTask(runtime *common.RuntimeContext, ticket string) (map[string]
 	}, nil
 }
 
-// queryExportTask queries export task result
+// queryExportTask returns the export task status together with download metadata
+// once the backend has produced the exported file.
 func queryExportTask(runtime *common.RuntimeContext, ticket, fileToken string) (map[string]interface{}, error) {
 	status, err := getDriveExportStatus(runtime, fileToken, ticket)
 	if err != nil {
@@ -168,7 +173,7 @@ func queryExportTask(runtime *common.RuntimeContext, ticket, fileToken string) (
 	}, nil
 }
 
-// queryTaskCheck queries move/delete folder task status
+// queryTaskCheck returns the normalized status of a folder move/delete task.
 func queryTaskCheck(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
 	status, err := getDriveTaskCheckStatus(runtime, taskID)
 	if err != nil {

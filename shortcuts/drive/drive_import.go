@@ -20,6 +20,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// DriveImport uploads a local file, creates an import task, and polls until
+// the imported cloud document is ready or the local polling window expires.
 var DriveImport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+import",
@@ -83,6 +85,7 @@ var DriveImport = common.Shortcut{
 			Name:        runtime.Str("name"),
 		}
 
+		// Normalize and validate the local input path before opening the file.
 		safeFilePath, err := validate.SafeInputPath(spec.FilePath)
 		if err != nil {
 			return output.ErrValidation("unsafe file path: %s", err)
@@ -111,6 +114,8 @@ var DriveImport = common.Shortcut{
 			return err
 		}
 
+		// Some intermediate responses omit the final type, so fall back to the
+		// requested type to keep the output shape stable.
 		resultType := status.DocType
 		if resultType == "" {
 			resultType = spec.DocType
@@ -146,6 +151,8 @@ var DriveImport = common.Shortcut{
 	},
 }
 
+// importTargetFileName returns the explicit import name when present, otherwise
+// derives one from the local file name.
 func importTargetFileName(filePath, explicitName string) string {
 	if explicitName != "" {
 		return explicitName
@@ -153,6 +160,8 @@ func importTargetFileName(filePath, explicitName string) string {
 	return importDefaultFileName(filePath)
 }
 
+// importDefaultFileName strips only the last extension so names like
+// "report.final.csv" become "report.final".
 func importDefaultFileName(filePath string) string {
 	base := filepath.Base(filePath)
 	ext := filepath.Ext(base)
@@ -166,6 +175,8 @@ func importDefaultFileName(filePath string) string {
 	return name
 }
 
+// uploadMediaForImport uploads the source file to the temporary import media
+// endpoint and returns the file token consumed by import_tasks.
 func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, docType string) (string, error) {
 	importInfo, err := os.Stat(filePath)
 	if err != nil {
@@ -207,6 +218,8 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 	if err != nil {
 		var exitErr *output.ExitError
 		if errors.As(err, &exitErr) {
+			// Preserve already-classified CLI errors from lower layers instead of
+			// wrapping them as a generic network failure.
 			return "", err
 		}
 		return "", output.ErrNetwork("upload media failed: %v", err)
@@ -218,6 +231,8 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 	}
 
 	if larkCode := int(common.GetFloat(result, "code")); larkCode != 0 {
+		// Surface the backend error body so callers can see import-specific
+		// validation failures such as unsupported formats or permission issues.
 		msg, _ := result["msg"].(string)
 		return "", output.ErrAPI(larkCode, fmt.Sprintf("upload media failed: [%d] %s", larkCode, msg), result["error"])
 	}

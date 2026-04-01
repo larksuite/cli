@@ -19,6 +19,8 @@ var (
 	driveImportPollInterval = 2 * time.Second
 )
 
+// driveImportExtToDocTypes defines which source file extensions can be imported
+// into which Drive-native document types.
 var driveImportExtToDocTypes = map[string][]string{
 	"docx":     {"docx"},
 	"doc":      {"docx"},
@@ -32,6 +34,7 @@ var driveImportExtToDocTypes = map[string][]string{
 	"csv":      {"sheet", "bitable"},
 }
 
+// driveImportSpec contains the user-facing import inputs after normalization.
 type driveImportSpec struct {
 	FilePath    string
 	DocType     string
@@ -51,6 +54,7 @@ func (s driveImportSpec) TargetFileName() string {
 	return importTargetFileName(s.FilePath, s.Name)
 }
 
+// CreateTaskBody builds the request body expected by /drive/v1/import_tasks.
 func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{} {
 	return map[string]interface{}{
 		"file_extension": s.FileExtension(),
@@ -64,6 +68,8 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 	}
 }
 
+// validateDriveImportSpec enforces the CLI-level compatibility rules before any
+// upload or import request is sent to the backend.
 func validateDriveImportSpec(spec driveImportSpec) error {
 	ext := spec.FileExtension()
 	if ext == "" {
@@ -82,6 +88,8 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 	}
 
 	typeAllowed := false
+	// Validate the extension/type pair locally so users get a precise error
+	// before the file upload step.
 	for _, allowedType := range supportedTypes {
 		if allowedType == spec.DocType {
 			typeAllowed = true
@@ -108,6 +116,8 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 	return nil
 }
 
+// driveImportStatus captures the backend fields needed to decide whether the
+// import can be surfaced immediately or requires a follow-up poll.
 type driveImportStatus struct {
 	Ticket      string
 	DocType     string
@@ -133,6 +143,8 @@ func (s driveImportStatus) Failed() bool {
 func (s driveImportStatus) StatusLabel() string {
 	switch s.JobStatus {
 	case 0:
+		// Some responses report status=0 before the imported token is materialized.
+		// Treat that intermediate state as pending rather than completed.
 		if s.Token == "" {
 			return "pending"
 		}
@@ -146,10 +158,14 @@ func (s driveImportStatus) StatusLabel() string {
 	}
 }
 
+// driveImportTaskResultCommand prints the resume command returned after bounded
+// polling times out locally.
 func driveImportTaskResultCommand(ticket string) string {
 	return fmt.Sprintf("lark-cli drive +task_result --scenario import --ticket %s", ticket)
 }
 
+// createDriveImportTask creates the server-side import task after the media
+// upload has produced a reusable file token.
 func createDriveImportTask(runtime *common.RuntimeContext, spec driveImportSpec, fileToken string) (string, error) {
 	data, err := runtime.CallAPI("POST", "/open-apis/drive/v1/import_tasks", nil, spec.CreateTaskBody(fileToken))
 	if err != nil {
@@ -163,6 +179,7 @@ func createDriveImportTask(runtime *common.RuntimeContext, spec driveImportSpec,
 	return ticket, nil
 }
 
+// getDriveImportStatus fetches the current state of an import task by ticket.
 func getDriveImportStatus(runtime *common.RuntimeContext, ticket string) (driveImportStatus, error) {
 	if err := validate.ResourceName(ticket, "--ticket"); err != nil {
 		return driveImportStatus{}, output.ErrValidation("%s", err)
@@ -181,9 +198,12 @@ func getDriveImportStatus(runtime *common.RuntimeContext, ticket string) (driveI
 	return parseDriveImportStatus(ticket, data), nil
 }
 
+// parseDriveImportStatus accepts either the wrapped API response or an already
+// extracted result object to keep the helper easy to test.
 func parseDriveImportStatus(ticket string, data map[string]interface{}) driveImportStatus {
 	result := common.GetMap(data, "result")
 	if result == nil {
+		// Some tests and helper call sites already pass the unwrapped result body.
 		result = data
 	}
 
@@ -198,6 +218,8 @@ func parseDriveImportStatus(ticket string, data map[string]interface{}) driveImp
 	}
 }
 
+// pollDriveImportTask waits for the import to finish within a bounded window
+// and returns the last observed status for resume-on-timeout flows.
 func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveImportStatus, bool, error) {
 	lastStatus := driveImportStatus{Ticket: ticket}
 	for attempt := 1; attempt <= driveImportPollAttempts; attempt++ {
@@ -210,6 +232,8 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 			return driveImportStatus{}, false, err
 		}
 		lastStatus = status
+		// Stop immediately on terminal states and otherwise return the last known
+		// status so the caller can expose a follow-up command on timeout.
 		if status.Ready() {
 			fmt.Fprintf(runtime.IO().ErrOut, "Import completed successfully.\n")
 			return status, true, nil

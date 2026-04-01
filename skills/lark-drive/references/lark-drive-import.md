@@ -14,7 +14,7 @@ lark-cli drive +import --file ./README.md --type docx
 lark-cli drive +import --file ./data.xlsx --type sheet
 
 # 导入到指定文件夹，并指定导入后的文件名
-lark-cli drive +import --file ./data.csv --type bitable --folder-token fldbc_xxx --name "导入数据表"
+lark-cli drive +import --file ./data.csv --type bitable --folder-token <FOLDER_TOKEN> --name "导入数据表"
 
 # 预览底层调用链（上传 -> 创建任务 -> 轮询）
 lark-cli drive +import --file ./README.md --type docx --dry-run
@@ -59,7 +59,7 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 - 若内置轮询超时但任务仍在处理中，shortcut 会成功返回，并带上：
   - `ready=false`
   - `timed_out=true`
-  - `next_command`：可直接复制执行的后续查询命令，例如 `lark-cli drive +task_result --scenario import --ticket <ticket>`
+  - `next_command`：可直接复制执行的后续查询命令，例如 `lark-cli drive +task_result --scenario import --ticket <TICKET>`
 - 如果文件超过 20MB 上限，或者文件扩展名不被支持，执行时将抛出验证错误。
 
 ### 超时后的继续查询
@@ -67,7 +67,7 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 当 `+import` 的内置轮询窗口结束但任务尚未完成时，使用返回结果中的 `ticket` 继续查询：
 
 ```bash
-lark-cli drive +task_result --scenario import --ticket <ticket>
+lark-cli drive +task_result --scenario import --ticket <TICKET>
 ```
 
 > [!CAUTION]

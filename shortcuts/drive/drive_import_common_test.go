@@ -50,6 +50,21 @@ func TestParseDriveImportStatus(t *testing.T) {
 	}
 }
 
+func TestDriveImportStatusPendingWithoutToken(t *testing.T) {
+	t.Parallel()
+
+	status := driveImportStatus{JobStatus: 0}
+	if status.Ready() {
+		t.Fatal("expected status without token to be not ready")
+	}
+	if !status.Pending() {
+		t.Fatal("expected status without token to be pending")
+	}
+	if got := status.StatusLabel(); got != "pending" {
+		t.Fatalf("StatusLabel() = %q, want %q", got, "pending")
+	}
+}
+
 func TestDriveImportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveBotTokenStub(reg)

@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// DriveMove moves a Drive file or folder and handles the async task polling
+// required by folder moves.
 var DriveMove = common.Shortcut{
 	Service:     "drive",
 	Command:     "+move",
@@ -63,7 +65,8 @@ var DriveMove = common.Shortcut{
 			FolderToken: runtime.Str("folder-token"),
 		}
 
-		// If folder-token is empty, get the root folder token
+		// Default to the caller's root folder so the command can move items
+		// without requiring an explicit destination in common cases.
 		if spec.FolderToken == "" {
 			fmt.Fprintf(runtime.IO().ErrOut, "No target folder specified, getting root folder...\n")
 			rootToken, err := getRootFolderToken(ctx, runtime)
@@ -85,7 +88,7 @@ var DriveMove = common.Shortcut{
 			return err
 		}
 
-		// If moving a folder, need to poll async task
+		// Folder moves are asynchronous; file moves complete in the initial call.
 		if spec.FileType == "folder" {
 			taskID := common.GetString(data, "task_id")
 			if taskID == "" {
@@ -99,6 +102,8 @@ var DriveMove = common.Shortcut{
 				return err
 			}
 
+			// Include both the source and destination identifiers so a timed-out
+			// folder move can be resumed or inspected without reconstructing inputs.
 			out := map[string]interface{}{
 				"task_id":      taskID,
 				"status":       status.StatusLabel(),
@@ -115,6 +120,8 @@ var DriveMove = common.Shortcut{
 
 			runtime.Out(out, nil)
 		} else {
+			// Non-folder moves are synchronous, so the initial request is the final
+			// outcome and no follow-up task metadata is needed.
 			runtime.Out(map[string]interface{}{
 				"file_token":   spec.FileToken,
 				"folder_token": spec.FolderToken,
@@ -126,7 +133,8 @@ var DriveMove = common.Shortcut{
 	},
 }
 
-// getRootFolderToken gets the user's root folder token
+// getRootFolderToken resolves the caller's Drive root folder token so other
+// commands can safely use it as a default destination.
 func getRootFolderToken(ctx context.Context, runtime *common.RuntimeContext) (string, error) {
 	data, err := runtime.CallAPI("GET", "/open-apis/drive/explorer/v2/root_folder/meta", nil, nil)
 	if err != nil {

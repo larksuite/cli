@@ -25,6 +25,8 @@ var (
 	driveExportPollInterval = 5 * time.Second
 )
 
+// driveExportSpec contains the normalized export request understood by the
+// shortcut and the underlying export task APIs.
 type driveExportSpec struct {
 	Token         string
 	DocType       string
@@ -32,10 +34,14 @@ type driveExportSpec struct {
 	SubID         string
 }
 
+// driveExportTaskResultCommand prints the resume command shown when bounded
+// export polling times out locally.
 func driveExportTaskResultCommand(ticket, fileToken string) string {
 	return fmt.Sprintf("lark-cli drive +task_result --scenario export --ticket %s --file-token %s", ticket, fileToken)
 }
 
+// driveExportStatus captures the fields needed to decide whether the export is
+// ready for download, still pending, or terminally failed.
 type driveExportStatus struct {
 	Ticket        string
 	FileExtension string
@@ -52,6 +58,8 @@ func (s driveExportStatus) Ready() bool {
 }
 
 func (s driveExportStatus) Pending() bool {
+	// A zero status without a file token is still in progress because there is
+	// nothing downloadable yet.
 	return s.JobStatus == 1 || s.JobStatus == 2 || s.JobStatus == 0 && s.FileToken == ""
 }
 
@@ -96,6 +104,8 @@ func (s driveExportStatus) StatusLabel() string {
 	}
 }
 
+// validateDriveExportSpec enforces shortcut-level export constraints before any
+// backend request is sent.
 func validateDriveExportSpec(spec driveExportSpec) error {
 	if err := validate.ResourceName(spec.Token, "--token"); err != nil {
 		return output.ErrValidation("%s", err)
@@ -133,6 +143,8 @@ func validateDriveExportSpec(spec driveExportSpec) error {
 	return nil
 }
 
+// createDriveExportTask starts the asynchronous export job and returns its
+// ticket for subsequent polling.
 func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec) (string, error) {
 	body := map[string]interface{}{
 		"token":          spec.Token,
@@ -155,6 +167,8 @@ func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec)
 	return ticket, nil
 }
 
+// getDriveExportStatus fetches the current backend state for a previously
+// created export task.
 func getDriveExportStatus(runtime *common.RuntimeContext, token, ticket string) (driveExportStatus, error) {
 	data, err := runtime.CallAPI(
 		"GET",
@@ -168,12 +182,16 @@ func getDriveExportStatus(runtime *common.RuntimeContext, token, ticket string) 
 	return parseDriveExportStatus(ticket, data), nil
 }
 
+// parseDriveExportStatus accepts the wrapped export result and normalizes the
+// subset of fields used by the shortcut.
 func parseDriveExportStatus(ticket string, data map[string]interface{}) driveExportStatus {
 	result := common.GetMap(data, "result")
 	status := driveExportStatus{
 		Ticket: ticket,
 	}
 	if result == nil {
+		// Keep the ticket even when the result body is missing so callers can
+		// still show a resumable task reference.
 		return status
 	}
 
@@ -187,6 +205,8 @@ func parseDriveExportStatus(ticket string, data map[string]interface{}) driveExp
 	return status
 }
 
+// fetchDriveMetaTitle looks up the document title so exported files can use a
+// human-readable default name when possible.
 func fetchDriveMetaTitle(runtime *common.RuntimeContext, token, docType string) (string, error) {
 	data, err := runtime.CallAPI(
 		"POST",
@@ -213,11 +233,15 @@ func fetchDriveMetaTitle(runtime *common.RuntimeContext, token, docType string) 
 	return common.GetString(meta, "title"), nil
 }
 
+// saveContentToOutputDir validates the target path, enforces overwrite policy,
+// and writes the payload atomically to disk.
 func saveContentToOutputDir(outputDir, fileName string, payload []byte, overwrite bool) (string, error) {
 	if outputDir == "" {
 		outputDir = "."
 	}
 
+	// Sanitize both the filename and the combined output path so caller-provided
+	// names cannot escape the requested output directory.
 	safeName := sanitizeExportFileName(fileName, "export.bin")
 	target := filepath.Join(outputDir, safeName)
 	safePath, err := validate.SafeOutputPath(target)
@@ -237,6 +261,8 @@ func saveContentToOutputDir(outputDir, fileName string, payload []byte, overwrit
 	return safePath, nil
 }
 
+// downloadDriveExportFile downloads the exported artifact, derives a safe local
+// file name, and returns metadata about the saved file.
 func downloadDriveExportFile(ctx context.Context, runtime *common.RuntimeContext, fileToken, outputDir, preferredName string, overwrite bool) (map[string]interface{}, error) {
 	if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
 		return nil, output.ErrValidation("%s", err)
@@ -255,6 +281,8 @@ func downloadDriveExportFile(ctx context.Context, runtime *common.RuntimeContext
 
 	fileName := strings.TrimSpace(preferredName)
 	if fileName == "" {
+		// Fall back to the server-provided download name when the caller did not
+		// request an explicit local file name.
 		fileName = client.ResolveFilename(apiResp)
 	}
 	savedPath, err := saveContentToOutputDir(outputDir, fileName, apiResp.RawBody, overwrite)
@@ -271,6 +299,8 @@ func downloadDriveExportFile(ctx context.Context, runtime *common.RuntimeContext
 	}, nil
 }
 
+// sanitizeExportFileName strips path traversal and unsupported characters while
+// preserving a readable file name when possible.
 func sanitizeExportFileName(name, fallback string) string {
 	name = strings.TrimSpace(filepath.Base(name))
 	if name == "" || name == "." || name == string(filepath.Separator) {
@@ -290,6 +320,8 @@ func sanitizeExportFileName(name, fallback string) string {
 	return name
 }
 
+// ensureExportFileExtension appends the expected local suffix when the chosen
+// file name does not already end with the export format's extension.
 func ensureExportFileExtension(name, fileExtension string) string {
 	expected := exportFileSuffix(fileExtension)
 	if expected == "" {
@@ -301,6 +333,8 @@ func ensureExportFileExtension(name, fileExtension string) string {
 	return name + expected
 }
 
+// exportFileSuffix maps shortcut-level export formats to the local filename
+// suffix written to disk.
 func exportFileSuffix(fileExtension string) string {
 	switch fileExtension {
 	case "markdown":

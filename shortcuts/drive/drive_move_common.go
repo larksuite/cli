@@ -18,6 +18,8 @@ var (
 	driveMovePollInterval = 2 * time.Second
 )
 
+// driveMoveAllowedTypes mirrors the document kinds accepted by the Drive move
+// endpoint that this shortcut wraps.
 var driveMoveAllowedTypes = map[string]bool{
 	"file":     true,
 	"docx":     true,
@@ -29,6 +31,7 @@ var driveMoveAllowedTypes = map[string]bool{
 	"slides":   true,
 }
 
+// driveMoveSpec contains the normalized input needed to issue a move request.
 type driveMoveSpec struct {
 	FileToken   string
 	FileType    string
@@ -57,6 +60,8 @@ func validateDriveMoveSpec(spec driveMoveSpec) error {
 	return nil
 }
 
+// driveTaskCheckStatus represents the status payload returned by
+// /drive/v1/files/task_check for async folder operations.
 type driveTaskCheckStatus struct {
 	TaskID string
 	Status string
@@ -77,19 +82,27 @@ func (s driveTaskCheckStatus) Pending() bool {
 func (s driveTaskCheckStatus) StatusLabel() string {
 	status := strings.TrimSpace(s.Status)
 	if status == "" {
+		// Empty status is treated as unknown so callers can still render a
+		// meaningful label instead of an empty string.
 		return "unknown"
 	}
 	return status
 }
 
+// driveTaskCheckResultCommand prints the resume command shown when bounded
+// polling ends before the backend task completes.
 func driveTaskCheckResultCommand(taskID string) string {
 	return fmt.Sprintf("lark-cli drive +task_result --scenario task_check --task-id %s", taskID)
 }
 
+// driveTaskCheckParams keeps the task_check query parameter shape in one place
+// for both dry-run and execution paths.
 func driveTaskCheckParams(taskID string) map[string]interface{} {
 	return map[string]interface{}{"task_id": taskID}
 }
 
+// getDriveTaskCheckStatus fetches and validates the current state of an async
+// folder move or delete task.
 func getDriveTaskCheckStatus(runtime *common.RuntimeContext, taskID string) (driveTaskCheckStatus, error) {
 	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
 		return driveTaskCheckStatus{}, output.ErrValidation("%s", err)
@@ -103,6 +116,8 @@ func getDriveTaskCheckStatus(runtime *common.RuntimeContext, taskID string) (dri
 	return parseDriveTaskCheckStatus(taskID, data), nil
 }
 
+// parseDriveTaskCheckStatus tolerates both wrapped and already-unwrapped
+// response shapes used in tests and helpers.
 func parseDriveTaskCheckStatus(taskID string, data map[string]interface{}) driveTaskCheckStatus {
 	result := common.GetMap(data, "result")
 	if result == nil {
@@ -115,6 +130,8 @@ func parseDriveTaskCheckStatus(taskID string, data map[string]interface{}) drive
 	}
 }
 
+// pollDriveTaskCheck polls the backend for a bounded period and returns the
+// last seen status so callers can emit a follow-up command when needed.
 func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTaskCheckStatus, bool, error) {
 	lastStatus := driveTaskCheckStatus{TaskID: taskID}
 	for attempt := 1; attempt <= driveMovePollAttempts; attempt++ {
@@ -127,6 +144,8 @@ func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTas
 			return driveTaskCheckStatus{}, false, err
 		}
 		lastStatus = status
+		// Success and failure are terminal backend states. Any other value is kept
+		// as pending so the caller can decide whether to continue or resume later.
 		if status.Ready() {
 			fmt.Fprintf(runtime.IO().ErrOut, "Folder move completed successfully.\n")
 			return status, true, nil

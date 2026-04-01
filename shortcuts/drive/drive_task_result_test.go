@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -15,6 +16,69 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func TestDriveTaskResultValidateErrorsByScenario(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		flags   map[string]string
+		wantErr string
+	}{
+		{
+			name: "unsupported scenario",
+			flags: map[string]string{
+				"scenario": "unknown",
+			},
+			wantErr: "unsupported scenario",
+		},
+		{
+			name: "import missing ticket",
+			flags: map[string]string{
+				"scenario": "import",
+			},
+			wantErr: "--ticket is required",
+		},
+		{
+			name: "export missing file token",
+			flags: map[string]string{
+				"scenario": "export",
+				"ticket":   "ticket_export_test",
+			},
+			wantErr: "--file-token is required",
+		},
+		{
+			name: "task check missing task id",
+			flags: map[string]string{
+				"scenario": "task_check",
+			},
+			wantErr: "--task-id is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := &cobra.Command{Use: "drive +task_result"}
+			cmd.Flags().String("scenario", "", "")
+			cmd.Flags().String("ticket", "", "")
+			cmd.Flags().String("task-id", "", "")
+			cmd.Flags().String("file-token", "", "")
+			for key, value := range tt.flags {
+				if err := cmd.Flags().Set(key, value); err != nil {
+					t.Fatalf("set --%s: %v", key, err)
+				}
+			}
+
+			runtime := common.TestNewRuntimeContext(cmd, nil)
+			err := DriveTaskResult.Validate(context.Background(), runtime)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
 
 func TestDriveTaskResultDryRunExportIncludesTokenParam(t *testing.T) {
 	t.Parallel()

@@ -11,18 +11,18 @@
 # 查询导入任务结果
 lark-cli drive +task_result \
   --scenario import \
-  --ticket 7369583175086912356
+  --ticket <IMPORT_TICKET>
 
 # 查询导出任务结果
 lark-cli drive +task_result \
   --scenario export \
-  --ticket 6933093124755412345 \
-  --file-token doccn_xxx
+  --ticket <EXPORT_TICKET> \
+  --file-token <SOURCE_DOC_TOKEN>
 
 # 查询移动/删除文件夹任务状态
 lark-cli drive +task_result \
   --scenario task_check \
-  --task-id 7360595374803812356
+  --task-id <TASK_ID>
 ```
 
 ## 参数
@@ -49,15 +49,15 @@ lark-cli drive +task_result \
 ```json
 {
   "scenario": "import",
-  "ticket": "7369583175086912356",
+  "ticket": "<IMPORT_TICKET>",
   "type": "sheet",
   "ready": true,
   "failed": false,
   "job_status": 0,
   "job_status_label": "success",
   "job_error_msg": "success",
-  "token": "Fm7osyjtMh5o7Ktrv32c73abcef",
-  "url": "https://example.feishu.cn/sheets/Fm7osyjtMh5o7Ktrv32c73abcef",
+  "token": "<IMPORTED_DOC_TOKEN>",
+  "url": "https://example.feishu.cn/sheets/<IMPORTED_DOC_TOKEN>",
   "extra": ["2000"]
 }
 ```
@@ -75,13 +75,13 @@ lark-cli drive +task_result \
 ```json
 {
   "scenario": "export",
-  "ticket": "6933093124755412345",
+  "ticket": "<EXPORT_TICKET>",
   "ready": true,
   "failed": false,
   "file_extension": "pdf",
   "type": "doc",
   "file_name": "docName",
-  "file_token": "boxcnxe5OdjlAkNgSNdsJvabcef",
+  "file_token": "<EXPORTED_FILE_TOKEN>",
   "file_size": 34356,
   "job_error_msg": "success",
   "job_status": 0,
@@ -103,7 +103,7 @@ lark-cli drive +task_result \
 ```json
 {
   "scenario": "task_check",
-  "task_id": "7360595374803812356",
+  "task_id": "<TASK_ID>",
   "status": "success",
   "ready": true,
   "failed": false
@@ -126,34 +126,34 @@ lark-cli drive +import --file ./data.xlsx --type sheet
 # 若内置轮询超时：返回 ready=false、ticket 和 next_command
 
 # 2. 轮询导入结果
-lark-cli drive +task_result --scenario import --ticket xxx
+lark-cli drive +task_result --scenario import --ticket <IMPORT_TICKET>
 ```
 
 ### 配合 +move 使用
 
 ```bash
 # 1. 移动文件夹（异步操作）
-lark-cli drive +move --file-token fldbc_xxx --type folder --folder-token fldbc_yyy
+lark-cli drive +move --file-token <FOLDER_TOKEN> --type folder --folder-token <TARGET_FOLDER_TOKEN>
 # 若轮询窗口内完成：直接返回 ready=true
 # 若内置轮询结束仍未完成：返回 ready=false、task_id 和 next_command
 
 # 2. 轮询移动结果
-lark-cli drive +task_result --scenario task_check --task-id xxx
+lark-cli drive +task_result --scenario task_check --task-id <TASK_ID>
 ```
 
 ### 配合 +export 使用
 
 ```bash
 # 1. 发起导出
-lark-cli drive +export --token doccn_xxx --doc-type docx --file-extension pdf
+lark-cli drive +export --token <SOURCE_DOC_TOKEN> --doc-type docx --file-extension pdf
 # 若轮询窗口内完成：直接下载本地文件
 # 若内置轮询结束仍未完成：返回 ready=false、ticket 和 next_command
 
 # 2. 继续查询导出结果
-lark-cli drive +task_result --scenario export --ticket xxx --file-token doccn_xxx
+lark-cli drive +task_result --scenario export --ticket <EXPORT_TICKET> --file-token <SOURCE_DOC_TOKEN>
 
 # 3. 拿到 file_token 后下载
-lark-cli drive +export-download --file-token boxcn_xxx
+lark-cli drive +export-download --file-token <EXPORTED_FILE_TOKEN>
 ```
 
 ## 权限要求

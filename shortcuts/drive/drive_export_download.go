@@ -11,6 +11,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// DriveExportDownload downloads an already-generated export artifact when the
+// caller has a file token from a previous export task.
 var DriveExportDownload = common.Shortcut{
 	Service:     "drive",
 	Command:     "+export-download",
@@ -40,6 +42,8 @@ var DriveExportDownload = common.Shortcut{
 			Set("output_dir", runtime.Str("output-dir"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		// Reuse the shared export download helper so overwrite checks, filename
+		// resolution, and output metadata stay consistent with drive +export.
 		out, err := downloadDriveExportFile(
 			ctx,
 			runtime,
