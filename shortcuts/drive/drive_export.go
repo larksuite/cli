@@ -106,11 +106,11 @@ var DriveExport = common.Shortcut{
 				return err
 			}
 
-			// Prefer the remote title for the exported file name, but still fall
-			// back to the token if metadata is empty.
-			title, err := fetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
-			if err != nil {
-				return err
+		title, err := fetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
+		if err != nil {
+			fmt.Fprintf(runtime.IO().ErrOut, "Warning: could not fetch document title (%v); using token as filename\n", err)
+			title = ""
+		}
 			}
 			fileName := ensureExportFileExtension(sanitizeExportFileName(title, spec.Token), spec.FileExtension)
 			savedPath, err := saveContentToOutputDir(outputDir, fileName, []byte(common.GetString(data, "content")), overwrite)
