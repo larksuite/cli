@@ -90,6 +90,7 @@ func completeDomain(toComplete string) []string {
 	return completions
 }
 
+// authLoginRun executes the login command logic.
 func authLoginRun(opts *LoginOptions) error {
 	f := opts.Factory
 
