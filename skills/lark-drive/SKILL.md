@@ -40,14 +40,14 @@ metadata:
    ```
 
 2. **从返回结果中提取关键信息**
-   - `node.obj_type`：文档类型（docx/doc/sheet/bitable/slides/file/mindnote）
-   - `node.obj_token`：**真实的文档 token**（用于后续操作）
-   - `node.title`：文档标题
+    - `node.obj_type`：文档类型（docx/doc/sheet/bitable/slides/file/mindnote）
+    - `node.obj_token`：**真实的文档 token**（用于后续操作）
+    - `node.title`：文档标题
 
 3. **根据 `obj_type` 使用对应的 API**
 
    | obj_type | 说明 | 使用的 API |
-   |----------|------|-----------|
+      |----------|------|-----------|
    | `docx` | 新版云文档 | `drive file.comments.*`、`docx.*` |
    | `doc` | 旧版云文档 | `drive file.comments.*` |
    | `sheet` | 电子表格 | `sheets.*` |
@@ -132,9 +132,9 @@ Drive Folder (云空间文件夹)
 #### 评论排序引导
 - 一个文档通常有多个评论，评论按 `create_time`（创建时间）排序。
 - **重要**：只有当用户明确提到"最新评论"、"最后评论"、"最早评论"时，才需要根据 `create_time` 进行排序：
-  - **必须先获取所有评论（处理分页拉完所有数据）**，不能只获取一页就排序
-  - "最新评论" / "最后评论"：按 `create_time` 降序排列，取第一条
-  - "最早评论"：按 `create_time` 升序排列，取第一条
+    - **必须先获取所有评论（处理分页拉完所有数据）**，不能只获取一页就排序
+    - "最新评论" / "最后评论"：按 `create_time` 降序排列，取第一条
+    - "最早评论"：按 `create_time` 升序排列，取第一条
 - 如果用户只说"第一条评论"，直接使用 `drive file.comments list` 返回的第一条即可，不需要额外排序。
 
 #### 评论回复限制
@@ -164,6 +164,12 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+upload`](references/lark-drive-upload.md) | Upload a local file to Drive |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
 | [`+add-comment`](references/lark-drive-add-comment.md) | Add a full-document comment, or a local comment to selected docx text (also supports wiki URL resolving to doc/docx) |
+| [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable to a local file with limited polling |
+| [`+export-status`](references/lark-drive-export-status.md) | Query an export task result by ticket |
+| [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token |
+| [`+import`](references/lark-drive-import.md) | Import a local file to Drive as a cloud document (docx, sheet, bitable) |
+| [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive |
+| [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
 
 ## API Resources
 
@@ -176,43 +182,55 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 
 ### files
 
-  - `copy` — 复制文件
+- `copy` — 复制文件
+- `create_folder` — 新建文件夹
+- `list` — 获取文件夹下的清单
 
 ### file.comments
 
-  - `batch_query` — 批量获取评论
-  - `create_v2` — 添加全文/局部（划词）评论
-  - `list` — 分页获取文档评论
-  - `patch` — 解决/恢复 评论
+- `batch_query` — 批量获取评论
+- `create_v2` — 添加全文/局部（划词）评论
+- `list` — 分页获取文档评论
+- `patch` — 解决/恢复 评论
 
 ### file.comment.replys
 
-  - `create` — 
-  - `delete` — 删除回复
-  - `list` — 获取回复
-  - `update` — 更新回复
+- `create` —
+- `delete` — 删除回复
+- `list` — 获取回复
+- `update` — 更新回复
 
 ### permission.members
 
-  - `auth` — 
-  - `create` — 增加协作者权限
-  - `transfer_owner` — 
+- `auth` —
+- `create` — 增加协作者权限
+- `transfer_owner` —
 
 ### metas
 
-  - `batch_query` — 获取文档元数据
+- `batch_query` — 获取文档元数据
 
 ### user
 
-  - `remove_subscription` — 取消订阅用户、应用维度事件
-  - `subscription` — 订阅用户、应用维度事件（本次开放评论添加事件）
-  - `subscription_status` — 查询用户、应用对指定事件的订阅状态
+- `remove_subscription` — 取消订阅用户、应用维度事件
+- `subscription` — 订阅用户、应用维度事件（本次开放评论添加事件）
+- `subscription_status` — 查询用户、应用对指定事件的订阅状态
+
+### file.statistics
+
+- `get` — 获取文件统计信息
+
+### file.view_records
+
+- `list` — 获取文档的访问者记录
 
 ## 权限表
 
 | 方法 | 所需 scope |
 |------|-----------|
 | `files.copy` | `docs:document:copy` |
+| `files.create_folder` | `space:folder:create` |
+| `files.list` | `space:document:retrieve` |
 | `file.comments.batch_query` | `docs:document.comment:read` |
 | `file.comments.create_v2` | `docs:document.comment:create` |
 | `file.comments.list` | `docs:document.comment:read` |
@@ -228,4 +246,6 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 | `user.remove_subscription` | `docs:event:subscribe` |
 | `user.subscription` | `docs:event:subscribe` |
 | `user.subscription_status` | `docs:event:subscribe` |
+| `file.statistics.get` | `drive:drive.metadata:readonly` |
+| `file.view_records.list` | `drive:file:view_record:readonly` |
 
