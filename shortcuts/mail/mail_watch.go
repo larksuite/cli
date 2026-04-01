@@ -247,12 +247,12 @@ var MailWatch = common.Shortcut{
 		info("Mailbox subscribed.")
 
 		var unsubOnce sync.Once
+		var unsubErr error
 		unsubscribe := func() error {
-			var callErr error
 			unsubOnce.Do(func() {
-				_, callErr = runtime.CallAPI("POST", mailboxPath(mailbox, "event", "unsubscribe"), nil, map[string]interface{}{"event_type": 1})
+				_, unsubErr = runtime.CallAPI("POST", mailboxPath(mailbox, "event", "unsubscribe"), nil, map[string]interface{}{"event_type": 1})
 			})
-			return callErr
+			return unsubErr
 		}
 
 		// Resolve "me" to the actual email address so we can filter events.
