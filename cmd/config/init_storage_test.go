@@ -84,7 +84,7 @@ func TestConfigInitRun_FallsBackToEncryptedSecretWhenKeychainUnavailable(t *test
 	if resolved != "secret123" {
 		t.Fatalf("resolved secret = %q, want %q", resolved, "secret123")
 	}
-	if got := stderr.String(); got == "" || !strings.Contains(got, "encrypted fallback") {
+	if got := stderr.String(); got == "" || !strings.Contains(got, "filesystem permissions") {
 		t.Fatalf("expected fallback warning in stderr, got %q", got)
 	}
 }
@@ -236,5 +236,47 @@ func TestValidateSecretReuse_AllowsFileSecretRefAcrossAppIDChange(t *testing.T) 
 	})
 	if err != nil {
 		t.Fatalf("expected file-based secret ref reuse to remain allowed, got %v", err)
+	}
+}
+
+func TestStoreAndSaveOnlyApp_SameAppUpgradeToKeychainRemovesOldFallbackSecret(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	if err := keychain.SetFallback(keychain.LarkCliService, "appsecret:cli_test", "old-secret"); err != nil {
+		t.Fatalf("SetFallback: %v", err)
+	}
+
+	existing := &core.MultiAppConfig{
+		Apps: []core.AppConfig{{
+			AppId: "cli_test",
+			AppSecret: core.SecretInput{
+				Ref: &core.SecretRef{Source: "encrypted_file", ID: "appsecret:cli_test"},
+			},
+			Brand: core.BrandFeishu,
+			Lang:  "zh",
+			Users: []core.AppUser{},
+		}},
+	}
+	if err := core.SaveMultiAppConfig(existing); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	kc := &trackingKeychain{}
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Keychain = kc
+
+	if err := storeAndSaveOnlyApp(existing, f, "cli_test", core.PlainSecret("new-secret"), core.BrandFeishu, "zh"); err != nil {
+		t.Fatalf("storeAndSaveOnlyApp: %v", err)
+	}
+
+	cfg, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if got := cfg.Apps[0].AppSecret.Ref; got == nil || got.Source != "keychain" {
+		t.Fatalf("expected config to switch to keychain ref, got %#v", got)
+	}
+	if fallback, err := keychain.GetFallbackWithError(keychain.LarkCliService, "appsecret:cli_test"); err == nil && fallback != "" {
+		t.Fatalf("expected old fallback secret to be removed, got %q", fallback)
 	}
 }

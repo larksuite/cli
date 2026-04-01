@@ -4,6 +4,9 @@
 package keychain
 
 import (
+	"bytes"
+	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,5 +67,89 @@ func TestGetFallback_MissDoesNotCreateStorageArtifacts(t *testing.T) {
 	fallbackDir := fallbackStorageDir(service)
 	if _, err := os.Stat(fallbackDir); !os.IsNotExist(err) {
 		t.Fatalf("expected fallback dir to stay absent on read miss, stat err = %v", err)
+	}
+}
+
+func TestCreateMasterKeyFile_DoesNotReplaceExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "master.key")
+	existingKey := bytes.Repeat([]byte{1}, masterKeyBytes)
+	replacementKey := bytes.Repeat([]byte{2}, masterKeyBytes)
+
+	if err := os.WriteFile(keyPath, existingKey, 0600); err != nil {
+		t.Fatalf("WriteFile(%s): %v", keyPath, err)
+	}
+
+	err := createMasterKeyFile(keyPath, replacementKey)
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("createMasterKeyFile error = %v, want %v", err, os.ErrExist)
+	}
+
+	got, readErr := os.ReadFile(keyPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile(%s): %v", keyPath, readErr)
+	}
+	if !bytes.Equal(got, existingKey) {
+		t.Fatalf("master key was replaced: got %x want %x", got, existingKey)
+	}
+}
+
+func TestLoadOrCreateMasterKeyFile_ReusesExistingKey(t *testing.T) {
+	dir := t.TempDir()
+	existingKey := bytes.Repeat([]byte{7}, masterKeyBytes)
+
+	if err := os.WriteFile(filepath.Join(dir, "master.key"), existingKey, 0600); err != nil {
+		t.Fatalf("WriteFile(master.key): %v", err)
+	}
+
+	got, err := loadOrCreateMasterKeyFile(dir)
+	if err != nil {
+		t.Fatalf("loadOrCreateMasterKeyFile: %v", err)
+	}
+	if !bytes.Equal(got, existingKey) {
+		t.Fatalf("loadOrCreateMasterKeyFile returned %x, want %x", got, existingKey)
+	}
+}
+
+func TestSafeFileName_EncodesFullAccountWithoutCollision(t *testing.T) {
+	accountA := "appsecret:cli_test"
+	accountB := "appsecret/cli_test"
+
+	gotA := safeFileName(accountA)
+	gotB := safeFileName(accountB)
+	if gotA == gotB {
+		t.Fatalf("safeFileName collision: %q and %q both mapped to %q", accountA, accountB, gotA)
+	}
+	if want := base64.RawURLEncoding.EncodeToString([]byte(accountA)) + ".enc"; gotA != want {
+		t.Fatalf("safeFileName(%q) = %q, want %q", accountA, gotA, want)
+	}
+}
+
+func TestGetFallbackWithError_ReturnsDecryptFailure(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	service := LarkCliService
+	account := "appsecret:cli_test"
+	dir := fallbackStorageDir(service)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "master.key"), bytes.Repeat([]byte{1}, masterKeyBytes), 0600); err != nil {
+		t.Fatalf("WriteFile(master.key): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, safeFileName(account)), []byte("corrupt"), 0600); err != nil {
+		t.Fatalf("WriteFile(ciphertext): %v", err)
+	}
+
+	got, err := GetFallbackWithError(service, account)
+	if err == nil {
+		t.Fatal("expected GetFallbackWithError to report decrypt failure")
+	}
+	if got != "" {
+		t.Fatalf("GetFallbackWithError returned %q, want empty string on error", got)
+	}
+	if !strings.Contains(err.Error(), "decrypt") {
+		t.Fatalf("expected decrypt context in error, got %v", err)
 	}
 }

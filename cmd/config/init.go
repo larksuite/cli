@@ -98,11 +98,11 @@ func warnIfEncryptedSecretFallback(w io.Writer, secret core.SecretInput, origina
 	if !original.IsPlain() || !secret.IsSecretRef() || secret.Ref.Source != "encrypted_file" {
 		return
 	}
-	fmt.Fprintln(w, "warning: keychain unavailable, app secret stored in a local encrypted fallback managed by lark-cli")
+	fmt.Fprintln(w, "warning: keychain unavailable, app secret stored in a local file protected by filesystem permissions (0600) managed by lark-cli")
 }
 
 func validateSecretReuse(appID string, secret core.SecretInput) error {
-	if !secret.IsSecretRef() || secret.Ref == nil {
+	if !secret.IsSecretRef() {
 		return nil
 	}
 	if secret.Ref.Source == "file" {
@@ -113,6 +113,20 @@ func validateSecretReuse(appID string, secret core.SecretInput) error {
 		return nil
 	}
 	return output.ErrValidation("App Secret must be re-entered when App ID changes")
+}
+
+func cleanupReplacedCurrentAppSecret(existing *core.MultiAppConfig, f *cmdutil.Factory, appID string, newSecret core.SecretInput) {
+	if existing == nil || len(existing.Apps) == 0 {
+		return
+	}
+	current := existing.Apps[0]
+	if current.AppId != appID || !current.AppSecret.IsSecretRef() || !newSecret.IsSecretRef() {
+		return
+	}
+	if current.AppSecret.Ref.Source == newSecret.Ref.Source && current.AppSecret.Ref.ID == newSecret.Ref.ID {
+		return
+	}
+	core.RemoveSecretStore(current.AppSecret, f.Keychain)
 }
 
 func storeAndSaveOnlyApp(existing *core.MultiAppConfig, f *cmdutil.Factory, appID string, plainSecret core.SecretInput, brand core.LarkBrand, lang string) error {
@@ -132,6 +146,7 @@ func storeAndSaveOnlyApp(existing *core.MultiAppConfig, f *cmdutil.Factory, appI
 		}
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
+	cleanupReplacedCurrentAppSecret(existing, f, appID, secret)
 	cleanupOldConfig(existing, f, appID)
 	warnIfEncryptedSecretFallback(f.IOStreams.ErrOut, secret, plainSecret)
 	return nil

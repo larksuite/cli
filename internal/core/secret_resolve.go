@@ -4,6 +4,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -31,9 +32,12 @@ func ResolveSecretInput(s SecretInput, kc keychain.KeychainAccess) (string, erro
 		}
 		return strings.TrimSpace(string(data)), nil
 	case "encrypted_file":
-		value := keychain.GetFallback(keychain.LarkCliService, s.Ref.ID)
-		if value == "" {
-			return "", fmt.Errorf("failed to read encrypted fallback secret %s", s.Ref.ID)
+		value, err := keychain.GetFallbackWithError(keychain.LarkCliService, s.Ref.ID)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return "", fmt.Errorf("encrypted fallback secret %s not found", s.Ref.ID)
+			}
+			return "", fmt.Errorf("failed to decrypt encrypted fallback secret %s: %w", s.Ref.ID, err)
 		}
 		return value, nil
 	case "keychain":

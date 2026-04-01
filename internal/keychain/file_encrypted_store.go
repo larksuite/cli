@@ -7,9 +7,10 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 
 	"github.com/larksuite/cli/internal/configdir"
 	"github.com/larksuite/cli/internal/validate"
@@ -19,10 +20,8 @@ const masterKeyBytes = 32
 const ivBytes = 12
 const tagBytes = 16
 
-var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
-
 func safeFileName(account string) string {
-	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
+	return base64.RawURLEncoding.EncodeToString([]byte(account)) + ".enc"
 }
 
 func fallbackStorageDir(service string) string {
@@ -49,6 +48,9 @@ func loadOrCreateMasterKeyFile(dir string) ([]byte, error) {
 	if err == nil {
 		return key, nil
 	}
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
 
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
@@ -58,13 +60,43 @@ func loadOrCreateMasterKeyFile(dir string) ([]byte, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	if err := validate.AtomicWrite(keyPath, key, 0600); err != nil {
+	if err := createMasterKeyFile(keyPath, key); err != nil {
+		if os.IsExist(err) {
+			return loadMasterKeyFile(dir)
+		}
 		if existingKey, readErr := loadMasterKeyFile(dir); readErr == nil {
 			return existingKey, nil
 		}
 		return nil, err
 	}
 	return key, nil
+}
+
+func createMasterKeyFile(path string, key []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	success := false
+	defer func() {
+		if success {
+			return
+		}
+		file.Close()
+		os.Remove(path)
+	}()
+
+	if _, err := file.Write(key); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
 
 func encryptData(plaintext string, key []byte) ([]byte, error) {
@@ -112,15 +144,24 @@ func decryptData(data []byte, key []byte) (string, error) {
 }
 
 func readEncryptedFile(dir, account string, key []byte) string {
-	data, err := os.ReadFile(filepath.Join(dir, safeFileName(account)))
-	if err != nil {
-		return ""
-	}
-	plaintext, err := decryptData(data, key)
+	plaintext, err := readEncryptedFileWithError(dir, account, key)
 	if err != nil {
 		return ""
 	}
 	return plaintext
+}
+
+func readEncryptedFileWithError(dir, account string, key []byte) (string, error) {
+	path := filepath.Join(dir, safeFileName(account))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	plaintext, err := decryptData(data, key)
+	if err != nil {
+		return "", fmt.Errorf("decrypt fallback file %s: %w", path, err)
+	}
+	return plaintext, nil
 }
 
 func writeEncryptedFile(dir, account, data string, key []byte) error {
@@ -143,12 +184,24 @@ func removeEncryptedFile(dir, account string) error {
 }
 
 func GetFallback(service, account string) string {
-	dir := fallbackStorageDir(service)
-	key, err := loadMasterKeyFile(dir)
+	value, err := GetFallbackWithError(service, account)
 	if err != nil {
 		return ""
 	}
-	return readEncryptedFile(dir, account, key)
+	return value
+}
+
+func GetFallbackWithError(service, account string) (string, error) {
+	dir := fallbackStorageDir(service)
+	path := filepath.Join(dir, safeFileName(account))
+	if _, err := os.Stat(path); err != nil {
+		return "", err
+	}
+	key, err := loadMasterKeyFile(dir)
+	if err != nil {
+		return "", fmt.Errorf("load fallback master key for %s: %w", path, err)
+	}
+	return readEncryptedFileWithError(dir, account, key)
 }
 
 func SetFallback(service, account, data string) error {

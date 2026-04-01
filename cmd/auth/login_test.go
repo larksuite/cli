@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"sort"
 	"strings"
@@ -257,6 +258,17 @@ func TestGetDomainMetadata_HasTitleAndDescription(t *testing.T) {
 		if dm.Title == "" {
 			t.Errorf("domain %q has empty Title", dm.Name)
 		}
+	}
+}
+
+func TestWarnIfEncryptedTokenFallback(t *testing.T) {
+	var stderr bytes.Buffer
+
+	warnIfEncryptedTokenFallback(&stderr, true)
+
+	got := stderr.String()
+	if !strings.Contains(got, "filesystem permissions") {
+		t.Fatalf("expected warning to explain filesystem-permission protection, got %q", got)
 	}
 }
 

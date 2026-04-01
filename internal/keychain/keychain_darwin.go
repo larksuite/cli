@@ -9,6 +9,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -27,6 +29,36 @@ func StorageDir(service string) string {
 	return filepath.Join(home, "Library", "Application Support", service)
 }
 
+func resolveMasterKey(
+	getFn func() (string, error),
+	setFn func(string) error,
+	generateFn func() ([]byte, error),
+) ([]byte, error) {
+	encodedKey, err := getFn()
+	switch {
+	case err == nil:
+		key, decodeErr := base64.StdEncoding.DecodeString(encodedKey)
+		if decodeErr != nil {
+			return nil, WrapUnavailable(fmt.Errorf("decode master key: %w", decodeErr))
+		}
+		if len(key) != masterKeyBytes {
+			return nil, WrapUnavailable(fmt.Errorf("invalid master key length: %d", len(key)))
+		}
+		return key, nil
+	case errors.Is(err, keyring.ErrNotFound):
+		key, genErr := generateFn()
+		if genErr != nil {
+			return nil, genErr
+		}
+		if setErr := setFn(base64.StdEncoding.EncodeToString(key)); setErr != nil {
+			return nil, WrapUnavailable(setErr)
+		}
+		return key, nil
+	default:
+		return nil, WrapUnavailable(err)
+	}
+}
+
 func getMasterKey(service string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout)
 	defer cancel()
@@ -38,34 +70,23 @@ func getMasterKey(service string) ([]byte, error) {
 	resCh := make(chan result, 1)
 	go func() {
 		defer func() { recover() }()
-
-		encodedKey, err := keyring.Get(service, "master.key")
-		if err == nil {
-			key, decodeErr := base64.StdEncoding.DecodeString(encodedKey)
-			if decodeErr == nil && len(key) == masterKeyBytes {
-				resCh <- result{key: key, err: nil}
-				return
-			}
-		}
-
-		// Generate new master key if not found or invalid
-		key := make([]byte, masterKeyBytes)
-		if _, randErr := rand.Read(key); randErr != nil {
-			resCh <- result{key: nil, err: randErr}
-			return
-		}
-
-		encodedKey = base64.StdEncoding.EncodeToString(key)
-		setErr := keyring.Set(service, "master.key", encodedKey)
-		resCh <- result{key: key, err: setErr}
+		key, err := resolveMasterKey(
+			func() (string, error) { return keyring.Get(service, "master.key") },
+			func(encoded string) error { return keyring.Set(service, "master.key", encoded) },
+			func() ([]byte, error) {
+				key := make([]byte, masterKeyBytes)
+				if _, randErr := rand.Read(key); randErr != nil {
+					return nil, randErr
+				}
+				return key, nil
+			},
+		)
+		resCh <- result{key: key, err: err}
 	}()
 
 	select {
 	case res := <-resCh:
-		if res.err != nil {
-			return nil, WrapUnavailable(res.err)
-		}
-		return res.key, nil
+		return res.key, res.err
 	case <-ctx.Done():
 		return nil, WrapUnavailable(ctx.Err())
 	}

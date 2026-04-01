@@ -298,8 +298,12 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		GrantedAt:        stored.GrantedAt,
 	}
 
-	if err := SetStoredToken(updated); err != nil {
+	usedFallback, err := SetStoredToken(updated)
+	if err != nil {
 		return nil, err
+	}
+	if usedFallback {
+		fmt.Fprintln(errOut, "warning: keychain unavailable, auth token stored in a local file protected by filesystem permissions (0600) managed by lark-cli")
 	}
 	return updated, nil
 }

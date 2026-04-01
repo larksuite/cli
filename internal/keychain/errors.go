@@ -5,17 +5,28 @@ package keychain
 
 import (
 	"errors"
-	"fmt"
 )
 
 // ErrUnavailable marks failures where the platform keychain cannot be used and
 // callers may degrade to the CLI-managed encrypted fallback store.
 var ErrUnavailable = errors.New("keychain unavailable")
 
+type unavailableError struct {
+	cause error
+}
+
+func (e *unavailableError) Error() string {
+	return ErrUnavailable.Error() + ": " + e.cause.Error()
+}
+
+func (e *unavailableError) Unwrap() []error {
+	return []error{ErrUnavailable, e.cause}
+}
+
 // WrapUnavailable annotates a lower-level keychain error as fallback-eligible.
 func WrapUnavailable(err error) error {
 	if err == nil || errors.Is(err, ErrUnavailable) {
 		return err
 	}
-	return fmt.Errorf("%w: %v", ErrUnavailable, err)
+	return &unavailableError{cause: err}
 }

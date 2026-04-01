@@ -74,8 +74,11 @@ func GetStoredToken(appId, userOpenId string) *StoredUAToken {
 			return &token
 		}
 	}
-	jsonStr = keychain.GetFallback(keychain.LarkCliService, accountKey(appId, userOpenId))
-	if jsonStr == "" {
+	jsonStr, err = keychain.GetFallbackWithError(keychain.LarkCliService, accountKey(appId, userOpenId))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil
+		}
 		return readLegacyManagedToken(appId, userOpenId)
 	}
 	var token StoredUAToken
@@ -86,24 +89,24 @@ func GetStoredToken(appId, userOpenId string) *StoredUAToken {
 }
 
 // SetStoredToken persists a UAT.
-func SetStoredToken(token *StoredUAToken) error {
+func SetStoredToken(token *StoredUAToken) (bool, error) {
 	key := accountKey(token.AppId, token.UserOpenId)
 	data, err := json.Marshal(token)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := tokenKeychain.Set(keychain.LarkCliService, key, string(data)); err == nil {
 		_ = keychain.RemoveFallback(keychain.LarkCliService, key)
 		_ = os.Remove(legacyManagedTokenFilePath(token.AppId, token.UserOpenId))
-		return nil
+		return false, nil
 	} else if !keychain.ShouldUseFallback(err) {
-		return fmt.Errorf("store token in keychain: %w", err)
+		return false, fmt.Errorf("store token in keychain: %w", err)
 	}
 	if err := keychain.SetFallback(keychain.LarkCliService, key, string(data)); err != nil {
-		return fmt.Errorf("store token encrypted fallback: %w", err)
+		return false, fmt.Errorf("store token encrypted fallback: %w", err)
 	}
 	_ = os.Remove(legacyManagedTokenFilePath(token.AppId, token.UserOpenId))
-	return nil
+	return true, nil
 }
 
 // RemoveStoredToken removes a stored UAT.

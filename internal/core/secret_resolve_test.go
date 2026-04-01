@@ -75,3 +75,29 @@ func TestResolveSecretInput_FileSourceReadsSecretFile(t *testing.T) {
 		t.Fatalf("secret = %q, want secret123", secret)
 	}
 }
+
+func TestResolveSecretInput_EncryptedFallbackIncludesUnderlyingError(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	serviceDir := filepath.Join(configDir, "keychain", keychain.LarkCliService)
+	if err := os.MkdirAll(serviceDir, 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(serviceDir, "master.key"), []byte("12345678901234567890123456789012"), 0600); err != nil {
+		t.Fatalf("WriteFile(master.key): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(serviceDir, "YXBwc2VjcmV0OmNsaV90ZXN0.enc"), []byte("corrupt"), 0600); err != nil {
+		t.Fatalf("WriteFile(ciphertext): %v", err)
+	}
+
+	_, err := ResolveSecretInput(SecretInput{
+		Ref: &SecretRef{Source: "encrypted_file", ID: "appsecret:cli_test"},
+	}, &erroringSetKeychain{})
+	if err == nil {
+		t.Fatal("expected ResolveSecretInput to report fallback decrypt failure")
+	}
+	if !strings.Contains(err.Error(), "failed to decrypt encrypted fallback secret") {
+		t.Fatalf("expected decrypt-specific error, got %v", err)
+	}
+}
