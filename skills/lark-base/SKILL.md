@@ -155,7 +155,7 @@ metadata:
 
 - **Base token 口径统一**：统一使用 `--base-token`
 - **`+xxx-list` 调用纪律**：`+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list / +dashboard-list / +dashboard-block-list / +workflow-list` 禁止并发调用；批量执行时只能串行
-- **`+record-list` limit 上限**：`--limit` 最大 `200`。需要更多数据时必须用分页（`offset` 递增）分批拉取，禁止单次传超过 `200`
+- **`+record-list` 分页规则**：`--limit` 最大 `200`。先拉首批并检查返回 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时再继续翻页。用户只要样例或前 N 条时，不要继续拉全量
 - **字段可写性先判断**：存储字段才可写；公式 / lookup / 系统字段默认只读，写记录时应跳过
 - **公式能力要主动想到**：用户说“算一下”“生成标签”“判断是否异常”“跨表汇总”“按日期差预警”时，要先判断是否应该建公式字段，而不是只返回手工分析方案
 - **lookup 不是默认首选**：lookup 只在用户明确要求或确实更适合固定查找模型时使用；常规计算、跨表聚合和条件判断优先 formula
