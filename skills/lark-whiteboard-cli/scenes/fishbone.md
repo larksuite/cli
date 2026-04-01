@@ -10,7 +10,7 @@
 
 ## Layout 选型
 
-- **脚本生成坐标**（必须）：用 .js 脚本通过三角函数计算鱼骨坐标，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.1.0` 渲染
+- **脚本生成坐标**（必须）：用 .js 脚本通过三角函数计算鱼骨坐标，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
 
 ## Layout 规则
 
@@ -182,7 +182,7 @@ categories.forEach((cat, index) => {
   });
 });
 
-fs.writeFileSync('fishbone-diagram.json', JSON.stringify({ version: 2, nodes }, null, 2));
+fs.writeFileSync('diagram.json', JSON.stringify({ version: 2, nodes }, null, 2));
 ```
 
 ## 连线格式与注意点
@@ -227,13 +227,6 @@ fs.writeFileSync('fishbone-diagram.json', JSON.stringify({ version: 2, nodes }, 
 ```
 
 上述骨架展示一个分类（上方）+ 一条原因的模式。完整鱼骨图重复此模式，上下交替。每个分类下可有多条原因，均匀插值分布在分支骨上。
-
-**脚本运行方式**：
-
-```bash
-node generate-fishbone.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i fishbone.json -o ./fishbone.png
-```
 
 ## 陷阱
 

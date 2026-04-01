@@ -14,12 +14,12 @@
 满足以下任一条件时使用：
 - 用户明确要求 "用 Mermaid" 或 "输出 Mermaid"
 - 用户直接粘贴了 Mermaid 语法文本
-- 图表类型为思维导图、时序图、类图、饼图、流程图（自动路由）
+- 图表类型为思维导图、时序图、类图、饼图（自动路由）
 
 ## CLI 用法
 
 ```bash
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i diagram.mmd -o output.png
+npx -y @larksuite/whiteboard-cli@^0.2.0 -i ./diagrams/{name}.mmd -o ./diagrams/{name}.png
 ```
 
 ## 思维导图 (Mindmap)
@@ -80,7 +80,11 @@ pie title 分布
 
 ## 流程图 (Flowchart)
 
-适用于：业务流程、审批流、订单处理流程等有明确顺序和分支判断的场景。
+> [!WARNING]
+> **流程图不推荐使用 Mermaid 路径！**
+> 带复杂分支、复合节点、高保真卡片样式的流程图应优先走 **DSL 路径**（参见 `scenes/flowchart.md`）。只有用户明确给出 Mermaid 代码，或场景本身就是极简文字流程时，才走此路径。
+
+适用于：极简的文字节点判断业务流。
 
 ```mermaid
 flowchart TD
@@ -129,4 +133,4 @@ stateDiagram-v2
 - 输出纯 Mermaid 文本，不是 JSON，不要混用 DSL
 - 节点文字含特殊字符时用双引号包裹：`A["包含(括号)的文字"]`
 - `subgraph` 用于逻辑分组
-- 流程图默认 `TD`（上到下），如果流程较宽（步骤多但层级浅），用 `LR`（左到右）
+- Mermaid 的流程图样式较基础，也无法在节点内部嵌套复杂排版；复杂流程优先走 DSL（见 `scenes/flowchart.md`），极简文字流程或用户显式给 Mermaid 代码时再使用 Mermaid。

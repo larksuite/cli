@@ -161,7 +161,7 @@
   ]
 };
 
-fs.writeFileSync('org_chart.json', JSON.stringify(doc, null, 2));
+fs.writeFileSync('diagram.json', JSON.stringify(doc, null, 2));
 ```
 
 ## 陷阱

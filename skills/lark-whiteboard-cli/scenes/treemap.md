@@ -8,7 +8,7 @@
 
 ## Layout 选型
 
-- **脚本生成坐标**（推荐）：Treemap 需要精确的面积比例计算，用 .js 脚本递归切分矩形，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.1.0` 渲染
+- **脚本生成坐标**（推荐）：Treemap 需要精确的面积比例计算，用 .js 脚本递归切分矩形，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
 - 不适合手动心算坐标
 
 ## Layout 规则
@@ -201,13 +201,6 @@
 面积比例验证（第一层水平切分 width）：
 - 硬件 40/100 * 1100 = 440，软件 35/100 * 1100 = 385，服务 25/100 * 1100 = 275
 - 子矩形从 y=75 开始，可用高度 665
-
-**脚本运行方式**：
-
-```bash
-node generate-treemap.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i treemap.json -o ./treemap.png
-```
 
 ## 陷阱
 

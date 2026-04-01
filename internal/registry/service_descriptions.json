@@ -53,7 +53,8 @@
   },
   "whiteboard": {
     "en": { "title": "Whiteboard", "description": "Create and edit boards" },
-    "zh": { "title": "画板", "description": "画板创建、编辑" }
+    "zh": { "title": "画板", "description": "画板创建、编辑" },
+    "auth_domain": "docs"
   },
   "wiki": {
     "en": { "title": "Wiki", "description": "Wiki space and node management" },

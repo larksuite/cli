@@ -8,7 +8,7 @@
 
 ## Layout 选型
 
-- **脚本生成坐标**（推荐）：用 .js 脚本计算数据点坐标和折线路径，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.1.0` 渲染
+- **脚本生成坐标**（推荐）：用 .js 脚本计算数据点坐标和折线路径，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
 
 ## Layout 规则
 
@@ -198,13 +198,6 @@
 - 点2 (Q3, 150): pointX = 80 + (2/3)*900 = 680, pointY = 480 - ((150-100)/120)*400 = 313
 - 点3 (Q4, 180): pointX = 80 + (3/3)*900 = 980, pointY = 480 - ((180-100)/120)*400 = 213
 - ellipse 定位：ellipseX = pointX - 6, ellipseY = pointY - 6
-
-**脚本运行方式**：
-
-```bash
-node generate-line-chart.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i line-chart.json -o ./line-chart.png
-```
 
 ## 陷阱
 

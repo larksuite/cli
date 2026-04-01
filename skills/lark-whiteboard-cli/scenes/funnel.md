@@ -90,7 +90,7 @@ const output = {
   ]
 };
 
-fs.writeFileSync('funnel.json', JSON.stringify(output, null, 2));
+fs.writeFileSync('diagram.json', JSON.stringify(output, null, 2));
 ```
 
 ## 陷阱
