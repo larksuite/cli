@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -22,7 +23,8 @@ import (
 
 const (
 	// disableClientTimeout removes the global 30s client timeout for large media downloads.
-	// The request is still bounded by the caller's context.
+	// The download is bounded by the caller's context (e.g. Ctrl+C). A fixed timeout
+	// would cut off legitimate large file transfers.
 	disableClientTimeout = 0
 
 	maxBatchSize           = 50
@@ -113,11 +115,18 @@ func executeSingle(ctx context.Context, runtime *common.RuntimeContext, minuteTo
 		return nil
 	}
 
+	// pre-fetch title before download (RuntimeContext access stays sequential)
+	var title string
+	if outputPath == "" {
+		title = fetchMinuteTitle(ctx, runtime, minuteToken)
+	}
+
 	fmt.Fprintf(runtime.IO().ErrOut, "Downloading media: %s\n", common.MaskToken(minuteToken))
 
 	result, err := downloadMediaFile(ctx, runtime, downloadURL, minuteToken, downloadOpts{
 		outputPath: outputPath,
 		overwrite:  overwrite,
+		title:      title,
 	})
 	if err != nil {
 		return err
@@ -151,16 +160,28 @@ func executeBatch(ctx context.Context, runtime *common.RuntimeContext, tokens []
 
 	results := make([]batchResult, len(tokens))
 
-	// Phase 1: fetch all download URLs sequentially
+	// Phase 1: sequentially fetch download URLs and titles (RuntimeContext is not concurrency-safe)
 	type downloadTask struct {
 		index       int
 		token       string
 		downloadURL string
+		title       string // pre-fetched title for filename resolution
 	}
 	var tasks []downloadTask
 	seen := make(map[string]int)
 
+	ticker := time.NewTicker(time.Second / 5) // rate-limit to 5 req/s
+	defer ticker.Stop()
+
 	for i, token := range tokens {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+			}
+		}
+
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -186,7 +207,8 @@ func executeBatch(ctx context.Context, runtime *common.RuntimeContext, tokens []
 			continue
 		}
 
-		tasks = append(tasks, downloadTask{index: i, token: token, downloadURL: downloadURL})
+		title := fetchMinuteTitle(ctx, runtime, token)
+		tasks = append(tasks, downloadTask{index: i, token: token, downloadURL: downloadURL, title: title})
 	}
 
 	// Phase 2: download files concurrently
@@ -211,6 +233,7 @@ func executeBatch(ctx context.Context, runtime *common.RuntimeContext, tokens []
 					outputDir: outputDir,
 					overwrite: overwrite,
 					usedNames: &usedNames,
+					title:     task.title,
 				})
 				if err != nil {
 					results[task.index] = batchResult{MinuteToken: task.token, Error: err.Error()}
@@ -259,7 +282,7 @@ func fetchDownloadURL(ctx context.Context, runtime *common.RuntimeContext, minut
 	return downloadURL, nil
 }
 
-// deduplicateFilename ensures uniqueness by appending a token suffix on collision.
+// deduplicateFilename ensures uniqueness by probing with token suffix and counter.
 func deduplicateFilename(name, minuteToken string, usedNames *sync.Map) string {
 	if _, loaded := usedNames.LoadOrStore(name, true); !loaded {
 		return name
@@ -270,9 +293,15 @@ func deduplicateFilename(name, minuteToken string, usedNames *sync.Map) string {
 	if len(suffix) > tokenSuffixLen {
 		suffix = suffix[:tokenSuffixLen]
 	}
-	deduped := base + "_" + suffix + ext
-	usedNames.Store(deduped, true)
-	return deduped
+	for i := 0; ; i++ {
+		candidate := base + "_" + suffix + ext
+		if i > 0 {
+			candidate = fmt.Sprintf("%s_%s_%d%s", base, suffix, i+1, ext)
+		}
+		if _, loaded := usedNames.LoadOrStore(candidate, true); !loaded {
+			return candidate
+		}
+	}
 }
 
 type downloadResult struct {
@@ -285,6 +314,7 @@ type downloadOpts struct {
 	outputDir  string // output directory prefix (batch mode)
 	overwrite  bool
 	usedNames  *sync.Map // filename dedup table for batch mode
+	title      string    // pre-fetched minute title (avoids RuntimeContext in concurrent path)
 }
 
 // downloadMediaFile streams a media file from a pre-signed URL to disk.
@@ -324,7 +354,7 @@ func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, down
 
 	outputPath := opts.outputPath
 	if outputPath == "" {
-		filename := resolveOutputFromResponse(ctx, runtime, resp, minuteToken)
+		filename := resolveOutputFilename(resp, minuteToken, opts.title)
 		if opts.usedNames != nil {
 			filename = deduplicateFilename(filename, minuteToken, opts.usedNames)
 		}
@@ -349,12 +379,9 @@ func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, down
 	return &downloadResult{savedPath: safePath, sizeBytes: sizeBytes}, nil
 }
 
-// resolveOutputFromResponse derives the output filename from the minute title (via API)
-// and Content-Type extension. Content-Disposition is not used for the filename because
-// the server may alter the original title (e.g. replacing "|" with "_").
-// Falls back to <token>.media when both title and Content-Type are unavailable.
-func resolveOutputFromResponse(ctx context.Context, runtime *common.RuntimeContext, resp *http.Response, minuteToken string) string {
-	title := fetchMinuteTitle(ctx, runtime, minuteToken)
+// resolveOutputFilename derives the output filename from the pre-fetched title and
+// Content-Type extension. Falls back to <token>.media when both are unavailable.
+func resolveOutputFilename(resp *http.Response, minuteToken, title string) string {
 	ext := extFromContentType(resp.Header.Get("Content-Type"))
 
 	if title != "" {
@@ -427,8 +454,8 @@ func sanitizeFileName(name string) string {
 	)
 	safe := replacer.Replace(strings.TrimSpace(name))
 	safe = strings.Trim(safe, ".")
-	if len(safe) > maxLen {
-		safe = safe[:maxLen]
+	if len([]rune(safe)) > maxLen {
+		safe = string([]rune(safe)[:maxLen])
 	}
 	return safe
 }

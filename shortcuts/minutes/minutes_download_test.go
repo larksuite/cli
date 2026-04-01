@@ -125,7 +125,7 @@ func TestResolveOutputFromResponse_FallbackToContentType(t *testing.T) {
 			"Content-Type":        []string{"video/mp4"},
 		},
 	}
-	got := resolveOutputFromResponse(context.Background(), nil, resp, "tok001")
+	got := resolveOutputFilename(resp, "tok001", "")
 	if got != "tok001.mp4" {
 		t.Errorf("expected token + Content-Type ext %q, got %q", "tok001.mp4", got)
 	}
@@ -137,7 +137,7 @@ func TestResolveOutputFromResponse_ContentType(t *testing.T) {
 			"Content-Type": []string{"video/mp4"},
 		},
 	}
-	got := resolveOutputFromResponse(context.Background(), nil, resp, "tok001")
+	got := resolveOutputFilename(resp, "tok001", "")
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix, got %q", got)
 	}
@@ -148,7 +148,7 @@ func TestResolveOutputFromResponse_ContentType(t *testing.T) {
 
 func TestResolveOutputFromResponse_Fallback(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}}
-	got := resolveOutputFromResponse(context.Background(), nil, resp, "tok001")
+	got := resolveOutputFilename(resp, "tok001", "")
 	if got != "tok001.media" {
 		t.Errorf("expected fallback %q, got %q", "tok001.media", got)
 	}
@@ -161,7 +161,7 @@ func TestResolveOutputFromResponse_InvalidContentDisposition(t *testing.T) {
 			"Content-Type":        []string{"audio/mpeg"},
 		},
 	}
-	got := resolveOutputFromResponse(context.Background(), nil, resp, "tok001")
+	got := resolveOutputFilename(resp, "tok001", "")
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix from Content-Type fallback, got %q", got)
 	}
@@ -174,7 +174,7 @@ func TestResolveOutputFromResponse_EmptyDispositionFilename(t *testing.T) {
 			"Content-Type":        []string{"video/mp4"},
 		},
 	}
-	got := resolveOutputFromResponse(context.Background(), nil, resp, "tok001")
+	got := resolveOutputFilename(resp, "tok001", "")
 	if got == "" {
 		t.Error("expected non-empty filename")
 	}
@@ -319,7 +319,9 @@ func TestDownload_FullDownload(t *testing.T) {
 
 func TestDownload_OverwriteProtection(t *testing.T) {
 	chdir(t, t.TempDir())
-	os.WriteFile("existing.mp4", []byte("old"), 0644)
+	if err := os.WriteFile("existing.mp4", []byte("old"), 0644); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
 
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(mediaStub("tok001", "https://example.com/presigned/download"))
