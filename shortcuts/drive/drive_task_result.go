@@ -24,7 +24,7 @@ var DriveTaskResult = common.Shortcut{
 		{Name: "ticket", Desc: "async task ticket (for import/export tasks)", Required: false},
 		{Name: "task-id", Desc: "async task ID (for move/delete folder tasks)", Required: false},
 		{Name: "scenario", Desc: "task scenario: import, export, or task_check", Required: true},
-		{Name: "file-token", Desc: "file token (required for export task)", Required: false},
+		{Name: "file-token", Desc: "source document token used for export task status lookup", Required: false},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		scenario := strings.ToLower(runtime.Str("scenario"))
@@ -43,15 +43,26 @@ var DriveTaskResult = common.Shortcut{
 			if runtime.Str("ticket") == "" {
 				return output.ErrValidation("--ticket is required for %s scenario", scenario)
 			}
+			if err := validate.ResourceName(runtime.Str("ticket"), "--ticket"); err != nil {
+				return output.ErrValidation("%s", err)
+			}
 		case "task_check":
 			if runtime.Str("task-id") == "" {
 				return output.ErrValidation("--task-id is required for task_check scenario")
+			}
+			if err := validate.ResourceName(runtime.Str("task-id"), "--task-id"); err != nil {
+				return output.ErrValidation("%s", err)
 			}
 		}
 
 		// For export scenario, file-token is required
 		if scenario == "export" && runtime.Str("file-token") == "" {
 			return output.ErrValidation("--file-token is required for export scenario")
+		}
+		if scenario == "export" {
+			if err := validate.ResourceName(runtime.Str("file-token"), "--file-token"); err != nil {
+				return output.ErrValidation("%s", err)
+			}
 		}
 
 		return nil
@@ -74,11 +85,11 @@ var DriveTaskResult = common.Shortcut{
 			dry.GET("/open-apis/drive/v1/export_tasks/:ticket").
 				Desc("[1] Query export task result").
 				Set("ticket", ticket).
-				Set("token", fileToken)
+				Params(map[string]interface{}{"token": fileToken})
 		case "task_check":
 			dry.GET("/open-apis/drive/v1/files/task_check").
 				Desc("[1] Query move/delete folder task status").
-				Set("task_id", taskID)
+				Params(driveTaskCheckParams(taskID))
 		}
 
 		return dry
@@ -96,11 +107,11 @@ var DriveTaskResult = common.Shortcut{
 
 		switch scenario {
 		case "import":
-			result, err = queryImportTask(ctx, runtime, ticket)
+			result, err = queryImportTask(runtime, ticket)
 		case "export":
-			result, err = queryExportTask(ctx, runtime, ticket, fileToken)
+			result, err = queryExportTask(runtime, ticket, fileToken)
 		case "task_check":
-			result, err = queryTaskCheck(ctx, runtime, taskID)
+			result, err = queryTaskCheck(runtime, taskID)
 		}
 
 		if err != nil {
@@ -113,97 +124,62 @@ var DriveTaskResult = common.Shortcut{
 }
 
 // queryImportTask queries import task result
-func queryImportTask(ctx context.Context, runtime *common.RuntimeContext, ticket string) (map[string]interface{}, error) {
-	if err := validate.ResourceName(ticket, "ticket"); err != nil {
-		return nil, output.ErrValidation("invalid ticket: %s", err)
-	}
-
-	data, err := runtime.CallAPI(
-		"GET",
-		fmt.Sprintf("/open-apis/drive/v1/import_tasks/%s", validate.EncodePathSegment(ticket)),
-		nil,
-		nil,
-	)
+func queryImportTask(runtime *common.RuntimeContext, ticket string) (map[string]interface{}, error) {
+	status, err := getDriveImportStatus(runtime, ticket)
 	if err != nil {
 		return nil, err
 	}
 
-	result := common.GetMap(data, "result")
-	if result == nil {
-		result = data
-	}
-
 	return map[string]interface{}{
-		"scenario":      "import",
-		"ticket":        common.GetString(result, "ticket"),
-		"type":          common.GetString(result, "type"),
-		"job_status":    int(common.GetFloat(result, "job_status")),
-		"job_error_msg": common.GetString(result, "job_error_msg"),
-		"token":         common.GetString(result, "token"),
-		"url":           common.GetString(result, "url"),
-		"extra":         result["extra"],
+		"scenario":         "import",
+		"ticket":           status.Ticket,
+		"type":             status.DocType,
+		"ready":            status.Ready(),
+		"failed":           status.Failed(),
+		"job_status":       status.JobStatus,
+		"job_status_label": status.StatusLabel(),
+		"job_error_msg":    status.JobErrorMsg,
+		"token":            status.Token,
+		"url":              status.URL,
+		"extra":            status.Extra,
 	}, nil
 }
 
 // queryExportTask queries export task result
-func queryExportTask(ctx context.Context, runtime *common.RuntimeContext, ticket, fileToken string) (map[string]interface{}, error) {
-	if err := validate.ResourceName(ticket, "ticket"); err != nil {
-		return nil, output.ErrValidation("invalid ticket: %s", err)
-	}
-	if err := validate.ResourceName(fileToken, "file-token"); err != nil {
-		return nil, output.ErrValidation("invalid file-token: %s", err)
-	}
-
-	params := map[string]interface{}{
-		"token": fileToken,
-	}
-
-	data, err := runtime.CallAPI(
-		"GET",
-		fmt.Sprintf("/open-apis/drive/v1/export_tasks/%s", validate.EncodePathSegment(ticket)),
-		params,
-		nil,
-	)
+func queryExportTask(runtime *common.RuntimeContext, ticket, fileToken string) (map[string]interface{}, error) {
+	status, err := getDriveExportStatus(runtime, fileToken, ticket)
 	if err != nil {
 		return nil, err
 	}
 
-	result := common.GetMap(data, "result")
-	if result == nil {
-		result = data
-	}
-
 	return map[string]interface{}{
-		"scenario":       "export",
-		"ticket":         ticket,
-		"file_extension": common.GetString(result, "file_extension"),
-		"type":           common.GetString(result, "type"),
-		"file_name":      common.GetString(result, "file_name"),
-		"file_token":     common.GetString(result, "file_token"),
-		"file_size":      int64(common.GetFloat(result, "file_size")),
-		"job_error_msg":  common.GetString(result, "job_error_msg"),
-		"job_status":     int(common.GetFloat(result, "job_status")),
+		"scenario":         "export",
+		"ticket":           status.Ticket,
+		"ready":            status.Ready(),
+		"failed":           status.Failed(),
+		"file_extension":   status.FileExtension,
+		"type":             status.DocType,
+		"file_name":        status.FileName,
+		"file_token":       status.FileToken,
+		"file_size":        status.FileSize,
+		"job_error_msg":    status.JobErrorMsg,
+		"job_status":       status.JobStatus,
+		"job_status_label": status.StatusLabel(),
 	}, nil
 }
 
 // queryTaskCheck queries move/delete folder task status
-func queryTaskCheck(ctx context.Context, runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
-	if err := validate.ResourceName(taskID, "task-id"); err != nil {
-		return nil, output.ErrValidation("invalid task-id: %s", err)
-	}
-
-	params := map[string]interface{}{
-		"task_id": taskID,
-	}
-
-	data, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files/task_check", params, nil)
+func queryTaskCheck(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
+	status, err := getDriveTaskCheckStatus(runtime, taskID)
 	if err != nil {
 		return nil, err
 	}
 
 	return map[string]interface{}{
 		"scenario": "task_check",
-		"task_id":  taskID,
-		"status":   common.GetString(data, "status"),
+		"task_id":  status.TaskID,
+		"status":   status.StatusLabel(),
+		"ready":    status.Ready(),
+		"failed":   status.Failed(),
 	}, nil
 }

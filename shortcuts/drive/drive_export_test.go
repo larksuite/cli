@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"code.byted.org/lark/larksuite-cli/internal/cmdutil"
-	"code.byted.org/lark/larksuite-cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
 func TestValidateDriveExportSpec(t *testing.T) {
@@ -184,7 +184,7 @@ func TestDriveExportAsyncSuccess(t *testing.T) {
 	}
 }
 
-func TestDriveExportTimeoutReturnsTicket(t *testing.T) {
+func TestDriveExportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
@@ -229,6 +229,12 @@ func TestDriveExportTimeoutReturnsTicket(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"ticket": "tk_456"`) {
 		t.Fatalf("stdout missing ticket: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"timed_out": true`) {
+		t.Fatalf("stdout missing timed_out=true: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"next_command": "lark-cli drive +task_result --scenario export --ticket tk_456 --file-token docx123"`) {
+		t.Fatalf("stdout missing follow-up command: %s", stdout.String())
 	}
 	if _, err := os.Stat(filepath.Join(tmpDir, "report.pdf")); !os.IsNotExist(err) {
 		t.Fatalf("unexpected downloaded file, err=%v", err)
@@ -327,12 +333,12 @@ func TestSaveContentToOutputDirRejectsOverwriteWithoutFlag(t *testing.T) {
 	}
 }
 
-func TestDriveExportStatusPending(t *testing.T) {
+func TestDriveTaskResultExportIncludesReadyFlags(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/drive/v1/export_tasks/tk_status",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_export",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -343,19 +349,23 @@ func TestDriveExportStatusPending(t *testing.T) {
 		},
 	})
 
-	tmpDir := t.TempDir()
-	withDriveWorkingDir(t, tmpDir)
-
-	err := mountAndRunDrive(t, DriveExportStatus, []string{
-		"+export-status",
-		"--token", "docx123",
-		"--ticket", "tk_status",
+	err := mountAndRunDrive(t, DriveTaskResult, []string{
+		"+task_result",
+		"--scenario", "export",
+		"--ticket", "tk_export",
+		"--file-token", "docx123",
 		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"job_status": "processing"`)) {
-		t.Fatalf("stdout missing processing status: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": false`)) {
+		t.Fatalf("stdout missing ready=false: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"failed": false`)) {
+		t.Fatalf("stdout missing failed=false: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"job_status_label": "processing"`)) {
+		t.Fatalf("stdout missing job_status_label: %s", stdout.String())
 	}
 }

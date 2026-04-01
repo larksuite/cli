@@ -2,7 +2,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-将本地文件（如 Word、TXT、Markdown、Excel 等）导入并转换为飞书在线云文档（docx、sheet、bitable）。底层统一通过 `POST /open-apis/drive/v1/import_tasks` 接口创建导入任务，并轮询 `GET /open-apis/drive/v1/import_tasks/:ticket` 接口直到任务成功。
+将本地文件（如 Word、TXT、Markdown、Excel 等）导入并转换为飞书在线云文档（docx、sheet、bitable）。底层统一通过 `POST /open-apis/drive/v1/import_tasks` 接口创建导入任务，并在 shortcut 内做有限次数轮询 `GET /open-apis/drive/v1/import_tasks/:ticket`。
 
 ## 命令
 
@@ -27,14 +27,14 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 | `--file` | 是 | 本地文件路径，根据文件后缀名自动推断 `file_extension`，最大支持 20MB |
 | `--type` | 是 | 导入目标云文档格式。可选值：`docx` (新版文档)、`sheet` (电子表格)、`bitable` (多维表格) |
 | `--folder-token` | 否 | 目标文件夹 token，不传默认导入到云空间根目录 |
-| `--name` | 否 | 导入后的在线云文档名称，不传默认使用本地文件名 |
+| `--name` | 否 | 导入后的在线云文档名称，不传默认使用本地文件名去掉扩展名后的结果 |
 
 ## 行为说明
 
 - **三步执行**：此 shortcut 内部封装了完整流程：
   1. 自动调用素材上传接口 (`/open-apis/drive/v1/medias/upload_all`) 获取源文件的 `file_token`
   2. 调用 `import_tasks` 接口发起导入任务，自动根据本地文件提取扩展名并构造挂载点（`mount_point`）参数
-  3. 自动轮询查询导入任务状态，直到 `job_status` 为 0（成功）
+  3. 自动轮询查询导入任务状态；如果在内置轮询窗口内完成，则直接返回导入结果；如果仍未完成，则返回 `ticket`、当前状态和后续查询命令
 
 ### 支持的文件类型转换
 
@@ -56,7 +56,19 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 > - 例如：`.csv` 文件不能导入为 `docx`，`.md` 文件不能导入为 `sheet`
 
 - 若导入任务执行失败，会返回失败时的 `job_status` 及错误信息。
+- 若内置轮询超时但任务仍在处理中，shortcut 会成功返回，并带上：
+  - `ready=false`
+  - `timed_out=true`
+  - `next_command`：可直接复制执行的后续查询命令，例如 `lark-cli drive +task_result --scenario import --ticket <ticket>`
 - 如果文件超过 20MB 上限，或者文件扩展名不被支持，执行时将抛出验证错误。
+
+### 超时后的继续查询
+
+当 `+import` 的内置轮询窗口结束但任务尚未完成时，使用返回结果中的 `ticket` 继续查询：
+
+```bash
+lark-cli drive +task_result --scenario import --ticket <ticket>
+```
 
 > [!CAUTION]
 > 这是**写入操作** —— 执行前必须确认用户意图。

@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -27,85 +26,67 @@ var DriveMove = common.Shortcut{
 		{Name: "folder-token", Desc: "target folder token (default: root folder)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		validTypes := map[string]bool{
-			"file":     true,
-			"docx":     true,
-			"bitable":  true,
-			"doc":      true,
-			"sheet":    true,
-			"mindnote": true,
-			"folder":   true,
-			"slides":   true,
-		}
-		fileType := strings.ToLower(runtime.Str("type"))
-		if !validTypes[fileType] {
-			return output.ErrValidation("unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, folder, slides", fileType)
-		}
-		return nil
+		return validateDriveMoveSpec(driveMoveSpec{
+			FileToken:   runtime.Str("file-token"),
+			FileType:    strings.ToLower(runtime.Str("type")),
+			FolderToken: runtime.Str("folder-token"),
+		})
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		fileToken := runtime.Str("file-token")
-		fileType := runtime.Str("type")
-		folderToken := runtime.Str("folder-token")
+		spec := driveMoveSpec{
+			FileToken:   runtime.Str("file-token"),
+			FileType:    strings.ToLower(runtime.Str("type")),
+			FolderToken: runtime.Str("folder-token"),
+		}
 
 		dry := common.NewDryRunAPI().
 			Desc("Move file or folder in Drive")
 
 		dry.POST("/open-apis/drive/v1/files/:file_token/move").
 			Desc("[1] Move file/folder").
-			Set("file_token", fileToken).
-			Body(map[string]interface{}{
-				"type":         fileType,
-				"folder_token": folderToken,
-			})
+			Set("file_token", spec.FileToken).
+			Body(spec.RequestBody())
 
 		// If moving a folder, show the async task check step
-		if fileType == "folder" {
+		if spec.FileType == "folder" {
 			dry.GET("/open-apis/drive/v1/files/task_check").
 				Desc("[2] Poll async task status (for folder move)").
-				Set("task_id", "<task_id>")
+				Params(driveTaskCheckParams("<task_id>"))
 		}
 
 		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		fileToken := runtime.Str("file-token")
-		fileType := strings.ToLower(runtime.Str("type"))
-		folderToken := runtime.Str("folder-token")
-
-		if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
-			return output.ErrValidation("%s", err)
+		spec := driveMoveSpec{
+			FileToken:   runtime.Str("file-token"),
+			FileType:    strings.ToLower(runtime.Str("type")),
+			FolderToken: runtime.Str("folder-token"),
 		}
 
 		// If folder-token is empty, get the root folder token
-		if folderToken == "" {
+		if spec.FolderToken == "" {
 			fmt.Fprintf(runtime.IO().ErrOut, "No target folder specified, getting root folder...\n")
 			rootToken, err := getRootFolderToken(ctx, runtime)
 			if err != nil {
 				return err
 			}
-			folderToken = rootToken
+			spec.FolderToken = rootToken
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Moving %s %s to folder %s...\n", fileType, common.MaskToken(fileToken), common.MaskToken(folderToken))
-
-		requestBody := map[string]interface{}{
-			"type":         fileType,
-			"folder_token": folderToken,
-		}
+		fmt.Fprintf(runtime.IO().ErrOut, "Moving %s %s to folder %s...\n", spec.FileType, common.MaskToken(spec.FileToken), common.MaskToken(spec.FolderToken))
 
 		data, err := runtime.CallAPI(
 			"POST",
-			fmt.Sprintf("/open-apis/drive/v1/files/%s/move", validate.EncodePathSegment(fileToken)),
+			fmt.Sprintf("/open-apis/drive/v1/files/%s/move", validate.EncodePathSegment(spec.FileToken)),
 			nil,
-			requestBody,
+			spec.RequestBody(),
 		)
 		if err != nil {
 			return err
 		}
 
 		// If moving a folder, need to poll async task
-		if fileType == "folder" {
+		if spec.FileType == "folder" {
 			taskID := common.GetString(data, "task_id")
 			if taskID == "" {
 				return output.Errorf(output.ExitAPI, "api_error", "move folder returned no task_id")
@@ -113,22 +94,31 @@ var DriveMove = common.Shortcut{
 
 			fmt.Fprintf(runtime.IO().ErrOut, "Folder move is async, polling task %s...\n", taskID)
 
-			status, err := pollMoveTask(ctx, runtime, taskID)
+			status, ready, err := pollDriveTaskCheck(runtime, taskID)
 			if err != nil {
 				return err
 			}
 
-			runtime.Out(map[string]interface{}{
+			out := map[string]interface{}{
 				"task_id":      taskID,
-				"status":       status,
-				"file_token":   fileToken,
-				"folder_token": folderToken,
-			}, nil)
+				"status":       status.StatusLabel(),
+				"file_token":   spec.FileToken,
+				"folder_token": spec.FolderToken,
+				"ready":        ready,
+			}
+			if !ready {
+				nextCommand := driveTaskCheckResultCommand(taskID)
+				fmt.Fprintf(runtime.IO().ErrOut, "Folder move task is still in progress. Continue with: %s\n", nextCommand)
+				out["timed_out"] = true
+				out["next_command"] = nextCommand
+			}
+
+			runtime.Out(out, nil)
 		} else {
 			runtime.Out(map[string]interface{}{
-				"file_token":   fileToken,
-				"folder_token": folderToken,
-				"type":         fileType,
+				"file_token":   spec.FileToken,
+				"folder_token": spec.FolderToken,
+				"type":         spec.FileType,
 			}, nil)
 		}
 
@@ -149,30 +139,4 @@ func getRootFolderToken(ctx context.Context, runtime *common.RuntimeContext) (st
 	}
 
 	return token, nil
-}
-
-// pollMoveTask polls the async task status for folder move
-func pollMoveTask(ctx context.Context, runtime *common.RuntimeContext, taskID string) (string, error) {
-	maxRetries := 30
-	delay := 2 * time.Second
-
-	for i := 0; i < maxRetries; i++ {
-		data, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files/task_check", map[string]interface{}{"task_id": taskID}, nil)
-		if err != nil {
-			return "", err
-		}
-
-		status := common.GetString(data, "status")
-		if status == "success" {
-			fmt.Fprintf(runtime.IO().ErrOut, "Folder move completed successfully.\n")
-			return status, nil
-		}
-		if status == "failed" {
-			return "", output.Errorf(output.ExitAPI, "api_error", "folder move task failed")
-		}
-
-		time.Sleep(delay)
-	}
-
-	return "", output.Errorf(output.ExitAPI, "timeout", "folder move task did not complete in time")
 }

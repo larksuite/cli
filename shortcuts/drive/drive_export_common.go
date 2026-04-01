@@ -32,6 +32,10 @@ type driveExportSpec struct {
 	SubID         string
 }
 
+func driveExportTaskResultCommand(ticket, fileToken string) string {
+	return fmt.Sprintf("lark-cli drive +task_result --scenario export --ticket %s --file-token %s", ticket, fileToken)
+}
+
 type driveExportStatus struct {
 	Ticket        string
 	FileExtension string

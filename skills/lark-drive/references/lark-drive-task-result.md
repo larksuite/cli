@@ -32,7 +32,7 @@ lark-cli drive +task_result \
 | `--scenario` | 是 | 任务场景，可选值：`import` (导入任务)、`export` (导出任务)、`task_check` (移动/删除文件夹任务) |
 | `--ticket` | 条件必填 | 异步任务 ticket，**import/export 场景必填** |
 | `--task-id` | 条件必填 | 异步任务 ID，**task_check 场景必填** |
-| `--file-token` | 条件必填 | 文件 token，**export 场景必填** |
+| `--file-token` | 条件必填 | 导出任务对应的源文档 token，**export 场景必填** |
 
 ## 场景说明
 
@@ -51,7 +51,10 @@ lark-cli drive +task_result \
   "scenario": "import",
   "ticket": "7369583175086912356",
   "type": "sheet",
+  "ready": true,
+  "failed": false,
   "job_status": 0,
+  "job_status_label": "success",
   "job_error_msg": "success",
   "token": "Fm7osyjtMh5o7Ktrv32c73abcef",
   "url": "https://example.feishu.cn/sheets/Fm7osyjtMh5o7Ktrv32c73abcef",
@@ -60,7 +63,10 @@ lark-cli drive +task_result \
 ```
 
 **字段说明：**
-- `job_status`: 0=成功，1=处理中，2=处理中，其他=失败
+- `ready`: 是否已经导入完成，可直接使用 `token` / `url`
+- `failed`: 是否已经失败
+- `job_status`: 服务端返回的原始状态码
+- `job_status_label`: 便于阅读的状态标签，例如 `success` / `processing`
 - `token`: 导入后的文档 token
 - `url`: 导入后的文档链接
 
@@ -70,18 +76,24 @@ lark-cli drive +task_result \
 {
   "scenario": "export",
   "ticket": "6933093124755412345",
+  "ready": true,
+  "failed": false,
   "file_extension": "pdf",
   "type": "doc",
   "file_name": "docName",
   "file_token": "boxcnxe5OdjlAkNgSNdsJvabcef",
   "file_size": 34356,
   "job_error_msg": "success",
-  "job_status": 0
+  "job_status": 0,
+  "job_status_label": "success"
 }
 ```
 
 **字段说明：**
-- `job_status`: 0=成功，其他=失败
+- `ready`: 是否已经完成导出，可直接使用 `file_token`
+- `failed`: 是否已经失败
+- `job_status`: 服务端返回的原始状态码
+- `job_status_label`: 便于阅读的状态标签，例如 `success` / `processing`
 - `file_token`: 导出文件的 token，用于下载
 - `file_extension`: 导出文件扩展名
 - `file_size`: 导出文件大小（字节）
@@ -92,12 +104,16 @@ lark-cli drive +task_result \
 {
   "scenario": "task_check",
   "task_id": "7360595374803812356",
-  "status": "success"
+  "status": "success",
+  "ready": true,
+  "failed": false
 }
 ```
 
 **字段说明：**
 - `status`: 任务状态，`success`=成功，`failed`=失败，`pending`=处理中
+- `ready`: 是否已经完成
+- `failed`: 是否已经失败
 
 ## 使用场景
 
@@ -106,7 +122,8 @@ lark-cli drive +task_result \
 ```bash
 # 1. 创建导入任务
 lark-cli drive +import --file ./data.xlsx --type sheet
-# 返回: { "ticket": "xxx" }
+# 若任务很快完成：直接返回 token / url
+# 若内置轮询超时：返回 ready=false、ticket 和 next_command
 
 # 2. 轮询导入结果
 lark-cli drive +task_result --scenario import --ticket xxx
@@ -117,10 +134,26 @@ lark-cli drive +task_result --scenario import --ticket xxx
 ```bash
 # 1. 移动文件夹（异步操作）
 lark-cli drive +move --file-token fldbc_xxx --type folder --folder-token fldbc_yyy
-# 返回: { "task_id": "xxx" }
+# 若轮询窗口内完成：直接返回 ready=true
+# 若内置轮询结束仍未完成：返回 ready=false、task_id 和 next_command
 
 # 2. 轮询移动结果
 lark-cli drive +task_result --scenario task_check --task-id xxx
+```
+
+### 配合 +export 使用
+
+```bash
+# 1. 发起导出
+lark-cli drive +export --token doccn_xxx --doc-type docx --file-extension pdf
+# 若轮询窗口内完成：直接下载本地文件
+# 若内置轮询结束仍未完成：返回 ready=false、ticket 和 next_command
+
+# 2. 继续查询导出结果
+lark-cli drive +task_result --scenario export --ticket xxx --file-token doccn_xxx
+
+# 3. 拿到 file_token 后下载
+lark-cli drive +export-download --file-token boxcn_xxx
 ```
 
 ## 权限要求

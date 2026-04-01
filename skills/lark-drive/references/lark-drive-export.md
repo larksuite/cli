@@ -6,8 +6,8 @@
 把 `doc` / `docx` / `sheet` / `bitable` 导出到本地文件。这个 shortcut 内置有限轮询：
 
 - 如果导出任务在轮询窗口内完成，会直接下载到本地目录
-- 如果轮询结束仍未完成，会返回 `ticket`
-- 后续继续查结果时，改用 `drive +export-status`
+- 如果轮询结束仍未完成，会返回 `ticket`、`ready=false`、`timed_out=true` 和 `next_command`
+- 后续继续查结果时，改用 `drive +task_result --scenario export`
 - 拿到 `file_token` 后，改用 `drive +export-download`
 
 ## 命令
@@ -71,7 +71,7 @@ lark-cli drive +export \
 - `markdown` 只支持 `docx`
 - `sheet` / `bitable` 导出为 `csv` 时必须带 `--sub-id`
 - shortcut 内部固定有限轮询：最多 10 次，每次间隔 5 秒
-- 轮询超时不是失败；会返回 `ticket`，供后续继续查询
+- 轮询超时不是失败；会返回 `ticket`、`timed_out=true` 和 `next_command`，供后续继续查询
 
 ## 推荐续跑方式
 
@@ -82,10 +82,11 @@ lark-cli drive +export \
   --doc-type docx \
   --file-extension pdf
 
-# 如果返回了 ticket，再继续查
-lark-cli drive +export-status \
-  --token "<DOCX_TOKEN>" \
-  --ticket "<TICKET>"
+# 如果返回 ready=false / timed_out=true，再继续查
+lark-cli drive +task_result \
+  --scenario export \
+  --ticket "<TICKET>" \
+  --file-token "<DOCX_TOKEN>"
 
 # 查到 file_token 后下载
 lark-cli drive +export-download \

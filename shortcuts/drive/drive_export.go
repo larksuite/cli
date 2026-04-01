@@ -165,6 +165,7 @@ var DriveExport = common.Shortcut{
 			fmt.Fprintf(runtime.IO().ErrOut, "Export status %d/%d: %s\n", attempt, driveExportPollAttempts, status.StatusLabel())
 		}
 
+		nextCommand := driveExportTaskResultCommand(ticket, spec.Token)
 		runtime.Out(map[string]interface{}{
 			"ticket":          ticket,
 			"token":           spec.Token,
@@ -173,7 +174,10 @@ var DriveExport = common.Shortcut{
 			"ready":           false,
 			"job_status":      lastStatus.StatusLabel(),
 			"job_status_code": lastStatus.JobStatus,
+			"timed_out":       true,
+			"next_command":    nextCommand,
 		}, nil)
+		fmt.Fprintf(runtime.IO().ErrOut, "Export task is still in progress. Continue with: %s\n", nextCommand)
 		return nil
 	},
 }

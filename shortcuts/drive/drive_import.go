@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -38,73 +37,20 @@ var DriveImport = common.Shortcut{
 		{Name: "name", Desc: "imported file name (default: local file name without extension)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		filePath := runtime.Str("file")
-		ext := strings.TrimPrefix(filepath.Ext(filePath), ".")
-		if ext == "" {
-			return output.ErrValidation("file must have an extension (e.g. .md, .docx, .xlsx)")
-		}
-		ext = strings.ToLower(ext)
-
-		docType := strings.ToLower(runtime.Str("type"))
-		validTypes := map[string]bool{
-			"docx": true, "sheet": true, "bitable": true,
-		}
-		if !validTypes[docType] {
-			return output.ErrValidation("unsupported target document type: %s. Supported types are: docx, sheet, bitable", docType)
-		}
-
-		// Map file extensions to the supported cloud document types.
-		extToDocTypes := map[string][]string{
-			// Document-like files can only be imported as docx.
-			"docx":     {"docx"},
-			"doc":      {"docx"},
-			"txt":      {"docx"},
-			"md":       {"docx"},
-			"mark":     {"docx"},
-			"markdown": {"docx"},
-			"html":     {"docx"},
-			// Spreadsheet-like files can be imported as sheet or bitable.
-			"xlsx": {"sheet", "bitable"},
-			"xls":  {"sheet", "bitable"},
-			"csv":  {"sheet", "bitable"},
-		}
-
-		supportedTypes, ok := extToDocTypes[ext]
-		if !ok {
-			return output.ErrValidation("unsupported file extension: %s. Supported extensions are: docx, doc, txt, md, mark, markdown, html, xlsx, xls, csv", ext)
-		}
-
-		// Validate that the requested target type is compatible with the file extension.
-		typeAllowed := false
-		for _, allowedType := range supportedTypes {
-			if allowedType == docType {
-				typeAllowed = true
-				break
-			}
-		}
-		if !typeAllowed {
-			var hint string
-			switch ext {
-			case "xlsx", "xls", "csv":
-				hint = fmt.Sprintf(".%s files can only be imported as 'sheet' or 'bitable', not '%s'", ext, docType)
-			default:
-				hint = fmt.Sprintf(".%s files can only be imported as 'docx', not '%s'", ext, docType)
-			}
-			return output.ErrValidation("file type mismatch: %s", hint)
-		}
-
-		return nil
+		return validateDriveImportSpec(driveImportSpec{
+			FilePath:    runtime.Str("file"),
+			DocType:     strings.ToLower(runtime.Str("type")),
+			FolderToken: runtime.Str("folder-token"),
+			Name:        runtime.Str("name"),
+		})
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		filePath := runtime.Str("file")
-		docType := runtime.Str("type")
-		folderToken := runtime.Str("folder-token")
-		name := runtime.Str("name")
-
-		sourceFileName := filepath.Base(filePath)
-		targetFileName := importTargetFileName(filePath, name)
-
-		ext := strings.TrimPrefix(filepath.Ext(filePath), ".")
+		spec := driveImportSpec{
+			FilePath:    runtime.Str("file"),
+			DocType:     strings.ToLower(runtime.Str("type")),
+			FolderToken: runtime.Str("folder-token"),
+			Name:        runtime.Str("name"),
+		}
 
 		dry := common.NewDryRunAPI()
 		dry.Desc("3-step orchestration: upload file -> create import task -> poll status")
@@ -112,25 +58,16 @@ var DriveImport = common.Shortcut{
 		dry.POST("/open-apis/drive/v1/medias/upload_all").
 			Desc("[1] Upload file to get file_token").
 			Body(map[string]interface{}{
-				"file_name":   sourceFileName,
+				"file_name":   spec.SourceFileName(),
 				"parent_type": "ccm_import_open",
 				"size":        "<file_size>",
-				"extra":       fmt.Sprintf(`{"obj_type":"%s","file_extension":"%s"}`, docType, ext),
-				"file":        "@" + filePath,
+				"extra":       fmt.Sprintf(`{"obj_type":"%s","file_extension":"%s"}`, spec.DocType, spec.FileExtension()),
+				"file":        "@" + spec.FilePath,
 			})
 
 		dry.POST("/open-apis/drive/v1/import_tasks").
 			Desc("[2] Create import task").
-			Body(map[string]interface{}{
-				"file_extension": ext,
-				"file_token":     "<file_token>",
-				"type":           docType,
-				"file_name":      targetFileName,
-				"point": map[string]interface{}{
-					"mount_type": 1,
-					"mount_key":  folderToken,
-				},
-			})
+			Body(spec.CreateTaskBody("<file_token>"))
 
 		dry.GET("/open-apis/drive/v1/import_tasks/:ticket").
 			Desc("[3] Poll import task result").
@@ -139,100 +76,73 @@ var DriveImport = common.Shortcut{
 		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		filePath := runtime.Str("file")
-		docType := runtime.Str("type")
-		folderToken := runtime.Str("folder-token")
-		name := runtime.Str("name")
+		spec := driveImportSpec{
+			FilePath:    runtime.Str("file"),
+			DocType:     strings.ToLower(runtime.Str("type")),
+			FolderToken: runtime.Str("folder-token"),
+			Name:        runtime.Str("name"),
+		}
 
-		safeFilePath, err := validate.SafeInputPath(filePath)
+		safeFilePath, err := validate.SafeInputPath(spec.FilePath)
 		if err != nil {
 			return output.ErrValidation("unsafe file path: %s", err)
 		}
-		filePath = safeFilePath
-
-		sourceFileName := filepath.Base(filePath)
-		targetFileName := importTargetFileName(filePath, name)
-
-		ext := strings.TrimPrefix(filepath.Ext(filePath), ".")
+		spec.FilePath = safeFilePath
 
 		// Step 1: Upload file as media
-		fileToken, uploadErr := uploadMediaForImport(ctx, runtime, filePath, sourceFileName, docType)
+		fileToken, uploadErr := uploadMediaForImport(ctx, runtime, spec.FilePath, spec.SourceFileName(), spec.DocType)
 		if uploadErr != nil {
 			return uploadErr
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Creating import task for %s as %s...\n", targetFileName, docType)
+		fmt.Fprintf(runtime.IO().ErrOut, "Creating import task for %s as %s...\n", spec.TargetFileName(), spec.DocType)
 
 		// Step 2: Create import task
-		createBody := map[string]interface{}{
-			"file_extension": ext,
-			"file_token":     fileToken,
-			"type":           docType,
-			"file_name":      targetFileName,
-			"point": map[string]interface{}{
-				"mount_type": 1,
-				"mount_key":  folderToken,
-			},
-		}
-
-		createResp, err := runtime.CallAPI("POST", "/open-apis/drive/v1/import_tasks", nil, createBody)
+		ticket, err := createDriveImportTask(runtime, spec, fileToken)
 		if err != nil {
 			return err
-		}
-
-		ticket := common.GetString(createResp, "ticket")
-		if ticket == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "no ticket returned from import_tasks")
 		}
 
 		// Step 3: Poll task
 		fmt.Fprintf(runtime.IO().ErrOut, "Polling import task %s...\n", ticket)
 
-		maxRetries := 30
-		delay := 2 * time.Second
-
-		for i := 0; i < maxRetries; i++ {
-			pollResp, err := runtime.CallAPI("GET", "/open-apis/drive/v1/import_tasks/"+validate.EncodePathSegment(ticket), nil, nil)
-			if err != nil {
-				return err
-			}
-
-			result := common.GetMap(pollResp, "result")
-			if result == nil {
-				// Fallback if result is flattened
-				result = pollResp
-			}
-
-			jobStatus := int(common.GetFloat(result, "job_status"))
-
-			if jobStatus == 0 {
-				token := common.GetString(result, "token")
-				url := common.GetString(result, "url")
-
-				fmt.Fprintf(runtime.IO().ErrOut, "Import completed successfully.\n")
-
-				runtime.Out(map[string]interface{}{
-					"ticket":     ticket,
-					"token":      token,
-					"url":        url,
-					"job_status": jobStatus,
-				}, nil)
-				return nil
-			}
-
-			// job_status 1, 2 typically mean pending/processing. If there's an error msg, it might have failed.
-			if jobStatus != 1 && jobStatus != 2 && jobStatus != 0 {
-				errMsg := common.GetString(result, "job_error_msg")
-				if errMsg == "" {
-					errMsg = "unknown error"
-				}
-				return output.Errorf(output.ExitAPI, "api_error", "import failed with status %d: %s", jobStatus, errMsg)
-			}
-
-			time.Sleep(delay)
+		status, ready, err := pollDriveImportTask(runtime, ticket)
+		if err != nil {
+			return err
 		}
 
-		return output.Errorf(output.ExitAPI, "timeout", "import task did not complete in time")
+		resultType := status.DocType
+		if resultType == "" {
+			resultType = spec.DocType
+		}
+		out := map[string]interface{}{
+			"ticket":           ticket,
+			"type":             resultType,
+			"ready":            ready,
+			"job_status":       status.JobStatus,
+			"job_status_label": status.StatusLabel(),
+		}
+		if status.Token != "" {
+			out["token"] = status.Token
+		}
+		if status.URL != "" {
+			out["url"] = status.URL
+		}
+		if status.JobErrorMsg != "" {
+			out["job_error_msg"] = status.JobErrorMsg
+		}
+		if status.Extra != nil {
+			out["extra"] = status.Extra
+		}
+		if !ready {
+			nextCommand := driveImportTaskResultCommand(ticket)
+			fmt.Fprintf(runtime.IO().ErrOut, "Import task is still in progress. Continue with: %s\n", nextCommand)
+			out["timed_out"] = true
+			out["next_command"] = nextCommand
+		}
+
+		runtime.Out(out, nil)
+		return nil
 	},
 }
 
