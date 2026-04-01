@@ -152,11 +152,15 @@ func decryptData(data []byte, key []byte) (string, error) {
 
 // platformGet retrieves a value from the macOS keychain.
 func platformGet(service, account string) (string, error) {
-	key, err := getMasterKey(service, false)
+	path := filepath.Join(StorageDir(service), safeFileName(account))
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(filepath.Join(StorageDir(service), safeFileName(account)))
+	key, err := getMasterKey(service, false)
 	if err != nil {
 		return "", err
 	}
