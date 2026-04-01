@@ -229,7 +229,9 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 
 		status, err := getDriveImportStatus(runtime, ticket)
 		if err != nil {
-			return driveImportStatus{}, false, err
+			// Log the error but continue polling.
+			fmt.Fprintf(runtime.IO().ErrOut, "Import status attempt %d/%d failed: %v\n", attempt, driveImportPollAttempts, err)
+			continue
 		}
 		lastStatus = status
 		// Stop immediately on terminal states and otherwise return the last known
