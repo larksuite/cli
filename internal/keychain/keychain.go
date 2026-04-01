@@ -19,13 +19,14 @@ const (
 	LarkCliService = "lark-cli"
 )
 
-// wrapError is a helper to wrap underlying errors into output.ExitError
+// wrapError is a helper to wrap underlying errors into output.ExitError.
+// It formats the error message and provides a hint for troubleshooting keychain access issues.
 func wrapError(op string, err error) error {
 	if err == nil {
 		return nil
 	}
 	msg := fmt.Sprintf("keychain %s failed: %v", op, err)
-	hint := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain."
+	hint := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain. Otherwise, you can try to reconfigure the CLI by running `lark-cli config init`."
 	return output.ErrWithHint(output.ExitAPI, "config", msg, hint)
 }
 

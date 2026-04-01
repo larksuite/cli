@@ -22,8 +22,7 @@ const masterKeyBytes = 32
 const ivBytes = 12
 const tagBytes = 16
 
-// StorageDir returns the storage directory for a given service name.
-// Each service gets its own directory for physical isolation.
+// StorageDir returns the directory where encrypted files are stored.
 func StorageDir(service string) string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -37,10 +36,13 @@ func StorageDir(service string) string {
 
 var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 
+// safeFileName sanitizes an account name to be used as a safe file name.
 func safeFileName(account string) string {
 	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
 }
 
+// getMasterKey retrieves the master key from the file system.
+// If allowCreate is true, it generates and stores a new master key if one doesn't exist.
 func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	dir := StorageDir(service)
 	keyPath := filepath.Join(dir, "master.key")
@@ -83,6 +85,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	return key, nil
 }
 
+// encryptData encrypts data using AES-GCM.
 func encryptData(plaintext string, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -105,6 +108,7 @@ func encryptData(plaintext string, key []byte) ([]byte, error) {
 	return result, nil
 }
 
+// decryptData decrypts data using AES-GCM.
 func decryptData(data []byte, key []byte) (string, error) {
 	if len(data) < ivBytes+tagBytes {
 		return "", os.ErrInvalid
@@ -127,6 +131,7 @@ func decryptData(data []byte, key []byte) (string, error) {
 	return string(plaintext), nil
 }
 
+// platformGet retrieves a value from the file system.
 func platformGet(service, account string) (string, error) {
 	key, err := getMasterKey(service, false)
 	if err != nil {
@@ -143,6 +148,7 @@ func platformGet(service, account string) (string, error) {
 	return plaintext, nil
 }
 
+// platformSet stores a value in the file system.
 func platformSet(service, account, data string) error {
 	key, err := getMasterKey(service, true)
 	if err != nil {
@@ -172,6 +178,7 @@ func platformSet(service, account, data string) error {
 	return nil
 }
 
+// platformRemove deletes a value from the file system.
 func platformRemove(service, account string) error {
 	err := os.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
 	if err != nil && !os.IsNotExist(err) {
