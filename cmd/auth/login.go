@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -90,7 +91,7 @@ func completeDomain(toComplete string) []string {
 	return completions
 }
 
-// authLoginRun executes the login command logic.
+// authLoginRun executes the interactive or direct auth login flow.
 func authLoginRun(opts *LoginOptions) error {
 	f := opts.Factory
 
@@ -299,9 +300,11 @@ func authLoginRun(opts *LoginOptions) error {
 		Scope:            result.Token.Scope,
 		GrantedAt:        now,
 	}
-	if err := larkauth.SetStoredToken(storedToken); err != nil {
+	usedFallback, err := larkauth.SetStoredToken(storedToken)
+	if err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save token: %v", err)
 	}
+	warnIfEncryptedTokenFallback(f.IOStreams.ErrOut, usedFallback)
 
 	// Step 8: Update config — overwrite Users to single user, clean old tokens
 	multi, _ := core.LoadMultiAppConfig()
@@ -379,9 +382,11 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		Scope:            result.Token.Scope,
 		GrantedAt:        now,
 	}
-	if err := larkauth.SetStoredToken(storedToken); err != nil {
+	usedFallback, err := larkauth.SetStoredToken(storedToken)
+	if err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save token: %v", err)
 	}
+	warnIfEncryptedTokenFallback(f.IOStreams.ErrOut, usedFallback)
 
 	// Update config — overwrite Users to single user, clean old tokens
 	multi, _ := core.LoadMultiAppConfig()
@@ -400,6 +405,14 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	return nil
+}
+
+// warnIfEncryptedTokenFallback explains when auth token persistence downgraded to the encrypted file fallback.
+func warnIfEncryptedTokenFallback(w io.Writer, usedFallback bool) {
+	if !usedFallback {
+		return
+	}
+	fmt.Fprintln(w, "warning: keychain unavailable, auth token stored in a local file protected by filesystem permissions (0600) managed by lark-cli")
 }
 
 // collectScopesForDomains collects API scopes (from from_meta projects) and

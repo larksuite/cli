@@ -49,27 +49,32 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 // checkResult represents one diagnostic check.
 type checkResult struct {
 	Name    string `json:"name"`
-	Status  string `json:"status"` // "pass", "fail", "skip"
+	Status  string `json:"status"` // "pass", "fail", "warn", "skip"
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
 }
 
+// pass builds a successful doctor check result.
 func pass(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "pass", Message: msg}
 }
 
+// fail builds a failed doctor check result.
 func fail(name, msg, hint string) checkResult {
 	return checkResult{Name: name, Status: "fail", Message: msg, Hint: hint}
 }
 
+// warn builds a warning doctor check result.
 func warn(name, msg, hint string) checkResult {
 	return checkResult{Name: name, Status: "warn", Message: msg, Hint: hint}
 }
 
+// skip builds a skipped doctor check result.
 func skip(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "skip", Message: msg}
 }
 
+// doctorRun executes local configuration, credential, and network diagnostics.
 func doctorRun(opts *DoctorOptions) error {
 	f := opts.Factory
 	var checks []checkResult
@@ -111,7 +116,7 @@ func doctorRun(opts *DoctorOptions) error {
 	}
 	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
 	if stored == nil {
-		checks = append(checks, fail("token_exists", "no token in keychain for "+cfg.UserOpenId, "run: lark-cli auth login --help"))
+		checks = append(checks, fail("token_exists", "no token in local credential store for "+cfg.UserOpenId, "run: lark-cli auth login --help"))
 		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
 		return finishDoctor(f, checks)
 	}
@@ -243,6 +248,7 @@ func checkCLIUpdate() []checkResult {
 	return []checkResult{pass("cli_update", latest+" (up to date)")}
 }
 
+// finishDoctor renders the aggregated doctor result and maps failures to a non-zero exit status.
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 	allOK := true
 	for _, c := range checks {

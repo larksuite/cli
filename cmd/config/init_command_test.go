@@ -3,6 +3,9 @@
 
 package config
 
+// Command/flag/wiring tests for config init live here.
+// New storage/fallback/rollback behavior tests should go to init_storage_test.go.
+
 import (
 	"context"
 	"strings"
@@ -12,6 +15,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
+// TestConfigInitCmd_FlagParsing verifies config init binds the expected flags.
 func TestConfigInitCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	f.IOStreams.In = strings.NewReader("secret123\n")
@@ -37,6 +41,7 @@ func TestConfigInitCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+// TestConfigShowCmd_FlagParsing verifies config show exposes its expected flags.
 func TestConfigShowCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -56,6 +61,7 @@ func TestConfigShowCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+// TestConfigInitCmd_LangFlag verifies the lang flag is wired through config init.
 func TestConfigInitCmd_LangFlag(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
@@ -77,6 +83,7 @@ func TestConfigInitCmd_LangFlag(t *testing.T) {
 	}
 }
 
+// TestConfigInitCmd_LangDefault verifies config init keeps the default language when unspecified.
 func TestConfigInitCmd_LangDefault(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
@@ -98,6 +105,7 @@ func TestConfigInitCmd_LangDefault(t *testing.T) {
 	}
 }
 
+// TestHasAnyNonInteractiveFlag verifies non-interactive detection across supported flags.
 func TestHasAnyNonInteractiveFlag(t *testing.T) {
 	tests := []struct {
 		name string
@@ -121,9 +129,9 @@ func TestHasAnyNonInteractiveFlag(t *testing.T) {
 	}
 }
 
+// TestConfigInitRun_NonTerminal_NoFlags_RejectsWithHint verifies non-interactive invocation fails with guidance.
 func TestConfigInitRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
-	// TestFactory has IsTerminal=false by default
 	opts := &ConfigInitOptions{Factory: f, Ctx: context.Background(), Lang: "zh"}
 	err := configInitRun(opts)
 	if err == nil {
@@ -138,6 +146,7 @@ func TestConfigInitRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	}
 }
 
+// TestConfigRemoveCmd_FlagParsing verifies config remove exposes its expected flags.
 func TestConfigRemoveCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 

@@ -23,6 +23,7 @@ import (
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 
+// sanitizeID rewrites IDs into a filesystem-safe form for lock-file names.
 func sanitizeID(id string) string {
 	return safeIDChars.ReplaceAllString(id, "_")
 }
@@ -98,6 +99,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 	return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
 }
 
+// refreshWithLock refreshes a token while serializing concurrent refresh attempts across goroutines and processes.
 func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	key := fmt.Sprintf("%s:%s", opts.AppId, opts.UserOpenId)
 
@@ -165,6 +167,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	return doRefreshToken(httpClient, opts, stored)
 }
 
+// doRefreshToken calls the OAuth refresh endpoint and stores the replacement token state.
 func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	errOut := opts.ErrOut
 	if errOut == nil {
@@ -298,8 +301,12 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		GrantedAt:        stored.GrantedAt,
 	}
 
-	if err := SetStoredToken(updated); err != nil {
+	usedFallback, err := SetStoredToken(updated)
+	if err != nil {
 		return nil, err
+	}
+	if usedFallback {
+		fmt.Fprintln(errOut, "warning: keychain unavailable, auth token stored in a local file protected by filesystem permissions (0600) managed by lark-cli")
 	}
 	return updated, nil
 }

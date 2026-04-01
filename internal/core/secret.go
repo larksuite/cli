@@ -14,7 +14,7 @@ import (
 
 // SecretRef references a secret stored externally.
 type SecretRef struct {
-	Source   string `json:"source"`             // "file" | "keychain"
+	Source   string `json:"source"`             // "file" | "keychain" | "encrypted_file"
 	Provider string `json:"provider,omitempty"` // optional, reserved
 	ID       string `json:"id"`                 // env var name / file path / command / keychain key
 }
@@ -78,9 +78,10 @@ func (s *SecretInput) UnmarshalJSON(data []byte) error {
 
 // ValidSecretSources is the set of recognized SecretRef sources.
 var ValidSecretSources = map[string]bool{
-	"file": true, "keychain": true,
+	"file": true, "keychain": true, "encrypted_file": true,
 }
 
+// isValidSource reports whether a secret reference source is accepted by config decoding.
 func isValidSource(source string) bool {
 	return ValidSecretSources[source]
 }

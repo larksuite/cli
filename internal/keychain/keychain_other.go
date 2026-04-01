@@ -6,20 +6,10 @@
 package keychain
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-
-	"github.com/google/uuid"
 )
-
-const masterKeyBytes = 32
-const ivBytes = 12
-const tagBytes = 16
 
 // StorageDir returns the storage directory for a given service name.
 // Each service gets its own directory for physical isolation.
@@ -34,143 +24,38 @@ func StorageDir(service string) string {
 	return filepath.Join(xdgData, service)
 }
 
-var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
-
-func safeFileName(account string) string {
-	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
-}
-
+// getMasterKey loads or initializes the per-service master key on Linux.
 func getMasterKey(service string) ([]byte, error) {
-	dir := StorageDir(service)
-	keyPath := filepath.Join(dir, "master.key")
-
-	key, err := os.ReadFile(keyPath)
-	if err == nil && len(key) == masterKeyBytes {
-		return key, nil
-	}
-
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return nil, err
-	}
-
-	key = make([]byte, masterKeyBytes)
-	if _, err := rand.Read(key); err != nil {
-		return nil, err
-	}
-
-	tmpKeyPath := filepath.Join(dir, "master.key."+uuid.New().String()+".tmp")
-	defer os.Remove(tmpKeyPath)
-
-	if err := os.WriteFile(tmpKeyPath, key, 0600); err != nil {
-		return nil, err
-	}
-
-	// Atomic rename to prevent multi-process master key initialization collision
-	if err := os.Rename(tmpKeyPath, keyPath); err != nil {
-		// If rename fails, another process might have created it. Try reading again.
-		existingKey, readErr := os.ReadFile(keyPath)
-		if readErr == nil && len(existingKey) == masterKeyBytes {
-			return existingKey, nil
-		}
-		return nil, err
-	}
-
-	return key, nil
+	// Shared master-key file handling lives in file_encrypted_store.go.
+	// New code should reuse that helper layer instead of reimplementing key-file setup here.
+	return loadOrCreateMasterKeyFile(StorageDir(service))
 }
 
-func encryptData(plaintext string, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	aesGCM, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	iv := make([]byte, ivBytes)
-	if _, err := rand.Read(iv); err != nil {
-		return nil, err
-	}
-
-	ciphertext := aesGCM.Seal(nil, iv, []byte(plaintext), nil)
-	result := make([]byte, 0, ivBytes+len(ciphertext))
-	result = append(result, iv...)
-	result = append(result, ciphertext...)
-	return result, nil
-}
-
-func decryptData(data []byte, key []byte) (string, error) {
-	if len(data) < ivBytes+tagBytes {
-		return "", os.ErrInvalid
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-	aesGCM, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	iv := data[:ivBytes]
-	ciphertext := data[ivBytes:]
-	plaintext, err := aesGCM.Open(nil, iv, ciphertext, nil)
-	if err != nil {
-		return "", err
-	}
-	return string(plaintext), nil
-}
-
+// platformGet reads a service/account secret from the Linux encrypted-file backend.
 func platformGet(service, account string) string {
 	key, err := getMasterKey(service)
 	if err != nil {
 		return ""
 	}
-	data, err := os.ReadFile(filepath.Join(StorageDir(service), safeFileName(account)))
-	if err != nil {
-		return ""
-	}
-	plaintext, err := decryptData(data, key)
-	if err != nil {
-		return ""
-	}
-	return plaintext
+	// Shared encrypted-file read semantics live in file_encrypted_store.go.
+	// New code should reuse that helper layer instead of reimplementing file I/O here.
+	return readEncryptedFile(StorageDir(service), account, key)
 }
 
+// platformSet writes a service/account secret through the Linux encrypted-file backend.
 func platformSet(service, account, data string) error {
 	key, err := getMasterKey(service)
 	if err != nil {
 		return err
 	}
-	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	encrypted, err := encryptData(data, key)
-	if err != nil {
-		return err
-	}
-
-	targetPath := filepath.Join(dir, safeFileName(account))
-	tmpPath := filepath.Join(dir, safeFileName(account)+"."+uuid.New().String()+".tmp")
-	defer os.Remove(tmpPath)
-
-	if err := os.WriteFile(tmpPath, encrypted, 0600); err != nil {
-		return err
-	}
-
-	// Atomic rename to prevent file corruption during multi-process writes
-	if err := os.Rename(tmpPath, targetPath); err != nil {
-		return err
-	}
-	return nil
+	// Shared encrypted-file write semantics live in file_encrypted_store.go.
+	// New code should reuse that helper layer instead of reimplementing file I/O here.
+	return writeEncryptedFile(StorageDir(service), account, data, key)
 }
 
+// platformRemove deletes a service/account secret from the Linux encrypted-file backend.
 func platformRemove(service, account string) error {
-	err := os.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
+	// Shared encrypted-file cleanup semantics live in file_encrypted_store.go.
+	// New code should reuse that helper layer instead of reimplementing file I/O here.
+	return removeEncryptedFile(StorageDir(service), account)
 }
