@@ -4,6 +4,7 @@
 package whiteboard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -77,6 +78,20 @@ var BoardImage = common.Shortcut{
 		}
 		if resp.StatusCode != http.StatusOK {
 			return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
+		}
+
+		// 校验响应是否为有效 PNG，防止 API 返回 JSON 错误时写入损坏文件
+		pngMagic := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+		if len(resp.RawBody) < len(pngMagic) || !bytes.Equal(resp.RawBody[:len(pngMagic)], pngMagic) {
+			// 尝试解析为 API JSON 错误响应
+			var apiErr struct {
+				Code int    `json:"code"`
+				Msg  string `json:"msg"`
+			}
+			if json.Unmarshal(resp.RawBody, &apiErr) == nil && apiErr.Code != 0 {
+				return output.ErrAPI(apiErr.Code, apiErr.Msg, nil)
+			}
+			return output.Errorf(output.ExitInternal, "response", "expected PNG image but received invalid data")
 		}
 
 		// 确保目录存在

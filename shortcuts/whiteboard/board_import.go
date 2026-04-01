@@ -132,16 +132,17 @@ var BoardImport = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			info, err := os.Stat(safePath)
+			f, err := os.Open(safePath)
 			if err != nil {
-				return output.Errorf(output.ExitValidation, "file", fmt.Sprintf("stat diagram file failed: %v", err))
+				return output.Errorf(output.ExitValidation, "file", fmt.Sprintf("open diagram file failed: %v", err))
 			}
-			if info.Size() > maxDiagramSize {
-				return output.Errorf(output.ExitValidation, "file", "diagram file exceeds 10 MB limit")
-			}
-			data, err := os.ReadFile(safePath)
+			defer f.Close()
+			data, err := io.ReadAll(io.LimitReader(f, maxDiagramSize+1))
 			if err != nil {
 				return output.Errorf(output.ExitValidation, "file", fmt.Sprintf("read diagram file failed: %v", err))
+			}
+			if int64(len(data)) > maxDiagramSize {
+				return output.Errorf(output.ExitValidation, "file", "diagram file exceeds 10 MB limit")
 			}
 			code = string(data)
 		default:
