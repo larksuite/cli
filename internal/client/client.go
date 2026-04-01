@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -78,7 +79,7 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}
 	} else {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser}
-		if c.Config.UserOpenId == "" {
+		if c.Config.UserOpenId == "" && os.Getenv("LARK_ACCESS_TOKEN") == "" {
 			return nil, fmt.Errorf("login required: lark-cli auth login (or use --as bot)")
 		}
 		token, err := auth.GetValidAccessToken(c.HTTP, auth.NewUATCallOptions(c.Config, c.ErrOut))

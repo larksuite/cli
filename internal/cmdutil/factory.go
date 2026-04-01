@@ -78,6 +78,10 @@ func (f *Factory) resolveDefaultAs() string {
 
 // autoDetectIdentity checks the login state and returns user if logged in, bot otherwise.
 func (f *Factory) autoDetectIdentity() core.Identity {
+	// When token is injected via env, always treat as user identity.
+	if os.Getenv("LARK_ACCESS_TOKEN") != "" {
+		return core.AsUser
+	}
 	cfg, err := f.Config()
 	if err != nil || cfg.UserOpenId == "" {
 		return core.AsBot

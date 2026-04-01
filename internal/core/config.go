@@ -104,8 +104,31 @@ func SaveMultiAppConfig(config *MultiAppConfig) error {
 	return validate.AtomicWrite(GetConfigPath(), append(data, '\n'), 0600)
 }
 
+// configFromEnv returns a minimal CliConfig when LARK_ACCESS_TOKEN is set,
+// allowing the CLI to operate without a config file.
+// LARK_BRAND defaults to "feishu" if not specified.
+func configFromEnv() *CliConfig {
+	if os.Getenv("LARK_ACCESS_TOKEN") == "" {
+		return nil
+	}
+	brand := LarkBrand(os.Getenv("LARK_BRAND"))
+	if brand == "" {
+		brand = BrandFeishu
+	}
+	return &CliConfig{
+		Brand:     brand,
+		DefaultAs: "user",
+	}
+}
+
 // RequireConfig loads the single-app config. Takes Apps[0] directly.
+// When LARK_ACCESS_TOKEN is set, returns a minimal env-based config
+// so the CLI can work without a config file.
 func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
+	if cfg := configFromEnv(); cfg != nil {
+		return cfg, nil
+	}
+
 	raw, err := LoadMultiAppConfig()
 	if err != nil || raw == nil || len(raw.Apps) == 0 {
 		return nil, &ConfigError{Code: 2, Type: "config", Message: "not configured", Hint: "run `lark-cli config init --new` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete setup."}
@@ -129,10 +152,15 @@ func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
 }
 
 // RequireAuth loads config and ensures a user is logged in.
+// When LARK_ACCESS_TOKEN is set, the auth check is skipped since
+// the token is externally managed.
 func RequireAuth(kc keychain.KeychainAccess) (*CliConfig, error) {
 	cfg, err := RequireConfig(kc)
 	if err != nil {
 		return nil, err
+	}
+	if os.Getenv("LARK_ACCESS_TOKEN") != "" {
+		return cfg, nil
 	}
 	if cfg.UserOpenId == "" {
 		return nil, &ConfigError{Code: 3, Type: "auth", Message: "not logged in", Hint: "run `lark-cli auth login` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login."}
