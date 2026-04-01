@@ -53,7 +53,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	}
 
 	if !allowCreate {
-		return nil, errors.New("keychain is corrupted")
+		return nil, errNotInitialized
 	}
 
 	if err := os.MkdirAll(dir, 0700); err != nil {

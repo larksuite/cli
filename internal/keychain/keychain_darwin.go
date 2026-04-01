@@ -75,7 +75,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		// If ErrNotFound, check if we are allowed to create a new key
 		if !allowCreate {
 			// Creation not allowed (e.g., during Get operation), return error
-			resCh <- result{key: nil, err: errors.New("keychain is corrupted")}
+			resCh <- result{key: nil, err: errNotInitialized}
 			return
 		}
 

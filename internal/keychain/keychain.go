@@ -6,10 +6,13 @@
 package keychain
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/larksuite/cli/internal/output"
 )
+
+var errNotInitialized = errors.New("keychain not initialized")
 
 const (
 	// LarkCliService is the unified keychain service name for all secrets
@@ -26,7 +29,12 @@ func wrapError(op string, err error) error {
 		return nil
 	}
 	msg := fmt.Sprintf("keychain %s failed: %v", op, err)
-	hint := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain. Otherwise, you can try to reconfigure the CLI by running `lark-cli config init`."
+	hint := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain."
+
+	if errors.Is(err, errNotInitialized) {
+		hint = "The keychain master key may have been cleaned up or deleted. Please reconfigure the CLI by running `lark-cli config init`."
+	}
+
 	return output.ErrWithHint(output.ExitAPI, "config", msg, hint)
 }
 
