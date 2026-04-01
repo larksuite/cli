@@ -7,6 +7,9 @@ Concise maintainer/developer guide for building, testing, and opening high-quali
 - Improve developer velocity: simplify code paths, reduce complexity, keep behavior explicit.
 - Improve quality gates: strengthen tests/lint/checks without adding heavy process.
 
+## Toolchain Prerequisite
+- Use one consistent Go toolchain (recommend Go `1.25.8` via `mise`); source of truth is `go.mod` (`go` directive) plus CI workflows.
+
 ## Fast Dev Loop
 1. `make build` (runs `python3 scripts/fetch_meta.py` first)
 2. `make unit-test` (required before PR)
@@ -16,7 +19,8 @@ Concise maintainer/developer guide for building, testing, and opening high-quali
 1. `make unit-test`
 2. `go mod tidy` (must not change `go.mod`/`go.sum`)
 3. `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev=origin/main`
-4. Optional full local suite: `make test` (vet + unit + integration)
+4. If dependencies changed: `go run github.com/google/go-licenses/v2@v2.0.1 check ./... --disallowed_types=forbidden,restricted,reciprocal,unknown`
+5. Optional full local suite: `make test` (vet + unit + integration)
 
 ## Test/Check Commands
 - Unit: `make unit-test`
