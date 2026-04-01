@@ -233,7 +233,9 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
-		encoder.Encode(data)
+		if err := encoder.Encode(data); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+		}
 		return nil
 	}
 
@@ -248,7 +250,9 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
-		encoder.Encode(data)
+		if err := encoder.Encode(data); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+		}
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
