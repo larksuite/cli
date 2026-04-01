@@ -41,12 +41,26 @@ jobs:
             if (!url) {
               throw new Error("No package URL found in output.json");
             }
+            const sourceRepo = context.payload.pull_request?.head?.repo?.full_name;
+            const sourceBranch = context.payload.pull_request?.head?.ref;
+            if (!sourceRepo || !sourceBranch) {
+              throw new Error("No pull request source repo/branch found in event payload");
+            }
 
             const body = [
-              "Install this PR change globally:",
+              "<!-- pkg-pr-new-install-guide -->",
+              "## PR Preview Install Guide",
+              "",
+              "### CLI update",
               "",
               "```bash",
               `npm i -g ${url}`,
+              "```",
+              "",
+              "### Skill update",
+              "",
+              "```bash",
+              `npx skills add ${sourceRepo}#${sourceBranch} -y -g`,
               "```",
             ].join("\n");
             const issueNumber = context.issue.number;
@@ -61,7 +75,7 @@ jobs:
             const existing = comments.find((comment) =>
               comment.user?.login === "github-actions[bot]" &&
               typeof comment.body === "string" &&
-              comment.body.startsWith("Install this PR change globally:")
+              comment.body.includes("<!-- pkg-pr-new-install-guide -->")
             );
 
             if (existing) {
