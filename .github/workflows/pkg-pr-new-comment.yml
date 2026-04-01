@@ -1,0 +1,102 @@
+name: PR Preview Package Comment
+
+on:
+  workflow_run:
+    workflows: ["PR Preview Package"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  comment:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download comment payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: pkg-pr-new-comment-payload
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Comment install command
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require("fs");
+            const payload = JSON.parse(fs.readFileSync("pkg-pr-new-comment-payload.json", "utf8"));
+            const url = payload?.url;
+            const issueNumber = payload?.pr;
+            const sourceRepo = payload?.sourceRepo;
+            const sourceBranch = payload?.sourceBranch;
+
+            if (!url || !url.startsWith("https://pkg.pr.new/")) {
+              throw new Error(`Invalid package URL in payload: ${url}`);
+            }
+            if (!Number.isInteger(issueNumber)) {
+              throw new Error(`Invalid PR number in payload: ${issueNumber}`);
+            }
+
+            const hasSkillSource = Boolean(sourceRepo && sourceBranch);
+            const skillSection = hasSkillSource
+              ? [
+                  "",
+                  "### 🧩 Skill update",
+                  "",
+                  "```bash",
+                  `npx skills add ${sourceRepo}#${sourceBranch} -y -g`,
+                  "```",
+                ]
+              : [
+                  "",
+                  "### 🧩 Skill update",
+                  "",
+                  "_Unavailable for this PR because source repo/branch metadata is missing._",
+                ];
+
+            const body = [
+              "<!-- pkg-pr-new-install-guide -->",
+              "## 🚀 PR Preview Install Guide",
+              "",
+              "### 🧰 CLI update",
+              "",
+              "```bash",
+              `npm i -g ${url}`,
+              "```",
+              ...skillSection,
+            ].join("\n");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user?.login === "github-actions[bot]" &&
+              typeof comment.body === "string" &&
+              comment.body.includes("<!-- pkg-pr-new-install-guide -->")
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }
