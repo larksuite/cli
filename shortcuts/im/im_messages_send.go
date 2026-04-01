@@ -188,7 +188,7 @@ var ImMessagesSend = common.Shortcut{
 				return output.ErrValidation("%v", err)
 			}
 		}
-
+		// Resolve content type
 		if markdown != "" {
 			msgType, content = "post", resolveMarkdownAsPost(ctx, runtime, markdown)
 		} else if mt, c, err := resolveMediaContent(ctx, runtime, text, imageVal, fileVal, videoVal, videoCoverVal, audioVal); err != nil {

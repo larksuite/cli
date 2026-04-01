@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -1850,6 +1851,33 @@ func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount .
 	if totalBytes > MaxAttachmentBytes {
 		return fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB limit",
 			float64(totalBytes)/1024/1024)
+	}
+	return nil
+}
+
+// validateConfirmSendScope checks that the user's token includes the
+// mail:user_mailbox.message:send scope when --confirm-send is set.
+// This scope is not declared in the shortcut's static Scopes (to keep the
+// default draft-only path accessible without the sensitive send permission),
+// so we validate it dynamically here.
+func validateConfirmSendScope(runtime *common.RuntimeContext) error {
+	if !runtime.Bool("confirm-send") {
+		return nil
+	}
+	appID := runtime.Config.AppID
+	userOpenId := runtime.UserOpenId()
+	if appID == "" || userOpenId == "" {
+		return nil
+	}
+	stored := auth.GetStoredToken(appID, userOpenId)
+	if stored == nil {
+		return nil
+	}
+	required := []string{"mail:user_mailbox.message:send"}
+	if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
+		return output.ErrWithHint(output.ExitAuth, "missing_scope",
+			fmt.Sprintf("--confirm-send requires scope: %s", strings.Join(missing, ", ")),
+			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant the send permission", strings.Join(missing, " ")))
 	}
 	return nil
 }

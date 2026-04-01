@@ -447,6 +447,17 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("ImMessagesSearch invalid page limit", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query":      "incident",
+			"page-limit": "41",
+		}, nil)
+		err := ImMessagesSearch.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--page-limit must be an integer between 1 and 40") {
+			t.Fatalf("ImMessagesSearch.Validate() error = %v", err)
+		}
+	})
+
 	t.Run("ImMessagesSearch invalid sender id", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"sender": "user_1",
@@ -475,6 +486,45 @@ func TestShortcutValidateBranches(t *testing.T) {
 		err := ImMessagesSearch.Validate(context.Background(), runtime)
 		if err == nil || !strings.Contains(err.Error(), "--start cannot be later than --end") {
 			t.Fatalf("ImMessagesSearch.Validate() error = %v", err)
+		}
+	})
+}
+
+func TestMessagesSearchPaginationConfig(t *testing.T) {
+	t.Run("default single page", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, nil, nil)
+		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+		if autoPaginate {
+			t.Fatal("messagesSearchPaginationConfig() autoPaginate = true, want false")
+		}
+		if pageLimit != messagesSearchDefaultPageLimit {
+			t.Fatalf("messagesSearchPaginationConfig() pageLimit = %d, want %d", pageLimit, messagesSearchDefaultPageLimit)
+		}
+	})
+
+	t.Run("page all uses max limit", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, nil, map[string]bool{
+			"page-all": true,
+		})
+		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+		if !autoPaginate {
+			t.Fatal("messagesSearchPaginationConfig() autoPaginate = false, want true")
+		}
+		if pageLimit != messagesSearchMaxPageLimit {
+			t.Fatalf("messagesSearchPaginationConfig() pageLimit = %d, want %d", pageLimit, messagesSearchMaxPageLimit)
+		}
+	})
+
+	t.Run("explicit page limit enables auto pagination", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"page-limit": "3",
+		}, nil)
+		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+		if !autoPaginate {
+			t.Fatal("messagesSearchPaginationConfig() autoPaginate = false, want true")
+		}
+		if pageLimit != 3 {
+			t.Fatalf("messagesSearchPaginationConfig() pageLimit = %d, want 3", pageLimit)
 		}
 	})
 }

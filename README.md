@@ -6,7 +6,7 @@
 
 [中文版](./README.zh.md) | [English](./README.md)
 
-A command-line tool for [Lark/Feishu](https://www.larksuite.com/) Open Platform — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Calendar, Mail, Tasks, Meetings, and more, with 200+ commands and 19 AI Agent [Skills](./skills/).
+The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Calendar, Mail, Tasks, Meetings, and more, with 200+ commands and 19 AI Agent [Skills](./skills/).
 
 [Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
 
@@ -28,7 +28,7 @@ A command-line tool for [Lark/Feishu](https://www.larksuite.com/) Open Platform 
 | 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media |
 | 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards          |
 | 📁 Drive      | Upload and download files, search docs & wiki, manage comments                      |
-| 📊 Base       | Create and manage tables, fields, records, views, dashboards, data aggregation & analytics |
+| 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
 | 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                      |
 | ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders |
 | 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                            |

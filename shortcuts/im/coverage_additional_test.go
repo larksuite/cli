@@ -101,6 +101,9 @@ func TestResolveMarkdownAsPost(t *testing.T) {
 	if !strings.Contains(got, `#### Title`) || !strings.Contains(got, `##### Subtitle`) {
 		t.Fatalf("resolveMarkdownAsPost() = %q, want optimized heading levels", got)
 	}
+	if strings.Contains(got, `<br>`) {
+		t.Fatalf("resolveMarkdownAsPost() = %q, want no literal <br>", got)
+	}
 }
 
 func TestValidateContentFlags(t *testing.T) {

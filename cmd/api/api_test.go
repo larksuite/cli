@@ -446,10 +446,9 @@ func TestApiCmd_APIError_IsRaw(t *testing.T) {
 		t.Error("expected API error from api command to be marked Raw")
 	}
 
-	// stderr should NOT contain an error envelope (identity line is OK)
-	if strings.Contains(stderr.String(), `"ok"`) {
-		t.Error("expected no JSON error envelope on stderr for Raw API error")
-	}
+	// Note: stderr envelope output is tested at the root level (TestHandleRootError_*)
+	// since WriteErrorEnvelope is called by handleRootError, not by cobra's Execute.
+	_ = stderr
 }
 
 func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {

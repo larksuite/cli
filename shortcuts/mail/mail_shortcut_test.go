@@ -42,7 +42,7 @@ func mailShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *by
 		RefreshToken:     "test-refresh-token",
 		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
 		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),
-		Scope:            "mail:user_mailbox.messages:write mail:user_mailbox.messages:read mail:user_mailbox.message:send mail:user_mailbox.message:modify mail:user_mailbox.message:readonly mail:user_mailbox.message.address:read mail:user_mailbox.message.subject:read mail:user_mailbox.message.body:read mail:user_mailbox:readonly",
+		Scope:            "mail:user_mailbox.messages:write mail:user_mailbox.messages:read mail:user_mailbox.message:modify mail:user_mailbox.message:readonly mail:user_mailbox.message.address:read mail:user_mailbox.message.subject:read mail:user_mailbox.message.body:read mail:user_mailbox:readonly",
 		GrantedAt:        time.Now().Add(-1 * time.Hour).UnixMilli(),
 	}
 	if err := auth.SetStoredToken(token); err != nil {

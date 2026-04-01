@@ -1,0 +1,149 @@
+name: PR Preview Package Comment
+
+on:
+  workflow_run:
+    workflows: ["PR Preview Package"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  comment:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check comment payload artifact
+        id: payload
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const runId = context.payload.workflow_run?.id;
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+              per_page: 100,
+            });
+            const found = Boolean(
+              data.artifacts?.some((artifact) => artifact.name === "pkg-pr-new-comment-payload")
+            );
+            core.setOutput("found", found ? "true" : "false");
+            if (!found) {
+              core.notice("No comment payload artifact found for this run; skipping comment.");
+            }
+
+      - name: Download comment payload
+        if: steps.payload.outputs.found == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: pkg-pr-new-comment-payload
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Comment install command
+        if: steps.payload.outputs.found == 'true'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require("fs");
+            const payload = JSON.parse(fs.readFileSync("pkg-pr-new-comment-payload.json", "utf8"));
+            const url = payload?.url;
+            const payloadPr = payload?.pr;
+            const sourceRepo = payload?.sourceRepo;
+            const sourceBranch = payload?.sourceBranch;
+            if (!Number.isInteger(payloadPr)) {
+              throw new Error(`Invalid PR number in artifact payload: ${payloadPr}`);
+            }
+            if (payloadPr <= 0) {
+              throw new Error(`Invalid PR number in artifact payload: ${payloadPr}`);
+            }
+            const issueNumber = payloadPr;
+            const runPrNumber = context.payload.workflow_run?.pull_requests?.[0]?.number;
+            if (Number.isInteger(runPrNumber) && runPrNumber !== issueNumber) {
+              throw new Error(
+                `PR number mismatch between workflow_run (${runPrNumber}) and artifact payload (${issueNumber})`,
+              );
+            }
+
+            if (typeof url !== "string" || url.trim() !== url || /[\u0000-\u001F\u007F]/.test(url)) {
+              throw new Error(`Invalid package URL in payload: ${url}`);
+            }
+            let parsedUrl;
+            try {
+              parsedUrl = new URL(url);
+            } catch {
+              throw new Error(`Invalid package URL in payload: ${url}`);
+            }
+            if (parsedUrl.protocol !== "https:" || parsedUrl.hostname !== "pkg.pr.new") {
+              throw new Error(`Invalid package URL in payload: ${url}`);
+            }
+
+            const safeRepoPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+            const safeBranchPattern = /^[A-Za-z0-9._\/-]+$/;
+            const hasSkillSource =
+              typeof sourceRepo === "string" &&
+              typeof sourceBranch === "string" &&
+              safeRepoPattern.test(sourceRepo) &&
+              safeBranchPattern.test(sourceBranch);
+            const skillSection = hasSkillSource
+              ? [
+                  "",
+                  "### 🧩 Skill update",
+                  "",
+                  "```bash",
+                  `npx skills add ${sourceRepo}#${sourceBranch} -y -g`,
+                  "```",
+                ]
+              : [
+                  "",
+                  "### 🧩 Skill update",
+                  "",
+                  "_Unavailable for this PR because source repo/branch metadata is missing._",
+                ];
+
+            const body = [
+              "<!-- pkg-pr-new-install-guide -->",
+              "## 🚀 PR Preview Install Guide",
+              "",
+              "### 🧰 CLI update",
+              "",
+              "```bash",
+              `npm i -g ${url}`,
+              "```",
+              ...skillSection,
+            ].join("\n");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user?.login === "github-actions[bot]" &&
+              typeof comment.body === "string" &&
+              comment.body.includes("<!-- pkg-pr-new-install-guide -->")
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }
