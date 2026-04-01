@@ -71,7 +71,7 @@ var ImBotReceiveDiagnose = common.Shortcut{
 	AuthTypes:   []string{"bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "offline", Type: "bool", Desc: "skip network and WebSocket checks; only verify local bot configuration and token readiness"},
+		{Name: "offline", Type: "bool", Desc: "skip network and WebSocket checks; only verify local bot configuration and credential presence"},
 		{Name: "timeout", Type: "int", Default: "5", Desc: "timeout in seconds for network and WebSocket checks (1-60)"},
 		{Name: "event-type", Default: defaultIMReceiveEventType, Desc: "event type to diagnose (default im.message.receive_v1)"},
 	},
@@ -133,8 +133,10 @@ var ImBotReceiveDiagnose = common.Shortcut{
 				"run `lark-cli config init --new` or update the configured app secret before diagnosing bot receive events",
 			))
 		default:
+			tokenCtx, tokenCancel := context.WithTimeout(ctx, timeout)
+			defer tokenCancel()
 			var err error
-			token, err = runtime.AccessToken()
+			token, err = runtime.AccessTokenWithContext(tokenCtx)
 			if err != nil {
 				checks = append(checks, failBotReceiveCheck(
 					"token_bot",

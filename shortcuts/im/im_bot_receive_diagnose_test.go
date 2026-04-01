@@ -66,10 +66,12 @@ func TestImBotReceiveDiagnose_OfflineSuccess(t *testing.T) {
 	}))
 	restoreProbe := stubBotReceiveProbes(
 		func(ctx context.Context, runtime *common.RuntimeContext, url string, timeout time.Duration) error {
+			t.Fatal("endpoint probe should not run in offline mode")
 			return nil
 		},
 		func(ctx context.Context, runtime *common.RuntimeContext, eventType string, timeout time.Duration) botReceiveCheck {
-			return passBotReceiveCheck("endpoint_ws", "stubbed")
+			t.Fatal("websocket probe should not run in offline mode")
+			return botReceiveCheck{}
 		},
 	)
 	defer restoreProbe()
@@ -99,6 +101,9 @@ func TestImBotReceiveDiagnose_OfflineSuccess(t *testing.T) {
 	}
 	if !containsString(checks, "endpoint_open:skip") {
 		t.Fatalf("expected endpoint_open skip, got: %v", checks)
+	}
+	if !containsString(checks, "endpoint_ws:skip") {
+		t.Fatalf("expected endpoint_ws skip, got: %v", checks)
 	}
 	if !containsString(checks, "event_subscription:warn") {
 		t.Fatalf("expected event_subscription warn, got: %v", checks)
@@ -180,6 +185,55 @@ func TestImBotReceiveDiagnose_OnlineProbeFailure(t *testing.T) {
 	}
 	if !containsString(checks, "endpoint_ws:fail") {
 		t.Fatalf("expected endpoint_ws fail, got: %v", checks)
+	}
+}
+
+func TestImBotReceiveDiagnose_WebsocketTimeoutWarns(t *testing.T) {
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "tenant_access_token"):
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code":                0,
+				"tenant_access_token": "tenant-token",
+				"expire":              7200,
+			}), nil
+		default:
+			return shortcutJSONResponse(200, map[string]interface{}{"code": 0}), nil
+		}
+	}))
+	restoreProbe := stubBotReceiveProbes(
+		func(ctx context.Context, runtime *common.RuntimeContext, url string, timeout time.Duration) error {
+			return nil
+		},
+		func(ctx context.Context, runtime *common.RuntimeContext, eventType string, timeout time.Duration) botReceiveCheck {
+			wsCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			<-wsCtx.Done()
+			return warnBotReceiveCheck(
+				"endpoint_ws",
+				"event WebSocket for "+eventType+" did not fail within "+timeout.String()+", but readiness was not confirmed",
+				"retry with a larger --timeout or verify that long-lived WebSocket connections are allowed by the network/proxy",
+			)
+		},
+	)
+	defer restoreProbe()
+
+	root := mountedBotReceiveDiagnoseRoot(t, rt)
+	root.SetArgs([]string{"+bot-receive-diagnose", "--timeout", "1"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	env := decodeBotReceiveEnvelope(t, rt)
+	if !env.Data.Summary.OK {
+		t.Fatalf("expected summary ok=true for warn-only timeout path, got false")
+	}
+	checks := stringifyChecks(env.Data.Checks)
+	if !containsString(checks, "endpoint_open:pass") {
+		t.Fatalf("expected endpoint_open pass, got: %v", checks)
+	}
+	if !containsString(checks, "endpoint_ws:warn") {
+		t.Fatalf("expected endpoint_ws warn, got: %v", checks)
 	}
 }
 

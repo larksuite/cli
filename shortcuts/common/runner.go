@@ -88,12 +88,22 @@ func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
 // For user: returns user access token (with auto-refresh).
 // For bot: returns tenant access token.
 func (ctx *RuntimeContext) AccessToken() (string, error) {
+	return ctx.AccessTokenWithContext(ctx.ctx)
+}
+
+func (ctx *RuntimeContext) AccessTokenWithContext(callCtx context.Context) (string, error) {
+	if callCtx == nil {
+		callCtx = ctx.ctx
+	}
+	if callCtx == nil {
+		callCtx = context.Background()
+	}
 	if ctx.IsBot() {
 		ac, err := ctx.getAPIClient()
 		if err != nil {
 			return "", output.ErrAuth("failed to get SDK: %s", err)
 		}
-		tatResp, err := ac.SDK.GetTenantAccessTokenBySelfBuiltApp(ctx.ctx, &larkcore.SelfBuiltTenantAccessTokenReq{
+		tatResp, err := ac.SDK.GetTenantAccessTokenBySelfBuiltApp(callCtx, &larkcore.SelfBuiltTenantAccessTokenReq{
 			AppID:     ctx.Config.AppID,
 			AppSecret: ctx.Config.AppSecret,
 		})

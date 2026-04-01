@@ -7,7 +7,6 @@ package keychain
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,7 +19,7 @@ func TestGetFileMasterKeyCorruptExistingReturnsError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(dir, "master.key")
+	path := fileMasterKeyPath(LarkCliService)
 	if err := os.WriteFile(path, []byte("not-base64"), 0600); err != nil {
 		t.Fatal(err)
 	}
