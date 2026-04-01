@@ -7,9 +7,6 @@ Concise maintainer/developer guide for building, testing, and opening high-quali
 - Improve developer velocity: simplify code paths, reduce complexity, keep behavior explicit.
 - Improve quality gates: strengthen tests/lint/checks without adding heavy process.
 
-## Toolchain Prerequisite
-- Use one consistent Go toolchain (recommend Go `1.25.8` via `mise`); source of truth is `go.mod` (`go` directive) plus CI workflows.
-
 ## Fast Dev Loop
 1. `make build` (runs `python3 scripts/fetch_meta.py` first)
 2. `make unit-test` (required before PR)
