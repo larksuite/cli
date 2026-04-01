@@ -51,6 +51,10 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	if err == nil && len(key) == masterKeyBytes {
 		return key, nil
 	}
+	if err == nil && len(key) != masterKeyBytes {
+		// Key file exists but is corrupted
+		return nil, errors.New("keychain is corrupted")
+	}
 
 	if !allowCreate {
 		return nil, errNotInitialized
