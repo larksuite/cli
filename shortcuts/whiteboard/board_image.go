@@ -146,21 +146,14 @@ var BoardNodes = common.Shortcut{
 			return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
 		}
 
-		// 检查 API 层面错误码
-		var envelope struct {
-			Code int    `json:"code"`
-			Msg  string `json:"msg"`
-		}
-		if err := json.Unmarshal(resp.RawBody, &envelope); err != nil {
-			return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse response failed: %v", err))
-		}
-		if envelope.Code != 0 {
-			return output.ErrAPI(envelope.Code, envelope.Msg, nil)
-		}
-
+		// 解析响应并检查 API 层面错误码
 		var raw map[string]any
 		if err := json.Unmarshal(resp.RawBody, &raw); err != nil {
 			return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse response failed: %v", err))
+		}
+		if code, ok := raw["code"].(float64); ok && int(code) != 0 {
+			msg, _ := raw["msg"].(string)
+			return output.ErrAPI(int(code), msg, nil)
 		}
 
 		runtime.OutFormat(raw, nil, func(w io.Writer) {

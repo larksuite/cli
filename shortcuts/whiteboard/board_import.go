@@ -92,14 +92,31 @@ var BoardImport = common.Shortcut{
 				return err
 			}
 		}
-		// 必须提供 --file、--content 或 stdin 之一
+		// 确保恰好提供一个数据源：--file、--content 或 stdin
 		file := runtime.Str("file")
 		content := runtime.Str("content")
+		hasStdin := false
 		if file == "" && content == "" {
 			stat, err := os.Stdin.Stat()
-			if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
-				return common.FlagErrorf("one of --file, --content, or stdin is required")
+			if err == nil && (stat.Mode()&os.ModeCharDevice) == 0 {
+				hasStdin = true
 			}
+		}
+		sources := 0
+		if file != "" {
+			sources++
+		}
+		if content != "" {
+			sources++
+		}
+		if hasStdin {
+			sources++
+		}
+		if sources == 0 {
+			return common.FlagErrorf("one of --file, --content, or stdin is required")
+		}
+		if sources > 1 {
+			return common.FlagErrorf("only one of --file, --content, or stdin may be provided")
 		}
 		return nil
 	},
@@ -194,26 +211,31 @@ var BoardImport = common.Shortcut{
 			return output.ErrAPI(apiResp.Code, apiResp.Msg, nil)
 		}
 
-		nodeID := apiResp.Data.NodeID
-		if nodeID == "" {
-			nodeID = apiResp.Data.TicketID
-		}
-
 		outData := map[string]string{
 			"whiteboard_token": token,
-			"node_id":          nodeID,
 			"syntax":           syntax,
 			"style":            style,
+			"diagram_type":     diagramType,
+		}
+		if apiResp.Data.NodeID != "" {
+			outData["node_id"] = apiResp.Data.NodeID
+		}
+		if apiResp.Data.TicketID != "" {
+			outData["ticket_id"] = apiResp.Data.TicketID
 		}
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Diagram imported successfully!\n")
-			fmt.Fprintf(w, "  Whiteboard: %s\n", token)
-			if nodeID != "" {
-				fmt.Fprintf(w, "  Node ID:    %s\n", nodeID)
+			fmt.Fprintf(w, "  Whiteboard:    %s\n", token)
+			if apiResp.Data.NodeID != "" {
+				fmt.Fprintf(w, "  Node ID:       %s\n", apiResp.Data.NodeID)
 			}
-			fmt.Fprintf(w, "  Syntax:     %s\n", syntax)
-			fmt.Fprintf(w, "  Style:      %s\n", style)
+			if apiResp.Data.TicketID != "" {
+				fmt.Fprintf(w, "  Ticket ID:     %s (async import in progress)\n", apiResp.Data.TicketID)
+			}
+			fmt.Fprintf(w, "  Syntax:        %s\n", syntax)
+			fmt.Fprintf(w, "  Diagram Type:  %s\n", diagramType)
+			fmt.Fprintf(w, "  Style:         %s\n", style)
 		})
 
 		return nil
