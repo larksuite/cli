@@ -36,8 +36,8 @@ type driveExportSpec struct {
 
 // driveExportTaskResultCommand prints the resume command shown when bounded
 // export polling times out locally.
-func driveExportTaskResultCommand(ticket, fileToken string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario export --ticket %s --file-token %s", ticket, fileToken)
+func driveExportTaskResultCommand(ticket, docToken string) string {
+	return fmt.Sprintf("lark-cli drive +task_result --scenario export --ticket %s --file-token %s", ticket, docToken)
 }
 
 // driveExportStatus captures the fields needed to decide whether the export is
@@ -94,14 +94,9 @@ func (s driveExportStatus) StatusLabel() string {
 	case 6000:
 		return "export_images_exceed_limit"
 	default:
-		if s.JobStatus == 0 {
-			return "success"
-		}
-		if s.JobStatus == 0 && s.FileToken == "" {
-			return "unknown"
-		}
 		return fmt.Sprintf("status_%d", s.JobStatus)
 	}
+}
 }
 
 // validateDriveExportSpec enforces shortcut-level export constraints before any

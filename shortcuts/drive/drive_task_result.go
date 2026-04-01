@@ -19,7 +19,7 @@ var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
 	Command:     "+task_result",
 	Description: "Poll async task result for import, export, move, or delete operations",
-	Risk:        "readonly",
+	Risk:        "read",
 	Scopes:      []string{"drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
