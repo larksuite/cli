@@ -97,7 +97,6 @@ func (s driveExportStatus) StatusLabel() string {
 		return fmt.Sprintf("status_%d", s.JobStatus)
 	}
 }
-}
 
 // validateDriveExportSpec enforces shortcut-level export constraints before any
 // backend request is sent.
