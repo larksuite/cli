@@ -87,8 +87,8 @@ func TestMailWatchDryRunDefaultMetadataFetchesMessage(t *testing.T) {
 	runtime := runtimeForMailWatchTest(t, map[string]string{})
 
 	apis := dryRunAPIsForMailWatchTest(t, MailWatch.DryRun(context.Background(), runtime))
-	if len(apis) != 2 {
-		t.Fatalf("expected 2 dry-run apis, got %d", len(apis))
+	if len(apis) != 3 {
+		t.Fatalf("expected 3 dry-run apis, got %d", len(apis))
 	}
 	if apis[0].Method != "POST" {
 		t.Fatalf("unexpected method: %s", apis[0].Method)
@@ -96,10 +96,13 @@ func TestMailWatchDryRunDefaultMetadataFetchesMessage(t *testing.T) {
 	if apis[0].URL != mailboxPath("me", "event", "subscribe") {
 		t.Fatalf("unexpected url: %s", apis[0].URL)
 	}
-	if apis[1].URL != mailboxPath("me", "messages", "{message_id}") {
-		t.Fatalf("unexpected fetch url: %s", apis[1].URL)
+	if apis[1].Method != "GET" || apis[1].URL != mailboxPath("me", "profile") {
+		t.Fatalf("unexpected profile api: %s %s", apis[1].Method, apis[1].URL)
 	}
-	if got := apis[1].Params["format"]; got != "metadata" {
+	if apis[2].URL != mailboxPath("me", "messages", "{message_id}") {
+		t.Fatalf("unexpected fetch url: %s", apis[2].URL)
+	}
+	if got := apis[2].Params["format"]; got != "metadata" {
 		t.Fatalf("unexpected fetch format: %#v", got)
 	}
 }
@@ -110,16 +113,16 @@ func TestMailWatchDryRunMetadataFormatFetchesMessage(t *testing.T) {
 	})
 
 	apis := dryRunAPIsForMailWatchTest(t, MailWatch.DryRun(context.Background(), runtime))
-	if len(apis) != 2 {
-		t.Fatalf("expected 2 dry-run apis, got %d", len(apis))
+	if len(apis) != 3 {
+		t.Fatalf("expected 3 dry-run apis, got %d", len(apis))
 	}
-	if apis[1].Method != "GET" {
-		t.Fatalf("unexpected fetch method: %s", apis[1].Method)
+	if apis[2].Method != "GET" {
+		t.Fatalf("unexpected fetch method: %s", apis[2].Method)
 	}
-	if apis[1].URL != mailboxPath("me", "messages", "{message_id}") {
-		t.Fatalf("unexpected fetch url: %s", apis[1].URL)
+	if apis[2].URL != mailboxPath("me", "messages", "{message_id}") {
+		t.Fatalf("unexpected fetch url: %s", apis[2].URL)
 	}
-	if got := apis[1].Params["format"]; got != "metadata" {
+	if got := apis[2].Params["format"]; got != "metadata" {
 		t.Fatalf("unexpected fetch format: %#v", got)
 	}
 }
@@ -130,10 +133,10 @@ func TestMailWatchDryRunMinimalFormatFetchesMessage(t *testing.T) {
 	})
 
 	apis := dryRunAPIsForMailWatchTest(t, MailWatch.DryRun(context.Background(), runtime))
-	if len(apis) != 2 {
-		t.Fatalf("expected 2 dry-run apis, got %d", len(apis))
+	if len(apis) != 3 {
+		t.Fatalf("expected 3 dry-run apis, got %d", len(apis))
 	}
-	if got := apis[1].Params["format"]; got != "metadata" {
+	if got := apis[2].Params["format"]; got != "metadata" {
 		t.Fatalf("unexpected fetch format: %#v", got)
 	}
 }
@@ -173,10 +176,10 @@ func TestMailWatchDryRunPlainTextFullFormatFetchesMessage(t *testing.T) {
 	})
 
 	apis := dryRunAPIsForMailWatchTest(t, MailWatch.DryRun(context.Background(), runtime))
-	if len(apis) != 2 {
-		t.Fatalf("expected 2 dry-run apis, got %d", len(apis))
+	if len(apis) != 3 {
+		t.Fatalf("expected 3 dry-run apis, got %d", len(apis))
 	}
-	if got := apis[1].Params["format"]; got != "plain_text_full" {
+	if got := apis[2].Params["format"]; got != "plain_text_full" {
 		t.Fatalf("unexpected fetch format: %#v", got)
 	}
 }
@@ -187,10 +190,10 @@ func TestMailWatchDryRunFullFormatUsesFull(t *testing.T) {
 	})
 
 	apis := dryRunAPIsForMailWatchTest(t, MailWatch.DryRun(context.Background(), runtime))
-	if len(apis) != 2 {
-		t.Fatalf("expected 2 dry-run apis, got %d", len(apis))
+	if len(apis) != 3 {
+		t.Fatalf("expected 3 dry-run apis, got %d", len(apis))
 	}
-	if got := apis[1].Params["format"]; got != "full" {
+	if got := apis[2].Params["format"]; got != "full" {
 		t.Fatalf("unexpected fetch format: %#v", got)
 	}
 }
@@ -202,13 +205,13 @@ func TestMailWatchDryRunEventFormatWithLabelFilterFetchesMessage(t *testing.T) {
 	})
 
 	apis := dryRunAPIsForMailWatchTest(t, MailWatch.DryRun(context.Background(), runtime))
-	if len(apis) != 2 {
-		t.Fatalf("expected 2 dry-run apis, got %d", len(apis))
+	if len(apis) != 3 {
+		t.Fatalf("expected 3 dry-run apis, got %d", len(apis))
 	}
-	if apis[1].URL != mailboxPath("me", "messages", "{message_id}") {
-		t.Fatalf("unexpected fetch url: %s", apis[1].URL)
+	if apis[2].URL != mailboxPath("me", "messages", "{message_id}") {
+		t.Fatalf("unexpected fetch url: %s", apis[2].URL)
 	}
-	if got := apis[1].Params["format"]; got != "metadata" {
+	if got := apis[2].Params["format"]; got != "metadata" {
 		t.Fatalf("unexpected fetch format: %#v", got)
 	}
 }
