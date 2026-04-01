@@ -242,13 +242,13 @@ func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyErr
 	}
 
 	env := map[string]interface{}{"ok": false, "error": errData}
-	
+
 	buffer := &bytes.Buffer{}
 	encoder := json.NewEncoder(buffer)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	err := encoder.Encode(env)
-	
+
 	if err != nil {
 		fmt.Fprintln(w, `{"ok":false,"error":{"type":"internal_error","code":"marshal_error","message":"failed to marshal error"}}`)
 		return
