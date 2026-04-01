@@ -55,6 +55,10 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		// Key file exists but is corrupted
 		return nil, errors.New("keychain is corrupted")
 	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		// Real I/O error (permission denied, etc.) - propagate it
+		return nil, err
+	}
 
 	if !allowCreate {
 		return nil, errNotInitialized
