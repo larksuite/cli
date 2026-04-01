@@ -62,16 +62,7 @@ func TestImBotReceiveDiagnose_ValidateTimeout(t *testing.T) {
 
 func TestImBotReceiveDiagnose_OfflineSuccess(t *testing.T) {
 	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
-		default:
-			return shortcutJSONResponse(200, map[string]interface{}{"code": 0}), nil
-		}
+		return nil, errors.New("offline diagnose should not make HTTP requests")
 	}))
 	restoreProbe := stubBotReceiveProbes(
 		func(ctx context.Context, runtime *common.RuntimeContext, url string, timeout time.Duration) error {
@@ -103,8 +94,8 @@ func TestImBotReceiveDiagnose_OfflineSuccess(t *testing.T) {
 		t.Fatalf("expected summary ok=true, got false")
 	}
 	checks := stringifyChecks(env.Data.Checks)
-	if !containsString(checks, "token_bot:pass") {
-		t.Fatalf("expected token_bot pass, got: %v", checks)
+	if !containsString(checks, "token_bot:skip") {
+		t.Fatalf("expected token_bot skip, got: %v", checks)
 	}
 	if !containsString(checks, "endpoint_open:skip") {
 		t.Fatalf("expected endpoint_open skip, got: %v", checks)
@@ -189,6 +180,57 @@ func TestImBotReceiveDiagnose_OnlineProbeFailure(t *testing.T) {
 	}
 	if !containsString(checks, "endpoint_ws:fail") {
 		t.Fatalf("expected endpoint_ws fail, got: %v", checks)
+	}
+}
+
+func TestImBotReceiveDiagnose_NilConfigDoesNotPanic(t *testing.T) {
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("nil config diagnose should not make HTTP requests")
+	}))
+	rt.Config = nil
+
+	restoreProbe := stubBotReceiveProbes(
+		func(ctx context.Context, runtime *common.RuntimeContext, url string, timeout time.Duration) error {
+			t.Fatal("endpoint probe should not run when config is nil")
+			return nil
+		},
+		func(ctx context.Context, runtime *common.RuntimeContext, eventType string, timeout time.Duration) botReceiveCheck {
+			t.Fatal("websocket probe should not run when config is nil")
+			return botReceiveCheck{}
+		},
+	)
+	defer restoreProbe()
+
+	parent := &cobra.Command{Use: "im"}
+	ImBotReceiveDiagnose.Mount(parent, rt.Factory)
+	cmd := parent.Commands()[0]
+	rt.Cmd = cmd
+	if err := cmd.Flags().Set("offline", "false"); err != nil {
+		t.Fatalf("failed to set offline flag: %v", err)
+	}
+	if err := cmd.Flags().Set("event-type", defaultIMReceiveEventType); err != nil {
+		t.Fatalf("failed to set event-type flag: %v", err)
+	}
+	if err := cmd.Flags().Set("timeout", "5"); err != nil {
+		t.Fatalf("failed to set timeout flag: %v", err)
+	}
+	if err := ImBotReceiveDiagnose.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	env := decodeBotReceiveEnvelope(t, rt)
+	checks := stringifyChecks(env.Data.Checks)
+	if !containsString(checks, "app_resolved:fail") {
+		t.Fatalf("expected app_resolved fail, got: %v", checks)
+	}
+	if !containsString(checks, "token_bot:skip") {
+		t.Fatalf("expected token_bot skip, got: %v", checks)
+	}
+	if !containsString(checks, "endpoint_open:skip") {
+		t.Fatalf("expected endpoint_open skip, got: %v", checks)
+	}
+	if !containsString(checks, "endpoint_ws:skip") {
+		t.Fatalf("expected endpoint_ws skip, got: %v", checks)
 	}
 }
 

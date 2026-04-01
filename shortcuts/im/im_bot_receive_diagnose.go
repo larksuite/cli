@@ -100,7 +100,18 @@ var ImBotReceiveDiagnose = common.Shortcut{
 
 		checks = append(checks, diagnoseBotApp(runtime))
 
-		if strings.TrimSpace(runtime.Config.AppSecret) == "" {
+		if runtime.Config == nil {
+			checks = append(checks,
+				failBotReceiveCheck(
+					"app_credential",
+					"app configuration is unavailable; cannot inspect app secret",
+					"run `lark-cli config init --new` to configure the app before diagnosing bot receive events",
+				),
+				skipBotReceiveCheck("token_bot", "skipped because app configuration is unavailable"),
+				skipBotReceiveCheck("endpoint_open", "skipped because app configuration is unavailable"),
+				skipBotReceiveCheck("endpoint_ws", "skipped because app configuration is unavailable"),
+			)
+		} else if strings.TrimSpace(runtime.Config.AppSecret) == "" {
 			checks = append(checks, failBotReceiveCheck(
 				"app_credential",
 				"app secret is empty",
@@ -110,24 +121,39 @@ var ImBotReceiveDiagnose = common.Shortcut{
 			checks = append(checks, passBotReceiveCheck("app_credential", "app credentials are configured"))
 		}
 
-		token, err := runtime.AccessToken()
-		if err != nil {
+		token := ""
+		switch {
+		case runtime.Config == nil:
+		case offline:
+			checks = append(checks, skipBotReceiveCheck("token_bot", "skipped (--offline); local app configuration readiness only"))
+		case strings.TrimSpace(runtime.Config.AppSecret) == "":
 			checks = append(checks, failBotReceiveCheck(
 				"token_bot",
-				fmt.Sprintf("failed to get bot tenant access token: %v", err),
-				"check app id/app secret, app status, and bot-related permissions in the developer console",
+				"cannot acquire bot tenant access token because app secret is empty",
+				"run `lark-cli config init --new` or update the configured app secret before diagnosing bot receive events",
 			))
-		} else if strings.TrimSpace(token) == "" {
-			checks = append(checks, failBotReceiveCheck(
-				"token_bot",
-				"tenant access token is empty",
-				"check app id/app secret and retry",
-			))
-		} else {
-			checks = append(checks, passBotReceiveCheck("token_bot", "bot tenant access token acquired successfully"))
+		default:
+			var err error
+			token, err = runtime.AccessToken()
+			if err != nil {
+				checks = append(checks, failBotReceiveCheck(
+					"token_bot",
+					fmt.Sprintf("failed to get bot tenant access token: %v", err),
+					"check app id/app secret, app status, and bot-related permissions in the developer console",
+				))
+			} else if strings.TrimSpace(token) == "" {
+				checks = append(checks, failBotReceiveCheck(
+					"token_bot",
+					"tenant access token is empty",
+					"check app id/app secret and retry",
+				))
+			} else {
+				checks = append(checks, passBotReceiveCheck("token_bot", "bot tenant access token acquired successfully"))
+			}
 		}
 
-		if offline {
+		if runtime.Config == nil {
+		} else if offline {
 			checks = append(checks,
 				skipBotReceiveCheck("endpoint_open", "skipped (--offline)"),
 				skipBotReceiveCheck("endpoint_ws", "skipped (--offline)"),
@@ -248,7 +274,7 @@ func collectBotReceiveNextSteps(checks []botReceiveCheck) []string {
 func probeBotReceiveEndpoint(ctx context.Context, runtime *common.RuntimeContext, url string, timeout time.Duration) error {
 	httpClient, err := runtime.Factory.HttpClient()
 	if err != nil {
-		httpClient = &http.Client{}
+		return fmt.Errorf("failed to obtain runtime HTTP client: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -265,6 +291,10 @@ func probeBotReceiveEndpoint(ctx context.Context, runtime *common.RuntimeContext
 }
 
 func diagnoseBotReceiveWebsocket(ctx context.Context, runtime *common.RuntimeContext, eventType string, timeout time.Duration) botReceiveCheck {
+	if runtime.Config == nil || strings.TrimSpace(runtime.Config.AppID) == "" || strings.TrimSpace(runtime.Config.AppSecret) == "" {
+		return skipBotReceiveCheck("endpoint_ws", "skipped because app configuration is unavailable")
+	}
+
 	domain := lark.FeishuBaseUrl
 	if runtime.Config.Brand == core.BrandLark {
 		domain = lark.LarkBaseUrl
