@@ -11,14 +11,17 @@ import (
 // callers may degrade to the CLI-managed encrypted fallback store.
 var ErrUnavailable = errors.New("keychain unavailable")
 
+// unavailableError preserves both the fallback-eligibility marker and the underlying platform error.
 type unavailableError struct {
 	cause error
 }
 
+// Error implements error.
 func (e *unavailableError) Error() string {
 	return ErrUnavailable.Error() + ": " + e.cause.Error()
 }
 
+// Unwrap exposes both ErrUnavailable and the underlying cause.
 func (e *unavailableError) Unwrap() []error {
 	return []error{ErrUnavailable, e.cause}
 }

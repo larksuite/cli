@@ -14,30 +14,49 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 )
 
+// failingTokenKeychain simulates unavailable keychain writes that should trigger encrypted fallback.
 type failingTokenKeychain struct{}
 
+// Get satisfies the keychain interface for read paths used by these tests.
 func (f *failingTokenKeychain) Get(service, account string) (string, error) { return "", nil }
+
+// Set satisfies the keychain interface and forces fallback-eligible write errors.
 func (f *failingTokenKeychain) Set(service, account, value string) error {
 	return keychain.WrapUnavailable(errors.New("sandbox denied"))
 }
+
+// Remove satisfies the keychain interface for cleanup paths used by these tests.
 func (f *failingTokenKeychain) Remove(service, account string) error { return nil }
 
+// genericFailingTokenKeychain simulates non-fallback-eligible keychain write failures.
 type genericFailingTokenKeychain struct{}
 
+// Get satisfies the keychain interface for read paths used by these tests.
 func (f *genericFailingTokenKeychain) Get(service, account string) (string, error) { return "", nil }
+
+// Set satisfies the keychain interface and returns a generic write failure.
 func (f *genericFailingTokenKeychain) Set(service, account, value string) error {
 	return errors.New("boom")
 }
+
+// Remove satisfies the keychain interface for cleanup paths used by these tests.
 func (f *genericFailingTokenKeychain) Remove(service, account string) error { return nil }
 
+// removeFailingTokenKeychain simulates keychain delete failures during cleanup.
 type removeFailingTokenKeychain struct{}
 
+// Get satisfies the keychain interface for read paths used by these tests.
 func (f *removeFailingTokenKeychain) Get(service, account string) (string, error) { return "", nil }
-func (f *removeFailingTokenKeychain) Set(service, account, value string) error    { return nil }
+
+// Set satisfies the keychain interface for write paths used by these tests.
+func (f *removeFailingTokenKeychain) Set(service, account, value string) error { return nil }
+
+// Remove satisfies the keychain interface and forces delete failures.
 func (f *removeFailingTokenKeychain) Remove(service, account string) error {
 	return errors.New("remove failed")
 }
 
+// TestSetStoredToken_FallsBackToManagedFileWhenKeychainUnavailable verifies encrypted fallback is used when keychain writes are unavailable.
 func TestSetStoredToken_FallsBackToManagedFileWhenKeychainUnavailable(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -81,6 +100,7 @@ func TestSetStoredToken_FallsBackToManagedFileWhenKeychainUnavailable(t *testing
 	}
 }
 
+// TestRemoveStoredToken_RemovesManagedFileFallback verifies token cleanup removes encrypted fallback files.
 func TestRemoveStoredToken_RemovesManagedFileFallback(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -116,6 +136,7 @@ func TestRemoveStoredToken_RemovesManagedFileFallback(t *testing.T) {
 	}
 }
 
+// TestGetStoredToken_UsesEncryptedFallbackWhenPrimaryStoreMisses verifies encrypted fallback reads are used after primary-store misses.
 func TestGetStoredToken_UsesEncryptedFallbackWhenPrimaryStoreMisses(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -145,6 +166,7 @@ func TestGetStoredToken_UsesEncryptedFallbackWhenPrimaryStoreMisses(t *testing.T
 	}
 }
 
+// TestGetStoredToken_ReadsLegacyManagedTokenFile verifies the legacy plaintext token file remains readable for compatibility.
 func TestGetStoredToken_ReadsLegacyManagedTokenFile(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -182,6 +204,7 @@ func TestGetStoredToken_ReadsLegacyManagedTokenFile(t *testing.T) {
 	}
 }
 
+// TestRemoveStoredToken_ReturnsKeychainErrorWhenFallbackIsAbsent verifies fallback misses do not hide keychain delete errors.
 func TestRemoveStoredToken_ReturnsKeychainErrorWhenFallbackIsAbsent(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -199,6 +222,7 @@ func TestRemoveStoredToken_ReturnsKeychainErrorWhenFallbackIsAbsent(t *testing.T
 	}
 }
 
+// TestSetStoredToken_DoesNotFallbackOnGenericKeychainError verifies generic write errors do not silently downgrade to fallback storage.
 func TestSetStoredToken_DoesNotFallbackOnGenericKeychainError(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -231,6 +255,7 @@ func TestSetStoredToken_DoesNotFallbackOnGenericKeychainError(t *testing.T) {
 	}
 }
 
+// TestGetStoredToken_DoesNotFallBackToLegacyWhenEncryptedFallbackIsCorrupt verifies corrupt encrypted fallback data blocks legacy fallback reads.
 func TestGetStoredToken_DoesNotFallBackToLegacyWhenEncryptedFallbackIsCorrupt(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)

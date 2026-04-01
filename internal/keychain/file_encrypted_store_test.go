@@ -13,6 +13,7 @@ import (
 	"testing"
 )
 
+// TestFallbackStore_EncryptsAndRemovesData verifies fallback values are encrypted at rest and removable.
 func TestFallbackStore_EncryptsAndRemovesData(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -53,6 +54,7 @@ func TestFallbackStore_EncryptsAndRemovesData(t *testing.T) {
 	}
 }
 
+// TestGetFallback_MissDoesNotCreateStorageArtifacts verifies read misses stay side-effect free.
 func TestGetFallback_MissDoesNotCreateStorageArtifacts(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -70,6 +72,7 @@ func TestGetFallback_MissDoesNotCreateStorageArtifacts(t *testing.T) {
 	}
 }
 
+// TestCreateMasterKeyFile_DoesNotReplaceExistingFile verifies master.key creation uses no-replace semantics.
 func TestCreateMasterKeyFile_DoesNotReplaceExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "master.key")
@@ -94,6 +97,7 @@ func TestCreateMasterKeyFile_DoesNotReplaceExistingFile(t *testing.T) {
 	}
 }
 
+// TestLoadOrCreateMasterKeyFile_ReusesExistingKey verifies existing master keys are reused rather than replaced.
 func TestLoadOrCreateMasterKeyFile_ReusesExistingKey(t *testing.T) {
 	dir := t.TempDir()
 	existingKey := bytes.Repeat([]byte{7}, masterKeyBytes)
@@ -111,6 +115,7 @@ func TestLoadOrCreateMasterKeyFile_ReusesExistingKey(t *testing.T) {
 	}
 }
 
+// TestSafeFileName_EncodesFullAccountWithoutCollision verifies account keys map to collision-free filenames.
 func TestSafeFileName_EncodesFullAccountWithoutCollision(t *testing.T) {
 	accountA := "appsecret:cli_test"
 	accountB := "appsecret/cli_test"
@@ -125,6 +130,7 @@ func TestSafeFileName_EncodesFullAccountWithoutCollision(t *testing.T) {
 	}
 }
 
+// TestGetFallbackWithError_ReturnsDecryptFailure verifies corrupt ciphertext is surfaced as a decrypt error.
 func TestGetFallbackWithError_ReturnsDecryptFailure(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)

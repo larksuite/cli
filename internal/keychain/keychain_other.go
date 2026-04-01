@@ -24,12 +24,14 @@ func StorageDir(service string) string {
 	return filepath.Join(xdgData, service)
 }
 
+// getMasterKey loads or initializes the per-service master key on Linux.
 func getMasterKey(service string) ([]byte, error) {
 	// Shared master-key file handling lives in file_encrypted_store.go.
 	// New code should reuse that helper layer instead of reimplementing key-file setup here.
 	return loadOrCreateMasterKeyFile(StorageDir(service))
 }
 
+// platformGet reads a service/account secret from the Linux encrypted-file backend.
 func platformGet(service, account string) string {
 	key, err := getMasterKey(service)
 	if err != nil {
@@ -40,6 +42,7 @@ func platformGet(service, account string) string {
 	return readEncryptedFile(StorageDir(service), account, key)
 }
 
+// platformSet writes a service/account secret through the Linux encrypted-file backend.
 func platformSet(service, account, data string) error {
 	key, err := getMasterKey(service)
 	if err != nil {
@@ -50,6 +53,7 @@ func platformSet(service, account, data string) error {
 	return writeEncryptedFile(StorageDir(service), account, data, key)
 }
 
+// platformRemove deletes a service/account secret from the Linux encrypted-file backend.
 func platformRemove(service, account string) error {
 	// Shared encrypted-file cleanup semantics live in file_encrypted_store.go.
 	// New code should reuse that helper layer instead of reimplementing file I/O here.

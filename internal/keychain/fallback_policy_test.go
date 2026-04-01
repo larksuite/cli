@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestShouldUseFallback_RequiresTypedUnavailableError verifies fallback only triggers on the typed unavailability contract.
 func TestShouldUseFallback_RequiresTypedUnavailableError(t *testing.T) {
 	if ShouldUseFallback(errors.New("exit status 155")) {
 		t.Fatal("expected raw error strings to stop triggering fallback")
@@ -19,6 +20,7 @@ func TestShouldUseFallback_RequiresTypedUnavailableError(t *testing.T) {
 	}
 }
 
+// TestWrapUnavailable_PreservesUnderlyingCause verifies unavailable wrapping keeps the original cause in the error chain.
 func TestWrapUnavailable_PreservesUnderlyingCause(t *testing.T) {
 	err := WrapUnavailable(context.DeadlineExceeded)
 	if !errors.Is(err, ErrUnavailable) {

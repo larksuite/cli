@@ -91,6 +91,7 @@ func completeDomain(toComplete string) []string {
 	return completions
 }
 
+// authLoginRun executes the interactive or direct auth login flow.
 func authLoginRun(opts *LoginOptions) error {
 	f := opts.Factory
 
@@ -398,6 +399,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	return nil
 }
 
+// warnIfEncryptedTokenFallback explains when auth token persistence downgraded to the encrypted file fallback.
 func warnIfEncryptedTokenFallback(w io.Writer, usedFallback bool) {
 	if !usedFallback {
 		return

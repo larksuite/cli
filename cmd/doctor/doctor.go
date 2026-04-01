@@ -52,18 +52,22 @@ type checkResult struct {
 	Hint    string `json:"hint,omitempty"`
 }
 
+// pass builds a successful doctor check result.
 func pass(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "pass", Message: msg}
 }
 
+// fail builds a failed doctor check result.
 func fail(name, msg, hint string) checkResult {
 	return checkResult{Name: name, Status: "fail", Message: msg, Hint: hint}
 }
 
+// skip builds a skipped doctor check result.
 func skip(name, msg string) checkResult {
 	return checkResult{Name: name, Status: "skip", Message: msg}
 }
 
+// doctorRun executes local configuration, credential, and network diagnostics.
 func doctorRun(opts *DoctorOptions) error {
 	f := opts.Factory
 	var checks []checkResult
@@ -214,6 +218,7 @@ func mustHTTPClient(f *cmdutil.Factory) *http.Client {
 	return c
 }
 
+// finishDoctor renders the aggregated doctor result and maps failures to a non-zero exit status.
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 	allOK := true
 	for _, c := range checks {

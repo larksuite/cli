@@ -20,16 +20,19 @@ const masterKeyBytes = 32
 const ivBytes = 12
 const tagBytes = 16
 
+// safeFileName maps an account key to a collision-free filesystem name.
 func safeFileName(account string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(account)) + ".enc"
 }
 
+// fallbackStorageDir returns the per-service directory used by the encrypted file fallback store.
 func fallbackStorageDir(service string) string {
 	// Keep config dir resolution centralized in internal/configdir.
 	// New code should reuse configdir.Get() instead of duplicating env/home logic.
 	return filepath.Join(configdir.Get(), "keychain", service)
 }
 
+// loadMasterKeyFile reads an existing fallback master key without creating new storage.
 func loadMasterKeyFile(dir string) ([]byte, error) {
 	key, err := os.ReadFile(filepath.Join(dir, "master.key"))
 	if err != nil {
@@ -41,6 +44,7 @@ func loadMasterKeyFile(dir string) ([]byte, error) {
 	return key, nil
 }
 
+// loadOrCreateMasterKeyFile returns the fallback master key, creating it only when absent.
 func loadOrCreateMasterKeyFile(dir string) ([]byte, error) {
 	keyPath := filepath.Join(dir, "master.key")
 
@@ -72,6 +76,7 @@ func loadOrCreateMasterKeyFile(dir string) ([]byte, error) {
 	return key, nil
 }
 
+// createMasterKeyFile creates master.key with no-replace semantics.
 func createMasterKeyFile(path string, key []byte) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
@@ -99,6 +104,7 @@ func createMasterKeyFile(path string, key []byte) error {
 	return nil
 }
 
+// encryptData seals plaintext with AES-GCM using the provided master key.
 func encryptData(plaintext string, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -121,6 +127,7 @@ func encryptData(plaintext string, key []byte) ([]byte, error) {
 	return result, nil
 }
 
+// decryptData opens AES-GCM ciphertext produced by encryptData.
 func decryptData(data []byte, key []byte) (string, error) {
 	if len(data) < ivBytes+tagBytes {
 		return "", os.ErrInvalid
@@ -143,6 +150,7 @@ func decryptData(data []byte, key []byte) (string, error) {
 	return string(plaintext), nil
 }
 
+// readEncryptedFile reads an encrypted fallback file and suppresses read or decrypt errors.
 func readEncryptedFile(dir, account string, key []byte) string {
 	plaintext, err := readEncryptedFileWithError(dir, account, key)
 	if err != nil {
@@ -151,6 +159,7 @@ func readEncryptedFile(dir, account string, key []byte) string {
 	return plaintext
 }
 
+// readEncryptedFileWithError reads and decrypts an encrypted fallback file while preserving error detail.
 func readEncryptedFileWithError(dir, account string, key []byte) (string, error) {
 	path := filepath.Join(dir, safeFileName(account))
 	data, err := os.ReadFile(path)
@@ -164,6 +173,7 @@ func readEncryptedFileWithError(dir, account string, key []byte) (string, error)
 	return plaintext, nil
 }
 
+// writeEncryptedFile encrypts and atomically writes fallback data for an account key.
 func writeEncryptedFile(dir, account, data string, key []byte) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -175,6 +185,7 @@ func writeEncryptedFile(dir, account, data string, key []byte) error {
 	return validate.AtomicWrite(filepath.Join(dir, safeFileName(account)), encrypted, 0600)
 }
 
+// removeEncryptedFile deletes the encrypted fallback file for an account key.
 func removeEncryptedFile(dir, account string) error {
 	err := os.Remove(filepath.Join(dir, safeFileName(account)))
 	if err != nil && !os.IsNotExist(err) {
@@ -183,6 +194,7 @@ func removeEncryptedFile(dir, account string) error {
 	return nil
 }
 
+// GetFallback reads fallback data and returns an empty string when the value is absent or unreadable.
 func GetFallback(service, account string) string {
 	value, err := GetFallbackWithError(service, account)
 	if err != nil {
@@ -191,6 +203,7 @@ func GetFallback(service, account string) string {
 	return value
 }
 
+// GetFallbackWithError reads fallback data and preserves not-found or decrypt errors for callers that need diagnostics.
 func GetFallbackWithError(service, account string) (string, error) {
 	dir := fallbackStorageDir(service)
 	path := filepath.Join(dir, safeFileName(account))
@@ -204,6 +217,7 @@ func GetFallbackWithError(service, account string) (string, error) {
 	return readEncryptedFileWithError(dir, account, key)
 }
 
+// SetFallback stores fallback data for a service/account pair.
 func SetFallback(service, account, data string) error {
 	dir := fallbackStorageDir(service)
 	key, err := loadOrCreateMasterKeyFile(dir)
@@ -213,6 +227,7 @@ func SetFallback(service, account, data string) error {
 	return writeEncryptedFile(dir, account, data, key)
 }
 
+// RemoveFallback removes fallback data for a service/account pair.
 func RemoveFallback(service, account string) error {
 	return removeEncryptedFile(fallbackStorageDir(service), account)
 }

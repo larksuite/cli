@@ -13,6 +13,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// TestResolveMasterKey_OnlyCreatesOnNotFound verifies existing keychain errors do not rotate the master key.
 func TestResolveMasterKey_OnlyCreatesOnNotFound(t *testing.T) {
 	expected := []byte("12345678901234567890123456789012")
 	setCalled := false
@@ -39,6 +40,7 @@ func TestResolveMasterKey_OnlyCreatesOnNotFound(t *testing.T) {
 	}
 }
 
+// TestResolveMasterKey_CreatesOnNotFound verifies missing keychain entries initialize a new master key.
 func TestResolveMasterKey_CreatesOnNotFound(t *testing.T) {
 	setCalled := false
 

@@ -94,6 +94,7 @@ func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, 
 	return core.SaveMultiAppConfig(config)
 }
 
+// warnIfEncryptedSecretFallback explains when app-secret persistence downgraded to the encrypted file fallback.
 func warnIfEncryptedSecretFallback(w io.Writer, secret core.SecretInput, original core.SecretInput) {
 	if !original.IsPlain() || !secret.IsSecretRef() || secret.Ref.Source != "encrypted_file" {
 		return
@@ -101,6 +102,7 @@ func warnIfEncryptedSecretFallback(w io.Writer, secret core.SecretInput, origina
 	fmt.Fprintln(w, "warning: keychain unavailable, app secret stored in a local file protected by filesystem permissions (0600) managed by lark-cli")
 }
 
+// validateSecretReuse rejects managed secret references that no longer match the selected app ID.
 func validateSecretReuse(appID string, secret core.SecretInput) error {
 	if !secret.IsSecretRef() {
 		return nil
@@ -115,6 +117,7 @@ func validateSecretReuse(appID string, secret core.SecretInput) error {
 	return output.ErrValidation("App Secret must be re-entered when App ID changes")
 }
 
+// cleanupReplacedCurrentAppSecret removes the previous current-app secret when the backend changes in place.
 func cleanupReplacedCurrentAppSecret(existing *core.MultiAppConfig, f *cmdutil.Factory, appID string, newSecret core.SecretInput) {
 	if existing == nil || len(existing.Apps) == 0 {
 		return
@@ -129,6 +132,7 @@ func cleanupReplacedCurrentAppSecret(existing *core.MultiAppConfig, f *cmdutil.F
 	core.RemoveSecretStore(current.AppSecret, f.Keychain)
 }
 
+// storeAndSaveOnlyApp persists a single-app config while keeping secret storage, rollback, and cleanup in sync.
 func storeAndSaveOnlyApp(existing *core.MultiAppConfig, f *cmdutil.Factory, appID string, plainSecret core.SecretInput, brand core.LarkBrand, lang string) error {
 	// Keep the secret persistence pipeline centralized here.
 	// New config-init branches should call this helper instead of reimplementing
@@ -152,6 +156,7 @@ func storeAndSaveOnlyApp(existing *core.MultiAppConfig, f *cmdutil.Factory, appI
 	return nil
 }
 
+// configInitRun initializes or updates the local CLI app configuration.
 func configInitRun(opts *ConfigInitOptions) error {
 	f := opts.Factory
 

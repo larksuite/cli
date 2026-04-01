@@ -31,20 +31,24 @@ const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
 
 var tokenKeychain = keychain.Default()
 
+// accountKey builds the logical credential key for a user token.
 func accountKey(appId, userOpenId string) string {
 	return fmt.Sprintf("%s:%s", appId, userOpenId)
 }
 
+// tokenConfigDir returns the config directory used by token-store compatibility paths.
 func tokenConfigDir() string {
 	// Keep config dir resolution centralized in internal/configdir.
 	// New code should reuse configdir.Get() instead of duplicating env/home logic.
 	return configdir.Get()
 }
 
+// legacyManagedTokenFilePath returns the old plaintext managed-token file path kept for migration reads and cleanup.
 func legacyManagedTokenFilePath(appId, userOpenId string) string {
 	return filepath.Join(tokenConfigDir(), "tokens", sanitizeID(accountKey(appId, userOpenId))+".json")
 }
 
+// readLegacyManagedToken loads a token from the legacy plaintext fallback file if it still exists.
 func readLegacyManagedToken(appId, userOpenId string) *StoredUAToken {
 	data, err := os.ReadFile(legacyManagedTokenFilePath(appId, userOpenId))
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 
 const secretKeyPrefix = "appsecret:"
 
+// secretAccountKey builds the managed storage key for an app secret.
 func secretAccountKey(appId string) string {
 	return secretKeyPrefix + appId
 }

@@ -14,14 +14,21 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 )
 
+// erroringSetKeychain simulates configurable keychain write failures in secret-storage tests.
 type erroringSetKeychain struct {
 	err error
 }
 
+// Get satisfies the keychain interface for read paths used by these tests.
 func (e *erroringSetKeychain) Get(service, account string) (string, error) { return "", nil }
-func (e *erroringSetKeychain) Set(service, account, value string) error    { return e.err }
-func (e *erroringSetKeychain) Remove(service, account string) error        { return nil }
 
+// Set satisfies the keychain interface and returns the configured write error.
+func (e *erroringSetKeychain) Set(service, account, value string) error { return e.err }
+
+// Remove satisfies the keychain interface for cleanup paths used by these tests.
+func (e *erroringSetKeychain) Remove(service, account string) error { return nil }
+
+// TestForStorageWithEncryptedFallback_DoesNotFallbackOnGenericSetError verifies generic keychain errors do not trigger encrypted fallback.
 func TestForStorageWithEncryptedFallback_DoesNotFallbackOnGenericSetError(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -41,6 +48,7 @@ func TestForStorageWithEncryptedFallback_DoesNotFallbackOnGenericSetError(t *tes
 	}
 }
 
+// TestSecretInput_UnmarshalAcceptsFileSource verifies config decoding still accepts legacy file-backed secret refs.
 func TestSecretInput_UnmarshalAcceptsFileSource(t *testing.T) {
 	var input SecretInput
 	data := []byte(`{"source":"file","id":"/tmp/app-secret.txt"}`)
@@ -59,6 +67,7 @@ func TestSecretInput_UnmarshalAcceptsFileSource(t *testing.T) {
 	}
 }
 
+// TestResolveSecretInput_FileSourceReadsSecretFile verifies file-backed secret refs read and trim the external file content.
 func TestResolveSecretInput_FileSourceReadsSecretFile(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "app-secret.txt")
 	if err := os.WriteFile(secretFile, []byte("secret123\n"), 0600); err != nil {
@@ -76,6 +85,7 @@ func TestResolveSecretInput_FileSourceReadsSecretFile(t *testing.T) {
 	}
 }
 
+// TestResolveSecretInput_EncryptedFallbackIncludesUnderlyingError verifies decrypt failures surface a diagnostic error.
 func TestResolveSecretInput_EncryptedFallbackIncludesUnderlyingError(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)

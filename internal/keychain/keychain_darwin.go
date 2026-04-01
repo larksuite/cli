@@ -29,6 +29,7 @@ func StorageDir(service string) string {
 	return filepath.Join(home, "Library", "Application Support", service)
 }
 
+// resolveMasterKey loads, validates, or creates the base64-encoded master key stored in macOS keychain.
 func resolveMasterKey(
 	getFn func() (string, error),
 	setFn func(string) error,
@@ -59,6 +60,7 @@ func resolveMasterKey(
 	}
 }
 
+// getMasterKey resolves the per-service master key with a timeout around keychain access.
 func getMasterKey(service string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout)
 	defer cancel()
@@ -92,6 +94,7 @@ func getMasterKey(service string) ([]byte, error) {
 	}
 }
 
+// platformGet reads a service/account secret from the macOS encrypted-file backend.
 func platformGet(service, account string) string {
 	key, err := getMasterKey(service)
 	if err != nil {
@@ -102,6 +105,7 @@ func platformGet(service, account string) string {
 	return readEncryptedFile(StorageDir(service), account, key)
 }
 
+// platformSet writes a service/account secret through the macOS encrypted-file backend.
 func platformSet(service, account, data string) error {
 	key, err := getMasterKey(service)
 	if err != nil {
@@ -112,6 +116,7 @@ func platformSet(service, account, data string) error {
 	return writeEncryptedFile(StorageDir(service), account, data, key)
 }
 
+// platformRemove deletes a service/account secret from the macOS encrypted-file backend.
 func platformRemove(service, account string) error {
 	// Shared encrypted-file cleanup semantics live in file_encrypted_store.go.
 	// New code should reuse that helper layer instead of reimplementing file I/O here.

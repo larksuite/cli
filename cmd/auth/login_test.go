@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// TestSuggestDomain_PrefixMatch verifies prefix matching returns the expected shortcut domain.
 func TestSuggestDomain_PrefixMatch(t *testing.T) {
 	known := map[string]bool{
 		"calendar": true,
@@ -35,6 +36,7 @@ func TestSuggestDomain_PrefixMatch(t *testing.T) {
 	}
 }
 
+// TestSuggestDomain_NoMatch verifies unknown prefixes do not produce suggestions.
 func TestSuggestDomain_NoMatch(t *testing.T) {
 	known := map[string]bool{
 		"calendar": true,
@@ -46,6 +48,7 @@ func TestSuggestDomain_NoMatch(t *testing.T) {
 	}
 }
 
+// TestSuggestDomain_ExactMatch verifies exact matches resolve without modification.
 func TestSuggestDomain_ExactMatch(t *testing.T) {
 	known := map[string]bool{
 		"calendar": true,
@@ -57,6 +60,7 @@ func TestSuggestDomain_ExactMatch(t *testing.T) {
 	}
 }
 
+// TestShortcutSupportsIdentity_DefaultUser verifies shortcuts default to user identity when unspecified.
 func TestShortcutSupportsIdentity_DefaultUser(t *testing.T) {
 	// Empty AuthTypes defaults to ["user"]
 	sc := common.Shortcut{AuthTypes: nil}
@@ -68,6 +72,7 @@ func TestShortcutSupportsIdentity_DefaultUser(t *testing.T) {
 	}
 }
 
+// TestShortcutSupportsIdentity_ExplicitTypes verifies shortcuts honor explicit identity declarations.
 func TestShortcutSupportsIdentity_ExplicitTypes(t *testing.T) {
 	sc := common.Shortcut{AuthTypes: []string{"user", "bot"}}
 	if !shortcutSupportsIdentity(sc, "user") {
@@ -81,6 +86,7 @@ func TestShortcutSupportsIdentity_ExplicitTypes(t *testing.T) {
 	}
 }
 
+// TestShortcutSupportsIdentity_BotOnly verifies user identity is rejected for bot-only shortcuts.
 func TestShortcutSupportsIdentity_BotOnly(t *testing.T) {
 	sc := common.Shortcut{AuthTypes: []string{"bot"}}
 	if shortcutSupportsIdentity(sc, "user") {
@@ -91,6 +97,7 @@ func TestShortcutSupportsIdentity_BotOnly(t *testing.T) {
 	}
 }
 
+// TestCompleteDomain verifies shell completion returns matching domain candidates.
 func TestCompleteDomain(t *testing.T) {
 	projects := registry.ListFromMetaProjects()
 	if len(projects) == 0 {
@@ -116,6 +123,7 @@ func TestCompleteDomain(t *testing.T) {
 	}
 }
 
+// TestCompleteDomain_CommaSeparated verifies completion uses the last comma-separated domain fragment.
 func TestCompleteDomain_CommaSeparated(t *testing.T) {
 	projects := registry.ListFromMetaProjects()
 	if len(projects) == 0 {
@@ -131,6 +139,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 	}
 }
 
+// TestAllKnownDomains verifies the known-domain list includes registry and shortcut-only domains.
 func TestAllKnownDomains(t *testing.T) {
 	domains := allKnownDomains()
 	if len(domains) == 0 {
@@ -145,6 +154,7 @@ func TestAllKnownDomains(t *testing.T) {
 	}
 }
 
+// TestSortedKnownDomains verifies known domains are returned in sorted order.
 func TestSortedKnownDomains(t *testing.T) {
 	sorted := sortedKnownDomains()
 	if len(sorted) == 0 {
@@ -162,6 +172,7 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 }
 
+// TestGetShortcutOnlyDomainNames_HaveDescriptions verifies shortcut-only domains retain descriptions.
 func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
 	for _, name := range getShortcutOnlyDomainNames() {
 		zhDesc := registry.GetServiceDescription(name, "zh")
@@ -175,6 +186,7 @@ func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
 	}
 }
 
+// TestCollectScopesForDomains verifies domain selection expands to the expected scopes.
 func TestCollectScopesForDomains(t *testing.T) {
 	projects := registry.ListFromMetaProjects()
 	if len(projects) == 0 {
@@ -207,6 +219,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 	}
 }
 
+// TestCollectScopesForDomains_NonexistentDomain verifies unknown domains are ignored safely.
 func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
 	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user")
 	if len(scopes) != 0 {
@@ -214,6 +227,7 @@ func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
 	}
 }
 
+// TestGetDomainMetadata_IncludesFromMeta verifies registry-backed domains appear in metadata output.
 func TestGetDomainMetadata_IncludesFromMeta(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	nameSet := make(map[string]bool)
@@ -229,6 +243,7 @@ func TestGetDomainMetadata_IncludesFromMeta(t *testing.T) {
 	}
 }
 
+// TestGetDomainMetadata_IncludesShortcutOnlyDomains verifies shortcut-only domains appear in metadata output.
 func TestGetDomainMetadata_IncludesShortcutOnlyDomains(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	nameSet := make(map[string]bool)
@@ -243,6 +258,7 @@ func TestGetDomainMetadata_IncludesShortcutOnlyDomains(t *testing.T) {
 	}
 }
 
+// TestGetDomainMetadata_Sorted verifies domain metadata is sorted predictably.
 func TestGetDomainMetadata_Sorted(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	for i := 1; i < len(domains); i++ {
@@ -252,6 +268,7 @@ func TestGetDomainMetadata_Sorted(t *testing.T) {
 	}
 }
 
+// TestGetDomainMetadata_HasTitleAndDescription verifies metadata entries are populated with user-facing fields.
 func TestGetDomainMetadata_HasTitleAndDescription(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	for _, dm := range domains {
@@ -261,6 +278,7 @@ func TestGetDomainMetadata_HasTitleAndDescription(t *testing.T) {
 	}
 }
 
+// TestWarnIfEncryptedTokenFallback verifies the fallback warning explains local-file protection.
 func TestWarnIfEncryptedTokenFallback(t *testing.T) {
 	var stderr bytes.Buffer
 
@@ -272,6 +290,7 @@ func TestWarnIfEncryptedTokenFallback(t *testing.T) {
 	}
 }
 
+// TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint verifies login rejects non-interactive runs without the required flags.
 func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
@@ -294,6 +313,7 @@ func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	}
 }
 
+// TestGetDomainMetadata_ExcludesEvent verifies event is hidden from the interactive login domain list.
 func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	for _, dm := range domains {

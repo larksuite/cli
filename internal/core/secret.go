@@ -81,6 +81,7 @@ var ValidSecretSources = map[string]bool{
 	"file": true, "keychain": true, "encrypted_file": true,
 }
 
+// isValidSource reports whether a secret reference source is accepted by config decoding.
 func isValidSource(source string) bool {
 	return ValidSecretSources[source]
 }

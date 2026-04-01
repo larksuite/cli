@@ -18,31 +18,44 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 )
 
+// unavailableSetKeychain simulates a keychain that only fails on writes with an unavailable error.
 type unavailableSetKeychain struct{}
 
+// Get satisfies the keychain interface for read paths used by these tests.
 func (f *unavailableSetKeychain) Get(service, account string) (string, error) { return "", nil }
+
+// Set satisfies the keychain interface and forces encrypted fallback in storage tests.
 func (f *unavailableSetKeychain) Set(service, account, value string) error {
 	return keychain.WrapUnavailable(errors.New("sandbox denied"))
 }
+
+// Remove satisfies the keychain interface for cleanup paths used by these tests.
 func (f *unavailableSetKeychain) Remove(service, account string) error { return nil }
 
+// trackingKeychain records remove calls and optionally injects write behavior for config-init tests.
 type trackingKeychain struct {
 	setFunc     func(service, account, value string) error
 	removeCalls []string
 }
 
+// Get satisfies the keychain interface for read paths used by these tests.
 func (t *trackingKeychain) Get(service, account string) (string, error) { return "", nil }
+
+// Set satisfies the keychain interface and delegates to the configured test hook.
 func (t *trackingKeychain) Set(service, account, value string) error {
 	if t.setFunc != nil {
 		return t.setFunc(service, account, value)
 	}
 	return nil
 }
+
+// Remove satisfies the keychain interface while recording the removed account IDs.
 func (t *trackingKeychain) Remove(service, account string) error {
 	t.removeCalls = append(t.removeCalls, account)
 	return nil
 }
 
+// TestConfigInitRun_FallsBackToEncryptedSecretWhenKeychainUnavailable verifies config init persists app secrets via encrypted fallback on keychain failure.
 func TestConfigInitRun_FallsBackToEncryptedSecretWhenKeychainUnavailable(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -89,6 +102,7 @@ func TestConfigInitRun_FallsBackToEncryptedSecretWhenKeychainUnavailable(t *test
 	}
 }
 
+// TestConfigRemoveRun_RemovesEncryptedFallbackSecret verifies config removal cleans up encrypted fallback secrets.
 func TestConfigRemoveRun_RemovesEncryptedFallbackSecret(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -121,6 +135,7 @@ func TestConfigRemoveRun_RemovesEncryptedFallbackSecret(t *testing.T) {
 	}
 }
 
+// TestConfigInitRun_SaveFailureDoesNotCleanupExistingSecrets verifies save failures do not delete the currently active secret.
 func TestConfigInitRun_SaveFailureDoesNotCleanupExistingSecrets(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
@@ -174,6 +189,7 @@ func TestConfigInitRun_SaveFailureDoesNotCleanupExistingSecrets(t *testing.T) {
 	}
 }
 
+// TestStoreAndSaveOnlyApp_RejectsSecretRefReuseAcrossAppIDChange verifies managed secret refs cannot be reused across app IDs.
 func TestStoreAndSaveOnlyApp_RejectsSecretRefReuseAcrossAppIDChange(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -215,6 +231,7 @@ func TestStoreAndSaveOnlyApp_RejectsSecretRefReuseAcrossAppIDChange(t *testing.T
 	}
 }
 
+// TestValidateSecretReuse_RequiresNewSecretWhenAppIDChanges verifies app ID changes force a fresh managed secret.
 func TestValidateSecretReuse_RequiresNewSecretWhenAppIDChanges(t *testing.T) {
 	err := validateSecretReuse("new-app", core.SecretInput{
 		Ref: &core.SecretRef{Source: "keychain", ID: "appsecret:old-app"},
@@ -230,6 +247,7 @@ func TestValidateSecretReuse_RequiresNewSecretWhenAppIDChanges(t *testing.T) {
 	}
 }
 
+// TestValidateSecretReuse_AllowsFileSecretRefAcrossAppIDChange verifies external file refs remain reusable across app IDs.
 func TestValidateSecretReuse_AllowsFileSecretRefAcrossAppIDChange(t *testing.T) {
 	err := validateSecretReuse("new-app", core.SecretInput{
 		Ref: &core.SecretRef{Source: "file", ID: "/tmp/app-secret.txt"},
@@ -239,6 +257,7 @@ func TestValidateSecretReuse_AllowsFileSecretRefAcrossAppIDChange(t *testing.T) 
 	}
 }
 
+// TestStoreAndSaveOnlyApp_SameAppUpgradeToKeychainRemovesOldFallbackSecret verifies same-app backend upgrades clean up replaced fallback secrets.
 func TestStoreAndSaveOnlyApp_SameAppUpgradeToKeychainRemovesOldFallbackSecret(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
