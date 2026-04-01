@@ -310,8 +310,6 @@ func TestDriveExportDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 }
 
 func TestSaveContentToOutputDirRejectsOverwriteWithoutFlag(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := t.TempDir()
 	target := filepath.Join(tmpDir, "exists.txt")
 	if err := os.WriteFile(target, []byte("old"), 0644); err != nil {
