@@ -61,12 +61,6 @@ func (s driveExportStatus) Pending() bool {
 	// A zero status without a file token is still in progress because there is
 	// nothing downloadable yet.
 	return s.JobStatus == 1 || s.JobStatus == 2 || s.JobStatus == 0 && s.FileToken == ""
-}
-
-func (s driveExportStatus) Failed() bool {
-	return !s.Ready() && !s.Pending() && s.JobStatus != 0
-}
-
 func (s driveExportStatus) StatusLabel() string {
 	switch s.JobStatus {
 	case 0:
