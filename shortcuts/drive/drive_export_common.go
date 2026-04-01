@@ -94,14 +94,9 @@ func (s driveExportStatus) StatusLabel() string {
 	case 6000:
 		return "export_images_exceed_limit"
 	default:
-		if s.JobStatus == 0 {
-			return "success"
-		}
-		if s.JobStatus == 0 && s.FileToken == "" {
-			return "unknown"
-		}
 		return fmt.Sprintf("status_%d", s.JobStatus)
 	}
+}
 }
 
 // validateDriveExportSpec enforces shortcut-level export constraints before any
