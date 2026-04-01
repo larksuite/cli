@@ -752,6 +752,75 @@ func TestImgSrcRegexpSkipsDataSrc(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// ResolveLocalImagePaths — exported function for EML build paths
+// ---------------------------------------------------------------------------
+
+func TestResolveLocalImagePathsBasic(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("photo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644)
+
+	html := `<div>Hello<img src="./photo.png" /></div>`
+	resolved, refs, err := ResolveLocalImagePaths(html)
+	if err != nil {
+		t.Fatalf("ResolveLocalImagePaths() error = %v", err)
+	}
+	if strings.Contains(resolved, "./photo.png") {
+		t.Fatal("local path should have been replaced")
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
+	}
+	if refs[0].FilePath != "./photo.png" {
+		t.Errorf("expected FilePath ./photo.png, got %q", refs[0].FilePath)
+	}
+	if !strings.Contains(resolved, "cid:"+refs[0].CID) {
+		t.Fatalf("expected resolved HTML to contain cid:%s", refs[0].CID)
+	}
+}
+
+func TestResolveLocalImagePathsSkipsRemoteURLs(t *testing.T) {
+	html := `<div><img src="https://example.com/img.png" /></div>`
+	resolved, refs, err := ResolveLocalImagePaths(html)
+	if err != nil {
+		t.Fatalf("ResolveLocalImagePaths() error = %v", err)
+	}
+	if resolved != html {
+		t.Fatal("expected unchanged HTML for remote URLs")
+	}
+	if len(refs) != 0 {
+		t.Fatalf("expected 0 refs, got %d", len(refs))
+	}
+}
+
+func TestResolveLocalImagePathsDeduplicatesSameFile(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("icon.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644)
+
+	html := `<img src="./icon.png" /><img src="./icon.png" />`
+	_, refs, err := ResolveLocalImagePaths(html)
+	if err != nil {
+		t.Fatalf("ResolveLocalImagePaths() error = %v", err)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("same file should produce 1 ref, got %d", len(refs))
+	}
+}
+
+func TestResolveLocalImagePathsNoImages(t *testing.T) {
+	html := "no html images at all"
+	resolved, refs, err := ResolveLocalImagePaths(html)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved != html {
+		t.Fatal("expected unchanged text")
+	}
+	if len(refs) != 0 {
+		t.Fatalf("expected 0 refs, got %d", len(refs))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // newInlinePart — rejects CIDs with spaces or other invalid characters
 // ---------------------------------------------------------------------------
 

@@ -902,18 +902,27 @@ func generateCID() (string, error) {
 	return id.String(), nil
 }
 
-// resolveLocalImgSrc scans HTML for <img src="local/path"> references,
-// creates MIME inline parts for each local file, and returns the HTML
-// with those src attributes replaced by cid: URIs.
-func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
+// LocalImageRef represents a local image found in an HTML body that needs
+// to be embedded as an inline MIME part.
+type LocalImageRef struct {
+	FilePath string // original src value from the HTML
+	CID      string // generated Content-ID
+}
+
+// ResolveLocalImagePaths scans HTML for <img src="local/path"> references,
+// validates each path, generates CIDs, and returns the modified HTML with
+// cid: URIs plus the list of local image references to embed as inline parts.
+// This function handles only the HTML transformation; callers are responsible
+// for embedding the actual file data (e.g., via emlbuilder.AddFileInline).
+func ResolveLocalImagePaths(html string) (string, []LocalImageRef, error) {
 	matches := imgSrcRegexp.FindAllStringSubmatchIndex(html, -1)
 	if len(matches) == 0 {
-		return html, nil
+		return html, nil, nil
 	}
 
-	var container *Part
 	// Cache resolved paths so the same file is only attached once.
 	pathToCID := make(map[string]string)
+	var refs []LocalImageRef
 
 	// Iterate in reverse so that index offsets remain valid after replacement.
 	for i := len(matches) - 1; i >= 0; i-- {
@@ -925,28 +934,44 @@ func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
 
 		resolvedPath, err := validate.SafeInputPath(src)
 		if err != nil {
-			return "", fmt.Errorf("inline image %q: %w", src, err)
+			return "", nil, fmt.Errorf("inline image %q: %w", src, err)
 		}
 
 		cid, ok := pathToCID[resolvedPath]
 		if !ok {
-			fileName := filepath.Base(src)
 			cid, err = generateCID()
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
 			pathToCID[resolvedPath] = cid
-
-			container, err = loadAndAttachInline(snapshot, src, cid, fileName, container)
-			if err != nil {
-				return "", err
-			}
+			refs = append(refs, LocalImageRef{FilePath: src, CID: cid})
 		}
 
 		html = html[:srcStart] + "cid:" + cid + html[srcEnd:]
 	}
 
-	return html, nil
+	return html, refs, nil
+}
+
+// resolveLocalImgSrc scans HTML for <img src="local/path"> references,
+// creates MIME inline parts for each local file, and returns the HTML
+// with those src attributes replaced by cid: URIs.
+func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
+	resolved, refs, err := ResolveLocalImagePaths(html)
+	if err != nil {
+		return "", err
+	}
+
+	var container *Part
+	for _, ref := range refs {
+		fileName := filepath.Base(ref.FilePath)
+		container, err = loadAndAttachInline(snapshot, ref.FilePath, ref.CID, fileName, container)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return resolved, nil
 }
 
 // removeOrphanedInlineParts removes inline MIME parts whose ContentID
@@ -977,10 +1002,51 @@ func removeOrphanedInlineParts(root *Part, referencedCIDs map[string]bool) {
 	root.Children = kept
 }
 
+// ValidateCIDReferences checks that every cid: reference in the HTML body has
+// a matching entry in availableCIDs. Returns an error for the first missing CID.
+// Both sides are compared case-insensitively.
+func ValidateCIDReferences(html string, availableCIDs []string) error {
+	refs := extractCIDRefs(html)
+	if len(refs) == 0 {
+		return nil
+	}
+	cidSet := make(map[string]bool, len(availableCIDs))
+	for _, cid := range availableCIDs {
+		cidSet[strings.ToLower(cid)] = true
+	}
+	for _, ref := range refs {
+		if !cidSet[strings.ToLower(ref)] {
+			return fmt.Errorf("html body references missing inline cid %q", ref)
+		}
+	}
+	return nil
+}
+
+// FindOrphanedCIDs returns CIDs from addedCIDs that are not referenced in the
+// HTML body via <img src="cid:...">. These would appear as unexpected
+// attachments when the email is sent.
+func FindOrphanedCIDs(html string, addedCIDs []string) []string {
+	refs := extractCIDRefs(html)
+	refSet := make(map[string]bool, len(refs))
+	for _, ref := range refs {
+		refSet[strings.ToLower(ref)] = true
+	}
+	var orphaned []string
+	for _, cid := range addedCIDs {
+		if !refSet[strings.ToLower(cid)] {
+			orphaned = append(orphaned, cid)
+		}
+	}
+	return orphaned
+}
+
 // postProcessInlineImages is the unified post-processing step that:
 //  1. Resolves local <img src="./path"> to inline CID parts.
 //  2. Validates all CID references in HTML resolve to MIME parts.
 //  3. Removes orphaned inline MIME parts no longer referenced by HTML.
+// NOTE: The EML builder path has an equivalent function processInlineImagesForEML
+// in shortcuts/mail/helpers.go. When adding new validation or processing logic here,
+// update processInlineImagesForEML as well (or extract a shared function).
 func postProcessInlineImages(snapshot *DraftSnapshot) error {
 	htmlPart := findPrimaryBodyPart(snapshot.Body, "text/html")
 	if htmlPart == nil {
@@ -988,9 +1054,6 @@ func postProcessInlineImages(snapshot *DraftSnapshot) error {
 	}
 
 	origHTML := string(htmlPart.Body)
-	// Note: if resolveLocalImgSrc returns an error after partially attaching
-	// inline parts to the snapshot, those parts are orphaned but will be
-	// cleaned up by removeOrphanedInlineParts on the next successful Apply.
 	html, err := resolveLocalImgSrc(snapshot, origHTML)
 	if err != nil {
 		return err
@@ -1000,26 +1063,23 @@ func postProcessInlineImages(snapshot *DraftSnapshot) error {
 		htmlPart.Dirty = true
 	}
 
+	// Collect all CIDs present as MIME parts.
+	var cidParts []string
+	for _, part := range flattenParts(snapshot.Body) {
+		if part != nil && part.ContentID != "" {
+			cidParts = append(cidParts, part.ContentID)
+		}
+	}
+
+	if err := ValidateCIDReferences(html, cidParts); err != nil {
+		return err
+	}
+
 	refs := extractCIDRefs(html)
 	refSet := make(map[string]bool, len(refs))
 	for _, ref := range refs {
 		refSet[strings.ToLower(ref)] = true
 	}
-
-	cidParts := make(map[string]bool)
-	for _, part := range flattenParts(snapshot.Body) {
-		if part == nil || part.ContentID == "" {
-			continue
-		}
-		cidParts[strings.ToLower(part.ContentID)] = true
-	}
-
-	for _, ref := range refs {
-		if !cidParts[strings.ToLower(ref)] {
-			return fmt.Errorf("html body references missing inline cid %q", ref)
-		}
-	}
-
 	removeOrphanedInlineParts(snapshot.Body, refSet)
 	return nil
 }
