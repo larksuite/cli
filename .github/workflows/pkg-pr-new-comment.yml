@@ -16,7 +16,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check comment payload artifact
+        id: payload
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const runId = context.payload.workflow_run?.id;
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+              per_page: 100,
+            });
+            const found = Boolean(
+              data.artifacts?.some((artifact) => artifact.name === "pkg-pr-new-comment-payload")
+            );
+            core.setOutput("found", found ? "true" : "false");
+            if (!found) {
+              core.notice("No comment payload artifact found for this run; skipping comment.");
+            }
+
       - name: Download comment payload
+        if: steps.payload.outputs.found == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: pkg-pr-new-comment-payload
@@ -25,6 +46,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Comment install command
+        if: steps.payload.outputs.found == 'true'
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           script: |
