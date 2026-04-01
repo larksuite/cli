@@ -58,12 +58,9 @@ var WhiteboardUpdate = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Desc("read stdin failed: " + err.Error())
 		}
-		var wbOutput WbCliOutput
-		if err := json.Unmarshal(input, &wbOutput); err != nil {
-			return common.NewDryRunAPI().Desc("unmarshal stdin json failed: " + err.Error())
-		}
-		if wbOutput.Code != 0 || wbOutput.Data.To != "openapi" {
-			return common.NewDryRunAPI().Desc("whiteboard-draw failed. please check previous log.")
+		nodes, err, _ := parseWBcliNodes(input)
+		if err != nil {
+			return common.NewDryRunAPI().Desc("parse stdin failed: " + err.Error())
 		}
 		token := runtime.Str("whiteboard-token")
 		overwrite := runtime.Bool("overwrite")
@@ -80,7 +77,7 @@ var WhiteboardUpdate = common.Shortcut{
 			}
 		}
 		desc := common.NewDryRunAPI().Desc(descStr)
-		desc.POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).Body(wbOutput.Data.Result).Desc("create all nodes of the whiteboard.")
+		desc.POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).Body(nodes).Desc("create all nodes of the whiteboard.")
 		if overwrite && delNum > 0 {
 			// 在 DryRun 中只记录意图，不实际拉取和计算节点
 			desc.GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).Desc("get all nodes of the whiteboard to delete, then filter out newly created ones.")
@@ -99,19 +96,16 @@ var WhiteboardUpdate = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("read stdin failed: " + err.Error())
 		}
-		var wbOutput WbCliOutput
-		if err := json.Unmarshal(input, &wbOutput); err != nil {
-			return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("unmarshal stdin json failed: %v", err))
-		}
-		if wbOutput.Code != 0 || wbOutput.Data.To != "openapi" {
-			return output.Errorf(output.ExitValidation, "whiteboard-cli", "whiteboard-draw failed. please check previous log.")
+		nodes, err, isRaw := parseWBcliNodes(input)
+		if err != nil {
+			return err
 		}
 		outData := make(map[string]string)
 		// 写入画板节点
 		req := &larkcore.ApiReq{
 			HttpMethod:  http.MethodPost,
 			ApiPath:     fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", url.PathEscape(token)),
-			Body:        wbOutput.Data.Result,
+			Body:        nodes,
 			QueryParams: map[string][]string{},
 		}
 		if idempotentToken != "" {
@@ -122,7 +116,12 @@ var WhiteboardUpdate = common.Shortcut{
 			return output.ErrNetwork(fmt.Sprintf("update whiteboard failed: %v", err))
 		}
 		if resp.StatusCode != http.StatusOK {
-			return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
+			var detail string
+			if isRaw {
+				detail = fmt.Sprintf("It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill," +
+					"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
+			}
+			return output.ErrAPI(resp.StatusCode, string(resp.RawBody), detail)
 		}
 		var createResp createResponse
 		err = json.Unmarshal(resp.RawBody, &createResp)
@@ -130,7 +129,12 @@ var WhiteboardUpdate = common.Shortcut{
 			return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse whiteboard create response failed: %v", err))
 		}
 		if createResp.Code != 0 {
-			return output.ErrAPI(createResp.Code, "update whiteboard failed", fmt.Sprintf("update whiteboard failed: %s", createResp.Msg))
+			detail := fmt.Sprintf("update whiteboard failed: %s", createResp.Msg)
+			if isRaw {
+				detail += fmt.Sprintf("\n It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill," +
+					"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
+			}
+			return output.ErrAPI(createResp.Code, "update whiteboard failed", detail)
 		}
 		outData["created_node_ids"] = strings.Join(createResp.Data.NodeIDs, ",")
 		// 清空画板节点，先写后删，起码新的能写进去
@@ -180,6 +184,27 @@ type simpleNodeResp struct {
 
 type deleteNodeReqBody struct {
 	Ids []string `json:"ids"`
+}
+
+func parseWBcliNodes(rawjson []byte) (wbNodes interface{}, err error, isRaw bool) {
+	var wbOutput WbCliOutput
+	if err := json.Unmarshal(rawjson, &wbOutput); err != nil {
+		return nil, output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("unmarshal stdin json failed: %v", err)), false
+	}
+	if (wbOutput.Code != 0 || wbOutput.Data.To != "openapi") && wbOutput.RawNodes == nil {
+		return nil, output.Errorf(output.ExitValidation, "whiteboard-cli", "whiteboard-cli failed. please check previous log."), false
+	}
+	if wbOutput.RawNodes != nil {
+		wbNodes = struct {
+			Nodes []interface{} `json:"nodes"`
+		}{
+			Nodes: wbOutput.RawNodes,
+		}
+		isRaw = true
+	} else {
+		wbNodes = wbOutput.Data.Result
+	}
+	return wbNodes, nil, isRaw
 }
 
 func clearWhiteboardContent(ctx context.Context, runtime *common.RuntimeContext, wbToken string, newNodeIDs []string, dryRun bool) (int, []string, error) {
