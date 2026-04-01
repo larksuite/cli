@@ -36,8 +36,8 @@ type driveExportSpec struct {
 
 // driveExportTaskResultCommand prints the resume command shown when bounded
 // export polling times out locally.
-func driveExportTaskResultCommand(ticket, fileToken string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario export --ticket %s --file-token %s", ticket, fileToken)
+func driveExportTaskResultCommand(ticket, docToken string) string {
+	return fmt.Sprintf("lark-cli drive +task_result --scenario export --ticket %s --file-token %s", ticket, docToken)
 }
 
 // driveExportStatus captures the fields needed to decide whether the export is
