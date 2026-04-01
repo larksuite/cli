@@ -43,9 +43,23 @@ jobs:
             }
             const sourceRepo = context.payload.pull_request?.head?.repo?.full_name;
             const sourceBranch = context.payload.pull_request?.head?.ref;
-            if (!sourceRepo || !sourceBranch) {
-              throw new Error("No pull request source repo/branch found in event payload");
-            }
+            const hasSkillSource = Boolean(sourceRepo && sourceBranch);
+
+            const skillSection = hasSkillSource
+              ? [
+                  "",
+                  "### 🧩 Skill update",
+                  "",
+                  "```bash",
+                  `npx skills add ${sourceRepo}#${sourceBranch} -y -g`,
+                  "```",
+                ]
+              : [
+                  "",
+                  "### 🧩 Skill update",
+                  "",
+                  "_Unavailable for this PR because source repo/branch metadata is missing._",
+                ];
 
             const body = [
               "<!-- pkg-pr-new-install-guide -->",
@@ -56,12 +70,7 @@ jobs:
               "```bash",
               `npm i -g ${url}`,
               "```",
-              "",
-              "### 🧩 Skill update",
-              "",
-              "```bash",
-              `npx skills add ${sourceRepo}#${sourceBranch} -y -g`,
-              "```",
+              ...skillSection,
             ].join("\n");
             const issueNumber = context.issue.number;
 
