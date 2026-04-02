@@ -4,6 +4,7 @@
 package im
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -633,6 +634,14 @@ var (
 	reExcessNL   = regexp.MustCompile(`\n{3,}`)
 	reInvalidImg = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
 	reCodeBlock  = regexp.MustCompile("```[\\s\\S]*?```")
+	// rePostToken matches tokens that need special handling in Feishu post content:
+	//   ![alt](url) / [text](url) → kept verbatim in md element
+	//   https?://...              → native a element (avoids md renderer treating _ in URLs as italic)
+	// Note: the bare-URL character class intentionally excludes parentheses, so URLs
+	// containing parentheses in the path (e.g. https://en.wikipedia.org/wiki/Foo_(bar))
+	// will be truncated at the first '('. Supporting such URLs correctly would require
+	// balanced-parenthesis parsing beyond what a simple regexp can provide.
+	rePostToken = regexp.MustCompile(`!?\[[^\]]*\]\([^)]+\)|https?://[^\s<>()\[\]"]+`)
 )
 
 func optimizeMarkdownStyle(text string) string {
@@ -676,12 +685,67 @@ func optimizeMarkdownStyle(text string) string {
 	return r
 }
 
+// buildPostElements splits optimized markdown text into a JSON array of Feishu
+// post inline elements. It tokenizes the text with rePostToken, which matches
+// either a markdown link [text](url) or a bare http(s) URL:
+//   - markdown links are kept verbatim inside a {"tag":"md"} segment
+//   - bare URLs become {"tag":"a"} elements rendered natively by Feishu,
+//     avoiding the md renderer misinterpreting underscores as italic markers
+//
+// Text between tokens is emitted as {"tag":"md"} elements.
+func buildPostElements(text string) string {
+	matches := rePostToken.FindAllStringIndex(text, -1)
+	if len(matches) == 0 {
+		return `[{"tag":"md","text":` + marshalStringNoEscape(text) + `}]`
+	}
+	var elems []string
+	prev := 0
+	for _, loc := range matches {
+		start, end := loc[0], loc[1]
+		if start > prev {
+			elems = append(elems, `{"tag":"md","text":`+marshalStringNoEscape(text[prev:start])+`}`)
+		}
+		token := text[start:end]
+		if token[0] == '[' || token[0] == '!' {
+			// Markdown link [text](url) or image ![alt](url) — keep in md segment
+			elems = append(elems, `{"tag":"md","text":`+marshalStringNoEscape(token)+`}`)
+		} else {
+			// Bare URL — use native a tag so Feishu renders it without md parsing.
+			// Trim trailing sentence punctuation that is unlikely to be part of the URL.
+			url := strings.TrimRight(token, ".,;:!?)")
+			if url == "" {
+				url = token
+			}
+			elems = append(elems, `{"tag":"a","text":`+marshalStringNoEscape(url)+`,"href":`+marshalStringNoEscape(url)+`}`)
+			if suffix := token[len(url):]; suffix != "" {
+				elems = append(elems, `{"tag":"md","text":`+marshalStringNoEscape(suffix)+`}`)
+			}
+		}
+		prev = end
+	}
+	if prev < len(text) {
+		elems = append(elems, `{"tag":"md","text":`+marshalStringNoEscape(text[prev:])+`}`)
+	}
+	return "[" + strings.Join(elems, ",") + "]"
+}
+
+// marshalStringNoEscape serializes a string to JSON without HTML-escaping
+// special characters like &, <, >. Go's json.Marshal escapes them to \u0026
+// etc. by default, which breaks URLs containing & in Feishu's md renderer.
+func marshalStringNoEscape(s string) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	return strings.TrimSuffix(buf.String(), "\n")
+}
+
 // wrapMarkdownAsPost wraps markdown text into Feishu post format JSON (no network).
-// Used by DryRun. Output: {"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
+// Bare URLs are emitted as {"tag":"a"} elements to avoid Feishu's md renderer
+// misinterpreting underscores in URLs as italic markers.
 func wrapMarkdownAsPost(markdown string) string {
 	optimized := optimizeMarkdownStyle(markdown)
-	inner, _ := json.Marshal(optimized)
-	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
+	return `{"zh_cn":{"content":[` + buildPostElements(optimized) + `]}}`
 }
 
 var reMarkdownImage = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^)\s]+)\)`)
@@ -717,8 +781,7 @@ func wrapMarkdownAsPostForDryRun(markdown string) (content, desc string) {
 func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
 	resolved := resolveMarkdownImageURLs(ctx, runtime, markdown)
 	optimized := optimizeMarkdownStyle(resolved)
-	inner, _ := json.Marshal(optimized)
-	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
+	return `{"zh_cn":{"content":[` + buildPostElements(optimized) + `]}}`
 }
 
 // resolveMarkdownImageURLs finds ![alt](https://...) in markdown, downloads each URL,
