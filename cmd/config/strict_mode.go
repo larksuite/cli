@@ -1,11 +1,7 @@
-// Copyright (c) 2026 Lark Technologies Pte. Ltd.
-// SPDX-License-Identifier: MIT
-
 package config
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -19,73 +15,40 @@ func NewCmdConfigStrictMode(f *cmdutil.Factory) *cobra.Command {
 	var reset bool
 
 	cmd := &cobra.Command{
-		Use:   "strict-mode [on|off]",
-		Short: "View or set strict mode (bot-only identity restriction)",
-		Long: `View or set strict mode (bot-only identity restriction).
+		Use:   "strict-mode [bot|user|off]",
+		Short: "View or set strict mode (identity restriction policy)",
+		Long: `View or set strict mode (identity restriction policy).
 
 Without arguments, shows the current strict mode status and its source.
-Pass "on" or "off" to set strict mode at the profile level.
+Pass "bot", "user", or "off" to set strict mode.
 Use --global to set at the global level.
 Use --reset to clear the profile-level setting (inherit global).
 
+Modes:
+  bot   — only bot identity is allowed, user commands are hidden
+  user  — only user identity is allowed, bot commands are hidden
+  off   — no restriction (default)
+
 WARNING: Strict mode is a security policy set by the administrator.
-AI agents are strictly prohibited from modifying this setting.
-Do not run this command to disable strict mode on behalf of automated workflows.`,
+AI agents are strictly prohibited from modifying this setting.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			multi, err := core.LoadMultiAppConfig()
 			if err != nil {
 				return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
 			}
-
 			app := multi.CurrentAppConfig(f.ProfileOverride)
 			if app == nil {
 				return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
 			}
 
-			// --reset: clear profile-level setting
 			if reset {
-				app.StrictMode = nil
-				if err := core.SaveMultiAppConfig(multi); err != nil {
-					return fmt.Errorf("failed to save config: %w", err)
-				}
-				fmt.Fprintln(f.IOStreams.ErrOut, "Profile strict-mode reset (inherits global)")
-				return nil
+				return resetStrictMode(f, multi, app, global, args)
 			}
-
-			// No args: show current status
 			if len(args) == 0 {
-				effective, source := resolveStrictModeStatus(multi, app)
-				status := "off"
-				if effective {
-					status = "on"
-				}
-				fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: %s)\n", status, source)
-				return nil
+				return showStrictMode(f, multi, app)
 			}
-
-			// Set value
-			value := args[0]
-			if value != "on" && value != "off" {
-				return output.ErrValidation("invalid value %q, valid values: on | off", value)
-			}
-			boolVal := value == "on"
-
-			if global {
-				multi.StrictMode = boolVal
-			} else {
-				app.StrictMode = &boolVal
-			}
-
-			if err := core.SaveMultiAppConfig(multi); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
-			}
-			scope := "profile"
-			if global {
-				scope = "global"
-			}
-			fmt.Fprintf(f.IOStreams.ErrOut, "Strict mode set to %s (%s)\n", value, scope)
-			return nil
+			return setStrictMode(f, multi, app, args[0], global)
 		},
 	}
 
@@ -95,13 +58,67 @@ Do not run this command to disable strict mode on behalf of automated workflows.
 	return cmd
 }
 
-// resolveStrictModeStatus returns the effective strict mode value and its source.
-func resolveStrictModeStatus(multi *core.MultiAppConfig, app *core.AppConfig) (bool, string) {
-	if v := os.Getenv("LARKSUITE_CLI_STRICT_MODE"); v != "" {
-		return v == "true" || v == "1", "env LARKSUITE_CLI_STRICT_MODE"
+func resetStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.AppConfig, global bool, args []string) error {
+	if global {
+		return output.ErrValidation("--reset cannot be used with --global")
 	}
+	if len(args) > 0 {
+		return output.ErrValidation("--reset cannot be used with a value argument")
+	}
+	app.StrictMode = nil
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	fmt.Fprintln(f.IOStreams.ErrOut, "Profile strict-mode reset (inherits global)")
+	return nil
+}
+
+func showStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.AppConfig) error {
+	effective, source := resolveStrictModeStatus(multi, app)
+	fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: %s)\n", effective, source)
+	return nil
+}
+
+func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.AppConfig, value string, global bool) error {
+	mode := core.StrictMode(value)
+	switch mode {
+	case core.StrictModeBot, core.StrictModeUser, core.StrictModeOff:
+	default:
+		return output.ErrValidation("invalid value %q, valid values: bot | user | off", value)
+	}
+
+	if global {
+		multi.StrictMode = mode
+		for _, a := range multi.Apps {
+			if a.StrictMode != nil && *a.StrictMode != mode {
+				fmt.Fprintf(f.IOStreams.ErrOut,
+					"Warning: profile %q has strict-mode explicitly set to %q, "+
+						"which overrides the global setting. "+
+						"Use --reset in that profile to inherit global.\n",
+					a.ProfileName(), *a.StrictMode)
+			}
+		}
+	} else {
+		app.StrictMode = &mode
+	}
+
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	scope := "profile"
+	if global {
+		scope = "global"
+	}
+	fmt.Fprintf(f.IOStreams.ErrOut, "Strict mode set to %s (%s)\n", mode, scope)
+	return nil
+}
+
+func resolveStrictModeStatus(multi *core.MultiAppConfig, app *core.AppConfig) (core.StrictMode, string) {
 	if app != nil && app.StrictMode != nil {
 		return *app.StrictMode, fmt.Sprintf("profile %q", app.ProfileName())
 	}
-	return multi.StrictMode, "global"
+	if multi.StrictMode.IsActive() {
+		return multi.StrictMode, "global"
+	}
+	return core.StrictModeOff, "global (default)"
 }
