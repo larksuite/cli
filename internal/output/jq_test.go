@@ -132,8 +132,8 @@ func TestJqFilter_WithStruct(t *testing.T) {
 		Name string `json:"name"`
 	}
 	data := struct {
-		OK   bool    `json:"ok"`
-		Item *inner  `json:"item"`
+		OK   bool   `json:"ok"`
+		Item *inner `json:"item"`
 	}{
 		OK:   true,
 		Item: &inner{Name: "test"},
