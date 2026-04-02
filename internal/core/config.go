@@ -136,10 +136,25 @@ func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
 	return cfg, nil
 }
 
-// resolveActiveUser picks the active user from the list.
+// ResolveActiveUser picks the active user from the list.
 // If LARKSUITE_CLI_USER_OPEN_ID is set, the matching user is returned;
 // if not found, nil is returned (caller will see "no user logged in").
 // If unset, the first user is returned.
+func ResolveActiveUser(users []AppUser) *AppUser {
+	return resolveActiveUser(users)
+}
+
+// RemoveUser returns a new slice with the user matching openId removed.
+func RemoveUser(users []AppUser, openId string) []AppUser {
+	out := users[:0:0]
+	for _, u := range users {
+		if u.UserOpenId != openId {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
 func resolveActiveUser(users []AppUser) *AppUser {
 	if len(users) == 0 {
 		return nil
