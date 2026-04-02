@@ -194,8 +194,8 @@ type downloadResult struct {
 }
 
 type downloadOpts struct {
-	outputPath string           // explicit output file path (single mode only)
-	outputDir  string           // output directory (batch mode)
+	outputPath string // explicit output file path (single mode only)
+	outputDir  string // output directory (batch mode)
 	overwrite  bool
 	usedNames  map[string]bool // tracks used filenames to deduplicate in batch mode
 }
