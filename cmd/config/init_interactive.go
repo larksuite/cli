@@ -26,6 +26,9 @@ type configInitResult struct {
 	AppSecret string
 }
 
+// runCreateAppFlowFn is a small test seam for configInitRun.
+var runCreateAppFlowFn = runCreateAppFlow
+
 // runInteractiveConfigInit shows an interactive TUI for config init.
 func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, msg *initMsg) (*configInitResult, error) {
 	// Phase 1: Choose mode
@@ -196,7 +199,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	// Step 4: Handle Lark brand special case
 	// If tenant_brand=lark and no client_secret, retry with lark brand endpoint
 	if result.ClientSecret == "" && result.UserInfo != nil && result.UserInfo.TenantBrand == "lark" {
-		// fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.DetectedLarkTenant)
+		fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.DetectedLarkTenant)
 		result, err = larkauth.PollAppRegistration(ctx, httpClient, core.BrandLark, authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 		if err != nil {
 			return nil, output.ErrAuth("lark endpoint retry failed: %v", err)

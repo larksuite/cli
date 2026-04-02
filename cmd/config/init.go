@@ -153,7 +153,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	// Mode 3: Create new app directly (--new)
 	if opts.New {
-		result, err := runCreateAppFlow(opts.Ctx, f, core.BrandFeishu, msg)
+		result, err := runCreateAppFlowFn(opts.Ctx, f, parseBrand(opts.Brand), msg)
 		if err != nil {
 			return err
 		}
