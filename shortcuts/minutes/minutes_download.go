@@ -90,6 +90,7 @@ var MinutesDownload = common.Shortcut{
 
 		results := make([]result, len(tokens))
 		seen := make(map[string]int)
+		usedNames := make(map[string]bool)
 		ticker := time.NewTicker(time.Second / 5) // rate-limit to 5 req/s
 		defer ticker.Stop()
 
@@ -126,7 +127,7 @@ var MinutesDownload = common.Shortcut{
 			fmt.Fprintf(errOut, "Downloading media: %s\n", common.MaskToken(token))
 
 			// single token: --output is a file path; batch: --output is a directory
-			opts := downloadOpts{overwrite: overwrite}
+			opts := downloadOpts{overwrite: overwrite, usedNames: usedNames}
 			if single {
 				opts.outputPath = outputPath
 			} else {
@@ -193,9 +194,10 @@ type downloadResult struct {
 }
 
 type downloadOpts struct {
-	outputPath string // explicit output file path (single mode only)
-	outputDir  string // output directory (batch mode)
+	outputPath string           // explicit output file path (single mode only)
+	outputDir  string           // output directory (batch mode)
 	overwrite  bool
+	usedNames  map[string]bool // tracks used filenames to deduplicate in batch mode
 }
 
 // downloadMediaFile streams a media file from a pre-signed URL to disk.
@@ -249,6 +251,13 @@ func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, down
 	outputPath := opts.outputPath
 	if outputPath == "" {
 		filename := resolveFilenameFromResponse(resp, minuteToken)
+		// Deduplicate filenames in batch mode: prefix with token on collision.
+		if opts.usedNames != nil {
+			if opts.usedNames[filename] {
+				filename = minuteToken + "-" + filename
+			}
+			opts.usedNames[filename] = true
+		}
 		outputPath = filepath.Join(opts.outputDir, filename)
 	}
 
