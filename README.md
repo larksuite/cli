@@ -195,6 +195,7 @@ Prefixed with `+`, designed to be friendly for both humans and AI, with smart de
 lark-cli calendar +agenda
 lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
 lark-cli docs +create --title "Weekly Report" --markdown "# Progress\n- Completed feature X"
+lark-cli drive +files-list --folder-token "https://your-tenant.feishu.cn/drive/folder/fldcnxxxx" --format table
 ```
 
 Run `lark-cli <service> --help` to see all shortcut commands.

@@ -10,6 +10,7 @@ func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		DriveUpload,
 		DriveDownload,
+		DriveFilesList,
 		DriveAddComment,
 	}
 }
