@@ -116,6 +116,11 @@ func Execute() int {
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
 
+	// Prune commands incompatible with strict mode.
+	if mode := f.ResolveStrictMode(); mode.IsActive() {
+		pruneForStrictMode(rootCmd, mode)
+	}
+
 	// --- Update check (non-blocking) ---
 	if !isCompletionCommand(os.Args) {
 		setupUpdateNotice()
