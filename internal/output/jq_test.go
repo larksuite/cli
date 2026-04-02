@@ -149,6 +149,43 @@ func TestJqFilter_WithStruct(t *testing.T) {
 	}
 }
 
+func TestValidateJqFlags(t *testing.T) {
+	tests := []struct {
+		name       string
+		jqExpr     string
+		outputFlag string
+		format     string
+		wantErr    string
+	}{
+		{name: "empty jq is noop", jqExpr: "", outputFlag: "file.json", format: "csv", wantErr: ""},
+		{name: "jq only", jqExpr: ".data", outputFlag: "", format: "", wantErr: ""},
+		{name: "jq with json format", jqExpr: ".data", outputFlag: "", format: "json", wantErr: ""},
+		{name: "jq and output conflict", jqExpr: ".data", outputFlag: "out.json", format: "", wantErr: "--jq and --output are mutually exclusive"},
+		{name: "jq and csv conflict", jqExpr: ".data", outputFlag: "", format: "csv", wantErr: "--jq and --format csv are mutually exclusive"},
+		{name: "jq and ndjson conflict", jqExpr: ".data", outputFlag: "", format: "ndjson", wantErr: "--jq and --format ndjson are mutually exclusive"},
+		{name: "invalid expression", jqExpr: "invalid[", outputFlag: "", format: "", wantErr: "invalid jq expression"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateJqFlags(tt.jqExpr, tt.outputFlag, tt.format)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Errorf("expected error containing %q, got nil", tt.wantErr)
+				return
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateJqExpression(t *testing.T) {
 	tests := []struct {
 		expr    string

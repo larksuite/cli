@@ -46,6 +46,21 @@ func JqFilter(w io.Writer, data interface{}, expr string) error {
 	return nil
 }
 
+// ValidateJqFlags checks --jq flag compatibility with --output and --format flags,
+// and validates the jq expression syntax. Returns nil if jqExpr is empty.
+func ValidateJqFlags(jqExpr, outputFlag, format string) error {
+	if jqExpr == "" {
+		return nil
+	}
+	if outputFlag != "" {
+		return ErrValidation("--jq and --output are mutually exclusive")
+	}
+	if format != "" && format != "json" {
+		return ErrValidation("--jq and --format %s are mutually exclusive", format)
+	}
+	return ValidateJqExpression(jqExpr)
+}
+
 // ValidateJqExpression checks whether a jq expression is syntactically valid.
 func ValidateJqExpression(expr string) error {
 	query, err := gojq.Parse(expr)

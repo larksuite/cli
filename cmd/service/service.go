@@ -187,16 +187,8 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if opts.PageAll && opts.Output != "" {
 		return output.ErrValidation("--output and --page-all are mutually exclusive")
 	}
-	if opts.JqExpr != "" && opts.Output != "" {
-		return output.ErrValidation("--jq and --output are mutually exclusive")
-	}
-	if opts.JqExpr != "" && opts.Format != "" && opts.Format != "json" {
-		return output.ErrValidation("--jq and --format %s are mutually exclusive", opts.Format)
-	}
-	if opts.JqExpr != "" {
-		if err := output.ValidateJqExpression(opts.JqExpr); err != nil {
-			return err
-		}
+	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
+		return err
 	}
 
 	config, err := f.ResolveConfig(opts.As)
@@ -417,15 +409,7 @@ func scopeAwareChecker(scopes []interface{}, isBotMode bool) func(interface{}) e
 func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}) error) error {
 	// When jq is set, always aggregate all pages then filter.
 	if jqExpr != "" {
-		result, err := ac.PaginateAll(ctx, request, pagOpts)
-		if err != nil {
-			return output.ErrNetwork("API call failed: %v", err)
-		}
-		if apiErr := checkErr(result); apiErr != nil {
-			output.FormatValue(out, result, output.FormatJSON)
-			return apiErr
-		}
-		return output.JqFilter(out, result, jqExpr)
+		return client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, checkErr)
 	}
 
 	switch format {

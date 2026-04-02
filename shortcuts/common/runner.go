@@ -558,13 +558,8 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	if err := validateEnumFlags(rctx, s.Flags); err != nil {
 		return err
 	}
-	if rctx.JqExpr != "" && rctx.Format != "" && rctx.Format != "json" {
-		return FlagErrorf("--jq and --format %s are mutually exclusive", rctx.Format)
-	}
-	if rctx.JqExpr != "" {
-		if err := output.ValidateJqExpression(rctx.JqExpr); err != nil {
-			return err
-		}
+	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+		return err
 	}
 	if s.Validate != nil {
 		if err := s.Validate(rctx.ctx, rctx); err != nil {
