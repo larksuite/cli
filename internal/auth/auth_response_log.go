@@ -23,8 +23,11 @@ var (
 	logMu sync.Mutex
 )
 
+// defaultLogWriter is the default io.Writer implementation for authentication response logs.
 type defaultLogWriter struct{}
 
+// Write appends the provided bytes to the daily log file in the configured logs directory.
+// It also triggers a background cleanup of logs older than 7 days.
 func (defaultLogWriter) Write(p []byte) (n int, err error) {
 	dir := filepath.Join(core.GetConfigDir(), "logs")
 	now := authResponseLogNow()
@@ -55,6 +58,8 @@ func (defaultLogWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// cleanupOldLogs removes authentication log files older than 7 days.
+// It executes safely and catches panics to avoid crashing the main application.
 func cleanupOldLogs(dir string, now time.Time) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -91,6 +96,8 @@ func cleanupOldLogs(dir string, now time.Time) {
 	}
 }
 
+// formatAuthCmdline creates a safe representation of the command line arguments for logging.
+// It limits the command to the first 3 arguments to avoid leaking sensitive information.
 func formatAuthCmdline(args []string) string {
 	if len(args) == 0 {
 		return ""
@@ -103,6 +110,8 @@ func formatAuthCmdline(args []string) string {
 	return strings.Join(args[:3], " ") + " ..."
 }
 
+// doLogAuthResponse formats and writes a structured authentication log entry.
+// It records the path, HTTP status code, request log ID, and the command line.
 func doLogAuthResponse(path string, status int, logID string) {
 	if authResponseLogWriter == nil {
 		return
@@ -119,6 +128,8 @@ func doLogAuthResponse(path string, status int, logID string) {
 	)
 }
 
+// logHTTPResponse logs the HTTP response details for an authentication request.
+// It extracts the request path, status code, and x-tt-logid from the given HTTP response.
 func logHTTPResponse(resp *http.Response) {
 	if resp == nil {
 		return
@@ -132,6 +143,8 @@ func logHTTPResponse(resp *http.Response) {
 	doLogAuthResponse(path, resp.StatusCode, resp.Header.Get("x-tt-logid"))
 }
 
+// logSDKResponse logs the SDK response details for an authentication request.
+// It extracts the status code and x-tt-logid from the given API response object.
 func logSDKResponse(path string, apiResp *larkcore.ApiResp) {
 	if path == "" {
 		path = "missing"
