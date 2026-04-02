@@ -511,6 +511,7 @@ func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
+	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlags(cmd, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	parent.AddCommand(cmd)

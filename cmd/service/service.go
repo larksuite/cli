@@ -168,6 +168,9 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 	})
 
 	cmdutil.SetTips(cmd, registry.GetStrSliceFromMap(method, "tips"))
+	if tokens, ok := method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
+		cmdutil.SetSupportedIdentities(cmd, cmdutil.AccessTokensToIdentities(tokens))
+	}
 
 	return cmd
 }
