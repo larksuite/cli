@@ -840,3 +840,98 @@ func TestNewInlinePartRejectsInvalidCIDChars(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Regression: orphaned inline under multipart/mixed (not multipart/related)
+// ---------------------------------------------------------------------------
+
+// TestSetBodyReplacesOrphanedInlineUnderMixed reproduces the bug where the
+// server returns a draft with an inline part as a direct child of
+// multipart/mixed (not wrapped in multipart/related). When set_body replaces
+// the HTML with a local <img src>, postProcessInlineImages must remove the
+// old inline part even though it lives under multipart/mixed.
+func TestSetBodyReplacesOrphanedInlineUnderMixed(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("Peter1.jpeg", []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F'}, 0o644)
+
+	// Simulate a server-returned draft where the inline part is a direct
+	// child of multipart/mixed (no multipart/related wrapper).
+	snapshot := mustParseFixtureDraft(t, "Subject: Test\r\n"+
+		"From: alice@example.com\r\n"+
+		"MIME-Version: 1.0\r\n"+
+		"Content-Type: multipart/mixed; boundary=outer\r\n"+
+		"\r\n"+
+		"--outer\r\n"+
+		"Content-Type: text/html; charset=UTF-8\r\n"+
+		"\r\n"+
+		"<p>111<img src=\"cid:peter1-inline\"></p><p>222</p>\r\n"+
+		"--outer\r\n"+
+		"Content-Type: image/jpeg; name=\"Peter1.jpeg\"\r\n"+
+		"Content-Disposition: inline; filename=\"Peter1.jpeg\"\r\n"+
+		"Content-ID: <peter1-inline>\r\n"+
+		"Content-Transfer-Encoding: base64\r\n"+
+		"\r\n"+
+		"/9j/4AAQ\r\n"+
+		"--outer--\r\n")
+
+	// Verify the old inline part exists before patching.
+	oldInlineFound := false
+	for _, part := range flattenParts(snapshot.Body) {
+		if part != nil && part.ContentID == "peter1-inline" {
+			oldInlineFound = true
+		}
+	}
+	if !oldInlineFound {
+		t.Fatal("expected old inline part with CID 'peter1-inline' in parsed draft")
+	}
+
+	// Apply set_body with a local image path (triggers auto-resolve).
+	err := Apply(snapshot, Patch{
+		Ops: []PatchOp{{Op: "set_body", Value: `<p>111<img src="./Peter1.jpeg" /></p><p>222</p>`}},
+	})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	// After apply, the HTML should reference a UUID CID, not peter1-inline.
+	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	if htmlPart == nil {
+		t.Fatal("HTML part not found after apply")
+	}
+	body := string(htmlPart.Body)
+	if strings.Contains(body, "peter1-inline") {
+		t.Fatalf("HTML should not reference old CID 'peter1-inline', got: %s", body)
+	}
+	if strings.Contains(body, "./Peter1.jpeg") {
+		t.Fatal("local path should have been replaced with cid: reference")
+	}
+
+	// Extract the new CID from HTML.
+	cidRe := regexp.MustCompile(`src="cid:([^"]+)"`)
+	m := cidRe.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("expected cid: reference in HTML, got: %s", body)
+	}
+	newCID := m[1]
+
+	// Verify: the old inline part must be gone, and a new one with the UUID CID must exist.
+	oldFound := false
+	newFound := false
+	for _, part := range flattenParts(snapshot.Body) {
+		if part == nil {
+			continue
+		}
+		if part.ContentID == "peter1-inline" {
+			oldFound = true
+		}
+		if part.ContentID == newCID {
+			newFound = true
+		}
+	}
+	if oldFound {
+		t.Error("old inline part with CID 'peter1-inline' should have been removed")
+	}
+	if !newFound {
+		t.Errorf("new inline part with CID %q should exist", newCID)
+	}
+}

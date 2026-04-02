@@ -975,12 +975,16 @@ func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
 }
 
 // removeOrphanedInlineParts removes inline MIME parts whose ContentID
-// is not in the referencedCIDs set from all multipart/related containers.
+// is not in the referencedCIDs set. It searches multipart/related and
+// multipart/mixed containers, because some servers flatten the MIME tree
+// and place inline parts directly under multipart/mixed.
 func removeOrphanedInlineParts(root *Part, referencedCIDs map[string]bool) {
 	if root == nil {
 		return
 	}
-	if !strings.EqualFold(root.MediaType, "multipart/related") {
+	isRelated := strings.EqualFold(root.MediaType, "multipart/related")
+	isMixed := strings.EqualFold(root.MediaType, "multipart/mixed")
+	if !isRelated && !isMixed {
 		for _, child := range root.Children {
 			removeOrphanedInlineParts(child, referencedCIDs)
 		}
@@ -1000,6 +1004,9 @@ func removeOrphanedInlineParts(root *Part, referencedCIDs map[string]bool) {
 		kept = append(kept, child)
 	}
 	root.Children = kept
+	for _, child := range root.Children {
+		removeOrphanedInlineParts(child, referencedCIDs)
+	}
 }
 
 // ValidateCIDReferences checks that every cid: reference in the HTML body has
