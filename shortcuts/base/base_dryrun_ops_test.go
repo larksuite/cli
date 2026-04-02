@@ -63,12 +63,21 @@ func TestDryRunFieldOps(t *testing.T) {
 func TestDryRunRecordOps(t *testing.T) {
 	ctx := context.Background()
 
-	listRT := newBaseTestRuntime(
+	listRT := newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1"},
+		map[string][]string{"field": {"Name", "Age"}},
 		nil,
 		map[string]int{"offset": -3, "limit": 500},
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "offset=0", "limit=200", "view_id=viw_1")
+
+	commaFieldRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+		map[string][]string{"field": {"A,B", "C"}},
+		nil,
+		map[string]int{"limit": 1},
+	)
+	assertDryRunContains(t, dryRunRecordList(ctx, commaFieldRT), "limit=1", "offset=0")
 
 	upsertCreateRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"Name":"A"}`},
@@ -76,8 +85,9 @@ func TestDryRunRecordOps(t *testing.T) {
 	)
 	assertDryRunContains(t, dryRunRecordUpsert(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records")
 
-	rt := newBaseTestRuntime(
+	rt := newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "record-id": "rec_1", "json": `{"Name":"B"}`},
+		map[string][]string{"field": {"Name", "Age"}},
 		nil,
 		map[string]int{"max-version": 11, "page-size": 30},
 	)
