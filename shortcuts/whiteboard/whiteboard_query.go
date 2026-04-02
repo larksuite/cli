@@ -63,7 +63,7 @@ var WhiteboardQuery = common.Shortcut{
 		{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard. You will need read permission to download preview image.", Required: true},
 		{Name: "as", Desc: "output whiteboard as: image | code | raw.", Required: true},
 		{Name: "output", Desc: "output directory. It is required when as is image. If not specified when --as code/raw, it will output directly.", Required: false},
-		{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false},
+		{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false, Type: "bool"},
 	},
 	HasFormat: true,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -21,12 +20,26 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+const (
+	FormatRaw      = "raw"
+	FormatPlantUML = "plantuml"
+	FormatMermaid  = "mermaid"
+)
+
+var formatCodeMap = map[string]int{
+	FormatRaw:      0,
+	FormatPlantUML: 1,
+	FormatMermaid:  2,
+}
+
 var wbUpdateScopes = []string{"board:whiteboard:node:read", "board:whiteboard:node:create", "board:whiteboard:node:delete"}
 var wbUpdateAuthTypes = []string{"user", "bot"}
 var wbUpdateFlags = []common.Flag{
 	{Name: "idempotent-token", Desc: "idempotent token to ensure the update is idempotent. Default is empty. min length is 10.", Required: false},
 	{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard to update. You will need edit permission to update the whiteboard.", Required: true},
 	{Name: "overwrite", Desc: "overwrite the whiteboard content, delete all existing content before update. Default is false.", Required: false, Type: "bool"},
+	{Name: "source", Desc: "source of input data, read from stdin if not specified, otherwise read from the specified file.", Required: false},
+	{Name: "format", Desc: "format of input data: raw | plantuml | mermaid. Default is raw.", Required: false},
 }
 
 func wbUpdateValidate(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -41,26 +54,69 @@ func wbUpdateValidate(ctx context.Context, runtime *common.RuntimeContext) error
 	if itoken != "" && len(itoken) < 10 {
 		return common.FlagErrorf("--idempotent-token must be at least 10 characters long.")
 	}
-	stat, err := os.Stdin.Stat()
-	if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
-		return output.ErrValidation("read stdin failed, please follow lark-whiteboard skill to pipe in input data")
+
+	// 检查 --format 标志
+	format := getFormat(runtime)
+	if format != FormatRaw && format != FormatPlantUML && format != FormatMermaid {
+		return common.FlagErrorf("--format must be one of: raw | plantuml | mermaid")
+	}
+
+	// 检查输入来源
+	source := runtime.Str("source")
+	if source == "" {
+		// 从 stdin 读取，检查是否有输入
+		stat, err := os.Stdin.Stat()
+		if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
+			return output.ErrValidation("read stdin failed, please provide input via pipe or use --source to specify a file")
+		}
+	} else {
+		// 从文件读取，检查文件是否存在
+		if err := validate.RejectControlChars(source, "source"); err != nil {
+			return err
+		}
+		if _, err := validate.SafeInputPath(source); err != nil {
+			return err
+		}
+		// 检查文件是否存在且可读
+		info, err := os.Stat(source)
+		if err != nil {
+			return output.ErrValidation(fmt.Sprintf("cannot access source file: %v", err))
+		}
+		if info.IsDir() {
+			return output.ErrValidation("source must be a file, not a directory")
+		}
 	}
 	return nil
 }
 
+// readInput 从 stdin 或指定文件读取输入
+func readInput(runtime *common.RuntimeContext) ([]byte, error) {
+	source := runtime.Str("source")
+	if source == "" {
+		return io.ReadAll(os.Stdin)
+	}
+	return os.ReadFile(source)
+}
+
+// getFormat 获取 format，默认返回 raw
+func getFormat(runtime *common.RuntimeContext) string {
+	format := runtime.Str("format")
+	if format == "" {
+		return FormatRaw
+	}
+	return format
+}
+
 func wbUpdateDryRun(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	// 读取 stdin 内容，解析为 OAPI 参数
-	input, err := io.ReadAll(os.Stdin)
+	// 读取输入内容
+	input, err := readInput(runtime)
 	if err != nil {
-		return common.NewDryRunAPI().Desc("read stdin failed: " + err.Error())
+		return common.NewDryRunAPI().Desc("read input failed: " + err.Error())
 	}
-	nodes, err, _ := parseWBcliNodes(input)
-	if err != nil {
-		return common.NewDryRunAPI().Desc("parse stdin failed: " + err.Error())
-	}
+	format := getFormat(runtime)
 	token := runtime.Str("whiteboard-token")
 	overwrite := runtime.Bool("overwrite")
-	descStr := "will call whiteboard open api to draw such DSL content."
+	descStr := "will call whiteboard open api to update content."
 	var delNum int
 	if overwrite {
 		// 还是会读取一下 whiteboard nodes，确认是否有节点要删除
@@ -69,11 +125,29 @@ func wbUpdateDryRun(ctx context.Context, runtime *common.RuntimeContext) *common
 			return common.NewDryRunAPI().Desc("read whiteboard nodes failed: " + err.Error())
 		}
 		if delNum > 0 {
-			descStr += fmt.Sprintf("%d existing nodes deleted before update.", delNum)
+			descStr += fmt.Sprintf(" %d existing nodes deleted before update.", delNum)
 		}
 	}
+
 	desc := common.NewDryRunAPI().Desc(descStr)
-	desc.POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).Body(nodes).Desc("create all nodes of the whiteboard.")
+
+	switch format {
+	case FormatRaw:
+		nodes, err, _ := parseWBcliNodes(input)
+		if err != nil {
+			return common.NewDryRunAPI().Desc("parse input failed: " + err.Error())
+		}
+		desc.POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).Body(nodes).Desc("create all nodes of the whiteboard.")
+	case FormatPlantUML, FormatMermaid:
+		syntaxType := formatCodeMap[format]
+		reqBody := plantumlCreateReq{
+			PlantUmlCode: string(input),
+			SyntaxType:   syntaxType,
+			DiagramType:  0,
+		}
+		desc.POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes/plantuml", common.MaskToken(url.PathEscape(token)))).Body(reqBody).Desc(fmt.Sprintf("create %s node on the whiteboard.", format))
+	}
+
 	if overwrite && delNum > 0 {
 		// 在 DryRun 中只记录意图，不实际拉取和计算节点
 		desc.GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).Desc("get all nodes of the whiteboard to delete, then filter out newly created ones.")
@@ -84,74 +158,24 @@ func wbUpdateDryRun(ctx context.Context, runtime *common.RuntimeContext) *common
 }
 
 func wbUpdateExecute(ctx context.Context, runtime *common.RuntimeContext) error {
-	// 检查 token
 	token := runtime.Str("whiteboard-token")
 	overwrite := runtime.Bool("overwrite")
 	idempotentToken := runtime.Str("idempotent-token")
-	// 读取 stdin 内容，解析为 OAPI 参数
-	input, err := io.ReadAll(os.Stdin)
+	format := getFormat(runtime)
+
+	input, err := readInput(runtime)
 	if err != nil {
-		return output.ErrValidation("read stdin failed: " + err.Error())
+		return output.ErrValidation("read input failed: " + err.Error())
 	}
-	nodes, err, isRaw := parseWBcliNodes(input)
-	if err != nil {
-		return err
+
+	switch format {
+	case FormatRaw:
+		return updateWhiteboardByRawNodes(ctx, runtime, token, input, overwrite, idempotentToken)
+	case FormatPlantUML, FormatMermaid:
+		return updateWhiteboardByCode(ctx, runtime, token, input, format, overwrite, idempotentToken)
+	default:
+		return output.ErrValidation(fmt.Sprintf("unsupported format: %s", format))
 	}
-	outData := make(map[string]string)
-	// 写入画板节点
-	req := &larkcore.ApiReq{
-		HttpMethod:  http.MethodPost,
-		ApiPath:     fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", url.PathEscape(token)),
-		Body:        nodes,
-		QueryParams: map[string][]string{},
-	}
-	if idempotentToken != "" {
-		req.QueryParams["client_token"] = []string{idempotentToken}
-	}
-	resp, err := runtime.DoAPI(req)
-	if err != nil {
-		return output.ErrNetwork(fmt.Sprintf("update whiteboard failed: %v", err))
-	}
-	if resp.StatusCode != http.StatusOK {
-		var detail string
-		if isRaw {
-			detail = fmt.Sprintf("It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill," +
-				"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
-		}
-		return output.ErrAPI(resp.StatusCode, string(resp.RawBody), detail)
-	}
-	var createResp createResponse
-	err = json.Unmarshal(resp.RawBody, &createResp)
-	if err != nil {
-		return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse whiteboard create response failed: %v", err))
-	}
-	if createResp.Code != 0 {
-		detail := fmt.Sprintf("update whiteboard failed: %s", createResp.Msg)
-		if isRaw {
-			detail += fmt.Sprintf("\n It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill," +
-				"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
-		}
-		return output.ErrAPI(createResp.Code, "update whiteboard failed", detail)
-	}
-	outData["created_node_ids"] = strings.Join(createResp.Data.NodeIDs, ",")
-	// 清空画板节点，先写后删，起码新的能写进去
-	if overwrite {
-		numNodes, _, err := clearWhiteboardContent(ctx, runtime, token, createResp.Data.NodeIDs, false)
-		if err != nil {
-			return err
-		}
-		outData["deleted_nodes_num"] = fmt.Sprintf("%d", numNodes)
-	}
-	runtime.OutFormat(outData, nil, func(w io.Writer) {
-		if outData["deleted_nodes_num"] != "" {
-			fmt.Fprintf(w, "%s existing nodes deleted.\n", outData["deleted_nodes_num"])
-		}
-		if outData["created_node_ids"] != "" {
-			fmt.Fprintf(w, "%d new nodes created.\n", len(createResp.Data.NodeIDs))
-		}
-		fmt.Fprintf(w, "update whiteboard success")
-	})
-	return nil
 }
 
 var WhiteboardUpdate = common.Shortcut{
@@ -202,13 +226,29 @@ type simpleNodeResp struct {
 	Msg  string `json:"msg"`
 	Data struct {
 		Nodes []struct {
-			Id string `json:"id"`
+			Id       string   `json:"id"`
+			Children []string `json:"children"`
 		} `json:"nodes"`
 	} `json:"data"`
 }
 
 type deleteNodeReqBody struct {
 	Ids []string `json:"ids"`
+}
+
+type plantumlCreateReq struct {
+	PlantUmlCode string `json:"plant_uml_code"`
+	StyleType    int    `json:"style_type,omitempty"`
+	SyntaxType   int    `json:"syntax_type"`
+	DiagramType  int    `json:"diagram_type,omitempty"`
+}
+
+type plantumlCreateResp struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		NodeID string `json:"node_id"`
+	} `json:"data"`
 }
 
 func parseWBcliNodes(rawjson []byte) (wbNodes interface{}, err error, isRaw bool) {
@@ -251,6 +291,39 @@ func clearWhiteboardContent(ctx context.Context, runtime *common.RuntimeContext,
 	if nodes.Code != 0 {
 		return 0, nil, output.ErrAPI(nodes.Code, "get whiteboard nodes failed", fmt.Sprintf("get whiteboard nodes failed: %s", nodes.Msg))
 	}
+
+	// 收集所有新节点及其 children 的 ID，递归处理
+	protectedIDs := make(map[string]bool)
+	for _, id := range newNodeIDs {
+		protectedIDs[id] = true
+	}
+	// 构建 node map 以便快速查找
+	nodeMap := make(map[string][]string)
+	if nodes.Data.Nodes != nil {
+		for _, node := range nodes.Data.Nodes {
+			nodeMap[node.Id] = node.Children
+		}
+	}
+	// 递归收集所有 children
+	visited := make(map[string]bool)
+	var collectChildren func(id string)
+	collectChildren = func(id string) {
+		if visited[id] {
+			return
+		}
+		visited[id] = true
+		if children, ok := nodeMap[id]; ok {
+			for _, child := range children {
+				protectedIDs[child] = true
+				collectChildren(child)
+			}
+		}
+	}
+	for _, id := range newNodeIDs {
+		collectChildren(id)
+	}
+
+	// 确定要删除的节点
 	nodeIds := make([]string, 0, len(nodes.Data.Nodes))
 	if nodes.Data.Nodes != nil {
 		for _, node := range nodes.Data.Nodes {
@@ -259,7 +332,7 @@ func clearWhiteboardContent(ctx context.Context, runtime *common.RuntimeContext,
 	}
 	delIds := make([]string, 0, len(nodeIds))
 	for _, nodeId := range nodeIds {
-		if !slices.Contains(newNodeIDs, nodeId) {
+		if !protectedIDs[nodeId] {
 			delIds = append(delIds, nodeId)
 		}
 	}
@@ -298,4 +371,133 @@ func clearWhiteboardContent(ctx context.Context, runtime *common.RuntimeContext,
 		}
 	}
 	return len(delIds), delIds, nil
+}
+
+// updateWhiteboardByCode 使用 plantuml/mermaid 代码更新画板
+func updateWhiteboardByCode(ctx context.Context, runtime *common.RuntimeContext, wbToken string, input []byte, format string, overwrite bool, idempotentToken string) error {
+	syntaxType := formatCodeMap[format]
+	reqBody := plantumlCreateReq{
+		PlantUmlCode: string(input),
+		SyntaxType:   syntaxType,
+		DiagramType:  0, // 0 表示自动识别
+	}
+
+	req := &larkcore.ApiReq{
+		HttpMethod:  http.MethodPost,
+		ApiPath:     fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes/plantuml", url.PathEscape(wbToken)),
+		Body:        reqBody,
+		QueryParams: map[string][]string{},
+	}
+	if idempotentToken != "" {
+		req.QueryParams["client_token"] = []string{idempotentToken}
+	}
+
+	resp, err := runtime.DoAPI(req)
+	if err != nil {
+		return output.ErrNetwork(fmt.Sprintf("update whiteboard by code failed: %v", err))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
+	}
+
+	var createResp plantumlCreateResp
+	err = json.Unmarshal(resp.RawBody, &createResp)
+	if err != nil {
+		return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse whiteboard create response failed: %v", err))
+	}
+	if createResp.Code != 0 {
+		return output.ErrAPI(createResp.Code, "update whiteboard by code failed", fmt.Sprintf("update whiteboard by code failed: %s", createResp.Msg))
+	}
+
+	outData := make(map[string]string)
+	outData["created_node_id"] = createResp.Data.NodeID
+	newNodeIDs := []string{createResp.Data.NodeID}
+
+	if overwrite {
+		numNodes, _, err := clearWhiteboardContent(ctx, runtime, wbToken, newNodeIDs, false)
+		if err != nil {
+			return err
+		}
+		outData["deleted_nodes_num"] = fmt.Sprintf("%d", numNodes)
+	}
+
+	runtime.OutFormat(outData, nil, func(w io.Writer) {
+		if outData["deleted_nodes_num"] != "" {
+			fmt.Fprintf(w, "%s existing nodes deleted.\n", outData["deleted_nodes_num"])
+		}
+		if outData["created_node_id"] != "" {
+			fmt.Fprintf(w, "New node created.\n")
+		}
+		fmt.Fprintf(w, "Update whiteboard success")
+	})
+
+	return nil
+}
+
+// updateWhiteboardByRawNodes 使用原始 Open API 格式数据更新画板
+func updateWhiteboardByRawNodes(ctx context.Context, runtime *common.RuntimeContext, wbToken string, input []byte, overwrite bool, idempotentToken string) error {
+	nodes, err, isRaw := parseWBcliNodes(input)
+	if err != nil {
+		return err
+	}
+	outData := make(map[string]string)
+
+	req := &larkcore.ApiReq{
+		HttpMethod:  http.MethodPost,
+		ApiPath:     fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", url.PathEscape(wbToken)),
+		Body:        nodes,
+		QueryParams: map[string][]string{},
+	}
+	if idempotentToken != "" {
+		req.QueryParams["client_token"] = []string{idempotentToken}
+	}
+
+	resp, err := runtime.DoAPI(req)
+	if err != nil {
+		return output.ErrNetwork(fmt.Sprintf("update whiteboard failed: %v", err))
+	}
+	if resp.StatusCode != http.StatusOK {
+		var detail string
+		if isRaw {
+			detail = fmt.Sprintf("It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill," +
+				"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
+		}
+		return output.ErrAPI(resp.StatusCode, string(resp.RawBody), detail)
+	}
+
+	var createResp createResponse
+	err = json.Unmarshal(resp.RawBody, &createResp)
+	if err != nil {
+		return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse whiteboard create response failed: %v", err))
+	}
+	if createResp.Code != 0 {
+		detail := fmt.Sprintf("update whiteboard failed: %s", createResp.Msg)
+		if isRaw {
+			detail += fmt.Sprintf("\n It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill," +
+				"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
+		}
+		return output.ErrAPI(createResp.Code, "update whiteboard failed", detail)
+	}
+
+	outData["created_node_ids"] = strings.Join(createResp.Data.NodeIDs, ",")
+
+	if overwrite {
+		numNodes, _, err := clearWhiteboardContent(ctx, runtime, wbToken, createResp.Data.NodeIDs, false)
+		if err != nil {
+			return err
+		}
+		outData["deleted_nodes_num"] = fmt.Sprintf("%d", numNodes)
+	}
+
+	runtime.OutFormat(outData, nil, func(w io.Writer) {
+		if outData["deleted_nodes_num"] != "" {
+			fmt.Fprintf(w, "%s existing nodes deleted.\n", outData["deleted_nodes_num"])
+		}
+		if outData["created_node_ids"] != "" {
+			fmt.Fprintf(w, "%d new nodes created.\n", len(createResp.Data.NodeIDs))
+		}
+		fmt.Fprintf(w, "Update whiteboard success")
+	})
+
+	return nil
 }
