@@ -24,7 +24,7 @@ func VerifyUserToken(ctx context.Context, sdk *lark.Client, accessToken string) 
 	if err != nil {
 		return err
 	}
-	logAuthResponse(sdkAuthResponse{PathUserInfoV1, apiResp})
+	logSDKResponse(PathUserInfoV1, apiResp)
 
 	var resp struct {
 		Code int    `json:"code"`

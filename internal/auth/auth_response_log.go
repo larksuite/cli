@@ -53,9 +53,9 @@ func (defaultLogWriter) Write(p []byte) (n int, err error) {
 func cleanupOldLogs(dir string, now time.Time) {
 	defer func() {
 		if r := recover(); r != nil {
-			// Record the panic so we can debug without crashing the main program
-			msg := fmt.Sprintf("[lark-cli] [WARN] background log cleanup panicked: %v\n", r)
-			_, _ = authResponseLogWriter.Write([]byte(msg))
+			// Record the panic so we can debug without crashing the main program.
+			// Do NOT use authResponseLogWriter here to avoid deadlocks or infinite loops.
+			fmt.Fprintf(os.Stderr, "[lark-cli] [WARN] background log cleanup panicked: %v\n", r)
 		}
 	}()
 
@@ -86,60 +86,20 @@ func cleanupOldLogs(dir string, now time.Time) {
 	}
 }
 
-type authResponse interface {
-	logStatusCode() int
-	logHeader(key string) string
-	logPath() string
-}
-
-type httpAuthResponse struct {
-	*http.Response
-}
-
-func (r httpAuthResponse) logStatusCode() int {
-	return r.StatusCode
-}
-
-func (r httpAuthResponse) logHeader(key string) string {
-	return r.Header.Get(key)
-}
-
-func (r httpAuthResponse) logPath() string {
-	if r.Request != nil && r.Request.URL != nil {
-		return r.Request.URL.Path
-	}
-	return "miss"
-}
-
-type sdkAuthResponse struct {
-	path string
-	*larkcore.ApiResp
-}
-
-func (r sdkAuthResponse) logStatusCode() int {
-	return r.StatusCode
-}
-
-func (r sdkAuthResponse) logHeader(key string) string {
-	return r.Header.Get(key)
-}
-
-func (r sdkAuthResponse) logPath() string {
-	return r.path
-}
-
-func logAuthResponse(resp interface{}) {
-	if authResponseLogWriter == nil || resp == nil {
-		return
+func formatAuthCmdline(args []string) string {
+	if len(args) == 0 {
+		return ""
 	}
 
-	var r authResponse
-	switch v := resp.(type) {
-	case *http.Response:
-		r = httpAuthResponse{v}
-	case authResponse:
-		r = v
-	default:
+	if len(args) <= 3 {
+		return strings.Join(args, " ")
+	}
+
+	return strings.Join(args[:3], " ") + " ..."
+}
+
+func doLogAuthResponse(path string, status int, logID string) {
+	if authResponseLogWriter == nil {
 		return
 	}
 
@@ -147,9 +107,35 @@ func logAuthResponse(resp interface{}) {
 		authResponseLogWriter,
 		"[lark-cli] auth-response: time=%s path=%s status=%d x-tt-logid=%s cmdline=%s\n",
 		authResponseLogNow().Format(time.RFC3339Nano),
-		r.logPath(),
-		r.logStatusCode(),
-		r.logHeader("x-tt-logid"),
-		strings.Join(authResponseLogArgs(), " "),
+		path,
+		status,
+		logID,
+		formatAuthCmdline(authResponseLogArgs()),
 	)
+}
+
+func logHTTPResponse(resp *http.Response) {
+	if resp == nil {
+		return
+	}
+
+	path := "missing"
+	if resp.Request != nil && resp.Request.URL != nil {
+		path = resp.Request.URL.Path
+	}
+
+	doLogAuthResponse(path, resp.StatusCode, resp.Header.Get("x-tt-logid"))
+}
+
+func logSDKResponse(path string, apiResp *larkcore.ApiResp) {
+	if path == "" {
+		path = "missing"
+	}
+
+	if apiResp == nil {
+		doLogAuthResponse(path, 0, "")
+		return
+	}
+
+	doLogAuthResponse(path, apiResp.StatusCode, apiResp.Header.Get("x-tt-logid"))
 }

@@ -200,7 +200,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			return nil, err
 		}
 		defer resp.Body.Close()
-		logAuthResponse(resp)
+		logHTTPResponse(resp)
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
