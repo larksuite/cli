@@ -76,6 +76,13 @@ var MinutesDownload = common.Shortcut{
 		errOut := runtime.IO().ErrOut
 		single := len(tokens) == 1
 
+		// Batch mode: --output must be a directory, not an existing file.
+		if !single && outputPath != "" {
+			if fi, err := os.Stat(outputPath); err == nil && !fi.IsDir() {
+				return output.ErrValidation("--output %q is a file; batch mode expects a directory path", outputPath)
+			}
+		}
+
 		if !single {
 			fmt.Fprintf(errOut, "[minutes +download] batch: %d token(s)\n", len(tokens))
 		}
@@ -91,6 +98,33 @@ var MinutesDownload = common.Shortcut{
 		results := make([]result, len(tokens))
 		seen := make(map[string]int)
 		usedNames := make(map[string]bool)
+
+		// Clone the factory client for download use. We clone the struct (not the
+		// pointer) to avoid mutating the shared singleton's Timeout. The original
+		// transport chain is preserved so security headers and test mocks still work.
+		// SSRF protection: ValidateDownloadSourceURL (URL-level) + CheckRedirect
+		// (redirect-level). Transport-level IP check is intentionally omitted because
+		// download URLs originate from the trusted Lark API, not user input.
+		baseClient, err := runtime.Factory.HttpClient()
+		if err != nil {
+			return output.ErrNetwork("failed to get HTTP client: %s", err)
+		}
+		clonedClient := *baseClient
+		clonedClient.Timeout = disableClientTimeout
+		clonedClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxDownloadRedirects {
+				return fmt.Errorf("too many redirects")
+			}
+			if len(via) > 0 {
+				prev := via[len(via)-1]
+				if strings.EqualFold(prev.URL.Scheme, "https") && strings.EqualFold(req.URL.Scheme, "http") {
+					return fmt.Errorf("redirect from https to http is not allowed")
+				}
+			}
+			return validate.ValidateDownloadSourceURL(req.Context(), req.URL.String())
+		}
+		dlClient := &clonedClient
+
 		ticker := time.NewTicker(time.Second / 5) // rate-limit to 5 req/s
 		defer ticker.Stop()
 
@@ -134,7 +168,7 @@ var MinutesDownload = common.Shortcut{
 				opts.outputDir = outputPath
 			}
 
-			dl, err := downloadMediaFile(ctx, runtime, downloadURL, token, opts)
+			dl, err := downloadMediaFile(ctx, dlClient, downloadURL, token, opts)
 			if err != nil {
 				results[i] = result{MinuteToken: token, Error: err.Error()}
 				continue
@@ -202,30 +236,9 @@ type downloadOpts struct {
 
 // downloadMediaFile streams a media file from a pre-signed URL to disk.
 // Filename resolution: opts.outputPath > Content-Disposition filename > Content-Type ext > <token>.media.
-func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, downloadURL, minuteToken string, opts downloadOpts) (*downloadResult, error) {
+func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, minuteToken string, opts downloadOpts) (*downloadResult, error) {
 	if err := validate.ValidateDownloadSourceURL(ctx, downloadURL); err != nil {
 		return nil, output.ErrValidation("blocked download URL: %s", err)
-	}
-
-	httpClient, err := runtime.Factory.HttpClient()
-	if err != nil {
-		return nil, output.ErrNetwork("failed to get HTTP client: %s", err)
-	}
-
-	// Clone client with disabled timeout and redirect safety.
-	downloadClient := *httpClient
-	downloadClient.Timeout = disableClientTimeout
-	downloadClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= maxDownloadRedirects {
-			return fmt.Errorf("too many redirects")
-		}
-		if len(via) > 0 {
-			prev := via[len(via)-1]
-			if strings.EqualFold(prev.URL.Scheme, "https") && strings.EqualFold(req.URL.Scheme, "http") {
-				return fmt.Errorf("redirect from https to http is not allowed")
-			}
-		}
-		return validate.ValidateDownloadSourceURL(req.Context(), req.URL.String())
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
@@ -233,7 +246,7 @@ func downloadMediaFile(ctx context.Context, runtime *common.RuntimeContext, down
 		return nil, output.ErrNetwork("invalid download URL: %s", err)
 	}
 
-	resp, err := downloadClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, output.ErrNetwork("download failed: %s", err)
 	}
@@ -303,6 +316,10 @@ var preferredExt = map[string]string{
 	"audio/mpeg": ".mp3",
 }
 
+// newDownloadClient wraps the base HTTP client with SSRF protection
+// (redirect safety + transport-level IP validation). When the base transport
+// is not *http.Transport (e.g. test mocks), it falls back to cloning
+// http.DefaultTransport via NewDownloadHTTPClient.
 // extFromContentType returns a file extension for the given Content-Type, or "" if unknown.
 func extFromContentType(contentType string) string {
 	if contentType == "" {

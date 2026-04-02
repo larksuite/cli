@@ -383,6 +383,7 @@ func TestDownload_Batch_PartialFailure(t *testing.T) {
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(downloadStub("example.com/download/1", []byte("content-1"), "video/mp4"))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/minutes/v1/minutes/tok002/media",
@@ -392,7 +393,6 @@ func TestDownload_Batch_PartialFailure(t *testing.T) {
 			"data": map[string]interface{}{},
 		},
 	})
-	reg.Register(downloadStub("example.com/download/1", []byte("content-1"), "video/mp4"))
 
 	err := mountAndRun(t, MinutesDownload, []string{
 		"+download", "--minute-tokens", "tok001,tok002", "--as", "bot",
