@@ -20,7 +20,8 @@ var (
 	authResponseLogArgs              = func() []string { return os.Args }
 	authResponseLogCleanup           = cleanupOldLogs
 
-	logMu sync.Mutex
+	logMu       sync.Mutex
+	cleanupOnce sync.Once
 )
 
 // defaultLogWriter is the default io.Writer implementation for authentication response logs.
@@ -58,7 +59,9 @@ func (defaultLogWriter) Write(p []byte) (n int, err error) {
 		return n, writeErr
 	}()
 
-	go authResponseLogCleanup(dir, now)
+	cleanupOnce.Do(func() {
+		go authResponseLogCleanup(dir, now)
+	})
 
 	return n, err
 }
