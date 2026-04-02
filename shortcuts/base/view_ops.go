@@ -81,6 +81,10 @@ func dryRunViewSetFilter(_ context.Context, runtime *common.RuntimeContext) *com
 	return dryRunViewSetJSONObject(runtime, "filter")
 }
 
+func dryRunViewSetVisibleFields(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	return dryRunViewSetWrapped(runtime, "visible_fields", "visible_fields")
+}
+
 func dryRunViewGetGroup(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return dryRunViewGetProperty(runtime, "group")
 }
