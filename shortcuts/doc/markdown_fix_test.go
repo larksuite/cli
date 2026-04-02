@@ -141,11 +141,10 @@ func TestFixTopLevelSoftbreaks(t *testing.T) {
 			want:  "```\nline1\nline2\n```",
 		},
 		{
-			// Inner lines are inside an opaque block so no blank line is inserted between them.
-			// The closing </callout> tag is top-level so a blank line is inserted before it.
-			name:  "lines inside callout not modified",
+			// callout is a content container: blank lines are inserted between inner lines.
+			name:  "lines inside callout get blank line between them",
 			input: "<callout>\nline1\nline2\n</callout>",
-			want:  "<callout>\nline1\nline2\n\n</callout>",
+			want:  "<callout>\n\nline1\n\nline2\n</callout>",
 		},
 		{
 			name:  "lark-td cell content gets blank line",
@@ -200,5 +199,57 @@ func TestFixExportedMarkdown(t *testing.T) {
 	// No triple newlines
 	if strings.Contains(result, "\n\n\n") {
 		t.Error("expected no triple newlines in output")
+	}
+}
+
+func TestFixCalloutEmoji(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "warning alias replaced",
+			input: `<callout emoji="warning" background-color="light-orange">`,
+			want:  `<callout emoji="⚠️" background-color="light-orange">`,
+		},
+		{
+			name:  "tip alias replaced",
+			input: `<callout emoji="tip">`,
+			want:  `<callout emoji="💡">`,
+		},
+		{
+			name:  "actual emoji unchanged",
+			input: `<callout emoji="⚠️">`,
+			want:  `<callout emoji="⚠️">`,
+		},
+		{
+			name:  "unknown alias unchanged",
+			input: `<callout emoji="unicorn">`,
+			want:  `<callout emoji="unicorn">`,
+		},
+		{
+			name:  "non-callout tag unchanged",
+			input: `<div emoji="warning">`,
+			want:  `<div emoji="warning">`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fixCalloutEmoji(tt.input)
+			if got != tt.want {
+				t.Errorf("fixCalloutEmoji(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFixTopLevelSoftbreaksQuoteContainer(t *testing.T) {
+	input := "<quote-container>\nline1\nline2\n</quote-container>"
+	got := fixTopLevelSoftbreaks(input)
+	// quote-container is a content container: blank lines inserted between inner lines.
+	want := "<quote-container>\n\nline1\n\nline2\n</quote-container>"
+	if got != want {
+		t.Errorf("fixTopLevelSoftbreaks quote-container = %q, want %q", got, want)
 	}
 }

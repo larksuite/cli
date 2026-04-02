@@ -21,15 +21,17 @@ import (
 //     consecutive blockquote content lines so create-doc preserves line breaks.
 //
 //  4. fixTopLevelSoftbreaks: inserts a blank line between adjacent non-empty
-//     lines at the top level (outside tables, callouts, code blocks, etc.).
-//     Lark exports each block element on its own line with only \n between them;
-//     standard Markdown parsers collapse those into a single paragraph on
-//     re-import, losing the original block structure entirely.
+//     lines at the top level and inside content containers (callout,
+//     quote-container, lark-td). Code fences are left untouched.
+//
+//  5. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
+//     actual Unicode emoji characters that create-doc understands.
 func fixExportedMarkdown(md string) string {
 	md = fixBoldSpacing(md)
 	md = fixSetextAmbiguity(md)
 	md = fixBlockquoteHardBreaks(md)
 	md = fixTopLevelSoftbreaks(md)
+	md = fixCalloutEmoji(md)
 	// Collapse runs of 3+ consecutive newlines into exactly 2 (one blank line).
 	for strings.Contains(md, "\n\n\n") {
 		md = strings.ReplaceAll(md, "\n\n\n", "\n\n")
@@ -90,11 +92,56 @@ func fixSetextAmbiguity(md string) string {
 	return setextRe.ReplaceAllString(md, "$1\n\n$2")
 }
 
-// opaqueBlocks are block elements whose interior must never be modified.
-var opaqueBlocks = [][2]string{
-	{"<callout", "</callout>"},
-	{"<quote-container>", "</quote-container>"},
-	{"```", "```"},
+// calloutEmojiAliases maps named emoji strings that fetch-doc emits to actual
+// Unicode emoji characters that create-doc accepts.
+var calloutEmojiAliases = map[string]string{
+	"warning":      "⚠️",
+	"note":         "📝",
+	"tip":          "💡",
+	"info":         "ℹ️",
+	"check":        "✅",
+	"success":      "✅",
+	"error":        "❌",
+	"danger":       "🚨",
+	"important":    "❗",
+	"caution":      "⚠️",
+	"question":     "❓",
+	"forbidden":    "🚫",
+	"fire":         "🔥",
+	"star":         "⭐",
+	"pin":          "📌",
+	"clock":        "🕐",
+	"gift":         "🎁",
+	"eyes":         "👀",
+	"bulb":         "💡",
+	"memo":         "📝",
+	"link":         "🔗",
+	"key":          "🔑",
+	"lock":         "🔒",
+	"thumbsup":     "👍",
+	"thumbsdown":   "👎",
+	"rocket":       "🚀",
+	"construction": "🚧",
+}
+
+// calloutEmojiRe matches emoji="<name>" in callout opening tags.
+var calloutEmojiRe = regexp.MustCompile(`(<callout[^>]*\bemoji=")([^"]+)(")`)
+
+// fixCalloutEmoji replaces named emoji aliases in callout tags with actual
+// Unicode emoji characters. fetch-doc sometimes emits emoji="warning" instead
+// of emoji="⚠️"; create-doc only accepts Unicode emoji.
+func fixCalloutEmoji(md string) string {
+	return calloutEmojiRe.ReplaceAllStringFunc(md, func(match string) string {
+		parts := calloutEmojiRe.FindStringSubmatch(match)
+		if len(parts) != 4 {
+			return match
+		}
+		name := parts[2]
+		if emoji, ok := calloutEmojiAliases[name]; ok {
+			return parts[1] + emoji + parts[3]
+		}
+		return match
+	})
 }
 
 // isTableStructuralTag returns true for lark-table tags that are structural
@@ -104,60 +151,62 @@ func isTableStructuralTag(s string) bool {
 		strings.HasPrefix(s, "</lark-t")
 }
 
+// contentContainers lists block tags whose interior should have blank lines
+// inserted between adjacent content lines (same treatment as lark-td).
+var contentContainers = [][2]string{
+	{"<lark-td>", "</lark-td>"},
+	{"<callout", "</callout>"},
+	{"<quote-container>", "</quote-container>"},
+}
+
 // fixTopLevelSoftbreaks ensures that adjacent non-empty content lines are
-// separated by a blank line in two contexts:
+// separated by a blank line in the following contexts:
 //  1. Top level (depth == 0): every Lark block becomes its own Markdown paragraph.
-//  2. Inside <lark-td>: multi-line cell content is preserved as separate paragraphs.
+//  2. Inside content containers (<lark-td>, <callout>, <quote-container>):
+//     multi-line content is preserved as separate paragraphs.
 //
 // Structural table tags (<lark-table>, <lark-tr>, <lark-td> and their closing
-// counterparts) never trigger blank-line insertion themselves. Opaque blocks
-// (callout, quote-container, code fences) are left untouched.
+// counterparts) never trigger blank-line insertion themselves. Fenced code
+// blocks (``` ... ```) are left completely untouched.
 func fixTopLevelSoftbreaks(md string) string {
 	lines := strings.Split(md, "\n")
 	out := make([]string, 0, len(lines)*2)
 
-	// opaqueDepth tracks nesting inside opaque blocks (callout, quote, code).
-	opaqueDepth := 0
 	inCodeBlock := false
-	// inTableCell is true when we are between <lark-td> and </lark-td>.
-	inTableCell := false
-	// tableDepth tracks <lark-table> nesting (for the outer structure).
+	// containerDepth > 0 means we are inside a content container.
+	containerDepth := 0
+	// tableDepth tracks <lark-table> nesting (outer structure, not content).
 	tableDepth := 0
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// --- Track fenced code blocks (``` toggles). ---
+		// --- Track fenced code blocks (``` toggles) — skip all processing inside. ---
 		if strings.HasPrefix(trimmed, "```") {
 			if inCodeBlock {
 				inCodeBlock = false
-				opaqueDepth--
 			} else {
 				inCodeBlock = true
-				opaqueDepth++
 			}
 			out = append(out, line)
 			continue
 		}
 
 		if !inCodeBlock {
-			// --- Track opaque blocks (other than ```). ---
-			for _, bd := range opaqueBlocks {
-				if bd[0] == "```" {
-					continue
+			// --- Track content containers. ---
+			for _, cc := range contentContainers {
+				if strings.HasPrefix(trimmed, cc[0]) {
+					containerDepth++
 				}
-				if strings.HasPrefix(trimmed, bd[0]) {
-					opaqueDepth++
-				}
-				if strings.Contains(trimmed, bd[1]) {
-					opaqueDepth--
-					if opaqueDepth < 0 {
-						opaqueDepth = 0
+				if strings.Contains(trimmed, cc[1]) {
+					containerDepth--
+					if containerDepth < 0 {
+						containerDepth = 0
 					}
 				}
 			}
 
-			// --- Track table structure. ---
+			// --- Track table structure (outer, non-content). ---
 			if strings.HasPrefix(trimmed, "<lark-table") {
 				tableDepth++
 			}
@@ -167,17 +216,10 @@ func fixTopLevelSoftbreaks(md string) string {
 					tableDepth = 0
 				}
 			}
-			if strings.HasPrefix(trimmed, "<lark-td>") {
-				inTableCell = true
-			}
-			if strings.Contains(trimmed, "</lark-td>") {
-				inTableCell = false
-			}
 		}
 
 		// --- Decide whether to insert a blank line before this line. ---
-		// Skip if inside an opaque block.
-		if opaqueDepth == 0 && trimmed != "" && i > 0 {
+		if !inCodeBlock && trimmed != "" && i > 0 {
 			// Skip structural table tags — they are not content lines.
 			isStructural := isTableStructuralTag(trimmed)
 
@@ -185,14 +227,25 @@ func fixTopLevelSoftbreaks(md string) string {
 			// one continuous blockquote in the original document.
 			isBlockquote := strings.HasPrefix(trimmed, "> ") || trimmed == ">"
 
-			// Insert blank line if: (a) top level, or (b) inside a table cell,
-			// AND this line is a content line, AND the previous output is non-empty.
-			if !isStructural && !isBlockquote && (tableDepth == 0 || inTableCell) {
+			// Container opening/closing tags are structural — skip them.
+			isContainerTag := false
+			for _, cc := range contentContainers {
+				if strings.HasPrefix(trimmed, cc[0]) || strings.HasPrefix(trimmed, "</"+cc[0][1:]) {
+					isContainerTag = true
+					break
+				}
+			}
+
+			// Insert blank line when:
+			//   - at top level (tableDepth == 0, containerDepth == 0), OR
+			//   - inside a content container (containerDepth > 0, not in outer table)
+			// AND this line is actual content (not structural/blockquote/container-tag).
+			inContent := tableDepth == 0 || containerDepth > 0
+			if !isStructural && !isBlockquote && !isContainerTag && inContent {
 				prev := ""
 				if len(out) > 0 {
 					prev = strings.TrimSpace(out[len(out)-1])
 				}
-				// Don't insert blank line after a structural tag either.
 				if prev != "" && !isTableStructuralTag(prev) {
 					out = append(out, "")
 				}
