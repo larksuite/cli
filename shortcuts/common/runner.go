@@ -540,6 +540,7 @@ func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
 	cmd := &cobra.Command{
 		Use:   shortcut.Command,
 		Short: shortcut.Description,
+		Args:  rejectPositionalArgs(&shortcut),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
@@ -679,6 +680,19 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		output.PrintJson(f.IOStreams.Out, dryResult)
 	}
 	return nil
+}
+
+// rejectPositionalArgs returns a cobra.PositionalArgs that rejects any
+// positional arguments. The error is intentionally a plain error (not
+// ExitError) so that cobra prints usage and the root handler prints a
+// simple "Error:" line instead of a JSON envelope.
+func rejectPositionalArgs(_ *Shortcut) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return nil
+		}
+		return fmt.Errorf("positional arguments are not supported (got %q); pass values via flags", args[0])
+	}
 }
 
 func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
