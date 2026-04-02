@@ -9,6 +9,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,8 +22,7 @@ const masterKeyBytes = 32
 const ivBytes = 12
 const tagBytes = 16
 
-// StorageDir returns the storage directory for a given service name.
-// Each service gets its own directory for physical isolation.
+// StorageDir returns the directory where encrypted files are stored.
 func StorageDir(service string) string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -36,17 +36,32 @@ func StorageDir(service string) string {
 
 var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 
+// safeFileName sanitizes an account name to be used as a safe file name.
 func safeFileName(account string) string {
 	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
 }
 
-func getMasterKey(service string) ([]byte, error) {
+// getMasterKey retrieves the master key from the file system.
+// If allowCreate is true, it generates and stores a new master key if one doesn't exist.
+func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	dir := StorageDir(service)
 	keyPath := filepath.Join(dir, "master.key")
 
 	key, err := os.ReadFile(keyPath)
 	if err == nil && len(key) == masterKeyBytes {
 		return key, nil
+	}
+	if err == nil && len(key) != masterKeyBytes {
+		// Key file exists but is corrupted
+		return nil, errors.New("keychain is corrupted")
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		// Real I/O error (permission denied, etc.) - propagate it
+		return nil, err
+	}
+
+	if !allowCreate {
+		return nil, errNotInitialized
 	}
 
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -78,6 +93,7 @@ func getMasterKey(service string) ([]byte, error) {
 	return key, nil
 }
 
+// encryptData encrypts data using AES-GCM.
 func encryptData(plaintext string, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -100,6 +116,7 @@ func encryptData(plaintext string, key []byte) ([]byte, error) {
 	return result, nil
 }
 
+// decryptData decrypts data using AES-GCM.
 func decryptData(data []byte, key []byte) (string, error) {
 	if len(data) < ivBytes+tagBytes {
 		return "", os.ErrInvalid
@@ -122,24 +139,30 @@ func decryptData(data []byte, key []byte) (string, error) {
 	return string(plaintext), nil
 }
 
-func platformGet(service, account string) string {
-	key, err := getMasterKey(service)
-	if err != nil {
-		return ""
+// platformGet retrieves a value from the file system.
+func platformGet(service, account string) (string, error) {
+	path := filepath.Join(StorageDir(service), safeFileName(account))
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
 	}
-	data, err := os.ReadFile(filepath.Join(StorageDir(service), safeFileName(account)))
 	if err != nil {
-		return ""
+		return "", err
+	}
+	key, err := getMasterKey(service, false)
+	if err != nil {
+		return "", err
 	}
 	plaintext, err := decryptData(data, key)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return plaintext
+	return plaintext, nil
 }
 
+// platformSet stores a value in the file system.
 func platformSet(service, account, data string) error {
-	key, err := getMasterKey(service)
+	key, err := getMasterKey(service, true)
 	if err != nil {
 		return err
 	}
@@ -167,6 +190,7 @@ func platformSet(service, account, data string) error {
 	return nil
 }
 
+// platformRemove deletes a value from the file system.
 func platformRemove(service, account string) error {
 	err := os.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
 	if err != nil && !os.IsNotExist(err) {

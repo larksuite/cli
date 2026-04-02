@@ -181,6 +181,25 @@ func cloneDownloadTransport(base http.RoundTripper) *http.Transport {
 	return cloned
 }
 
+// DialContextFunc is the signature for DialContext / DialTLSContext.
+type DialContextFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// WrapDialContextWithIPCheck wraps a DialContext function to validate the
+// remote IP after connection, rejecting local/internal addresses (SSRF protection).
+func WrapDialContextWithIPCheck(origDial DialContextFunc) DialContextFunc {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dialConn(ctx, origDial, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateConnRemoteIP(conn); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		return conn, nil
+	}
+}
+
 func dialConn(ctx context.Context, dialFn func(context.Context, string, string) (net.Conn, error), network, addr string) (net.Conn, error) {
 	if dialFn != nil {
 		return dialFn(ctx, network, addr)

@@ -198,9 +198,9 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 { "op": "add_inline", "path": "./logo.png", "cid": "logo" }
 ```
 
-> **推荐方式：** 直接在 `set_body`/`set_reply_body` 的 HTML 中使用 `<img src="./logo.png" />`（本地文件路径），系统会自动创建 MIME 内嵌部分、生成 CID 并替换为 `cid:` 引用。删除或替换 `<img>` 标签时，对应的 MIME 部分会自动清理。详见[在正文中插入内嵌图片](#在正文中插入内嵌图片)。
->
-> `add_inline` 仅在需要精确控制 CID 命名时使用。使用时仍需在 HTML 正文中加入 `<img src="cid:...">` 引用。
+> **重要：`add_inline` 仅添加 MIME 二进制部分，不会在 HTML 正文中插入 `<img>` 标签。**
+> 如需图片在邮件正文中可见，**必须**同时使用 `set_body` 或 `set_reply_body` 更新 HTML 正文并加入 `<img src="cid:...">` 标签。参见[在正文中插入内嵌图片](#在正文中插入内嵌图片)的完整流程。
+> 如果忘记添加 `<img>` 引用，该内嵌部分在发送时会变成孤立附件。
 
 `replace_inline`
 
@@ -304,31 +304,29 @@ lark-cli mail +draft-edit --draft-id <draft_id> --patch-file ./patch.json
 
 ### 在正文中插入内嵌图片
 
-直接在 `set_body`/`set_reply_body` 的 HTML 中使用本地文件路径即可。系统会自动创建 MIME 内嵌部分并替换为 `cid:` 引用。
+添加内嵌图片需要**两个协同编辑**：（1）通过 `add_inline` 添加 MIME 部分，（2）通过 `set_body` 或 `set_reply_body` 在 HTML 正文中插入 `<img src="cid:...">` 标签。
 
 ```bash
-# 1. 查看草稿以获取当前 HTML 正文
+# 1. 查看草稿以获取当前 HTML 正文和已有的内嵌部分
 lark-cli mail +draft-edit --draft-id <draft_id> --inspect
+# 返回包含：
+#   projection.body_html_summary: "<div>原有内容<img src=\"cid:existing.png\" /></div>"
+#   projection.inline_summary: [{"part_id":"1.1.2","cid":"existing.png", ...}]
 
-# 2. 编写补丁 — 直接使用本地文件路径（注意：回复草稿用 set_reply_body，普通草稿用 set_body）
+# 2. 编写补丁（注意：回复草稿用 set_reply_body，普通草稿用 set_body）
 cat > ./patch.json << 'EOF'
 {
   "ops": [
-    { "op": "set_body", "value": "<div>内容<img src=\"./logo.png\" /><img src=\"./photo.jpg\" /></div>" }
-  ]
+    { "op": "set_body", "value": "<div>原有内容<img src=\"cid:existing.png\" /><img src=\"cid:new-image\" /></div>" },
+    { "op": "add_inline", "path": "./new-image.png", "cid": "new-image" }
+  ],
+  "options": {}
 }
 EOF
 
 # 3. 应用补丁
 lark-cli mail +draft-edit --draft-id <draft_id> --patch-file ./patch.json
 ```
-
-内嵌图片的增删改通过 HTML 正文自动联动：
-- **添加**：在 HTML 中写 `<img src="./image.png" />`，自动创建 MIME 部分
-- **删除**：从 HTML 中移除 `<img>` 标签，对应 MIME 部分自动清理
-- **替换**：将 `src` 改为新的本地路径，旧 MIME 部分自动移除、新部分自动创建
-
-> **高级用法：** 需要精确控制 CID 命名时，仍可使用 `add_inline` 手动添加 MIME 部分，并在 HTML 中用 `<img src="cid:your-cid">` 引用。
 
 ### 使用 patch-file 进行高级编辑
 

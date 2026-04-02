@@ -876,7 +876,7 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 	fd.AddField("image_type", imageType)
 	fd.AddFile("image", f)
 
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/images",
 		Body:       fd,
@@ -922,7 +922,7 @@ func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePat
 	}
 	fd.AddFile("file", f)
 
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/files",
 		Body:       fd,

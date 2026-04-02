@@ -1,0 +1,31 @@
+name: Test PR Label Logic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/pr-labels/**"
+      - ".github/workflows/pr-labels-test.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/pr-labels/**"
+      - ".github/workflows/pr-labels-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-pr-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run PR label regression tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/pr-labels/test.js

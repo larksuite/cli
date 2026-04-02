@@ -5,9 +5,11 @@ package drive
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -18,9 +20,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+var driveTestConfigSeq atomic.Int64
+
 func driveTestConfig() *core.CliConfig {
 	return &core.CliConfig{
-		AppID: "drive-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		AppID: fmt.Sprintf("drive-test-app-%d", driveTestConfigSeq.Add(1)), AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 }
 

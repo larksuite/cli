@@ -67,7 +67,23 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch meta_data.json for build-time embedding")
     parser.add_argument("--brand", default="feishu", choices=["feishu", "lark"],
                         help="API brand (default: feishu)")
+    parser.add_argument("--force", action="store_true",
+                        help="force refresh from remote even if local file exists")
     args = parser.parse_args()
+
+    if os.path.exists(OUT_PATH) and not args.force:
+        if os.path.isfile(OUT_PATH):
+            try:
+                with open(OUT_PATH, "r", encoding="utf-8") as fp:
+                    local = json.load(fp)
+                if local.get("services"):
+                    print(f"fetch-meta: {OUT_PATH} already exists, skipping (use --force to re-fetch)", file=sys.stderr)
+                    return
+                print(f"fetch-meta: {OUT_PATH} has no services, re-fetching", file=sys.stderr)
+            except (OSError, json.JSONDecodeError):
+                print(f"fetch-meta: {OUT_PATH} is invalid JSON, re-fetching", file=sys.stderr)
+        else:
+            print(f"fetch-meta: {OUT_PATH} is not a file, re-fetching", file=sys.stderr)
 
     data = fetch_remote(args.brand)
     count = len(data.get("services", []))
