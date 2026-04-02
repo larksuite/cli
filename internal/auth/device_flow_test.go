@@ -162,13 +162,13 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	}
 }
 
-// TestDefaultLogWriter_ReleasesLockOnPanic ensures log locks are released even if a panic occurs.
-func TestDefaultLogWriter_ReleasesLockOnPanic(t *testing.T) {
+// TestDefaultLogWriter_PanicsBeforeLock ensures log code behaves correctly when panic occurs before the lock is acquired.
+func TestDefaultLogWriter_PanicsBeforeLock(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	prevNow := authResponseLogNow
 	prevCleanup := authResponseLogCleanup
-	authResponseLogCleanup = func(dir string, now time.Time) {}
+	authResponseLogCleanup = func(_ string, _ time.Time) {}
 	t.Cleanup(func() {
 		authResponseLogNow = prevNow
 		authResponseLogCleanup = prevCleanup
