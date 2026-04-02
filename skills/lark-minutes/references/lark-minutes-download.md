@@ -23,7 +23,7 @@ lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --url-only
 lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c,obcnexa7814k4t41c446fzwj
 
 # 批量下载到指定目录
-lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c,obcnexa7814k4t41c446fzwj --output-dir ./downloads
+lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c,obcnexa7814k4t41c446fzwj --output ./downloads
 
 # 预览 API 调用
 lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --dry-run
@@ -34,8 +34,7 @@ lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --dry-run
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--minute-tokens <tokens>` | 是 | 妙记 Token，逗号分隔支持批量（最多 50 个） |
-| `--output <path>` | 否 | 本地保存路径（单个 token 时有效） |
-| `--output-dir <dir>` | 否 | 批量下载时的输出目录（默认当前目录） |
+| `--output <path>` | 否 | 输出路径：单个 token 时为文件路径，批量时为目录（默认当前目录） |
 | `--overwrite` | 否 | 覆盖已存在的输出文件 |
 | `--url-only` | 否 | 仅返回下载链接，不下载文件 |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
@@ -109,7 +108,7 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 
 ## 提示
 
-- 音视频文件可能较大，下载超时默认为 5 分钟。
+- 音视频文件可能较大，下载无固定超时限制（由用户 Ctrl+C 控制取消）。
 - 未指定 `--output` 时，默认使用妙记原始标题作为文件名（如 `Office Oncall流程2.0宣讲.mp4`）。
 - 如需获取妙记的纪要内容（逐字稿、AI 总结等），请使用 [vc +notes](../../lark-vc/references/lark-vc-notes.md)。
 

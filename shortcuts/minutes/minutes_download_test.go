@@ -100,7 +100,7 @@ func downloadStub(url string, body []byte, contentType string) *httpmock.Stub {
 	}
 }
 
-// chdir 切换工作目录并在测试结束后恢复
+// chdir changes the working directory and restores it when the test finishes.
 func chdir(t *testing.T, dir string) {
 	t.Helper()
 	orig, err := os.Getwd()
@@ -117,27 +117,26 @@ func chdir(t *testing.T, dir string) {
 // Unit tests: resolveOutputFromResponse
 // ---------------------------------------------------------------------------
 
-func TestResolveOutputFromResponse_FallbackToContentType(t *testing.T) {
-	// With nil runtime, fetchMinuteTitle returns "", so we fall back to token + Content-Type ext.
+func TestResolveFilenameFromResponse_ContentDisposition(t *testing.T) {
 	resp := &http.Response{
 		Header: http.Header{
 			"Content-Disposition": []string{`attachment; filename="meeting_recording.mp4"`},
 			"Content-Type":        []string{"video/mp4"},
 		},
 	}
-	got := resolveOutputFilename(resp, "tok001", "")
-	if got != "tok001.mp4" {
-		t.Errorf("expected token + Content-Type ext %q, got %q", "tok001.mp4", got)
+	got := resolveFilenameFromResponse(resp, "tok001")
+	if got != "meeting_recording.mp4" {
+		t.Errorf("expected Content-Disposition filename, got %q", got)
 	}
 }
 
-func TestResolveOutputFromResponse_ContentType(t *testing.T) {
+func TestResolveFilenameFromResponse_ContentType(t *testing.T) {
 	resp := &http.Response{
 		Header: http.Header{
 			"Content-Type": []string{"video/mp4"},
 		},
 	}
-	got := resolveOutputFilename(resp, "tok001", "")
+	got := resolveFilenameFromResponse(resp, "tok001")
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix, got %q", got)
 	}
@@ -146,80 +145,40 @@ func TestResolveOutputFromResponse_ContentType(t *testing.T) {
 	}
 }
 
-func TestResolveOutputFromResponse_Fallback(t *testing.T) {
+func TestResolveFilenameFromResponse_Fallback(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}}
-	got := resolveOutputFilename(resp, "tok001", "")
+	got := resolveFilenameFromResponse(resp, "tok001")
 	if got != "tok001.media" {
 		t.Errorf("expected fallback %q, got %q", "tok001.media", got)
 	}
 }
 
-func TestResolveOutputFromResponse_InvalidContentDisposition(t *testing.T) {
+func TestResolveFilenameFromResponse_InvalidContentDisposition(t *testing.T) {
 	resp := &http.Response{
 		Header: http.Header{
 			"Content-Disposition": []string{"invalid;;;"},
 			"Content-Type":        []string{"audio/mpeg"},
 		},
 	}
-	got := resolveOutputFilename(resp, "tok001", "")
+	got := resolveFilenameFromResponse(resp, "tok001")
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix from Content-Type fallback, got %q", got)
 	}
 }
 
-func TestResolveOutputFromResponse_EmptyDispositionFilename(t *testing.T) {
+func TestResolveFilenameFromResponse_EmptyDispositionFilename(t *testing.T) {
 	resp := &http.Response{
 		Header: http.Header{
 			"Content-Disposition": []string{"attachment"},
 			"Content-Type":        []string{"video/mp4"},
 		},
 	}
-	got := resolveOutputFilename(resp, "tok001", "")
+	got := resolveFilenameFromResponse(resp, "tok001")
 	if got == "" {
 		t.Error("expected non-empty filename")
 	}
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix, got %q", got)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Unit tests: deduplicateFilename
-// ---------------------------------------------------------------------------
-
-func TestDeduplicateFilename_NoDuplicate(t *testing.T) {
-	var usedNames sync.Map
-	got := deduplicateFilename("会议纪要.mp4", "tok001", &usedNames)
-	if got != "会议纪要.mp4" {
-		t.Errorf("expected original name, got %q", got)
-	}
-}
-
-func TestDeduplicateFilename_Duplicate(t *testing.T) {
-	var usedNames sync.Map
-	first := deduplicateFilename("会议纪要.mp4", "tok001abc", &usedNames)
-	second := deduplicateFilename("会议纪要.mp4", "tok002xyz", &usedNames)
-	if first != "会议纪要.mp4" {
-		t.Errorf("first should be original, got %q", first)
-	}
-	if second == first {
-		t.Errorf("second should differ from first, both got %q", first)
-	}
-	// 第二个应该包含 token 前缀作为区分
-	if !strings.Contains(second, "tok002") {
-		t.Errorf("deduplicated name should contain token prefix, got %q", second)
-	}
-	if !strings.HasSuffix(second, ".mp4") {
-		t.Errorf("deduplicated name should keep extension, got %q", second)
-	}
-}
-
-func TestDeduplicateFilename_NoExtension(t *testing.T) {
-	var usedNames sync.Map
-	deduplicateFilename("recording", "tok001", &usedNames)
-	got := deduplicateFilename("recording", "tok002abc", &usedNames)
-	if !strings.Contains(got, "tok002") {
-		t.Errorf("expected token suffix, got %q", got)
 	}
 }
 
@@ -402,7 +361,7 @@ func TestDownload_Batch_Download(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// 验证输出结构
+	// verify output structure
 	var result struct {
 		Data struct {
 			Downloads []struct {
@@ -438,7 +397,7 @@ func TestDownload_Batch_PartialFailure(t *testing.T) {
 	err := mountAndRun(t, MinutesDownload, []string{
 		"+download", "--minute-tokens", "tok001,tok002", "--as", "bot",
 	}, f, stdout)
-	// partial failure 不报错
+	// partial failure should not cause an overall error
 	if err != nil {
 		t.Fatalf("partial failure should not return error, got: %v", err)
 	}
@@ -450,7 +409,7 @@ func TestDownload_Batch_PartialFailure(t *testing.T) {
 
 func TestDownload_Batch_DuplicateToken(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-	// 只注册一次 media stub — 去重后只调用一次 API
+	// register media stub only once — dedup means only one API call
 	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
 
 	err := mountAndRun(t, MinutesDownload, []string{
