@@ -319,6 +319,23 @@ func TestHandleResponse_200TextPlain_SavesFile(t *testing.T) {
 	}
 }
 
+func TestHandleResponse_BinaryWithJq_RejectsNonJSON(t *testing.T) {
+	resp := newApiResp([]byte("PNG DATA"), map[string]string{"Content-Type": "image/png"})
+
+	var out, errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{
+		JqExpr: ".data",
+		Out:    &out,
+		ErrOut: &errOut,
+	})
+	if err == nil {
+		t.Fatal("expected error when --jq is used with non-JSON response")
+	}
+	if !strings.Contains(err.Error(), "--jq requires a JSON response") {
+		t.Errorf("expected '--jq requires a JSON response' error, got: %v", err)
+	}
+}
+
 func TestHandleResponse_403JSON_CheckLarkResponse(t *testing.T) {
 	body := []byte(`{"code":99991400,"msg":"invalid token"}`)
 	resp := newApiRespWithStatus(403, body, map[string]string{"Content-Type": "application/json"})

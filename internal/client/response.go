@@ -71,6 +71,9 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	}
 
 	// Non-JSON (binary) responses.
+	if opts.JqExpr != "" {
+		return output.ErrValidation("--jq requires a JSON response (got Content-Type: %s)", ct)
+	}
 	if opts.OutputPath != "" {
 		return saveAndPrint(resp, opts.OutputPath, opts.Out)
 	}

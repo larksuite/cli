@@ -34,6 +34,7 @@ type RuntimeContext struct {
 	Cmd        *cobra.Command
 	Format     string
 	JqExpr     string            // --jq expression; empty = no filter
+	outputErr  error             // deferred error from Out()/OutFormat() jq filtering
 	botOnly    bool              // set by framework for bot-only shortcuts
 	resolvedAs core.Identity     // effective identity resolved by framework
 	Factory    *cmdutil.Factory  // injected by framework
@@ -423,6 +424,9 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	if ctx.JqExpr != "" {
 		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
+			if ctx.outputErr == nil {
+				ctx.outputErr = err
+			}
 		}
 		return
 	}
@@ -577,7 +581,10 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		}
 	}
 
-	return s.Execute(rctx.ctx, rctx)
+	if err := s.Execute(rctx.ctx, rctx); err != nil {
+		return err
+	}
+	return rctx.outputErr
 }
 
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {

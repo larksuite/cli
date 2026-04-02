@@ -169,6 +169,26 @@ func TestRunShortcut_JqInvalidExpression(t *testing.T) {
 	}
 }
 
+func TestRunShortcut_JqRuntimeError_PropagatesError(t *testing.T) {
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		Execute: func(ctx context.Context, rctx *RuntimeContext) error {
+			rctx.Out(map[string]interface{}{"foo": "bar"}, nil)
+			return nil
+		},
+	}
+	cmd := newTestShortcutCmd(s)
+	cmd.Flags().Set("jq", ".foo | invalid_func_xyz")
+	cmd.Flags().Set("as", "bot")
+
+	err := runShortcut(cmd, newTestFactory(), s, true)
+	if err == nil {
+		t.Fatal("expected error from jq runtime failure to propagate")
+	}
+}
+
 func TestRuntimeContext_Out_WithoutJq_NormalOutput(t *testing.T) {
 	rctx, stdout, _ := newJqTestContext("", "")
 
