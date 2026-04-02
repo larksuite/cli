@@ -260,6 +260,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 
 // helpers
 
+// minInt returns the smaller of a or b.
 func minInt(a, b int) int {
 	if a < b {
 		return a
@@ -267,6 +268,7 @@ func minInt(a, b int) int {
 	return b
 }
 
+// getStr retrieves a string value from a map, returning an empty string if not found or not a string.
 func getStr(m map[string]interface{}, key string) string {
 	if v, ok := m[key]; ok {
 		if s, ok := v.(string); ok {
@@ -276,6 +278,7 @@ func getStr(m map[string]interface{}, key string) string {
 	return ""
 }
 
+// getInt retrieves an integer value from a map, returning a fallback value if not found or not a number.
 func getInt(m map[string]interface{}, key string, fallback int) int {
 	if v, ok := m[key]; ok {
 		switch n := v.(type) {

@@ -19,6 +19,7 @@ type SecurityPolicyTransport struct {
 	Base http.RoundTripper
 }
 
+// base returns the underlying RoundTripper or http.DefaultTransport if nil.
 func (t *SecurityPolicyTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
@@ -82,6 +83,7 @@ func (t *SecurityPolicyTransport) RoundTrip(req *http.Request) (*http.Response, 
 	return resp, nil
 }
 
+// tryHandleMCPResponse attempts to parse a JSON-RPC (MCP) formatted error response.
 func (t *SecurityPolicyTransport) tryHandleMCPResponse(result map[string]interface{}) error {
 	// MCP (JSON-RPC) response format:
 	// {
@@ -130,6 +132,7 @@ func (t *SecurityPolicyTransport) tryHandleMCPResponse(result map[string]interfa
 	return nil
 }
 
+// tryHandleOAPIResponse attempts to parse a standard Lark OpenAPI formatted error response.
 func (t *SecurityPolicyTransport) tryHandleOAPIResponse(result map[string]interface{}) error {
 	// 1. Extract code
 	code := getInt(result, "code", 0)
@@ -180,6 +183,7 @@ func (t *SecurityPolicyTransport) tryHandleOAPIResponse(result map[string]interf
 	return nil
 }
 
+// isValidChallengeURL checks if the given URL is a valid challenge URL.
 func isValidChallengeURL(rawURL string) bool {
 	if rawURL == "" {
 		return false

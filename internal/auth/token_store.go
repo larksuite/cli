@@ -25,6 +25,7 @@ type StoredUAToken struct {
 
 const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
 
+// accountKey generates a unique key for an account based on its AppID and UserOpenID.
 func accountKey(appId, userOpenId string) string {
 	return fmt.Sprintf("%s:%s", appId, userOpenId)
 }
