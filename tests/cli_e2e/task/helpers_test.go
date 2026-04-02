@@ -29,11 +29,11 @@ func createTask(t *testing.T, parentT *testing.T, ctx context.Context, req clie2
 			Params: map[string]any{"task_guid": taskGUID},
 		})
 		if deleteErr != nil {
-			t.Errorf("delete task %s: %v", taskGUID, deleteErr)
+			parentT.Errorf("delete task %s: %v", taskGUID, deleteErr)
 			return
 		}
 		if deleteResult.ExitCode != 0 {
-			t.Errorf("delete task %s failed: exit=%d stdout=%s stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
+			parentT.Errorf("delete task %s failed: exit=%d stdout=%s stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
 		}
 	})
 
@@ -57,11 +57,11 @@ func createTasklist(t *testing.T, parentT *testing.T, ctx context.Context, req c
 			Params: map[string]any{"tasklist_guid": tasklistGUID},
 		})
 		if deleteErr != nil {
-			t.Errorf("delete tasklist %s: %v", tasklistGUID, deleteErr)
+			parentT.Errorf("delete tasklist %s: %v", tasklistGUID, deleteErr)
 			return
 		}
 		if deleteResult.ExitCode != 0 {
-			t.Errorf("delete tasklist %s failed: exit=%d stdout=%s stderr=%s", tasklistGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
+			parentT.Errorf("delete tasklist %s failed: exit=%d stdout=%s stderr=%s", tasklistGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
 		}
 	})
 

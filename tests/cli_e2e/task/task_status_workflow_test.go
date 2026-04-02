@@ -23,7 +23,7 @@ func TestTask_StatusWorkflow(t *testing.T) {
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
 		Args: []string{"task", "+create"},
 		Data: map[string]any{
-			"summary":     "codex-cli-e2e-status-" + suffix,
+			"summary":     "lark-cli-e2e-summary-" + suffix,
 			"description": "created by tests/cli_e2e/task status workflow",
 		},
 	})

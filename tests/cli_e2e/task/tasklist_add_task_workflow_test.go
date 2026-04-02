@@ -20,8 +20,8 @@ func TestTask_TasklistAddTaskWorkflow(t *testing.T) {
 	t.Cleanup(cancel)
 
 	suffix := time.Now().UTC().Format("20060102-150405")
-	tasklistName := "codex-cli-e2e-tasklist-add-" + suffix
-	taskSummary := "codex-cli-e2e-tasklist-add-task-" + suffix
+	tasklistName := "lark-cli-e2e-tasklist-add-" + suffix
+	taskSummary := "lark-cli-e2e-tasklist-add-task-" + suffix
 
 	tasklistGUID := createTasklist(t, parentT, ctx, clie2e.Request{
 		Args: []string{"task", "+tasklist-create", "--name", tasklistName},

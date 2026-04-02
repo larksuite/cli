@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "**.go"
+      - "!tests/cli_e2e/**"
       - go.mod
       - go.sum
       - .github/workflows/coverage.yml
@@ -12,6 +13,7 @@ on:
     branches: [main]
     paths:
       - "**.go"
+      - "!tests/cli_e2e/**"
       - go.mod
       - go.sum
       - .github/workflows/coverage.yml
@@ -37,7 +39,9 @@ jobs:
         run: python3 scripts/fetch_meta.py
 
       - name: Run tests with coverage
-        run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+        run: |
+          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '^github.com/larksuite/cli/tests/cli_e2e/')
+          go test -race -coverprofile=coverage.txt -covermode=atomic $packages
 
       - name: Generate coverage report
         run: |

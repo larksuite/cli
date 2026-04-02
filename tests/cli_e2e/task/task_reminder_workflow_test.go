@@ -23,7 +23,7 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
 		Args: []string{"task", "+create"},
 		Data: map[string]any{
-			"summary":     "codex-cli-e2e-reminder-" + suffix,
+			"summary":     "lark-cli-e2e-reminder-" + suffix,
 			"description": "created by tests/cli_e2e/task reminder workflow",
 			"due": map[string]any{
 				"timestamp":  time.Now().Add(48 * time.Hour).UnixMilli(),

@@ -20,11 +20,11 @@ func TestTask_CommentWorkflow(t *testing.T) {
 	t.Cleanup(cancel)
 
 	suffix := time.Now().UTC().Format("20060102-150405")
-	commentContent := "codex-cli-e2e-comment-" + suffix
+	commentContent := "lark-cli-e2e-comment-" + suffix
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
 		Args: []string{"task", "+create"},
 		Data: map[string]any{
-			"summary":     "codex-cli-e2e-comment-task-" + suffix,
+			"summary":     "lark-cli-e2e-comment-task-" + suffix,
 			"description": "created by tests/cli_e2e/task comment workflow",
 		},
 	})

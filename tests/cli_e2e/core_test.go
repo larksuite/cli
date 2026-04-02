@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -196,6 +197,24 @@ func TestRunCmd(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 	})
+
+	t.Run("default-as init respects context cancellation", func(t *testing.T) {
+		resetDefaultAsInitForTest()
+		fake := newFakeCLI(t, "auto")
+		t.Setenv("FAKE_DEFAULT_AS_SLEEP", "1")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		result, err := RunCmd(ctx, Request{
+			BinaryPath: fake.BinaryPath,
+			Args:       []string{"emit-default-as"},
+		})
+		require.NoError(t, err)
+		assert.Error(t, result.RunErr)
+		assert.ErrorIs(t, result.RunErr, context.DeadlineExceeded)
+		assert.Equal(t, 0, fake.ReadSetCount(t))
+	})
 }
 
 type fakeCLI struct {
@@ -228,6 +247,9 @@ if [ "$1" = "config" ] && [ "$2" = "default-as" ]; then
     exit 0
   fi
   if [ "$#" -eq 3 ]; then
+    if [ -n "$FAKE_DEFAULT_AS_SLEEP" ]; then
+      sleep "$FAKE_DEFAULT_AS_SLEEP"
+    fi
     count=$(tr -d '\r\n' < "$count_file")
     count=$((count + 1))
     echo "$count" > "$count_file"

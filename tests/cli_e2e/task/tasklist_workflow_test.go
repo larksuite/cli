@@ -20,8 +20,8 @@ func TestTask_TasklistWorkflow(t *testing.T) {
 	t.Cleanup(cancel)
 
 	suffix := time.Now().UTC().Format("20060102-150405")
-	tasklistName := "codex-cli-e2e-tasklist-" + suffix
-	taskSummary := "codex-cli-e2e-task-in-tasklist-" + suffix
+	tasklistName := "lark-cli-e2e-tasklist-" + suffix
+	taskSummary := "lark-cli-e2e-task-in-tasklist-" + suffix
 	taskDescription := "created by tests/cli_e2e/task"
 
 	var tasklistGUID string
@@ -52,11 +52,11 @@ func TestTask_TasklistWorkflow(t *testing.T) {
 				Params: map[string]any{"task_guid": taskGUID},
 			})
 			if deleteErr != nil {
-				t.Errorf("delete task %s: %v", taskGUID, deleteErr)
+				parentT.Errorf("delete task %s: %v", taskGUID, deleteErr)
 				return
 			}
 			if deleteResult.ExitCode != 0 {
-				t.Errorf("delete task %s failed: exit=%d stdout=%s stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
+				parentT.Errorf("delete task %s failed: exit=%d stdout=%s stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
 			}
 		})
 
@@ -66,11 +66,11 @@ func TestTask_TasklistWorkflow(t *testing.T) {
 				Params: map[string]any{"tasklist_guid": tasklistGUID},
 			})
 			if deleteErr != nil {
-				t.Errorf("delete tasklist %s: %v", tasklistGUID, deleteErr)
+				parentT.Errorf("delete tasklist %s: %v", tasklistGUID, deleteErr)
 				return
 			}
 			if deleteResult.ExitCode != 0 {
-				t.Errorf("delete tasklist %s failed: exit=%d stdout=%s stderr=%s", tasklistGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
+				parentT.Errorf("delete tasklist %s failed: exit=%d stdout=%s stderr=%s", tasklistGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
 			}
 		})
 	})

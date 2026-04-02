@@ -20,8 +20,8 @@ func TestDemo_TaskLifecycle(t *testing.T) {
 	t.Cleanup(cancel)
 
 	suffix := time.Now().UTC().Format("20060102-150405")
-	createdSummary := "codex-cli-e2e-create-" + suffix
-	updatedSummary := "codex-cli-e2e-update-" + suffix
+	createdSummary := "lark-cli-e2e-create-" + suffix
+	updatedSummary := "lark-cli-e2e-update-" + suffix
 	createdDescription := "created by tests/cli_e2e/demo"
 	updatedDescription := "updated by tests/cli_e2e/demo"
 
@@ -47,11 +47,11 @@ func TestDemo_TaskLifecycle(t *testing.T) {
 				Params: map[string]any{"task_guid": taskGUID},
 			})
 			if deleteErr != nil {
-				t.Errorf("delete task %s: %v", taskGUID, deleteErr)
+				parentT.Errorf("delete task %s: %v", taskGUID, deleteErr)
 				return
 			}
 			if deleteResult.ExitCode != 0 {
-				t.Errorf("delete task %s failed: exit=%d stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stderr)
+				parentT.Errorf("delete task %s failed: exit=%d stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stderr)
 			}
 		})
 	})

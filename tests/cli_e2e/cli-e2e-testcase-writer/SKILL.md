@@ -201,6 +201,7 @@ Then assert the business fields with `gjson`.
 
 - Do not modify `tests/cli_e2e/core.go` just because one testcase wants a convenience wrapper.
 - Do not write a testcase that depends on preexisting remote data.
+- Do not put agent, model, or vendor brand names into task summaries, comments, tasklist names, fixture IDs, or other visible remote test data; use neutral prefixes such as `lark-cli-e2e-` or `<domain>-e2e-`.
 - Do not attach cleanup to the create subtest if later subtests still need the resource.
 - Do not place new real coverage under `tests/cli_e2e/demo/`.
 - Do not dump all domain behaviors into one file or one testcase.

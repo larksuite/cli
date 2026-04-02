@@ -61,8 +61,11 @@ func RunCmd(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 
+	// Best-effort initialization only. Failing to set default-as should not hide
+	// the actual command-under-test result, because some environments may still
+	// run the target CLI flow successfully without this convenience setup.
 	defaultAsInitOnce.Do(func() {
-		_ = setDefaultAs(binaryPath, defaultIdentity)
+		_ = setDefaultAs(ctx, binaryPath, defaultIdentity)
 	})
 
 	args, err := BuildArgs(req)
@@ -183,8 +186,8 @@ func findProjectRootDir() (string, error) {
 	return "", fmt.Errorf("project root not found from cwd using marker %q", projectRootMarkerDir)
 }
 
-func setDefaultAs(binaryPath string, identity string) error {
-	cmd := exec.Command(binaryPath, "config", "default-as", identity)
+func setDefaultAs(ctx context.Context, binaryPath string, identity string) error {
+	cmd := exec.CommandContext(ctx, binaryPath, "config", "default-as", identity)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -235,6 +238,9 @@ func (r *Result) AssertExitCode(t *testing.T, code int) {
 }
 
 // AssertStdoutStatus asserts stdout JSON status using either {"ok": ...} or {"code": ...}.
+// This intentionally keeps one shared assertion entrypoint for CLI E2E call sites,
+// so tests can stay uniform across shortcut-style {"ok": ...} responses and
+// service-style {"code": ...} responses without branching on response shape.
 func (r *Result) AssertStdoutStatus(t *testing.T, expected any) {
 	t.Helper()
 	if okResult := gjson.Get(r.Stdout, "ok"); okResult.Exists() {
