@@ -34,8 +34,12 @@ func getDomainMetadata(lang string) []domainMeta {
 	seen := make(map[string]bool)
 	var domains []domainMeta
 
-	// 1. Domains from from_meta projects
+	// 1. Domains from from_meta projects (skip domains with auth_domain)
 	for _, project := range registry.ListFromMetaProjects() {
+		if registry.HasAuthDomain(project) {
+			seen[project] = true
+			continue
+		}
 		dm := buildDomainMeta(project, lang)
 		domains = append(domains, dm)
 		seen[project] = true
@@ -52,13 +56,14 @@ func getDomainMetadata(lang string) []domainMeta {
 	}
 
 	// 3. Auto-discover remaining shortcut services that are listed as shortcut-only domains
+	//    (skip domains with auth_domain — they are folded into their parent)
 	shortcutOnlySet := make(map[string]bool)
 	for _, n := range shortcutOnlyNames {
 		shortcutOnlySet[n] = true
 	}
 	for _, sc := range shortcuts.AllShortcuts() {
 		if !seen[sc.Service] {
-			if shortcutOnlySet[sc.Service] {
+			if shortcutOnlySet[sc.Service] && !registry.HasAuthDomain(sc.Service) {
 				dm := buildDomainMeta(sc.Service, lang)
 				domains = append(domains, dm)
 			}

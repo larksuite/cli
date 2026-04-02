@@ -404,6 +404,8 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 
 // collectScopesForDomains collects API scopes (from from_meta projects) and
 // shortcut scopes for the given domain names.
+// Domains with auth_domain children are automatically expanded to include
+// their children's scopes.
 func collectScopesForDomains(domains []string, identity string) []string {
 	scopeSet := make(map[string]bool)
 
@@ -412,11 +414,16 @@ func collectScopesForDomains(domains []string, identity string) []string {
 		scopeSet[s] = true
 	}
 
-	// 2. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
+	// 2. Expand domains: include auth_domain children
 	domainSet := make(map[string]bool, len(domains))
 	for _, d := range domains {
 		domainSet[d] = true
+		for _, child := range registry.GetAuthChildren(d) {
+			domainSet[child] = true
+		}
 	}
+
+	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
 	for _, sc := range shortcuts.AllShortcuts() {
 		if domainSet[sc.Service] && shortcutSupportsIdentity(sc, identity) {
 			for _, s := range sc.ScopesForIdentity(identity) {
@@ -425,7 +432,7 @@ func collectScopesForDomains(domains []string, identity string) []string {
 		}
 	}
 
-	// 3. Deduplicate and sort
+	// 4. Deduplicate and sort
 	result := make([]string, 0, len(scopeSet))
 	for s := range scopeSet {
 		result = append(result, s)
@@ -434,14 +441,20 @@ func collectScopesForDomains(domains []string, identity string) []string {
 	return result
 }
 
-// allKnownDomains returns all valid domain names (from_meta projects + shortcut services).
+// allKnownDomains returns all valid auth domain names (from_meta projects +
+// shortcut services), excluding domains that have auth_domain set (they are
+// folded into their parent domain).
 func allKnownDomains() map[string]bool {
 	domains := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
-		domains[p] = true
+		if !registry.HasAuthDomain(p) {
+			domains[p] = true
+		}
 	}
 	for _, sc := range shortcuts.AllShortcuts() {
-		domains[sc.Service] = true
+		if !registry.HasAuthDomain(sc.Service) {
+			domains[sc.Service] = true
+		}
 	}
 	return domains
 }
