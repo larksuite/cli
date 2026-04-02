@@ -87,6 +87,14 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 
 	parsedBrand := core.ParseBrand(brand)
 
+	// Capture current profile before appending (avoid setting PreviousApp to self)
+	var previousName string
+	if useAfter {
+		if currentApp := multi.CurrentAppConfig(""); currentApp != nil {
+			previousName = currentApp.ProfileName()
+		}
+	}
+
 	// Append profile
 	multi.Apps = append(multi.Apps, core.AppConfig{
 		Name:      name,
@@ -98,9 +106,8 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	})
 
 	if useAfter {
-		currentApp := multi.CurrentAppConfig("")
-		if currentApp != nil {
-			multi.PreviousApp = currentApp.ProfileName()
+		if previousName != "" {
+			multi.PreviousApp = previousName
 		}
 		multi.CurrentApp = name
 	}

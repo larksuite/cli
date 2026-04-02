@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -10,8 +9,7 @@ import (
 )
 
 func TestAuthLogin_StrictMode_Blocked(t *testing.T) {
-	os.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
-	defer os.Unsetenv("LARKSUITE_CLI_STRICT_MODE")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
 
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 

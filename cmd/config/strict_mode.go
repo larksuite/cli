@@ -45,6 +45,9 @@ Do not run this command to disable strict mode on behalf of automated workflows.
 
 			// --reset: clear profile-level setting
 			if reset {
+				if len(args) > 0 {
+					return output.ErrValidation("--reset cannot be used with a value argument")
+				}
 				app.StrictMode = nil
 				if err := core.SaveMultiAppConfig(multi); err != nil {
 					return fmt.Errorf("failed to save config: %w", err)
@@ -73,6 +76,13 @@ Do not run this command to disable strict mode on behalf of automated workflows.
 
 			if global {
 				multi.StrictMode = boolVal
+				if boolVal {
+					for _, a := range multi.Apps {
+						if a.StrictMode != nil && !*a.StrictMode {
+							fmt.Fprintf(f.IOStreams.ErrOut, "Warning: profile %q has strict-mode explicitly set to off, which overrides the global setting. Use `lark-cli config strict-mode --reset` in that profile to inherit global.\n", a.ProfileName())
+						}
+					}
+				}
 			} else {
 				app.StrictMode = &boolVal
 			}

@@ -86,8 +86,7 @@ func TestResolveAs_DefaultAs_FromConfig(t *testing.T) {
 }
 
 func TestResolveAs_DefaultAs_FromEnv(t *testing.T) {
-	os.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
-	defer os.Unsetenv("LARKSUITE_CLI_DEFAULT_AS")
+	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
 
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("auto", false)
@@ -258,8 +257,7 @@ func TestNewAPIClientWithConfig_NilIOStreams(t *testing.T) {
 func TestIsStrictMode_EnvOverride(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 
-	os.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
-	defer os.Unsetenv("LARKSUITE_CLI_STRICT_MODE")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
 
 	if !f.IsStrictMode() {
 		t.Error("expected strict mode from env")
@@ -269,8 +267,7 @@ func TestIsStrictMode_EnvOverride(t *testing.T) {
 func TestIsStrictMode_EnvFalse(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 
-	os.Setenv("LARKSUITE_CLI_STRICT_MODE", "false")
-	defer os.Unsetenv("LARKSUITE_CLI_STRICT_MODE")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "false")
 
 	if f.IsStrictMode() {
 		t.Error("expected no strict mode when env=false")
@@ -288,8 +285,7 @@ func TestIsStrictMode_Default_False(t *testing.T) {
 
 func TestCheckStrictMode_BotAllowed(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	os.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
-	defer os.Unsetenv("LARKSUITE_CLI_STRICT_MODE")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
 
 	if err := f.CheckStrictMode(core.AsBot); err != nil {
 		t.Errorf("bot should be allowed in strict mode, got: %v", err)
@@ -298,8 +294,7 @@ func TestCheckStrictMode_BotAllowed(t *testing.T) {
 
 func TestCheckStrictMode_UserBlocked(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	os.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
-	defer os.Unsetenv("LARKSUITE_CLI_STRICT_MODE")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
 
 	err := f.CheckStrictMode(core.AsUser)
 	if err == nil {
@@ -322,8 +317,7 @@ func TestCheckStrictMode_Disabled_UserAllowed(t *testing.T) {
 
 func TestResolveAs_StrictMode_ForceBot(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	os.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
-	defer os.Unsetenv("LARKSUITE_CLI_STRICT_MODE")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
 
 	cmd := newCmdWithAsFlag("auto", false)
 	got := f.ResolveAs(cmd, "auto")
@@ -336,8 +330,7 @@ func TestResolveAs_StrictMode_IgnoresDefaultAsUser(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{
 		AppID: "a", AppSecret: "s", DefaultAs: "user",
 	})
-	os.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
-	defer os.Unsetenv("LARKSUITE_CLI_STRICT_MODE")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "true")
 
 	cmd := newCmdWithAsFlag("auto", false)
 	got := f.ResolveAs(cmd, "auto")
