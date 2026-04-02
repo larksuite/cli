@@ -1,4 +1,8 @@
 {
+  "approval": {
+    "en": { "title": "Approval API", "description": "Approval instance, and task management" },
+    "zh": { "title": "审批 API", "description": "审批实例、审批任务管理" }
+  },
   "base": {
     "en": { "title": "Base", "description": "Table, field, record, view, dashboard, workflow, form, role & permission management" },
     "zh": { "title": "多维表格", "description": "数据表、字段、记录、视图、仪表盘、自动化流程、表单、角色权限管理" }
