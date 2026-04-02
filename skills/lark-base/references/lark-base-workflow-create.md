@@ -10,7 +10,7 @@
 # 内联 JSON（简单工作流）
 lark-cli base +workflow-create \
   --base-token BascXxxxxx \
-  --json '{"client_token":"1700000000","title":"新订单自动通知","steps":[{"id":"trigger_1","type":"AddRecordTrigger","title":"监控新订单","children":{"links":[]},"next":"action_1","data":{"table_name":"订单表","watched_field_name":"订单号"}},{"id":"action_1","type":"LarkMessageAction","title":"发送通知","children":{"links":[]},"next":null,"data":{"receiver":[{"value_type":"user","value":"ou_xxxx"}],"send_to_everyone":false,"title":[{"value_type":"text","value":"新订单提醒"}],"content":[{"value_type":"text","value":"收到新订单"}],"btn_list":[]}}]}'
+  --json '{"client_token":"1700000000","title":"新订单自动通知","steps":[{"id":"trigger_1","type":"AddRecordTrigger","title":"监控新订单","next":"action_1","data":{"table_name":"订单表","watched_field_name":"订单号"}},{"id":"action_1","type":"LarkMessageAction","title":"发送通知","next":null,"data":{"receiver":[{"value_type":"user","value":"ou_xxxx"}],"send_to_everyone":false,"title":[{"value_type":"text","value":"新订单提醒"}],"content":[{"value_type":"text","value":"收到新订单"}],"btn_list":[]}}]}'
 
 # 从文件读取（推荐用于复杂工作流）
 lark-cli base +workflow-create \
@@ -70,7 +70,6 @@ POST /open-apis/base/v3/bases/:base_token/workflows
       "id": "trigger_1",
       "type": "AddRecordTrigger",
       "title": "监控新订单",
-      "children": { "links": [] },
       "next": "action_1",
       "data": {
         "table_name": "订单表",
@@ -81,7 +80,6 @@ POST /open-apis/base/v3/bases/:base_token/workflows
       "id": "action_1",
       "type": "LarkMessageAction",
       "title": "发送通知",
-      "children": { "links": [] },
       "next": null,
       "data": {
         "receiver": [{ "value_type": "user", "value": "ou_xxxx" }],
