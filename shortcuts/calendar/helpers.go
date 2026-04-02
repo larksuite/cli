@@ -4,9 +4,12 @@
 package calendar
 
 import (
+	"strings"
 	"time"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -25,4 +28,25 @@ func resolveStartEnd(runtime *common.RuntimeContext) (string, string) {
 		endInput = startInput
 	}
 	return startInput, endInput
+}
+
+func hasExplicitBotFlag(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	flag := cmd.Flag("as")
+	return flag != nil && flag.Changed && flag.Value != nil && strings.TrimSpace(flag.Value.String()) == "bot"
+}
+
+func rejectCalendarAutoBotFallback(runtime *common.RuntimeContext) error {
+	if runtime == nil || !runtime.IsBot() || hasExplicitBotFlag(runtime.Cmd) {
+		return nil
+	}
+	if runtime.Factory == nil || !runtime.Factory.IdentityAutoDetected {
+		return nil
+	}
+
+	msg := "calendar commands require a valid user login by default; when no valid user login state is available, auto identity falls back to bot and may operate on the bot calendar instead of your own. Run `lark-cli auth login --domain calendar` for your calendar, or rerun with `--as bot` if bot identity is intentional."
+	hint := "restore user login: `lark-cli auth login --domain calendar`\nintentional bot usage: rerun with `--as bot`"
+	return output.ErrWithHint(output.ExitAuth, "calendar_user_login_required", msg, hint)
 }
