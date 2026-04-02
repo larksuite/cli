@@ -147,7 +147,7 @@ lark-cli auth status
 | `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters)                                                     |
 | `lark-openapi-explorer`         | Explore underlying APIs from official docs                                                                     |
 | `lark-skill-maker`              | Custom skill creation framework                                                                                |
-| `lark-approval`                 | query Approval tasks, approve/reject/transfer tasks, cancel and CC instances                                   |
+| `lark-approval`                 | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                   |
 | `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                                                      |
 | `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                                                |
 
