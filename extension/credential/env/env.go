@@ -31,7 +31,29 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	if brand == "" {
 		brand = "lark"
 	}
-	return &credential.Account{AppID: appID, AppSecret: appSecret, Brand: brand}, nil
+	acct := &credential.Account{AppID: appID, AppSecret: appSecret, Brand: brand}
+
+	// Explicit strict mode policy takes priority
+	switch os.Getenv("LARKSUITE_CLI_STRICT_MODE") {
+	case "bot":
+		acct.SupportedIdentities = credential.SupportsBot
+	case "user":
+		acct.SupportedIdentities = credential.SupportsUser
+	case "off":
+		acct.SupportedIdentities = credential.SupportsAll
+	default:
+		// Infer from available tokens
+		hasUAT := os.Getenv("LARK_USER_ACCESS_TOKEN") != ""
+		hasTAT := os.Getenv("LARK_TENANT_ACCESS_TOKEN") != ""
+		if hasUAT {
+			acct.SupportedIdentities |= credential.SupportsUser
+		}
+		if hasTAT {
+			acct.SupportedIdentities |= credential.SupportsBot
+		}
+	}
+
+	return acct, nil
 }
 
 func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.Token, error) {

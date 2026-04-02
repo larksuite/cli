@@ -10,6 +10,12 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 )
 
+type noopKC struct{}
+
+func (n *noopKC) Get(service, account string) (string, error) { return "", nil }
+func (n *noopKC) Set(service, account, value string) error    { return nil }
+func (n *noopKC) Remove(service, account string) error        { return nil }
+
 func TestFullChain_EnvWins(t *testing.T) {
 	t.Setenv("LARK_APP_ID", "env_app")
 	t.Setenv("LARK_APP_SECRET", "env_secret")
@@ -67,4 +73,40 @@ type mockDefaultTokenProvider struct {
 
 func (m *mockDefaultTokenProvider) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.TokenResult, error) {
 	return &credential.TokenResult{Token: m.token, Scopes: m.scopes}, nil
+}
+
+func TestFullChain_ConfigStrictMode(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "")
+	t.Setenv("LARK_APP_SECRET", "")
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	botMode := core.StrictModeBot
+	multi := &core.MultiAppConfig{
+		Apps: []core.AppConfig{{
+			AppId:      "cfg_app",
+			AppSecret:  core.PlainSecret("cfg_secret"),
+			Brand:      core.BrandLark,
+			StrictMode: &botMode,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatal(err)
+	}
+
+	ep := &envprovider.Provider{}
+	defaultAcct := credential.NewDefaultAccountProvider(&noopKC{}, func() string { return "" })
+
+	cp := credential.NewCredentialProvider(
+		[]extcred.Provider{ep},
+		defaultAcct, nil, nil,
+	)
+
+	acct, err := cp.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acct.SupportedIdentities != uint8(extcred.SupportsBot) {
+		t.Errorf("expected SupportsBot (%d), got %d", extcred.SupportsBot, acct.SupportedIdentities)
+	}
 }

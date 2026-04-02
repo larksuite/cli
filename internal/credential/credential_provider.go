@@ -124,11 +124,12 @@ func (p *CredentialProvider) ResolveToken(ctx context.Context, req TokenSpec) (*
 
 func convertAccount(ext *extcred.Account) *Account {
 	return &Account{
-		AppID:       ext.AppID,
-		AppSecret:   ext.AppSecret,
-		Brand:       core.LarkBrand(ext.Brand),
-		DefaultAs:   ext.DefaultAs,
-		ProfileName: ext.ProfileName,
-		UserOpenId:  ext.OpenID, // fallback if no UAT to query API
+		AppID:               ext.AppID,
+		AppSecret:           ext.AppSecret,
+		Brand:               core.LarkBrand(ext.Brand),
+		DefaultAs:           ext.DefaultAs,
+		ProfileName:         ext.ProfileName,
+		UserOpenId:          ext.OpenID,
+		SupportedIdentities: uint8(ext.SupportedIdentities),
 	}
 }

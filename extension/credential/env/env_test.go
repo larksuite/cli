@@ -90,3 +90,83 @@ func TestResolveToken_NotSet(t *testing.T) {
 		t.Errorf("expected nil, nil; got %+v, %v", tok, err)
 	}
 }
+
+func TestResolveAccount_StrictModeBot(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "app")
+	t.Setenv("LARK_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "bot")
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil { t.Fatal(err) }
+	if !acct.SupportedIdentities.BotOnly() {
+		t.Errorf("expected bot-only, got %d", acct.SupportedIdentities)
+	}
+}
+
+func TestResolveAccount_StrictModeUser(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "app")
+	t.Setenv("LARK_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "user")
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil { t.Fatal(err) }
+	if !acct.SupportedIdentities.UserOnly() {
+		t.Errorf("expected user-only, got %d", acct.SupportedIdentities)
+	}
+}
+
+func TestResolveAccount_StrictModeOff(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "app")
+	t.Setenv("LARK_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "off")
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil { t.Fatal(err) }
+	if acct.SupportedIdentities != credential.SupportsAll {
+		t.Errorf("expected SupportsAll, got %d", acct.SupportedIdentities)
+	}
+}
+
+func TestResolveAccount_InferFromUATOnly(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "app")
+	t.Setenv("LARK_APP_SECRET", "secret")
+	t.Setenv("LARK_USER_ACCESS_TOKEN", "u-tok")
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil { t.Fatal(err) }
+	if !acct.SupportedIdentities.UserOnly() {
+		t.Errorf("expected user-only from UAT inference, got %d", acct.SupportedIdentities)
+	}
+}
+
+func TestResolveAccount_InferFromTATOnly(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "app")
+	t.Setenv("LARK_APP_SECRET", "secret")
+	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "t-tok")
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil { t.Fatal(err) }
+	if !acct.SupportedIdentities.BotOnly() {
+		t.Errorf("expected bot-only from TAT inference, got %d", acct.SupportedIdentities)
+	}
+}
+
+func TestResolveAccount_InferBothTokens(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "app")
+	t.Setenv("LARK_APP_SECRET", "secret")
+	t.Setenv("LARK_USER_ACCESS_TOKEN", "u-tok")
+	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "t-tok")
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil { t.Fatal(err) }
+	if acct.SupportedIdentities != credential.SupportsAll {
+		t.Errorf("expected SupportsAll, got %d", acct.SupportedIdentities)
+	}
+}
+
+func TestResolveAccount_StrictModeOverridesTokenInference(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "app")
+	t.Setenv("LARK_APP_SECRET", "secret")
+	t.Setenv("LARK_USER_ACCESS_TOKEN", "u-tok")
+	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "t-tok")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "bot")
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil { t.Fatal(err) }
+	if !acct.SupportedIdentities.BotOnly() {
+		t.Errorf("strict mode should override token inference, got %d", acct.SupportedIdentities)
+	}
+}

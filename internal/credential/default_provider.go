@@ -15,6 +15,8 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
+
+	extcred "github.com/larksuite/cli/extension/credential"
 )
 
 // DefaultAccountProvider resolves account from config.json via keychain.
@@ -28,7 +30,36 @@ func NewDefaultAccountProvider(kc keychain.KeychainAccess, profile func() string
 }
 
 func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, error) {
-	return core.RequireConfigForProfile(p.keychain, p.profile())
+	cfg, err := core.RequireConfigForProfile(p.keychain, p.profile())
+	if err != nil {
+		return nil, err
+	}
+	cfg.SupportedIdentities = configStrictModeToIdentitySupport(p.profile())
+	return cfg, nil
+}
+
+// configStrictModeToIdentitySupport reads strictMode from config file
+// and maps it to the SupportedIdentities bitflag.
+func configStrictModeToIdentitySupport(profileOverride string) uint8 {
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		return 0
+	}
+	app := multi.CurrentAppConfig(profileOverride)
+	var mode core.StrictMode
+	if app != nil && app.StrictMode != nil {
+		mode = *app.StrictMode
+	} else {
+		mode = multi.StrictMode
+	}
+	switch mode {
+	case core.StrictModeBot:
+		return uint8(extcred.SupportsBot)
+	case core.StrictModeUser:
+		return uint8(extcred.SupportsUser)
+	default:
+		return 0
+	}
 }
 
 // DefaultTokenProvider resolves UAT/TAT using keychain + direct HTTP calls.
