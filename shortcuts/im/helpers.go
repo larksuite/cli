@@ -195,7 +195,7 @@ func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawUR
 // and the file extension inferred from the URL. The caller must close the
 // returned ReadCloser. No temp file is created and the content is not buffered.
 func downloadURLToReader(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64) (io.ReadCloser, string, error) {
-	resp, ext, err := startURLDownload(ctx, runtime, rawURL)
+	resp, ext, err := startURLDownload(ctx, runtime, rawURL) //nolint:bodyclose // resp.Body is closed by the returned limitedReadCloser
 	if err != nil {
 		return nil, "", err
 	}
@@ -228,6 +228,26 @@ func (l *limitedReadCloser) Close() error {
 	return l.closer.Close()
 }
 
+// mediaKind distinguishes image uploads (image_key) from file uploads (file_key).
+type mediaKind int
+
+const (
+	mediaKindImage mediaKind = iota // upload via image API, returns image_key
+	mediaKindFile                   // upload via file API, returns file_key
+)
+
+// mediaSpec describes how to resolve and upload a single media input.
+type mediaSpec struct {
+	value        string    // raw input value (path, URL, or media key)
+	flagName     string    // CLI flag name for log messages, e.g. "--image"
+	mediaType    string    // human label for errors, e.g. "image"
+	msgType      string    // IM message type, e.g. "image", "file", "audio"
+	kind         mediaKind // image vs file upload
+	maxSize      int64     // download size limit
+	withDuration bool      // whether to parse audio/video duration
+	resultKey    string    // JSON key for the upload result, e.g. "image_key"
+}
+
 // resolveMediaContent resolves text/media flags to (msgType, contentJSON) for Execute.
 // For URL inputs, download failures fall back to sending the URL as a text link.
 func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, text, imageVal, fileVal, videoVal, videoCoverVal, audioVal string) (msgType, content string, err error) {
@@ -235,118 +255,112 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 		jsonBytes, _ := json.Marshal(map[string]string{"text": text})
 		return "text", string(jsonBytes), nil
 	}
+
+	// Video is special: it produces two keys (file_key + image_key for cover).
 	if videoVal != "" {
-		fKey := videoVal
-		if !isMediaKey(videoVal) {
-			if isURL(videoVal) {
-				fmt.Fprintf(runtime.IO().ErrOut, "downloading --video: %s\n", sanitizeURLForDisplay(videoVal))
-				mb, dlErr := newMediaBuffer(ctx, runtime, videoVal, maxFileUploadSize)
-				if dlErr != nil {
-					return mediaFallbackOrError(videoVal, "video", dlErr)
-				}
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading video: %s\n", mb.FileName())
-				fKey, err = uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), mb.Duration())
-			} else {
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading video: %s\n", filepath.Base(videoVal))
-				ft := detectIMFileType(videoVal)
-				fKey, err = uploadFileToIM(ctx, runtime, videoVal, ft, parseMediaDuration(videoVal, ft))
-			}
-			if err != nil {
-				return mediaFallbackOrError(videoVal, "video", err)
-			}
-		}
-		var coverKey string
-		if isMediaKey(videoCoverVal) {
-			coverKey = videoCoverVal
-		} else {
-			if isURL(videoCoverVal) {
-				fmt.Fprintf(runtime.IO().ErrOut, "downloading --video-cover: %s\n", sanitizeURLForDisplay(videoCoverVal))
-				rc, _, dlErr := downloadURLToReader(ctx, runtime, videoCoverVal, maxImageUploadSize)
-				if dlErr != nil {
-					return mediaFallbackOrError(videoCoverVal, "cover image", dlErr)
-				}
-				defer rc.Close()
-				coverKey, err = uploadImageFromReader(ctx, runtime, rc, "message")
-			} else {
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading cover image: %s\n", filepath.Base(videoCoverVal))
-				coverKey, err = uploadImageToIM(ctx, runtime, videoCoverVal, "message")
-			}
-			if err != nil {
-				return "", "", fmt.Errorf("cover image upload failed: %w", err)
-			}
-		}
-		jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey, "image_key": coverKey})
-		return "media", string(jsonBytes), nil
+		return resolveVideoContent(ctx, runtime, videoVal, videoCoverVal)
 	}
-	if imageVal != "" {
-		imageKey := imageVal
-		if !isMediaKey(imageVal) {
-			if isURL(imageVal) {
-				fmt.Fprintf(runtime.IO().ErrOut, "downloading --image: %s\n", sanitizeURLForDisplay(imageVal))
-				rc, _, dlErr := downloadURLToReader(ctx, runtime, imageVal, maxImageUploadSize)
-				if dlErr != nil {
-					return mediaFallbackOrError(imageVal, "image", dlErr)
-				}
-				defer rc.Close()
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading image\n")
-				imageKey, err = uploadImageFromReader(ctx, runtime, rc, "message")
-			} else {
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading image: %s\n", filepath.Base(imageVal))
-				imageKey, err = uploadImageToIM(ctx, runtime, imageVal, "message")
-			}
-			if err != nil {
-				return mediaFallbackOrError(imageVal, "image", err)
-			}
-		}
-		jsonBytes, _ := json.Marshal(map[string]string{"image_key": imageKey})
-		return "image", string(jsonBytes), nil
+
+	// All other media types follow a uniform pattern: single input → single key.
+	specs := []mediaSpec{
+		{value: imageVal, flagName: "--image", mediaType: "image", msgType: "image", kind: mediaKindImage, maxSize: maxImageUploadSize, resultKey: "image_key"},
+		{value: fileVal, flagName: "--file", mediaType: "file", msgType: "file", kind: mediaKindFile, maxSize: maxFileUploadSize, resultKey: "file_key"},
+		{value: audioVal, flagName: "--audio", mediaType: "audio", msgType: "audio", kind: mediaKindFile, maxSize: maxFileUploadSize, withDuration: true, resultKey: "file_key"},
 	}
-	if fileVal != "" {
-		fKey := fileVal
-		if !isMediaKey(fileVal) {
-			if isURL(fileVal) {
-				fmt.Fprintf(runtime.IO().ErrOut, "downloading --file: %s\n", sanitizeURLForDisplay(fileVal))
-				mb, dlErr := newMediaBuffer(ctx, runtime, fileVal, maxFileUploadSize)
-				if dlErr != nil {
-					return mediaFallbackOrError(fileVal, "file", dlErr)
-				}
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading file: %s\n", mb.FileName())
-				fKey, err = uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), "")
-			} else {
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading file: %s\n", filepath.Base(fileVal))
-				fKey, err = uploadFileToIM(ctx, runtime, fileVal, detectIMFileType(fileVal), "")
-			}
-			if err != nil {
-				return mediaFallbackOrError(fileVal, "file", err)
-			}
+
+	for _, s := range specs {
+		if s.value == "" {
+			continue
 		}
-		jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey})
-		return "file", string(jsonBytes), nil
-	}
-	if audioVal != "" {
-		fKey := audioVal
-		if !isMediaKey(audioVal) {
-			if isURL(audioVal) {
-				fmt.Fprintf(runtime.IO().ErrOut, "downloading --audio: %s\n", sanitizeURLForDisplay(audioVal))
-				mb, dlErr := newMediaBuffer(ctx, runtime, audioVal, maxFileUploadSize)
-				if dlErr != nil {
-					return mediaFallbackOrError(audioVal, "audio", dlErr)
-				}
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading audio: %s\n", mb.FileName())
-				fKey, err = uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), mb.Duration())
-			} else {
-				fmt.Fprintf(runtime.IO().ErrOut, "uploading audio: %s\n", filepath.Base(audioVal))
-				ft := detectIMFileType(audioVal)
-				fKey, err = uploadFileToIM(ctx, runtime, audioVal, ft, parseMediaDuration(audioVal, ft))
-			}
-			if err != nil {
-				return mediaFallbackOrError(audioVal, "audio", err)
-			}
+		key, resolveErr := resolveOneMedia(ctx, runtime, s)
+		if resolveErr != nil {
+			return mediaFallbackOrError(s.value, s.mediaType, resolveErr)
 		}
-		jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey})
-		return "audio", string(jsonBytes), nil
+		jsonBytes, _ := json.Marshal(map[string]string{s.resultKey: key})
+		return s.msgType, string(jsonBytes), nil
 	}
 	return "", "", nil
+}
+
+// resolveOneMedia uploads a single media input (image, file, or audio) and
+// returns the resulting key. It handles media keys, URLs, and local paths.
+func resolveOneMedia(ctx context.Context, runtime *common.RuntimeContext, s mediaSpec) (string, error) {
+	if isMediaKey(s.value) {
+		return s.value, nil
+	}
+
+	if isURL(s.value) {
+		return resolveURLMedia(ctx, runtime, s)
+	}
+	return resolveLocalMedia(ctx, runtime, s)
+}
+
+// resolveURLMedia downloads a URL and uploads it.
+func resolveURLMedia(ctx context.Context, runtime *common.RuntimeContext, s mediaSpec) (string, error) {
+	fmt.Fprintf(runtime.IO().ErrOut, "downloading %s: %s\n", s.flagName, sanitizeURLForDisplay(s.value))
+
+	if s.kind == mediaKindImage {
+		rc, _, err := downloadURLToReader(ctx, runtime, s.value, s.maxSize)
+		if err != nil {
+			return "", err
+		}
+		defer rc.Close()
+		fmt.Fprintf(runtime.IO().ErrOut, "uploading %s\n", s.mediaType)
+		return uploadImageFromReader(ctx, runtime, rc, "message")
+	}
+
+	// File-kind: buffer in memory for possible duration parsing.
+	mb, err := newMediaBuffer(ctx, runtime, s.value, s.maxSize)
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(runtime.IO().ErrOut, "uploading %s: %s\n", s.mediaType, mb.FileName())
+	dur := ""
+	if s.withDuration {
+		dur = mb.Duration()
+	}
+	return uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), dur)
+}
+
+// resolveLocalMedia uploads a local file.
+func resolveLocalMedia(ctx context.Context, runtime *common.RuntimeContext, s mediaSpec) (string, error) {
+	fmt.Fprintf(runtime.IO().ErrOut, "uploading %s: %s\n", s.mediaType, filepath.Base(s.value))
+
+	if s.kind == mediaKindImage {
+		return uploadImageToIM(ctx, runtime, s.value, "message")
+	}
+
+	ft := detectIMFileType(s.value)
+	dur := ""
+	if s.withDuration {
+		dur = parseMediaDuration(s.value, ft)
+	}
+	return uploadFileToIM(ctx, runtime, s.value, ft, dur)
+}
+
+// resolveVideoContent handles the video case which needs both a file_key and
+// a cover image_key.
+func resolveVideoContent(ctx context.Context, runtime *common.RuntimeContext, videoVal, videoCoverVal string) (string, string, error) {
+	videoSpec := mediaSpec{
+		value: videoVal, flagName: "--video", mediaType: "video",
+		kind: mediaKindFile, maxSize: maxFileUploadSize, withDuration: true, resultKey: "file_key",
+	}
+	fKey, err := resolveOneMedia(ctx, runtime, videoSpec)
+	if err != nil {
+		return mediaFallbackOrError(videoVal, "video", err)
+	}
+
+	coverSpec := mediaSpec{
+		value: videoCoverVal, flagName: "--video-cover", mediaType: "cover image",
+		kind: mediaKindImage, maxSize: maxImageUploadSize, resultKey: "image_key",
+	}
+	coverKey, err := resolveOneMedia(ctx, runtime, coverSpec)
+	if err != nil {
+		return "", "", fmt.Errorf("cover image upload failed: %w", err)
+	}
+
+	jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey, "image_key": coverKey})
+	return "media", string(jsonBytes), nil
 }
 
 // mediaFallbackOrError returns a text fallback for URL inputs when upload fails,
