@@ -13,12 +13,7 @@ import (
 func TestRejectPositionalArgs_WithArgs(t *testing.T) {
 	t.Parallel()
 
-	s := &Shortcut{
-		Flags: []Flag{
-			{Name: "query", Desc: "search keyword"},
-		},
-	}
-	validator := rejectPositionalArgs(s)
+	validator := rejectPositionalArgs()
 
 	err := validator(&cobra.Command{}, []string{"hello"})
 	if err == nil {
@@ -32,11 +27,27 @@ func TestRejectPositionalArgs_WithArgs(t *testing.T) {
 	}
 }
 
+func TestRejectPositionalArgs_MultipleArgs(t *testing.T) {
+	t.Parallel()
+
+	validator := rejectPositionalArgs()
+
+	err := validator(&cobra.Command{}, []string{"hello", "world"})
+	if err == nil {
+		t.Fatal("expected error for multiple positional args, got nil")
+	}
+	if !strings.Contains(err.Error(), "positional arguments are not supported") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+	if !strings.Contains(err.Error(), "hello") || !strings.Contains(err.Error(), "world") {
+		t.Errorf("expected all positional args in error, got: %v", err)
+	}
+}
+
 func TestRejectPositionalArgs_NoArgs(t *testing.T) {
 	t.Parallel()
 
-	s := &Shortcut{}
-	validator := rejectPositionalArgs(s)
+	validator := rejectPositionalArgs()
 
 	if err := validator(&cobra.Command{}, nil); err != nil {
 		t.Fatalf("expected no error for nil args, got: %v", err)
