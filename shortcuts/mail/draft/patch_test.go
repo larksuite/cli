@@ -583,6 +583,73 @@ hello
 // Header injection rejection tests (CID / fileName CR/LF)
 // ---------------------------------------------------------------------------
 
+func TestAddInlineRejectsInvalidCharactersInCID(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	snapshot := mustParseFixtureDraft(t, `Subject: Test
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<div>hello</div>
+`)
+	for _, bad := range []string{"my logo", "cid\there", "lo<go>id", "img(1)"} {
+		err := Apply(snapshot, Patch{
+			Ops: []PatchOp{{Op: "add_inline", Path: "logo.png", CID: bad}},
+		})
+		if err == nil {
+			t.Errorf("expected error for CID %q, got nil", bad)
+		} else if !strings.Contains(err.Error(), "invalid characters") {
+			t.Errorf("CID %q: expected 'invalid characters' error, got: %v", bad, err)
+		}
+	}
+}
+
+func TestValidateInlineCIDAfterSetBody(t *testing.T) {
+	// Verify that inline CID validation works even after set_body restructures
+	// the MIME tree (which can change PartIDs). This tests the fix that uses
+	// findPrimaryBodyPart (by media type) instead of findPart (by stale PartID).
+	chdirTemp(t)
+	if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	snapshot := mustParseFixtureDraft(t, `Subject: Inline
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<div><img src="cid:logo" /></div>
+`)
+	// Step 1: add inline — this wraps body into multipart/related
+	err := Apply(snapshot, Patch{
+		Ops: []PatchOp{{Op: "add_inline", Path: "logo.png", CID: "logo"}},
+	})
+	if err != nil {
+		t.Fatalf("Apply(add_inline) error = %v", err)
+	}
+
+	// Step 2: set_body — this restructures the MIME tree, potentially making
+	// PrimaryHTMLPartID stale
+	err = Apply(snapshot, Patch{
+		Ops: []PatchOp{{Op: "set_body", Value: `<div>updated<img src="cid:logo" /></div>`}},
+	})
+	if err != nil {
+		t.Fatalf("Apply(set_body) error = %v", err)
+	}
+
+	// Step 3: set_body again dropping the CID reference — should fail validation
+	err = Apply(snapshot, Patch{
+		Ops: []PatchOp{{Op: "set_body", Value: `<div>no image here</div>`}},
+	})
+	if err == nil {
+		t.Fatal("expected orphaned inline error after set_body dropped CID reference, got nil")
+	}
+}
+
 func TestAddInlineRejectsCRLFInCID(t *testing.T) {
 	chdirTemp(t)
 	if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
