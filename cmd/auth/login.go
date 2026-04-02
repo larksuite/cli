@@ -46,9 +46,10 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 For AI agents: this command blocks until the user completes authorization in the
 browser. Run it in the background and retrieve the verification URL from its output.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if f.IsStrictMode() {
+			if mode := f.ResolveStrictMode(); mode.IsActive() {
 				return output.Errorf(output.ExitValidation, "strict_mode",
-					"strict mode is enabled, only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.")
+					"strict mode is %q, only %s identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.",
+					mode, mode.ForcedIdentity())
 			}
 			opts.Ctx = cmd.Context()
 			if runF != nil {

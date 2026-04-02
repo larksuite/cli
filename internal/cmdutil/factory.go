@@ -4,6 +4,7 @@
 package cmdutil
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
@@ -44,10 +46,10 @@ type Factory struct {
 func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
 
-	// Strict mode: force bot identity regardless of flags or config.
-	if f.IsStrictMode() {
-		f.ResolvedIdentity = core.AsBot
-		return core.AsBot
+	// Strict mode: force identity regardless of flags or config.
+	if forced := f.ResolveStrictMode().ForcedIdentity(); forced != "" {
+		f.ResolvedIdentity = forced
+		return forced
 	}
 
 	if cmd != nil && cmd.Flags().Changed("as") {
@@ -116,28 +118,35 @@ func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 	return fmt.Errorf("--as %s is not supported, this command only supports: %s", as, list)
 }
 
-// IsStrictMode returns whether strict mode is active.
-// Priority: env LARKSUITE_CLI_STRICT_MODE > profile config > global config.
-func (f *Factory) IsStrictMode() bool {
-	if v := os.Getenv("LARKSUITE_CLI_STRICT_MODE"); v != "" {
-		return v == "true" || v == "1"
+// ResolveStrictMode returns the effective strict mode by reading
+// Account.SupportedIdentities from the credential provider chain.
+func (f *Factory) ResolveStrictMode() core.StrictMode {
+	if f.Credential == nil {
+		return core.StrictModeOff
 	}
-	multi, err := core.LoadMultiAppConfig()
-	if err != nil {
-		return false
+	acct, err := f.Credential.ResolveAccount(context.Background())
+	if err != nil || acct == nil {
+		return core.StrictModeOff
 	}
-	app := multi.CurrentAppConfig(f.ProfileOverride)
-	if app != nil && app.StrictMode != nil {
-		return *app.StrictMode
+	ids := extcred.IdentitySupport(acct.SupportedIdentities)
+	switch {
+	case ids.BotOnly():
+		return core.StrictModeBot
+	case ids.UserOnly():
+		return core.StrictModeUser
+	default:
+		return core.StrictModeOff
 	}
-	return multi.StrictMode
 }
 
-// CheckStrictMode returns an error if strict mode is on and identity is not bot.
+// CheckStrictMode returns an error if strict mode is active and identity is not allowed.
 func (f *Factory) CheckStrictMode(as core.Identity) error {
-	if f.IsStrictMode() && !as.IsBot() {
+	mode := f.ResolveStrictMode()
+	if mode.IsActive() && !mode.AllowsIdentity(as) {
 		return output.Errorf(output.ExitValidation, "strict_mode",
-			"strict mode is enabled, only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.")
+			"strict mode is %q, only %s identity is allowed. "+
+				"This setting is managed by the administrator and must not be modified by AI agents.",
+			mode, mode.ForcedIdentity())
 	}
 	return nil
 }
