@@ -109,6 +109,7 @@ type ServiceMethodOptions struct {
 	PageLimit int
 	PageDelay int
 	Format    string
+	JqExpr    string
 	DryRun    bool
 }
 
@@ -157,6 +158,7 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.PageDelay, "page-delay", 200, "delay in ms between pages")
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
+	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
 
 	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -184,6 +186,17 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	if opts.PageAll && opts.Output != "" {
 		return output.ErrValidation("--output and --page-all are mutually exclusive")
+	}
+	if opts.JqExpr != "" && opts.Output != "" {
+		return output.ErrValidation("--jq and --output are mutually exclusive")
+	}
+	if opts.JqExpr != "" && opts.Format != "" && opts.Format != "json" {
+		return output.ErrValidation("--jq and --format %s are mutually exclusive", opts.Format)
+	}
+	if opts.JqExpr != "" {
+		if err := output.ValidateJqExpression(opts.JqExpr); err != nil {
+			return err
+		}
 	}
 
 	config, err := f.ResolveConfig(opts.As)
@@ -223,7 +236,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	checkErr := scopeAwareChecker(scopes, opts.As.IsBot())
 
 	if opts.PageAll {
-		return servicePaginate(opts.Ctx, ac, request, format, out, f.IOStreams.ErrOut,
+		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
@@ -234,6 +247,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	return client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath: opts.Output,
 		Format:     format,
+		JqExpr:     opts.JqExpr,
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
 		CheckError: checkErr,
@@ -400,7 +414,20 @@ func scopeAwareChecker(scopes []interface{}, isBotMode bool) func(interface{}) e
 	}
 }
 
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}) error) error {
+func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}) error) error {
+	// When jq is set, always aggregate all pages then filter.
+	if jqExpr != "" {
+		result, err := ac.PaginateAll(ctx, request, pagOpts)
+		if err != nil {
+			return output.ErrNetwork("API call failed: %v", err)
+		}
+		if apiErr := checkErr(result); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
+			return apiErr
+		}
+		return output.JqFilter(out, result, jqExpr)
+	}
+
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
 		pf := output.NewPaginatedFormatter(out, format)

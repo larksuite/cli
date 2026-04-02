@@ -536,6 +536,179 @@ func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
 	}
 }
 
+func TestApiCmd_JqFlag_Parsing(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--jq", ".data"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts.JqExpr != ".data" {
+		t.Errorf("expected JqExpr=.data, got %s", gotOpts.JqExpr)
+	}
+}
+
+func TestApiCmd_JqFlag_ShortForm(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "-q", ".data"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts.JqExpr != ".data" {
+		t.Errorf("expected JqExpr=.data, got %s", gotOpts.JqExpr)
+	}
+}
+
+func TestApiCmd_JqAndOutputConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--output", "file.bin"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --jq + --output conflict")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
+	}
+}
+
+func TestApiCmd_JqFilter_AppliesExpression(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-jq", AppSecret: "test-secret-jq", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/auth/v3/tenant_access_token/internal",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"tenant_access_token": "t-test-token-jq", "expire": 7200,
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/jq",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"name": "Alice"},
+					map[string]interface{}{"name": "Bob"},
+				},
+			},
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test/jq", "--as", "bot", "--jq", ".data.items[].name"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Alice") || !strings.Contains(out, "Bob") {
+		t.Errorf("expected jq-filtered names, got: %s", out)
+	}
+	// Should NOT contain the full envelope structure
+	if strings.Contains(out, `"code"`) {
+		t.Errorf("expected jq to filter out envelope, got: %s", out)
+	}
+}
+
+func TestApiCmd_JqAndFormatConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--format", "ndjson"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --jq + --format ndjson conflict")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
+	}
+}
+
+func TestApiCmd_JqInvalidExpression(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", "invalid["})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid jq expression")
+	}
+	if !strings.Contains(err.Error(), "invalid jq expression") {
+		t.Errorf("expected 'invalid jq expression' error, got: %v", err)
+	}
+}
+
+func TestApiCmd_PageAll_WithJq(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-pjq", AppSecret: "test-secret-pjq", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/auth/v3/tenant_access_token/internal",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"tenant_access_token": "t-test-token-pjq", "expire": 7200,
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "u1"}, map[string]interface{}{"id": "u2"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--jq", ".data.items[].id"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "u1") || !strings.Contains(out, "u2") {
+		t.Errorf("expected jq-filtered ids, got: %s", out)
+	}
+	if strings.Contains(out, `"code"`) {
+		t.Errorf("expected jq to filter out envelope, got: %s", out)
+	}
+}
+
 func TestApiCmd_MethodUppercase(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,

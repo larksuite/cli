@@ -61,6 +61,8 @@ FLAGS:
     --page-limit <N>      max pages to fetch with --page-all (default: 10, 0 for unlimited)
     --page-delay <MS>     delay in ms between pages (default: 200, only with --page-all)
     -o, --output <path>   output file path for binary responses
+    --jq <expr>           jq expression to filter JSON output
+    -q <expr>             shorthand for --jq
     --dry-run             print request without executing
 
 AI AGENT SKILLS:
