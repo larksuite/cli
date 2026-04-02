@@ -27,6 +27,7 @@ linters:
     - reassign        # checks that package variables are not reassigned
     - unconvert       # removes unnecessary type conversions
     - unused          # checks for unused constants, variables, functions and types
+    - forbidigo       # forbids specific function calls
 
     # To enable later after fixing existing issues:
     # - errcheck      # checks for unchecked errors
@@ -44,8 +45,32 @@ linters:
         linters:
           - bodyclose
           - gocritic
+          - forbidigo
+      - path-except: shortcuts/
+        linters:
+          - forbidigo
 
   settings:
+    forbidigo:
+      forbid:
+        - pattern: os\.CreateTemp
+          msg: >-
+            Do not use os.CreateTemp in shortcuts/ for temp file intermediary logic.
+            Use downloadURLToReader (streaming) or mediaBuffer (in-memory) instead.
+            See shortcuts/im/helpers.go for reference.
+          exclude-godoc-examples: true
+        - pattern: os\.Remove\b
+          msg: >-
+            Do not use os.Remove in shortcuts/ for temp file cleanup.
+            Avoid temp files entirely: use io.Reader streaming or in-memory buffers.
+            See shortcuts/im/helpers.go for reference.
+          exclude-godoc-examples: true
+        - pattern: os\.Exit
+          msg: >-
+            Do not use os.Exit in shortcuts/. Return an error instead and let
+            the caller (cmd layer) decide how to terminate.
+          exclude-godoc-examples: true
+      analyze-types: true
     gocritic:
       disabled-checks:
         - appendAssign
