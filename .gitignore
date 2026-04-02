@@ -30,3 +30,6 @@ test_scripts/
 tests/mail/reports/
 
 /log/
+
+# Temporary test files
+.tmp/
