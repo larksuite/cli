@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/itchyny/gojq"
 )
 
 // Known array field names for pagination.
@@ -98,10 +100,48 @@ func ExtractItems(data interface{}) []interface{} {
 	return nil
 }
 
-// FormatValue formats a single response and writes it to w.
-func FormatValue(w io.Writer, data interface{}, format Format) {
+type FormatOptions struct {
+	Format Format
+	JQ     string
+}
+
+func ApplyJQ(data interface{}, expr string) (interface{}, error) {
 	data = toGeneric(data)
-	switch format {
+	query, err := gojq.Parse(expr)
+	if err != nil {
+		return nil, ErrValidation("invalid jq expression: %v", err)
+	}
+	iter := query.Run(data)
+	results := make([]interface{}, 0, 1)
+	for {
+		v, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if err, ok := v.(error); ok {
+			return nil, ErrValidation("invalid jq expression: %v", err)
+		}
+		results = append(results, v)
+	}
+	if len(results) == 0 {
+		return []interface{}{}, nil
+	}
+	if len(results) == 1 {
+		return toGeneric(results[0]), nil
+	}
+		return toGeneric(results), nil
+}
+
+func FormatValueWithOptions(w io.Writer, data interface{}, opts FormatOptions) error {
+	data = toGeneric(data)
+	if opts.JQ != "" {
+		var err error
+		data, err = ApplyJQ(data, opts.JQ)
+		if err != nil {
+			return err
+		}
+	}
+	switch opts.Format {
 	case FormatNDJSON:
 		items := ExtractItems(data)
 		if items != nil {
@@ -129,6 +169,12 @@ func FormatValue(w io.Writer, data interface{}, format Format) {
 	default: // FormatJSON
 		PrintJson(w, data)
 	}
+	return nil
+}
+
+// FormatValue formats a single response and writes it to w.
+func FormatValue(w io.Writer, data interface{}, format Format) {
+	_ = FormatValueWithOptions(w, data, FormatOptions{Format: format})
 }
 
 // PaginatedFormatter holds state across paginated calls to ensure

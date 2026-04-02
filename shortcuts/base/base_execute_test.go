@@ -70,6 +70,33 @@ func runShortcut(t *testing.T, shortcut common.Shortcut, args []string, factory 
 	return parent.ExecuteContext(context.Background())
 }
 
+func TestBaseShortcut_JQOutput(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	registerTokenStub(reg)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/frm_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "frm_x", "name": "Demo Form", "description": "Example"},
+		},
+	})
+	if err := runShortcut(t, BaseFormGet, []string{"+form-get", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "frm_x", "--jq", ".name"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "Demo Form") || strings.Contains(got, "description") {
+		t.Fatalf("stdout=%s", got)
+	}
+}
+
+func TestBaseShortcut_JQValidation(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	stdout.Reset()
+	if err := runShortcut(t, BaseFormGet, []string{"+form-get", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "frm_x", "--format", "table", "--jq", ".name"}, factory, stdout); err == nil || !strings.Contains(err.Error(), "only supported with JSON") {
+		t.Fatalf("expected jq/json validation, got %v", err)
+	}
+}
+
 func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	registerTokenStub(reg)

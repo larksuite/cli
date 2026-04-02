@@ -10,6 +10,55 @@ import (
 	"testing"
 )
 
+func TestApplyJQ(t *testing.T) {
+	data := map[string]interface{}{
+		"data": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{"id": 1, "name": "Alice"},
+				map[string]interface{}{"id": 2, "name": "Bob"},
+			},
+		},
+	}
+
+	t.Run("single result", func(t *testing.T) {
+		result, err := ApplyJQ(data, ".data.items[0].name")
+		if err != nil {
+			t.Fatalf("ApplyJQ error: %v", err)
+		}
+		if result != "Alice" {
+			t.Fatalf("expected Alice, got %#v", result)
+		}
+	})
+
+	t.Run("multiple results", func(t *testing.T) {
+		result, err := ApplyJQ(data, ".data.items[].id")
+		if err != nil {
+			t.Fatalf("ApplyJQ error: %v", err)
+		}
+		items, ok := result.([]interface{})
+		if !ok || len(items) != 2 {
+			t.Fatalf("expected 2 jq results, got %#v", result)
+		}
+	})
+
+	t.Run("no results", func(t *testing.T) {
+		result, err := ApplyJQ(data, ".data.missing[]?")
+		if err != nil {
+			t.Fatalf("ApplyJQ error: %v", err)
+		}
+		items, ok := result.([]interface{})
+		if !ok || len(items) != 0 {
+			t.Fatalf("expected empty result slice, got %#v", result)
+		}
+	})
+
+	t.Run("invalid expression", func(t *testing.T) {
+		if _, err := ApplyJQ(data, ".data["); err == nil {
+			t.Fatal("expected invalid jq expression error")
+		}
+	})
+}
+
 func TestFormatValue_JSON(t *testing.T) {
 	data := map[string]interface{}{"name": "Alice"}
 
@@ -263,6 +312,24 @@ func TestExtractItems(t *testing.T) {
 	items7 := ExtractItems(plainArr)
 	if len(items7) != 1 {
 		t.Fatalf("expected 1 item from plain array, got %d", len(items7))
+	}
+}
+
+func TestFormatValueWithOptions_JQ(t *testing.T) {
+	data := map[string]interface{}{
+		"data": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{"name": "Alice"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := FormatValueWithOptions(&buf, data, FormatOptions{Format: FormatJSON, JQ: ".data.items[0].name"}); err != nil {
+		t.Fatalf("FormatValueWithOptions error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Alice") || strings.Contains(buf.String(), "items") {
+		t.Fatalf("unexpected jq-filtered output: %s", buf.String())
 	}
 }
 

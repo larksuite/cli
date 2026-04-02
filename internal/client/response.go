@@ -26,8 +26,9 @@ import (
 type ResponseOptions struct {
 	OutputPath string        // --output flag; "" = auto-detect
 	Format     output.Format // output format for JSON responses
-	Out        io.Writer     // stdout
-	ErrOut     io.Writer     // stderr
+	JQ         string
+	Out        io.Writer // stdout
+	ErrOut     io.Writer // stderr
 	// CheckError is called on parsed JSON results. Nil defaults to CheckLarkResponse.
 	CheckError func(interface{}) error
 }
@@ -62,8 +63,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		if opts.OutputPath != "" {
 			return saveAndPrint(resp, opts.OutputPath, opts.Out)
 		}
-		output.FormatValue(opts.Out, result, opts.Format)
-		return nil
+		return output.FormatValueWithOptions(opts.Out, result, output.FormatOptions{Format: opts.Format, JQ: opts.JQ})
 	}
 
 	// Non-JSON (binary) responses.

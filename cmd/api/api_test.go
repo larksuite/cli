@@ -45,6 +45,23 @@ func TestApiCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+func TestApiCmd_JQFlagParsing(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--jq", ".data.result"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts == nil || gotOpts.JQ != ".data.result" {
+		t.Fatalf("expected jq flag to be captured, got %#v", gotOpts)
+	}
+}
+
 func TestApiCmd_DryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -206,6 +223,22 @@ func TestApiCmd_PageLimitDefault(t *testing.T) {
 	}
 	if gotOpts.PageLimit != 10 {
 		t.Errorf("expected default PageLimit=10, got %d", gotOpts.PageLimit)
+	}
+}
+
+func TestApiCmd_JQValidation(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--jq", ".data", "--output", "file.bin"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--jq and --output") {
+		t.Fatalf("expected jq/output conflict, got %v", err)
+	}
+
+	cmd = NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--jq", ".data", "--format", "table"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "only supported with JSON") {
+		t.Fatalf("expected jq/json validation, got %v", err)
 	}
 }
 
@@ -533,6 +566,21 @@ func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
 	}
 	if !exitErr.Raw {
 		t.Error("expected paginated API error to be marked Raw")
+	}
+}
+
+func TestApiCmd_JQOutput(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app-jq", AppSecret: "test-secret-jq", Brand: core.BrandFeishu})
+	reg.Register(&httpmock.Stub{URL: "/open-apis/auth/v3/tenant_access_token/internal", Body: map[string]interface{}{"code": 0, "msg": "ok", "tenant_access_token": "t-test-token-jq", "expire": 7200}})
+	reg.Register(&httpmock.Stub{URL: "/open-apis/test/jq", Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"result": "success", "items": []interface{}{map[string]interface{}{"id": "1"}}}}})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test/jq", "--as", "bot", "--jq", ".data.result"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "success") || strings.Contains(got, "items") {
+		t.Fatalf("unexpected jq output: %s", got)
 	}
 }
 

@@ -33,6 +33,7 @@ type RuntimeContext struct {
 	Config     *core.CliConfig
 	Cmd        *cobra.Command
 	Format     string
+	JQ         string
 	botOnly    bool              // set by framework for bot-only shortcuts
 	resolvedAs core.Identity     // effective identity resolved by framework
 	Factory    *cmdutil.Factory  // injected by framework
@@ -434,7 +435,16 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 			ctx.Out(data, meta)
 		}
 	case "json", "":
-		ctx.Out(data, meta)
+		if ctx.JQ == "" {
+			ctx.Out(data, meta)
+		} else {
+			filtered, err := output.ApplyJQ(data, ctx.JQ)
+			if err != nil {
+				fmt.Fprintln(ctx.IO().ErrOut, err)
+				return
+			}
+			output.PrintJson(ctx.IO().Out, filtered)
+		}
 	default:
 		// table, csv, ndjson — pass data directly; FormatValue handles both
 		// plain arrays and maps with array fields (e.g. {"members":[…]})
@@ -603,6 +613,10 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 
 	if s.HasFormat {
 		rctx.Format = rctx.Str("format")
+		rctx.JQ = rctx.Str("jq")
+		if rctx.JQ != "" && rctx.Format != "" && rctx.Format != "json" {
+			return nil, output.ErrValidation("--jq is only supported with JSON output")
+		}
 	}
 	return rctx, nil
 }
@@ -680,6 +694,7 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 	cmd.Flags().Bool("dry-run", false, "print request without executing")
 	if s.HasFormat {
 		cmd.Flags().String("format", "json", "output format: json (default) | pretty | table | ndjson | csv")
+		cmd.Flags().String("jq", "", "jq expression to filter JSON output")
 	}
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")

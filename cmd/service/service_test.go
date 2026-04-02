@@ -158,6 +158,23 @@ func TestNewCmdServiceMethod_POSTHasDataFlag(t *testing.T) {
 	}
 }
 
+func TestNewCmdServiceMethod_JQFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+
+	var captured *ServiceMethodOptions
+	cmd := NewCmdServiceMethod(f, driveSpec(), map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files", func(opts *ServiceMethodOptions) error {
+		captured = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--jq", ".data.result"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured == nil || captured.JQ != ".data.result" {
+		t.Fatalf("expected jq flag to be captured, got %#v", captured)
+	}
+}
+
 func TestNewCmdServiceMethod_RunFCallback(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
 
@@ -341,6 +358,24 @@ func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 	}
 }
 
+func TestServiceMethod_JQValidation(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
+	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--jq", ".data", "--output", "file.bin", "--as", "bot"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--jq and --output") {
+		t.Fatalf("expected jq/output conflict, got %v", err)
+	}
+
+	cmd = NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--jq", ".data", "--format", "csv", "--as", "bot"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "only supported with JSON") {
+		t.Fatalf("expected jq/json validation, got %v", err)
+	}
+}
+
 func TestServiceMethod_OutputAndPageAllConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
 	spec := map[string]interface{}{
@@ -447,6 +482,23 @@ func TestServiceMethod_BotMode_PageAll_JSON(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"id"`) {
 		t.Errorf("expected items in output, got:\n%s", stdout.String())
+	}
+}
+
+func TestServiceMethod_JQOutput(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app-svc-jq", AppSecret: "test-secret-svc-jq", Brand: core.BrandFeishu})
+	reg.Register(tokenStub())
+	reg.Register(&httpmock.Stub{URL: "/open-apis/svc/v1/items", Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"result": "success", "items": []interface{}{map[string]interface{}{"id": "1"}}}}})
+
+	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
+	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--jq", ".data.result"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "success") || strings.Contains(got, "items") {
+		t.Fatalf("unexpected jq output: %s", got)
 	}
 }
 
