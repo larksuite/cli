@@ -6,6 +6,7 @@ package im
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -286,6 +288,46 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 	if gotHeaders.Get(cmdutil.HeaderExecutionId) != "exec-123" {
 		t.Fatalf("%s = %q, want %q", cmdutil.HeaderExecutionId, gotHeaders.Get(cmdutil.HeaderExecutionId), "exec-123")
 	}
+	if gotHeaders.Get("Range") != fmt.Sprintf("bytes=0-%d", probeChunkSize-1) {
+		t.Fatalf("Range header = %q, want %q", gotHeaders.Get("Range"), fmt.Sprintf("bytes=0-%d", probeChunkSize-1))
+	}
+}
+
+func TestDownloadIMResourceToPathImageUsesSingleRequestWithoutRange(t *testing.T) {
+	var gotHeaders http.Header
+	payload := []byte("image download")
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_img/resources/img_123"):
+			gotHeaders = req.Header.Clone()
+			return shortcutRawResponse(200, payload, http.Header{"Content-Type": []string{"image/png"}}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+
+	gotPath, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_img", "img_123", "image", "image")
+	if err != nil {
+		t.Fatalf("downloadIMResourceToPath() error = %v", err)
+	}
+	if size != int64(len(payload)) {
+		t.Fatalf("downloadIMResourceToPath() size = %d, want %d", size, len(payload))
+	}
+	if gotHeaders.Get("Range") != "" {
+		t.Fatalf("Range header = %q, want empty", gotHeaders.Get("Range"))
+	}
+	if !strings.HasSuffix(gotPath, "image.png") {
+		t.Fatalf("saved path = %q, want suffix %q", gotPath, "image.png")
+	}
+	data, err := os.ReadFile("image.png")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != string(payload) {
+		t.Fatalf("downloaded payload = %q, want %q", string(data), string(payload))
+	}
 }
 
 func TestDownloadIMResourceToPathHTTPErrorBody(t *testing.T) {
@@ -304,6 +346,348 @@ func TestDownloadIMResourceToPathHTTPErrorBody(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "HTTP 403: denied") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
+}
+
+func TestDownloadIMResourceToPathRetriesNetworkError(t *testing.T) {
+	attempts := 0
+	payload := []byte("retry success")
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "tenant_access_token"):
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code":                0,
+				"tenant_access_token": "tenant-token",
+				"expire":              7200,
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_retry/resources/file_retry"):
+			attempts++
+			if attempts < 3 {
+				return nil, fmt.Errorf("temporary network failure")
+			}
+			return shortcutRawResponse(200, payload, http.Header{"Content-Type": []string{"application/octet-stream"}}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+	target := "out.bin"
+	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_retry", "file_retry", "file", target)
+	if err != nil {
+		t.Fatalf("downloadIMResourceToPath() error = %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("download attempts = %d, want 3", attempts)
+	}
+	if size != int64(len(payload)) {
+		t.Fatalf("downloadIMResourceToPath() size = %d, want %d", size, len(payload))
+	}
+}
+
+func TestDownloadIMResourceToPathRetrySecondAttemptSuccess(t *testing.T) {
+	attempts := 0
+	payload := []byte("second retry success")
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "tenant_access_token"):
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code":                0,
+				"tenant_access_token": "tenant-token",
+				"expire":              7200,
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_retry2/resources/file_retry2"):
+			attempts++
+			if attempts < 2 {
+				return nil, fmt.Errorf("temporary network failure")
+			}
+			return shortcutRawResponse(200, payload, http.Header{"Content-Type": []string{"application/octet-stream"}}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+	target := "out.bin"
+	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_retry2", "file_retry2", "file", target)
+	if err != nil {
+		t.Fatalf("downloadIMResourceToPath() error = %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("download attempts = %d, want 2", attempts)
+	}
+	if size != int64(len(payload)) {
+		t.Fatalf("downloadIMResourceToPath() size = %d, want %d", size, len(payload))
+	}
+}
+
+func TestDownloadIMResourceToPathRetryContextCanceled(t *testing.T) {
+	attempts := 0
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "tenant_access_token"):
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code":                0,
+				"tenant_access_token": "tenant-token",
+				"expire":              7200,
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_cancel/resources/file_cancel"):
+			attempts++
+			return nil, fmt.Errorf("temporary network failure")
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel context immediately to trigger context error on first retry
+	cancel()
+
+	cmdutil.TestChdir(t, t.TempDir())
+	target := "out.bin"
+	_, _, err := downloadIMResourceToPath(ctx, runtime, "om_cancel", "file_cancel", "file", target)
+	if err != context.Canceled {
+		t.Fatalf("downloadIMResourceToPath() error = %v, want context.Canceled", err)
+	}
+	// First attempt is made, then retry checks ctx.Err() and returns
+	if attempts != 1 {
+		t.Fatalf("download attempts = %d, want 1", attempts)
+	}
+}
+
+func TestDownloadIMResourceToPathRangeDownload(t *testing.T) {
+	cases := []struct {
+		name       string
+		payloadLen int64
+		wantRanges []string
+	}{
+		{
+			name:       "single small chunk",
+			payloadLen: 16,
+			wantRanges: []string{"bytes=0-131071"},
+		},
+		{
+			name:       "exact probe chunk",
+			payloadLen: probeChunkSize,
+			wantRanges: []string{"bytes=0-131071"},
+		},
+		{
+			name:       "multiple chunks with tail",
+			payloadLen: probeChunkSize + normalChunkSize + 1234,
+			wantRanges: []string{
+				"bytes=0-131071",
+				fmt.Sprintf("bytes=%d-%d", probeChunkSize, probeChunkSize+normalChunkSize-1),
+				fmt.Sprintf("bytes=%d-%d", probeChunkSize+normalChunkSize, probeChunkSize+normalChunkSize+1233),
+			},
+		},
+		{
+			name:       "multiple chunks exact 8mb tail",
+			payloadLen: probeChunkSize + 2*normalChunkSize,
+			wantRanges: []string{
+				"bytes=0-131071",
+				fmt.Sprintf("bytes=%d-%d", probeChunkSize, probeChunkSize+normalChunkSize-1),
+				fmt.Sprintf("bytes=%d-%d", probeChunkSize+normalChunkSize, probeChunkSize+2*normalChunkSize-1),
+			},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := bytes.Repeat([]byte("range-download-"), int(tt.payloadLen/15)+1)
+			payload = payload[:tt.payloadLen]
+
+			var gotRanges []string
+			runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				switch {
+				case strings.Contains(req.URL.Path, "tenant_access_token"):
+					return shortcutJSONResponse(200, map[string]interface{}{
+						"code":                0,
+						"tenant_access_token": "tenant-token",
+						"expire":              7200,
+					}), nil
+				case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_range/resources/file_range"):
+					rangeHeader := req.Header.Get("Range")
+					gotRanges = append(gotRanges, rangeHeader)
+					if req.Header.Get("Authorization") != "Bearer tenant-token" {
+						return nil, fmt.Errorf("missing authorization header")
+					}
+					start, end, err := parseRangeHeader(rangeHeader, int64(len(payload)))
+					if err != nil {
+						return nil, err
+					}
+					return shortcutRawResponse(http.StatusPartialContent, payload[start:end+1], http.Header{
+						"Content-Type":  []string{"application/octet-stream"},
+						"Content-Range": []string{fmt.Sprintf("bytes %d-%d/%d", start, end, len(payload))},
+					}), nil
+				default:
+					return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+				}
+			}))
+
+			cmdutil.TestChdir(t, t.TempDir())
+			target := filepath.Join("nested", "resource.bin")
+			_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_range", "file_range", "file", target)
+			if err != nil {
+				t.Fatalf("downloadIMResourceToPath() error = %v", err)
+			}
+			if size != int64(len(payload)) {
+				t.Fatalf("downloadIMResourceToPath() size = %d, want %d", size, len(payload))
+			}
+			if !reflect.DeepEqual(gotRanges, tt.wantRanges) {
+				t.Fatalf("Range requests = %#v, want %#v", gotRanges, tt.wantRanges)
+			}
+
+			got, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			if md5.Sum(got) != md5.Sum(payload) {
+				t.Fatalf("downloaded payload MD5 = %x, want %x", md5.Sum(got), md5.Sum(payload))
+			}
+		})
+	}
+}
+
+func TestDownloadIMResourceToPathInvalidContentRange(t *testing.T) {
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "tenant_access_token"):
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code":                0,
+				"tenant_access_token": "tenant-token",
+				"expire":              7200,
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_bad/resources/file_bad"):
+			return shortcutRawResponse(http.StatusPartialContent, []byte("bad"), http.Header{
+				"Content-Type":  []string{"application/octet-stream"},
+				"Content-Range": []string{"bytes 0-2/not-a-number"},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_bad", "file_bad", "file", "out.bin")
+	if err == nil || !strings.Contains(err.Error(), "invalid Content-Range header") {
+		t.Fatalf("downloadIMResourceToPath() error = %v", err)
+	}
+}
+
+func TestDownloadIMResourceToPathRangeChunkFailureCleansOutput(t *testing.T) {
+	payload := bytes.Repeat([]byte("range-download-"), int((probeChunkSize+1024)/15)+1)
+	payload = payload[:probeChunkSize+1024]
+
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_miderr/resources/file_miderr"):
+			rangeHeader := req.Header.Get("Range")
+			if rangeHeader == fmt.Sprintf("bytes=0-%d", probeChunkSize-1) {
+				return shortcutRawResponse(http.StatusPartialContent, payload[:probeChunkSize], http.Header{
+					"Content-Type":  []string{"application/octet-stream"},
+					"Content-Range": []string{fmt.Sprintf("bytes 0-%d/%d", probeChunkSize-1, len(payload))},
+				}), nil
+			}
+			return shortcutRawResponse(http.StatusInternalServerError, []byte("chunk failed"), http.Header{"Content-Type": []string{"text/plain"}}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+
+	target := "out.bin"
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_miderr", "file_miderr", "file", target)
+	if err == nil || !strings.Contains(err.Error(), "HTTP 500: chunk failed") {
+		t.Fatalf("downloadIMResourceToPath() error = %v", err)
+	}
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("output file exists after failed download, stat error = %v", statErr)
+	}
+}
+
+func TestDownloadIMResourceToPathRangeOverflowCleansOutput(t *testing.T) {
+	payload := []byte("overflow-payload")
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_overflow/resources/file_overflow"):
+			return shortcutRawResponse(http.StatusPartialContent, payload, http.Header{
+				"Content-Type":  []string{"application/octet-stream"},
+				"Content-Range": []string{"bytes 0-3/4"},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+
+	target := "out.bin"
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_overflow", "file_overflow", "file", target)
+	if err == nil || !strings.Contains(err.Error(), "chunk overflow") {
+		t.Fatalf("downloadIMResourceToPath() error = %v", err)
+	}
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("output file exists after overflow, stat error = %v", statErr)
+	}
+}
+
+func TestDownloadIMResourceToPathRangeShortChunkSizeMismatch(t *testing.T) {
+	payload := bytes.Repeat([]byte("range-download-"), int((probeChunkSize+1024)/15)+1)
+	payload = payload[:probeChunkSize+1024]
+
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_short/resources/file_short"):
+			rangeHeader := req.Header.Get("Range")
+			start, end, err := parseRangeHeader(rangeHeader, int64(len(payload)))
+			if err != nil {
+				return nil, err
+			}
+			body := payload[start : end+1]
+			if start == probeChunkSize {
+				body = body[:len(body)-10]
+			}
+			return shortcutRawResponse(http.StatusPartialContent, body, http.Header{
+				"Content-Type":  []string{"application/octet-stream"},
+				"Content-Range": []string{fmt.Sprintf("bytes %d-%d/%d", start, end, len(payload))},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_short", "file_short", "file", "out.bin")
+	if err == nil || !strings.Contains(err.Error(), "file size mismatch") {
+		t.Fatalf("downloadIMResourceToPath() error = %v", err)
+	}
+}
+
+func parseRangeHeader(header string, totalSize int64) (int64, int64, error) {
+	if !strings.HasPrefix(header, "bytes=") {
+		return 0, 0, fmt.Errorf("unexpected range header: %q", header)
+	}
+	parts := strings.SplitN(strings.TrimPrefix(header, "bytes="), "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected range header: %q", header)
+	}
+
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse start: %w", err)
+	}
+	end, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("parse end: %w", err)
+	}
+	if start < 0 || end < start || start >= totalSize {
+		return 0, 0, fmt.Errorf("invalid range bounds: %d-%d for size %d", start, end, totalSize)
+	}
+	if end >= totalSize {
+		end = totalSize - 1
+	}
+	return start, end, nil
 }
 
 func TestUploadImageToIMSuccess(t *testing.T) {
