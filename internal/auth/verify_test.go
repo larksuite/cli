@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// TestVerifyUserToken_TransportError verifies handling of underlying transport errors.
 func TestVerifyUserToken_TransportError(t *testing.T) {
 	reg := &httpmock.Registry{}
 	// Register no stubs — any request will fail with "no stub" error
@@ -31,6 +32,7 @@ func TestVerifyUserToken_TransportError(t *testing.T) {
 	}
 }
 
+// TestVerifyUserToken validates normal and error response paths of the user token validation.
 func TestVerifyUserToken(t *testing.T) {
 	tests := []struct {
 		name      string

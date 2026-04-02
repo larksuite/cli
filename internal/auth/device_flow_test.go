@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
 func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
 	ep := ResolveOAuthEndpoints(core.BrandFeishu)
 	if ep.DeviceAuthorization != "https://accounts.feishu.cn/oauth/v1/device_authorization" {
@@ -24,6 +25,7 @@ func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
 	}
 }
 
+// TestResolveOAuthEndpoints_Lark validates endpoints for the Lark brand.
 func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	ep := ResolveOAuthEndpoints(core.BrandLark)
 	if ep.DeviceAuthorization != "https://accounts.larksuite.com/oauth/v1/device_authorization" {
@@ -34,6 +36,7 @@ func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	}
 }
 
+// TestRequestDeviceAuthorization_LogsResponse checks if API responses are logged correctly.
 func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	reg := &httpmock.Registry{}
 	t.Cleanup(func() { reg.Verify(t) })
@@ -95,6 +98,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	}
 }
 
+// TestFormatAuthCmdline_TruncatesExtraArgs verifies that long command lines are truncated.
 func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 	got := formatAuthCmdline([]string{
 		"lark-cli",
@@ -111,6 +115,7 @@ func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 	}
 }
 
+// TestLogAuthResponse_IgnoresTypedNilHTTPResponse tests that a typed nil HTTP response is ignored gracefully.
 func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 	var buf bytes.Buffer
 	prevWriter := authResponseLogWriter
@@ -127,6 +132,7 @@ func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 	}
 }
 
+// TestLogAuthResponse_HandlesNilSDKResponse verifies that a nil SDK response is handled without panicking.
 func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	var buf bytes.Buffer
 	prevWriter := authResponseLogWriter
@@ -156,6 +162,7 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	}
 }
 
+// TestDefaultLogWriter_ReleasesLockOnPanic ensures log locks are released even if a panic occurs.
 func TestDefaultLogWriter_ReleasesLockOnPanic(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
