@@ -6,7 +6,6 @@ package auth
 import (
 	"bytes"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -157,51 +156,35 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	}
 }
 
-func TestDefaultLogWriter_CleansUpAtMostOncePerProcess(t *testing.T) {
+func TestDefaultLogWriter_ReleasesLockOnPanic(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	prevNow := authResponseLogNow
 	prevCleanup := authResponseLogCleanup
-	prevCleanedFlag := authResponseLogCleaned
-	authResponseLogCleaned = false
-	cleanupCalls := 0
-	
-	// Use a channel to wait for the async cleanup goroutine to finish in tests
-	done := make(chan struct{}, 1)
-	
-	authResponseLogCleanup = func(dir string, now time.Time) {
-		cleanupCalls++
-		if dir != filepath.Join(core.GetConfigDir(), "logs") {
-			t.Errorf("cleanup dir = %q", dir)
-		}
-		done <- struct{}{}
-	}
+	authResponseLogCleanup = func(dir string, now time.Time) {}
 	t.Cleanup(func() {
 		authResponseLogNow = prevNow
 		authResponseLogCleanup = prevCleanup
-		authResponseLogCleaned = prevCleanedFlag
 	})
 
 	writer := defaultLogWriter{}
 	authResponseLogNow = func() time.Time {
+		panic("boom")
+	}
+
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic from authResponseLogNow")
+			}
+		}()
+		_, _ = writer.Write([]byte("first\n"))
+	}()
+
+	authResponseLogNow = func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}
-	
-	// First write should trigger async cleanup
-	if _, err := writer.Write([]byte("first\n")); err != nil {
-		t.Fatalf("first Write() error: %v", err)
-	}
-	<-done // Wait for the first async cleanup to finish
-
-	// Second write should NOT trigger cleanup
 	if _, err := writer.Write([]byte("second\n")); err != nil {
 		t.Fatalf("second Write() error: %v", err)
-	}
-	
-	// Give it a tiny bit of time just to be absolutely sure no background routine was spawned
-	time.Sleep(10 * time.Millisecond)
-
-	if cleanupCalls != 1 {
-		t.Fatalf("cleanupCalls = %d, want 1 (should only clean once per process)", cleanupCalls)
 	}
 }

@@ -19,7 +19,6 @@ var (
 	authResponseLogNow               = time.Now
 	authResponseLogArgs              = func() []string { return os.Args }
 	authResponseLogCleanup           = cleanupOldLogs
-	authResponseLogCleaned bool
 
 	logMu sync.Mutex
 )
@@ -27,32 +26,33 @@ var (
 type defaultLogWriter struct{}
 
 func (defaultLogWriter) Write(p []byte) (n int, err error) {
-	logMu.Lock()
-	defer logMu.Unlock()
-
 	dir := filepath.Join(core.GetConfigDir(), "logs")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return 0, err
-	}
-
-	// Format: auth-2006-01-02.log
 	now := authResponseLogNow()
-	logName := fmt.Sprintf("auth-%s.log", now.Format("2006-01-02"))
-	logPath := filepath.Join(dir, logName)
 
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
+	n, err = func() (int, error) {
+		logMu.Lock()
+		defer logMu.Unlock()
 
-	// Best-effort cleanup: run at most once per process.
-	if !authResponseLogCleaned {
-		authResponseLogCleaned = true
-		go authResponseLogCleanup(dir, now)
-	}
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return 0, err
+		}
 
-	return f.Write(p)
+		// Format: auth-2006-01-02.log
+		logName := fmt.Sprintf("auth-%s.log", now.Format("2006-01-02"))
+		logPath := filepath.Join(dir, logName)
+
+		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			return 0, err
+		}
+		defer f.Close()
+
+		return f.Write(p)
+	}()
+
+	go authResponseLogCleanup(dir, now)
+
+	return n, err
 }
 
 func cleanupOldLogs(dir string, now time.Time) {
