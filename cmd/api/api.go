@@ -89,13 +89,13 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 
 	cmd.Flags().StringVar(&opts.Params, "params", "", "query parameters JSON")
 	cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON")
-	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
+	cmdutil.RegisterEnumFlag(cmd, &asStr, "as", "", "auto", []string{"user", "bot", "auto"}, "identity type")
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageSize, "page-size", 0, "page size (0 = use API default)")
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.PageDelay, "page-delay", 200, "delay in ms between pages")
-	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
+	cmdutil.RegisterEnumFlag(cmd, &opts.Format, "format", "", "json", []string{"json", "ndjson", "table", "csv"}, "output format")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
 
 	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -104,12 +104,6 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 		}
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"user", "bot"}, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	return cmd
 }

@@ -341,10 +341,7 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	cmdutil.DisableAuthCheck(cmd)
 
 	cmd.ValidArgsFunction = completeSchemaPath
-	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json (default) | pretty")
-	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"json", "pretty"}, cobra.ShellCompDirectiveNoFileComp
-	})
+	cmdutil.RegisterEnumFlag(cmd, &opts.Format, "format", "", "json", []string{"json", "pretty"}, "output format")
 
 	return cmd
 }

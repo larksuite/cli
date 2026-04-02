@@ -33,6 +33,7 @@ func NewCmdConfigRemove(f *cmdutil.Factory, runF func(*ConfigRemoveOptions) erro
 		},
 	}
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 

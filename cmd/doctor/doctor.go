@@ -43,6 +43,7 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.DisableAuthCheck(cmd)
 	cmd.Flags().BoolVar(&opts.Offline, "offline", false, "skip network checks (only verify local state)")
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 

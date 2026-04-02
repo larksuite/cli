@@ -38,6 +38,7 @@ func NewCmdAuthScopes(f *cmdutil.Factory, runF func(*ScopesOptions) error) *cobr
 
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json (default) | pretty")
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 

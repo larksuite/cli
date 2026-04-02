@@ -34,6 +34,7 @@ func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Co
 		},
 	}
 
+	cmdutil.NoFileCompletion(cmd)
 	return cmd
 }
 
