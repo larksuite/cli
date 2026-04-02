@@ -4,6 +4,7 @@
 package im
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -155,18 +156,17 @@ func sanitizeURLForDisplay(rawURL string) string {
 	return host + "/" + base
 }
 
-const maxURLDownloadSize = 100 * 1024 * 1024 // 100MB
-
-// downloadURLToTempFile downloads a URL to a temp file, returning the path.
-// The caller is responsible for removing the temp file.
-func downloadURLToTempFile(ctx context.Context, runtime *common.RuntimeContext, rawURL string) (string, error) {
+// startURLDownload performs URL validation, creates an HTTP client, and sends a
+// GET request. It returns the response (with Body still open) and the file
+// extension inferred from the URL. The caller must close resp.Body.
+func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawURL string) (*http.Response, string, error) {
 	if err := validate.ValidateDownloadSourceURL(ctx, rawURL); err != nil {
-		return "", fmt.Errorf("blocked URL: %w", err)
+		return nil, "", fmt.Errorf("blocked URL: %w", err)
 	}
 
 	httpClient, err := runtime.Factory.HttpClient()
 	if err != nil {
-		return "", fmt.Errorf("http client: %w", err)
+		return nil, "", fmt.Errorf("http client: %w", err)
 	}
 	httpClient = validate.NewDownloadHTTPClient(httpClient, validate.DownloadHTTPClientOptions{
 		AllowHTTP: true,
@@ -174,57 +174,58 @@ func downloadURLToTempFile(ctx context.Context, runtime *common.RuntimeContext, 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL: %w", err)
+		return nil, "", fmt.Errorf("invalid URL: %w", err)
 	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
+		return nil, "", fmt.Errorf("download failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
 
-	// Determine extension from URL for correct file type detection.
 	ext := filepath.Ext(fileNameFromURL(rawURL))
-	tmpFile, err := os.CreateTemp("", "lark-media-*"+ext)
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-
-	n, err := io.Copy(tmpFile, io.LimitReader(resp.Body, maxURLDownloadSize+1))
-	tmpFile.Close()
-	if err != nil {
-		os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("download failed: %w", err)
-	}
-	if n > maxURLDownloadSize {
-		os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("download exceeds size limit (max 100MB)")
-	}
-
-	return tmpFile.Name(), nil
+	return resp, ext, nil
 }
 
-// resolveToLocalPath resolves a media value to a local file path.
-// If the value is a URL, it downloads to a temp file; the returned cleanup func
-// removes the temp file (no-op for local paths). Returns ("", nil, nil) for media keys.
-func resolveToLocalPath(ctx context.Context, runtime *common.RuntimeContext, flagName, value string) (localPath string, cleanup func(), err error) {
-	noop := func() {}
-	if isMediaKey(value) {
-		return "", noop, nil
+// downloadURLToReader returns a size-limited io.ReadCloser for the URL content
+// and the file extension inferred from the URL. The caller must close the
+// returned ReadCloser. No temp file is created and the content is not buffered.
+func downloadURLToReader(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64) (io.ReadCloser, string, error) {
+	resp, ext, err := startURLDownload(ctx, runtime, rawURL)
+	if err != nil {
+		return nil, "", err
 	}
-	if isURL(value) {
-		fmt.Fprintf(runtime.IO().ErrOut, "downloading %s: %s\n", flagName, sanitizeURLForDisplay(value))
-		tmpPath, err := downloadURLToTempFile(ctx, runtime, value)
-		if err != nil {
-			return "", noop, err
-		}
-		return tmpPath, func() { os.Remove(tmpPath) }, nil
+	lr := &limitedReadCloser{
+		r:      io.LimitReader(resp.Body, maxSize+1),
+		closer: resp.Body,
+		max:    maxSize,
 	}
-	return value, noop, nil
+	return lr, ext, nil
+}
+
+// limitedReadCloser wraps a LimitReader and checks for size overflow on Close.
+type limitedReadCloser struct {
+	r      io.Reader
+	closer io.Closer
+	max    int64
+	n      int64
+}
+
+func (l *limitedReadCloser) Read(p []byte) (int, error) {
+	n, err := l.r.Read(p)
+	l.n += int64(n)
+	if l.n > l.max {
+		return n, fmt.Errorf("download exceeds size limit (max %s)", common.FormatSize(l.max))
+	}
+	return n, err
+}
+
+func (l *limitedReadCloser) Close() error {
+	return l.closer.Close()
 }
 
 // resolveMediaContent resolves text/media flags to (msgType, contentJSON) for Execute.
@@ -237,17 +238,19 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 	if videoVal != "" {
 		fKey := videoVal
 		if !isMediaKey(videoVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--video", videoVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(videoVal, "video", dlErr)
+			if isURL(videoVal) {
+				fmt.Fprintf(runtime.IO().ErrOut, "downloading --video: %s\n", sanitizeURLForDisplay(videoVal))
+				mb, dlErr := newMediaBuffer(ctx, runtime, videoVal, maxFileUploadSize)
+				if dlErr != nil {
+					return mediaFallbackOrError(videoVal, "video", dlErr)
+				}
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading video: %s\n", mb.FileName())
+				fKey, err = uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), mb.Duration())
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading video: %s\n", filepath.Base(videoVal))
+				ft := detectIMFileType(videoVal)
+				fKey, err = uploadFileToIM(ctx, runtime, videoVal, ft, parseMediaDuration(videoVal, ft))
 			}
-			defer cleanup()
-			if localPath == "" {
-				localPath = videoVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading video: %s\n", filepath.Base(localPath))
-			ft := detectIMFileType(localPath)
-			fKey, err = uploadFileToIM(ctx, runtime, localPath, ft, parseMediaDuration(localPath, ft))
 			if err != nil {
 				return mediaFallbackOrError(videoVal, "video", err)
 			}
@@ -256,13 +259,18 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 		if isMediaKey(videoCoverVal) {
 			coverKey = videoCoverVal
 		} else {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--video-cover", videoCoverVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(videoCoverVal, "cover image", dlErr)
+			if isURL(videoCoverVal) {
+				fmt.Fprintf(runtime.IO().ErrOut, "downloading --video-cover: %s\n", sanitizeURLForDisplay(videoCoverVal))
+				rc, _, dlErr := downloadURLToReader(ctx, runtime, videoCoverVal, maxImageUploadSize)
+				if dlErr != nil {
+					return mediaFallbackOrError(videoCoverVal, "cover image", dlErr)
+				}
+				defer rc.Close()
+				coverKey, err = uploadImageFromReader(ctx, runtime, rc, "message")
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading cover image: %s\n", filepath.Base(videoCoverVal))
+				coverKey, err = uploadImageToIM(ctx, runtime, videoCoverVal, "message")
 			}
-			defer cleanup()
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading cover image: %s\n", filepath.Base(localPath))
-			coverKey, err = uploadImageToIM(ctx, runtime, localPath, "message")
 			if err != nil {
 				return "", "", fmt.Errorf("cover image upload failed: %w", err)
 			}
@@ -273,17 +281,19 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 	if imageVal != "" {
 		imageKey := imageVal
 		if !isMediaKey(imageVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--image", imageVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(imageVal, "image", dlErr)
+			if isURL(imageVal) {
+				fmt.Fprintf(runtime.IO().ErrOut, "downloading --image: %s\n", sanitizeURLForDisplay(imageVal))
+				rc, _, dlErr := downloadURLToReader(ctx, runtime, imageVal, maxImageUploadSize)
+				if dlErr != nil {
+					return mediaFallbackOrError(imageVal, "image", dlErr)
+				}
+				defer rc.Close()
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading image\n")
+				imageKey, err = uploadImageFromReader(ctx, runtime, rc, "message")
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading image: %s\n", filepath.Base(imageVal))
+				imageKey, err = uploadImageToIM(ctx, runtime, imageVal, "message")
 			}
-			defer cleanup()
-			if localPath == "" {
-				// isMediaKey path — won't happen since we checked above, but be safe.
-				localPath = imageVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading image: %s\n", filepath.Base(localPath))
-			imageKey, err = uploadImageToIM(ctx, runtime, localPath, "message")
 			if err != nil {
 				return mediaFallbackOrError(imageVal, "image", err)
 			}
@@ -294,16 +304,18 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 	if fileVal != "" {
 		fKey := fileVal
 		if !isMediaKey(fileVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--file", fileVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(fileVal, "file", dlErr)
+			if isURL(fileVal) {
+				fmt.Fprintf(runtime.IO().ErrOut, "downloading --file: %s\n", sanitizeURLForDisplay(fileVal))
+				mb, dlErr := newMediaBuffer(ctx, runtime, fileVal, maxFileUploadSize)
+				if dlErr != nil {
+					return mediaFallbackOrError(fileVal, "file", dlErr)
+				}
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading file: %s\n", mb.FileName())
+				fKey, err = uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), "")
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading file: %s\n", filepath.Base(fileVal))
+				fKey, err = uploadFileToIM(ctx, runtime, fileVal, detectIMFileType(fileVal), "")
 			}
-			defer cleanup()
-			if localPath == "" {
-				localPath = fileVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading file: %s\n", filepath.Base(localPath))
-			fKey, err = uploadFileToIM(ctx, runtime, localPath, detectIMFileType(localPath), "")
 			if err != nil {
 				return mediaFallbackOrError(fileVal, "file", err)
 			}
@@ -314,17 +326,19 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 	if audioVal != "" {
 		fKey := audioVal
 		if !isMediaKey(audioVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--audio", audioVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(audioVal, "audio", dlErr)
+			if isURL(audioVal) {
+				fmt.Fprintf(runtime.IO().ErrOut, "downloading --audio: %s\n", sanitizeURLForDisplay(audioVal))
+				mb, dlErr := newMediaBuffer(ctx, runtime, audioVal, maxFileUploadSize)
+				if dlErr != nil {
+					return mediaFallbackOrError(audioVal, "audio", dlErr)
+				}
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading audio: %s\n", mb.FileName())
+				fKey, err = uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), mb.Duration())
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut, "uploading audio: %s\n", filepath.Base(audioVal))
+				ft := detectIMFileType(audioVal)
+				fKey, err = uploadFileToIM(ctx, runtime, audioVal, ft, parseMediaDuration(audioVal, ft))
 			}
-			defer cleanup()
-			if localPath == "" {
-				localPath = audioVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading audio: %s\n", filepath.Base(localPath))
-			ft := detectIMFileType(localPath)
-			fKey, err = uploadFileToIM(ctx, runtime, localPath, ft, parseMediaDuration(localPath, ft))
 			if err != nil {
 				return mediaFallbackOrError(audioVal, "audio", err)
 			}
@@ -549,6 +563,120 @@ func parseMediaDuration(filePath, fileType string) string {
 	return strconv.FormatInt(ms, 10)
 }
 
+// mediaBuffer holds downloaded media content in memory, providing both random
+// access (for duration parsing) and an io.Reader (for upload). It replaces temp
+// files for URL-sourced media that needs seek-like access before upload.
+type mediaBuffer struct {
+	data []byte
+	ext  string // file extension including leading dot, e.g. ".mp4"
+}
+
+// newMediaBuffer downloads URL content into memory via downloadURLToReader.
+func newMediaBuffer(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64) (*mediaBuffer, error) {
+	rc, ext, err := downloadURLToReader(ctx, runtime, rawURL, maxSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("download failed: %w", err)
+	}
+	return &mediaBuffer{data: data, ext: ext}, nil
+}
+
+// Reader returns a new io.Reader over the buffered data. Each call returns a
+// fresh reader starting from the beginning, so the buffer can be read multiple
+// times (once for duration parsing, once for upload).
+func (b *mediaBuffer) Reader() io.Reader {
+	return bytes.NewReader(b.data)
+}
+
+// FileName returns a synthetic file name based on the URL extension.
+func (b *mediaBuffer) FileName() string {
+	return "media" + b.ext
+}
+
+// FileType returns the IM file type detected from the extension.
+func (b *mediaBuffer) FileType() string {
+	return detectIMFileType("file" + b.ext)
+}
+
+// Duration parses audio/video duration from the buffered data.
+func (b *mediaBuffer) Duration() string {
+	ft := b.FileType()
+	if ft != "opus" && ft != "mp4" {
+		return ""
+	}
+	if len(b.data) == 0 {
+		return ""
+	}
+	var ms int64
+	if ft == "opus" {
+		ms = readOggDurationBytes(b.data)
+	} else {
+		ms = readMp4DurationBytes(b.data)
+	}
+	if ms <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(ms, 10)
+}
+
+// readOggDurationBytes parses OGG duration from the tail of in-memory data.
+func readOggDurationBytes(data []byte) int64 {
+	const maxTail = 65536
+	buf := data
+	if len(buf) > maxTail {
+		buf = buf[len(buf)-maxTail:]
+	}
+	return parseOggOpusDuration(buf)
+}
+
+// readMp4DurationBytes walks top-level MP4 boxes in memory to find moov/mvhd duration.
+func readMp4DurationBytes(data []byte) int64 {
+	fileSize := int64(len(data))
+	var offset int64
+	for offset+8 <= fileSize {
+		size := int64(binary.BigEndian.Uint32(data[offset : offset+4]))
+		typ := string(data[offset+4 : offset+8])
+
+		var boxEnd, dataStart int64
+		switch {
+		case size == 0:
+			boxEnd = fileSize
+			dataStart = offset + 8
+		case size == 1:
+			if offset+16 > fileSize {
+				return 0
+			}
+			boxEnd = int64(binary.BigEndian.Uint64(data[offset+8 : offset+16]))
+			dataStart = offset + 16
+		case size < 8:
+			return 0
+		default:
+			boxEnd = offset + size
+			dataStart = offset + 8
+		}
+
+		if typ == "moov" {
+			moovLen := boxEnd - dataStart
+			if moovLen <= 0 || moovLen > 10<<20 || dataStart+moovLen > fileSize {
+				return 0
+			}
+			moov := data[dataStart : dataStart+moovLen]
+			mvhdStart, mvhdEnd := findMP4Box(moov, 0, len(moov), "mvhd")
+			if mvhdStart < 0 {
+				return 0
+			}
+			return parseMvhdPayload(moov[mvhdStart:mvhdEnd])
+		}
+		offset = boxEnd
+	}
+	return 0
+}
+
 // readOggDuration reads the tail of an OGG file (up to 64 KB) and parses duration.
 func readOggDuration(f *os.File, fileSize int64) int64 {
 	const maxTail = 65536
@@ -734,15 +862,15 @@ func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContex
 		}
 		imgURL := sub[1]
 
-		tmpPath, err := downloadURLToTempFile(ctx, runtime, imgURL)
+		rc, _, err := downloadURLToReader(ctx, runtime, imgURL, maxImageUploadSize)
 		if err != nil {
 			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to download image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
 			return ""
 		}
-		defer os.Remove(tmpPath)
+		defer rc.Close()
 
 		fmt.Fprintf(runtime.IO().ErrOut, "uploading image from URL: %s\n", sanitizeURLForDisplay(imgURL))
-		imgKey, err := uploadImageToIM(ctx, runtime, tmpPath, "message")
+		imgKey, err := uploadImageFromReader(ctx, runtime, rc, "message")
 		if err != nil {
 			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to upload image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
 			return ""
@@ -921,6 +1049,66 @@ func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePat
 		fd.AddField("duration", duration)
 	}
 	fd.AddFile("file", f)
+
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+		HttpMethod: http.MethodPost,
+		ApiPath:    "/open-apis/im/v1/files",
+		Body:       fd,
+	}, larkcore.WithFileUpload())
+	if err != nil {
+		return "", err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
+		return "", fmt.Errorf("parse error: %w", err)
+	}
+
+	data, _ := result["data"].(map[string]interface{})
+	fileKey, _ := data["file_key"].(string)
+	if fileKey == "" {
+		return "", fmt.Errorf("file_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+	}
+	return fileKey, nil
+}
+
+// uploadImageFromReader uploads an image from an io.Reader (no local file needed).
+func uploadImageFromReader(ctx context.Context, runtime *common.RuntimeContext, r io.Reader, imageType string) (string, error) {
+	fd := larkcore.NewFormdata()
+	fd.AddField("image_type", imageType)
+	fd.AddFile("image", r)
+
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+		HttpMethod: http.MethodPost,
+		ApiPath:    "/open-apis/im/v1/images",
+		Body:       fd,
+	}, larkcore.WithFileUpload())
+	if err != nil {
+		return "", err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
+		return "", fmt.Errorf("parse error: %w", err)
+	}
+
+	data, _ := result["data"].(map[string]interface{})
+	imageKey, _ := data["image_key"].(string)
+	if imageKey == "" {
+		return "", fmt.Errorf("image_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+	}
+	return imageKey, nil
+}
+
+// uploadFileFromReader uploads a file from an io.Reader (no local file needed).
+func uploadFileFromReader(ctx context.Context, runtime *common.RuntimeContext, r io.Reader, fileName, fileType, duration string) (string, error) {
+	fd := larkcore.NewFormdata()
+	fd.AddField("file_type", fileType)
+	fd.AddField("file_name", fileName)
+	if duration != "" {
+		fd.AddField("duration", duration)
+	}
+	fd.AddFile("file", r)
 
 	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
