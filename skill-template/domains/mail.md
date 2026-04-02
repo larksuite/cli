@@ -92,6 +92,8 @@ lark-cli mail +reply --message-id <id> --body '收到，谢谢'
 
 `+message`、`+messages`、`+thread` 默认返回 HTML 正文（`--html=true`）。仅需确认操作结果（如验证标记已读、移动文件夹是否成功）时，用 `--html=false` 跳过 HTML 正文，只返回纯文本，显著减少 token 消耗。
 
+输出默认为结构化 JSON，可直接读取，无需额外编码转换。
+
 ```bash
 # ✅ 验证操作结果：不需要 HTML
 lark-cli mail +message --message-id <id> --html=false
