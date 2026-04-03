@@ -221,7 +221,13 @@ var VCRecording = common.Shortcut{
 			for _, r := range results {
 				m, _ := r.(map[string]any)
 				meetingID, _ := m["meeting_id"].(string)
-				row := map[string]interface{}{"meeting_id": meetingID}
+				row := map[string]interface{}{}
+				if meetingID != "" {
+					row["meeting_id"] = meetingID
+				}
+				if calEventID, _ := m["calendar_event_id"].(string); calEventID != "" {
+					row["calendar_event_id"] = calEventID
+				}
 				if errMsg, _ := m["error"].(string); errMsg != "" {
 					row["status"] = "FAIL"
 					row["error"] = errMsg

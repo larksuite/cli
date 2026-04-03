@@ -99,8 +99,6 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 		map[string]any{
 			"instance_ids":              []string{instanceID},
 			"need_meeting_instance_ids": true,
-			"need_meeting_notes":        true,
-			"need_ai_meeting_notes":     true,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query event relation info: %w", err)
@@ -150,7 +148,7 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 		fmt.Fprintf(errOut, "%s event %s has %d meetings, trying each\n", logPrefix, sanitizeLogValue(instanceID), len(meetingIDs))
 	}
 
-	// 逐个尝试关联的会议，直到找到有纪要的
+	// try each associated meeting until one has notes
 	for _, meetingID := range meetingIDs {
 		fmt.Fprintf(errOut, "%s event %s → meeting_id=%s\n", logPrefix, sanitizeLogValue(instanceID), sanitizeLogValue(meetingID))
 		result := fetchNoteByMeetingID(ctx, runtime, meetingID)
