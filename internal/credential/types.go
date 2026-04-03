@@ -17,23 +17,15 @@ type AccountProvider interface {
 }
 
 // TokenType distinguishes UAT from TAT.
-type TokenType int
+// Uses string constants matching extension/credential.TokenType for zero-cost conversion.
+type TokenType string
 
 const (
-	TokenTypeUAT TokenType = iota // User Access Token
-	TokenTypeTAT                  // Tenant Access Token
+	TokenTypeUAT TokenType = "uat" // User Access Token
+	TokenTypeTAT TokenType = "tat" // Tenant Access Token
 )
 
-func (t TokenType) String() string {
-	switch t {
-	case TokenTypeUAT:
-		return "uat"
-	case TokenTypeTAT:
-		return "tat"
-	default:
-		return "unknown"
-	}
-}
+func (t TokenType) String() string { return string(t) }
 
 // ParseTokenType converts a string to TokenType.
 func ParseTokenType(s string) (TokenType, bool) {
@@ -43,7 +35,7 @@ func ParseTokenType(s string) (TokenType, bool) {
 	case "tat":
 		return TokenTypeTAT, true
 	default:
-		return 0, false
+		return "", false
 	}
 }
 

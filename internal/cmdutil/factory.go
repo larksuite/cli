@@ -166,7 +166,6 @@ func (f *Factory) NewAPIClient() (*client.APIClient, error) {
 }
 
 // NewAPIClientWithConfig creates an APIClient with an explicit config.
-// Use this when the caller has already resolved the correct user profile
 // Use this when the caller has already resolved the correct config.
 func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient, error) {
 	sdk, err := f.LarkClient()

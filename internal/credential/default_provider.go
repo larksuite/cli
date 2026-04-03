@@ -91,6 +91,8 @@ func (p *DefaultTokenProvider) ResolveToken(ctx context.Context, req TokenSpec) 
 	}
 }
 
+// resolveUAT resolves a user access token. Not cached (unlike TAT) because UAT
+// may be refreshed between calls and GetValidAccessToken handles its own caching.
 func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, error) {
 	acct, err := p.defaultAcct.ResolveAccount(ctx)
 	if err != nil {
@@ -112,6 +114,8 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	return &TokenResult{Token: token, Scopes: scopes}, nil
 }
 
+// resolveTAT resolves a tenant access token. Result is cached after first call.
+// NOTE: Uses sync.Once — only the context from the first call is used.
 func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
 	p.tatOnce.Do(func() {
 		p.tatResult, p.tatErr = p.doResolveTAT(ctx)
@@ -131,10 +135,13 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	ep := core.ResolveEndpoints(acct.Brand)
 	url := ep.Open + "/open-apis/auth/v3/tenant_access_token/internal"
 
-	body, _ := json.Marshal(map[string]string{
+	body, err := json.Marshal(map[string]string{
 		"app_id":     acct.AppID,
 		"app_secret": acct.AppSecret,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal TAT request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err

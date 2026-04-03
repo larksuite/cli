@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -101,7 +102,7 @@ func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, 
 // Without profileName: cleans up old config and saves as the only app.
 func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmdutil.Factory, appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
 	if profileName != "" {
-		return saveAsProfile(existing, profileName, appId, secret, brand, lang)
+		return saveAsProfile(existing, f.Keychain, profileName, appId, secret, brand, lang)
 	}
 	cleanupOldConfig(existing, f, appId)
 	return saveAsOnlyApp(appId, secret, brand, lang)
@@ -109,13 +110,22 @@ func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmduti
 
 // saveAsProfile appends or updates a named profile in the config.
 // If a profile with the same name exists, it updates it; otherwise appends.
-func saveAsProfile(existing *core.MultiAppConfig, profileName, appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
+// When updating, cleans up old keychain secrets if AppId changed.
+func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, profileName, appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
 	multi := existing
 	if multi == nil {
 		multi = &core.MultiAppConfig{}
 	}
 
 	if idx := multi.FindAppIndex(profileName); idx >= 0 {
+		// Clean up old keychain secret and user tokens if AppId changed
+		if multi.Apps[idx].AppId != appId {
+			core.RemoveSecretStore(multi.Apps[idx].AppSecret, kc)
+			for _, user := range multi.Apps[idx].Users {
+				auth.RemoveStoredToken(multi.Apps[idx].AppId, user.UserOpenId)
+			}
+			multi.Apps[idx].Users = []core.AppUser{}
+		}
 		// Update existing profile
 		multi.Apps[idx].AppId = appId
 		multi.Apps[idx].AppSecret = secret

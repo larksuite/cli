@@ -5,6 +5,7 @@ package credential
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -46,6 +47,9 @@ func NewCredentialProvider(providers []extcred.Provider, defaultAcct DefaultAcco
 }
 
 // ResolveAccount resolves app credentials. Result is cached after first call.
+// NOTE: Uses sync.Once — only the context from the first call is used for resolution.
+// Subsequent calls return the cached result regardless of their context.
+// This is acceptable for CLI (single invocation per process) but not for long-running servers.
 func (p *CredentialProvider) ResolveAccount(ctx context.Context) (*Account, error) {
 	p.accountOnce.Do(func() {
 		p.account, p.accountErr = p.doResolveAccount(ctx)
@@ -82,7 +86,14 @@ func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account) 
 	}
 	for _, prov := range p.providers {
 		tok, err := prov.ResolveToken(ctx, extcred.TokenSpec{Type: extcred.TokenTypeUAT})
-		if err != nil || tok == nil {
+		if err != nil {
+			var blockErr *extcred.BlockError
+			if errors.As(err, &blockErr) {
+				return nil // provider explicitly blocks UAT; skip enrichment
+			}
+			continue
+		}
+		if tok == nil {
 			continue
 		}
 		// Have UAT — must verify and resolve identity

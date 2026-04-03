@@ -203,7 +203,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	scopes, _ := opts.Method["scopes"].([]interface{})
 	if !opts.As.IsBot() {
-		if err := checkServiceScopes(f.Credential, opts.Ctx, opts.As, config, opts.Method, scopes); err != nil {
+		if err := checkServiceScopes(opts.Ctx, f.Credential, opts.As, config, opts.Method, scopes); err != nil {
 			return err
 		}
 	}
@@ -249,7 +249,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.
-func checkServiceScopes(cred *credential.CredentialProvider, ctx context.Context, identity core.Identity, config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
+func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
 	result, err := cred.ResolveToken(ctx, credential.NewTokenSpec(identity, config.AppID))
 	if err != nil || result == nil || result.Scopes == "" {
 		return nil

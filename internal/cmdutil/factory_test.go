@@ -86,8 +86,7 @@ func TestResolveAs_DefaultAs_FromConfig(t *testing.T) {
 }
 
 func TestResolveAs_DefaultAs_FromEnv(t *testing.T) {
-	os.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
-	defer os.Unsetenv("LARKSUITE_CLI_DEFAULT_AS")
+	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
 
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("auto", false)

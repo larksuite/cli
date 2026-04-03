@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
@@ -133,7 +134,7 @@ func ValidateProfileName(name string) error {
 	if name == "" {
 		return fmt.Errorf("profile name cannot be empty")
 	}
-	if len(name) > 64 {
+	if utf8.RuneCountInString(name) > 64 {
 		return fmt.Errorf("profile name %q is too long (max 64 characters)", name)
 	}
 	for _, r := range name {

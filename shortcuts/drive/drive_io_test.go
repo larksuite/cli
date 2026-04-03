@@ -18,6 +18,9 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// registerDriveBotTokenStub is a no-op. TAT is now managed by CredentialProvider, not SDK.
+func registerDriveBotTokenStub(_ *httpmock.Registry) {}
+
 func driveTestConfig() *core.CliConfig {
 	return &core.CliConfig{
 		AppID: "drive-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
