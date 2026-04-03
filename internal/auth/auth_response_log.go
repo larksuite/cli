@@ -104,7 +104,7 @@ func doLogAuthResponse(path string, status int, logID string) {
 		logPath := filepath.Join(dir, logName)
 		if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
 			authResponseLogger = log.New(f, "", 0)
-			go authResponseLogCleanup(dir, now)
+			authResponseLogCleanup(dir, now)
 		}
 	})
 
