@@ -25,6 +25,7 @@ const TYPE_LABEL_SET = new Set(TYPE_LABELS);
 const DOMAIN_SERVICES = [
   "im",
   "doc",
+  "drive",
   "base",
   "sheets",
   "calendar",
@@ -129,7 +130,11 @@ function normalizeText(title, body) {
  * @returns {string[]}
  */
 function collectDomainsFromText(title, body) {
-  const text = normalizeText(title, body);
+  const normalizedBody = String(body || "")
+    .replace(/(["'])(?:(?=(\\?))\2.)*?\1/gs, (segment) => {
+      return /lark-cli\s+/i.test(segment) && segment.length > 80 ? '""' : segment;
+    });
+  const text = normalizeText(title, normalizedBody);
   const titleText = String(title || "").toLowerCase();
 
   const hits = new Set();
@@ -141,14 +146,14 @@ function collectDomainsFromText(title, body) {
   }
 
   // 1) Explicit domain labels in text: domain/<service>
-  const explicit = /\bdomain\/(im|doc|docs|base|sheets|calendar|mail|task|vc|whiteboard|minutes|wiki|event|auth|core)\b/gi;
+  const explicit = /\bdomain\/(im|doc|docs|drive|base|sheets|calendar|mail|task|vc|whiteboard|minutes|wiki|event|auth|core)\b/gi;
   for (const match of text.matchAll(explicit)) {
     const svc = match && match[1] ? normalizeService(match[1]) : "";
     if (DOMAIN_SERVICES.includes(svc)) hits.add(svc);
   }
 
   // 2) Command mention: lark-cli <service> / lark cli <service>
-  const cmd = /\blark[-\s]?cli\s+(im|doc|docs|base|sheets|calendar|mail|task|vc|whiteboard|minutes|wiki|event|auth|core)\b/gi;
+  const cmd = /\blark[-\s]?cli\s+(im|doc|docs|drive|base|sheets|calendar|mail|task|vc|whiteboard|minutes|wiki|event|auth|core)\b/gi;
   for (const match of text.matchAll(cmd)) {
     const svc = match && match[1] ? normalizeService(match[1]) : "";
     if (DOMAIN_SERVICES.includes(svc)) hits.add(svc);
@@ -159,23 +164,27 @@ function collectDomainsFromText(title, body) {
   // NOTE: exclude `im` here because it's too common in English text (e.g. "im stuck").
   const looseServices = DOMAIN_SERVICES.filter((s) => s !== "im");
   for (const svc of looseServices) {
-    const re = new RegExp(`\\b${svc}\\b`, "i");
+    const pattern = svc === "doc" ? "\\bdocs?\\b" : `\\b${svc}\\b`;
+    const re = new RegExp(pattern, "i");
     if (re.test(titleText)) hits.add(svc);
   }
 
   // 4) Keyword heuristics (for users who don't paste the exact command)
   // Keep this conservative; add keywords only when they are strongly tied to a domain.
   const keywordMap = {
-    base: [/\bbitable\b/i, /多维表格/],
-    doc: [/\bdocx\b/i, /文档/],
-    sheets: [/电子表格/],
-    calendar: [/日历/],
-    mail: [/邮件/],
-    task: [/任务/],
-    wiki: [/知识库/],
-    minutes: [/妙记/],
-    vc: [/会议/],
-    im: [/消息|群聊|私聊/],
+    base: [/\bbase\s*\+/i, /\bbase-token\b/i, /open-apis\/bitable\//i, /\brecords?\/(search|list)\b/i, /多维表格/],
+    doc: [/\bdocx\b/i, /\bfeishu document\b/i, /\blark document\b/i, /\bdocument comments?\b/i, /飞书文档|云文档|文档/],
+    drive: [/\bdrive\b/i, /\bfolder token\b/i, /create_folder/i, /drive\/v1\/files/i, /\bdrive\s*\+/i],
+    sheets: [/电子表格/, /\bsheets\s*\+/i],
+    calendar: [/日历/, /\bcalendar\s*\+/i],
+    mail: [/邮件/, /\bmail\s*\+/i],
+    task: [/任务清单/, /飞书任务/, /\btask\s*\+/i],
+    wiki: [/知识库/, /\bwiki\s*\+/i],
+    minutes: [/妙记/, /\bminutes\s*\+/i],
+    vc: [/\bvc\s*\+/i, /飞书会议|视频会议|创建会议/],
+    im: [/消息|群聊|私聊/, /\bim\s*\+/i, /im\/v1/i],
+    auth: [/\bauth\s+(login|status|check|logout)\b/i, /\bkeychain\b/i, /\buser_access_token\b/i, /\buser token\b/i, /\bconsent\b/i, /授权|登录|scope authorization/],
+    core: [/\bpostinstall\b/i, /\bconfig(\.json)?\b/i, /\bconfig\s+(init|show|remove)\b/i, /\bpackage\.json\b/i, /\bscripts\/install\.js\b/i, /\bbun\b/i, /\bskills?\b/i, /\btrae\b/i, /\bprofile\b/i, /\bmulti-account\b/i, /\bprivate deployment\b/i, /\bbinary release\b/i, /\bbinary fails?\b/i, /\bunsupported platform\b/i, /\bebadplatform\b/i, /\bwindows\b.*\bbinary\b|\bbinary\b.*\bwindows\b/i, /\briscv64\b.*\bsupport/i, /私有化|安装脚本|配置文件|多账号|多个应用|多用户|持久化连接|服务器端/],
   };
   for (const [svc, patterns] of Object.entries(keywordMap)) {
     if (!DOMAIN_SERVICES.includes(svc)) continue;
@@ -199,33 +208,34 @@ function collectDomainsFromText(title, body) {
  */
 function scoreTypeFromText(title, body) {
   const text = normalizeText(title, body);
+  const titleText = String(title || "").toLowerCase();
 
   const rules = {
     bug: [
       /\bbug\b/i,
-      /报错|错误|异常|崩溃|无法|失败|不工作/,
-      /\berror\b|\bexception\b|\bcrash\b|\bbroken\b|\bfails?\b/i,
+      /报错|错误|异常|崩溃|无法|失败|不工作|丢失|被忽略/,
+      /\berror\b|\bexception\b|\bcrash\b|\bbroken\b|\bfails?\b|\bsigkill\b|\binvalid json\b|\bno stdout\b|\bno stderr\b|\bno output\b|\bsilently fail\w*\b|\bsilently drop\w*\b|\bdiscard\w*\b/i,
     ],
     enhancement: [
       /希望支持|建议|新增|能否|是否可以/,
       /\bfeature request\b|\badd support\b|\bplease add\b|\bwish\b/i,
-      /\benhancement\b|\bfeature\b|\brequest\b/i,
+      /\benhancement\b|\bfeature\b/i,
     ],
     question: [
       /如何使用|怎么配置|请问|怎么用|是否支持/,
-      /\bhow to\b|\busage\b|\bis it possible\b|\bdoes it support\b|\bquestion\b/i,
+      /\bhow to\b|\busage\b|\bis it possible\b|\bdoes it support\b|\bquestion\b|\bwhat is the difference\b/i,
     ],
     documentation: [
-      /\bdocumentation\b|\breadme\b|\btypo\b|\bexample\b/i,
-      /示例|拼写/,
+      /\bdocumentation\b|\breadme\b|\btypo\b|\bexample\b|\bbest practice\b/i,
+      /示例|拼写|安装说明/,
     ],
     performance: [
       /慢|卡住|超时|高内存|响应慢|耗时/,
-      /\bperformance\b|\bperf\b|\bslow\b|\bhang\b|\btimeout\b|\blatency\b|\boom\b/i,
+      /\bperformance\b|\bperf\b|\bslow\b|\bhang\b|\btimeout\b|\blatency\b|\boom\b|10-100x faster|60\+ seconds/i,
     ],
     security: [
       /凭据泄漏|注入|权限绕过|token\s*暴露|密钥泄露/,
-      /\bsecurity\b|\bvuln\b|\bcve\b|\bcredential\b|\binjection\b|\btoken exposure\b|\bpermission bypass\b/i,
+      /\bvuln\b|\bcve\b|\binjection\b|\btoken exposure\b|\bpermission bypass\b|\bcredential leak\b/i,
     ],
   };
 
@@ -236,6 +246,23 @@ function scoreTypeFromText(title, body) {
       if (re.test(text)) scores[type] += 1;
     }
   }
+
+  if (/^\s*\[bug\]/i.test(titleText) || /^\s*bug[:(]/i.test(titleText)) {
+    scores.bug += 2;
+  }
+  if (/^\s*\[(feature|feature request)\]/i.test(titleText) || /\bfeature request\b/i.test(titleText) || /^\s*feat[:(]/i.test(titleText)) {
+    scores.enhancement += 2;
+  }
+  if (/希望支持|能否支持|是否可以/.test(titleText)) {
+    scores.enhancement += 1;
+  }
+  if (/^\s*\[doc\]/i.test(titleText)) {
+    scores.documentation += 1;
+  }
+  if (/^request\b/i.test(titleText)) {
+    scores.enhancement += 2;
+  }
+
   return scores;
 }
 

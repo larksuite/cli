@@ -24,7 +24,9 @@
     "title": "安装脚本没有给 Trae CN 安装 skills",
     "body": "Trae CN 的 skills 位置在：`~/.trae-cn/skills`，希望可以加入检测",
     "expected_type": null,
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/244",
     "source_labels": []
   },
@@ -33,7 +35,9 @@
     "title": "postinstall: binary download fails silently behind HTTP proxy (Node.js https ignores https_proxy)",
     "body": "## Environment\n\n- **OS**: macOS 26.3.1 (Darwin 25.3.0) arm64\n- **lark-cli version**: v1.0.2 (also reproduced on v1.0.0)\n- **Node.js**: v25.8.2\n- **npm**: 11.11.1\n- **Installation method**: npm global install\n- **Network**: Behind HTTP proxy (https_proxy=http://127.0.0.1:7897)\n\n## Description\n\n`npm install -g @larksuite/cli` completes without error, but the `bin/` directory is empty — the Go binary is never downloaded. The postinstall script (`scripts/install.js`) uses Node.js native `https.get()` which does **not** honor the `https_proxy` / `HTTP_PROXY` environment variables. In mainland China (and other regions where GitHub is slow or blocked), this causes the download to fail silently.\n\n`curl` and `wget` in the same shell session work fine because they respect proxy environment variables.\n\n## Steps to Reproduce\n\n1. Set an HTTP proxy:\n   ```bash\n   export https_proxy=http://127.0.0.1:7897\n   ```\n\n2. Install lark-cli:\n   ```bash\n   npm install -g @larksuite/cli\n   ```\n\n3. Check the binary:\n   ```bash\n   ls $(npm root -g)/@larksuite/cli/bin/\n   # Empty directory — no binary\n   ```\n\n4. Verify curl works with the same proxy:\n   ```bash\n   curl -fSL -o /tmp/lark-cli.tar.gz \\\n     \"http\n\n...(truncated)",
     "expected_type": "bug",
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/201",
     "source_labels": [
       "bug"
@@ -55,7 +59,10 @@
     "title": "CLI的多用户授权支持需求",
     "body": "当支持多用户的Agent使用CLI时，无法根据openid对不同用户进行授权管理，可能与当前CLI针对个人助理方向有关。但这对企业级多用户Agent也是非常广泛的和有价值需求，希望增加不同openid的授权模式功能。",
     "expected_type": "bug",
-    "expected_domains": [],
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/204",
     "source_labels": []
   },
@@ -64,7 +71,10 @@
     "title": "lark-cli api POST silently fails with --as user (exit 1, no output)",
     "body": "## Description\n\n`lark-cli api POST` silently fails when using `--as user` identity. The command exits with code 1 but produces **no stdout and no stderr output**, making it impossible to debug.\n\n## Environment\n\n- lark-cli version: 1.0.0\n- OS: macOS (Darwin 25.4.0, arm64)\n- Auth: user token valid, scope `im:message.send_as_user` confirmed granted\n\n## Steps to Reproduce\n\n```bash\n# This works fine (GET with user identity):\nlark-cli api GET /open-apis/im/v1/chats --as user\n# Returns JSON response correctly\n\n# This silently fails (POST with user identity):\nlark-cli api POST /open-apis/im/v1/messages \\\n  --params '{\"receive_id_type\":\"open_id\"}' \\\n  --data '{\"receive_id\":\"ou_xxx\",\"msg_type\":\"text\",\"content\":\"{\\\"text\\\":\\\"hello\\\"}\"}' \\\n  --as user\n# Exit code 1, NO stdout, NO stderr\n```\n\n## Expected Behavior\n\nShould either:\n1. Successfully send the message and return the API response, or\n2. Print an error message explaining why it failed\n\n## Actual Behavior\n\n- Exit code: 1\n- stdout: empty\n- stderr: empty\n\n## Additional Context\n\n- `--dry-run` works correctly and shows the expected request structure\n- `lark-cli api GET` with `--as user` works fine\n- `lark-cli api POST` with `--as bot` (via sh\n\n...(truncated)",
     "expected_type": "bug",
-    "expected_domains": [],
+    "expected_domains": [
+      "auth",
+      "im"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/122",
     "source_labels": []
   },
@@ -123,7 +133,9 @@
     "title": "Riscv64 is not supported",
     "body": "`npm install -g @larksuite/cli\nnpm error code EBADPLATFORM\nnpm error notsup Unsupported platform for @larksuite/cli@1.0.2: wanted {\"os\":\"darwin,linux,win32\",\"cpu\":\"x64,arm64\"} (current: {\"os\":\"linux\",\"cpu\":\"riscv64\"})\nnpm error notsup Valid os:   darwin,linux,win32\nnpm error notsup Actual os:  linux\nnpm error notsup Valid cpu:  x64,arm64\nnpm error notsup Actual cpu: riscv64`",
     "expected_type": "bug",
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/225",
     "source_labels": []
   },
@@ -144,7 +156,8 @@
     "body": "## Summary\n\nWhen using `lark-cli api` to call Drive folder-related raw APIs, the CLI exits with code `1` but prints no stdout and no stderr.\n\nThis makes it impossible to debug or build folder automation on top of Lark CLI raw API.\n\n## Environment\n\n- CLI: `@larksuite/cli`\n- Install method: global npm install\n- OS: macOS arm64\n- Identity: `--as user`\n- Authentication: valid user login\n- Related shortcut commands such as `lark-cli drive +upload` work correctly in the same environment\n\n## Affected raw APIs\n\nThe following official APIs are documented and can be composed correctly by `--dry-run`, but fail silently on real execution.\n\n### List items in folder\n\n```bash\nlark-cli api GET /open-apis/drive/v1/files \\\n  --as user \\\n  --format json \\\n  --params '{\"folder_token\":\"<FOLDER_TOKEN>\",\"page_size\":100}'\n```\n\n### Create folder\n\n```bash\nlark-cli api POST /open-apis/drive/v1/files/create_folder \\\n  --as user \\\n  --format json \\\n  --data '{\"name\":\"analysis-test\",\"folder_token\":\"<FOLDER_TOKEN>\"}'\n```\n\n## Reproduction steps\n\n1. Ensure `lark-cli auth login` is complete and user auth is valid.\n2. Use a folder token that is confirmed accessible under the same account.\n3. Run:\n\n```bash\nlark-cli a\n\n...(truncated)",
     "expected_type": "bug",
     "expected_domains": [
-      "auth"
+      "auth",
+      "drive"
     ],
     "source_url": "https://github.com/larksuite/cli/issues/215",
     "source_labels": []
@@ -166,7 +179,9 @@
     "title": "期望支持 token 直传",
     "body": "CLI 封装好了命令，不想重复造轮子，能支持多用户并行使用就太好了。",
     "expected_type": null,
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/129",
     "source_labels": []
   },
@@ -188,7 +203,9 @@
     "title": "[Feature request] The read and post of comments with user info within a feishu document",
     "body": "As the title stated, I want a cli command to access the comments posted by other users within the feishu document. And it's better to have another command to response comments by agents. \n\nWhen converting the feishu document into markdown format, the comments could be represented by a speical grammar, like  [userA]: <> (This is a comment.)",
     "expected_type": "enhancement",
-    "expected_domains": [],
+    "expected_domains": [
+      "doc"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/209",
     "source_labels": []
   },
@@ -262,7 +279,7 @@
     "name": "#202 im +messages-send --markdown: table syntax and blank lines are silently dropped",
     "title": "im +messages-send --markdown: table syntax and blank lines are silently dropped",
     "body": "## Environment\n\n- **OS**: macOS 26.3.1 arm64\n- **lark-cli version**: v1.0.2\n- **Shell**: zsh\n\n## Description\n\nWhen sending messages with `--markdown`, two formatting issues occur:\n\n1. **Markdown tables are completely lost** — `| col | col |` syntax produces no output at all, the table content disappears silently\n2. **Blank lines are collapsed** — double newlines `\\n\\n` between paragraphs are compressed to single newlines, removing paragraph spacing\n\n## Steps to Reproduce\n\n```bash\nlark-cli im +messages-send --as bot --chat-id \"oc_xxx\" --markdown '**Test**\n\n| Item | Status |\n|------|--------|\n| Table | Testing |\n\nParagraph 1\n\nParagraph 2 (should have blank line above)'\n```\n\n### Expected output in Feishu\n\n```\n**Test**\n\n| Item   | Status  |\n|--------|---------|\n| Table  | Testing |\n\nParagraph 1\n\nParagraph 2 (should have blank line above)\n```\n\n### Actual output in Feishu\n\n```\nTest\nParagraph 1\nParagraph 2 (should have blank line above)\n```\n\n- Table is completely missing\n- Bold renders correctly\n- All blank lines between paragraphs are gone\n\n## Impact\n\nThis makes `--markdown` unreliable for any structured data output. Users must fall back to `--text` (which preserves blank lines but has n\n\n...(truncated)",
-    "expected_type": null,
+    "expected_type": "bug",
     "expected_domains": [
       "im"
     ],
@@ -285,7 +302,9 @@
     "title": "一台电脑上能否创建多个飞书 cli？",
     "body": "如题。个人账号和飞书账号都想使用，之前在个人账号创建了一个飞书 cli，想在公司做演示，用公司的账号又创建了一个飞书 cli，但是原来个人账号创建的不见了。家目录的 .lark-cli/config.json 只有一份。",
     "expected_type": "enhancement",
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/128",
     "source_labels": []
   },
@@ -303,7 +322,9 @@
     "title": "建议官方支持 Bun 作为 Node.js 替代方案，提升开发体验",
     "body": "## 背景\n目前 larksuite/cli 运行环境依赖 Node.js（`engines.node`），实际核心 CLI 是 Go 预编译二进制，通过 JS 脚本（如 `install.js`、`run.js`）进行管理。\n\nBun 是一个新兴的 JavaScript 运行时，兼容 Node.js 大部分 API，具备以下显著优势：\n\n- 启动速度更快，依赖安装与执行体验远优于 Node.js\n- 不需 nvm 等版本隔离工具，减少环境冲突\n- 自带包管理器（等价于 npm/yarn/pnpm）\n- 更低的内存和 CPU 占用\n- 更适合 CLI 场景与现代云/AI 环境\n\n目前个人和许多开发者因为多项目需要频繁切换不同 Node 版本、维护 nvm，自从迁移到 Bun 后感到大大减负。而像本项目这样主要用 JS 脚本起 GO 二进制的模式，用 Bun 兼容性极好，且用 `bun run`/`bunx` 启动 CLI 体验非常流畅。\n\n## 建议\n- 在 `package.json` 里添加 `engines.bun` 字段：\n  ```json\n  \"engines\": {\n    \"node\": \">=16\",\n    \"bun\": \">=1.0\"\n  },\n  \"packageManager\": \"bun@latest\"\n  ```\n- 脚本部分支持 `bun` 和 `node` 两种运行方式（如 postinstall 可试`bun ... || node ...`），官方 Readme 说明支持 Bun\n- 将 Bun 作为推荐的 CLI 运行方式之一，面向现代开发者和 AI 场景\n\n## 期望效果\n- 降低对特定 Node 版本的依赖，减少 nvm 疲劳\n- CLI 启动速度及依赖安装更快\n- 吸引更多 Bun 用户与下一代 JavaScript 社区\n\n感谢官方团队的付出！很期待能看到官方 Bun 支持或意见！",
     "expected_type": "enhancement",
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/196",
     "source_labels": []
   },
@@ -334,6 +355,7 @@
     "body": "lark-cli api POST --data 在 Windows 上有 bug\nlark-cli im +messages-send 只支持 bot 身份\nbot 没有权限给未授权的用户发消息",
     "expected_type": "bug",
     "expected_domains": [
+      "auth",
       "im"
     ],
     "source_url": "https://github.com/larksuite/cli/issues/161",
@@ -346,6 +368,7 @@
     "expected_type": "bug",
     "expected_domains": [
       "doc",
+      "drive",
       "wiki"
     ],
     "source_url": "https://github.com/larksuite/cli/issues/58",
@@ -368,7 +391,10 @@
     "title": "持久化连接授权",
     "body": "每次使用都要重新授权一次，说旧的已经过期，有什么方法可持久授权吗？",
     "expected_type": null,
-    "expected_domains": [],
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/187",
     "source_labels": []
   },
@@ -377,7 +403,9 @@
     "title": "什么时候支持私有化版本飞书呢？",
     "body": "什么时候支持私有化版本飞书呢？",
     "expected_type": null,
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/167",
     "source_labels": []
   },
@@ -398,7 +426,9 @@
     "title": "lark-cli 不支持多个 Gateway 实例共享配置",
     "body": "## 问题描述（由 Claude Code 发现并总结）\n\nlark-cli 使用全局配置文件 `~/.lark-cli/config.json`，不支持多实例共享或指定配置文件路径。\n\n当有多个 OpenClaw Gateway 实例（如 Friday、Andy、vovo）需要各自使用不同的飞书 App 时，lark-cli 只能配置一个 App，导致其他实例的图片/文件发送会路由到错误的 App。\n\n## 复现场景\n\n1. 部署多个 OpenClaw Gateway 实例\n2. 每个实例使用不同的飞书 App（不同的 App ID/Secret）\n3. 尝试使用 lark-cli 发送图片\n\n## 当前问题\n\n- lark-cli 只读取 `~/.lark-cli/config.json`\n- 没有 `--config` 或环境变量方式指定其他配置文件\n- 导致不同 Gateway 实例混用同一个 App 认证\n\n## 期望行为\n\n支持以下任一方案：\n\n1. **多配置文件支持**：通过 `--config <path>` 指定配置文件路径\n2. **环境变量配置**：`LARK_CONFIG_PATH` 环境变量\n3. **全局配置节**：在单一配置文件中支持多个 App 配置，通过 `--app-id` 切换\n\n## 替代方案（临时解决）\n\n为每个 Gateway 创建独立的发送脚本，直接调用飞书 API 而非使用 lark-cli：\n\n```bash\n#!/bin/bash\n# feishu-send-image.sh - 使用指定 App 发送图片\nAPP_ID=\"cli_xxxxx\"\nAPP_SECRET=\"xxxxx\"\n# 直接调用飞书 API\n```\n\n但这增加了维护成本，且无法使用 lark-cli 的其他功能。\n\n## 环境信息\n\n- OS: macOS\n- lark-cli 版本: 1.0.0+\n- Node.js: 22.x",
     "expected_type": "bug",
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/185",
     "source_labels": [
       "bug",
@@ -421,10 +451,102 @@
     "title": "只能创建一个应用，config配置内使用apps:[]，看着像支持多个应用，实际上每次都是覆盖，没法同时配置多个",
     "body": "",
     "expected_type": null,
-    "expected_domains": [],
+    "expected_domains": [
+      "core"
+    ],
     "source_url": "https://github.com/larksuite/cli/issues/182",
     "source_labels": [
       "enhancement"
     ]
+  },
+  {
+    "name": "#248 [Bug] macOS: `config init --new` creates encrypted files but does not persist `master.key` to Keychain, causing fresh processes to fail",
+    "title": "[Bug] macOS: `config init --new` creates encrypted files but does not persist `master.key` to Keychain, causing fresh processes to fail",
+    "body": "## Summary\n\nOn macOS, `lark-cli` appears to create encrypted secret files under `~/Library/Application Support/lark-cli/`, but the Keychain entry for `service=lark-cli, account=master.key` is not actually persisted.\n\nAs a result, the initial flow may appear to work, but fresh processes (for example, a new Codex thread / new shell process) cannot decrypt the stored files and fail with keychain-related config errors.\n\n## Environment\n\n- OS: macOS\n- CLI version: `lark-cli version 1.0.0`\n\n## What I did\n\n1. Ran:\n   ```bash\n   lark-cli config init --new\n   lark-cli auth login\nLogin succeeded:\n\nOK: 登录成功! 用户: 陈俊宏 (ou_cb729d3fab97f85ac99e52820ff90588)\nFiles were created under:\n\n~/Library/Application Support/lark-cli/appsecret_cli_a9427f94c9389bb4.enc\n~/Library/Application Support/lark-cli/cli_a9427f94c9389bb4_ou_cb729d3fab97f85ac99e52820ff90588.enc\nBut the expected Keychain item is missing:\n\nsecurity find-generic-password -s 'lark-cli' -a 'master.key' ~/Library/Keychains/login.keychain-db\nOutput:\n\nsecurity: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.\nExpected behavior\nAfter lark-cli config init --new, the CLI should persist the Keychain item used to decrypt stored .enc files:\n\nservice: lark-cli\naccount: master.key\nFresh processes should then be able to read the stored app secret and user token successfully.\n\nActual behavior\nThe encrypted .enc files are created, but master.key is not present in the macOS login keychain.\n\nFresh processes later fail when trying to read stored config/secrets.\n\nIn my environment this surfaces as config/keychain errors such as:\n\nkeychain entry not found: lark-cli/appsecret:cli_a9427f94c9389bb4\nWhy I think this is a bug\nFrom the current implementation, macOS storage seems to work like this:\n\nKeychain stores master.key\nsecret payloads are encrypted into files in ~/Library/Application Support/lark-cli/*.enc\nRelevant code:\n\ninternal/keychain/keychain.go\ninternal/keychain/keychain_darwin.go\nIt looks like platformSet(...) can proceed to write .enc files even when the underlying Keychain persistence did not actually land.\n\nMy guess is that getMasterKey(..., true) / keyring.Set(service, \"master.key\", ...) may need a read-after-write verification step before treating initialization as successful.\n\nReproduction hints\nRun lark-cli config init --new\nRun lark-cli auth login\nConfirm .enc files exist in ~/Library/Application Support/lark-cli/\nCheck Keychain:\nsecurity find-generic-password -s 'lark-cli' -a 'master.key' ~/Library/Keychains/login.keychain-db\nObserve item not found\nStart a fresh process and try a command that needs stored credentials\nAdditional note\nThis is especially visible in agent/sandboxed workflows where each task may run in a fresh process. The initial process may appear fine, but subsequent processes fail consistently because the Keychain master key is missing.",
+    "expected_type": "bug",
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/248",
+    "source_labels": []
+  },
+  {
+    "name": "#153 feat(drive): add folder/file management shortcuts for Drive API",
+    "title": "feat(drive): add folder/file management shortcuts for Drive API",
+    "body": "## Feature Request\n\nAdd Drive file/folder management shortcuts to lark-cli.\n\n## Current Gap\n\nThe current Drive module only supports 3 commands:\n- `+upload` - Upload a local file\n- `+download` - Download a file\n- `+add-comment` - Add a comment to a file\n\nMissing essential Drive operations for building a complete CLI experience:\n- Create folders/directories\n- List files in a folder\n- Copy/Move files\n- Delete files\n- Get file metadata (including folder token)\n\n## Use Case\n\nFor AI Agent (Hermes) integration, I want to build an automated knowledge base system:\n1. Create a folder hierarchy for knowledge management (e.g., 🧠 Knowledge Base > Embedded/AI/DevOps)\n2. Programmatically organize files into folders\n3. Link folder tokens to Bitable index records\n\nCurrently `lark-cli drive` is insufficient for this use case.\n\n## Proposed Shortcuts\n\n```go\nfunc Shortcuts() []common.Shortcut {\n    return []common.Shortcut{\n        DriveUpload,\n        DriveDownload,\n        DriveAddComment,\n        // New:\n        DriveCreateFolder,      // lark-cli drive +create-folder\n        DriveListFiles,        // lark-cli drive +list\n        DriveFileCopy,         // lark-cli drive +copy (extends existing copy)\n        DriveFileDelete,       // lark-cli drive +delete\n        DriveGetFileMeta,      // lark-cli drive +meta\n    }\n}\n```\n\n## Workaround\n\nCurrently I'm using lark-cli api to create folders, but the drive API needs a user identity scope which lark-cli does not have built-in support for.\n\n## Context\n\nThis issue arises when integrating lark-cli with [Hermes Agent](https://github.com/openmule/hermes-agent) for knowledge base creation in Feishu.\n",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "drive"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/153",
+    "source_labels": []
+  },
+  {
+    "name": "#143 Feature Request: Add base +record-search command (POST /records/search API)",
+    "title": "Feature Request: Add base +record-search command (POST /records/search API)",
+    "body": "## Background\n\nCurrently, querying records in a Bitable table requires `+record-list` with client-side filtering. For large tables (2400+ records), this requires 13+ serial API calls and takes 60+ seconds.\n\nThe Feishu Open Platform provides a more efficient `/records/search` API:\n- **Endpoint**: `POST /open-apis/bitable/v1/apps/:app_token/tables/:table_id/records/search`\n- **Server-side filtering**: supports `contains`, `is`, `isNot`, etc. on any field\n- **Larger page size**: up to 500 records per request (vs 200 for list)\n- **Result**: 1–2 requests instead of 13+, roughly 10–100x faster\n\n## Problem with current `lark-cli api`\n\nCalling this endpoint via `lark-cli api` silently exits with code 1, no stdout, no stderr:\n\n```bash\nMSYS_NO_PATHCONV=1 lark-cli api POST \"/open-apis/bitable/v1/apps/xxx/tables/yyy/records/search\"   --as user --data '{\"page_size\":5}'\n# Exit: 1, no output at all\n```\n\nGET requests to other bitable endpoints work fine via `lark-cli api`. The issue appears specific to POST `/records/search`.\n\n## Requested Command\n\n```bash\nlark-cli base +record-search   --base-token <token>   --table-id <table_id>   --filter '{\"conjunction\":\"and\",\"conditions\":[{\"field_name\":\"会议名称\",\"operator\":\"contains\",\"value\":[\"keyword\"]}]}'   --sort '[{\"field_name\":\"会议开始时间\",\"desc\":true}]'   --field-names '[\"会议名称\",\"会议开始时间\",\"面试录音\"]'   --page-size 500   --page-all\n```\n\n## Performance Impact\n\nSearching interview records in a 2400-row Bitable table:\n\n| Method | Requests | Time |\n|--------|----------|------|\n| Current `+record-list` (full scan) | 13 serial calls | 60+ sec |\n| Optimized `+record-list` (range scan) | 5 calls | ~6 sec |\n| `+record-search` (server-side filter) | 1–2 calls | ~1 sec |\n\n## Reference\n\n- [Search records API](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/bitable-v1/app-table-record/search)",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "base"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/143",
+    "source_labels": []
+  },
+  {
+    "name": "#165 macOS arm64: lark-cli binary fails with exit code 137 (SIGKILL)",
+    "title": "macOS arm64: lark-cli binary fails with exit code 137 (SIGKILL)",
+    "body": "# lark-cli Binary Fails to Execute on macOS arm64 (Exit Code 137/SIGKILL)\n\n## Environment\n\n- **OS**: macOS 15.1 (Darwin 25.1.0) arm64\n- **lark-cli version**: v1.0.1\n- **Node.js**: v22.21.1\n- **npm**: 10.9.4\n- **Installation method**: npm global install\n- **Architecture**: Apple Silicon (arm64)\n\n## Description\n\nAfter successfully installing `@larksuite/cli` via npm and running the postinstall script, the `lark-cli` binary fails to execute with exit code 137 (SIGKILL). The binary is killed by the system immediately upon execution without producing any output.\n\n## Steps to Reproduce\n\n1. Install lark-cli globally:\n```bash\nnpm install -g @larksuite/cli\n```\n\n2. Run postinstall script manually (as per issue #135):\n```bash\ncd ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli\nnode scripts/install.js\n```\nOutput: `lark-cli v1.0.1 installed successfully`\n\n3. Verify binary exists and is executable:\n```bash\nls -la ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli/bin/lark-cli\nfile ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli/bin/lark-cli\n```\nOutput:\n```\n-rwxr-xr-x  1 yang  staff  14846642 Mar 31 20:46 lark-cli\nMach-O 64-bit executable arm64\n```\n\n4. Attempt to run any lark-cli command:\n```bash\nlark-cli --version\nlark-cli --help\nlark-cli config init\n```\n\n## Expected Behavior\n\nThe command should display help text, version information, or start the configuration wizard.\n\n## Actual Behavior\n\n- The process exits immediately with code 137 (SIGKILL)\n- No output is produced on stdout or stderr\n- The process appears in `ps` briefly then disappears\n- No crash reports are generated in `~/Library/Logs/DiagnosticReports/`\n\n## Additional Information\n\n### Binary Details\n\n```bash\notool -L ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli/bin/lark-cli\n```\n\nOutput:\n```\n/usr/lib/libSystem.B.dylib (compatibility version 0.0.0, current version 0.0.0)\n/usr/lib/libresolv.9.dylib (compatibility version 0.0.0, current version 0.0.0)\n/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation\n/System/Library/Frameworks/Security.framework/Versions/A/Security\n```\n\n### Attempted Solutions\n\n1. **Tried downloading pre-built binary from GitHub releases:**\n   - Downloaded `lark-cli-1.0.1-darwin-arm64.tar.gz`\n   - Same behavior (exit code 137)\n\n2. **Attempted source build:**\n   - Encountered SSL certificate verification error during `make install`\n   - Compiled binary exhibits same exit code 137 behavior\n\n3. **Checked for quarantine attributes:**\n   - No `com.apple.quarantine` attribute found\n   - `spctl --assess` rejects the binary\n\n4. **Skills installation successful:**\n   - `npx skills add larksuite/cli -y -g` completed successfully\n   - All 19 skills installed to `~/.agents/skills/`\n\n## Exit Code 137 Context\n\nExit code 137 = 128 + 9 = SIGKILL, which typically indicates:\n- The process was forcibly terminated by the system\n- Possible code signing issues\n- Possible compatibility issues with the macOS version\n- Security restrictions preventing execution\n\n## Related Issues\n\n- Issue #135: pnpm installation requires manual postinstall (similar installation flow issue)\n- Issue #70: macOS token persistence issues (macOS-specific behavior)\n- Issue #122: Silent failures on macOS arm64 environment\n\n## Workaround Needed\n\nIs there:\n1. A known issue with code signing for the macOS arm64 binary?\n2. An alternative installation method that works on macOS 15.x?\n3. Any additional configuration needed for the binary to execute?\n\n## System Details\n\n```bash\n# macOS Version\nsw_vers\n```\nOutput:\n```\nProductName:\t\tmacOS\nProductVersion:\t\t15.1\nBuildVersion:\t\t24B83\n```\n\n```bash\n# Architecture\nuname -m\n```\nOutput: `arm64`\n\n```bash\n# Go version (for reference)\ngo version\n```\nOutput: `go version go1.25.7 darwin/arm64`\n\n---\n\nThe skills package installed successfully, but the CLI binary itself cannot be used. Any guidance would be appreciated!",
+    "expected_type": "bug",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/165",
+    "source_labels": []
+  },
+  {
+    "name": "#107 Request Windows binary release",
+    "title": "Request Windows binary release",
+    "body": "## Request: Add Windows (win32) binary release\\n\\n### Problem\\nThe current GitHub release (v1.0.0) only contains macOS and Linux binaries. The Windows platform is not supported.\\n\\nWhen installing via npm (\npm install -g @larksuite/cli) on Windows, the install script attempts to download lark-cli-1.0.0-windows-amd64.zip from the release page, but this file does not exist, resulting in a 404 error followed by connection timeout.\\n\\n### Evidence\\n- Release assets only contain: lark-cli-1.0.0-darwin-amd64.tar.gz, lark-cli-1.0.0-darwin-arm64.tar.gz, lark-cli-1.0.0-linux-amd64.tar.gz\\n- No lark-cli-1.0.0-windows-amd64.zip\\n\\n### Why this matters\\nWindows is a major platform for development and AI agent workflows. Without a pre-built binary, Windows users must build from source (requiring Go 1.23+), which is a significant barrier.\\n\\n### Request\\nPlease add Windows binary to the CI/CD release pipeline. The install script already supports win32 (see scripts/install.js platform mapping), so it should be straightforward to add a Windows build step.\\n\\n### Additional context\\n- Node.js version: v24.14.0 (Windows x64)\\n- Platform: Windows_NT 10.0.22631\\n",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/107",
+    "source_labels": []
+  },
+  {
+    "name": "#147 [Feature] Implement Encrypted File Fallback for Keychain Storage",
+    "title": "[Feature] Implement Encrypted File Fallback for Keychain Storage",
+    "body": "### **Problem Statement**\nCurrently, `lark-cli` relies on the system keychain on macOS to store sensitive information like App Secrets and User Access Tokens. However, in certain environments—such as restricted sandboxes, headless CI/CD servers, or remote SSH sessions —the system keychain may be unavailable.\n\nWhen this happens, the CLI currently fails to save configurations, preventing users from completing `lark-cli config init` or logging in.\n\n### **Proposed Solution**\nIntroduce a secondary, locally-managed encrypted storage layer. If the primary system keychain is unreachable or returns an \"unavailable\" error, the CLI should gracefully degrade to storing credentials in an AES-GCM encrypted file within the user’s config directory.\n\n### **Requirements**\n* **Encryption:** Use AES-GCM with a locally generated `master.key` (permission 0600) to ensure data at rest is not plain text.\n* **Transparency:** Warn the user when a fallback is being used so they are aware of the storage change.\n* **Safety:** Ensure that changing an App ID doesn't lead to the accidental reuse of a secret reference from a previous configuration.\n* **Refactoring:** Centralize config directory resolution and encryption logic to avoid duplication across platform-specific files.\n",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/147",
+    "source_labels": []
+  },
+  {
+    "name": "#75 Feature Request: Support creating folders via drive command (+create-folder shortcut)",
+    "title": "Feature Request: Support creating folders via drive command (+create-folder shortcut)",
+    "body": "## Feature Request\n\n### Summary\nAdd a shortcut command to create folders in Lark Drive, similar to how `docs +create` creates documents.\n\n### Proposed Command\n```bash\nlark-cli drive +create-folder --folder-token <parent_folder_token> --name <folder_name>\n```\n\n### Underlying API\nThe Feishu Open Platform already provides this capability:\n- **Create Folder API:** `POST /open-apis/drive/v1/files/create_folder`\n- **Scope:** `drive:drive:write`\n- **API Doc:** https://open.feishu.cn/document/server-docs/docs/drive-v1/folder/create\n\n### Use Case\nWhen organizing files programmatically (e.g., creating weekly report folders under a parent directory), there is currently no way to create folders via `lark-cli`. The `drive` module only supports `files.copy`, not folder creation. The only workaround is using `lark-cli api POST /open-apis/drive/v1/files/create_folder --data '...'`, which is verbose and error-prone for a common operation.\n\n### Proposed Parameters\n| Flag | Required | Description |\n|------|----------|-------------|\n| `--folder-token` | Yes | Parent folder token where the new folder will be created |\n| `--name` | Yes | Name of the new folder |\n\n### Additional Context\nOther drive operations like `+upload`, `+download`, `+add-comment` already have shortcut commands. Folder creation is a fundamental operation and deserves the same treatment.",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "drive"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/75",
+    "source_labels": []
+  },
+  {
+    "name": "#82 Docs create bug: create --markdown only write the first line and discard the others",
+    "title": "Docs create bug: create --markdown only write the first line and discard the others",
+    "body": "<img width=\"946\" height=\"284\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/39b0c4ba-43a3-4210-acc3-889bb0f64ca4\" />\n\nwhen I test the docs cli, it only write the fist line of markdown content. my test demo is :\nlark-cli docs +create --title \"飞书CLI命令一览表-测试\" --markdown \"🔐 认证相关 命令 说明 lark-cli auth login 扫码登录（无需创建应用） lark-cli auth status 查看当前登录状态 lark-cli auth list 列出所有已登录用户 lark-cli auth logout 退出登录 ⚙️ 配置管理 命令 说明 lark-cli config init 初始化配置（App ID / App Secret） lark-cli config show 显示当前配置 lark-cli config remove 移除配置 📅 日历 Calendar 命令 说明 lark-cli calendar +agenda 查看今日日程 lark-cli calendar +create 创建日历事件 lark-cli calendar events list 列出日历事件 👥 联系人 Contact 命令 说明 lark-cli contact +get-user 获取用户信息 lark-cli contact +search-user 搜索用户 💬 消息 IM 命令 说明 lark-cli im +chat-create 创建群聊 lark-cli im +chat-messages-list 查看聊天消息 lark-cli im +messages-reply 回复消息 lark-cli im +messages-send 发送消息 📝 文档 Docs 命令 说明 lark-cli docs +create 创建文档 lark-cli docs +fetch 获取文档内容 lark-cli docs +search 搜索文档 📊 表格 Sheets 命令 说明 lark-cli sheets +create 创建表格 lark-cli sheets +read 读取表格内容 lark-cli sheets +write 写入表格 lark-cli sheets +append 追加行 📁 云盘 Drive 命令 说明 lark-cli drive +upload 上传文件 lark-cli drive +download 下载文件 lark-cli drive +add-comment 添加评论 📧 邮件 Mail 命令 说明 lark-cli mail +draft-create 创建邮件草稿 lark-cli mail +message 查看邮件内容 ✅ 任务 Task 命令 说明 lark-cli task +create 创建任务 lark-cli task +complete 完成任务 lark-cli task +get-my-tasks 获取我的任务 🔧 通用功能 命令 说明 lark-cli api GET /path 调用任意 API lark-cli schema 查看 API 参数和权限 lark-cli doctor 健康检查\"",
+    "expected_type": "bug",
+    "expected_domains": [
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/82",
+    "source_labels": []
   }
 ]
