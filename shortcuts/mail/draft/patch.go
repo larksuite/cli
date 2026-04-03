@@ -609,6 +609,9 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	if err := validate.RejectCRLF(finalCID, "inline cid"); err != nil {
 		return err
 	}
+	if strings.ContainsAny(finalCID, " \t<>()") {
+		return fmt.Errorf("inline cid %q contains invalid characters (spaces, tabs, angle brackets, or parentheses are not allowed)", finalCID)
+	}
 	if err := validate.RejectCRLF(fileName, "inline filename"); err != nil {
 		return err
 	}

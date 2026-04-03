@@ -645,8 +645,8 @@ Content-Type: text/html; charset=UTF-8
 	err = Apply(snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div>no image here</div>`}},
 	})
-	if err == nil {
-		t.Fatal("expected orphaned inline error after set_body dropped CID reference, got nil")
+	if err == nil || !strings.Contains(err.Error(), "orphaned cids") {
+		t.Fatalf("expected orphaned cid error, got: %v", err)
 	}
 }
 
@@ -692,6 +692,25 @@ Content-Type: text/html; charset=UTF-8
 		})
 		if err == nil {
 			t.Errorf("expected error for filename %q, got nil", bad)
+		}
+	}
+}
+
+func TestReplaceInlineRejectsInvalidCharactersInCID(t *testing.T) {
+	fixtureData := mustReadFixture(t, "testdata/html_inline_draft.eml")
+	chdirTemp(t)
+	if err := os.WriteFile("updated.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	snapshot := mustParseFixtureDraft(t, fixtureData)
+	for _, bad := range []string{"my logo", "cid\there", "lo<go>id", "img(1)"} {
+		err := Apply(snapshot, Patch{
+			Ops: []PatchOp{{Op: "replace_inline", Target: AttachmentTarget{PartID: "1.2"}, Path: "updated.png", CID: bad}},
+		})
+		if err == nil {
+			t.Errorf("expected error for CID %q, got nil", bad)
+		} else if !strings.Contains(err.Error(), "invalid characters") {
+			t.Errorf("CID %q: expected 'invalid characters' error, got: %v", bad, err)
 		}
 	}
 }
