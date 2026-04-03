@@ -194,9 +194,14 @@ func resolveMailboxID(runtime *common.RuntimeContext) string {
 	return id
 }
 
-// resolveComposeMailboxID returns the mailbox ID for compose shortcuts,
-// derived from --from flag. Falls back to "me" when --from is not specified.
+// resolveComposeMailboxID returns the mailbox ID for compose shortcuts.
+// Priority: --mailbox > --from > "me".
+// When sending via an alias (send_as), use --mailbox for the owning mailbox
+// and --from for the alias sender address.
 func resolveComposeMailboxID(runtime *common.RuntimeContext) string {
+	if mb := runtime.Str("mailbox"); mb != "" {
+		return mb
+	}
 	if from := runtime.Str("from"); from != "" {
 		return from
 	}
@@ -250,23 +255,34 @@ func extractPrimaryEmail(data map[string]interface{}) string {
 	return ""
 }
 
-// fetchCurrentUserEmail retrieves the current mailbox primary email.
-func fetchCurrentUserEmail(runtime *common.RuntimeContext) string {
+// resolveComposeSenderEmail determines the sender email for compose shortcuts.
+// Priority: --from > --mailbox > profile("me").
+// The profile API only supports "me", so when --mailbox is set to a non-"me"
+// address (e.g. a shared mailbox), its value is used directly as the sender.
+func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
+	if from := runtime.Str("from"); from != "" {
+		return from
+	}
+	if mb := runtime.Str("mailbox"); mb != "" {
+		return mb
+	}
 	email, _ := fetchMailboxPrimaryEmail(runtime, "me")
 	return email
 }
 
-// fetchSelfEmailSet returns a set containing the primary email of the given
-// mailbox for reply-all exclusion. Pass the resolved mailboxID (from
-// resolveComposeMailboxID) so that when --from selects a different mailbox,
-// only that mailbox's own address is excluded — not the "me" primary email.
+// fetchSelfEmailSet returns a set of addresses to exclude as "self" in
+// reply-all. It always tries profile("me"); when mailboxID or senderEmail
+// differ from "me", those are added to the set as well so that shared-
+// mailbox and alias addresses are also excluded.
 func fetchSelfEmailSet(runtime *common.RuntimeContext, mailboxID string) map[string]bool {
-	if mailboxID == "" {
-		mailboxID = "me"
-	}
 	set := make(map[string]bool)
-	if email, _ := fetchMailboxPrimaryEmail(runtime, mailboxID); email != "" {
+	// Always include the "me" primary email.
+	if email, _ := fetchMailboxPrimaryEmail(runtime, "me"); email != "" {
 		set[strings.ToLower(email)] = true
+	}
+	// Include mailboxID itself (covers shared mailbox addresses).
+	if mailboxID != "" && mailboxID != "me" {
+		set[strings.ToLower(mailboxID)] = true
 	}
 	return set
 }

@@ -26,7 +26,8 @@ var MailDraftEdit = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me)"},
+		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me). Prefer --mailbox for clarity; --from is kept for backward compatibility."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Takes priority over --from when both are set."},
 		{Name: "draft-id", Desc: "Target draft ID. Required for real edits. It can be omitted only when using the --print-patch-template flag by itself."},
 		{Name: "set-subject", Desc: "Replace the subject with this final value. Use this for full subject replacement, not for appending a fragment to the existing subject."},
 		{Name: "set-to", Desc: "Replace the entire To recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},

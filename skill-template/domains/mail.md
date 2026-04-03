@@ -72,6 +72,41 @@ lark-cli mail user_mailbox.messages -h
 - **发送前必须向用户确认收件人和内容，用户明确同意后才可加 `--confirm-send`**
 - **发送后必须调用 `send_status` 确认投递状态**（详见下方说明）
 
+### 使用公共邮箱或别名（send_as）发信
+
+当用户需要用非主账号地址发信时，使用 `--mailbox` 指定邮箱、`--from` 指定发件人地址。
+
+- `--mailbox` 传邮箱地址（如 `shared@example.com` 或 `me`），可通过 `accessible_mailboxes` 查询可用值
+- `--from` 传发信地址（别名、邮件组等），可通过 `send_as` 查询可用值
+
+**查询可用邮箱和发信地址：**
+
+```bash
+# 查询可访问的邮箱（主邮箱 + 公共邮箱）
+lark-cli mail user_mailboxes accessible_mailboxes --params '{"user_mailbox_id":"me"}'
+
+# 查询某个邮箱的可用发信地址（主地址、别名、邮件组）
+lark-cli mail user_mailbox.settings send_as --params '{"user_mailbox_id":"me"}'
+```
+
+**公共邮箱发信：**
+
+```bash
+# --mailbox 指定公共邮箱，From 头自动使用该邮箱地址
+lark-cli mail +send --mailbox shared@example.com \
+  --to bob@example.com --subject '通知' --body '<p>你好</p>'
+```
+
+**别名发信：**
+
+```bash
+# --mailbox 指定所属邮箱，--from 指定别名地址
+lark-cli mail +send --mailbox me --from alias@example.com \
+  --to bob@example.com --subject '测试' --body '<p>你好</p>'
+```
+
+不使用公共邮箱或别名时无需指定 `--mailbox`，行为与之前一致。
+
 ### 发送后确认投递状态
 
 邮件发送成功后（收到 `message_id`），**必须**调用 `send_status` API 查询投递状态并向用户报告：

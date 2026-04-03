@@ -39,7 +39,8 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "to", Desc: "Optional. Full To recipient list. Separate multiple addresses with commas. Display-name format is supported. When omitted, the draft is created without recipients (they can be added later via +draft-edit)."},
 		{Name: "subject", Desc: "Required. Final draft subject. Pass the full subject you want to appear in the draft.", Required: true},
 		{Name: "body", Desc: "Required. Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode.", Required: true},
-		{Name: "from", Desc: "Optional. Sender email address; also selects the mailbox to create the draft in. If omitted, the current signed-in user's primary mailbox address is used."},
+		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, the mailbox's primary address is used."},
+		{Name: "mailbox", Desc: "Optional. Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "Optional. Full Cc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "bcc", Desc: "Optional. Full Bcc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
@@ -53,7 +54,7 @@ var MailDraftCreate = common.Shortcut{
 		}
 		mailboxID := resolveComposeMailboxID(runtime)
 		return common.NewDryRunAPI().
-			Desc("Create a new empty draft without sending it. The command first reads the current mailbox profile to determine the default sender when `--from` is omitted, then builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.").
+			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, --mailbox, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.").
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
@@ -121,12 +122,9 @@ func parseDraftCreateInput(runtime *common.RuntimeContext) (draftCreateInput, er
 }
 
 func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput) (string, error) {
-	senderEmail := input.From
+	senderEmail := resolveComposeSenderEmail(runtime)
 	if senderEmail == "" {
-		senderEmail = fetchCurrentUserEmail(runtime)
-		if senderEmail == "" {
-			return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
-		}
+		return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
 	}
 
 	if err := validateRecipientCount(input.To, input.CC, input.BCC); err != nil {
