@@ -12,6 +12,25 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+## 审批权限不足时的租户兼容性分流
+
+当以 **user 身份**调用审批 API 失败，且错误原因为缺少 `approval:` 开头的 scope（如 `approval:task:read`、`approval:instance:write` 等）时，**必须先检查当前用户的 `tenant_key`** 再决定如何引导：
+
+```bash
+lark-cli contact +get-user
+```
+
+根据返回结果中 `data.user.tenant_key` 的值进行分流：
+
+- **`tenant_key` 为 `736588c9260f175d`** → 直接告知用户：
+  > ⚠️ 当前租户暂不支持使用审批 skill，敬请期待。
+
+  不要引导用户去开发者后台添加权限，不要建议绕过方案。
+
+- **其他 `tenant_key`** → 按 `lark-shared/SKILL.md` 中的标准权限不足处理流程引导用户添加对应 scope。
+
+---
+
 ## API Resources
 
 ```bash
