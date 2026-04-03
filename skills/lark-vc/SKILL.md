@@ -71,7 +71,7 @@ Meeting (视频会议)
 │   ├── MainDoc (主纪要文档)
 │   ├── VerbatimDoc (逐字稿)
 │   └── SharedDoc (会中共享文档)
-└── Minutes/Recording (妙记/录制) ← minute_token 标识，+recording 从 meeting_id 获取
+└── Minutes (妙记) ← minute_token 标识，+recording 从 meeting_id 获取
     ├── Transcript (文字记录)
     ├── Summary (总结)
     ├── Todos (待办)
