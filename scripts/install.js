@@ -36,7 +36,31 @@ const MIRROR_URL = `https://registry.npmmirror.com/-/binary/lark-cli/v${VERSION}
 const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
+const BUILD_VERSION = process.env.LARK_CLI_BUILD_VERSION || VERSION;
+const BUILD_DATE = process.env.LARK_CLI_BUILD_DATE || new Date().toISOString().slice(0, 10);
+
 fs.mkdirSync(binDir, { recursive: true });
+
+function isMissingBinaryError(err) {
+  const msg = String((err && err.message) || "");
+  const stderr = String((err && err.stderr) || "");
+  const stdout = String((err && err.stdout) || "");
+  const status = Number((err && (err.status ?? err.statusCode)) || 0);
+
+  if (status === 22) {
+    return true;
+  }
+
+  if (/404|not found|unsupported platform|unsupported architecture/i.test(msg)) {
+    return true;
+  }
+
+  if (/404|not found/i.test(stderr) || /404|not found/i.test(stdout)) {
+    return true;
+  }
+
+  return false;
+}
 
 function download(url, destPath) {
   const sslFlag = isWindows ? "--ssl-revoke-best-effort " : "";
@@ -97,7 +121,15 @@ function installFromSource() {
     });
 
     execSync(`go version`, { stdio: "ignore" });
-    execSync(`cd "${tmpDir}" && CGO_ENABLED=0 go build -o "${dest}" .`, {
+
+    const ldflags = [
+      "-s",
+      "-w",
+      `-X github.com/larksuite/cli/internal/build.Version=${BUILD_VERSION}`,
+      `-X github.com/larksuite/cli/internal/build.Date=${BUILD_DATE}`,
+    ].join(" ");
+
+    execSync(`cd "${tmpDir}" && CGO_ENABLED=0 go build -trimpath -ldflags "${ldflags}" -o "${dest}" .`, {
       stdio: "ignore",
     });
     fs.chmodSync(dest, 0o755);
@@ -112,8 +144,7 @@ function install() {
   try {
     return installFromRelease();
   } catch (err) {
-    const isMissingBinary =
-      /404|not found|unsupported platform|unsupported architecture/i.test(String(err && err.message));
+    const isMissingBinary = isMissingBinaryError(err);
 
     if (isMissingBinary || process.arch === "riscv64") {
       console.warn(
