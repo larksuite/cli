@@ -4,24 +4,26 @@
 package doc
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 )
 
 var (
-	larkTableRE = regexp.MustCompile(`(?is)<lark-table\b[^>]*>(.*?)</lark-table>`)
-	larkTrRE    = regexp.MustCompile(`(?is)<lark-tr\b[^>]*>(.*?)</lark-tr>`)
-	larkTdRE    = regexp.MustCompile(`(?is)<lark-td\b[^>]*>(.*?)</lark-td>`)
-	gridRE      = regexp.MustCompile(`(?is)<grid\b[^>]*>(.*?)</grid>`)
-	columnRE    = regexp.MustCompile(`(?is)<column\b[^>]*>(.*?)</column>`)
-	textTagRE   = regexp.MustCompile(`(?is)<text\b[^>]*>(.*?)</text>`)
-	larkTagRE   = regexp.MustCompile(`(?i)</?lark-[^>]+>`)
-	brTagRE     = regexp.MustCompile(`(?i)<br\s*/?>`)
-	headerAttrRE = regexp.MustCompile(`header-row="false"`)
+	larkTableRE  = regexp.MustCompile(`(?is)<lark-table\b[^>]*>(.*?)</lark-table>`)
+	larkTrRE     = regexp.MustCompile(`(?is)<lark-tr\b[^>]*>(.*?)</lark-tr>`)
+	larkTdRE     = regexp.MustCompile(`(?is)<lark-td\b[^>]*>(.*?)</lark-td>`)
+	gridRE       = regexp.MustCompile(`(?is)<grid\b[^>]*>(.*?)</grid>`)
+	columnRE     = regexp.MustCompile(`(?is)<column\b[^>]*>(.*?)</column>`)
+	textTagRE    = regexp.MustCompile(`(?is)<text\b[^>]*>(.*?)</text>`)
+	larkTagRE    = regexp.MustCompile(`(?i)</?lark-[^>]+>`)
+	brTagRE      = regexp.MustCompile(`(?i)<br\s*/?>`)
+	headerAttrRE = regexp.MustCompile(`(?i)header-row="false"`)
 )
 
-// NormalizeLarkTables converts <lark-table> blocks in markdown to GFM pipe tables.
+// NormalizeLarkTables converts Lark-formatted table XML-like structures (<lark-table>)
+// into standard GitHub-flavored Markdown (GFM) pipe tables.
+// If any cell contains a fenced code block (```), it returns the original markup
+// to avoid breaking multi-line code rendering in pipe tables.
 func NormalizeLarkTables(md string) string {
 	return larkTableRE.ReplaceAllStringFunc(md, func(block string) string {
 		m := larkTableRE.FindStringSubmatch(block)
@@ -42,7 +44,13 @@ func NormalizeLarkTables(md string) string {
 			cellMatches := larkTdRE.FindAllStringSubmatch(rm[1], -1)
 			var cells []string
 			for _, cm := range cellMatches {
-				cells = append(cells, cleanCell(cm[1]))
+				rawCell := cm[1]
+				// CRITICAL: GFM pipe tables cannot contain multi-line fenced code blocks.
+				// Check raw content before any tag stripping/cleaning to avoid brittleness.
+				if strings.Contains(rawCell, "```") {
+					return block
+				}
+				cells = append(cells, cleanCell(rawCell))
 			}
 			if len(cells) > maxCols {
 				maxCols = len(cells)
@@ -54,19 +62,10 @@ func NormalizeLarkTables(md string) string {
 			return block
 		}
 
-		// Normalize column count
+		// Row padding: Ensure all rows have the same number of columns
 		for i := range rows {
 			for len(rows[i]) < maxCols {
 				rows[i] = append(rows[i], "")
-			}
-		}
-
-		// Check if any cell contains fenced code blocks — fall back to original if so
-		for _, row := range rows {
-			for _, cell := range row {
-				if strings.Contains(cell, "```") {
-					return block // Keep original <lark-table> for complex content
-				}
 			}
 		}
 
@@ -91,6 +90,7 @@ func NormalizeLarkTables(md string) string {
 	})
 }
 
+// joinCells joins a slice of strings with the GFM pipe separator, escaping existing pipes.
 func joinCells(cells []string) string {
 	escaped := make([]string, len(cells))
 	for i, c := range cells {
@@ -101,6 +101,7 @@ func joinCells(cells []string) string {
 	return strings.Join(escaped, " | ")
 }
 
+// cleanCell strips Lark-specific tags and flattens nested layout structures.
 func cleanCell(s string) string {
 	s = strings.TrimSpace(s)
 	s = flattenGrid(s)
@@ -110,6 +111,7 @@ func cleanCell(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// flattenGrid handles <grid><column>...</column></grid> layouts by joining columns with newlines.
 func flattenGrid(s string) string {
 	for {
 		n := gridRE.ReplaceAllStringFunc(s, func(g string) string {
@@ -135,6 +137,7 @@ func flattenGrid(s string) string {
 	return s
 }
 
+// stripTextTags removes <text color="..."> wrappers but preserves their content.
 func stripTextTags(s string) string {
 	for {
 		n := textTagRE.ReplaceAllString(s, "$1")
@@ -144,9 +147,4 @@ func stripTextTags(s string) string {
 		s = n
 	}
 	return s
-}
-
-func init() {
-	// Silence unused import warnings
-	_ = fmt.Sprint
 }
