@@ -1140,3 +1140,27 @@ func TestBaseRecordResolveViewIDAcrossPages(t *testing.T) {
 		t.Fatalf("stdout=%s", got)
 	}
 }
+
+func TestBaseRecordResolveViewIDMissingCanonicalID(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	registerTokenStub(reg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"views": []interface{}{
+					map[string]interface{}{"view_name": "BrokenView"},
+				},
+				"total": 1,
+			},
+		},
+	})
+
+	err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "BrokenView", "--limit", "1"}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "has no canonical id") {
+		t.Fatalf("err=%v", err)
+	}
+}

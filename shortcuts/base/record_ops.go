@@ -53,7 +53,11 @@ func resolveRecordListViewID(runtime *common.RuntimeContext, viewRef string) (st
 			return "", err
 		}
 		if view, err := resolveViewRef(views, viewRef); err == nil {
-			return viewID(view), nil
+			resolvedID := viewID(view)
+			if resolvedID == "" {
+				return "", fmt.Errorf("view %q has no canonical id", viewRef)
+			}
+			return resolvedID, nil
 		}
 		if len(views) == 0 {
 			if total > 0 && offset+recordListViewResolvePageLimit < total {
