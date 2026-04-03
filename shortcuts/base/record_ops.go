@@ -5,9 +5,17 @@ package base
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const recordListViewResolvePageLimit = 200
+
+func isViewIDRef(viewRef string) bool {
+	return strings.HasPrefix(viewRef, "vew_") || strings.HasPrefix(viewRef, "viw_")
+}
 
 func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	offset := runtime.Int("offset")
@@ -16,8 +24,12 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
-	if viewID := runtime.Str("view-id"); viewID != "" {
-		params["view_id"] = viewID
+	if viewRef := runtime.Str("view-id"); viewRef != "" {
+		if isViewIDRef(viewRef) {
+			params["view_id"] = viewRef
+		} else {
+			params["view_id"] = fmt.Sprintf("<resolved from view name: %s>", viewRef)
+		}
 	}
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/records").
@@ -30,18 +42,33 @@ func resolveRecordListViewID(runtime *common.RuntimeContext, viewRef string) (st
 	if viewRef == "" {
 		return "", nil
 	}
-	if len(viewRef) >= 4 && viewRef[:4] == "vew_" {
+	if isViewIDRef(viewRef) {
 		return viewRef, nil
 	}
-	views, _, err := listAllViews(runtime, runtime.Str("base-token"), baseTableID(runtime), 0, 200)
-	if err != nil {
-		return "", err
+
+	offset := 0
+	for {
+		views, total, err := listAllViews(runtime, runtime.Str("base-token"), baseTableID(runtime), offset, recordListViewResolvePageLimit)
+		if err != nil {
+			return "", err
+		}
+		if view, err := resolveViewRef(views, viewRef); err == nil {
+			return viewID(view), nil
+		}
+		if len(views) == 0 {
+			if total > 0 && offset+recordListViewResolvePageLimit < total {
+				offset += recordListViewResolvePageLimit
+				continue
+			}
+			break
+		}
+		offset += len(views)
+		if total > 0 && offset >= total {
+			break
+		}
 	}
-	view, err := resolveViewRef(views, viewRef)
-	if err != nil {
-		return "", err
-	}
-	return viewID(view), nil
+
+	return "", fmt.Errorf("view %q not found", viewRef)
 }
 
 func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

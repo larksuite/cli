@@ -1087,3 +1087,56 @@ func TestBaseRecordExecuteListWithViewNameResolvesToViewID(t *testing.T) {
 		t.Fatalf("stdout=%s", got)
 	}
 }
+
+func TestBaseRecordResolveViewIDAcrossPages(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	registerTokenStub(reg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views?limit=200&offset=0",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"views": []interface{}{},
+				"total": 201,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views?limit=200&offset=200",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"views": []interface{}{
+					map[string]interface{}{"view_id": "vew_target", "view_name": "Target View"},
+				},
+				"total": 201,
+			},
+		},
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "view_id=vew_target",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"records": map[string]interface{}{
+					"schema":     []interface{}{"Name"},
+					"record_ids": []interface{}{"rec_last"},
+					"rows":       []interface{}{[]interface{}{"Tail"}},
+				},
+				"total": 1,
+			},
+		},
+	})
+
+	if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "Target View", "--limit", "1"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "\"rec_last\"") {
+		t.Fatalf("stdout=%s", got)
+	}
+}
