@@ -64,16 +64,17 @@ function isMissingBinaryError(err) {
   const stderr = String((err && err.stderr) || "");
   const stdout = String((err && err.stdout) || "");
   const status = Number((err && (err.status ?? err.statusCode)) || 0);
+  const text = `${msg}\n${stderr}\n${stdout}`;
 
-  if (status === 22) {
+  if (/unsupported platform|unsupported architecture/i.test(text)) {
     return true;
   }
 
-  if (/404|not found|unsupported platform|unsupported architecture/i.test(msg)) {
+  if (status === 22 && /404|not found/i.test(text)) {
     return true;
   }
 
-  if (/404|not found/i.test(stderr) || /404|not found/i.test(stdout)) {
+  if (/404|not found/i.test(text)) {
     return true;
   }
 
@@ -88,10 +89,16 @@ function download(url, destPath) {
   );
 }
 
+function escapePowerShellSingleQuoted(value) {
+  return String(value).replace(/'/g, "''");
+}
+
 function extractArchive(archivePath, tmpDir) {
   if (isWindows) {
+    const escapedArchive = escapePowerShellSingleQuoted(archivePath);
+    const escapedTmpDir = escapePowerShellSingleQuoted(tmpDir);
     execSync(
-      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'"`,
+      `powershell -Command "Expand-Archive -LiteralPath '${escapedArchive}' -DestinationPath '${escapedTmpDir}'"`,
       { stdio: "ignore" }
     );
   } else {
