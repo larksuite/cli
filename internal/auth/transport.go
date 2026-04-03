@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/larksuite/cli/internal/util"
 )
 
 // SecurityPolicyTransport is an http.RoundTripper that intercepts all responses
@@ -23,7 +25,7 @@ func (t *SecurityPolicyTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return util.FallbackTransport()
 }
 
 // RoundTrip implements http.RoundTripper.
