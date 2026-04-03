@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/internal/keychain"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -85,21 +86,12 @@ func TestVerifyUserToken(t *testing.T) {
 			)
 
 			var buf bytes.Buffer
-			prevLogger := authResponseLogger
-			prevNow := authResponseLogNow
-			prevArgs := authResponseLogArgs
-			authResponseLogger = log.New(&buf, "", 0)
-			authResponseLogNow = func() time.Time {
+			restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
 				return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
-			}
-			authResponseLogArgs = func() []string {
+			}, func() []string {
 				return []string{"lark-cli", "auth", "status"}
-			}
-			t.Cleanup(func() {
-				authResponseLogger = prevLogger
-				authResponseLogNow = prevNow
-				authResponseLogArgs = prevArgs
 			})
+			t.Cleanup(restore)
 
 			err := VerifyUserToken(context.Background(), sdk, "test-token")
 			if tt.wantErr {

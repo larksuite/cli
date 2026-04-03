@@ -28,14 +28,6 @@ const (
 	LarkCliService = "lark-cli"
 )
 
-var authLogErrorFn func(error)
-
-// RegisterAuthLogger registers a callback function to log keychain errors.
-// This is called by the auth package to avoid cyclic dependencies.
-func RegisterAuthLogger(fn func(error)) {
-	authLogErrorFn = fn
-}
-
 // wrapError is a helper to wrap underlying errors into output.ExitError.
 // It formats the error message and provides a hint for troubleshooting keychain access issues.
 func wrapError(op string, err error) error {
@@ -50,13 +42,10 @@ func wrapError(op string, err error) error {
 		hint = "The keychain master key may have been cleaned up or deleted. Please reconfigure the CLI by running `lark-cli config init`."
 	}
 
-	logger := authLogErrorFn
-	if logger != nil {
-		func() {
-			defer func() { recover() }()
-			logger(fmt.Errorf("keychain %s error: %w", op, err))
-		}()
-	}
+	func() {
+		defer func() { recover() }()
+		LogAuthError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
+	}()
 
 	return output.ErrWithHint(output.ExitAPI, "config", msg, hint)
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/keychain"
 )
 
 // TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
@@ -61,21 +62,12 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	prevLogger := authResponseLogger
-	prevNow := authResponseLogNow
-	prevArgs := authResponseLogArgs
-	authResponseLogger = log.New(&buf, "", 0)
-	authResponseLogNow = func() time.Time {
+	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
-	}
-	authResponseLogArgs = func() []string {
+	}, func() []string {
 		return []string{"lark-cli", "auth", "login", "--device-code", "device-code-secret", "--app-secret=top-secret"}
-	}
-	t.Cleanup(func() {
-		authResponseLogger = prevLogger
-		authResponseLogNow = prevNow
-		authResponseLogArgs = prevArgs
 	})
+	t.Cleanup(restore)
 
 	_, err := RequestDeviceAuthorization(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
 	if err != nil {
@@ -102,7 +94,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 
 // TestFormatAuthCmdline_TruncatesExtraArgs verifies that long command lines are truncated.
 func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
-	got := formatAuthCmdline([]string{
+	got := keychain.FormatAuthCmdline([]string{
 		"lark-cli",
 		"auth",
 		"login",
@@ -120,11 +112,8 @@ func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 // TestLogAuthResponse_IgnoresTypedNilHTTPResponse tests that a typed nil HTTP response is ignored gracefully.
 func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 	var buf bytes.Buffer
-	prevLogger := authResponseLogger
-	authResponseLogger = log.New(&buf, "", 0)
-	t.Cleanup(func() {
-		authResponseLogger = prevLogger
-	})
+	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), nil, nil)
+	t.Cleanup(restore)
 
 	var resp *http.Response
 	logHTTPResponse(resp)
@@ -137,21 +126,12 @@ func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 // TestLogAuthResponse_HandlesNilSDKResponse verifies that a nil SDK response is handled without panicking.
 func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	var buf bytes.Buffer
-	prevLogger := authResponseLogger
-	prevNow := authResponseLogNow
-	prevArgs := authResponseLogArgs
-	authResponseLogger = log.New(&buf, "", 0)
-	authResponseLogNow = func() time.Time {
+	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
-	}
-	authResponseLogArgs = func() []string {
+	}, func() []string {
 		return []string{"lark-cli", "auth", "status", "--verify"}
-	}
-	t.Cleanup(func() {
-		authResponseLogger = prevLogger
-		authResponseLogNow = prevNow
-		authResponseLogArgs = prevArgs
 	})
+	t.Cleanup(restore)
 
 	logSDKResponse(PathUserInfoV1, nil)
 
@@ -164,26 +144,16 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	}
 }
 
-// TestLogKeychainError_RecordsStructuredEntry verifies keychain failures are written to auth logs.
-func TestLogKeychainError_RecordsStructuredEntry(t *testing.T) {
+func TestLogAuthError_RecordsStructuredEntry(t *testing.T) {
 	var buf bytes.Buffer
-	prevLogger := authResponseLogger
-	prevNow := authResponseLogNow
-	prevArgs := authResponseLogArgs
-	authResponseLogger = log.New(&buf, "", 0)
-	authResponseLogNow = func() time.Time {
+	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
-	}
-	authResponseLogArgs = func() []string {
+	}, func() []string {
 		return []string{"lark-cli", "auth", "login", "--device-code", "secret"}
-	}
-	t.Cleanup(func() {
-		authResponseLogger = prevLogger
-		authResponseLogNow = prevNow
-		authResponseLogArgs = prevArgs
 	})
+	t.Cleanup(restore)
 
-	logKeychainError(fmt.Errorf("keychain Set error: %w", http.ErrUseLastResponse))
+	keychain.LogAuthError("keychain", "Set", fmt.Errorf("keychain Set error: %w", http.ErrUseLastResponse))
 
 	got := buf.String()
 	if !strings.Contains(got, "auth-error") {
