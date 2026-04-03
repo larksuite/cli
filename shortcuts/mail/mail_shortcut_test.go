@@ -35,6 +35,7 @@ func mailShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *by
 	t.Helper()
 	keyring.MockInit() // use in-memory keyring to avoid macOS keychain popups
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_KEYCHAIN_MASTER_KEY", "file")
 
 	cfg := mailTestConfig()
 	token := &auth.StoredUAToken{

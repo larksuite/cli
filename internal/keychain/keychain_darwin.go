@@ -6,12 +6,14 @@
 package keychain
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,21 +32,94 @@ const tagBytes = 16
 func StorageDir(service string) string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
+		fmt.Fprintln(os.Stderr, "warning: unable to determine home directory; using relative keychain path .lark-cli/keychain/"+service)
 		return filepath.Join(".lark-cli", "keychain", service)
 	}
 	return filepath.Join(home, "Library", "Application Support", service)
 }
 
 var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+var errInvalidMasterKey = errors.New("invalid master key")
 
 // safeFileName sanitizes an account name to be used as a safe file name.
 func safeFileName(account string) string {
 	return safeFileNameRe.ReplaceAllString(account, "_") + ".enc"
 }
 
+func fileMasterKeyPath(service string) string {
+	return filepath.Join(StorageDir(service), "master.key")
+}
+
+func readFileMasterKey(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	key, err := base64.StdEncoding.DecodeString(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errInvalidMasterKey, err)
+	}
+	if len(key) != masterKeyBytes {
+		return nil, fmt.Errorf("%w: invalid length %d", errInvalidMasterKey, len(key))
+	}
+	return key, nil
+}
+
+func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
+	dir := StorageDir(service)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+
+	path := fileMasterKeyPath(service)
+	if key, err := readFileMasterKey(path); err == nil {
+		return key, nil
+	} else if errors.Is(err, errInvalidMasterKey) {
+		return nil, fmt.Errorf("master key file %s exists but is corrupt; remove it manually to reset", path)
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	if !allowCreate {
+		return nil, errNotInitialized
+	}
+
+	key := make([]byte, masterKeyBytes)
+	if _, randErr := rand.Read(key); randErr != nil {
+		return nil, randErr
+	}
+
+	encodedKey := base64.StdEncoding.EncodeToString(key)
+	tmpPath := path + "." + uuid.New().String() + ".tmp"
+	defer os.Remove(tmpPath)
+
+	if err := os.WriteFile(tmpPath, []byte(encodedKey), 0600); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		existingKey, readErr := readFileMasterKey(path)
+		if readErr == nil {
+			return existingKey, nil
+		}
+		return nil, err
+	}
+
+	writtenKey, err := readFileMasterKey(path)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(writtenKey, key) {
+		return writtenKey, nil
+	}
+	return key, nil
+}
+
 // getMasterKey retrieves the master key from the system keychain.
 // If allowCreate is true, it generates and stores a new master key if one doesn't exist.
 func getMasterKey(service string, allowCreate bool) ([]byte, error) {
+	if os.Getenv("LARKSUITE_CLI_KEYCHAIN_MASTER_KEY") == "file" {
+		return getFileMasterKey(service, allowCreate)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout)
 	defer cancel()
 
@@ -99,7 +174,9 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	case res := <-resCh:
 		return res.key, res.err
 	case <-ctx.Done():
-		// Timeout is usually caused by ignored/blocked permission prompts
+		if os.Getenv("LARKSUITE_CLI_KEYCHAIN_MASTER_KEY") == "file_fallback" {
+			return getFileMasterKey(service, allowCreate)
+		}
 		return nil, errors.New("keychain access blocked")
 	}
 }
