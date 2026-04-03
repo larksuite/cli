@@ -27,5 +27,6 @@ func (OsFs) CreateTemp(dir, pattern string) (*os.File, error) { return os.Create
 
 // Directory/File management
 func (OsFs) MkdirAll(path string, perm fs.FileMode) error { return os.MkdirAll(path, perm) }
+func (OsFs) ReadDir(name string) ([]os.DirEntry, error)   { return os.ReadDir(name) }
 func (OsFs) Remove(name string) error                     { return os.Remove(name) }
 func (OsFs) Rename(oldpath, newpath string) error         { return os.Rename(oldpath, newpath) }

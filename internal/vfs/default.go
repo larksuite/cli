@@ -25,5 +25,6 @@ func OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
 }
 func CreateTemp(dir, pattern string) (*os.File, error) { return DefaultFS.CreateTemp(dir, pattern) }
 func MkdirAll(path string, perm fs.FileMode) error     { return DefaultFS.MkdirAll(path, perm) }
+func ReadDir(name string) ([]os.DirEntry, error)       { return DefaultFS.ReadDir(name) }
 func Remove(name string) error                         { return DefaultFS.Remove(name) }
 func Rename(oldpath, newpath string) error             { return DefaultFS.Rename(oldpath, newpath) }

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 var (
@@ -23,7 +25,7 @@ func authLogDir() string {
 		return filepath.Join(dir, "logs")
 	}
 
-	home, err := os.UserHomeDir()
+	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {
 		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
 	}
@@ -39,13 +41,13 @@ func initAuthLogger() {
 
 		dir := authLogDir()
 		now := authResponseLogNow()
-		if err := os.MkdirAll(dir, 0700); err != nil {
+		if err := vfs.MkdirAll(dir, 0700); err != nil {
 			return
 		}
 
 		logName := fmt.Sprintf("auth-%s.log", now.Format("2006-01-02"))
 		logPath := filepath.Join(dir, logName)
-		if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
+		if f, err := vfs.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
 			authResponseLogger = log.New(f, "", 0)
 			cleanupOldLogs(dir, now)
 		}
@@ -131,7 +133,7 @@ func cleanupOldLogs(dir string, now time.Time) {
 		}
 	}()
 
-	entries, err := os.ReadDir(dir)
+	entries, err := vfs.ReadDir(dir)
 	if err != nil {
 		return
 	}
@@ -153,7 +155,7 @@ func cleanupOldLogs(dir string, now time.Time) {
 
 		logDate = time.Date(logDate.Year(), logDate.Month(), logDate.Day(), 0, 0, 0, 0, now.Location())
 		if logDate.Before(cutoff) {
-			_ = os.Remove(filepath.Join(dir, entry.Name()))
+			_ = vfs.Remove(filepath.Join(dir, entry.Name()))
 		}
 	}
 }
