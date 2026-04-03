@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -77,8 +78,19 @@ func resetStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.A
 }
 
 func showStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.AppConfig) error {
-	effective, source := resolveStrictModeStatus(multi, app)
-	fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: %s)\n", effective, source)
+	// Runtime effective mode from credential provider chain is the source of truth.
+	runtime := f.ResolveStrictMode()
+	configMode, configSource := resolveStrictModeStatus(multi, app)
+
+	if runtime != configMode {
+		source := "credential provider"
+		if os.Getenv("LARKSUITE_CLI_STRICT_MODE") != "" {
+			source = "env LARKSUITE_CLI_STRICT_MODE"
+		}
+		fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: %s)\n", runtime, source)
+		return nil
+	}
+	fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: %s)\n", configMode, configSource)
 	return nil
 }
 

@@ -78,6 +78,7 @@ func (m *MultiAppConfig) CurrentAppConfig(profileOverride string) *AppConfig {
 		if app := m.FindApp(m.CurrentApp); app != nil {
 			return app
 		}
+		return nil // explicit currentApp not found; don't silently fallback
 	}
 	if len(m.Apps) > 0 {
 		return &m.Apps[0]
