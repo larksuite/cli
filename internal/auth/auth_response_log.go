@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -22,6 +23,10 @@ var (
 	authResponseLogArgs    = func() []string { return os.Args }
 	authResponseLogCleanup = cleanupOldLogs
 )
+
+func init() {
+	RegisterKeychainLogger()
+}
 
 // cleanupOldLogs removes authentication log files older than 7 days.
 // It executes safely and catches panics to avoid crashing the main application.
@@ -113,6 +118,76 @@ func doLogAuthResponse(path string, status int, logID string) {
 		path,
 		status,
 		logID,
+		formatAuthCmdline(authResponseLogArgs()),
+	)
+}
+
+// logKeychainError logs keychain failures into the shared auth log for troubleshooting.
+func logKeychainError(err error) {
+	if err == nil {
+		return
+	}
+
+	doLogAuthError("keychain", parseKeychainErrorOp(err), err)
+}
+
+// RegisterKeychainLogger sets up the keychain error logger callback to use our internal auth logger.
+func RegisterKeychainLogger() {
+	keychain.RegisterAuthLogger(logKeychainError)
+}
+
+func parseKeychainErrorOp(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+
+	const prefix = "keychain "
+	const marker = " error:"
+	msg := err.Error()
+	if !strings.HasPrefix(msg, prefix) {
+		return "unknown"
+	}
+
+	rest := strings.TrimPrefix(msg, prefix)
+	op, _, ok := strings.Cut(rest, marker)
+	if !ok || op == "" {
+		return "unknown"
+	}
+
+	return op
+}
+
+// doLogAuthError formats and writes a structured auth error log entry.
+func doLogAuthError(component, op string, err error) {
+	authResponseLoggerOnce.Do(func() {
+		if authResponseLogger != nil {
+			return
+		}
+
+		dir := filepath.Join(core.GetConfigDir(), "logs")
+		now := authResponseLogNow()
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return
+		}
+
+		logName := fmt.Sprintf("auth-%s.log", now.Format("2006-01-02"))
+		logPath := filepath.Join(dir, logName)
+		if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
+			authResponseLogger = log.New(f, "", 0)
+			go authResponseLogCleanup(dir, now)
+		}
+	})
+
+	if authResponseLogger == nil {
+		return
+	}
+
+	authResponseLogger.Printf(
+		"[lark-cli] auth-error: time=%s component=%s op=%s error=%q cmdline=%s",
+		authResponseLogNow().Format(time.RFC3339Nano),
+		component,
+		op,
+		err.Error(),
 		formatAuthCmdline(authResponseLogArgs()),
 	)
 }

@@ -5,6 +5,7 @@ package auth
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -160,5 +161,44 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	}
 	if !strings.Contains(got, "status=0") {
 		t.Fatalf("expected zero status in log, got %q", got)
+	}
+}
+
+// TestLogKeychainError_RecordsStructuredEntry verifies keychain failures are written to auth logs.
+func TestLogKeychainError_RecordsStructuredEntry(t *testing.T) {
+	var buf bytes.Buffer
+	prevLogger := authResponseLogger
+	prevNow := authResponseLogNow
+	prevArgs := authResponseLogArgs
+	authResponseLogger = log.New(&buf, "", 0)
+	authResponseLogNow = func() time.Time {
+		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
+	}
+	authResponseLogArgs = func() []string {
+		return []string{"lark-cli", "auth", "login", "--device-code", "secret"}
+	}
+	t.Cleanup(func() {
+		authResponseLogger = prevLogger
+		authResponseLogNow = prevNow
+		authResponseLogArgs = prevArgs
+	})
+
+	logKeychainError(fmt.Errorf("keychain Set error: %w", http.ErrUseLastResponse))
+
+	got := buf.String()
+	if !strings.Contains(got, "auth-error") {
+		t.Fatalf("expected auth-error log entry, got %q", got)
+	}
+	if !strings.Contains(got, "component=keychain") {
+		t.Fatalf("expected component in log, got %q", got)
+	}
+	if !strings.Contains(got, "op=Set") {
+		t.Fatalf("expected op in log, got %q", got)
+	}
+	if !strings.Contains(got, "error=\"keychain Set error: net/http: use last response\"") {
+		t.Fatalf("expected quoted error in log, got %q", got)
+	}
+	if !strings.Contains(got, "cmdline=lark-cli auth login ...") {
+		t.Fatalf("expected truncated cmdline in log, got %q", got)
 	}
 }
