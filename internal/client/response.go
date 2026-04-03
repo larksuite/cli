@@ -55,7 +55,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	if IsJSONContentType(ct) || ct == "" {
 		result, err := ParseJSONResponse(resp)
 		if err != nil {
-			return output.ErrNetwork("API call failed: %v", err)
+			return WrapJSONResponseParseError(err, resp.RawBody)
 		}
 		if apiErr := check(result); apiErr != nil {
 			return apiErr

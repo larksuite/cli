@@ -219,6 +219,37 @@ func TestHandleResponse_JSONWithError(t *testing.T) {
 	}
 }
 
+func TestHandleResponse_EmptyJSONBody_ShowsDiagnostic(t *testing.T) {
+	resp := newApiResp([]byte{}, map[string]string{"Content-Type": "application/json"})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{
+		Out:    &out,
+		ErrOut: &errOut,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty JSON body")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected ExitError, got %T", err)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI, got %d", exitErr.Code)
+	}
+	if exitErr.Detail == nil {
+		t.Fatal("expected detail on exit error")
+	}
+	if exitErr.Detail.Message != "API returned an empty JSON response body" {
+		t.Fatalf("unexpected message: %q", exitErr.Detail.Message)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "--output") {
+		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)
+	}
+}
+
 func TestHandleResponse_BinaryAutoSave(t *testing.T) {
 	dir := t.TempDir()
 	origWd, _ := os.Getwd()
