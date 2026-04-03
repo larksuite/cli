@@ -1045,3 +1045,45 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 		}
 	})
 }
+
+func TestBaseRecordExecuteListWithViewNameResolvesToViewID(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	registerTokenStub(reg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"views": []interface{}{
+					map[string]interface{}{"view_id": "vew_x", "view_name": "Main"},
+				},
+				"total": 1,
+			},
+		},
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "view_id=vew_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"records": map[string]interface{}{
+					"schema":     []interface{}{"Name"},
+					"record_ids": []interface{}{"rec_1"},
+					"rows":       []interface{}{[]interface{}{"Alpha"}},
+				},
+				"total": 1,
+			},
+		},
+	})
+
+	if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "Main", "--limit", "1"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "\"rec_1\"") {
+		t.Fatalf("stdout=%s", got)
+	}
+}
