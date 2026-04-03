@@ -539,13 +539,6 @@ func TestApiCmd_JqFilter_AppliesExpression(t *testing.T) {
 	})
 
 	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-jq", "expire": 7200,
-		},
-	})
-	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/jq",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
@@ -615,13 +608,6 @@ func TestApiCmd_PageAll_WithJq(t *testing.T) {
 		AppID: "test-app-pjq", AppSecret: "test-secret-pjq", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-pjq", "expire": 7200,
-		},
-	})
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/contact/v3/users",
 		Body: map[string]interface{}{

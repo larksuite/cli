@@ -379,7 +379,9 @@ func TestIntegration_StrictModeBot_ProfileOverride_DirectUserShortcutReturnsEnve
 	})
 }
 
-func TestIntegration_StrictModeUser_ProfileOverride_DirectBotShortcutReturnsEnvelope(t *testing.T) {
+func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *testing.T) {
+	// +chat-create supports both user and bot identities, so strict mode user
+	// should allow it and force user identity.
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
@@ -387,13 +389,13 @@ func TestIntegration_StrictModeUser_ProfileOverride_DirectBotShortcutReturnsEnve
 		"im", "+chat-create", "--name", "probe", "--dry-run",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK: false,
-		Error: &output.ErrDetail{
-			Type:    "strict_mode",
-			Message: `strict mode is "user", only user identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
-		},
-	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	if out == "" {
+		t.Fatal("expected non-empty stdout for dry-run")
+	}
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_ServiceDryRunForcesBotIdentity(t *testing.T) {

@@ -526,7 +526,6 @@ func TestServiceMethod_JqFilter_AppliesExpression(t *testing.T) {
 		AppID: "test-app-jq", AppSecret: "test-secret-jq", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{
@@ -598,7 +597,6 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 		AppID: "test-app-spjq", AppSecret: "test-secret-spjq", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{
