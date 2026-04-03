@@ -8,63 +8,70 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
 // pruneForStrictMode removes commands incompatible with the active strict mode.
 func pruneForStrictMode(root *cobra.Command, mode core.StrictMode) {
 	pruneIncompatible(root, mode)
-	pruneAuthCommands(root, mode)
 	pruneEmpty(root)
 }
 
-// pruneIncompatible recursively removes commands whose annotation declares
+// pruneIncompatible recursively replaces commands whose annotation declares
 // identities incompatible with the forced identity. Commands without annotation are kept.
+// Hidden stubs preserve direct execution so users get a strict-mode error instead
+// of Cobra's generic "unknown flag" fallback from the parent command.
 func pruneIncompatible(parent *cobra.Command, mode core.StrictMode) {
 	forced := string(mode.ForcedIdentity())
 	var toRemove []*cobra.Command
+	var toAdd []*cobra.Command
 	for _, child := range parent.Commands() {
 		ids := cmdutil.GetSupportedIdentities(child)
 		if ids != nil && !slices.Contains(ids, forced) {
 			toRemove = append(toRemove, child)
+			toAdd = append(toAdd, strictModeStubFrom(child, mode))
 			continue
 		}
 		pruneIncompatible(child, mode)
 	}
 	if len(toRemove) > 0 {
 		parent.RemoveCommand(toRemove...)
+		parent.AddCommand(toAdd...)
 	}
 }
 
-// pruneAuthCommands removes auth login when strict mode is bot.
-func pruneAuthCommands(root *cobra.Command, mode core.StrictMode) {
-	if mode != core.StrictModeBot {
-		return
-	}
-	for _, child := range root.Commands() {
-		if child.Name() != "auth" {
-			continue
-		}
-		var toRemove []*cobra.Command
-		for _, sub := range child.Commands() {
-			if sub.Name() == "login" {
-				toRemove = append(toRemove, sub)
-			}
-		}
-		if len(toRemove) > 0 {
-			child.RemoveCommand(toRemove...)
-		}
+func strictModeStubFrom(child *cobra.Command, mode core.StrictMode) *cobra.Command {
+	return &cobra.Command{
+		Use:                child.Use,
+		Aliases:            append([]string(nil), child.Aliases...),
+		Hidden:             true,
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return output.Errorf(output.ExitValidation, "strict_mode",
+				"strict mode is %q, only %s identity is allowed. "+
+					"This setting is managed by the administrator and must not be modified by AI agents.",
+				mode, mode.ForcedIdentity())
+		},
 	}
 }
 
 // pruneEmpty recursively removes group commands (no Run/RunE) that have
-// no remaining subcommands after pruning.
+// no remaining subcommands after pruning. If only hidden stubs remain, keep
+// the group hidden so direct execution still resolves to the stub path.
 func pruneEmpty(parent *cobra.Command) {
 	var toRemove []*cobra.Command
 	for _, child := range parent.Commands() {
 		pruneEmpty(child)
-		// Only remove non-runnable group commands with no children left.
-		if child.Run == nil && child.RunE == nil && !child.HasAvailableSubCommands() {
+		if child.Run != nil || child.RunE != nil {
+			continue
+		}
+		switch {
+		case child.HasAvailableSubCommands():
+			child.Hidden = false
+		case len(child.Commands()) > 0:
+			child.Hidden = true
+		default:
 			toRemove = append(toRemove, child)
 		}
 	}
@@ -72,4 +79,3 @@ func pruneEmpty(parent *cobra.Command) {
 		parent.RemoveCommand(toRemove...)
 	}
 }
-

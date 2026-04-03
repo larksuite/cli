@@ -59,6 +59,7 @@ browser. Run it in the background and retrieve the verification URL from its out
 			return authLoginRun(opts)
 		},
 	}
+	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space-separated)")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")

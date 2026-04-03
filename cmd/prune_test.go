@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -43,6 +44,7 @@ func newTestTree() *cobra.Command {
 	auth := &cobra.Command{Use: "auth"}
 	root.AddCommand(auth)
 	login := &cobra.Command{Use: "login", RunE: noop}
+	cmdutil.SetSupportedIdentities(login, []string{"user"})
 	auth.AddCommand(login)
 
 	return root
@@ -70,8 +72,8 @@ func TestPruneForStrictMode_Bot(t *testing.T) {
 	root := newTestTree()
 	pruneForStrictMode(root, core.StrictModeBot)
 
-	if findCmd(root, "im", "+search") != nil {
-		t.Error("+search (user-only) should be removed in bot mode")
+	if cmd := findCmd(root, "im", "+search"); cmd == nil || !cmd.Hidden {
+		t.Error("+search (user-only) should be replaced by a hidden stub in bot mode")
 	}
 	if findCmd(root, "im", "+subscribe") == nil {
 		t.Error("+subscribe (bot-only) should be kept in bot mode")
@@ -82,11 +84,11 @@ func TestPruneForStrictMode_Bot(t *testing.T) {
 	if findCmd(root, "im", "+legacy") == nil {
 		t.Error("+legacy (no annotation) should be kept")
 	}
-	if findCmd(root, "im", "messages", "search") != nil {
-		t.Error("search (user-only method) should be removed in bot mode")
+	if cmd := findCmd(root, "im", "messages", "search"); cmd == nil || !cmd.Hidden {
+		t.Error("search (user-only method) should be replaced by a hidden stub in bot mode")
 	}
-	if findCmd(root, "auth", "login") != nil {
-		t.Error("auth login should be removed in bot mode")
+	if cmd := findCmd(root, "auth", "login"); cmd == nil || !cmd.Hidden {
+		t.Error("auth login should be replaced by a hidden stub in bot mode")
 	}
 }
 
@@ -97,13 +99,13 @@ func TestPruneForStrictMode_User(t *testing.T) {
 	if findCmd(root, "im", "+search") == nil {
 		t.Error("+search (user-only) should be kept in user mode")
 	}
-	if findCmd(root, "im", "+subscribe") != nil {
-		t.Error("+subscribe (bot-only) should be removed in user mode")
+	if cmd := findCmd(root, "im", "+subscribe"); cmd == nil || !cmd.Hidden {
+		t.Error("+subscribe (bot-only) should be replaced by a hidden stub in user mode")
 	}
 	if findCmd(root, "im", "+send") == nil {
 		t.Error("+send (dual) should be kept in user mode")
 	}
-	if findCmd(root, "auth", "login") == nil {
+	if cmd := findCmd(root, "auth", "login"); cmd == nil || cmd.Hidden {
 		t.Error("auth login should be kept in user mode")
 	}
 }
@@ -112,7 +114,71 @@ func TestPruneEmpty(t *testing.T) {
 	root := newTestTree()
 	pruneForStrictMode(root, core.StrictModeBot)
 
-	if findCmd(root, "im", "messages") != nil {
-		t.Error("empty resource 'messages' should be pruned")
+	if cmd := findCmd(root, "im", "messages"); cmd == nil || !cmd.Hidden {
+		t.Error("resource 'messages' should be kept hidden when only hidden stubs remain")
+	}
+}
+
+func TestPruneForStrictMode_Bot_DirectUserShortcutReturnsStrictMode(t *testing.T) {
+	root := newTestTree()
+	root.SilenceErrors = true
+	root.SilenceUsage = true
+	pruneForStrictMode(root, core.StrictModeBot)
+	root.SetArgs([]string{"im", "+search", "--query", "hello"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected strict-mode error")
+	}
+	if !strings.Contains(err.Error(), `strict mode is "bot"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPruneForStrictMode_Bot_DirectNestedUserMethodReturnsStrictMode(t *testing.T) {
+	root := newTestTree()
+	root.SilenceErrors = true
+	root.SilenceUsage = true
+	pruneForStrictMode(root, core.StrictModeBot)
+	root.SetArgs([]string{"im", "messages", "search", "--query", "hello"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected strict-mode error")
+	}
+	if !strings.Contains(err.Error(), `strict mode is "bot"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPruneForStrictMode_Bot_DirectAuthLoginReturnsStrictMode(t *testing.T) {
+	root := newTestTree()
+	root.SilenceErrors = true
+	root.SilenceUsage = true
+	pruneForStrictMode(root, core.StrictModeBot)
+	root.SetArgs([]string{"auth", "login", "--json", "--scope", "im:message.send_as_user"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected strict-mode error")
+	}
+	if !strings.Contains(err.Error(), `strict mode is "bot"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPruneForStrictMode_User_DirectBotShortcutReturnsStrictMode(t *testing.T) {
+	root := newTestTree()
+	root.SilenceErrors = true
+	root.SilenceUsage = true
+	pruneForStrictMode(root, core.StrictModeUser)
+	root.SetArgs([]string{"im", "+subscribe", "--topic", "x"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected strict-mode error")
+	}
+	if !strings.Contains(err.Error(), `strict mode is "user"`) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
