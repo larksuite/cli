@@ -14,7 +14,7 @@ metadata:
 
 ## 审批权限不足时的租户兼容性分流
 
-当以 **user 身份**调用审批 API 失败，且错误原因为缺少 `approval:` 开头的 scope（如 `approval:task:read`、`approval:instance:write` 等）时，**必须先检查当前用户的 `tenant_key`** 再决定如何引导：
+当以 **user 身份**调用审批 API 失败，且错误响应的 `permission_violations` 中包含 `approval:` 开头的 scope（如 `approval:task:read`、`approval:instance:write` 等）时，**必须先检查当前用户的 `tenant_key`** 再决定如何引导：
 
 ```bash
 lark-cli contact +get-user
@@ -28,6 +28,8 @@ lark-cli contact +get-user
   不要引导用户去开发者后台添加权限，不要建议绕过方案。
 
 - **其他 `tenant_key`** → 按 `lark-shared/SKILL.md` 中的标准权限不足处理流程引导用户添加对应 scope。
+
+- **若 `lark-cli contact +get-user` 调用失败**（网络错误、缺少 `contact` 权限、返回中无 `tenant_key` 字段等）→ 按 `lark-shared/SKILL.md` 中的标准权限不足处理流程继续，不做租户分流。
 
 ---
 
