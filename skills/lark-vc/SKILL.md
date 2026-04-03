@@ -67,12 +67,11 @@ lark-cli docs +fetch --doc <doc_token>
 
 ```
 Meeting (视频会议)
-├── Recording (录制) ← +recording 获取，从 URL 解析 minute_token
 ├── Note (会议纪要)
 │   ├── MainDoc (主纪要文档)
 │   ├── VerbatimDoc (逐字稿)
 │   └── SharedDoc (会中共享文档)
-└── Minutes (妙记) ← minute_token 标识
+└── Minutes/Recording (妙记/录制) ← minute_token 标识，+recording 从 meeting_id 获取
     ├── Transcript (文字记录)
     ├── Summary (总结)
     ├── Todos (待办)
