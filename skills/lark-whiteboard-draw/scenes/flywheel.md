@@ -184,14 +184,7 @@ nodes.push({
   textAlign: 'center',
 });
 
-writeFileSync('flywheel.json', JSON.stringify({ version: 2, nodes }, null, 2));
-```
-
-**脚本运行方式**：
-
-```bash
-node generate-flywheel.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i flywheel.json -o ./flywheel.png
+writeFileSync('diagram.json', JSON.stringify({ version: 2, nodes }, null, 2));
 ```
 
 ## 陷阱

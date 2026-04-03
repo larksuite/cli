@@ -172,13 +172,6 @@
 - bar-2 (150): height = (150/200)*400 = 300, y = 480-300 = 180
 - bar-0 x = 80 + 0*300 + 80/2 = 120, bar-1 x = 80 + 1*300 + 40 = 420, bar-2 x = 80 + 2*300 + 40 = 720
 
-**脚本运行方式**：
-
-```bash
-node generate-bar-chart.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i bar-chart.json -o ./bar-chart.png
-```
-
 ## 陷阱
 
 - 单系列用多色（不专业）：同一数据系列所有柱体应使用同一颜色

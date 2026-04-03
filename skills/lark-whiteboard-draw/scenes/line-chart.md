@@ -199,13 +199,6 @@
 - 点3 (Q4, 180): pointX = 80 + (3/3)*900 = 980, pointY = 480 - ((180-100)/120)*400 = 213
 - ellipse 定位：ellipseX = pointX - 6, ellipseY = pointY - 6
 
-**脚本运行方式**：
-
-```bash
-node generate-line-chart.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i line-chart.json -o ./line-chart.png
-```
-
 ## 陷阱
 
 - Y 轴范围不合理：若数据集中在 80-120，Y 轴从 0 到 120 会让折线挤在顶部一小段区域，应设 yMin 接近数据最小值

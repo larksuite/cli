@@ -19,7 +19,7 @@
 ## CLI 用法
 
 ```bash
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i diagram.mmd -o output.png
+npx -y @larksuite/whiteboard-cli@^0.1.0 -i ./diagrams/{name}.mmd -o ./diagrams/{name}.png
 ```
 
 ## 思维导图 (Mindmap)

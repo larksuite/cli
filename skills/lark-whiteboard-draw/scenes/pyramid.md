@@ -82,7 +82,7 @@ const output = {
   ]
 };
 
-fs.writeFileSync('pyramid.json', JSON.stringify(output, null, 2));
+fs.writeFileSync('diagram.json', JSON.stringify(output, null, 2));
 ```
 
 ## 陷阱
