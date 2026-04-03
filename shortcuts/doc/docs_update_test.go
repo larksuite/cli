@@ -76,3 +76,63 @@ func TestNormalizeDocsUpdateResult(t *testing.T) {
 		}
 	})
 }
+
+func TestShouldAutoResizeAfterUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		mode     string
+		markdown string
+		want     bool
+	}{
+		{
+			name:     "append markdown table",
+			mode:     "append",
+			markdown: "| A | B |\n| --- | --- |\n| 1 | 2 |",
+			want:     true,
+		},
+		{
+			name:     "replace range html table",
+			mode:     "replace_range",
+			markdown: "<table><tr><td>A</td></tr></table>",
+			want:     true,
+		},
+		{
+			name:     "plain markdown",
+			mode:     "append",
+			markdown: "## plain text",
+			want:     false,
+		},
+		{
+			name:     "delete range",
+			mode:     "delete_range",
+			markdown: "| A |",
+			want:     false,
+		},
+		{
+			name:     "pipe command not mistaken for table",
+			mode:     "append",
+			markdown: "run cmd1 | grep foo | wc -l",
+			want:     false,
+		},
+		{
+			name:     "borderless markdown table",
+			mode:     "append",
+			markdown: "A | B | C\n--|--|--\n1 | 2 | 3",
+			want:     true,
+		},
+		{
+			name:     "pipe command still not mistaken for table",
+			mode:     "append",
+			markdown: "run cmd1 | grep foo | wc -l",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldAutoResizeAfterUpdate(tt.mode, tt.markdown); got != tt.want {
+				t.Fatalf("shouldAutoResizeAfterUpdate(%q, %q) = %v, want %v", tt.mode, tt.markdown, got, tt.want)
+			}
+		})
+	}
+}
