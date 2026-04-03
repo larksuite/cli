@@ -4,10 +4,13 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -89,6 +92,145 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 
 	opts = append(opts, extraOpts...)
 	return c.SDK.Do(ctx, req, opts...)
+}
+
+// DoStream executes a streaming HTTP request against the Lark OpenAPI endpoint.
+// Unlike DoSDKRequest (which buffers the full body via the SDK), DoStream returns
+// a live *http.Response whose Body is an io.Reader for streaming consumption.
+// Auth is resolved via Credential (same as DoSDKRequest). Security headers and
+// any extra headers from opts are applied automatically.
+// HTTP errors (status >= 400) are handled internally: the body is read (up to 4 KB),
+// closed, and returned as an output.ErrNetwork — callers only receive successful responses.
+func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.Identity, opts ...Option) (*http.Response, error) {
+	cfg := buildConfig(opts)
+
+	// Resolve auth
+	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
+	if err != nil {
+		return nil, err
+	}
+
+	// Build URL
+	requestURL, err := buildStreamURL(c.Config.Brand, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build body
+	bodyReader, contentType, err := buildStreamBody(req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Timeout
+	httpClient := *c.HTTP
+	cancel := func() {}
+	requestCtx := ctx
+	if cfg.timeout > 0 {
+		httpClient.Timeout = cfg.timeout
+		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+			requestCtx, cancel = context.WithTimeout(ctx, cfg.timeout)
+		}
+	}
+
+	// Build request
+	httpReq, err := http.NewRequestWithContext(requestCtx, req.HttpMethod, requestURL, bodyReader)
+	if err != nil {
+		cancel()
+		return nil, output.ErrNetwork("stream request failed: %s", err)
+	}
+
+	// Apply headers from opts
+	for k, vs := range cfg.headers {
+		for _, v := range vs {
+			httpReq.Header.Add(k, v)
+		}
+	}
+
+	if contentType != "" {
+		httpReq.Header.Set("Content-Type", contentType)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+result.Token)
+
+	resp, err := httpClient.Do(httpReq)
+	if err != nil {
+		cancel()
+		return nil, output.ErrNetwork("stream request failed: %s", err)
+	}
+	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
+
+	// Handle HTTP errors internally
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		msg := strings.TrimSpace(string(errBody))
+		if msg != "" {
+			return nil, output.ErrNetwork("HTTP %d: %s", resp.StatusCode, msg)
+		}
+		return nil, output.ErrNetwork("HTTP %d", resp.StatusCode)
+	}
+
+	return resp, nil
+}
+
+type cancelOnCloseBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (r *cancelOnCloseBody) Close() error {
+	err := r.ReadCloser.Close()
+	if r.cancel != nil {
+		r.cancel()
+	}
+	return err
+}
+
+func buildStreamURL(brand core.LarkBrand, req *larkcore.ApiReq) (string, error) {
+	requestURL := req.ApiPath
+	if !strings.HasPrefix(requestURL, "http://") && !strings.HasPrefix(requestURL, "https://") {
+		var pathSegs []string
+		for _, segment := range strings.Split(req.ApiPath, "/") {
+			if !strings.HasPrefix(segment, ":") {
+				pathSegs = append(pathSegs, segment)
+				continue
+			}
+			pathKey := strings.TrimPrefix(segment, ":")
+			pathValue, ok := req.PathParams[pathKey]
+			if !ok {
+				return "", output.ErrValidation("missing path param %q for %s", pathKey, req.ApiPath)
+			}
+			if pathValue == "" {
+				return "", output.ErrValidation("empty path param %q for %s", pathKey, req.ApiPath)
+			}
+			pathSegs = append(pathSegs, url.PathEscape(pathValue))
+		}
+		endpoints := core.ResolveEndpoints(brand)
+		requestURL = strings.TrimRight(endpoints.Open, "/") + strings.Join(pathSegs, "/")
+	}
+	if query := req.QueryParams.Encode(); query != "" {
+		requestURL += "?" + query
+	}
+	return requestURL, nil
+}
+
+func buildStreamBody(body interface{}) (io.Reader, string, error) {
+	switch typed := body.(type) {
+	case nil:
+		return nil, "", nil
+	case io.Reader:
+		return typed, "", nil
+	case []byte:
+		return bytes.NewReader(typed), "", nil
+	case string:
+		return strings.NewReader(typed), "text/plain; charset=utf-8", nil
+	default:
+		payload, err := json.Marshal(typed)
+		if err != nil {
+			return nil, "", output.Errorf(output.ExitInternal, "api_error", "failed to encode request body: %s", err)
+		}
+		return bytes.NewReader(payload), "application/json", nil
+	}
 }
 
 // DoAPI executes a raw Lark SDK request and returns the raw *larkcore.ApiResp.
