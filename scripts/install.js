@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execSync, execFileSync } = require("child_process");
 const os = require("os");
 
 const VERSION = require("../package.json").version;
@@ -36,8 +36,26 @@ const MIRROR_URL = `https://registry.npmmirror.com/-/binary/lark-cli/v${VERSION}
 const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
-const BUILD_VERSION = process.env.LARK_CLI_BUILD_VERSION || VERSION;
-const BUILD_DATE = process.env.LARK_CLI_BUILD_DATE || new Date().toISOString().slice(0, 10);
+const DEFAULT_BUILD_DATE = new Date().toISOString().slice(0, 10);
+
+function sanitizeBuildVersion(input) {
+  const value = String(input || "").trim();
+  if (!value) {
+    return VERSION;
+  }
+  return /^[A-Za-z0-9._-]+$/.test(value) ? value : VERSION;
+}
+
+function sanitizeBuildDate(input) {
+  const value = String(input || "").trim();
+  if (!value) {
+    return DEFAULT_BUILD_DATE;
+  }
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : DEFAULT_BUILD_DATE;
+}
+
+const BUILD_VERSION = sanitizeBuildVersion(process.env.LARK_CLI_BUILD_VERSION);
+const BUILD_DATE = sanitizeBuildDate(process.env.LARK_CLI_BUILD_DATE);
 
 fs.mkdirSync(binDir, { recursive: true });
 
@@ -116,11 +134,11 @@ function installFromSource() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-src-"));
 
   try {
-    execSync(`git clone --depth 1 --branch v${VERSION} https://github.com/${REPO}.git "${tmpDir}"`, {
+    execFileSync("go", ["version"], { stdio: "ignore" });
+
+    execFileSync("git", ["clone", "--depth", "1", "--branch", `v${VERSION}`, `https://github.com/${REPO}.git`, tmpDir], {
       stdio: "ignore",
     });
-
-    execSync(`go version`, { stdio: "ignore" });
 
     const ldflags = [
       "-s",
@@ -129,9 +147,12 @@ function installFromSource() {
       `-X github.com/larksuite/cli/internal/build.Date=${BUILD_DATE}`,
     ].join(" ");
 
-    execSync(`cd "${tmpDir}" && CGO_ENABLED=0 go build -trimpath -ldflags "${ldflags}" -o "${dest}" .`, {
+    execFileSync("go", ["build", "-trimpath", "-ldflags", ldflags, "-o", dest, "."], {
+      cwd: tmpDir,
+      env: { ...process.env, CGO_ENABLED: "0" },
       stdio: "ignore",
     });
+
     fs.chmodSync(dest, 0o755);
     console.log(`${NAME} v${VERSION} installed from source fallback`);
     return true;
