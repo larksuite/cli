@@ -111,7 +111,7 @@ func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(resp.RawBody))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
-		return nil, fmt.Errorf("response parse error: %v (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
+		return nil, fmt.Errorf("response parse error: %w (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
 	}
 	return result, nil
 }

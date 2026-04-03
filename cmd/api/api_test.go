@@ -535,8 +535,9 @@ func TestApiCmd_InvalidJSONResponse_ShowsDiagnostic(t *testing.T) {
 	if exitErr.Detail == nil {
 		t.Fatal("expected detail on exit error")
 	}
-	if !strings.Contains(exitErr.Detail.Message, "invalid JSON response") {
-		t.Fatalf("expected invalid JSON diagnostic, got %q", exitErr.Detail.Message)
+	if !strings.Contains(exitErr.Detail.Message, "invalid JSON response") &&
+		!strings.Contains(exitErr.Detail.Message, "empty JSON response body") {
+		t.Fatalf("expected JSON diagnostic, got %q", exitErr.Detail.Message)
 	}
 	if !strings.Contains(exitErr.Detail.Hint, "--output") {
 		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)

@@ -6,6 +6,7 @@ package client
 import (
 	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,6 +73,17 @@ func TestParseJSONResponse_Invalid(t *testing.T) {
 	_, err := ParseJSONResponse(resp)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestParseJSONResponse_EmptyBody_WrapsEOF(t *testing.T) {
+	resp := newApiResp([]byte{}, map[string]string{"Content-Type": "application/json"})
+	_, err := ParseJSONResponse(resp)
+	if err == nil {
+		t.Fatal("expected error for empty body")
+	}
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expected wrapped io.EOF, got %v", err)
 	}
 }
 

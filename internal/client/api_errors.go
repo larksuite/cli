@@ -23,7 +23,7 @@ func WrapDoAPIError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if isJSONDecodeError(err) {
+	if isJSONDecodeError(err, false) {
 		return output.ErrWithHint(output.ExitAPI, "api_error",
 			fmt.Sprintf("API returned an invalid JSON response: %v", err), rawAPIJSONHint)
 	}
@@ -40,22 +40,28 @@ func WrapJSONResponseParseError(err error, body []byte) error {
 		return output.ErrWithHint(output.ExitAPI, "api_error",
 			"API returned an empty JSON response body", rawAPIJSONHint)
 	}
-	if isJSONDecodeError(err) {
+	if isJSONDecodeError(err, true) {
 		return output.ErrWithHint(output.ExitAPI, "api_error",
 			fmt.Sprintf("API returned an invalid JSON response: %v", err), rawAPIJSONHint)
 	}
 	return output.ErrNetwork("API call failed: %v", err)
 }
 
-func isJSONDecodeError(err error) bool {
+func isJSONDecodeError(err error, allowEOF bool) bool {
 	var syntaxErr *json.SyntaxError
 	var unmarshalTypeErr *json.UnmarshalTypeError
 
-	if errors.Is(err, io.EOF) || errors.As(err, &syntaxErr) || errors.As(err, &unmarshalTypeErr) {
+	if errors.As(err, &syntaxErr) || errors.As(err, &unmarshalTypeErr) {
+		return true
+	}
+	if allowEOF && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
 		return true
 	}
 
 	msg := err.Error()
+	if allowEOF && strings.Contains(msg, "unexpected EOF") {
+		return true
+	}
 	return strings.Contains(msg, "unexpected end of JSON input") ||
 		strings.Contains(msg, "invalid character") ||
 		strings.Contains(msg, "cannot unmarshal")
