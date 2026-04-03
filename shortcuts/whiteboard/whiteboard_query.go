@@ -61,8 +61,8 @@ var WhiteboardQuery = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard. You will need read permission to download preview image.", Required: true},
-		{Name: "as", Desc: "output whiteboard as: image | code | raw.", Required: true},
-		{Name: "output", Desc: "output directory. It is required when as is image. If not specified when --as code/raw, it will output directly.", Required: false},
+		{Name: "output_as", Desc: "output whiteboard as: image | code | raw.", Required: true},
+		{Name: "output", Desc: "output directory. It is required when output as image. If not specified when --output_as code/raw, it will output directly.", Required: false},
 		{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false, Type: "bool"},
 	},
 	HasFormat: true,
@@ -79,18 +79,18 @@ var WhiteboardQuery = common.Shortcut{
 				return err
 			}
 		}
-		if out == "" && runtime.Str("as") == WhiteboardQueryAsImage {
+		if out == "" && runtime.Str("output_as") == WhiteboardQueryAsImage {
 			return output.ErrValidation("need a output directory to query whiteboard as image")
 		}
 
-		as := runtime.Str("as")
+		as := runtime.Str("output_as")
 		if as != WhiteboardQueryAsImage && as != WhiteboardQueryAsCode && as != WhiteboardQueryAsRaw {
-			return common.FlagErrorf("--as flag must be one of: image | code | raw")
+			return common.FlagErrorf("--output_as flag must be one of: image | code | raw")
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		as := runtime.Str("as")
+		as := runtime.Str("output_as")
 		switch as {
 		case WhiteboardQueryAsImage:
 			return common.NewDryRunAPI().
@@ -112,7 +112,7 @@ var WhiteboardQuery = common.Shortcut{
 		// 构建 API 请求
 		token := runtime.Str("whiteboard-token")
 		outDir := runtime.Str("output")
-		as := runtime.Str("as")
+		as := runtime.Str("output_as")
 		switch as {
 		case WhiteboardQueryAsImage:
 			return exportWhiteboardPreview(ctx, runtime, token, outDir)
@@ -127,13 +127,25 @@ var WhiteboardQuery = common.Shortcut{
 	},
 }
 
+func ensurePNGExtension(path string) string {
+	ext := filepath.Ext(path)
+	if ext != ".png" {
+		if ext == "" {
+			path = path + ".png"
+		} else {
+			path = path[:len(path)-len(ext)] + ".png"
+		}
+	}
+	return path
+}
+
 func exportWhiteboardPreview(ctx context.Context, runtime *common.RuntimeContext, wbToken, outDir string) error {
 	req := &larkcore.ApiReq{
 		HttpMethod: http.MethodGet,
 		ApiPath:    fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/download_as_image", wbToken),
 	}
 	// 执行 API 请求
-	resp, err := runtime.DoAPI(req)
+	resp, err := runtime.DoAPI(req, larkcore.WithFileDownload())
 	if err != nil {
 		return output.ErrNetwork(fmt.Sprintf("get whiteboard preview failed: %v", err))
 	}
@@ -142,6 +154,7 @@ func exportWhiteboardPreview(ctx context.Context, runtime *common.RuntimeContext
 		return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
 	}
 
+	outDir = ensurePNGExtension(outDir)
 	overwrite := runtime.Bool("overwrite")
 	if err := checkFileOverwrite(outDir, overwrite); err != nil {
 		return err
@@ -164,7 +177,7 @@ type wbNodesResp struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
-		Nodes map[string]interface{} `json:"nodes"`
+		Nodes []interface{} `json:"nodes"`
 	} `json:"data"`
 }
 
@@ -226,7 +239,13 @@ func exportWhiteboardCode(runtime *common.RuntimeContext, wbToken, outDir string
 			continue
 		}
 		code, _ := syntaxMap["code"].(string)
-		syntaxType, _ := syntaxMap["syntax_type"].(SyntaxType)
+		var syntaxType SyntaxType
+		switch v := syntaxMap["syntax_type"].(type) {
+		case float64:
+			syntaxType = SyntaxType(v)
+		case SyntaxType:
+			syntaxType = v
+		}
 		if code != "" && syntaxType.IsValid() {
 			syntaxBlocks = append(syntaxBlocks, syntaxInfo{code: code, syntaxType: syntaxType})
 		}

@@ -34,12 +34,13 @@ var formatCodeMap = map[string]int{
 
 var wbUpdateScopes = []string{"board:whiteboard:node:read", "board:whiteboard:node:create", "board:whiteboard:node:delete"}
 var wbUpdateAuthTypes = []string{"user", "bot"}
+var skipDeleteNodesBatchSleep = false // for accelerate UT testing only
 var wbUpdateFlags = []common.Flag{
 	{Name: "idempotent-token", Desc: "idempotent token to ensure the update is idempotent. Default is empty. min length is 10.", Required: false},
 	{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard to update. You will need edit permission to update the whiteboard.", Required: true},
 	{Name: "overwrite", Desc: "overwrite the whiteboard content, delete all existing content before update. Default is false.", Required: false, Type: "bool"},
 	{Name: "source", Desc: "source of input data, read from stdin if not specified, otherwise read from the specified file.", Required: false},
-	{Name: "format", Desc: "format of input data: raw | plantuml | mermaid. Default is raw.", Required: false},
+	{Name: "input_format", Desc: "format of input data: raw | plantuml | mermaid. Default is raw.", Required: false},
 }
 
 func wbUpdateValidate(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -55,10 +56,10 @@ func wbUpdateValidate(ctx context.Context, runtime *common.RuntimeContext) error
 		return common.FlagErrorf("--idempotent-token must be at least 10 characters long.")
 	}
 
-	// 检查 --format 标志
+	// 检查 --input_format 标志
 	format := getFormat(runtime)
 	if format != FormatRaw && format != FormatPlantUML && format != FormatMermaid {
-		return common.FlagErrorf("--format must be one of: raw | plantuml | mermaid")
+		return common.FlagErrorf("--input_format must be one of: raw | plantuml | mermaid")
 	}
 
 	// 检查输入来源
@@ -100,7 +101,7 @@ func readInput(runtime *common.RuntimeContext) ([]byte, error) {
 
 // getFormat 获取 format，默认返回 raw
 func getFormat(runtime *common.RuntimeContext) string {
-	format := runtime.Str("format")
+	format := runtime.Str("input_format")
 	if format == "" {
 		return FormatRaw
 	}
@@ -238,9 +239,9 @@ type deleteNodeReqBody struct {
 
 type plantumlCreateReq struct {
 	PlantUmlCode string `json:"plant_uml_code"`
-	StyleType    int    `json:"style_type,omitempty"`
 	SyntaxType   int    `json:"syntax_type"`
 	DiagramType  int    `json:"diagram_type,omitempty"`
+	ParseMode    int    `json:"parse_mode,omitempty"`
 }
 
 type plantumlCreateResp struct {
@@ -341,7 +342,9 @@ func clearWhiteboardContent(ctx context.Context, runtime *common.RuntimeContext,
 	}
 	// 实际删除节点，按每批最多100个进行切分
 	for i := 0; i < len(delIds); i += 100 {
-		time.Sleep(time.Millisecond * 1000) // 画板内删除大量节点时，内部会有大量写操作，需要稍等一下，避免被限流
+		if !skipDeleteNodesBatchSleep {
+			time.Sleep(time.Millisecond * 1000) // 画板内删除大量节点时，内部会有大量写操作，需要稍等一下，避免被限流
+		}
 		end := i + 100
 		if end > len(delIds) {
 			end = len(delIds)
@@ -379,6 +382,7 @@ func updateWhiteboardByCode(ctx context.Context, runtime *common.RuntimeContext,
 	reqBody := plantumlCreateReq{
 		PlantUmlCode: string(input),
 		SyntaxType:   syntaxType,
+		ParseMode:    1,
 		DiagramType:  0, // 0 表示自动识别
 	}
 
