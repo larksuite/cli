@@ -66,7 +66,11 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		if acct != nil {
 			internal := convertAccount(acct)
 			if err := p.enrichUserInfo(ctx, internal); err != nil {
-				return nil, err
+				// enrichUserInfo failure is non-fatal: SupportedIdentities
+				// (used for strict mode) is already set by the provider.
+				// Clear unverified user identity for safety.
+				internal.UserOpenId = ""
+				internal.UserName = ""
 			}
 			return internal, nil
 		}
