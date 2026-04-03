@@ -19,9 +19,13 @@ func OpenBrowser(url string) bool {
 	case "linux":
 		cmd = exec.Command("xdg-open", url)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		cmd = exec.Command("cmd", "/c", "start", "", url)
 	default:
 		return false
 	}
-	return cmd.Start() == nil
+	if err := cmd.Start(); err != nil {
+		return false
+	}
+	go cmd.Wait()
+	return true
 }
