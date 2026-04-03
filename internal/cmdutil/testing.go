@@ -65,7 +65,7 @@ func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer,
 		Config:     func() (*core.CliConfig, error) { return config, nil },
 		HttpClient: func() (*http.Client, error) { return mockClient, nil },
 		LarkClient: func() (*lark.Client, error) { return testLarkClient, nil },
-		IOStreams:   &IOStreams{In: nil, Out: stdoutBuf, ErrOut: stderrBuf},
+		IOStreams:  &IOStreams{In: nil, Out: stdoutBuf, ErrOut: stderrBuf},
 		Keychain:   &noopKeychain{},
 		Credential: testCred,
 	}

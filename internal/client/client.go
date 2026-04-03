@@ -35,10 +35,10 @@ type RawApiRequest struct {
 
 // APIClient wraps lark.Client for all Lark Open API calls.
 type APIClient struct {
-	Config        *core.CliConfig
-	SDK           *lark.Client // All Lark API calls go through SDK
-	HTTP          *http.Client // Only for non-Lark API (OAuth, MCP, etc.)
-	ErrOut        io.Writer    // debug/progress output
+	Config     *core.CliConfig
+	SDK        *lark.Client // All Lark API calls go through SDK
+	HTTP       *http.Client // Only for non-Lark API (OAuth, MCP, etc.)
+	ErrOut     io.Writer    // debug/progress output
 	Credential *credential.CredentialProvider
 }
 

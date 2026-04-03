@@ -40,8 +40,8 @@ func (s IdentitySupport) BotOnly() bool { return s == SupportsBot }
 type Account struct {
 	AppID               string
 	AppSecret           string
-	Brand               string          // BrandLark or BrandFeishu
-	DefaultAs           string          // IdentityUser / IdentityBot / IdentityAuto; empty = not set
+	Brand               string // BrandLark or BrandFeishu
+	DefaultAs           string // IdentityUser / IdentityBot / IdentityAuto; empty = not set
 	ProfileName         string
 	OpenID              string          // optional; if UAT is available, API result takes precedence
 	SupportedIdentities IdentitySupport // zero = provider did not declare; treat as no restriction

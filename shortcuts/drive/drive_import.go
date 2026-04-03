@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/vfs"
 	"strings"
+
+	"github.com/larksuite/cli/internal/vfs"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
