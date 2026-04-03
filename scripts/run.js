@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
 const { execFileSync } = require("child_process");
 const path = require("path");
 
