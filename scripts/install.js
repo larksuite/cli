@@ -16,15 +16,14 @@ const PLATFORM_MAP = {
 const ARCH_MAP = {
   x64: "amd64",
   arm64: "arm64",
+  riscv64: "riscv64",
 };
 
 const platform = PLATFORM_MAP[process.platform];
 const arch = ARCH_MAP[process.arch];
 
 if (!platform || !arch) {
-  console.error(
-    `Unsupported platform: ${process.platform}-${process.arch}`
-  );
+  console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
   process.exit(1);
 }
 
@@ -40,8 +39,6 @@ const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 fs.mkdirSync(binDir, { recursive: true });
 
 function download(url, destPath) {
-  // --ssl-revoke-best-effort: on Windows (Schannel), avoid CRYPT_E_REVOCATION_OFFLINE
-  // errors when the certificate revocation list server is unreachable
   const sslFlag = isWindows ? "--ssl-revoke-best-effort " : "";
   execSync(
     `curl ${sslFlag}--fail --location --silent --show-error --connect-timeout 10 --max-time 120 --output "${destPath}" "${url}"`,
@@ -49,7 +46,20 @@ function download(url, destPath) {
   );
 }
 
-function install() {
+function extractArchive(archivePath, tmpDir) {
+  if (isWindows) {
+    execSync(
+      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'"`,
+      { stdio: "ignore" }
+    );
+  } else {
+    execSync(`tar -xzf "${archivePath}" -C "${tmpDir}"`, {
+      stdio: "ignore",
+    });
+  }
+}
+
+function installFromRelease() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-"));
   const archivePath = path.join(tmpDir, archiveName);
 
@@ -60,16 +70,7 @@ function install() {
       download(MIRROR_URL, archivePath);
     }
 
-    if (isWindows) {
-      execSync(
-        `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'"`,
-        { stdio: "ignore" }
-      );
-    } else {
-      execSync(`tar -xzf "${archivePath}" -C "${tmpDir}"`, {
-        stdio: "ignore",
-      });
-    }
+    extractArchive(archivePath, tmpDir);
 
     const binaryName = NAME + (isWindows ? ".exe" : "");
     const extractedBinary = path.join(tmpDir, binaryName);
@@ -77,8 +78,51 @@ function install() {
     fs.copyFileSync(extractedBinary, dest);
     fs.chmodSync(dest, 0o755);
     console.log(`${NAME} v${VERSION} installed successfully`);
+    return true;
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function installFromSource() {
+  if (isWindows) {
+    throw new Error("source fallback is not supported on Windows yet");
+  }
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-src-"));
+
+  try {
+    execSync(`git clone --depth 1 --branch v${VERSION} https://github.com/${REPO}.git "${tmpDir}"`, {
+      stdio: "ignore",
+    });
+
+    execSync(`go version`, { stdio: "ignore" });
+    execSync(`cd "${tmpDir}" && CGO_ENABLED=0 go build -o "${dest}" .`, {
+      stdio: "ignore",
+    });
+    fs.chmodSync(dest, 0o755);
+    console.log(`${NAME} v${VERSION} installed from source fallback`);
+    return true;
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function install() {
+  try {
+    return installFromRelease();
+  } catch (err) {
+    const isMissingBinary =
+      /404|not found|unsupported platform|unsupported architecture/i.test(String(err && err.message));
+
+    if (isMissingBinary || process.arch === "riscv64") {
+      console.warn(
+        `Prebuilt binary unavailable for ${process.platform}-${process.arch}, attempting source fallback...`
+      );
+      return installFromSource();
+    }
+
+    throw err;
   }
 }
 
@@ -88,8 +132,13 @@ try {
   console.error(`Failed to install ${NAME}:`, err.message);
   console.error(
     `\nIf you are behind a firewall or in a restricted network, try setting a proxy:\n` +
-    `  export https_proxy=http://your-proxy:port\n` +
-    `  npm install -g @larksuite/cli`
+      `  export https_proxy=http://your-proxy:port\n` +
+      `  npm install -g @larksuite/cli`
   );
+  if (process.arch === "riscv64") {
+    console.error(
+      `\nFor riscv64, ensure 'go' and 'git' are installed to enable source fallback build.`
+    );
+  }
   process.exit(1);
 }

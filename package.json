@@ -15,7 +15,8 @@
   ],
   "cpu": [
     "x64",
-    "arm64"
+    "arm64",
+    "riscv64"
   ],
   "engines": {
     "node": ">=16"
