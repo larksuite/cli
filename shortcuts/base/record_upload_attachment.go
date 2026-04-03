@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -97,7 +97,7 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 	}
 	filePath = safeFilePath
 
-	fileInfo, err := os.Stat(filePath)
+	fileInfo, err := vfs.Stat(filePath)
 	if err != nil {
 		return output.ErrValidation("file not found: %s", filePath)
 	}
@@ -209,7 +209,7 @@ func normalizeAttachmentForPatch(attachment map[string]interface{}) map[string]i
 }
 
 func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, baseToken string, fileSize int64) (map[string]interface{}, error) {
-	f, err := os.Open(filePath)
+	f, err := vfs.Open(filePath)
 	if err != nil {
 		return nil, output.ErrValidation("cannot open file: %v", err)
 	}

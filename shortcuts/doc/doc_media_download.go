@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -113,7 +113,7 @@ var DocMediaDownload = common.Shortcut{
 			return err
 		}
 
-		if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
 			return output.Errorf(output.ExitInternal, "io", "cannot create parent directory: %v", err)
 		}
 

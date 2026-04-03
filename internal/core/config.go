@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // Identity represents the caller identity for API requests.
@@ -168,7 +169,7 @@ func GetConfigDir() string {
 	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
 		return dir
 	}
-	home, err := os.UserHomeDir()
+	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {
 		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
 	}
@@ -182,7 +183,7 @@ func GetConfigPath() string {
 
 // LoadMultiAppConfig loads multi-app config from disk.
 func LoadMultiAppConfig() (*MultiAppConfig, error) {
-	data, err := os.ReadFile(GetConfigPath())
+	data, err := vfs.ReadFile(GetConfigPath())
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +201,7 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 // SaveMultiAppConfig saves config to disk.
 func SaveMultiAppConfig(config *MultiAppConfig) error {
 	dir := GetConfigDir()
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(config, "", "  ")

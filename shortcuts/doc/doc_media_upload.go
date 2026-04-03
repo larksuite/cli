@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -17,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -65,7 +65,7 @@ var MediaUpload = common.Shortcut{
 		filePath = safeFilePath
 
 		// Validate file
-		stat, err := os.Stat(filePath)
+		stat, err := vfs.Stat(filePath)
 		if err != nil {
 			return output.ErrValidation("file not found: %s", filePath)
 		}
@@ -76,7 +76,7 @@ var MediaUpload = common.Shortcut{
 		fileName := filepath.Base(filePath)
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%d bytes)\n", fileName, stat.Size())
 
-		f, err := os.Open(filePath)
+		f, err := vfs.Open(filePath)
 		if err != nil {
 			return output.ErrValidation("cannot open file: %v", err)
 		}

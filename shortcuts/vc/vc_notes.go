@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,6 +26,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -254,7 +254,7 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 	dirName := filepath.Join(base, sanitizeDirName(title, minuteToken))
 	if !runtime.Bool("overwrite") {
 		transcriptPath := filepath.Join(dirName, "transcript.txt")
-		if _, statErr := os.Stat(transcriptPath); statErr == nil {
+		if _, statErr := vfs.Stat(transcriptPath); statErr == nil {
 			fmt.Fprintf(errOut, "%s transcript already exists: %s (use --overwrite to replace)\n", logPrefix, transcriptPath)
 			return transcriptPath
 		}
@@ -266,7 +266,7 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
 		return ""
 	}
-	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
 		return ""
 	}

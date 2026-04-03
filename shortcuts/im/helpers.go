@@ -22,6 +22,7 @@ import (
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
@@ -554,7 +555,7 @@ func parseMediaDuration(filePath, fileType string) string {
 	if fileType != "opus" && fileType != "mp4" {
 		return ""
 	}
-	f, err := os.Open(filePath)
+	f, err := vfs.Open(filePath)
 	if err != nil {
 		return ""
 	}
@@ -1004,11 +1005,11 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 		return "", err
 	}
 
-	if info, err := os.Stat(safePath); err == nil && info.Size() > maxImageUploadSize {
+	if info, err := vfs.Stat(safePath); err == nil && info.Size() > maxImageUploadSize {
 		return "", fmt.Errorf("image size %s exceeds limit (max 5MB)", common.FormatSize(info.Size()))
 	}
 
-	f, err := os.Open(safePath)
+	f, err := vfs.Open(safePath)
 	if err != nil {
 		return "", err
 	}
@@ -1046,11 +1047,11 @@ func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePat
 		return "", err
 	}
 
-	if info, err := os.Stat(safePath); err == nil && info.Size() > maxFileUploadSize {
+	if info, err := vfs.Stat(safePath); err == nil && info.Size() > maxFileUploadSize {
 		return "", fmt.Errorf("file size %s exceeds limit (max 100MB)", common.FormatSize(info.Size()))
 	}
 
-	f, err := os.Open(safePath)
+	f, err := vfs.Open(safePath)
 	if err != nil {
 		return "", err
 	}

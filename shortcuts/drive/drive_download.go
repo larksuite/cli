@@ -7,13 +7,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -70,7 +70,7 @@ var DriveDownload = common.Shortcut{
 		}
 		defer resp.Body.Close()
 
-		if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
 			return output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
 		}
 

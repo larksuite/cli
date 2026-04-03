@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // FlagErrorf returns a validation error with flag context (exit code 2).
@@ -91,7 +92,7 @@ func ValidateSafeOutputDir(outputDir string) error {
 	if filepath.IsAbs(outputDir) {
 		return fmt.Errorf("--output-dir must be a relative path, got: %q", outputDir)
 	}
-	cwd, err := os.Getwd()
+	cwd, err := vfs.Getwd()
 	if err != nil {
 		return fmt.Errorf("cannot determine working directory: %w", err)
 	}
@@ -110,7 +111,7 @@ func ValidateSafeOutputDir(outputDir string) error {
 		}
 		// Path does not exist yet. If os.Lstat succeeds the entry is a dangling
 		// symlink — reject it to prevent future escapes once the target is created.
-		if _, lstErr := os.Lstat(abs); lstErr == nil {
+		if _, lstErr := vfs.Lstat(abs); lstErr == nil {
 			return fmt.Errorf("--output-dir %q is a symlink with a non-existent target", outputDir)
 		}
 		// The path itself doesn't exist; the string-level check is sufficient.

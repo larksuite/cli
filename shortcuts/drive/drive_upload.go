@@ -9,13 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -67,7 +67,7 @@ var DriveUpload = common.Shortcut{
 			fileName = filepath.Base(filePath)
 		}
 
-		info, err := os.Stat(filePath)
+		info, err := vfs.Stat(filePath)
 		if err != nil {
 			return output.ErrValidation("cannot read file: %s", err)
 		}
@@ -94,7 +94,7 @@ var DriveUpload = common.Shortcut{
 }
 
 func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, folderToken string, fileSize int64) (string, error) {
-	f, err := os.Open(filePath)
+	f, err := vfs.Open(filePath)
 	if err != nil {
 		return "", err
 	}

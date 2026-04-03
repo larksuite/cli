@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -133,7 +133,7 @@ var SheetExport = common.Shortcut{
 		if pathErr != nil {
 			return output.ErrValidation("unsafe output path: %s", pathErr)
 		}
-		if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
 			return output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
 		}
 
