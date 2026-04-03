@@ -1,8 +1,8 @@
 # base +dashboard-block-delete
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [lark-base-dashboard.md](lark-base-dashboard.md) 了解整体工作流。
 
-删除仪表盘中的一个 Block。
+删除仪表盘中的一个组件（Block），不可恢复。
 
 ## 推荐命令
 
@@ -10,7 +10,7 @@
 lark-cli base +dashboard-block-delete \
   --base-token bascn***************CtadY \
   --dashboard-id blkxxx \
-  --block-id 9v7g********idcd
+  --block-id chtxxxxxxxx
 ```
 
 ## 参数
@@ -22,19 +22,25 @@ lark-cli base +dashboard-block-delete \
 | `--block-id <id>` | 是 | Block ID |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
-## API 入参详情
+## 返回示例
 
-**HTTP 方法和路径：**
-
+```json
+{
+  "block_id": "chtxxxxxxxx",
+  "deleted": true
+}
 ```
-DELETE /open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id
-```
 
-## 工作流
+## 返回重点
+
+| 字段 | 说明 |
+|------|------|
+| `block_id` | 被删除的组件 ID |
+| `deleted` | 是否删除成功 |
 
 > [!CAUTION]
 > 这是**写入操作**且**不可逆** — 执行前必须向用户确认。
 
 ## 参考
 
-- [lark-base-dashboard-block.md](lark-base-dashboard-block.md) — block 索引页
+- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块指引

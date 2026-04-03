@@ -1,15 +1,15 @@
 # base +dashboard-delete
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [lark-base-dashboard.md](lark-base-dashboard.md) 了解整体工作流。
 
-删除仪表盘。
+删除仪表盘（会同时删除其下所有组件，不可恢复）。
 
 ## 推荐命令
 
 ```bash
 lark-cli base +dashboard-delete \
   --base-token VwGhb**************fMnod \
-  --dashboard-id dshxxxxxxx
+  --dashboard-id blkxxxxxxx
 ```
 
 ## 参数
@@ -20,23 +20,25 @@ lark-cli base +dashboard-delete \
 | `--dashboard-id <id>` | 是 | 仪表盘 ID |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
-## API 入参详情
+## 返回示例
 
-**HTTP 方法和路径：**
-
+```json
+{
+  "dashboard_id": "blkxxxxxxxxxxxx",
+  "deleted": true
+}
 ```
-DELETE /open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id
-```
 
-## 工作流
+## 返回重点
+
+| 字段 | 说明 |
+|------|------|
+| `dashboard_id` | 被删除的仪表盘 ID |
+| `deleted` | 是否删除成功 |
 
 > [!CAUTION]
-> 这是**写入操作**且**不可逆** — 执行前必须向用户确认。
-
-## 坑点
-
-- 删除仪表盘会同时删除其下所有 Block，不可恢复。
+> 这是**写入操作**且**不可逆** — 执行前必须向用户确认。删除仪表盘会同时删除其下所有组件，不可恢复。
 
 ## 参考
 
-- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 索引页
+- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块指引

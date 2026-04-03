@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -57,7 +58,10 @@ func httpClient() *http.Client {
 	if DefaultClient != nil {
 		return DefaultClient
 	}
-	return &http.Client{Timeout: fetchTimeout}
+	return &http.Client{
+		Timeout:   fetchTimeout,
+		Transport: util.NewBaseTransport(),
+	}
 }
 
 // updateState is persisted to disk for caching.

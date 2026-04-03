@@ -154,11 +154,13 @@ lark-cli mail +message --message-id <message-id> --dry-run
 
 ## 注意事项
 
-- JSON 输出中 `body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变）。
+- **JSON 输出可直接使用** — 默认输出合法 UTF-8 JSON，可直接读取，无需额外编码转换。
+- JSON 输出中 `body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变，`jq -r` 可还原）。
 - `mail +message` 默认不再获取附件/图片下载 URL。这样可以保持邮件详情读取更轻量，调用方可按需单独请求 URL。
 - 查看原始 HTML：
 
 ```bash
+# jq -r 自动处理 JSON 转义，输出原始 HTML
 lark-cli mail +message --message-id <id> --format json | jq -r '.data.body_html'
 ```
 

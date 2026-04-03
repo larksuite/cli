@@ -18,7 +18,7 @@ Messages sent by this tool are visible to other people. Before calling it, you *
 
 When using `--as bot`, the message is sent in the app's name, so make sure the app has already been added to the target chat.
 
-When using `--as user`, the message is sent as the authorized end user and requires the `im:message.send_as_user` scope.
+When using `--as user`, the message is sent as the authorized end user and requires the `im:message.send_as_user` and `im:message` scopes.
 
 ## Choose The Right Content Flag
 
@@ -218,6 +218,6 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - When using `--video`, `--video-cover` is required as the video cover
 - `--dry-run` uses placeholder image keys for remote Markdown images and placeholder media keys for local uploads
 - Failures return an error code and message
-- `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` scope; the message is sent as the authorized end user
+- `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the message is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT) and requires the `im:message:send_as_bot` scope
 - When sending as a bot, the app must already be in the target group or already have a direct-message relationship with the target user

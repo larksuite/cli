@@ -21,7 +21,7 @@ var ImMessagesSend = common.Shortcut{
 	Description: "Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key",
 	Risk:        "write",
 	Scopes:      []string{"im:message:send_as_bot"},
-	UserScopes:  []string{"im:message.send_as_user"},
+	UserScopes:  []string{"im:message.send_as_user", "im:message"},
 	BotScopes:   []string{"im:message:send_as_bot"},
 	AuthTypes:   []string{"bot", "user"},
 	Flags: []common.Flag{

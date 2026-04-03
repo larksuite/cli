@@ -10,6 +10,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
+// TestNewUATCallOptions validates the extraction of options from CLI config.
 func TestNewUATCallOptions(t *testing.T) {
 	cfg := &core.CliConfig{
 		AppID:      "app123",

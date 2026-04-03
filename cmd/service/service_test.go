@@ -474,6 +474,173 @@ func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
 	}
 }
 
+// ── jq flag ──
+
+func TestNewCmdServiceMethod_JqFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+
+	var captured *ServiceMethodOptions
+	cmd := NewCmdServiceMethod(f, driveSpec(),
+		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		func(opts *ServiceMethodOptions) error {
+			captured = opts
+			return nil
+		})
+	cmd.SetArgs([]string{"--jq", ".data"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("runF was not called")
+	}
+	if captured.JqExpr != ".data" {
+		t.Errorf("expected JqExpr=.data, got %s", captured.JqExpr)
+	}
+}
+
+func TestNewCmdServiceMethod_JqShortForm(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+
+	var captured *ServiceMethodOptions
+	cmd := NewCmdServiceMethod(f, driveSpec(),
+		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		func(opts *ServiceMethodOptions) error {
+			captured = opts
+			return nil
+		})
+	cmd.SetArgs([]string{"-q", ".data"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if captured.JqExpr != ".data" {
+		t.Errorf("expected JqExpr=.data, got %s", captured.JqExpr)
+	}
+}
+
+func TestServiceMethod_JqAndOutputConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := map[string]interface{}{
+		"name": "svc", "servicePath": "/open-apis/svc/v1",
+	}
+	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--jq", ".data", "--output", "file.bin", "--as", "bot"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --jq + --output conflict")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
+	}
+}
+
+func TestServiceMethod_JqFilter_AppliesExpression(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-jq", AppSecret: "test-secret-jq", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(tokenStub())
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"name": "Alice"},
+					map[string]interface{}{"name": "Bob"},
+				},
+			},
+		},
+	})
+
+	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
+	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--jq", ".data.items[].name"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Alice") || !strings.Contains(out, "Bob") {
+		t.Errorf("expected jq-filtered names, got: %s", out)
+	}
+	if strings.Contains(out, `"code"`) {
+		t.Errorf("expected jq to filter out envelope, got: %s", out)
+	}
+}
+
+func TestServiceMethod_JqAndFormatConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := map[string]interface{}{
+		"name": "svc", "servicePath": "/open-apis/svc/v1",
+	}
+	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--jq", ".data", "--format", "ndjson", "--as", "bot"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --jq + --format ndjson conflict")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
+	}
+}
+
+func TestServiceMethod_JqInvalidExpression(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := map[string]interface{}{
+		"name": "svc", "servicePath": "/open-apis/svc/v1",
+	}
+	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--jq", "invalid[", "--as", "bot"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid jq expression")
+	}
+	if !strings.Contains(err.Error(), "invalid jq expression") {
+		t.Errorf("expected 'invalid jq expression' error, got: %v", err)
+	}
+}
+
+func TestServiceMethod_PageAll_WithJq(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-spjq", AppSecret: "test-secret-spjq", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(tokenStub())
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "s1"}, map[string]interface{}{"id": "s2"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
+	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--page-all", "--jq", ".data.items[].id"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "s1") || !strings.Contains(out, "s2") {
+		t.Errorf("expected jq-filtered ids, got: %s", out)
+	}
+	if strings.Contains(out, `"code"`) {
+		t.Errorf("expected jq to filter out envelope, got: %s", out)
+	}
+}
+
 // ── scopeAwareChecker ──
 
 func TestScopeAwareChecker_Success(t *testing.T) {

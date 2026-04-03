@@ -72,9 +72,10 @@ lark-cli mail +messages --message-ids <id1>,<id2> --dry-run
 
 ## 注意事项
 
+- **JSON 输出可直接使用**，可直接读取，无需额外编码转换。
 - 只需读取一封邮件时请使用 `+message`。
 - `--message-ids` 无硬性上限；shortcut 内部会自动将大列表拆分为多次批量 API 调用。
-- JSON 输出中 `messages[].body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变）。
+- JSON 输出中 `messages[].body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变，`jq -r` 可还原）。
 - `mail +messages` 仅返回附件元数据。如后续步骤需要下载 URL，请针对特定的 `message_id` 和 `attachment_ids` 调用原生附件 URL API。
 - 与 `+message` 一样，普通附件和内嵌图片都出现在 `messages[].attachments[]` 中，使用同一个 `user_mailbox.message.attachments download_url` API。
 

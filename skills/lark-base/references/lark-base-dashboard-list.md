@@ -1,8 +1,12 @@
 # base +dashboard-list
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [lark-base-dashboard.md](lark-base-dashboard.md) 了解整体工作流。
 
-分页列出一个 Base 下的仪表盘。
+分页列出一个 Base 下的所有仪表盘。常用于：1) 查看当前有哪些仪表盘；2) 获取 dashboard_id 用于后续操作（如添加组件、查看详情）。
+
+## 关键约束
+
+- `+dashboard-list` 禁止并发调用；批量列多个 Base 时必须串行。
 
 ## 推荐命令
 
@@ -21,23 +25,28 @@ lark-cli base +dashboard-list \
 | `--format <fmt>` | 否 | 输出格式：json / pretty / table / csv / ndjson |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
-## API 入参详情
+## 返回示例
 
-**HTTP 方法和路径：**
-
-```
-GET /open-apis/base/v3/bases/:base_token/dashboards
+```json
+{
+  "items": [
+    {"dashboard_id": "blkxxxxxxxxxxxx", "name": "商品总览仪表盘"},
+    {"dashboard_id": "blkxxxxxxxxxxxx", "name": "订单总览仪表盘"},
+    {"dashboard_id": "blkxxxxxxxxxxxx", "name": "销售数据分析仪表盘"}
+  ],
+  "total": 3,
+  "has_more": false
+}
 ```
 
 ## 返回重点
 
-- 返回 `items / total / page_token / has_more`。
-- `items` 仅含 `dashboard_id` 和 `name`。
-
-## 坑点
-
-- `+dashboard-list` 禁止并发调用；批量列多个 Base 时必须串行。
+| 字段 | 说明 |
+|------|------|
+| `items` | 仪表盘列表，每项包含 `dashboard_id`（ID）和 `name`（名称）|
+| `total` | 总数 |
+| `has_more` | 是否有下一页（为 `true` 时需用 `page_token` 继续获取）|
 
 ## 参考
 
-- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 索引页
+- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块指引
