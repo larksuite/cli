@@ -10,11 +10,6 @@ on:
         required: false
         default: true
         type: boolean
-      lookback_hours:
-        description: "Only scan issues updated in the last N hours"
-        required: false
-        default: "6"
-        type: string
 
 permissions:
   contents: read
@@ -38,24 +33,18 @@ jobs:
 
       - name: Sync managed issue labels
         id: sync_issue_labels
-        # Labeling is best-effort and must not block other workflows.
-        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
-          lookback="6"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.lookback_hours }}" ]; then
-            lookback="${{ github.event.inputs.lookback_hours }}"
-          fi
-
           args=(
-            "--lookback-hours" "$lookback"
             "--max-issues" "300"
           )
 
           # Schedule runs should write labels by default.
           # Manual runs default to dry-run unless explicitly disabled.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run || 'true' }}" = "true" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "${INPUT_DRY_RUN:-true}" = "true" ]; then
             args+=("--dry-run" "--json")
           fi
 

@@ -6,10 +6,23 @@ const { classifyIssueText } = require("./index.js");
 const samplesPath = path.join(__dirname, "samples.json");
 const samples = JSON.parse(fs.readFileSync(samplesPath, "utf8"));
 
+/**
+ * Convert an array-like value into a sorted string array.
+ *
+ * @param {Array<unknown>|undefined|null} arr
+ * @returns {string[]}
+ */
 function sortArray(arr) {
   return (arr || []).map(String).sort();
 }
 
+/**
+ * Check whether every element in sub exists in sup.
+ *
+ * @param {string[]} sub
+ * @param {string[]} sup
+ * @returns {boolean}
+ */
 function isSubset(sub, sup) {
   const set = new Set(sup || []);
   for (const x of sub || []) {
@@ -25,11 +38,17 @@ for (const sample of samples) {
   try {
     const result = classifyIssueText(sample.title, sample.body);
 
-    const expectedType = sample.expected_type === undefined ? null : sample.expected_type;
-    const matchType = expectedType === null ? true : (result.type || null) === expectedType;
+    const hasExpectedType = Object.prototype.hasOwnProperty.call(sample, "expected_type");
+    const expectedType = hasExpectedType ? sample.expected_type : undefined;
+    const matchType = hasExpectedType ? (result.type || null) === expectedType : true;
     const actualDomains = sortArray(result.domains);
     const expectedDomains = sortArray(sample.expected_domains);
-    const matchDomains = isSubset(expectedDomains, actualDomains);
+    const hasExpectedDomains = Object.prototype.hasOwnProperty.call(sample, "expected_domains");
+    const matchDomains = !hasExpectedDomains
+      ? true
+      : expectedDomains.length === 0
+        ? actualDomains.length === 0
+        : isSubset(expectedDomains, actualDomains);
 
     if (matchType && matchDomains) {
       console.log(`✅ Passed: ${sample.name}`);

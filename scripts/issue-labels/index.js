@@ -40,6 +40,7 @@ const DOMAIN_SERVICES = [
 ];
 const DOMAIN_LABELS = DOMAIN_SERVICES.map((s) => `domain/${s}`);
 const DOMAIN_LABEL_SET = new Set(DOMAIN_LABELS);
+const MANAGED_LABELS = [...TYPE_LABELS, ...DOMAIN_LABELS];
 
 const TYPE_TIE_BREAKER = [
   "security",
@@ -50,26 +51,57 @@ const TYPE_TIE_BREAKER = [
   "question",
 ];
 
+/**
+ * Pause execution for the provided number of milliseconds.
+ *
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Read an environment variable and trim surrounding whitespace.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
 function envValue(name) {
   const value = process.env[name];
   return value ? String(value).trim() : "";
 }
 
+/**
+ * Read a required environment variable.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
 function envOrFail(name) {
   const value = envValue(name);
   if (!value) throw new Error(`missing required environment variable: ${name}`);
   return value;
 }
 
+/**
+ * Parse an integer value with a fallback when parsing fails.
+ *
+ * @param {string|number|undefined|null} value
+ * @param {number} fallback
+ * @returns {number}
+ */
 function toInt(value, fallback) {
   const n = Number.parseInt(String(value || ""), 10);
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * Parse a boolean-ish value from CLI or environment input.
+ *
+ * @param {string|boolean|undefined|null} value
+ * @returns {boolean}
+ */
 function toBool(value) {
   if (typeof value === "boolean") return value;
   const v = String(value || "").trim().toLowerCase();
@@ -78,10 +110,24 @@ function toBool(value) {
   return false;
 }
 
+/**
+ * Normalize issue title and body into a single lowercase string.
+ *
+ * @param {string} title
+ * @param {string} body
+ * @returns {string}
+ */
 function normalizeText(title, body) {
   return `${String(title || "")}\n\n${String(body || "")}`.toLowerCase();
 }
 
+/**
+ * Infer candidate domain services from issue title and body text.
+ *
+ * @param {string} title
+ * @param {string} body
+ * @returns {string[]}
+ */
 function collectDomainsFromText(title, body) {
   const text = normalizeText(title, body);
   const titleText = String(title || "").toLowerCase();
@@ -144,34 +190,41 @@ function collectDomainsFromText(title, body) {
   return [...hits].sort();
 }
 
+/**
+ * Score each type label against the issue content.
+ *
+ * @param {string} title
+ * @param {string} body
+ * @returns {Record<string, number>}
+ */
 function scoreTypeFromText(title, body) {
   const text = normalizeText(title, body);
 
   const rules = {
     bug: [
       /\bbug\b/i,
-      /报错|异常|崩溃|无法|失败|不工作/, 
+      /报错|错误|异常|崩溃|无法|失败|不工作/,
       /\berror\b|\bexception\b|\bcrash\b|\bbroken\b|\bfails?\b/i,
     ],
     enhancement: [
-      /希望支持|建议|新增|能否|是否可以/, 
+      /希望支持|建议|新增|能否|是否可以/,
       /\bfeature request\b|\badd support\b|\bplease add\b|\bwish\b/i,
       /\benhancement\b|\bfeature\b|\brequest\b/i,
     ],
     question: [
-      /如何使用|怎么配置|请问|怎么用|是否支持/, 
+      /如何使用|怎么配置|请问|怎么用|是否支持/,
       /\bhow to\b|\busage\b|\bis it possible\b|\bdoes it support\b|\bquestion\b/i,
     ],
     documentation: [
       /\bdocumentation\b|\breadme\b|\btypo\b|\bexample\b/i,
-      /示例|拼写/, 
+      /示例|拼写/,
     ],
     performance: [
-      /慢|卡住|超时|高内存|响应慢|耗时/, 
+      /慢|卡住|超时|高内存|响应慢|耗时/,
       /\bperformance\b|\bperf\b|\bslow\b|\bhang\b|\btimeout\b|\blatency\b|\boom\b/i,
     ],
     security: [
-      /凭据泄漏|注入|权限绕过|token\s*暴露|密钥泄露/, 
+      /凭据泄漏|注入|权限绕过|token\s*暴露|密钥泄露/,
       /\bsecurity\b|\bvuln\b|\bcve\b|\bcredential\b|\binjection\b|\btoken exposure\b|\bpermission bypass\b/i,
     ],
   };
@@ -186,6 +239,12 @@ function scoreTypeFromText(title, body) {
   return scores;
 }
 
+/**
+ * Choose the highest-scoring type using the configured tie breaker.
+ *
+ * @param {Record<string, number>} scores
+ * @returns {string|null}
+ */
 function chooseTypeFromScores(scores) {
   let max = 0;
   for (const v of Object.values(scores || {})) {
@@ -201,6 +260,13 @@ function chooseTypeFromScores(scores) {
   return candidates[0] || null;
 }
 
+/**
+ * Classify issue text into one type label and zero or more domains.
+ *
+ * @param {string} title
+ * @param {string} body
+ * @returns {{type: string|null, domains: string[]}}
+ */
 function classifyIssueText(title, body) {
   const scores = scoreTypeFromText(title, body);
   const type = chooseTypeFromScores(scores);
@@ -208,16 +274,36 @@ function classifyIssueText(title, body) {
   return { type, domains };
 }
 
+/**
+ * Format a GitHub issue reference for logs.
+ *
+ * @param {string} repo
+ * @param {number} number
+ * @returns {string}
+ */
 function formatIssueRef(repo, number) {
   return `${repo}#${number}`;
 }
 
+/**
+ * Minimal GitHub REST client for issue labeling operations.
+ */
 class GitHubClient {
+  /**
+   * @param {string} token
+   * @param {string} repo
+   */
   constructor(token, repo) {
     this.token = token;
     this.repo = repo;
   }
 
+  /**
+   * Build standard GitHub API headers.
+   *
+   * @param {boolean} hasBody
+   * @returns {Record<string, string>}
+   */
   buildHeaders(hasBody = false) {
     const headers = {
       Accept: "application/vnd.github+json",
@@ -228,6 +314,13 @@ class GitHubClient {
     return headers;
   }
 
+  /**
+   * Execute a GitHub API request with retry and rate-limit handling.
+   *
+   * @param {string} endpoint
+   * @param {{method?: string, payload?: any, allow404?: boolean, retry?: number}} options
+   * @returns {Promise<any>}
+   */
   async request(endpoint, options = {}) {
     const {
       method = "GET",
@@ -268,7 +361,11 @@ class GitHubClient {
 
       // Rate-limit handling
       if (response.status === 429 || isSecondary) {
-        const waitMs = retryAfter > 0 ? retryAfter * 1000 : (attempt + 1) * 1000;
+        const waitMs = retryAfter > 0
+          ? retryAfter * 1000
+          : isSecondary
+            ? 60_000
+            : (attempt + 1) * 1000;
         await sleep(waitMs);
         continue;
       }
@@ -293,29 +390,40 @@ class GitHubClient {
     throw new Error(`unreachable: request retry loop exceeded for ${method} ${url}`);
   }
 
-  async listIssues(params) {
+  /**
+   * Search for currently unlabeled issues in the repository.
+   *
+   * @param {{state?: string, maxPages?: number, maxIssues?: number}} params
+   * @returns {Promise<any[]>}
+   */
+  async searchUnlabeledIssues(params) {
     const issues = [];
     const {
       state = "open",
-      since,
       maxPages = 10,
       maxIssues = 300,
     } = params || {};
 
+    const qualifiers = [
+      `repo:${this.repo}`,
+      "is:issue",
+      "no:label",
+      state === "all" ? "" : `state:${state}`,
+    ].filter(Boolean);
+    const q = qualifiers.join(" ");
+
     for (let page = 1; page <= maxPages; page += 1) {
       const search = new URLSearchParams({
-        state,
+        q,
         sort: "updated",
-        direction: "desc",
+        order: "desc",
         per_page: "100",
         page: String(page),
       });
-      if (since instanceof Date && !Number.isNaN(since.getTime())) {
-        search.set("since", since.toISOString());
-      }
 
-      const batch = await this.request(`/repos/${this.repo}/issues?${search}`);
-      if (!batch || batch.length === 0) break;
+      const result = await this.request(`/search/issues?${search}`);
+      const batch = result && Array.isArray(result.items) ? result.items : [];
+      if (batch.length === 0) break;
 
       for (const item of batch) {
         issues.push(item);
@@ -324,17 +432,48 @@ class GitHubClient {
 
       if (issues.length >= maxIssues) break;
       if (batch.length < 100) break;
-
-      // early stop if we're beyond the since window
-      if (since instanceof Date && batch[batch.length - 1] && batch[batch.length - 1].updated_at) {
-        const lastUpdated = new Date(batch[batch.length - 1].updated_at);
-        if (!Number.isNaN(lastUpdated.getTime()) && lastUpdated < since) break;
-      }
     }
 
     return issues;
   }
 
+  /**
+   * List all repository labels needed for managed-label checks.
+   *
+   * @returns {Promise<any[]>}
+   */
+  async listRepositoryLabels() {
+    const labels = [];
+    for (let page = 1; page <= 10; page += 1) {
+      const search = new URLSearchParams({
+        per_page: "100",
+        page: String(page),
+      });
+      const batch = await this.request(`/repos/${this.repo}/labels?${search}`);
+      if (!batch || batch.length === 0) break;
+      labels.push(...batch);
+      if (batch.length < 100) break;
+    }
+    return labels;
+  }
+
+  /**
+   * Return managed labels that are not currently present in the repository.
+   *
+   * @returns {Promise<string[]>}
+   */
+  async listMissingManagedLabels() {
+    const existing = new Set((await this.listRepositoryLabels()).map((label) => label && label.name));
+    return MANAGED_LABELS.filter((name) => !existing.has(name));
+  }
+
+  /**
+   * Add one or more labels to an issue.
+   *
+   * @param {number} issueNumber
+   * @param {string[]} labels
+   * @returns {Promise<void>}
+   */
   async addIssueLabels(issueNumber, labels) {
     if (!labels || labels.length === 0) return;
     await this.request(`/repos/${this.repo}/issues/${issueNumber}/labels`, {
@@ -343,6 +482,13 @@ class GitHubClient {
     });
   }
 
+  /**
+   * Remove a single label from an issue.
+   *
+   * @param {number} issueNumber
+   * @param {string} name
+   * @returns {Promise<void>}
+   */
   async removeIssueLabel(issueNumber, name) {
     await this.request(`/repos/${this.repo}/issues/${issueNumber}/labels/${encodeURIComponent(name)}`, {
       method: "DELETE",
@@ -351,6 +497,12 @@ class GitHubClient {
   }
 }
 
+/**
+ * Compute label mutations for the current issue state.
+ *
+ * @param {{currentLabels: Set<string>|string[], desiredType: string|null, desiredDomainLabels: string[], syncDomains: boolean, overrideType: boolean}} params
+ * @returns {{toAdd: string[], toRemove: string[]}}
+ */
 function planIssueLabelChanges(params) {
   const {
     currentLabels,
@@ -400,14 +552,18 @@ function planIssueLabelChanges(params) {
   };
 }
 
+/**
+ * Parse CLI arguments into runtime options.
+ *
+ * @param {string[]} argv
+ * @returns {{dryRun: boolean, json: boolean, token: string, repo: string, maxPages: number, maxIssues: number, onlyMissing: boolean, syncDomains: boolean, overrideType: boolean, state: string, help?: boolean}}
+ */
 function parseArgs(argv) {
   const args = {
     dryRun: false,
     json: false,
     token: "",
     repo: "",
-    since: "",
-    lookbackHours: 24,
     maxPages: 10,
     maxIssues: 300,
     onlyMissing: true,
@@ -436,14 +592,6 @@ function parseArgs(argv) {
     }
     if (a === "--repo") {
       args.repo = String(argv[++i] || "");
-      continue;
-    }
-    if (a === "--since") {
-      args.since = String(argv[++i] || "");
-      continue;
-    }
-    if (a === "--lookback-hours") {
-      args.lookbackHours = toInt(argv[++i], args.lookbackHours);
       continue;
     }
     if (a === "--max-pages") {
@@ -480,6 +628,11 @@ function parseArgs(argv) {
   return args;
 }
 
+/**
+ * Print CLI help text.
+ *
+ * @returns {void}
+ */
 function printHelp() {
   const msg = `Usage: node scripts/issue-labels/index.js [options]
 
@@ -488,12 +641,10 @@ Options:
   --json               Output JSON (useful with --dry-run)
   --repo <owner/name>  Override GITHUB_REPOSITORY
   --token <token>      Override GITHUB_TOKEN
-  --since <iso8601>    Only scan issues updated since this timestamp
-  --lookback-hours <n> Compute since=now-n hours (default: 24)
-  --max-pages <n>      Max pages to scan (default: 10)
-  --max-issues <n>     Max issues to process (default: 300)
+  --max-pages <n>      Max search result pages to scan (default: 10)
+  --max-issues <n>     Max unlabeled issues to process (default: 300)
   --only-missing       Only write when changes are needed (default)
-  --process-all        Evaluate all scanned issues
+  --process-all        Evaluate all fetched unlabeled issues
   --sync-domains       Strictly sync domain/* (remove stale) when domain matched
   --override-type      Override existing type labels (default: false)
   --state open|all     Issue state to scan (default: open)
@@ -501,6 +652,11 @@ Options:
   console.log(msg);
 }
 
+/**
+ * Entry point for the issue labeler CLI.
+ *
+ * @returns {Promise<void>}
+ */
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -511,19 +667,10 @@ async function main() {
   const token = args.token || envOrFail("GITHUB_TOKEN");
   const repo = args.repo || envOrFail("GITHUB_REPOSITORY");
   const client = new GitHubClient(token, repo);
+  const missingManagedLabels = new Set(await client.listMissingManagedLabels());
 
-  let since = null;
-  if (args.since) {
-    const d = new Date(args.since);
-    if (Number.isNaN(d.getTime())) throw new Error(`invalid --since: ${args.since}`);
-    since = d;
-  } else if (args.lookbackHours > 0) {
-    since = new Date(Date.now() - args.lookbackHours * 3600 * 1000);
-  }
-
-  const scanned = await client.listIssues({
+  const scanned = await client.searchUnlabeledIssues({
     state: args.state,
-    since,
     maxPages: args.maxPages,
     maxIssues: args.maxIssues,
   });
@@ -531,9 +678,10 @@ async function main() {
   const results = {
     repo,
     dryRun: args.dryRun,
-    since: since ? since.toISOString() : null,
+    query: "unlabeled issues",
     scanned: 0,
     skippedPR: 0,
+    skippedIssue: 0,
     updated: 0,
     changes: [],
   };
@@ -559,6 +707,32 @@ async function main() {
 
     const hasChange = toAdd.length > 0 || toRemove.length > 0;
     if (args.onlyMissing && !hasChange) continue;
+
+    const missingForIssue = toAdd.filter((name) => missingManagedLabels.has(name));
+    if (missingForIssue.length > 0) {
+      const warning = `warning: skipping ${formatIssueRef(repo, issue.number)} because labels are missing in ${repo}: ${missingForIssue.join(", ")}`;
+      console.warn(warning);
+      results.skippedIssue += 1;
+
+      if (args.json) {
+        results.changes.push({
+          issue: {
+            number: issue.number,
+            title: issue.title,
+            url: issue.html_url,
+          },
+          desired: {
+            type: desiredType,
+            domains,
+          },
+          skipped: true,
+          reason: "missing_managed_labels",
+          missingLabels: missingForIssue,
+          change: { toAdd, toRemove },
+        });
+      }
+      continue;
+    }
 
     const record = {
       issue: {
@@ -597,7 +771,7 @@ async function main() {
   if (args.json) {
     console.log(JSON.stringify(results));
   } else {
-    console.log(`done: scanned=${results.scanned} updated=${results.updated} skipped_pr=${results.skippedPR}`);
+    console.log(`done: scanned=${results.scanned} updated=${results.updated} skipped_pr=${results.skippedPR} skipped_issue=${results.skippedIssue}`);
   }
 }
 

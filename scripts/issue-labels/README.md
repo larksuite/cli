@@ -1,6 +1,6 @@
 # Issue Labels
 
-This script polls GitHub issues in a repository and applies labels based on heuristics.
+This script searches unlabeled GitHub issues in a repository and applies labels based on heuristics.
 
 It only covers two label dimensions:
 
@@ -19,6 +19,7 @@ Related GitHub Actions workflow: `.github/workflows/issue-labels.yml`.
 
 ### Domain (multi-select; add-only by default)
 
+- Managed labels prerequisite: the standard type labels plus `domain/<service>` labels should exist in the repository. If a specific issue needs a managed label that is missing, the script prints a warning, skips that issue, and continues processing the rest.
 - Label format: `domain/<service>` (e.g. `domain/base`, `domain/im`)
 - Signals (strong → weak):
   1) Explicit `domain/<service>` in text
@@ -26,7 +27,8 @@ Related GitHub Actions workflow: `.github/workflows/issue-labels.yml`.
   3) Loose title match (careful; excludes English `im` to reduce false positives)
   4) A small set of conservative keyword heuristics as fallback
 - By default, the script only adds missing domain labels and never removes existing ones.
-- If you want strict domain synchronization (may remove manual labels), use `--sync-domains`.
+- If you want stricter domain synchronization, use `--sync-domains`.
+- Note: the current implementation only removes existing `domain/*` labels when it can positively match at least one domain for the issue, so this is not an exact-sync cleanup mode.
 
 ## Usage
 
@@ -37,7 +39,7 @@ The workflow supports both:
 - `schedule` (hourly)
 - `workflow_dispatch` (manual run)
 
-Scheduled runs write labels by default (hourly with `--lookback-hours 6`). Manual runs default to dry-run unless `dry_run=false` is selected. For manual runs, you can override the lookback window via the `lookback_hours` input.
+Scheduled runs write labels by default. Manual runs default to dry-run unless `dry_run=false` is selected.
 
 ### Local dry-run
 
@@ -47,7 +49,6 @@ Provide a token to avoid anonymous rate limits:
 GITHUB_TOKEN=$(gh auth token) \
   node scripts/issue-labels/index.js \
   --repo larksuite/cli \
-  --lookback-hours 24 \
   --max-issues 100 \
   --dry-run --json
 ```
@@ -56,9 +57,8 @@ GITHUB_TOKEN=$(gh auth token) \
 
 - `--dry-run`: Do not write labels, only print planned changes
 - `--json`: JSON output (usually with `--dry-run`)
-- `--lookback-hours <n>` / `--since <iso8601>`: Incremental scan window
-- `--max-issues <n>` / `--max-pages <n>`: Bound scan size
-- `--sync-domains`: Strictly sync `domain/*` (use with caution)
+- `--max-issues <n>` / `--max-pages <n>`: Bound unlabeled-issue search size
+- `--sync-domains`: Stricter `domain/*` sync when at least one managed domain matches (may still leave stale labels if nothing matches)
 - `--override-type`: Allow overriding existing type labels (use with caution)
 
 ## Regression Samples
