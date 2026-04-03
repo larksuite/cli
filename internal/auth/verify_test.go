@@ -6,6 +6,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"log"
 	"net/http"
 	"strings"
 	"testing"
@@ -84,10 +85,10 @@ func TestVerifyUserToken(t *testing.T) {
 			)
 
 			var buf bytes.Buffer
-			prevWriter := authResponseLogWriter
+			prevLogger := authResponseLogger
 			prevNow := authResponseLogNow
 			prevArgs := authResponseLogArgs
-			authResponseLogWriter = &buf
+			authResponseLogger = log.New(&buf, "", 0)
 			authResponseLogNow = func() time.Time {
 				return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 			}
@@ -95,7 +96,7 @@ func TestVerifyUserToken(t *testing.T) {
 				return []string{"lark-cli", "auth", "status"}
 			}
 			t.Cleanup(func() {
-				authResponseLogWriter = prevWriter
+				authResponseLogger = prevLogger
 				authResponseLogNow = prevNow
 				authResponseLogArgs = prevArgs
 			})

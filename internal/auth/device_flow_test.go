@@ -5,6 +5,7 @@ package auth
 
 import (
 	"bytes"
+	"log"
 	"net/http"
 	"strings"
 	"testing"
@@ -59,10 +60,10 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	prevWriter := authResponseLogWriter
+	prevLogger := authResponseLogger
 	prevNow := authResponseLogNow
 	prevArgs := authResponseLogArgs
-	authResponseLogWriter = &buf
+	authResponseLogger = log.New(&buf, "", 0)
 	authResponseLogNow = func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}
@@ -70,7 +71,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 		return []string{"lark-cli", "auth", "login", "--device-code", "device-code-secret", "--app-secret=top-secret"}
 	}
 	t.Cleanup(func() {
-		authResponseLogWriter = prevWriter
+		authResponseLogger = prevLogger
 		authResponseLogNow = prevNow
 		authResponseLogArgs = prevArgs
 	})
@@ -118,10 +119,10 @@ func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 // TestLogAuthResponse_IgnoresTypedNilHTTPResponse tests that a typed nil HTTP response is ignored gracefully.
 func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 	var buf bytes.Buffer
-	prevWriter := authResponseLogWriter
-	authResponseLogWriter = &buf
+	prevLogger := authResponseLogger
+	authResponseLogger = log.New(&buf, "", 0)
 	t.Cleanup(func() {
-		authResponseLogWriter = prevWriter
+		authResponseLogger = prevLogger
 	})
 
 	var resp *http.Response
@@ -135,10 +136,10 @@ func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 // TestLogAuthResponse_HandlesNilSDKResponse verifies that a nil SDK response is handled without panicking.
 func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	var buf bytes.Buffer
-	prevWriter := authResponseLogWriter
+	prevLogger := authResponseLogger
 	prevNow := authResponseLogNow
 	prevArgs := authResponseLogArgs
-	authResponseLogWriter = &buf
+	authResponseLogger = log.New(&buf, "", 0)
 	authResponseLogNow = func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}
@@ -146,7 +147,7 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 		return []string{"lark-cli", "auth", "status", "--verify"}
 	}
 	t.Cleanup(func() {
-		authResponseLogWriter = prevWriter
+		authResponseLogger = prevLogger
 		authResponseLogNow = prevNow
 		authResponseLogArgs = prevArgs
 	})
@@ -159,39 +160,5 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	}
 	if !strings.Contains(got, "status=0") {
 		t.Fatalf("expected zero status in log, got %q", got)
-	}
-}
-
-// TestDefaultLogWriter_PanicsBeforeLock ensures log code behaves correctly when panic occurs before the lock is acquired.
-func TestDefaultLogWriter_PanicsBeforeLock(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	prevNow := authResponseLogNow
-	prevCleanup := authResponseLogCleanup
-	authResponseLogCleanup = func(_ string, _ time.Time) {}
-	t.Cleanup(func() {
-		authResponseLogNow = prevNow
-		authResponseLogCleanup = prevCleanup
-	})
-
-	writer := defaultLogWriter{}
-	authResponseLogNow = func() time.Time {
-		panic("boom")
-	}
-
-	func() {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Fatal("expected panic from authResponseLogNow")
-			}
-		}()
-		_, _ = writer.Write([]byte("first\n"))
-	}()
-
-	authResponseLogNow = func() time.Time {
-		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
-	}
-	if _, err := writer.Write([]byte("second\n")); err != nil {
-		t.Fatalf("second Write() error: %v", err)
 	}
 }
