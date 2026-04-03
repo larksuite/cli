@@ -49,6 +49,7 @@ linters:
       - path-except: (shortcuts/|internal/)
         linters:
           - forbidigo
+        text: "(vfs|IOStreams|os\\.Exit)"
       - path: internal/vfs/
         linters:
           - forbidigo
@@ -57,76 +58,26 @@ linters:
     forbidigo:
       forbid:
         # ── Filesystem operations: use internal/vfs instead ──
-        - pattern: os\.Stat\b
-          msg: "use vfs.Stat() from internal/vfs"
-        - pattern: os\.Lstat\b
-          msg: "use vfs.Lstat() from internal/vfs"
-        - pattern: os\.Open\b
-          msg: "use vfs.Open() from internal/vfs"
-        - pattern: os\.OpenFile\b
-          msg: "use vfs.OpenFile() from internal/vfs"
-        - pattern: os\.Create\b
-          msg: "use vfs.OpenFile() from internal/vfs"
-        - pattern: os\.CreateTemp\b
+        - pattern: os\.(Stat|Lstat|Open|OpenFile|Create|Mkdir|MkdirAll|Rename|ReadFile|WriteFile|Getwd|UserHomeDir)\b
+          msg: "use vfs from internal/vfs instead of os"
+        - pattern: os\.(CreateTemp|Remove|RemoveAll)\b
           msg: >-
-            internal/: use vfs.CreateTemp() from internal/vfs.
-            shortcuts/: avoid temp files entirely — use io.Reader streaming or in-memory buffers instead.
-        - pattern: os\.Mkdir\b
-          msg: "use vfs.MkdirAll() from internal/vfs"
-        - pattern: os\.MkdirAll\b
-          msg: "use vfs.MkdirAll() from internal/vfs"
-        - pattern: os\.Remove\b
-          msg: >-
-            internal/: use vfs.Remove() from internal/vfs.
-            shortcuts/: avoid temp files entirely — use io.Reader streaming or in-memory buffers instead.
-        - pattern: os\.RemoveAll\b
-          msg: >-
-            internal/: add RemoveAll to internal/vfs/fs.go first, then use vfs.RemoveAll().
-            shortcuts/: avoid temp files entirely — use io.Reader streaming or in-memory buffers instead.
-        - pattern: os\.Rename\b
-          msg: "use vfs.Rename() from internal/vfs"
-        - pattern: os\.ReadFile\b
-          msg: "use vfs.ReadFile() from internal/vfs"
-        - pattern: os\.WriteFile\b
-          msg: "use vfs.WriteFile() from internal/vfs"
-        - pattern: os\.ReadDir\b
-          msg: "add ReadDir to internal/vfs/fs.go first, then use vfs.ReadDir()"
-        - pattern: os\.Getwd\b
-          msg: "use vfs.Getwd() from internal/vfs"
-        - pattern: os\.Chdir\b
-          msg: "add Chdir to internal/vfs/fs.go first, then use vfs.Chdir()"
-        - pattern: os\.UserHomeDir\b
-          msg: "use vfs.UserHomeDir() from internal/vfs"
-        - pattern: os\.Chmod\b
-          msg: "add Chmod to internal/vfs/fs.go first, then use vfs.Chmod()"
-        - pattern: os\.Chown\b
-          msg: "add Chown to internal/vfs/fs.go first, then use vfs.Chown()"
-        - pattern: os\.Lchown\b
-          msg: "add Lchown to internal/vfs/fs.go first, then use vfs.Lchown()"
-        - pattern: os\.Link\b
-          msg: "add Link to internal/vfs/fs.go first, then use vfs.Link()"
-        - pattern: os\.Symlink\b
-          msg: "add Symlink to internal/vfs/fs.go first, then use vfs.Symlink()"
-        - pattern: os\.Readlink\b
-          msg: "add Readlink to internal/vfs/fs.go first, then use vfs.Readlink()"
-        - pattern: os\.Truncate\b
-          msg: "add Truncate to internal/vfs/fs.go first, then use vfs.Truncate()"
-        - pattern: os\.DirFS\b
-          msg: "add DirFS to internal/vfs/fs.go first, then use vfs.DirFS()"
-        - pattern: os\.SameFile\b
-          msg: "add SameFile to internal/vfs/fs.go first, then use vfs.SameFile()"
+            internal/: use or extend vfs in internal/vfs first.
+            shortcuts/: avoid temp files and destructive fs operations.
+        - pattern: os\.(ReadDir|Chdir|Chmod|Chown|Lchown|Link|Symlink|Readlink|Truncate|DirFS|SameFile)\b
+          msg: "add the matching API to internal/vfs first, then use vfs"
         # ── IO streams: use IOStreams from cmdutil instead ──
-        - pattern: os\.Stdin\b
-          msg: "use IOStreams.In instead of os.Stdin"
-        - pattern: os\.Stdout\b
-          msg: "use IOStreams.Out instead of os.Stdout"
-        - pattern: os\.Stderr\b
-          msg: "use IOStreams.ErrOut instead of os.Stderr"
+        - pattern: os\.(Stdin|Stdout|Stderr)\b
+          msg: "use cmdutil.IOStreams instead of os stdio"
         # ── Process-level rules ──
         - pattern: os\.Exit\b
           msg: >-
             Do not use os.Exit in shortcuts/. Return an error instead and let
             the caller (cmd layer) decide how to terminate.
+        # ── Context propagation: always pass ctx from caller ──
+        - pattern: context\.(Background|TODO)\b
+          msg: >-
+            Accept and propagate caller context instead of creating a new one.
       analyze-types: true
     gocritic:
       disabled-checks:
