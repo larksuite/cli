@@ -1,0 +1,38 @@
+[
+  {
+    "name": "type:bug + domain:im",
+    "title": "lark-cli im: command not working",
+    "body": "It fails with an error and crashes.",
+    "expected_type": "bug",
+    "expected_domains": ["im"]
+  },
+  {
+    "name": "type:security",
+    "title": "Security: token exposure in output",
+    "body": "Possible credential leak when running lark-cli auth login.",
+    "expected_type": "security",
+    "expected_domains": ["auth"]
+  },
+  {
+    "name": "type:performance vs bug tie-breaker",
+    "title": "Timeout and error in lark-cli sheets",
+    "body": "The command is slow and then fails with timeout error.",
+    "expected_type": "bug",
+    "expected_domains": ["sheets"]
+  },
+  {
+    "name": "domain-only (no type keywords)",
+    "title": "Improve default configs",
+    "body": "`lark-cli core` command is mentioned but no explicit keyword.",
+    "expected_type": null,
+    "expected_domains": ["core"]
+  },
+  {
+    "name": "multi-domain",
+    "title": "Question about usage",
+    "body": "How to use lark-cli doc export and lark-cli wiki sync?",
+    "expected_type": "question",
+    "expected_domains": ["doc", "wiki"]
+  }
+]
+

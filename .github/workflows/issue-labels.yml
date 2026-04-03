@@ -1,0 +1,67 @@
+name: Issue Labels
+
+on:
+  # NOTE: Scheduled execution is prepared but intentionally disabled for now.
+  # schedule:
+  #   - cron: '0 * * * *' # every hour
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Do not write labels, only print planned changes"
+        required: false
+        default: true
+        type: boolean
+      lookback_hours:
+        description: "Only scan issues updated in the last N hours"
+        required: false
+        default: "24"
+        type: string
+      max_issues:
+        description: "Hard limit on issues processed in one run"
+        required: false
+        default: "300"
+        type: string
+      sync_domains:
+        description: "Sync domain/* labels strictly (add missing and remove stale)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-labels
+  cancel-in-progress: true
+
+jobs:
+  sync-issue-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync managed issue labels
+        id: sync_issue_labels
+        # Labeling is best-effort and must not block other workflows.
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          args=(
+            "--lookback-hours" "${{ github.event.inputs.lookback_hours || '24' }}"
+            "--max-issues" "${{ github.event.inputs.max_issues || '300' }}"
+          )
+          if [ "${{ github.event.inputs.dry_run || 'true' }}" = "true" ]; then args+=("--dry-run" "--json"); fi
+          if [ "${{ github.event.inputs.sync_domains || 'false' }}" = "true" ]; then args+=("--sync-domains"); fi
+          node scripts/issue-labels/index.js "${args[@]}"
+
+      - name: Warn when label sync fails
+        if: ${{ always() && steps.sync_issue_labels.outcome == 'failure' }}
+        run: |
+          echo "::warning::Issue label sync failed; labels may be stale."
+          echo "⚠️ Issue label sync failed; labels may be stale." >> "$GITHUB_STEP_SUMMARY"
