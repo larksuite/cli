@@ -469,3 +469,306 @@ func TestResolveMeetingIDs_NoRelationInfo(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Integration tests: Execute path via bot wrapper
+// ---------------------------------------------------------------------------
+
+// botExec runs a function within a bot shortcut context, reusing the httpmock registry.
+func botExec(t *testing.T, name string, f *cmdutil.Factory, fn func(context.Context, *common.RuntimeContext) error) error {
+	t.Helper()
+	warmTokenCache(t)
+	s := common.Shortcut{
+		Service:   "test",
+		Command:   "+" + name,
+		AuthTypes: []string{"bot"},
+		HasFormat: true,
+		Execute:   fn,
+	}
+	parent := &cobra.Command{Use: "vc"}
+	s.Mount(parent, f)
+	parent.SetArgs([]string{"+" + name, "--format", "json"})
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	return parent.Execute()
+}
+
+func TestRecording_Execute_MeetingIDs_PartialFailure(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	// m001 succeeds, m002 fails (API error)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m001/recording",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"recording": map[string]interface{}{
+					"url":      "https://meetings.feishu.cn/minutes/obcnpartial1",
+					"duration": "10000",
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m002/recording",
+		Body:   map[string]interface{}{"code": 121004, "msg": "data not found"},
+	})
+
+	err := botExec(t, "partial-fail", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
+		r1 := fetchRecordingByMeetingID(ctx, rctx, "m001")
+		r2 := fetchRecordingByMeetingID(ctx, rctx, "m002")
+
+		if r1["error"] != nil {
+			t.Errorf("m001 should succeed, got error: %v", r1["error"])
+		}
+		if r1["minute_token"] != "obcnpartial1" {
+			t.Errorf("m001 minute_token = %v, want obcnpartial1", r1["minute_token"])
+		}
+		if r2["error"] == nil {
+			t.Error("m002 should fail")
+		}
+
+		// verify counting logic
+		results := []any{r1, r2}
+		successCount := 0
+		for _, r := range results {
+			m, _ := r.(map[string]any)
+			if m["error"] == nil {
+				successCount++
+			}
+		}
+		if successCount != 1 {
+			t.Errorf("expected 1 success, got %d", successCount)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecording_Execute_CalendarPath_ResolveAndFetch(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_001/events/mget_instance_relation_info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"instance_relation_infos": []interface{}{
+					map[string]interface{}{
+						"meeting_instance_ids": []interface{}{"m001"},
+					},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m001/recording",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"recording": map[string]interface{}{
+					"url":      "https://meetings.feishu.cn/minutes/obcnfromcal",
+					"duration": "60000",
+				},
+			},
+		},
+	})
+
+	err := botExec(t, "cal-resolve", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
+		ids, resolveErr := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001")
+		if resolveErr != nil {
+			t.Fatalf("resolve failed: %v", resolveErr)
+		}
+		if len(ids) != 1 || ids[0] != "m001" {
+			t.Fatalf("expected [m001], got %v", ids)
+		}
+
+		result := fetchRecordingByMeetingID(ctx, rctx, ids[0])
+		if result["error"] != nil {
+			t.Errorf("fetch should succeed, got: %v", result["error"])
+		}
+		if result["minute_token"] != "obcnfromcal" {
+			t.Errorf("minute_token = %v, want obcnfromcal", result["minute_token"])
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecording_Execute_CalendarPath_MultiMeetingFallback(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	// calendar resolve returns two meetings: m001 (no recording) and m002 (has recording)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_001/events/mget_instance_relation_info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"instance_relation_infos": []interface{}{
+					map[string]interface{}{
+						"meeting_instance_ids": []interface{}{"m001", "m002"},
+					},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m001/recording",
+		Body:   map[string]interface{}{"code": 121004, "msg": "data not found"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m002/recording",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"recording": map[string]interface{}{
+					"url":      "https://meetings.feishu.cn/minutes/obcnfallback",
+					"duration": "45000",
+				},
+			},
+		},
+	})
+
+	err := botExec(t, "cal-fallback", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
+		ids, resolveErr := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001")
+		if resolveErr != nil {
+			t.Fatalf("resolve failed: %v", resolveErr)
+		}
+		if len(ids) != 2 {
+			t.Fatalf("expected 2 meeting IDs, got %d", len(ids))
+		}
+
+		// simulate fallback: try each until success
+		var found bool
+		for _, meetingID := range ids {
+			result := fetchRecordingByMeetingID(ctx, rctx, meetingID)
+			if result["error"] == nil {
+				if result["minute_token"] != "obcnfallback" {
+					t.Errorf("minute_token = %v, want obcnfallback", result["minute_token"])
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected fallback to succeed on m002")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecording_Execute_AllFailed_ErrorMessage(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m001/recording",
+		Body:   map[string]interface{}{"code": 121004, "msg": "data not found"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m002/recording",
+		Body:   map[string]interface{}{"code": 121005, "msg": "no permission"},
+	})
+
+	err := botExec(t, "all-fail", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
+		r1 := fetchRecordingByMeetingID(ctx, rctx, "m001")
+		r2 := fetchRecordingByMeetingID(ctx, rctx, "m002")
+
+		if r1["error"] == nil || r2["error"] == nil {
+			t.Error("both should fail")
+		}
+		e1, _ := r1["error"].(string)
+		e2, _ := r2["error"].(string)
+		if !strings.Contains(e1, "data not found") {
+			t.Errorf("m001 error should contain API message, got: %s", e1)
+		}
+		if !strings.Contains(e2, "no permission") {
+			t.Errorf("m002 error should contain API message, got: %s", e2)
+		}
+		if r1["meeting_id"] != "m001" {
+			t.Errorf("error result should preserve meeting_id, got: %v", r1["meeting_id"])
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecording_Execute_EmptyURL(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m001/recording",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"recording": map[string]interface{}{
+					"url":      "",
+					"duration": "1000",
+				},
+			},
+		},
+	})
+
+	err := botExec(t, "empty-url", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
+		result := fetchRecordingByMeetingID(ctx, rctx, "m001")
+		if result["error"] != nil {
+			t.Errorf("empty URL should not cause error: %v", result["error"])
+		}
+		if _, exists := result["minute_token"]; exists {
+			t.Error("empty URL should not produce minute_token")
+		}
+		if result["recording_url"] != "" {
+			t.Errorf("recording_url should be empty string, got: %v", result["recording_url"])
+		}
+		if result["duration"] != "1000" {
+			t.Errorf("duration should be preserved, got: %v", result["duration"])
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecording_Execute_RecordingGenerating(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m001/recording",
+		Body:   map[string]interface{}{"code": 124002, "msg": "recording generating"},
+	})
+
+	err := botExec(t, "generating", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
+		result := fetchRecordingByMeetingID(ctx, rctx, "m001")
+		errMsg, _ := result["error"].(string)
+		if errMsg == "" {
+			t.Error("should return error for generating recording")
+		}
+		if !strings.Contains(errMsg, "recording generating") {
+			t.Errorf("error should mention recording generating, got: %s", errMsg)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
