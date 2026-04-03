@@ -4,6 +4,7 @@ package doc
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -75,4 +76,47 @@ func TestNormalizeDocsUpdateResult(t *testing.T) {
 			t.Fatalf("did not expect board_tokens for non-whiteboard markdown")
 		}
 	})
+}
+
+func TestValidateSelectionByTitle(t *testing.T) {
+	t.Run("empty title passes", func(t *testing.T) {
+		if err := validateSelectionByTitle(""); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("heading style title passes", func(t *testing.T) {
+		if err := validateSelectionByTitle("## 第二章"); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("plain text title fails with guidance", func(t *testing.T) {
+		err := validateSelectionByTitle("第二章")
+		if err == nil {
+			t.Fatalf("expected validation error")
+		}
+		if got := err.Error(); got == "" || !containsAll(got, "selection-by-title", "heading prefix") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("multi-line title fails", func(t *testing.T) {
+		err := validateSelectionByTitle("第二章\n第三章")
+		if err == nil {
+			t.Fatalf("expected validation error")
+		}
+		if got := err.Error(); got == "" || !containsAll(got, "single heading line") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func containsAll(s string, tokens ...string) bool {
+	for _, token := range tokens {
+		if !strings.Contains(s, token) {
+			return false
+		}
+	}
+	return true
 }
