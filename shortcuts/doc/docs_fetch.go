@@ -66,6 +66,7 @@ var DocsFetch = common.Shortcut{
 				fmt.Fprintf(w, "# %s\n\n", title)
 			}
 			if md, ok := result["markdown"].(string); ok {
+				md = NormalizeLarkTables(md)
 				fmt.Fprintln(w, md)
 			}
 			if hasMore, ok := result["has_more"].(bool); ok && hasMore {
