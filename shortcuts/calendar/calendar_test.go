@@ -82,6 +82,19 @@ func defaultConfig() *core.CliConfig {
 	}
 }
 
+func noLoginConfig() *core.CliConfig {
+	return &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+}
+
+func noLoginBotDefaultConfig() *core.CliConfig {
+	return &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		DefaultAs: "bot",
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CalendarCreate tests
 // ---------------------------------------------------------------------------
@@ -336,6 +349,108 @@ func TestCreate_NoEventIdReturned(t *testing.T) {
 // ---------------------------------------------------------------------------
 // CalendarAgenda tests
 // ---------------------------------------------------------------------------
+
+func TestCalendarShortcuts_RequireLoginUnlessExplicitBot(t *testing.T) {
+	cases := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{
+			name:     "agenda",
+			shortcut: CalendarAgenda,
+			args:     []string{"+agenda", "--start", "2025-03-21", "--end", "2025-03-21"},
+		},
+		{
+			name:     "create",
+			shortcut: CalendarCreate,
+			args:     []string{"+create", "--summary", "Test Meeting", "--start", "2025-03-21T00:00:00+08:00", "--end", "2025-03-21T01:00:00+08:00"},
+		},
+		{
+			name:     "freebusy",
+			shortcut: CalendarFreebusy,
+			args:     []string{"+freebusy", "--start", "2025-03-21", "--end", "2025-03-21"},
+		},
+		{
+			name:     "rsvp",
+			shortcut: CalendarRsvp,
+			args:     []string{"+rsvp", "--event-id", "evt_rsvp1", "--rsvp-status", "accept"},
+		},
+		{
+			name:     "suggestion",
+			shortcut: CalendarSuggestion,
+			args:     []string{"+suggestion", "--start", "2025-03-21", "--end", "2025-03-21"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, noLoginConfig())
+
+			err := mountAndRun(t, tc.shortcut, tc.args, f, nil)
+			if err == nil {
+				t.Fatal("expected auth guard error")
+			}
+			if !strings.Contains(err.Error(), "auth login") {
+				t.Fatalf("expected auth login guidance, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), "--as bot") {
+				t.Fatalf("expected explicit bot guidance, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestAgenda_ExplicitBotBypassesLoginGuard(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, noLoginConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAgenda_DefaultAsBotBypassesLoginGuard(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, noLoginBotDefaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
 
 func TestAgenda_Success(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
