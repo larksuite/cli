@@ -68,15 +68,21 @@ linters:
         - pattern: os\.Create\b
           msg: "use vfs.OpenFile() from internal/vfs"
         - pattern: os\.CreateTemp\b
-          msg: "use vfs.CreateTemp() from internal/vfs"
+          msg: >-
+            internal/: use vfs.CreateTemp() from internal/vfs.
+            shortcuts/: avoid temp files entirely — use io.Reader streaming or in-memory buffers instead.
         - pattern: os\.Mkdir\b
           msg: "use vfs.MkdirAll() from internal/vfs"
         - pattern: os\.MkdirAll\b
           msg: "use vfs.MkdirAll() from internal/vfs"
         - pattern: os\.Remove\b
-          msg: "use vfs.Remove() from internal/vfs"
+          msg: >-
+            internal/: use vfs.Remove() from internal/vfs.
+            shortcuts/: avoid temp files entirely — use io.Reader streaming or in-memory buffers instead.
         - pattern: os\.RemoveAll\b
-          msg: "add RemoveAll to internal/vfs/fs.go first, then use vfs.RemoveAll()"
+          msg: >-
+            internal/: add RemoveAll to internal/vfs/fs.go first, then use vfs.RemoveAll().
+            shortcuts/: avoid temp files entirely — use io.Reader streaming or in-memory buffers instead.
         - pattern: os\.Rename\b
           msg: "use vfs.Rename() from internal/vfs"
         - pattern: os\.ReadFile\b
