@@ -30,10 +30,52 @@ func dryRunTableGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 }
 
 func dryRunTableCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	return common.NewDryRunAPI().
+	dry := common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables").
+		Desc("create table").
 		Body(map[string]interface{}{"name": runtime.Str("name")}).
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", "<created-table-id>").
+		Set("field_id", "<primary-field-id>")
+
+	if rawFields := runtime.Str("fields"); rawFields != "" {
+		fieldItems, err := parseJSONArray(rawFields, "fields")
+		if err != nil {
+			dry.Desc("create table (follow-up --fields preview unavailable: " + err.Error() + ")")
+			return dry
+		}
+		for idx, item := range fieldItems {
+			body, ok := item.(map[string]interface{})
+			if !ok {
+				dry.Desc(fmt.Sprintf("create table (follow-up --fields preview unavailable: --fields item %d must be an object)", idx+1))
+				return dry
+			}
+			if idx == 0 {
+				dry.PUT("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
+					Desc("update the default primary field from the first --fields item").
+					Body(body)
+				continue
+			}
+			dry.POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
+				Desc(fmt.Sprintf("create field %d from --fields", idx+1)).
+				Body(body)
+		}
+	}
+
+	if rawView := runtime.Str("view"); rawView != "" {
+		viewItems, err := parseObjectList(rawView, "view")
+		if err != nil {
+			dry.Desc("create table (follow-up --view preview unavailable: " + err.Error() + ")")
+			return dry
+		}
+		for idx, body := range viewItems {
+			dry.POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/views").
+				Desc(fmt.Sprintf("create view %d from --view", idx+1)).
+				Body(body)
+		}
+	}
+
+	return dry
 }
 
 func dryRunTableUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
