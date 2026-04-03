@@ -67,11 +67,12 @@ lark-cli docs +fetch --doc <doc_token>
 
 ```
 Meeting (视频会议)
+├── Recording (录制) ← +recording 获取，从 URL 解析 minute_token
 ├── Note (会议纪要)
 │   ├── MainDoc (主纪要文档)
 │   ├── VerbatimDoc (逐字稿)
 │   └── SharedDoc (会中共享文档)
-└── Minutes (妙记)
+└── Minutes (妙记) ← minute_token 标识
     ├── Transcript (文字记录)
     ├── Summary (总结)
     ├── Todos (待办)
@@ -94,6 +95,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 |----------|------|
 | [`+search`](references/lark-vc-search.md) | Search meeting records (requires at least one filter) |
 | [`+notes`](references/lark-vc-notes.md) | Query meeting notes (via meeting-ids, minute-tokens, or calendar-event-ids) |
+| [`+recording`](references/lark-vc-recording.md) | Get meeting recording info (meeting_id → minute_token) |
 
 ## API Resources
 
@@ -128,5 +130,7 @@ lark-cli vc meeting get --params '{"meeting_id": "<meeting_id>", "with_participa
 | `+notes --meeting-ids` | `vc:meeting.meetingevent:read`、`vc:note:read` |
 | `+notes --minute-tokens` | `vc:note:read`、`minutes:minutes:readonly`、`minutes:minutes.artifacts:read`、`minutes:minutes.transcript:export` |
 | `+notes --calendar-event-ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read` |
+| `+recording --meeting-ids` | `vc:record:readonly` |
+| `+recording --calendar-event-ids` | `vc:record:readonly`、`calendar:calendar:read`、`calendar:calendar.event:read` |
 | `+search` | `vc:meeting.search:read` |
 | `meeting.get` | `vc:meeting.meetingevent:read` |
