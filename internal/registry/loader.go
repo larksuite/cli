@@ -45,9 +45,8 @@ func InitWithBrand(brand core.LarkBrand) {
 		configuredBrand = brand
 		// 1. Load embedded meta_data.json as baseline (no-op if not compiled in)
 		loadEmbeddedIntoMerged()
-		// 2. Remote overlay
-		if remoteEnabled() && cacheWritable() {
-			// Check if brand changed since last cache
+		// 2. Always attempt to read from cache (read-only, no write required)
+		if remoteEnabled() {
 			meta, metaErr := loadCacheMeta()
 			brandChanged := metaErr == nil && meta.Brand != "" && meta.Brand != string(brand)
 
@@ -56,15 +55,18 @@ func InitWithBrand(brand core.LarkBrand) {
 					overlayMergedServices(cached)
 				}
 			}
-			if len(mergedServices) == 0 || brandChanged {
-				// No data at all or brand changed — must sync fetch
-				doSyncFetch()
-			} else if shouldRefresh(meta) || metaErr != nil {
-				// Have embedded/cached data; refresh in background if TTL expired or first run
-				triggerBackgroundRefresh()
+			// 3. Refresh/fetch only when we can write to cache
+			if cacheWritable() {
+				if len(mergedServices) == 0 || brandChanged {
+					// No data at all or brand changed — must sync fetch
+					doSyncFetch()
+				} else if shouldRefresh(meta) || metaErr != nil {
+					// Have embedded/cached data; refresh in background if TTL expired or first run
+					triggerBackgroundRefresh()
+				}
 			}
 		}
-		// 3. Build sorted project list
+		// 4. Build sorted project list
 		rebuildProjectList()
 	})
 }

@@ -16,6 +16,8 @@ type initMsg struct {
 	Platform           string
 	SelectPlatform     string
 	Feishu             string
+	PrivateDeployment  string
+	PrivateBaseURL     string
 	ScanOrOpenLink     string
 	WaitingForScan     string
 	DetectedLarkTenant string
@@ -30,6 +32,8 @@ var initMsgZh = &initMsg{
 	Platform:           "平台",
 	SelectPlatform:     "选择平台",
 	Feishu:             "飞书",
+	PrivateDeployment:  "私有化部署",
+	PrivateBaseURL:     "私有化部署 Base URL（如 https://your-company.feishu.cn）",
 	ScanOrOpenLink:     "\n打开以下链接配置应用:\n\n",
 	WaitingForScan:     "等待配置应用...",
 	DetectedLarkTenant: "[lark-cli] 检测到 Lark 租户，切换端点重试...",
@@ -44,6 +48,8 @@ var initMsgEn = &initMsg{
 	Platform:           "Platform",
 	SelectPlatform:     "Select platform",
 	Feishu:             "Feishu",
+	PrivateDeployment:  "Private deployment",
+	PrivateBaseURL:     "Private deployment base URL (e.g. https://your-company.feishu.cn)",
 	ScanOrOpenLink:     "\nOpen the link below to configure app:\n\n",
 	WaitingForScan:     "Waiting for app configuration...",
 	DetectedLarkTenant: "[lark-cli] Detected Lark tenant, switching endpoint...",

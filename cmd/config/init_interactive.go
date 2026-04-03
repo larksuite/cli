@@ -86,9 +86,15 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 		appSecretInput = appSecretInput.Placeholder("xxxx")
 	}
 
-	brand = "feishu"
+	// Determine initial brand select value
+	brandSelect := "feishu"
 	if firstApp != nil && firstApp.Brand != "" {
-		brand = string(firstApp.Brand)
+		switch firstApp.Brand {
+		case core.BrandFeishu, core.BrandLark:
+			brandSelect = string(firstApp.Brand)
+		default:
+			brandSelect = "custom"
+		}
 	}
 
 	form := huh.NewForm(
@@ -100,8 +106,9 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 				Options(
 					huh.NewOption(msg.Feishu, "feishu"),
 					huh.NewOption("Lark", "lark"),
+					huh.NewOption(msg.PrivateDeployment, "custom"),
 				).
-				Value(&brand),
+				Value(&brandSelect),
 		),
 	).WithTheme(cmdutil.ThemeFeishu())
 
@@ -110,6 +117,31 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 			return nil, output.ErrBare(1)
 		}
 		return nil, err
+	}
+
+	// If private deployment selected, prompt for base URL
+	if brandSelect == "custom" {
+		customURL := ""
+		if firstApp != nil && firstApp.Brand != core.BrandFeishu && firstApp.Brand != core.BrandLark {
+			customURL = string(firstApp.Brand)
+		}
+		urlForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title(msg.PrivateBaseURL).
+					Placeholder("https://your-company.feishu.cn").
+					Value(&customURL),
+			),
+		).WithTheme(cmdutil.ThemeFeishu())
+		if err := urlForm.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil, output.ErrBare(1)
+			}
+			return nil, err
+		}
+		brand = customURL
+	} else {
+		brand = brandSelect
 	}
 
 	// Resolve defaults

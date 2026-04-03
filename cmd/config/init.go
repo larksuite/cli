@@ -57,7 +57,7 @@ verification URL from its output.`,
 	cmd.Flags().BoolVar(&opts.New, "new", false, "create a new app directly (skip mode selection)")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
-	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
+	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", `brand: "feishu", "lark", or a custom base URL for private deployments (e.g. "https://your-company.feishu.cn")`)
 	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh or en)")
 
 	return cmd
