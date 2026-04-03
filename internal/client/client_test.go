@@ -14,6 +14,9 @@ import (
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 )
 
 // roundTripFunc is an adapter to use a function as http.RoundTripper.
@@ -31,18 +34,30 @@ func jsonResponse(body interface{}) *http.Response {
 	}
 }
 
+// staticTokenResolver always returns a fixed token without any HTTP calls.
+type staticTokenResolver struct{}
+
+func (s *staticTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{Token: "test-token"}, nil
+}
+
 // newTestAPIClient creates an APIClient with a mock HTTP transport.
 func newTestAPIClient(t *testing.T, rt http.RoundTripper) (*APIClient, *bytes.Buffer) {
 	t.Helper()
 	errBuf := &bytes.Buffer{}
 	httpClient := &http.Client{Transport: rt}
 	sdk := lark.NewClient("test-app", "test-secret",
+		lark.WithEnableTokenCache(false),
 		lark.WithLogLevel(larkcore.LogLevelError),
 		lark.WithHttpClient(httpClient),
 	)
+	testCred := credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil)
+	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu}
 	return &APIClient{
-		SDK:    sdk,
-		ErrOut: errBuf,
+		SDK:        sdk,
+		ErrOut:     errBuf,
+		Credential: testCred,
+		Config:     cfg,
 	}, errBuf
 }
 
@@ -87,21 +102,13 @@ func TestMimeToExt(t *testing.T) {
 
 func TestStreamPages_NonBatchAPI_NoArrayField(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"tenant_access_token": "t-token", "expire": 7200,
-			}), nil
-		default:
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"data": map[string]interface{}{
-					"user_id": "u123",
-					"name":    "Test User",
-				},
-			}), nil
-		}
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"user_id": "u123",
+				"name":    "Test User",
+			},
+		}), nil
 	})
 
 	ac, errBuf := newTestAPIClient(t, rt)
@@ -138,21 +145,13 @@ func TestStreamPages_NonBatchAPI_NoArrayField(t *testing.T) {
 
 func TestStreamPages_BatchAPI_WithArrayField(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"tenant_access_token": "t-token", "expire": 7200,
-			}), nil
-		default:
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"data": map[string]interface{}{
-					"items":    []interface{}{map[string]interface{}{"id": "1"}, map[string]interface{}{"id": "2"}},
-					"has_more": false,
-				},
-			}), nil
-		}
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}, map[string]interface{}{"id": "2"}},
+				"has_more": false,
+			},
+		}), nil
 	})
 
 	ac, errBuf := newTestAPIClient(t, rt)
@@ -186,23 +185,15 @@ func TestStreamPages_BatchAPI_WithArrayField(t *testing.T) {
 func TestPaginateAll_PageLimitStopsPagination(t *testing.T) {
 	apiCalls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"tenant_access_token": "t-token", "expire": 7200,
-			}), nil
-		default:
-			apiCalls++
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"data": map[string]interface{}{
-					"items":      []interface{}{map[string]interface{}{"id": apiCalls}},
-					"has_more":   true,
-					"page_token": "next",
-				},
-			}), nil
-		}
+		apiCalls++
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": apiCalls}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		}), nil
 	})
 
 	ac, errBuf := newTestAPIClient(t, rt)
@@ -319,21 +310,13 @@ func TestBuildApiReq_QueryParams(t *testing.T) {
 
 func TestPaginateAll_NoStreamSummaryLog(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"tenant_access_token": "t-token", "expire": 7200,
-			}), nil
-		default:
-			return jsonResponse(map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"data": map[string]interface{}{
-					"items":    []interface{}{map[string]interface{}{"id": "1"}},
-					"has_more": false,
-				},
-			}), nil
-		}
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		}), nil
 	})
 
 	ac, errBuf := newTestAPIClient(t, rt)

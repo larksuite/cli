@@ -6,11 +6,11 @@ package draft
 import (
 	"fmt"
 	"mime"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
@@ -470,14 +470,14 @@ func addAttachment(snapshot *DraftSnapshot, path string) error {
 	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
 		return err
 	}
-	info, err := os.Stat(safePath)
+	info, err := vfs.Stat(safePath)
 	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
 	}
-	content, err := os.ReadFile(safePath)
+	content, err := vfs.ReadFile(safePath)
 	if err != nil {
 		return err
 	}
@@ -528,14 +528,14 @@ func addInline(snapshot *DraftSnapshot, path, cid, fileName, contentType string)
 	if err != nil {
 		return fmt.Errorf("inline image %q: %w", path, err)
 	}
-	info, err := os.Stat(safePath)
+	info, err := vfs.Stat(safePath)
 	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
 	}
-	content, err := os.ReadFile(safePath)
+	content, err := vfs.ReadFile(safePath)
 	if err != nil {
 		return err
 	}
@@ -576,14 +576,14 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	if err != nil {
 		return fmt.Errorf("inline image %q: %w", path, err)
 	}
-	info, err := os.Stat(safePath)
+	info, err := vfs.Stat(safePath)
 	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), part); err != nil {
 		return err
 	}
-	content, err := os.ReadFile(safePath)
+	content, err := vfs.ReadFile(safePath)
 	if err != nil {
 		return err
 	}

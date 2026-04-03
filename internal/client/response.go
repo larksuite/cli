@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // ── Response routing ──
@@ -125,7 +125,7 @@ func SaveResponse(resp *larkcore.ApiResp, outputPath string) (map[string]interfa
 		return nil, fmt.Errorf("unsafe output path: %s", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
 		return nil, fmt.Errorf("create directory: %s", err)
 	}
 

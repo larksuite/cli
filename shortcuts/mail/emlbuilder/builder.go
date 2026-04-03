@@ -47,12 +47,12 @@ import (
 	"math/rand"
 	"mime"
 	"net/mail"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
@@ -65,7 +65,7 @@ func readFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attachment %q: %w", path, err)
 	}
-	return os.ReadFile(safePath)
+	return vfs.ReadFile(safePath)
 }
 
 // Builder constructs a Lark-compatible RFC 2822 EML message.

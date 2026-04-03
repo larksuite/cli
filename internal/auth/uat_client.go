@@ -19,6 +19,7 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
@@ -128,7 +129,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	configDir := core.GetConfigDir()
 
 	lockDir := filepath.Join(configDir, "locks")
-	if err := os.MkdirAll(lockDir, 0700); err != nil {
+	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
 	}
 

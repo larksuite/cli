@@ -21,12 +21,10 @@ func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(NewCmdConfigRemove(f, nil))
 	cmd.AddCommand(NewCmdConfigShow(f, nil))
 	cmd.AddCommand(NewCmdConfigDefaultAs(f))
+	cmd.AddCommand(NewCmdConfigStrictMode(f))
 	return cmd
 }
 
 func parseBrand(value string) core.LarkBrand {
-	if value == "lark" {
-		return core.BrandLark
-	}
-	return core.BrandFeishu
+	return core.ParseBrand(value)
 }

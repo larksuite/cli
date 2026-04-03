@@ -4,8 +4,10 @@
 package im
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"reflect"
@@ -268,12 +270,6 @@ func TestResolveChatIDForMessagesList(t *testing.T) {
 	t.Run("user resolved through p2p lookup", func(t *testing.T) {
 		runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case strings.Contains(req.URL.Path, "tenant_access_token"):
-				return shortcutJSONResponse(200, map[string]interface{}{
-					"code":                0,
-					"tenant_access_token": "tenant-token",
-					"expire":              7200,
-				}), nil
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
 				return shortcutJSONResponse(200, map[string]interface{}{
 					"code": 0,
@@ -406,30 +402,6 @@ func TestBuildSearchChatBodyAdditionalBranches(t *testing.T) {
 	}
 }
 
-func TestResolveToLocalPath(t *testing.T) {
-	t.Run("media key returns empty path", func(t *testing.T) {
-		got, cleanup, err := resolveToLocalPath(context.Background(), nil, "--image", "img_123")
-		if err != nil {
-			t.Fatalf("resolveToLocalPath() error = %v", err)
-		}
-		defer cleanup()
-		if got != "" {
-			t.Fatalf("resolveToLocalPath() = %q, want empty path", got)
-		}
-	})
-
-	t.Run("local path passthrough", func(t *testing.T) {
-		got, cleanup, err := resolveToLocalPath(context.Background(), nil, "--file", "report.pdf")
-		if err != nil {
-			t.Fatalf("resolveToLocalPath() error = %v", err)
-		}
-		defer cleanup()
-		if got != "report.pdf" {
-			t.Fatalf("resolveToLocalPath() = %q, want %q", got, "report.pdf")
-		}
-	})
-}
-
 func TestParseMediaDurationSuccess(t *testing.T) {
 	t.Run("mp4", func(t *testing.T) {
 		f, err := os.CreateTemp("", "im-duration-*.mp4")
@@ -504,5 +476,110 @@ func TestResolveMediaContentURLFallback(t *testing.T) {
 				t.Fatalf("resolveMediaContent() content = %q, want substring %q", gotContent, tt.wantText)
 			}
 		})
+	}
+}
+
+func TestLimitedReadCloser(t *testing.T) {
+	t.Run("within limit", func(t *testing.T) {
+		body := io.NopCloser(bytes.NewReader([]byte("hello")))
+		lr := &limitedReadCloser{
+			r:      io.LimitReader(body, 10+1),
+			closer: body,
+			max:    10,
+		}
+		data, err := io.ReadAll(lr)
+		if err != nil {
+			t.Fatalf("ReadAll() error = %v", err)
+		}
+		if string(data) != "hello" {
+			t.Fatalf("ReadAll() = %q, want %q", string(data), "hello")
+		}
+		if err := lr.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+
+	t.Run("exceeds limit", func(t *testing.T) {
+		body := io.NopCloser(bytes.NewReader([]byte("hello world")))
+		lr := &limitedReadCloser{
+			r:      io.LimitReader(body, 5+1),
+			closer: body,
+			max:    5,
+		}
+		_, err := io.ReadAll(lr)
+		if err == nil || !strings.Contains(err.Error(), "exceeds size limit") {
+			t.Fatalf("ReadAll() error = %v, want size limit error", err)
+		}
+	})
+}
+
+func TestMediaBufferDuration(t *testing.T) {
+	t.Run("mp4 duration from bytes", func(t *testing.T) {
+		data := wrapInMoov(buildMvhdBox(0, 1000, 5000))
+		mb := &mediaBuffer{data: data, ext: ".mp4"}
+		if got := mb.Duration(); got != "5000" {
+			t.Fatalf("Duration() = %q, want %q", got, "5000")
+		}
+	})
+
+	t.Run("opus duration from bytes", func(t *testing.T) {
+		page := make([]byte, 27)
+		copy(page[0:4], "OggS")
+		page[5] = 4
+		page[6] = 0x00
+		page[7] = 0x53
+		page[8] = 0x07
+		mb := &mediaBuffer{data: page, ext: ".ogg"}
+		if got := mb.Duration(); got != "10000" {
+			t.Fatalf("Duration() = %q, want %q", got, "10000")
+		}
+	})
+
+	t.Run("unsupported type returns empty", func(t *testing.T) {
+		mb := &mediaBuffer{data: []byte("data"), ext: ".txt"}
+		if got := mb.Duration(); got != "" {
+			t.Fatalf("Duration() = %q, want empty", got)
+		}
+	})
+
+	t.Run("empty data returns empty", func(t *testing.T) {
+		mb := &mediaBuffer{data: nil, ext: ".mp4"}
+		if got := mb.Duration(); got != "" {
+			t.Fatalf("Duration() = %q, want empty", got)
+		}
+	})
+}
+
+func TestMediaBufferFileType(t *testing.T) {
+	tests := []struct {
+		ext  string
+		want string
+	}{
+		{".mp4", "mp4"},
+		{".ogg", "opus"},
+		{".pdf", "pdf"},
+		{".unknown", "stream"},
+	}
+	for _, tt := range tests {
+		mb := &mediaBuffer{ext: tt.ext}
+		if got := mb.FileType(); got != tt.want {
+			t.Fatalf("FileType(%s) = %q, want %q", tt.ext, got, tt.want)
+		}
+	}
+}
+
+func TestMediaBufferReader(t *testing.T) {
+	data := []byte("test content")
+	mb := &mediaBuffer{data: data, ext: ".txt"}
+
+	// Read twice to verify re-readability
+	for i := 0; i < 2; i++ {
+		got, err := io.ReadAll(mb.Reader())
+		if err != nil {
+			t.Fatalf("ReadAll() attempt %d error = %v", i+1, err)
+		}
+		if !bytes.Equal(got, data) {
+			t.Fatalf("ReadAll() attempt %d = %q, want %q", i+1, got, data)
+		}
 	}
 }

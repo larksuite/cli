@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/zalando/go-keyring"
 )
 
@@ -28,7 +29,7 @@ const tagBytes = 16
 
 // StorageDir returns the storage directory for a given service name on macOS.
 func StorageDir(service string) string {
-	home, err := os.UserHomeDir()
+	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {
 		return filepath.Join(".lark-cli", "keychain", service)
 	}
@@ -153,7 +154,7 @@ func decryptData(data []byte, key []byte) (string, error) {
 // platformGet retrieves a value from the macOS keychain.
 func platformGet(service, account string) (string, error) {
 	path := filepath.Join(StorageDir(service), safeFileName(account))
-	data, err := os.ReadFile(path)
+	data, err := vfs.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
@@ -178,7 +179,7 @@ func platformSet(service, account, data string) error {
 		return err
 	}
 	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	encrypted, err := encryptData(data, key)
@@ -188,14 +189,14 @@ func platformSet(service, account, data string) error {
 
 	targetPath := filepath.Join(dir, safeFileName(account))
 	tmpPath := filepath.Join(dir, safeFileName(account)+"."+uuid.New().String()+".tmp")
-	defer os.Remove(tmpPath)
+	defer vfs.Remove(tmpPath)
 
-	if err := os.WriteFile(tmpPath, encrypted, 0600); err != nil {
+	if err := vfs.WriteFile(tmpPath, encrypted, 0600); err != nil {
 		return err
 	}
 
 	// Atomic rename to prevent file corruption during multi-process writes
-	if err := os.Rename(tmpPath, targetPath); err != nil {
+	if err := vfs.Rename(tmpPath, targetPath); err != nil {
 		return err
 	}
 	return nil
@@ -203,7 +204,7 @@ func platformSet(service, account, data string) error {
 
 // platformRemove deletes a value from the macOS keychain.
 func platformRemove(service, account string) error {
-	err := os.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
+	err := vfs.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}

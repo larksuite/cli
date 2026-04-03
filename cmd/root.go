@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/cmd/completion"
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/doctor"
+	"github.com/larksuite/cli/cmd/profile"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/cmd/service"
 	internalauth "github.com/larksuite/cli/internal/auth"
@@ -87,8 +88,14 @@ More help: lark-cli <command> --help`
 
 // Execute runs the root command and returns the process exit code.
 func Execute() int {
-	f := cmdutil.NewDefault()
+	inv, err := BootstrapInvocationContext(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		return 1
+	}
+	f := cmdutil.NewDefault(inv)
 
+	globals := &GlobalOptions{Profile: inv.Profile}
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
 		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
@@ -97,18 +104,26 @@ func Execute() int {
 	}
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
+
+	RegisterGlobalFlags(rootCmd.PersistentFlags(), globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
 	}
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
+	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
+
+	// Prune commands incompatible with strict mode.
+	if mode := f.ResolveStrictMode(); mode.IsActive() {
+		pruneForStrictMode(rootCmd, mode)
+	}
 
 	// --- Update check (non-blocking) ---
 	if !isCompletionCommand(os.Args) {

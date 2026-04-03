@@ -72,3 +72,27 @@ func TestMultiAppConfig_RoundTrip(t *testing.T) {
 		t.Errorf("Brand = %q, want %q", got.Apps[0].Brand, BrandLark)
 	}
 }
+
+func TestResolveConfigFromMulti_DoesNotUseEnvProfileFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "missing")
+
+	raw := &MultiAppConfig{
+		CurrentApp: "active",
+		Apps: []AppConfig{
+			{
+				Name:      "active",
+				AppId:     "cli_active",
+				AppSecret: PlainSecret("secret"),
+				Brand:     BrandFeishu,
+			},
+		},
+	}
+
+	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	if err != nil {
+		t.Fatalf("ResolveConfigFromMulti() error = %v", err)
+	}
+	if cfg.ProfileName != "active" {
+		t.Fatalf("ResolveConfigFromMulti() profile = %q, want %q", cfg.ProfileName, "active")
+	}
+}

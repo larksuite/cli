@@ -86,8 +86,7 @@ func TestResolveAs_DefaultAs_FromConfig(t *testing.T) {
 }
 
 func TestResolveAs_DefaultAs_FromEnv(t *testing.T) {
-	os.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
-	defer os.Unsetenv("LARKSUITE_CLI_DEFAULT_AS")
+	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
 
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("auto", false)
@@ -183,34 +182,6 @@ func TestCheckIdentity_Unsupported_AutoDetected(t *testing.T) {
 	}
 }
 
-// --- ResolveConfig tests ---
-
-func TestResolveConfig_Bot(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "a", AppSecret: "s"}
-	f, _, _, _ := TestFactory(t, cfg)
-
-	got, err := f.ResolveConfig(core.AsBot)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.AppID != "a" {
-		t.Errorf("want AppID a, got %s", got.AppID)
-	}
-}
-
-func TestResolveConfig_User(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "a", AppSecret: "s"}
-	f, _, _, _ := TestFactory(t, cfg)
-
-	got, err := f.ResolveConfig(core.AsUser)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.AppID != "a" {
-		t.Errorf("want AppID a, got %s", got.AppID)
-	}
-}
-
 // --- autoDetectIdentity tests ---
 
 func TestAutoDetectIdentity_NoUserOpenId(t *testing.T) {
@@ -278,5 +249,127 @@ func TestNewAPIClientWithConfig_NilIOStreams(t *testing.T) {
 	}
 	if ac == nil {
 		t.Fatal("expected non-nil APIClient")
+	}
+}
+
+// --- ResolveStrictMode tests ---
+
+func TestResolveStrictMode_Off(t *testing.T) {
+	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	if got := f.ResolveStrictMode(); got != core.StrictModeOff {
+		t.Errorf("expected off, got %q", got)
+	}
+}
+
+func TestResolveStrictMode_BotFromAccount(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2} // SupportsBot = 2
+	f, _, _, _ := TestFactory(t, cfg)
+	if got := f.ResolveStrictMode(); got != core.StrictModeBot {
+		t.Errorf("expected bot, got %q", got)
+	}
+}
+
+func TestResolveStrictMode_UserFromAccount(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1} // SupportsUser = 1
+	f, _, _, _ := TestFactory(t, cfg)
+	if got := f.ResolveStrictMode(); got != core.StrictModeUser {
+		t.Errorf("expected user, got %q", got)
+	}
+}
+
+func TestResolveStrictMode_BothIdentities(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 3} // SupportsAll = 3
+	f, _, _, _ := TestFactory(t, cfg)
+	if got := f.ResolveStrictMode(); got != core.StrictModeOff {
+		t.Errorf("expected off when both supported, got %q", got)
+	}
+}
+
+func TestResolveStrictMode_NilCredential(t *testing.T) {
+	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	f.Credential = nil
+	if got := f.ResolveStrictMode(); got != core.StrictModeOff {
+		t.Errorf("expected off with nil credential, got %q", got)
+	}
+}
+
+// --- CheckStrictMode tests ---
+
+func TestCheckStrictMode_BotMode_BotAllowed(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
+	f, _, _, _ := TestFactory(t, cfg)
+	if err := f.CheckStrictMode(core.AsBot); err != nil {
+		t.Errorf("bot should be allowed in bot mode, got: %v", err)
+	}
+}
+
+func TestCheckStrictMode_BotMode_UserBlocked(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
+	f, _, _, _ := TestFactory(t, cfg)
+	err := f.CheckStrictMode(core.AsUser)
+	if err == nil {
+		t.Fatal("expected error for user in bot mode")
+	}
+	if !strings.Contains(err.Error(), "strict mode") {
+		t.Errorf("error should mention strict mode, got: %v", err)
+	}
+}
+
+func TestCheckStrictMode_UserMode_UserAllowed(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
+	f, _, _, _ := TestFactory(t, cfg)
+	if err := f.CheckStrictMode(core.AsUser); err != nil {
+		t.Errorf("user should be allowed in user mode, got: %v", err)
+	}
+}
+
+func TestCheckStrictMode_UserMode_BotBlocked(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
+	f, _, _, _ := TestFactory(t, cfg)
+	err := f.CheckStrictMode(core.AsBot)
+	if err == nil {
+		t.Fatal("expected error for bot in user mode")
+	}
+}
+
+func TestCheckStrictMode_Off_BothAllowed(t *testing.T) {
+	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	if err := f.CheckStrictMode(core.AsUser); err != nil {
+		t.Errorf("user should be allowed when off: %v", err)
+	}
+	if err := f.CheckStrictMode(core.AsBot); err != nil {
+		t.Errorf("bot should be allowed when off: %v", err)
+	}
+}
+
+// --- ResolveAs strict mode tests ---
+
+func TestResolveAs_StrictModeBot_ForceBot(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("auto", false)
+	got := f.ResolveAs(cmd, "auto")
+	if got != core.AsBot {
+		t.Errorf("bot mode should force bot, got %s", got)
+	}
+}
+
+func TestResolveAs_StrictModeUser_ForceUser(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("auto", false)
+	got := f.ResolveAs(cmd, "auto")
+	if got != core.AsUser {
+		t.Errorf("user mode should force user, got %s", got)
+	}
+}
+
+func TestResolveAs_StrictModeBot_IgnoresDefaultAsUser(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", DefaultAs: "user", SupportedIdentities: 2}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("auto", false)
+	got := f.ResolveAs(cmd, "auto")
+	if got != core.AsBot {
+		t.Errorf("bot mode should override default-as user, got %s", got)
 	}
 }

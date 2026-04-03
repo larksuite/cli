@@ -69,12 +69,6 @@ func TestImMessagesSearchExecuteAutoPaginationBatches(t *testing.T) {
 		"page-all": true,
 	}, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/search"):
 			pageToken := req.URL.Query().Get("page_token")
 			searchPageTokens = append(searchPageTokens, pageToken)
@@ -167,12 +161,6 @@ func TestImMessagesSearchExecuteExplicitPageLimitWithoutPageAll(t *testing.T) {
 		"page-limit": "2",
 	}, nil, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/search"):
 			searchCalls++
 			pageToken := req.URL.Query().Get("page_token")
