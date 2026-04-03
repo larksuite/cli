@@ -165,11 +165,11 @@ func validateSelectionByTitle(title string) error {
 		return nil
 	}
 	trimmed := strings.TrimSpace(title)
-	if strings.HasPrefix(trimmed, "#") {
-		return nil
-	}
 	if strings.Contains(trimmed, "\n") || strings.Contains(trimmed, "\r") {
 		return common.FlagErrorf("--selection-by-title must be a single heading line (for example: '## Section')")
+	}
+	if strings.HasPrefix(trimmed, "#") {
+		return nil
 	}
 	return common.FlagErrorf("--selection-by-title must include markdown heading prefix '#'. Example: --selection-by-title '## Section'")
 }

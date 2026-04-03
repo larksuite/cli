@@ -101,6 +101,16 @@ func TestValidateSelectionByTitle(t *testing.T) {
 		}
 	})
 
+	t.Run("multi-line heading still fails", func(t *testing.T) {
+		err := validateSelectionByTitle("## 第二章\n## 第三章")
+		if err == nil {
+			t.Fatalf("expected validation error")
+		}
+		if got := err.Error(); got == "" || !containsAll(got, "single heading line") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
 	t.Run("multi-line title fails", func(t *testing.T) {
 		err := validateSelectionByTitle("第二章\n第三章")
 		if err == nil {
