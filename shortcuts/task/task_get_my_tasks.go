@@ -45,9 +45,7 @@ var GetMyTasks = common.Shortcut{
 			"user_id_type": "open_id",
 			"page_size":    50,
 		}
-		if runtime.Cmd.Flags().Changed("complete") {
-			params["completed"] = runtime.Bool("complete")
-		}
+		params["completed"] = runtime.Bool("complete")
 
 		return d.GET("/open-apis/task/v2/tasks").Params(params)
 	},
@@ -59,13 +57,7 @@ var GetMyTasks = common.Shortcut{
 		queryParams.Set("type", "my_tasks")
 		queryParams.Set("user_id_type", "open_id")
 		queryParams.Set("page_size", "50")
-		if runtime.Cmd.Flags().Changed("complete") {
-			if runtime.Bool("complete") {
-				queryParams.Set("completed", "true")
-			} else {
-				queryParams.Set("completed", "false")
-			}
-		}
+		queryParams.Set("completed", strconv.FormatBool(runtime.Bool("complete")))
 
 		// parse time flags to ms timestamp if provided
 		var createdAfterMs, dueStartMs, dueEndMs int64
