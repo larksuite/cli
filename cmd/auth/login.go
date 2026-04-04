@@ -303,16 +303,11 @@ func authLoginRun(opts *LoginOptions) error {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save token: %v", err)
 	}
 
-	// Step 8: Update config — overwrite Users to single user, clean old tokens
+	// Step 8: Update config — upsert user, keep existing users
 	multi, _ := core.LoadMultiAppConfig()
 	if multi != nil && len(multi.Apps) > 0 {
 		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != openId {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: openId, UserName: userName}}
+		app.Users = upsertUser(app.Users, core.AppUser{UserOpenId: openId, UserName: userName})
 		if err := core.SaveMultiAppConfig(multi); err != nil {
 			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 		}
@@ -383,16 +378,11 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		return output.Errorf(output.ExitInternal, "internal", "failed to save token: %v", err)
 	}
 
-	// Update config — overwrite Users to single user, clean old tokens
+	// Update config — upsert user, keep existing users
 	multi, _ := core.LoadMultiAppConfig()
 	if multi != nil && len(multi.Apps) > 0 {
 		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != openId {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: openId, UserName: userName}}
+		app.Users = upsertUser(app.Users, core.AppUser{UserOpenId: openId, UserName: userName})
 		if err := core.SaveMultiAppConfig(multi); err != nil {
 			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 		}
@@ -470,6 +460,19 @@ func shortcutSupportsIdentity(sc common.Shortcut, identity string) bool {
 		}
 	}
 	return false
+}
+
+// upsertUser inserts or updates a user in the users slice.
+// If a user with the same UserOpenId already exists, it is updated in place.
+// Otherwise the new user is appended.
+func upsertUser(users []core.AppUser, u core.AppUser) []core.AppUser {
+	for i, existing := range users {
+		if existing.UserOpenId == u.UserOpenId {
+			users[i] = u
+			return users
+		}
+	}
+	return append(users, u)
 }
 
 // suggestDomain finds the best "did you mean" match for an unknown domain.
