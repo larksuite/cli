@@ -41,7 +41,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
 - 更新语义是 `PUT`（全量字段配置更新），不要只传零散片段；至少显式包含 `name`、`type`，并补齐该类型所需关键配置。
 - 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
-- `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
+- `select` 更新时：`options` 仍按对象数组传，避免混入无效字段（全量覆盖，漏传即清空）。
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
