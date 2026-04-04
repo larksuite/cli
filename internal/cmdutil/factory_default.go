@@ -111,7 +111,17 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 		}))
 		ep := core.ResolveEndpoints(cfg.Brand)
 		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
-		client := lark.NewClient(cfg.AppID, cfg.AppSecret, opts...)
+		// When using LARK_ACCESS_TOKEN injection, AppID/AppSecret are empty.
+		// The SDK requires non-empty values but only uses them for bot (tenant) token
+		// acquisition, which is bypassed when a user token is injected directly.
+		appID, appSecret := cfg.AppID, cfg.AppSecret
+		if appID == "" {
+			appID = "env_token_mode"
+		}
+		if appSecret == "" {
+			appSecret = "env_token_mode"
+		}
+		client := lark.NewClient(appID, appSecret, opts...)
 		return client, nil
 	})
 }

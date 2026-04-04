@@ -65,7 +65,13 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 var refreshLocks sync.Map
 
 // GetValidAccessToken obtains a valid access token for the given user.
+// If LARK_ACCESS_TOKEN is set, it takes priority over stored tokens,
+// enabling external token injection (e.g. from a centralized OAuth manager).
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
+	if envToken := os.Getenv("LARK_ACCESS_TOKEN"); envToken != "" {
+		return envToken, nil
+	}
+
 	stored := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if stored == nil {
 		return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
