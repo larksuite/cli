@@ -526,7 +526,10 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		if len(fl.Input) == 0 {
 			continue
 		}
-		raw, _ := rctx.Cmd.Flags().GetString(fl.Name)
+		raw, err := rctx.Cmd.Flags().GetString(fl.Name)
+		if err != nil {
+			return FlagErrorf("--%s: Input is only supported for string flags", fl.Name)
+		}
 		if raw == "" {
 			continue
 		}

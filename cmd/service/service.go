@@ -256,6 +256,9 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 // checkServiceScopes pre-checks user scopes before making the API call.
 func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	result, err := cred.ResolveToken(ctx, credential.NewTokenSpec(identity, config.AppID))
 	if err != nil || result == nil || result.Scopes == "" {
 		return nil //nolint:nilerr // skip scope check when token resolution fails or has no scopes

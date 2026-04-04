@@ -20,8 +20,8 @@ type profileListItem struct {
 	AppID       string         `json:"appId"`
 	Brand       core.LarkBrand `json:"brand"`
 	Active      bool           `json:"active"`
-	User        string         `json:"user"`
-	TokenStatus string         `json:"tokenStatus"`
+	User        string         `json:"user,omitempty"`
+	TokenStatus string         `json:"tokenStatus,omitempty"`
 }
 
 // NewCmdProfileList creates the profile list subcommand.
