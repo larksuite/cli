@@ -29,9 +29,16 @@ func resetInit() {
 	testMetaURL = ""
 }
 
-// hasEmbeddedData returns true if meta_data.json is compiled in.
+// hasEmbeddedData returns true if meta_data.json with real services is compiled in.
 func hasEmbeddedData() bool {
-	return len(embeddedMetaJSON) > 0
+	if len(embeddedMetaJSON) == 0 {
+		return false
+	}
+	var reg MergedRegistry
+	if err := json.Unmarshal(embeddedMetaJSON, &reg); err != nil {
+		return false
+	}
+	return len(reg.Services) > 0
 }
 
 // testRegistry returns a minimal MergedRegistry with one service.

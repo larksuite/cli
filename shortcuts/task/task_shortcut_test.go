@@ -32,15 +32,6 @@ func taskTestConfig(t *testing.T) *core.CliConfig {
 func warmTenantToken(t *testing.T, f *cmdutil.Factory, reg *httpmock.Registry) {
 	t.Helper()
 	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token",
-			"expire":              7200,
-		},
-	})
-	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/test/v1/warm",
 		Body: map[string]interface{}{
