@@ -40,7 +40,7 @@ func profileListRun(f *cmdutil.Factory) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
 		fmt.Fprintln(f.IOStreams.ErrOut, "Not configured yet. Run `lark-cli config init` to initialize.")
-		return nil
+		return nil //nolint:nilerr // graceful fallback: show friendly message instead of raw error
 	}
 
 	// Intentionally uses "" to show the persistent active profile, not the ephemeral --profile override.

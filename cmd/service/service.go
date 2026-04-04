@@ -258,7 +258,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
 	result, err := cred.ResolveToken(ctx, credential.NewTokenSpec(identity, config.AppID))
 	if err != nil || result == nil || result.Scopes == "" {
-		return nil
+		return nil //nolint:nilerr // skip scope check when token resolution fails or has no scopes
 	}
 
 	requiredScopes, hasRequired := method["requiredScopes"].([]interface{})
