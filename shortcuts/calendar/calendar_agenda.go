@@ -178,6 +178,9 @@ var CalendarAgenda = common.Shortcut{
 		{Name: "end", Desc: "end time (ISO 8601, default: end of start day)"},
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return rejectCalendarAutoBotFallback(runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		startInt, endInt, err := parseTimeRange(runtime)
 		if err != nil {

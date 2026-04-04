@@ -447,6 +447,17 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("ImMessagesSearch invalid page limit", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query":      "incident",
+			"page-limit": "41",
+		}, nil)
+		err := ImMessagesSearch.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--page-limit must be an integer between 1 and 40") {
+			t.Fatalf("ImMessagesSearch.Validate() error = %v", err)
+		}
+	})
+
 	t.Run("ImMessagesSearch invalid sender id", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"sender": "user_1",
@@ -479,16 +490,59 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 }
 
+func TestMessagesSearchPaginationConfig(t *testing.T) {
+	t.Run("default single page", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, nil, nil)
+		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+		if autoPaginate {
+			t.Fatal("messagesSearchPaginationConfig() autoPaginate = true, want false")
+		}
+		if pageLimit != messagesSearchDefaultPageLimit {
+			t.Fatalf("messagesSearchPaginationConfig() pageLimit = %d, want %d", pageLimit, messagesSearchDefaultPageLimit)
+		}
+	})
+
+	t.Run("page all uses max limit", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, nil, map[string]bool{
+			"page-all": true,
+		})
+		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+		if !autoPaginate {
+			t.Fatal("messagesSearchPaginationConfig() autoPaginate = false, want true")
+		}
+		if pageLimit != messagesSearchMaxPageLimit {
+			t.Fatalf("messagesSearchPaginationConfig() pageLimit = %d, want %d", pageLimit, messagesSearchMaxPageLimit)
+		}
+	})
+
+	t.Run("explicit page limit enables auto pagination", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"page-limit": "3",
+		}, nil)
+		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+		if !autoPaginate {
+			t.Fatal("messagesSearchPaginationConfig() autoPaginate = false, want true")
+		}
+		if pageLimit != 3 {
+			t.Fatalf("messagesSearchPaginationConfig() pageLimit = %d, want 3", pageLimit)
+		}
+	})
+}
+
 func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatCreate dry run includes params and body", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
-			"type":  "public",
-			"name":  "Team Room",
-			"users": "ou_1,ou_2",
-			"owner": "ou_owner",
-		}, map[string]bool{
-			"set-bot-manager": true,
-		})
+		cmd := &cobra.Command{Use: "test"}
+		for _, name := range []string{"type", "name", "users", "owner"} {
+			cmd.Flags().String(name, "", "")
+		}
+		cmd.Flags().Bool("set-bot-manager", false, "")
+		_ = cmd.ParseFlags(nil)
+		_ = cmd.Flags().Set("type", "public")
+		_ = cmd.Flags().Set("name", "Team Room")
+		_ = cmd.Flags().Set("users", "ou_1,ou_2")
+		_ = cmd.Flags().Set("owner", "ou_owner")
+		_ = cmd.Flags().Set("set-bot-manager", "true")
+		runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, "bot")
 		got := mustMarshalDryRun(t, ImChatCreate.DryRun(context.Background(), runtime))
 		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) || !strings.Contains(got, `"set_bot_manager":true`) || !strings.Contains(got, `"chat_type":"public"`) {
 			t.Fatalf("ImChatCreate.DryRun() = %s", got)

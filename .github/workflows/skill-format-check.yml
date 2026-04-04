@@ -1,0 +1,32 @@
+name: Skill Format Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/skill-format-check/**"
+      - ".github/workflows/skill-format-check.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/skill-format-check/**"
+      - ".github/workflows/skill-format-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Skill Format Check
+        run: node scripts/skill-format-check/index.js

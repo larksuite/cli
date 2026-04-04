@@ -19,6 +19,20 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 | `radar` | 雷达图 |
 | `statistics` | 指标卡 |
 
+## 字段类型与操作符速查（AI 决策用）
+
+> `+field-list` 返回的 `type` 字段映射：number（数字）、text（文本）、select（单选）、multi_select（多选）、datetime（日期时间）、checkbox（复选框）、user（人员）
+
+```
+文本/电话/URL/邮箱:  is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
+数字/货币/进度:      is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
+单选:               is, isNot, isEmpty, isNotEmpty
+多选:               is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
+日期/时间:          is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
+复选框:             is (value: true/false)
+人员/创建人/修改人:  is, isNot, isEmpty, isNotEmpty
+```
+
 ## data_config 通用结构
 
 | 字段 | 类型 | 说明 |
@@ -26,10 +40,41 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 | `table_name` | string | 关联数据表名称 |
 | `series` | `[{ "field_name": "xxx", "rollup": "SUM" }]` | 指标/Y 轴（与 `count_all` 二选一）。rollup 支持 `SUM` / `MAX` / `MIN` / `AVERAGE` |
 | `count_all` | boolean | COUNTA 聚合，统计所有记录数（与 `series` 二选一） |
-| `group_by` | `[{ "field_name": "xxx", "mode": "integrated" }]` | X 轴分组维度 |
+| `group_by` | `[{ "field_name": "xxx", "mode": "integrated", "sort": {...} }]` | X 轴分组维度。`mode` 必填，`sort` 可选，见下方说明 |
 | `filter` | object | 筛选条件 |
 | `filter.conjunction` | `"and"` / `"or"` | 筛选逻辑 |
 | `filter.conditions` | `[{ "field_name", "operator", "value" }]` | 筛选条件数组，value 类型因字段类型而异（见下方 filter 格式规则） |
+
+## group_by 详细说明
+
+### mode 枚举
+
+| mode | 含义 | 适用场景 |
+|------|------|----------|
+| `integrated` | 聚合分组（默认） | 绝大部分场景，按字段值分组统计 |
+| `enumerated` | 多值拆分统计 | 多选、人员等多值字段，将每个选项/人员拆开独立统计 |
+
+> 多选、人员等多值字段默认用 `enumerated`；其他字段默认用 `integrated`。
+
+### sort 排序
+
+| sort.type | 含义 | 典型场景 |
+|-----------|------|----------|
+| `group` | 按横轴值排序 | 按月份升序、按品类名字母序 |
+| `value` | 按纵轴值排序 | 按销售额从大到小 |
+| `view` | 按数据源记录顺序 | 保持原表行序（不常用） |
+
+`sort.order`：`asc`（升序）/ `desc`（降序）
+
+示例 — 柱状图按销售额降序：
+
+```json
+{
+  "table_name": "订单表",
+  "series": [{ "field_name": "金额", "rollup": "SUM" }],
+  "group_by": [{ "field_name": "类别", "mode": "integrated", "sort": {"type": "value", "order": "desc"} }]
+}
+```
 
 ## filter 格式规则
 
@@ -41,6 +86,20 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
     "conjunction": "and",
     "conditions": [
       { "field_name": "字段名", "operator": "操作符", "value": "值" }
+    ]
+  }
+}
+```
+
+**多条件示例（and/or）：**
+
+```json
+{
+  "filter": {
+    "conjunction": "and",
+    "conditions": [
+      { "field_name": "状态", "operator": "is", "value": "已完成" },
+      { "field_name": "金额", "operator": "isGreater", "value": 1000 }
     ]
   }
 }
@@ -68,10 +127,10 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 | 文本 / 电话 / URL | string | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | `{"field_name":"姓名","operator":"contains","value":"张"}` |
 | 数字 | number | is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"金额","operator":"isGreater","value":0}` |
 | 单选 | string（选项名） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"状态","operator":"is","value":"已完成"}` |
-| 多选 | string 或 string[] | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | `{"field_name":"标签","operator":"contains","value":["紧急","重要"]}` |
-| 日期时间 / 创建时间 / 修改时间 | number（毫秒时间戳） | is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"创建日期","operator":"isGreater","value":1711209600000}` |
+| 多选 | string[]（选多个）/ string（选单个） | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | 多选传数组如 `["标签1","标签2"]`；单选传单个字符串 |
+| 日期时间 / 创建时间 / 修改时间 | number（Unix 毫秒时间戳，13位） | is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"创建日期","operator":"isGreater","value":1704038400000}` |
 | 复选框 | boolean | is | `{"field_name":"已审核","operator":"is","value":true}` |
-| 人员 / 创建人 / 修改人 | string 或 string[]（用户 ID） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"负责人","operator":"is","value":"user_id_xxx"}` |
+| 人员 / 创建人 / 修改人 | string 或 string[]（用户 ID，格式 `ou_xxx`） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"负责人","operator":"is","value":"ou_xxxxxxxxxxxxxxxx"}` |
 | 所有类型（为空/不为空） | 不需要 value | isEmpty, isNotEmpty | `{"field_name":"备注","operator":"isEmpty"}` |
 
 > `value` 类型为 `string | number | boolean | string[]`，需根据字段类型匹配正确格式
@@ -93,6 +152,16 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 
 ## 可复制模板
 
+**按意图选择模板：**
+- 比较不同类别数值 → 柱状图 / 条形图
+- 看趋势变化 → 折线图 / 面积图
+- 看占比分布 → 饼图 / 环形图 / 词云
+- 多指标对比 → 组合图
+- 看两变量关系 → 散点图
+- 看流程转化 → 漏斗图
+- 看多维度评分 → 雷达图
+- 显示单个指标 → 指标卡（统计数字或记录数）
+
 最小柱状图：
 
 ```json
@@ -103,7 +172,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 }
 ```
 
-最小饼/环图（按分类计数）：
+最小饼图/环形图（按分类字段统计行数占比）：
 
 ```json
 {
@@ -123,11 +192,106 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 }
 ```
 
+条形图（横向柱状图）：
+
+```json
+{
+  "table_name": "表名",
+  "series": [{ "field_name": "数值字段", "rollup": "SUM" }],
+  "group_by": [{ "field_name": "分组字段", "mode": "integrated" }]
+}
+```
+
+面积图（趋势填充）：
+
+```json
+{
+  "table_name": "表名",
+  "series": [{ "field_name": "数值字段", "rollup": "SUM" }],
+  "group_by": [{ "field_name": "时间字段", "mode": "integrated", "sort": {"type":"group","order":"asc"} }]
+}
+```
+
+组合图（柱+线等多指标对比）：
+
+```json
+{
+  "table_name": "表名",
+  "series": [
+    { "field_name": "指标1", "rollup": "SUM" },
+    { "field_name": "指标2", "rollup": "SUM" }
+  ],
+  "group_by": [{ "field_name": "分类字段", "mode": "integrated" }]
+}
+```
+
+散点图（两变量相关性）：
+
+```json
+{
+  "table_name": "表名",
+  "series": [{ "field_name": "Y轴字段（数值/指标）", "rollup": "SUM" }],
+  "group_by": [{ "field_name": "X轴字段（分类/维度）", "mode": "integrated" }]
+}
+```
+
+漏斗图（流程转化）：
+
+```json
+{
+  "table_name": "表名",
+  "series": [{ "field_name": "数值字段", "rollup": "SUM" }],
+  "group_by": [{ "field_name": "阶段字段", "mode": "integrated" }]
+}
+```
+
+词云（文本频率）：
+
+```json
+{
+  "table_name": "表名",
+  "count_all": true,
+  "group_by": [{ "field_name": "文本字段", "mode": "integrated" }]
+}
+```
+
+雷达图（多维度评分）：
+
+```json
+{
+  "table_name": "表名",
+  "series": [
+    { "field_name": "维度1", "rollup": "SUM" },
+    { "field_name": "维度2", "rollup": "SUM" },
+    { "field_name": "维度3", "rollup": "SUM" }
+  ],
+  "group_by": [{ "field_name": "分类字段", "mode": "integrated" }]
+}
+```
+
+指标卡（统计数字）：
+
+```json
+{
+  "table_name": "数据表",
+  "series": [{ "field_name": "数字", "rollup": "SUM" }]
+}
+```
+
+指标卡（统计记录数）：
+
+```json
+{
+  "table_name": "数据表",
+  "count_all": true
+}
+```
+
 ## 常见错误与修复
 
 - 同时存在 `series` 与 `count_all`
   - 现象：后端/本地校验报互斥错误
-  - 修复：仅保留其一；统计字段用 `series`，统计条数用 `count_all:true`
+  - 修复：见「关键约束」章节的二选一规则
 - 缺少 `table_name`
   - 现象：本地校验缺少必填字段
   - 修复：指定数据源表名（使用表名，非表 ID）
@@ -141,30 +305,9 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 - filter 写法不规范
   - 修复：`conjunction` 取 `and|or`；`conditions[].operator` 必须在本页表格列举的范围内；除 `isEmpty/isNotEmpty` 外需提供 `value`
 
-## 指标卡（statistics）data_config 示例
-
-统计数字字段求和：
-
-```json
-{
-  "table_name": "数据表",
-  "series": [{ "field_name": "数字", "rollup": "SUM" }]
-}
-```
-
-统计记录行数：
-
-```json
-{
-  "table_name": "数据表",
-  "count_all": true
-}
-```
-
-> `series` 与 `count_all` 二选一，不能同时使用。
-
 ## 坑点
 
 - **`count_all` 与 `series` 二选一** — 两者不能同时使用
 - **filter `value` 类型因字段而异** — 文本/单选为 string，数字为 number，日期为毫秒时间戳，多选/人员可为 string[]，复选框为 boolean；`isEmpty`/`isNotEmpty` 不需要 value
 - **`data_config` 结构随 `type` 变化** — 不同组件类型的字段不同，创建前务必确认类型对应的字段
+- **表名用 name，不是 ID** — `table_name` 对应的是表名称（如「订单表」），不是 `table_id`

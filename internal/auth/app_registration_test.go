@@ -9,6 +9,7 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 )
 
+// Test_BuildVerificationURL verifies that tracking parameters are correctly appended.
 func Test_BuildVerificationURL(t *testing.T) {
 	t.Run("URL不含问号则添加?分隔符", func(t *testing.T) {
 		result := BuildVerificationURL("https://example.com/verify", "1.0.0")

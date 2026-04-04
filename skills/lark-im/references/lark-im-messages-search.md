@@ -6,7 +6,7 @@ Search Feishu messages across conversations. This shortcut automatically perform
 
 > **User identity only** (`--as user`). Bot identity is not supported.
 
-This skill maps to the shortcut: `lark-cli im +messages-search` (internally calls `POST /open-apis/im/v1/messages/search` + `GET /open-apis/im/v1/messages/mget`, then batch-fetches chat context).
+This skill maps to the shortcut: `lark-cli im +messages-search` (internally calls `POST /open-apis/im/v1/messages/search` + batched `GET /open-apis/im/v1/messages/mget`, then batch-fetches chat context).
 
 ## Commands
 
@@ -49,6 +49,12 @@ lark-cli im +messages-search --query "test" --format csv
 # Pagination
 lark-cli im +messages-search --query "test" --page-token <PAGE_TOKEN>
 
+# Auto-pagination across multiple pages
+lark-cli im +messages-search --query "test" --page-all --format json
+
+# Auto-pagination with an explicit page cap
+lark-cli im +messages-search --query "test" --page-limit 5 --format json
+
 # Preview the request without executing it
 lark-cli im +messages-search --query "test" --dry-run
 ```
@@ -69,6 +75,8 @@ lark-cli im +messages-search --query "test" --dry-run
 | `--end <time>` | No | End time with local timezone offset required (e.g. `2026-03-25T23:59:59+08:00`) |
 | `--page-size <n>` | No | Page size (default 20, range 1-50) |
 | `--page-token <token>` | No | Pagination token for the next page |
+| `--page-all` | No | Automatically paginate through all result pages (up to 40 pages) |
+| `--page-limit <n>` | No | Max pages to fetch when auto-pagination is enabled (default 20, max 40). Setting it explicitly also enables auto-pagination |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
 | `--as <identity>` | No | Identity type (defaults to and only supports `user`) |
 | `--dry-run` | No | Print the request only, do not execute it |
@@ -85,8 +93,9 @@ The shortcut automatically performs:
 
 1. The **search API** returns matching `message_id` values
 2. The **mget API** fetches full message content for those message IDs in batch
+3. Chat context lookup is fetched in batch and attached to each message
 
-The user does not need to manage the orchestration manually.
+The user does not need to manage the orchestration manually. When search results span multiple pages, the shortcut can also paginate automatically with `--page-all` or `--page-limit`.
 
 ### 3. Conversation context is enriched automatically
 
@@ -115,7 +124,15 @@ Each message in JSON output contains:
 | `mentions` | Array of @mentions in the message; each item contains `{id, key, name}`. Present only when the message contains @mentions |
 | `thread_id` | Thread ID (`omt_xxx`) if the message has replies in a thread. Present only when replies exist |
 
-### 4. Search results contain follow-up clues
+### 4. Pagination behavior
+
+- Default behavior is still **single-page**.
+- `--page-token` is the manual continuation mechanism when you already have a token from a previous response.
+- `--page-all` enables auto-pagination and uses a default cap of **40 pages**.
+- `--page-limit <n>` enables auto-pagination with an explicit cap. If you pass `--page-limit` without `--page-all`, auto-pagination is still enabled.
+- When auto-pagination stops because of the configured page cap, the response still includes the last `has_more` / `page_token` so you can continue manually.
+
+### 5. Search results contain follow-up clues
 
 In JSON output, each message includes `chat_id` and `thread_id` (when present). Use them with other shortcuts for deeper inspection:
 
@@ -156,25 +173,28 @@ When the user asks you to summarize work, generate a weekly report, or compile a
 ### Strategy
 
 1. **Start with targeted filters** — use `--chat-id`, `--sender`, `--start`, `--end` to narrow the scope as much as possible before paginating.
-2. **Fetch all pages** — after the first call, check the output for `has_more` and `page_token`. If `has_more` is true, immediately issue the next call with `--page-token <token>`. Repeat until `has_more` is false or the results are clearly sufficient.
+2. **Prefer auto-pagination** — for report and summary tasks, use `--page-all --format json` by default. If you need a bounded run, use `--page-limit <n> --format json`.
 3. **Accumulate before summarizing** — collect all pages of messages first, then analyze and summarize. Do not summarize after the first page alone — you will miss important context.
-4. **Use `--format json`** — JSON output includes `has_more` and `page_token` fields needed for pagination. `pretty` and `table` formats omit these fields and are not suitable for pagination. Note: `pretty` is human-readable (per-message rows); `table` is a flat key-value dump of the response envelope and is not human-readable for message lists.
+4. **Fall back to `--page-token` when resuming** — if auto-pagination hits the configured page cap and the response still has `has_more=true`, continue from the returned `page_token`.
+5. **Use `--format json`** — JSON output includes `has_more` and `page_token` fields needed for pagination. `pretty` and `table` formats are useful for reading but not for resuming pagination reliably.
 
 ### Example: Weekly work summary from a project chat
 
 ```bash
-# Page 1
-lark-cli im +messages-search --query "" --chat-id oc_xxx --sender ou_me --start "2026-03-18T00:00:00+08:00" --end "2026-03-25T23:59:59+08:00" --page-size 50 --format json
+# Preferred: fetch automatically
+lark-cli im +messages-search --query "" --chat-id oc_xxx --sender ou_me --start "2026-03-18T00:00:00+08:00" --end "2026-03-25T23:59:59+08:00" --page-size 50 --page-all --format json
 
-# Page 2 (if has_more is true)
-lark-cli im +messages-search --query "" --chat-id oc_xxx --sender ou_me --start "2026-03-18T00:00:00+08:00" --end "2026-03-25T23:59:59+08:00" --page-size 50 --page-token <token_from_page_1> --format json
+# If you need to cap the run explicitly
+lark-cli im +messages-search --query "" --chat-id oc_xxx --sender ou_me --start "2026-03-18T00:00:00+08:00" --end "2026-03-25T23:59:59+08:00" --page-size 50 --page-limit 5 --format json
 
-# Continue until has_more is false, then summarize all collected messages.
+# If the bounded run still returns has_more=true, continue manually
+lark-cli im +messages-search --query "" --chat-id oc_xxx --sender ou_me --start "2026-03-18T00:00:00+08:00" --end "2026-03-25T23:59:59+08:00" --page-size 50 --page-token <token_from_previous_run> --format json
 ```
 
 ### Key points
 
 - **Always paginate exhaustively** for summary tasks. A single page of 20-50 messages is usually insufficient for a meaningful work summary.
+- Prefer `--page-all`; use `--page-limit` only when you need to bound runtime or output volume.
 - If the user does not specify a time range, default to the current week (Monday to today) for weekly reports, or ask for clarification.
 - When summarizing, group messages by topic/thread rather than by chronological order for better readability.
 

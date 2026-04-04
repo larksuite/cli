@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/util"
 )
 
 // NewDefault creates a production Factory with cached closures.
@@ -73,7 +74,9 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 
 func cachedHttpClientFunc() func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		var transport = http.DefaultTransport
+		util.WarnIfProxied(os.Stderr)
+
+		var transport http.RoundTripper = util.NewBaseTransport()
 		transport = &RetryTransport{Base: transport}
 		transport = &SecurityHeaderTransport{Base: transport}
 
@@ -98,7 +101,8 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
 		// Build SDK transport chain
-		var sdkTransport = http.DefaultTransport
+		util.WarnIfProxied(os.Stderr)
+		var sdkTransport http.RoundTripper = util.NewBaseTransport()
 		sdkTransport = &UserAgentTransport{Base: sdkTransport}
 		sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
 		opts = append(opts, lark.WithHttpClient(&http.Client{

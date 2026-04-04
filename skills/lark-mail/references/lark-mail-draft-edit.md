@@ -69,7 +69,7 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--set-to <emails>` | 否 | 用此处提供的地址替换整个 To 收件人列表 |
 | `--set-cc <emails>` | 否 | 用此处提供的地址替换整个 Cc 抄送列表 |
 | `--set-bcc <emails>` | 否 | 用此处提供的地址替换整个 Bcc 密送列表 |
-| `--patch-file <path>` | 否 | 所有正文编辑、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。先运行 `--print-patch-template` 查看 JSON 结构 |
+| `--patch-file <path>` | 否 | 所有正文编辑、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `--print-patch-template` 查看 JSON 结构 |
 | `--print-patch-template` | 否 | 打印 `--patch-file` 的 JSON 模板和支持的操作。建议在生成补丁文件前先运行此命令。不会读取或写入草稿 |
 | `--inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（含每个附件的 `part_id`、`cid`、`filename`）和 `inline_summary` 的草稿投影 |
 | `--format <mode>` | 否 | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
@@ -222,6 +222,7 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 
 - `ops` 按顺序执行
 - `target` 接受 `part_id` 或 `cid`；优先级：`part_id` > `cid`
+- **所有文件路径（`--patch-file` 及 ops 中的 `path`）必须为相对路径**
 - **正文编辑没有 flag，必须通过 `--patch-file`**
 - **`set_body` 是完整替换** — 它替换整个正文内容（包括引用区）
 - **`set_reply_body` 仅替换引用区前面的用户撰写部分** — 引用区自动重新拼接；value 只传用户撰写内容，不要包含引用区；如果用户要修改引用区内容，用 `set_body` 全量覆盖
@@ -250,10 +251,10 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 
 # 2. 编辑草稿（元数据用 flag，正文用 patch-file）
-cat > /tmp/patch.json << 'EOF'
+cat > ./patch.json << 'EOF'
 { "ops": [{ "op": "set_body", "value": "<p>更新后的内容</p>" }] }
 EOF
-lark-cli mail +draft-edit --draft-id <draft_id> --set-subject '最终版本' --patch-file /tmp/patch.json
+lark-cli mail +draft-edit --draft-id <draft_id> --set-subject '最终版本' --patch-file ./patch.json
 
 # 3. 发送草稿
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
@@ -271,10 +272,10 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 #   body_html_summary: "<div>原有回复内容</div>..."
 
 # 2. 使用 set_reply_body 编辑正文（value 只传用户撰写内容，不含引用区）
-cat > /tmp/patch.json << 'EOF'
+cat > ./patch.json << 'EOF'
 { "ops": [{ "op": "set_reply_body", "value": "<p>修改后的回复内容</p>" }] }
 EOF
-lark-cli mail +draft-edit --draft-id <draft_id> --patch-file /tmp/patch.json
+lark-cli mail +draft-edit --draft-id <draft_id> --patch-file ./patch.json
 ```
 
 **注意：** 如果误用 `set_body`，引用区将被覆盖丢失。如果用户明确要去掉引用区或修改引用区内容，则应使用 `set_body`。
@@ -288,7 +289,7 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 #   [{"part_id":"1.3","filename":"report.pdf","content_type":"application/pdf"}]
 
 # 2. 编写补丁文件，使用步骤 1 中获取的 part_id
-cat > /tmp/patch.json << 'EOF'
+cat > ./patch.json << 'EOF'
 {
   "ops": [
     { "op": "remove_attachment", "target": { "part_id": "1.3" } }
@@ -298,7 +299,7 @@ cat > /tmp/patch.json << 'EOF'
 EOF
 
 # 3. 应用补丁
-lark-cli mail +draft-edit --draft-id <draft_id> --patch-file /tmp/patch.json
+lark-cli mail +draft-edit --draft-id <draft_id> --patch-file ./patch.json
 ```
 
 ### 在正文中插入内嵌图片
@@ -313,7 +314,7 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 #   projection.inline_summary: [{"part_id":"1.1.2","cid":"existing.png", ...}]
 
 # 2. 编写补丁（注意：回复草稿用 set_reply_body，普通草稿用 set_body）
-cat > /tmp/patch.json << 'EOF'
+cat > ./patch.json << 'EOF'
 {
   "ops": [
     { "op": "set_body", "value": "<div>原有内容<img src=\"cid:existing.png\" /><img src=\"cid:new-image\" /></div>" },
@@ -324,7 +325,7 @@ cat > /tmp/patch.json << 'EOF'
 EOF
 
 # 3. 应用补丁
-lark-cli mail +draft-edit --draft-id <draft_id> --patch-file /tmp/patch.json
+lark-cli mail +draft-edit --draft-id <draft_id> --patch-file ./patch.json
 ```
 
 ### 使用 patch-file 进行高级编辑
@@ -334,7 +335,7 @@ lark-cli mail +draft-edit --draft-id <draft_id> --patch-file /tmp/patch.json
 lark-cli mail +draft-edit --print-patch-template
 
 # 2. 编写补丁文件（例如添加一个抄送并移除一个附件）
-cat > /tmp/patch.json << 'EOF'
+cat > ./patch.json << 'EOF'
 {
   "ops": [
     { "op": "add_recipient", "field": "cc", "address": "carol@example.com", "name": "Carol" },
@@ -345,7 +346,7 @@ cat > /tmp/patch.json << 'EOF'
 EOF
 
 # 3. 应用补丁
-lark-cli mail +draft-edit --draft-id <draft_id> --patch-file /tmp/patch.json
+lark-cli mail +draft-edit --draft-id <draft_id> --patch-file ./patch.json
 ```
 
 ## 相关命令

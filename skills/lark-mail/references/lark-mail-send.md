@@ -67,8 +67,8 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
-| `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔 |
-| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid` 和 `file_path`。CID 为唯一标识符，可使用随机十六进制字符串（如 `a1b2c3d4e5f6a7b8c9d0`）。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用 |
+| `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径 |
+| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid` 和 `file_path`（相对路径）。CID 为唯一标识符，可使用随机十六进制字符串（如 `a1b2c3d4e5f6a7b8c9d0`）。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用 |
 | `--confirm-send` | 否 | 确认发送邮件（默认只保存草稿）。仅在用户明确确认收件人和内容后使用 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 
@@ -131,8 +131,8 @@ lark-cli mail user_mailbox.messages send_status --params '{"user_mailbox_id":"me
 ## 实现说明
 
 - 使用 EML 构建器生成完整 MIME 邮件并 base64url 编码后发送。
-- `--attach` 作为普通附件添加。
-- `--inline` 接受 JSON 数组，每项需提供 `cid`（唯一标识符，可用随机十六进制字符串）和 `file_path`，作为 inline part 嵌入邮件。
+- `--attach` 作为普通附件添加。相对路径。
+- `--inline` 接受 JSON 数组，每项需提供 `cid`（唯一标识符，可用随机十六进制字符串）和 `file_path`（相对路径），作为 inline part 嵌入邮件。
 
 ## 相关命令
 

@@ -5,11 +5,13 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -113,6 +115,12 @@ func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
 	app := raw.Apps[0]
 	secret, err := ResolveSecretInput(app.AppSecret, kc)
 	if err != nil {
+		// If the error comes from the keychain, it will already be wrapped as an ExitError.
+		// For other errors (e.g. file read errors, unknown sources), wrap them as ConfigError.
+		var exitErr *output.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, exitErr
+		}
 		return nil, &ConfigError{Code: 2, Type: "config", Message: err.Error()}
 	}
 	cfg := &CliConfig{

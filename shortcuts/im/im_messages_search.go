@@ -9,11 +9,21 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+)
+
+const (
+	messagesSearchDefaultPageSize  = 20
+	messagesSearchMaxPageSize      = 50
+	messagesSearchDefaultPageLimit = 20
+	messagesSearchMaxPageLimit     = 40
+	messagesSearchMGetBatchSize    = 50
+	messagesSearchChatBatchSize    = 50
 )
 
 var ImMessagesSearch = common.Shortcut{
@@ -37,6 +47,8 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "end", Desc: "end time(ISO 8601) with local timezone offset (e.g. 2026-03-25T23:59:59+08:00)"},
 		{Name: "page-size", Default: "20", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "page token"},
+		{Name: "page-all", Type: "bool", Desc: "automatically paginate search results"},
+		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		req, err := buildMessagesSearchRequest(runtime)
@@ -49,8 +61,14 @@ var ImMessagesSearch = common.Shortcut{
 				dryParams[k] = vs[0]
 			}
 		}
-		return common.NewDryRunAPI().
-			Desc("Step 1: search messages").
+		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+		d := common.NewDryRunAPI()
+		if autoPaginate {
+			d = d.Desc(fmt.Sprintf("Step 1: search messages (auto-paginates up to %d page(s))", pageLimit))
+		} else {
+			d = d.Desc("Step 1: search messages")
+		}
+		return d.
 			POST("/open-apis/im/v1/messages/search").
 			Params(dryParams).
 			Body(req.body).
@@ -67,12 +85,10 @@ var ImMessagesSearch = common.Shortcut{
 			return err
 		}
 
-		searchData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/messages/search", req.params, req.body)
+		rawItems, hasMore, nextPageToken, truncatedByLimit, pageLimit, err := searchMessages(runtime, req)
 		if err != nil {
 			return err
 		}
-		rawItems, _ := searchData["items"].([]interface{})
-		hasMore, nextPageToken := common.PaginationMeta(searchData)
 
 		if len(rawItems) == 0 {
 			outData := map[string]interface{}{
@@ -99,8 +115,7 @@ var ImMessagesSearch = common.Shortcut{
 		}
 
 		// ── Step 2: Batch fetch message details (mget) ──
-		mgetURL := buildMGetURL(messageIds)
-		mgetData, err := runtime.DoAPIJSON(http.MethodGet, mgetURL, nil, nil)
+		msgItems, err := batchMGetMessages(runtime, messageIds)
 		if err != nil {
 			// Fallback when mget fails: return ID list only
 			outData := map[string]interface{}{
@@ -118,37 +133,22 @@ var ImMessagesSearch = common.Shortcut{
 			})
 			return nil
 		}
-		msgItems, _ := mgetData["items"].([]interface{})
 
 		// ── Step 3: Batch fetch chat info ──
-		chatIdSet := map[string]bool{}
+		chatIds := make([]string, 0, len(msgItems))
+		chatSeen := make(map[string]bool)
 		for _, item := range msgItems {
 			m, _ := item.(map[string]interface{})
 			if chatId, _ := m["chat_id"].(string); chatId != "" {
-				chatIdSet[chatId] = true
+				if !chatSeen[chatId] {
+					chatSeen[chatId] = true
+					chatIds = append(chatIds, chatId)
+				}
 			}
 		}
 		chatContexts := map[string]map[string]interface{}{}
-		if len(chatIdSet) > 0 {
-			chatIds := make([]string, 0, len(chatIdSet))
-			for id := range chatIdSet {
-				chatIds = append(chatIds, id)
-			}
-			chatRes, chatErr := runtime.DoAPIJSON(
-				http.MethodPost, "/open-apis/im/v1/chats/batch_query",
-				larkcore.QueryParams{"user_id_type": []string{"open_id"}},
-				map[string]interface{}{"chat_ids": chatIds},
-			)
-			if chatErr == nil {
-				if chatItems, ok := chatRes["items"].([]interface{}); ok {
-					for _, ci := range chatItems {
-						cm, _ := ci.(map[string]interface{})
-						if cid, _ := cm["chat_id"].(string); cid != "" {
-							chatContexts[cid] = cm
-						}
-					}
-				}
-			}
+		if len(chatIds) > 0 {
+			chatContexts = batchQueryChatContexts(runtime, chatIds)
 		}
 
 		// ── Step 4: Format message content + attach chat context ──
@@ -225,6 +225,9 @@ var ImMessagesSearch = common.Shortcut{
 				moreHint = " (more available, use --page-token to fetch next page)"
 			}
 			fmt.Fprintf(w, "\n%d search result(s)%s\n", len(enriched), moreHint)
+			if truncatedByLimit {
+				fmt.Fprintf(w, "warning: stopped after fetching %d page(s); use --page-limit, --page-all, or --page-token to continue\n", pageLimit)
+			}
 		})
 		return nil
 	},
@@ -247,6 +250,14 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	endFlag := runtime.Str("end")
 	pageSizeStr := runtime.Str("page-size")
 	pageToken := runtime.Str("page-token")
+	pageLimitStr := strings.TrimSpace(runtime.Str("page-limit"))
+
+	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
+		pageLimit, err := strconv.Atoi(pageLimitStr)
+		if err != nil || pageLimit < 1 || pageLimit > messagesSearchMaxPageLimit {
+			return nil, output.ErrValidation("--page-limit must be an integer between 1 and 40")
+		}
+	}
 
 	filter := map[string]interface{}{}
 	timeRange := map[string]interface{}{}
@@ -322,14 +333,14 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 		body["filter"] = filter
 	}
 
-	pageSize := 20
+	pageSize := messagesSearchDefaultPageSize
 	if pageSizeStr != "" {
 		n, err := strconv.Atoi(pageSizeStr)
 		if err != nil || n < 1 {
 			return nil, output.ErrValidation("--page-size must be an integer between 1 and 50")
 		}
-		if n > 50 {
-			n = 50
+		if n > messagesSearchMaxPageSize {
+			n = messagesSearchMaxPageSize
 		}
 		pageSize = n
 	}
@@ -345,4 +356,125 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 		params: params,
 		body:   body,
 	}, nil
+}
+
+func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginate bool, pageLimit int) {
+	autoPaginate = runtime.Bool("page-all")
+	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
+		autoPaginate = true
+	}
+
+	pageLimit = messagesSearchDefaultPageLimit
+	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
+		if n, err := strconv.Atoi(strings.TrimSpace(runtime.Str("page-limit"))); err == nil && n > 0 {
+			pageLimit = min(n, messagesSearchMaxPageLimit)
+		}
+	} else if runtime.Bool("page-all") {
+		pageLimit = messagesSearchMaxPageLimit
+	}
+	return autoPaginate, pageLimit
+}
+
+func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, error) {
+	autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
+	pageToken := ""
+	if tokens := req.params["page_token"]; len(tokens) > 0 {
+		pageToken = tokens[0]
+	}
+
+	pageSize := strconv.Itoa(messagesSearchDefaultPageSize)
+	if sizes := req.params["page_size"]; len(sizes) > 0 {
+		pageSize = sizes[0]
+	}
+
+	var (
+		allItems         []interface{}
+		lastHasMore      bool
+		lastPageToken    string
+		truncatedByLimit bool
+		pageCount        int
+	)
+
+	for {
+		pageCount++
+		params := larkcore.QueryParams{
+			"page_size": []string{pageSize},
+		}
+		if pageToken != "" {
+			params["page_token"] = []string{pageToken}
+		}
+
+		searchData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
+		if err != nil {
+			return nil, false, "", false, pageLimit, err
+		}
+
+		items, _ := searchData["items"].([]interface{})
+		allItems = append(allItems, items...)
+		lastHasMore, lastPageToken = common.PaginationMeta(searchData)
+
+		if !autoPaginate || !lastHasMore || lastPageToken == "" {
+			break
+		}
+		if pageCount >= pageLimit {
+			truncatedByLimit = true
+			break
+		}
+
+		pageToken = lastPageToken
+	}
+
+	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, nil
+}
+
+func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]interface{}, error) {
+	var items []interface{}
+	for _, batch := range chunkStrings(messageIds, messagesSearchMGetBatchSize) {
+		mgetData, err := runtime.DoAPIJSON(http.MethodGet, buildMGetURL(batch), nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		batchItems, _ := mgetData["items"].([]interface{})
+		items = append(items, batchItems...)
+	}
+	return items, nil
+}
+
+func batchQueryChatContexts(runtime *common.RuntimeContext, chatIds []string) map[string]map[string]interface{} {
+	chatContexts := map[string]map[string]interface{}{}
+	for _, batch := range chunkStrings(chatIds, messagesSearchChatBatchSize) {
+		chatRes, chatErr := runtime.DoAPIJSON(
+			http.MethodPost, "/open-apis/im/v1/chats/batch_query",
+			larkcore.QueryParams{"user_id_type": []string{"open_id"}},
+			map[string]interface{}{"chat_ids": batch},
+		)
+		if chatErr != nil {
+			continue
+		}
+		if chatItems, ok := chatRes["items"].([]interface{}); ok {
+			for _, ci := range chatItems {
+				cm, _ := ci.(map[string]interface{})
+				if cid, _ := cm["chat_id"].(string); cid != "" {
+					chatContexts[cid] = cm
+				}
+			}
+		}
+	}
+	return chatContexts
+}
+
+func chunkStrings(items []string, chunkSize int) [][]string {
+	if len(items) == 0 || chunkSize <= 0 {
+		return nil
+	}
+
+	chunks := make([][]string, 0, (len(items)+chunkSize-1)/chunkSize)
+	for start := 0; start < len(items); start += chunkSize {
+		end := start + chunkSize
+		if end > len(items) {
+			end = len(items)
+		}
+		chunks = append(chunks, items[start:end])
+	}
+	return chunks
 }

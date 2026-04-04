@@ -67,8 +67,8 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
 | `--remove <emails>` | 否 | 从自动聚合结果中排除的邮箱，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用 |
-| `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔 |
-| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid`（唯一标识符，可用随机十六进制字符串，如 `a1b2c3d4e5f6a7b8c9d0`）和 `file_path`。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用，在 body 中用 `<img src="cid:...">` 引用 |
+| `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径 |
+| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid`（唯一标识符，可用随机十六进制字符串，如 `a1b2c3d4e5f6a7b8c9d0`）和 `file_path`（相对路径）。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用，在 body 中用 `<img src="cid:...">` 引用 |
 | `--confirm-send` | 否 | 确认发送回复（默认只保存草稿）。仅在用户明确确认后使用 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 

@@ -48,8 +48,8 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 | `--cc <emails>` | 否 | 完整抄送列表，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 完整密送列表，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
-| `--attach <paths>` | 否 | 普通附件文件路径，多个用逗号分隔 |
-| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid`（唯一标识符，可用随机十六进制字符串，如 `a1b2c3d4e5f6a7b8c9d0`）和 `file_path`。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用，在 body 中用 `<img src="cid:a1b2c3d4e5f6a7b8c9d0">` 引用 |
+| `--attach <paths>` | 否 | 普通附件文件路径，多个用逗号分隔。相对路径 |
+| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid`（唯一标识符，可用随机十六进制字符串，如 `a1b2c3d4e5f6a7b8c9d0`）和 `file_path`（相对路径）。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用，在 body 中用 `<img src="cid:a1b2c3d4e5f6a7b8c9d0">` 引用 |
 | `--format <mode>` | 否 | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 

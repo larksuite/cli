@@ -4,11 +4,13 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/larksuite/cli/cmd/api"
@@ -24,6 +26,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
@@ -58,6 +61,8 @@ FLAGS:
     --page-limit <N>      max pages to fetch with --page-all (default: 10, 0 for unlimited)
     --page-delay <MS>     delay in ms between pages (default: 200, only with --page-all)
     -o, --output <path>   output file path for binary responses
+    --jq <expr>           jq expression to filter JSON output
+    -q <expr>             shorthand for --jq
     --dry-run             print request without executing
 
 AI AGENT SKILLS:
@@ -65,7 +70,7 @@ AI AGENT SKILLS:
     teach the agent Lark API patterns, best practices, and workflows.
 
     Install all skills:
-        npx skills add larksuite/cli --all -y
+        npx skills add larksuite/cli -g -y
 
     Or pick specific domains:
         npx skills add larksuite/cli -s lark-calendar -y
@@ -105,10 +110,66 @@ func Execute() int {
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
 
+	// --- Update check (non-blocking) ---
+	if !isCompletionCommand(os.Args) {
+		setupUpdateNotice()
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		return handleRootError(f, err)
 	}
 	return 0
+}
+
+// setupUpdateNotice starts an async update check and wires the output decorator.
+func setupUpdateNotice() {
+	// Sync: check cache immediately (no network, fast).
+	if info := update.CheckCached(build.Version); info != nil {
+		update.SetPending(info)
+	}
+
+	// Async: refresh cache for this run (and future runs).
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "update check panic: %v\n", r)
+			}
+		}()
+		update.RefreshCache(build.Version)
+		// If cache was just populated for the first time, set pending now.
+		if update.GetPending() == nil {
+			if info := update.CheckCached(build.Version); info != nil {
+				update.SetPending(info)
+			}
+		}
+	}()
+
+	// Wire the output decorator so JSON envelopes include "_notice".
+	output.PendingNotice = func() map[string]interface{} {
+		info := update.GetPending()
+		if info == nil {
+			return nil
+		}
+		return map[string]interface{}{
+			"update": map[string]interface{}{
+				"current": info.Current,
+				"latest":  info.Latest,
+				"message": info.Message(),
+			},
+		}
+	}
+}
+
+// isCompletionCommand returns true if args indicate a shell completion request.
+// Update notifications must be suppressed for these to avoid corrupting
+// machine-parseable completion output.
+func isCompletionCommand(args []string) bool {
+	for _, arg := range args {
+		if arg == "completion" || arg == "__complete" {
+			return true
+		}
+	}
+	return false
 }
 
 // handleRootError dispatches a command error to the appropriate handler
@@ -126,12 +187,11 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 
 	// All other structured errors normalize to ExitError.
 	if exitErr := asExitError(err); exitErr != nil {
-		if exitErr.Raw {
-			// Raw errors (e.g. from `api` command) already printed the full API
-			// response to stdout; skip enrichment and duplicate stderr envelope.
-			return exitErr.Code
+		if !exitErr.Raw {
+			// Raw errors (e.g. from `api` command) preserve the original API
+			// error detail; skip enrichment which would clear it.
+			enrichPermissionError(f, exitErr)
 		}
-		enrichPermissionError(f, exitErr)
 		output.WriteErrorEnvelope(errOut, exitErr, string(f.ResolvedIdentity))
 		return exitErr.Code
 	}
@@ -184,12 +244,18 @@ func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyErr
 	}
 
 	env := map[string]interface{}{"ok": false, "error": errData}
-	b, err := json.MarshalIndent(env, "", "  ")
+
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	err := encoder.Encode(env)
+
 	if err != nil {
 		fmt.Fprintln(w, `{"ok":false,"error":{"type":"internal_error","code":"marshal_error","message":"failed to marshal error"}}`)
 		return
 	}
-	fmt.Fprintln(w, string(b))
+	fmt.Fprint(w, buffer.String())
 }
 
 // installTipsHelpFunc wraps the default help function to append a TIPS section

@@ -90,6 +90,7 @@ func completeDomain(toComplete string) []string {
 	return completions
 }
 
+// authLoginRun executes the login command logic.
 func authLoginRun(opts *LoginOptions) error {
 	f := opts.Factory
 
@@ -225,26 +226,34 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// --no-wait: return immediately with device code and URL
 	if opts.NoWait {
-		b, _ := json.Marshal(map[string]interface{}{
+		data := map[string]interface{}{
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
 			"expires_in":       authResp.ExpiresIn,
 			"hint":             fmt.Sprintf("Show verification_url to user, then immediately execute: lark-cli auth login --device-code %s (blocks until authorized or timeout). Do not instruct the user to run this command themselves.", authResp.DeviceCode),
-		})
-		fmt.Fprintln(f.IOStreams.Out, string(b))
+		}
+		encoder := json.NewEncoder(f.IOStreams.Out)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(data); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+		}
 		return nil
 	}
 
 	// Step 2: Show user code and verification URL
 	if opts.JSON {
-		b, _ := json.Marshal(map[string]interface{}{
+		data := map[string]interface{}{
 			"event":                     "device_authorization",
 			"verification_uri":          authResp.VerificationUri,
 			"verification_uri_complete": authResp.VerificationUriComplete,
 			"user_code":                 authResp.UserCode,
 			"expires_in":                authResp.ExpiresIn,
-		})
-		fmt.Fprintln(f.IOStreams.Out, string(b))
+		}
+		encoder := json.NewEncoder(f.IOStreams.Out)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(data); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+		}
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)

@@ -3,7 +3,7 @@
 > **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 > **Priority:** For creating or modifying task reminder times, prioritize using this `+reminder` shortcut over other task update methods. It provides a more reliable and direct way to manage reminders.
 
-Manage task reminders. Set new reminders or remove existing ones.
+Manage task reminders. Set new reminders or remove existing ones. Note that setting a task reminder requires a due date.
 
 ## Recommended Commands
 

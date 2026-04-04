@@ -18,7 +18,7 @@ var MailReplyAll = common.Shortcut{
 	Command:     "+reply-all",
 	Description: "Reply to all recipients and save as draft (default). Use --confirm-send to send immediately after user confirmation. Includes all original To and CC automatically.",
 	Risk:        "write",
-	Scopes:      []string{"mail:user_mailbox.message:send", "mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
+	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "Required. Message ID to reply to all recipients", Required: true},
@@ -29,8 +29,8 @@ var MailReplyAll = common.Shortcut{
 		{Name: "bcc", Desc: "BCC email address(es), comma-separated"},
 		{Name: "remove", Desc: "Address(es) to exclude from the outgoing reply, comma-separated"},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring all HTML auto-detection. Cannot be used with --inline."},
-		{Name: "attach", Desc: "Attachment file path(s), comma-separated"},
-		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<local-path>\"}. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		{Name: "attach", Desc: "Attachment file path(s), comma-separated (relative path only)"},
+		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the reply immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -53,6 +53,9 @@ var MailReplyAll = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateConfirmSendScope(runtime); err != nil {
+			return err
+		}
 		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

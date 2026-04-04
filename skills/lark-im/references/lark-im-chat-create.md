@@ -2,9 +2,12 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-Create a group chat using **bot identity (TAT)**. You can specify the group name, description, members (users/bots), owner, and chat type (private/public).
+Create a group chat. Supports both user identity (`--as user`) and bot identity (`--as bot`). You can specify the group name, description, members (users/bots), owner, and chat type (private/public).
 
 This skill maps to the shortcut: `lark-cli im +chat-create` (internally calls `POST /open-apis/im/v1/chats`).
+
+- `--as bot` requires the `im:chat:create` scope.
+- `--as user` requires the `im:chat:create_by_user` scope.
 
 ## Commands
 
@@ -27,11 +30,17 @@ lark-cli im +chat-create --name "My Group" --bots "cli_aaa,cli_bbb"
 # Invite both users and bots
 lark-cli im +chat-create --name "My Group" --users "ou_aaa" --bots "cli_aaa"
 
-# Make the creating bot a group manager
-lark-cli im +chat-create --name "My Group" --set-bot-manager
+# Make the creating bot a group manager (bot identity only)
+lark-cli im +chat-create --name "My Group" --set-bot-manager --as bot
 
 # JSON output
 lark-cli im +chat-create --name "My Group" --format json
+
+# Create a group with bot identity
+lark-cli im +chat-create --name "My Group" --users "ou_aaa" --as bot
+
+# Create a group with user identity
+lark-cli im +chat-create --name "My Group" --users "ou_aaa,ou_bbb" --as user
 
 # Preview the request without creating anything
 lark-cli im +chat-create --name "My Group" --dry-run
@@ -45,24 +54,25 @@ lark-cli im +chat-create --name "My Group" --dry-run
 | `--description <text>` | No | Max 100 characters | Group description |
 | `--users <ids>` | No | Up to 50, format `ou_xxx` | Comma-separated user open_ids |
 | `--bots <ids>` | No | Up to 5, format `cli_xxx` | Comma-separated bot app IDs |
-| `--owner <open_id>` | No | Format `ou_xxx` | Owner open_id (defaults to the bot if not specified) |
+| `--owner <open_id>` | No | Format `ou_xxx` | Owner open_id (defaults to the bot when using `--as bot`, or the authorized user when using `--as user`) |
 | `--type <type>` | No | `private` (default) or `public` | Group type |
-| `--set-bot-manager` | No | - | Set the creating bot as a group manager |
+| `--set-bot-manager` | No | - | Set the creating bot as a group manager (only effective with `--as bot`) |
 | `--format json` | No | - | Output as JSON |
+| `--as <identity>` | No | `bot` or `user` | Identity type |
 | `--dry-run` | No | - | Preview the request without executing it |
-
-> **Note:** Only bot identity is supported.
 
 ## AI Usage Guidance
 
-When the user asks to create a group, always use the **two-step flow** below. Do NOT pass other users' open_ids in `--users` during group creation — the bot and target users are often mutually invisible (error 232043).
+### When using `--as bot`
 
-1. **Get the current user's open_id:** Run `lark-cli contact +get-user` to retrieve it.
+Bot may fail to invite users who are mutually invisible to it during group creation (error 232043). To avoid this, use the **two-step flow** below instead of passing other users' open_ids in `--users`.
+
+1. **Get the current user's open_id:** Run `lark-cli contact +search-user --query "<name or email>"` to retrieve it.
 2. **Create the group — by default include the current user:**
 
    ```bash
    lark-cli im +chat-create --name "<group name>" \
-     --users "<current user open_id>"
+     --users "<current user open_id>" --as bot
    ```
 
    **Default behavior:** Always add the current user to the group, unless the user explicitly says "do not add me" or "bot-only group" — only then omit `--users`.
@@ -79,6 +89,16 @@ When the user asks to create a group, always use the **two-step flow** below. Do
    `succeed_type=1` ensures reachable users are added successfully; unreachable ones are returned in `invalid_id_list` instead of failing the whole request.
 
 4. **Check `invalid_id_list`** in the response. If non-empty, report to the user which members could not be added.
+
+### When using `--as user`
+
+User identity does not have the bot visibility limitation, so you can create the group and invite members in one step:
+
+```bash
+lark-cli im +chat-create --name "<group name>" --users "ou_aaa,ou_bbb" --as user
+```
+
+The authorized user is automatically the group creator and member.
 
 ## Output Fields
 
@@ -119,7 +139,7 @@ lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Welcome, everyone!"
 
 | Symptom | Root Cause | Solution |
 |---------|---------|---------|
-| Permission denied (99991672) | The bot app does not have `im:chat:create` TAT permission enabled | Enable the required permission for the app in the Open Platform console |
+| Permission denied (99991672) | The app does not have `im:chat:create` (bot) or `im:chat:create_by_user` (user) permission enabled | Enable the required permission for the app in the Open Platform console |
 | `--name is required for public groups and must be at least 2 characters` | A public group was created without a name or with a name shorter than 2 characters | Provide a name with at least 2 characters |
 | `--name exceeds the maximum of 60 characters` | The group name is too long | Shorten the name to 60 characters or fewer |
 | `--description exceeds the maximum of 100 characters` | The group description is too long | Shorten the description to 100 characters or fewer |

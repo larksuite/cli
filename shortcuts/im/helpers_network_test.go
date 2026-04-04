@@ -263,7 +263,7 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 	}))
 
 	target := filepath.Join(t.TempDir(), "nested", "resource.bin")
-	size, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "file_123", "file", target)
+	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "file_123", "file", target)
 	if err != nil {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -307,7 +307,7 @@ func TestDownloadIMResourceToPathHTTPErrorBody(t *testing.T) {
 		}
 	}))
 
-	_, err := downloadIMResourceToPath(context.Background(), runtime, "om_403", "file_403", "file", filepath.Join(t.TempDir(), "out.bin"))
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_403", "file_403", "file", filepath.Join(t.TempDir(), "out.bin"))
 	if err == nil || !strings.Contains(err.Error(), "HTTP 403: denied") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}

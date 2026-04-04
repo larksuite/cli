@@ -2,22 +2,34 @@ name: Coverage
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - "**.go"
+      - "!tests/cli_e2e/**"
+      - go.mod
+      - go.sum
+      - .github/workflows/coverage.yml
   pull_request:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - "**.go"
+      - "!tests/cli_e2e/**"
+      - go.mod
+      - go.sum
+      - .github/workflows/coverage.yml
 
 permissions:
   contents: read
 
 jobs:
-  codecov:
-    runs-on: ubuntu-22.04
+  coverage:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.23'
+          go-version-file: go.mod
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -27,10 +39,20 @@ jobs:
         run: python3 scripts/fetch_meta.py
 
       - name: Run tests with coverage
-        run: go test -coverprofile=coverage.txt -covermode=atomic ./...
+        run: |
+          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '^github.com/larksuite/cli/tests/cli_e2e/')
+          go test -race -coverprofile=coverage.txt -covermode=atomic $packages
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
-        with:
-          files: coverage.txt
-          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Generate coverage report
+        run: |
+          total=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}')
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total coverage: ${total}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Details</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY

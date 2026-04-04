@@ -1,0 +1,145 @@
+[
+  {
+    "name": "size-s-docs-badge",
+    "number": 103,
+    "title": "docs: add official badge to distinguish from third-party Lark CLI tools",
+    "pr_url": "https://github.com/larksuite/cli/pull/103",
+    "status": "merged",
+    "merged_at": "2026-03-30T12:15:45Z",
+    "expected_label": "size/S",
+    "expected_domains": [],
+    "review_note": "Pure docs sample. Useful to confirm low-risk paths stay in S even when total changed lines are not tiny."
+  },
+  {
+    "name": "size-s-docs-simplify",
+    "number": 26,
+    "title": "docs: simplify installation steps by merging CLI and Skills into one …",
+    "pr_url": "https://github.com/larksuite/cli/pull/26",
+    "status": "merged",
+    "merged_at": "2026-03-28T09:33:24Z",
+    "expected_label": "size/S",
+    "expected_domains": [],
+    "review_note": "Docs sample, verifying docs changes remain in S."
+  },
+  {
+    "name": "size-s-docs-star-history",
+    "number": 12,
+    "title": "docs: add Star History chart to readmes",
+    "pr_url": "https://github.com/larksuite/cli/pull/12",
+    "status": "merged",
+    "merged_at": "2026-03-28T16:00:15Z",
+    "expected_label": "size/S",
+    "expected_domains": [],
+    "review_note": "Docs sample, no effective business code changes."
+  },
+  {
+    "name": "size-s-docs-clarify-install",
+    "number": 3,
+    "title": "docs: clarify install methods and add source build steps",
+    "pr_url": "https://github.com/larksuite/cli/pull/3",
+    "status": "merged",
+    "merged_at": "2026-03-28T03:43:44Z",
+    "expected_label": "size/S",
+    "expected_domains": [],
+    "review_note": "Docs sample, pure documentation clarification."
+  },
+  {
+    "name": "size-m-fix-base-scope",
+    "number": 96,
+    "title": "fix(base): correct scope for record history list shortcut",
+    "pr_url": "https://github.com/larksuite/cli/pull/96",
+    "status": "merged",
+    "merged_at": "2026-03-30T11:40:18Z",
+    "expected_label": "size/M",
+    "expected_domains": ["domain/base"],
+    "review_note": "Small fix sample. Verify the lower edge of the M bucket within a single domain."
+  },
+  {
+    "name": "size-m-fix-mail-sensitive",
+    "number": 92,
+    "title": "fix: remove sensitive send scope from reply and forward shortcuts",
+    "pr_url": "https://github.com/larksuite/cli/pull/92",
+    "status": "merged",
+    "merged_at": "2026-03-30T10:19:11Z",
+    "expected_label": "size/M",
+    "expected_domains": ["domain/mail"],
+    "review_note": "Security-like wording in the title but stays in one business domain (mail)."
+  },
+  {
+    "name": "size-m-ci-improve",
+    "number": 71,
+    "title": "ci: improve CI workflows and add golangci-lint config",
+    "pr_url": "https://github.com/larksuite/cli/pull/71",
+    "status": "merged",
+    "merged_at": "2026-03-30T03:09:31Z",
+    "expected_label": "size/M",
+    "expected_domains": [],
+    "review_note": "CI workflow change that goes beyond S threshold."
+  },
+  {
+    "name": "size-m-feat-im-pagination",
+    "number": 30,
+    "title": "feat: add auto-pagination to messages search and update lark-im docs",
+    "pr_url": "https://github.com/larksuite/cli/pull/30",
+    "status": "merged",
+    "merged_at": "2026-03-30T15:00:41Z",
+    "expected_label": "size/M",
+    "expected_domains": ["domain/im"],
+    "review_note": "Single-domain feature with larger diff but effective changes stay in M."
+  },
+  {
+    "name": "size-l-fix-api-silent",
+    "number": 85,
+    "title": "fix: resolve silent failure in `lark-cli api` error output (#39)",
+    "pr_url": "https://github.com/larksuite/cli/pull/85",
+    "status": "merged",
+    "merged_at": "2026-03-30T09:19:24Z",
+    "expected_label": "size/L",
+    "expected_domains": [],
+    "review_note": "Touches core area (cmd), bumping the size to L."
+  },
+  {
+    "name": "size-l-fix-cli",
+    "number": 91,
+    "title": "fix: correct CLI examples in root help and READMEs (closes #48)",
+    "pr_url": "https://github.com/larksuite/cli/pull/91",
+    "status": "closed",
+    "merged_at": null,
+    "expected_label": "size/L",
+    "expected_domains": [],
+    "review_note": "Closed PR touching core area (cmd)."
+  },
+  {
+    "name": "size-m-skill-format-check",
+    "number": 134,
+    "title": "feat(ci): add skill format check workflow to ensure SKILL.md compliance",
+    "pr_url": "https://github.com/larksuite/cli/pull/134",
+    "status": "closed",
+    "merged_at": null,
+    "expected_label": "size/M",
+    "expected_domains": [],
+    "review_note": "Includes updates to tests/bad-skill/SKILL.md inside skills-like paths, testing how skill mock files and test scripts are handled."
+  },
+  {
+    "name": "size-l-ccm-multi-path",
+    "number": 57,
+    "title": "feat(docs): support local image upload in docs +create",
+    "pr_url": "https://github.com/larksuite/cli/pull/57",
+    "status": "closed",
+    "merged_at": null,
+    "expected_label": "size/L",
+    "expected_domains": ["domain/ccm"],
+    "review_note": "Touches docs_create_images.go and table_auto_width.go, representing multiple CCM sub-paths but resolving to a single ccm domain."
+  },
+  {
+    "name": "size-l-domain-rename",
+    "number": 11,
+    "title": "docs: rename user-facing Bitable references to Base",
+    "pr_url": "https://github.com/larksuite/cli/pull/11",
+    "status": "merged",
+    "merged_at": "2026-03-28T16:00:52Z",
+    "expected_label": "size/L",
+    "expected_domains": ["domain/base", "domain/ccm"],
+    "review_note": "A rename across paths. Since we track previous_filename to evaluate domains, this should properly capture the base domain."
+  }
+]

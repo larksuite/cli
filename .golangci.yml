@@ -1,0 +1,66 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - asasalint       # checks for pass []any as any in variadic func(...any)
+    - asciicheck      # checks that code does not contain non-ASCII identifiers
+    - bidichk         # checks for dangerous unicode character sequences
+    - bodyclose       # checks whether HTTP response body is closed successfully
+    - copyloopvar     # detects places where loop variables are copied
+    - durationcheck   # checks for two durations multiplied together
+    - exptostd        # detects functions from golang.org/x/exp/ replaceable by std
+    - fatcontext      # detects nested contexts in loops
+    - gocheckcompilerdirectives # validates go compiler directive comments (//go:)
+    - gochecksumtype  # checks exhaustiveness on Go "sum types"
+    - gocritic        # diagnostics for bugs, performance and style
+    - gomoddirectives # checks for replace, retract, and exclude in go.mod
+    - goprintffuncname # checks that printf-like functions end with f
+    - govet           # reports suspicious constructs
+    - ineffassign     # detects ineffective assignments
+    - nilerr          # finds code that returns nil even if error is not nil
+    - nolintlint      # reports ill-formed nolint directives
+    - nosprintfhostport # checks for misuse of Sprintf to construct host:port
+    - reassign        # checks that package variables are not reassigned
+    - unconvert       # removes unnecessary type conversions
+    - unused          # checks for unused constants, variables, functions and types
+
+    # To enable later after fixing existing issues:
+    # - errcheck      # checks for unchecked errors
+    # - errname       # checks that error types are named XxxError
+    # - errorlint     # checks error wrapping best practices
+    # - gosec         # security-oriented linter
+    # - misspell      # finds commonly misspelled English words
+    # - staticcheck   # comprehensive static analysis
+
+  exclusions:
+    paths:
+      - generated
+    rules:
+      - path: _test\.go$
+        linters:
+          - bodyclose
+          - gocritic
+
+  settings:
+    gocritic:
+      disabled-checks:
+        - appendAssign
+        - hugeParam
+      disabled-tags:
+        - style
+    govet:
+      enable:
+        - httpresponse
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

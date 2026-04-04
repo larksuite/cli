@@ -437,7 +437,7 @@ lark-cli docs +create --title "空白画板示例" --markdown '<whiteboard type=
 - 读取时只能获取 token，可通过 media-download 查看内容，无法直接读出画板内部内容
 - 画板编辑：详见 [SKILL.md](../SKILL.md#重要说明画板编辑)
 
-### 多维表格（Bitable）
+### 多维表格（Base）
 
 ```html
 <bitable view="table"/>

@@ -1,7 +1,7 @@
 ---
 name: lark-calendar
 version: 1.0.0
-description: "飞书日历（calendar）：提供日历与日程（会议）的全面管理能力。核心场景包括：查看/搜索日程、创建/更新日程、管理参会人、查询忙闲状态及推荐空闲时段。高频操作请优先使用 Shortcuts：+agenda（快速概览今日/近期行程）、+create（创建日程并按需邀请参会人）、+freebusy（查询用户主日历的忙闲信息和rsvp的状态）、+suggestion（针对时间未确定的预约日程需求，提供多个时间推荐方案）。"
+description: "飞书日历（calendar）：提供日历与日程（会议）的全面管理能力。核心场景包括：查看/搜索日程、创建/更新日程、管理参会人、查询忙闲状态及推荐空闲时段。高频操作请优先使用 Shortcuts：+agenda（快速概览今日/近期行程）、+create（创建日程并按需邀请参会人）、+freebusy（查询用户主日历的忙闲信息和rsvp的状态）、+rsvp（回复日程邀请）、+suggestion（针对时间未确定的预约日程需求，提供多个时间推荐方案）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -12,7 +12,6 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 **CRITICAL — 所有的 Shortcuts 在执行之前，务必先使用 Read 工具读取其对应的说明文档，禁止直接盲目调用命令。**
-
 ## 核心场景
 
 日历技能包含以下核心场景：
@@ -54,7 +53,7 @@ metadata:
 ## 核心概念
 
 - **日历（Calendar）**：日程的容器。每个用户有一个主日历（primary calendar），也可以创建或订阅共享日历。
-- **日程（Event）**：日历中的单个事件条目，包含起止时间、地点、标题、参与人等属性。支持单次日程和重复日程，遵循RFC5545 iCalendar国际标准。
+- **日程（Event）**：日历中的单个日程，包含起止时间、地点、标题、参与人等属性。支持单次日程和重复日程，遵循RFC5545 iCalendar国际标准。
 - ***全天日程（All-day Event）***: 只按日期占用、没有具体起止时刻的日程，结束日期是包含在日程时间内的。
 - **日程实例（Instance）**：日程的具体时间实例，本质是对日程的展开。普通日程和例外日程对应1个Instance，重复性日程对应N个Instance。在按时间段查询时，可通过实例视图将重复日程展开为独立的实例返回，以便在时间线上准确展示和管理。
 - **重复规则（Rrule/Recurrence Rule）**：定义重复性日程的重复规则，比如`FREQ=DAILY;UNTIL=20230307T155959Z;INTERVAL=14`表示每14天重复一次。
@@ -81,6 +80,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli calendar +<verb> [flags]`
 | [`+agenda`](references/lark-calendar-agenda.md) | 查看日程安排（默认今天） |
 | [`+create`](references/lark-calendar-create.md) | 创建日程并邀请参会人（ISO 8601 时间） |
 | [`+freebusy`](references/lark-calendar-freebusy.md) | 查询用户主日历的忙闲信息和rsvp的状态 |
+| [`+rsvp`](references/lark-calendar-rsvp.md) | 回复日程（接受/拒绝/待定） |
 | [`+suggestion`](references/lark-calendar-suggestion.md) | 针对时间未确定的预约日程需求，提供多个时间推荐方案 |
 
 ## +suggestion 使用

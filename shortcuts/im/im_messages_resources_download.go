@@ -72,12 +72,12 @@ var ImMessagesResourcesDownload = common.Shortcut{
 			return output.ErrValidation("unsafe output path: %s", err)
 		}
 
-		sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, safePath)
+		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, safePath)
 		if err != nil {
 			return err
 		}
 
-		runtime.Out(map[string]interface{}{"saved_path": safePath, "size_bytes": sizeBytes}, nil)
+		runtime.Out(map[string]interface{}{"saved_path": finalPath, "size_bytes": sizeBytes}, nil)
 		return nil
 	},
 }
@@ -108,7 +108,38 @@ func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 
 const defaultIMResourceDownloadTimeout = 120 * time.Second
 
-func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, safePath string) (int64, error) {
+var imMimeToExt = map[string]string{
+	"image/png":                   ".png",
+	"image/jpeg":                  ".jpg",
+	"image/gif":                   ".gif",
+	"image/webp":                  ".webp",
+	"image/svg+xml":               ".svg",
+	"application/pdf":             ".pdf",
+	"video/mp4":                   ".mp4",
+	"video/3gpp":                  ".3gp",
+	"video/x-msvideo":             ".avi",
+	"audio/mpeg":                  ".mp3",
+	"audio/ogg":                   ".ogg",
+	"audio/wav":                   ".wav",
+	"text/plain":                  ".txt",
+	"text/html":                   ".html",
+	"text/css":                    ".css",
+	"text/csv":                    ".csv",
+	"application/zip":             ".zip",
+	"application/x-zip-compressed": ".zip",
+	"application/x-rar-compressed": ".rar",
+	"application/json":            ".json",
+	"application/xml":             ".xml",
+	"application/octet-stream":    ".bin",
+	"application/msword":          ".doc",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+	"application/vnd.ms-excel":    ".xls",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+	"application/vnd.ms-powerpoint": ".ppt",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+}
+
+func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, safePath string) (string, int64, error) {
 	query := larkcore.QueryParams{}
 	query.Set("type", fileType)
 	downloadResp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
@@ -121,24 +152,36 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		QueryParams: query,
 	}, defaultIMResourceDownloadTimeout)
 	if err != nil {
-		return 0, err
+		return "", 0, err
 	}
 	defer downloadResp.Body.Close()
 
 	if downloadResp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(downloadResp.Body, 4096))
 		if len(body) > 0 {
-			return 0, output.ErrNetwork("download failed: HTTP %d: %s", downloadResp.StatusCode, strings.TrimSpace(string(body)))
+			return "", 0, output.ErrNetwork("download failed: HTTP %d: %s", downloadResp.StatusCode, strings.TrimSpace(string(body)))
 		}
-		return 0, output.ErrNetwork("download failed: HTTP %d", downloadResp.StatusCode)
+		return "", 0, output.ErrNetwork("download failed: HTTP %d", downloadResp.StatusCode)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-		return 0, output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
+		return "", 0, output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
 	}
-	sizeBytes, err := validate.AtomicWriteFromReader(safePath, downloadResp.Body, 0600)
+
+	// Auto-detect extension from Content-Type if missing
+	finalPath := safePath
+	if filepath.Ext(safePath) == "" {
+		contentType := downloadResp.Header.Get("Content-Type")
+		mimeType := strings.Split(contentType, ";")[0]
+		mimeType = strings.TrimSpace(mimeType)
+		if ext, ok := imMimeToExt[mimeType]; ok {
+			finalPath = safePath + ext
+		}
+	}
+
+	sizeBytes, err := validate.AtomicWriteFromReader(finalPath, downloadResp.Body, 0600)
 	if err != nil {
-		return 0, output.Errorf(output.ExitInternal, "api_error", "cannot create file: %s", err)
+		return "", 0, output.Errorf(output.ExitInternal, "api_error", "cannot create file: %s", err)
 	}
-	return sizeBytes, nil
+	return finalPath, sizeBytes, nil
 }

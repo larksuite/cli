@@ -19,24 +19,25 @@ import (
 var ImChatCreate = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-create",
-	Description: "Create a group chat with bot identity; bot-only; creates private/public chats, invites users/bots, optionally sets bot manager",
+	Description: "Create a group chat; user/bot; creates private/public chats, invites users/bots, optionally sets bot manager",
 	Risk:        "write",
-	Scopes:      []string{"im:chat:create"},
-	AuthTypes:   []string{"bot"},
+	UserScopes:  []string{"im:chat:create_by_user"},
+	BotScopes:   []string{"im:chat:create"},
+	AuthTypes:   []string{"bot", "user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "name", Desc: "group name (required for public groups, max 60 chars)"},
 		{Name: "description", Desc: "group description (max 100 chars)"},
 		{Name: "users", Desc: "comma-separated user open_ids (ou_xxx) to invite, max 50"},
 		{Name: "bots", Desc: "comma-separated bot app IDs (cli_xxx) to invite, max 5"},
-		{Name: "owner", Desc: "owner open_id (ou_xxx); defaults to the bot if not specified"},
+		{Name: "owner", Desc: "owner open_id (ou_xxx); defaults to bot (--as bot) or authorized user (--as user)"},
 		{Name: "type", Default: "private", Desc: "chat type", Enum: []string{"private", "public"}},
-		{Name: "set-bot-manager", Type: "bool", Desc: "set the bot that creates this chat as manager"},
+		{Name: "set-bot-manager", Type: "bool", Desc: "set the bot that creates this chat as manager (bot identity only)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := buildCreateChatBody(runtime)
 		params := map[string]interface{}{"user_id_type": "open_id"}
-		if runtime.Bool("set-bot-manager") {
+		if runtime.Bool("set-bot-manager") && runtime.IsBot() {
 			params["set_bot_manager"] = true
 		}
 		return common.NewDryRunAPI().
@@ -45,6 +46,10 @@ var ImChatCreate = common.Shortcut{
 			Body(body)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if runtime.Bool("set-bot-manager") && !runtime.IsBot() {
+			return output.ErrValidation("--set-bot-manager is only supported with bot identity (--as bot)")
+		}
+
 		name := runtime.Str("name")
 		chatType := runtime.Str("type")
 
