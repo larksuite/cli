@@ -8,6 +8,8 @@ import (
 	"os"
 
 	"github.com/larksuite/cli/cmd"
+
+	_ "github.com/larksuite/cli/extension/credential/env" // activate env credential provider
 )
 
 func main() {

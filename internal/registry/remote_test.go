@@ -29,9 +29,16 @@ func resetInit() {
 	testMetaURL = ""
 }
 
-// hasEmbeddedData returns true if meta_data.json is compiled in.
-func hasEmbeddedData() bool {
-	return len(embeddedMetaJSON) > 0
+// hasEmbeddedServices returns true if meta_data.json with real services is compiled in.
+func hasEmbeddedServices() bool {
+	if len(embeddedMetaJSON) == 0 {
+		return false
+	}
+	var reg MergedRegistry
+	if err := json.Unmarshal(embeddedMetaJSON, &reg); err != nil {
+		return false
+	}
+	return len(reg.Services) > 0
 }
 
 // testRegistry returns a minimal MergedRegistry with one service.
@@ -76,7 +83,7 @@ func testEnvelopeNotModifiedJSON() []byte {
 }
 
 func TestColdStart_UsesEmbedded(t *testing.T) {
-	if !hasEmbeddedData() {
+	if !hasEmbeddedServices() {
 		t.Skip("no embedded from_meta data")
 	}
 	resetInit()
@@ -97,7 +104,7 @@ func TestColdStart_UsesEmbedded(t *testing.T) {
 }
 
 func TestColdStart_NoEmbedded_SyncFetch(t *testing.T) {
-	if hasEmbeddedData() {
+	if hasEmbeddedServices() {
 		t.Skip("embedded data present, skipping no-embedded test")
 	}
 	resetInit()
@@ -168,7 +175,7 @@ func TestCacheHit_WithinTTL(t *testing.T) {
 		t.Error("expected custom_svc from cache overlay")
 	}
 	// Embedded projects should still be present (if compiled in)
-	if hasEmbeddedData() {
+	if hasEmbeddedServices() {
 		if spec := LoadFromMeta("calendar"); spec == nil {
 			t.Error("expected calendar from embedded data")
 		}

@@ -22,8 +22,15 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+type staticShortcutTokenResolver struct{}
+
+func (s *staticShortcutTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{Token: "tenant-token"}, nil
+}
 
 type shortcutRoundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -68,6 +75,7 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 	sdk := lark.NewClient(
 		"test-app",
 		"test-secret",
+		lark.WithEnableTokenCache(false),
 		lark.WithLogLevel(larkcore.LogLevelError),
 		lark.WithHttpClient(httpClient),
 	)
@@ -76,13 +84,14 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 		AppSecret: "test-secret",
 		Brand:     core.BrandFeishu,
 	}
+	testCred := credential.NewCredentialProvider(nil, nil, &staticShortcutTokenResolver{}, nil)
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{
 			Config:     func() (*core.CliConfig, error) { return cfg, nil },
-			AuthConfig: func() (*core.CliConfig, error) { return cfg, nil },
 			HttpClient: func() (*http.Client, error) { return httpClient, nil },
 			LarkClient: func() (*lark.Client, error) { return sdk, nil },
+			Credential: testCred,
 			IOStreams: &cmdutil.IOStreams{
 				Out:    &bytes.Buffer{},
 				ErrOut: &bytes.Buffer{},
@@ -99,12 +108,6 @@ func TestResolveP2PChatID(t *testing.T) {
 	var gotAuth string
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
 			gotAuth = req.Header.Get("Authorization")
 			return shortcutJSONResponse(200, map[string]interface{}{
@@ -135,12 +138,6 @@ func TestResolveP2PChatID(t *testing.T) {
 func TestResolveP2PChatIDNotFound(t *testing.T) {
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
 			return shortcutJSONResponse(200, map[string]interface{}{
 				"code": 0,
@@ -184,12 +181,6 @@ func TestResolveThreadID(t *testing.T) {
 	t.Run("message lookup success", func(t *testing.T) {
 		runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case strings.Contains(req.URL.Path, "tenant_access_token"):
-				return shortcutJSONResponse(200, map[string]interface{}{
-					"code":                0,
-					"tenant_access_token": "tenant-token",
-					"expire":              7200,
-				}), nil
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_123"):
 				return shortcutJSONResponse(200, map[string]interface{}{
 					"code": 0,
@@ -216,12 +207,6 @@ func TestResolveThreadID(t *testing.T) {
 	t.Run("message lookup not found", func(t *testing.T) {
 		runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case strings.Contains(req.URL.Path, "tenant_access_token"):
-				return shortcutJSONResponse(200, map[string]interface{}{
-					"code":                0,
-					"tenant_access_token": "tenant-token",
-					"expire":              7200,
-				}), nil
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_404"):
 				return shortcutJSONResponse(200, map[string]interface{}{
 					"code": 0,
@@ -248,12 +233,6 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 	payload := []byte("hello download")
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_123/resources/file_123"):
 			gotHeaders = req.Header.Clone()
 			return shortcutRawResponse(200, payload, http.Header{"Content-Type": []string{"application/octet-stream"}}), nil
@@ -294,12 +273,6 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 func TestDownloadIMResourceToPathHTTPErrorBody(t *testing.T) {
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_403/resources/file_403"):
 			return shortcutRawResponse(403, []byte("denied"), http.Header{"Content-Type": []string{"text/plain"}}), nil
 		default:
@@ -317,12 +290,6 @@ func TestUploadImageToIMSuccess(t *testing.T) {
 	var gotBody string
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/images"):
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -371,12 +338,6 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 	var gotBody string
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/files"):
 			body, err := io.ReadAll(req.Body)
 			if err != nil {

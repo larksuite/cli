@@ -129,12 +129,6 @@ func TestExtractPostBlocksText(t *testing.T) {
 func TestResolveSenderNames(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/batch"):
 			if got := req.URL.Query()["user_ids"]; !reflect.DeepEqual(got, []string{"ou_api", "ou_missing"}) {
 				t.Fatalf("contact batch user_ids = %#v, want %#v", got, []string{"ou_api", "ou_missing"})
@@ -179,12 +173,6 @@ func TestResolveSenderNames(t *testing.T) {
 func TestResolveSenderNamesAPIFailure(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/batch"):
 			return nil, fmt.Errorf("contact api failed")
 		default:

@@ -4,7 +4,9 @@
 package cmdutil
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -14,17 +16,26 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"golang.org/x/term"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/util"
 )
 
 // NewDefault creates a production Factory with cached closures.
-func NewDefault() *Factory {
+// Initialization follows a credential-first order:
+//
+//	Phase 1: HttpClient (no credential dependency)
+//	Phase 2: Credential (sole data source for account info)
+//	Phase 3: Config derived from Credential
+//	Phase 4: LarkClient derived from Credential
+func NewDefault(inv InvocationContext) *Factory {
 	f := &Factory{
-		Keychain: keychain.Default(),
+		Keychain:   keychain.Default(),
+		Invocation: inv,
 	}
 	f.IOStreams = &IOStreams{
 		In:         os.Stdin,
@@ -32,28 +43,32 @@ func NewDefault() *Factory {
 		ErrOut:     os.Stderr,
 		IsTerminal: term.IsTerminal(int(os.Stdin.Fd())),
 	}
-	f.Config = cachedConfigFunc(f)
-	f.AuthConfig = cachedAuthConfigFunc(f)
+
+	// Phase 1: HttpClient (no credential dependency)
 	f.HttpClient = cachedHttpClientFunc()
-	f.LarkClient = cachedLarkClientFunc(f)
-	return f
-}
 
-func cachedConfigFunc(f *Factory) func() (*core.CliConfig, error) {
-	return sync.OnceValues(func() (*core.CliConfig, error) {
-		cfg, err := core.RequireConfig(f.Keychain)
+	// Phase 2: Credential (sole data source)
+	f.Credential = buildCredentialProvider(credentialDeps{
+		Keychain:   f.Keychain,
+		Profile:    inv.Profile,
+		HttpClient: f.HttpClient,
+		ErrOut:     f.IOStreams.ErrOut,
+	})
+
+	// Phase 3: Config derived from Credential (Account is a type alias for CliConfig)
+	f.Config = sync.OnceValues(func() (*core.CliConfig, error) {
+		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
-			return cfg, err
+			return nil, err
 		}
-		registry.InitWithBrand(cfg.Brand)
-		return cfg, nil
+		registry.InitWithBrand(acct.Brand)
+		return acct, nil
 	})
-}
 
-func cachedAuthConfigFunc(f *Factory) func() (*core.CliConfig, error) {
-	return sync.OnceValues(func() (*core.CliConfig, error) {
-		return core.RequireAuth(f.Keychain)
-	})
+	// Phase 4: LarkClient from Credential (placeholder AppSecret)
+	f.LarkClient = cachedLarkClientFunc(f)
+
+	return f
 }
 
 // safeRedirectPolicy prevents credential headers from being forwarded
@@ -92,26 +107,39 @@ func cachedHttpClientFunc() func() (*http.Client, error) {
 
 func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 	return sync.OnceValues(func() (*lark.Client, error) {
-		cfg, err := f.Config()
+		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
 			return nil, err
 		}
 		opts := []lark.ClientOptionFunc{
+			lark.WithEnableTokenCache(false),
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
-		// Build SDK transport chain
 		util.WarnIfProxied(os.Stderr)
-		var sdkTransport http.RoundTripper = util.NewBaseTransport()
+		var sdkTransport = http.DefaultTransport
 		sdkTransport = &UserAgentTransport{Base: sdkTransport}
 		sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
 		opts = append(opts, lark.WithHttpClient(&http.Client{
 			Transport:     sdkTransport,
 			CheckRedirect: safeRedirectPolicy,
 		}))
-		ep := core.ResolveEndpoints(cfg.Brand)
+		ep := core.ResolveEndpoints(acct.Brand)
 		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
-		client := lark.NewClient(cfg.AppID, cfg.AppSecret, opts...)
-		return client, nil
+		return lark.NewClient(acct.AppID, acct.AppSecret, opts...), nil
 	})
+}
+
+type credentialDeps struct {
+	Keychain   keychain.KeychainAccess
+	Profile    string
+	HttpClient func() (*http.Client, error)
+	ErrOut     io.Writer
+}
+
+func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
+	providers := extcred.Providers()
+	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
+	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
+	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
 }

@@ -6,9 +6,11 @@ package drive
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
+
 	"strings"
+
+	"github.com/larksuite/cli/internal/vfs"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -147,7 +149,7 @@ func preflightDriveImportFile(spec *driveImportSpec) (int64, error) {
 	}
 	spec.FilePath = safeFilePath
 
-	info, err := os.Stat(spec.FilePath)
+	info, err := vfs.Stat(spec.FilePath)
 	if err != nil {
 		return 0, output.ErrValidation("cannot read file: %s", err)
 	}

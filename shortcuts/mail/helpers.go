@@ -12,7 +12,6 @@ import (
 	"net/http"
 	netmail "net/mail"
 	"net/url"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -21,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -1849,7 +1849,7 @@ func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount .
 		if err != nil {
 			return fmt.Errorf("unsafe attachment path %s: %w", p, err)
 		}
-		info, err := os.Stat(safePath)
+		info, err := vfs.Stat(safePath)
 		if err != nil {
 			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
 		}

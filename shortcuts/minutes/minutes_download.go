@@ -9,11 +9,12 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -78,7 +79,7 @@ var MinutesDownload = common.Shortcut{
 
 		// Batch mode: --output must be a directory, not an existing file.
 		if !single && outputPath != "" {
-			if fi, err := os.Stat(outputPath); err == nil && !fi.IsDir() {
+			if fi, err := vfs.Stat(outputPath); err == nil && !fi.IsDir() {
 				return output.ErrValidation("--output %q is a file; batch mode expects a directory path", outputPath)
 			}
 		}
@@ -281,7 +282,7 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 	if err := common.EnsureWritableFile(safePath, opts.overwrite); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
 		return nil, output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
 	}
 

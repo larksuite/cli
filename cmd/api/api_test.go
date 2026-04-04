@@ -70,16 +70,6 @@ func TestApiCmd_BotMode(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	// Register tenant_access_token stub
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code":                0,
-			"msg":                 "ok",
-			"tenant_access_token": "t-test-token",
-			"expire":              7200,
-		},
-	})
 	// Register API endpoint stub
 	reg.Register(&httpmock.Stub{
 		URL:  "/open-apis/test",
@@ -235,13 +225,6 @@ func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
 	})
 
 	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-bin", "expire": 7200,
-		},
-	})
-	reg.Register(&httpmock.Stub{
 		URL:         "/open-apis/drive/v1/files/xxx/download",
 		RawBody:     []byte("fake-binary-content"),
 		ContentType: "application/octet-stream",
@@ -266,14 +249,6 @@ func TestApiCmd_PageAll_NonBatchAPI_FallbackToJSON(t *testing.T) {
 		AppID: "test-app-pageall1", AppSecret: "test-secret-pageall1", Brand: core.BrandFeishu,
 	})
 
-	// Register tenant_access_token stub
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-pa1", "expire": 7200,
-		},
-	})
 	// Register a non-batch API that returns scalar data (no array field)
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/contact/v3/users/u123",
@@ -310,13 +285,6 @@ func TestApiCmd_PageAll_NonBatchAPI_ErrorStillOutputsJSON(t *testing.T) {
 		AppID: "test-app-pageall-err", AppSecret: "test-secret-pageall-err", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-err", "expire": 7200,
-		},
-	})
 	// Non-batch API that returns a business error (code != 0)
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/im/v1/chats/oc_xxx/announcement",
@@ -346,14 +314,6 @@ func TestApiCmd_PageAll_BatchAPI_StreamsItems(t *testing.T) {
 		AppID: "test-app-pageall2", AppSecret: "test-secret-pageall2", Brand: core.BrandFeishu,
 	})
 
-	// Register tenant_access_token stub (unique app credentials => new token request)
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-pa2", "expire": 7200,
-		},
-	})
 	// Register a batch API that returns an array field
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/contact/v3/users",
@@ -409,13 +369,6 @@ func TestApiCmd_APIError_IsRaw(t *testing.T) {
 		AppID: "test-app-raw", AppSecret: "test-secret-raw", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-raw", "expire": 7200,
-		},
-	})
 	// Return a permission error from the API
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/perm",
@@ -456,13 +409,6 @@ func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
 		AppID: "test-app-origmsg", AppSecret: "test-secret-origmsg", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-origmsg", "expire": 7200,
-		},
-	})
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/origmsg",
 		Body: map[string]interface{}{
@@ -505,13 +451,6 @@ func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
 		AppID: "test-app-rawpage", AppSecret: "test-secret-rawpage", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-rawpage", "expire": 7200,
-		},
-	})
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/rawpage",
 		Body: map[string]interface{}{
@@ -600,13 +539,6 @@ func TestApiCmd_JqFilter_AppliesExpression(t *testing.T) {
 	})
 
 	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-jq", "expire": 7200,
-		},
-	})
-	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/jq",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
@@ -676,13 +608,6 @@ func TestApiCmd_PageAll_WithJq(t *testing.T) {
 		AppID: "test-app-pjq", AppSecret: "test-secret-pjq", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-pjq", "expire": 7200,
-		},
-	})
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/contact/v3/users",
 		Body: map[string]interface{}{

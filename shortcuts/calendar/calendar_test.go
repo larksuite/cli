@@ -33,13 +33,6 @@ func warmTokenCache(t *testing.T) {
 	warmOnce.Do(func() {
 		f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 		reg.Register(&httpmock.Stub{
-			URL: "/open-apis/auth/v3/tenant_access_token/internal",
-			Body: map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"tenant_access_token": "t-test-token", "expire": 7200,
-			},
-		})
-		reg.Register(&httpmock.Stub{
 			URL:  "/open-apis/test/v1/warm",
 			Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 		})

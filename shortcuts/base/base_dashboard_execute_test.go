@@ -15,7 +15,6 @@ import (
 func TestBaseDashboardExecuteList(t *testing.T) {
 	t.Run("single page", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards",
@@ -44,7 +43,6 @@ func TestBaseDashboardExecuteList(t *testing.T) {
 
 func TestBaseDashboardExecuteGet(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001",
@@ -72,7 +70,6 @@ func TestBaseDashboardExecuteGet(t *testing.T) {
 func TestBaseDashboardExecuteCreate(t *testing.T) {
 	t.Run("name only", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards",
@@ -95,7 +92,6 @@ func TestBaseDashboardExecuteCreate(t *testing.T) {
 
 	t.Run("with theme", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards",
@@ -121,7 +117,6 @@ func TestBaseDashboardExecuteCreate(t *testing.T) {
 func TestBaseDashboardExecuteUpdate(t *testing.T) {
 	t.Run("update name", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PATCH",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001",
@@ -144,7 +139,6 @@ func TestBaseDashboardExecuteUpdate(t *testing.T) {
 
 	t.Run("update theme", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PATCH",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001",
@@ -169,7 +163,6 @@ func TestBaseDashboardExecuteUpdate(t *testing.T) {
 
 func TestBaseDashboardExecuteDelete(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001",
@@ -189,7 +182,6 @@ func TestBaseDashboardExecuteDelete(t *testing.T) {
 func TestBaseDashboardBlockExecuteList(t *testing.T) {
 	t.Run("single page", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
@@ -219,7 +211,6 @@ func TestBaseDashboardBlockExecuteList(t *testing.T) {
 func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
@@ -248,7 +239,6 @@ func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 
 	t.Run("with user-id-type", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "user_id_type=union_id",
@@ -274,7 +264,6 @@ func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 	t.Run("with data-config", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
@@ -306,7 +295,6 @@ func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 
 	t.Run("statistics with series", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
@@ -333,7 +321,6 @@ func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 
 	t.Run("without data-config", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
@@ -370,7 +357,6 @@ func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 	t.Run("update name and data-config", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PATCH",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
@@ -401,7 +387,6 @@ func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 
 	t.Run("update name only", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PATCH",
 			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
@@ -437,7 +422,6 @@ func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 
 func TestBaseDashboardBlockExecuteDelete(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
@@ -592,7 +576,6 @@ func TestBaseDashboardBlockCreate_ValidateFails(t *testing.T) {
 
 func TestBaseDashboardBlockCreate_NoValidateFlagAllocs(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{Method: "POST", URL: "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_ok", "name": "OK", "type": "column"}},
 	})

@@ -45,7 +45,11 @@ func configShowRun(opts *ConfigShowOptions) error {
 		fmt.Fprintln(f.IOStreams.ErrOut, "Run `lark-cli config init` to initialize.")
 		return nil
 	}
-	app := config.Apps[0]
+	app := config.CurrentAppConfig(f.Invocation.Profile)
+	if app == nil {
+		fmt.Fprintln(f.IOStreams.ErrOut, "No active profile found.")
+		return nil
+	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {
 		var userStrs []string
@@ -55,6 +59,7 @@ func configShowRun(opts *ConfigShowOptions) error {
 		users = strings.Join(userStrs, ", ")
 	}
 	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+		"profile":   app.ProfileName(),
 		"appId":     app.AppId,
 		"appSecret": "****",
 		"brand":     app.Brand,

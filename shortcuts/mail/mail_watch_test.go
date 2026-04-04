@@ -96,8 +96,8 @@ func TestMailWatchDryRunDefaultMetadataFetchesMessage(t *testing.T) {
 	if apis[0].URL != mailboxPath("me", "event", "subscribe") {
 		t.Fatalf("unexpected url: %s", apis[0].URL)
 	}
-	if apis[1].Method != "GET" || apis[1].URL != mailboxPath("me", "profile") {
-		t.Fatalf("unexpected profile api: %s %s", apis[1].Method, apis[1].URL)
+	if apis[1].URL != mailboxPath("me", "profile") {
+		t.Fatalf("unexpected profile url: %s", apis[1].URL)
 	}
 	if apis[2].URL != mailboxPath("me", "messages", "{message_id}") {
 		t.Fatalf("unexpected fetch url: %s", apis[2].URL)

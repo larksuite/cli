@@ -68,6 +68,16 @@ func ExecutionIdFromContext(ctx context.Context) (string, bool) {
 // RequestOptionFunc that injects the corresponding headers into SDK requests.
 // Returns nil if the context has no Shortcut info.
 func ShortcutHeaderOpts(ctx context.Context) larkcore.RequestOptionFunc {
+	h := ShortcutHeaders(ctx)
+	if h == nil {
+		return nil
+	}
+	return larkcore.WithHeaders(h)
+}
+
+// ShortcutHeaders extracts Shortcut info from the context and returns
+// the corresponding HTTP headers. Returns nil if the context has no Shortcut info.
+func ShortcutHeaders(ctx context.Context) http.Header {
 	name, ok := ShortcutNameFromContext(ctx)
 	if !ok {
 		return nil
@@ -77,5 +87,5 @@ func ShortcutHeaderOpts(ctx context.Context) larkcore.RequestOptionFunc {
 	if eid, ok := ExecutionIdFromContext(ctx); ok {
 		h.Set(HeaderExecutionId, eid)
 	}
-	return larkcore.WithHeaders(h)
+	return h
 }

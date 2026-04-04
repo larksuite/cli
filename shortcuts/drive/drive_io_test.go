@@ -5,11 +5,9 @@ package drive
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -20,11 +18,12 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-var driveTestConfigSeq atomic.Int64
+// registerDriveBotTokenStub is a no-op. TAT is now managed by CredentialProvider, not SDK.
+func registerDriveBotTokenStub(_ *httpmock.Registry) {}
 
 func driveTestConfig() *core.CliConfig {
 	return &core.CliConfig{
-		AppID: fmt.Sprintf("drive-test-app-%d", driveTestConfigSeq.Add(1)), AppSecret: "test-secret", Brand: core.BrandFeishu,
+		AppID: "drive-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 }
 
@@ -54,16 +53,6 @@ func withDriveWorkingDir(t *testing.T, dir string) {
 		if err := os.Chdir(cwd); err != nil {
 			t.Fatalf("restore cwd error: %v", err)
 		}
-	})
-}
-
-func registerDriveBotTokenStub(reg *httpmock.Registry) {
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token", "expire": 7200,
-		},
 	})
 }
 
@@ -123,7 +112,6 @@ func TestDriveDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 
 func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/files/file_123/download",

@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 const (
@@ -147,7 +148,7 @@ func statePath() string {
 }
 
 func loadState() (*updateState, error) {
-	data, err := os.ReadFile(statePath())
+	data, err := vfs.ReadFile(statePath())
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +161,7 @@ func loadState() (*updateState, error) {
 
 func saveState(s *updateState) error {
 	dir := core.GetConfigDir()
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(s)
