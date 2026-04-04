@@ -70,6 +70,8 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
 - ⚠️ 这是写入操作，执行前必须确认。
 - ⚠️ 当 `--json.type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
+- ⚠️ 更新主索引列（`is_primary: true` 的字段）时必须在 `--json` 中显式带上 `type`，否则报 `99992402 field validation failed`。
+- ⚠️ `select` / `multiselect` 类型是全量覆盖：若只想改描述而不动选项，必须先 `+field-get` 拿到完整 `options` 列表一并带回，否则选项会被清空，已有记录的该字段值全部丢失。
 
 ## 参考
 
