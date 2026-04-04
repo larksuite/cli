@@ -41,7 +41,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
 - 更新语义是 `PUT`（全量字段配置更新），不要只传零散片段；至少显式包含 `name`、`type`，并补齐该类型所需关键配置。
 - 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
-- `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
+- `select` 更新时：`options` 仍按对象数组传，避免混入无效字段（全量覆盖，漏传即清空）。
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
@@ -87,6 +87,8 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
 - ⚠️ 这是写入操作，执行前必须确认。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
+- ⚠️ 更新主索引列（`is_primary: true` 的字段）时必须在 `--json` 中显式带上 `type`，否则报 `99992402 field validation failed`。
+- ⚠️ `select` / `multiselect` 类型是全量覆盖：若只想改描述而不动选项，必须先 `+field-get` 拿到完整 `options` 列表一并带回，否则选项会被清空，已有记录的该字段值全部丢失。
 
 ## 参考
 
