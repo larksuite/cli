@@ -73,7 +73,7 @@ var DriveAddComment = common.Shortcut{
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL/token, or wiki URL that resolves to doc/docx", Required: true},
-		{Name: "content", Desc: "reply_elements JSON string", Required: true},
+		{Name: "content", Desc: "reply_elements JSON string", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "full-comment", Type: "bool", Desc: "create a full-document comment; also the default when no location is provided"},
 		{Name: "selection-with-ellipsis", Desc: "target content locator (plain text or 'start...end')"},
 		{Name: "block-id", Desc: "anchor block ID (skip MCP locate-doc if already known)"},

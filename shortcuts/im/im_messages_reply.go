@@ -26,9 +26,9 @@ var ImMessagesReply = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
 		{Name: "msg-type", Default: "text", Desc: "message type for --content JSON; when using --text/--markdown/--image/--file/--video/--audio, the effective type is inferred automatically", Enum: []string{"text", "post", "image", "file", "audio", "media", "interactive", "share_chat", "share_user"}},
-		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON"},
-		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
-		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
+		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON", Input: []string{common.File, common.Stdin}},
+		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)", Input: []string{common.File, common.Stdin}},
+		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)", Input: []string{common.File, common.Stdin}},
 		{Name: "image", Desc: "image_key, local file path"},
 		{Name: "file", Desc: "file_key, local file path"},
 		{Name: "video", Desc: "video file_key, local file path; must be used together with --video-cover"},

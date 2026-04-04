@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -22,6 +23,8 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -91,6 +94,9 @@ func (ctx *RuntimeContext) AccessToken() (string, error) {
 	result, err := ctx.Factory.Credential.ResolveToken(ctx.ctx, credential.NewTokenSpec(ctx.As(), ctx.Config.AppID))
 	if err != nil {
 		return "", output.ErrAuth("failed to get access token: %s", err)
+	}
+	if result == nil || result.Token == "" {
+		return "", output.ErrAuth("no access token available for %s", ctx.As())
 	}
 	return result.Token, nil
 }
@@ -437,6 +443,9 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	if err := validateEnumFlags(rctx, s.Flags); err != nil {
 		return err
 	}
+	if err := resolveInputFlags(rctx, s.Flags); err != nil {
+		return err
+	}
 	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
 		return err
 	}
@@ -509,6 +518,66 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	return rctx, nil
 }
 
+// resolveInputFlags resolves @file and - (stdin) for flags with Input sources.
+// Must be called before Validate/DryRun/Execute so that runtime.Str() returns resolved content.
+func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
+	stdinUsed := false
+	for _, fl := range flags {
+		if len(fl.Input) == 0 {
+			continue
+		}
+		raw, _ := rctx.Cmd.Flags().GetString(fl.Name)
+		if raw == "" {
+			continue
+		}
+
+		// stdin: -
+		if raw == "-" {
+			if !slices.Contains(fl.Input, Stdin) {
+				return FlagErrorf("--%s does not support stdin (-)", fl.Name)
+			}
+			if stdinUsed {
+				return FlagErrorf("--%s: stdin (-) can only be used by one flag", fl.Name)
+			}
+			stdinUsed = true
+			data, err := io.ReadAll(rctx.IO().In)
+			if err != nil {
+				return FlagErrorf("--%s: failed to read from stdin: %v", fl.Name, err)
+			}
+			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			continue
+		}
+
+		// escape: @@ → literal @
+		if strings.HasPrefix(raw, "@@") {
+			rctx.Cmd.Flags().Set(fl.Name, raw[1:]) // strip first @
+			continue
+		}
+
+		// file: @path
+		if strings.HasPrefix(raw, "@") {
+			if !slices.Contains(fl.Input, File) {
+				return FlagErrorf("--%s does not support file input (@path)", fl.Name)
+			}
+			path := strings.TrimSpace(raw[1:])
+			if path == "" {
+				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
+			}
+			safePath, err := validate.SafeInputPath(path)
+			if err != nil {
+				return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+			}
+			data, err := vfs.ReadFile(safePath)
+			if err != nil {
+				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
+			}
+			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			continue
+		}
+	}
+	return nil
+}
+
 func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 	for _, fl := range flags {
 		if len(fl.Enum) == 0 {
@@ -551,6 +620,16 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 		desc := fl.Desc
 		if len(fl.Enum) > 0 {
 			desc += " (" + strings.Join(fl.Enum, "|") + ")"
+		}
+		if len(fl.Input) > 0 {
+			hints := make([]string, 0, 2)
+			if slices.Contains(fl.Input, File) {
+				hints = append(hints, "@file")
+			}
+			if slices.Contains(fl.Input, Stdin) {
+				hints = append(hints, "- for stdin")
+			}
+			desc += " (supports " + strings.Join(hints, ", ") + ")"
 		}
 		switch fl.Type {
 		case "bool":
