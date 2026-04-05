@@ -320,26 +320,6 @@ func TestCredentialProvider_ResolveTokenTreatsEmptyDefaultTokenAsMalformed(t *te
 	}
 }
 
-func TestCredentialProvider_ResolveSourceName_SelectedExtensionSource(t *testing.T) {
-	cp := NewCredentialProvider(
-		[]extcred.Provider{&mockExtProvider{
-			name:    "env",
-			account: &extcred.Account{AppID: "ext_app", Brand: "feishu"},
-		}},
-		nil,
-		nil,
-		nil,
-	)
-
-	name, err := cp.ResolveSourceName(context.Background())
-	if err != nil {
-		t.Fatalf("ResolveSourceName() error = %v", err)
-	}
-	if name != "env" {
-		t.Fatalf("ResolveSourceName() = %q, want %q", name, "env")
-	}
-}
-
 func TestCredentialProvider_ResolveAccountDoesNotEnrichWithTokenFromDifferentProvider(t *testing.T) {
 	httpClientCalls := 0
 	cp := NewCredentialProvider(

@@ -254,19 +254,6 @@ func (p *CredentialProvider) selectedCredentialSource(ctx context.Context) (cred
 	return p.selectedSource, nil
 }
 
-func (p *CredentialProvider) ResolveSourceName(ctx context.Context) (string, error) {
-	if p.selectedSource == nil {
-		if _, err := p.ResolveAccount(ctx); err != nil {
-			return "", err
-		}
-	}
-	source := p.selectedSource
-	if source == nil {
-		return "", nil
-	}
-	return source.Name(), nil
-}
-
 func resolveTokenFromSource(ctx context.Context, source credentialSource, req TokenSpec) (*TokenResult, error) {
 	result, found, err := source.TryResolveToken(ctx, req)
 	if err != nil {
