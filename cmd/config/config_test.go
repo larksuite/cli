@@ -5,12 +5,14 @@ package config
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/output"
 )
 
 type noopConfigKeychain struct{}
@@ -60,6 +62,60 @@ func TestConfigShowCmd_FlagParsing(t *testing.T) {
 	}
 	if gotOpts == nil {
 		t.Error("expected opts to be set")
+	}
+}
+
+func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configShowRun(&ConfigShowOptions{Factory: f})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("error type = %T, want *output.ExitError", err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "not configured" {
+		t.Fatalf("detail = %#v, want config/not configured", exitErr.Detail)
+	}
+}
+
+func TestConfigShowRun_NoActiveProfileReturnsStructuredError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	multi := &core.MultiAppConfig{
+		CurrentApp: "missing",
+		Apps: []core.AppConfig{{
+			Name:      "default",
+			AppId:     "app-default",
+			AppSecret: core.PlainSecret("secret-default"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configShowRun(&ConfigShowOptions{Factory: f})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("error type = %T, want *output.ExitError", err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "no active profile" {
+		t.Fatalf("detail = %#v, want config/no active profile", exitErr.Detail)
 	}
 }
 

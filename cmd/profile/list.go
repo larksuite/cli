@@ -4,7 +4,8 @@
 package profile
 
 import (
-	"fmt"
+	"errors"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -39,8 +40,15 @@ func NewCmdProfileList(f *cmdutil.Factory) *cobra.Command {
 func profileListRun(f *cmdutil.Factory) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
-		fmt.Fprintln(f.IOStreams.ErrOut, "Not configured yet. Run `lark-cli config init` to initialize.")
-		return nil //nolint:nilerr // graceful fallback: show friendly message instead of raw error
+		if errors.Is(err, os.ErrNotExist) {
+			output.PrintJson(f.IOStreams.Out, []profileListItem{})
+			return nil
+		}
+		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
+	}
+	if multi == nil || len(multi.Apps) == 0 {
+		output.PrintJson(f.IOStreams.Out, []profileListItem{})
+		return nil
 	}
 
 	// Intentionally uses "" to show the persistent active profile, not the ephemeral --profile override.

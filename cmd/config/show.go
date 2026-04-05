@@ -4,7 +4,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -40,15 +42,18 @@ func configShowRun(opts *ConfigShowOptions) error {
 	f := opts.Factory
 
 	config, err := core.LoadMultiAppConfig()
-	if err != nil || config == nil || len(config.Apps) == 0 {
-		fmt.Fprintf(f.IOStreams.ErrOut, "Not configured yet. Config file path: %s\n", core.GetConfigPath())
-		fmt.Fprintln(f.IOStreams.ErrOut, "Run `lark-cli config init` to initialize.")
-		return nil
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		}
+		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
+	}
+	if config == nil || len(config.Apps) == 0 {
+		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
 	}
 	app := config.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil {
-		fmt.Fprintln(f.IOStreams.ErrOut, "No active profile found.")
-		return nil
+		return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli profile list")
 	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {

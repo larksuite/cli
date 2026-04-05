@@ -219,6 +219,26 @@ func TestProfileListRun_OutputsProfiles(t *testing.T) {
 	}
 }
 
+func TestProfileListRun_NotConfiguredReturnsEmptyList(t *testing.T) {
+	setupProfileConfigDir(t)
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	if err := profileListRun(f); err != nil {
+		t.Fatalf("profileListRun() error = %v", err)
+	}
+
+	var got []profileListItem
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v; output=%s", err, stdout.String())
+	}
+	if len(got) != 0 {
+		t.Fatalf("len(got) = %d, want 0", len(got))
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestProfileRemoveRun_SaveFailureReturnsStructuredError(t *testing.T) {
 	setupProfileConfigDir(t)
 	multi := &core.MultiAppConfig{
