@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 
@@ -133,6 +134,7 @@ type CredentialProvider struct {
 	defaultAcct  DefaultAccountResolver
 	defaultToken DefaultTokenResolver
 	httpClient   func() (*http.Client, error)
+	warnOut      io.Writer
 
 	accountOnce    sync.Once
 	account        *Account
@@ -152,6 +154,11 @@ func NewCredentialProvider(providers []extcred.Provider, defaultAcct DefaultAcco
 		defaultToken: defaultToken,
 		httpClient:   httpClient,
 	}
+}
+
+func (p *CredentialProvider) SetWarnOut(warnOut io.Writer) *CredentialProvider {
+	p.warnOut = warnOut
+	return p
 }
 
 // ResolveAccount resolves app credentials. Result is cached after first call.
@@ -175,6 +182,9 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 			internal := convertAccount(acct)
 			source := extensionTokenSource{provider: prov}
 			if err := p.enrichUserInfo(ctx, internal, source); err != nil {
+				if p.warnOut != nil {
+					_, _ = fmt.Fprintf(p.warnOut, "warning: unable to verify user identity from credential source %q: %v\n", source.Name(), err)
+				}
 				// enrichUserInfo failure is non-fatal: SupportedIdentities
 				// (used for strict mode) is already set by the provider.
 				// Clear unverified user identity for safety.
@@ -209,7 +219,7 @@ func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, 
 		if errors.As(err, &blockErr) {
 			return nil // provider explicitly blocks UAT; skip enrichment
 		}
-		return nil
+		return fmt.Errorf("failed to resolve UAT for user identity verification: %w", err)
 	}
 	if !found {
 		return nil

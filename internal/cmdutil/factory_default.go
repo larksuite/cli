@@ -146,5 +146,9 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 	providers := extcred.Providers()
 	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
-	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+	cp := credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+	if deps.ErrOut != nil {
+		cp.SetWarnOut(deps.ErrOut)
+	}
+	return cp
 }

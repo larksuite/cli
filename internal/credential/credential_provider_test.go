@@ -1,6 +1,7 @@
 package credential
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -13,17 +14,25 @@ import (
 )
 
 type mockExtProvider struct {
-	name    string
-	account *extcred.Account
-	token   *extcred.Token
-	err     error
+	name       string
+	account    *extcred.Account
+	token      *extcred.Token
+	err        error
+	accountErr error
+	tokenErr   error
 }
 
 func (m *mockExtProvider) Name() string { return m.name }
 func (m *mockExtProvider) ResolveAccount(ctx context.Context) (*extcred.Account, error) {
+	if m.accountErr != nil {
+		return nil, m.accountErr
+	}
 	return m.account, m.err
 }
 func (m *mockExtProvider) ResolveToken(ctx context.Context, req extcred.TokenSpec) (*extcred.Token, error) {
+	if m.tokenErr != nil {
+		return nil, m.tokenErr
+	}
 	return m.token, m.err
 }
 
@@ -337,6 +346,63 @@ func TestCredentialProvider_ResolveAccountDoesNotEnrichWithTokenFromDifferentPro
 	}
 	if acct.UserOpenId != "ou_default" || acct.UserName != "Default User" {
 		t.Fatalf("resolved user = (%q, %q), want (%q, %q)", acct.UserOpenId, acct.UserName, "ou_default", "Default User")
+	}
+}
+
+func TestCredentialProvider_ResolveAccountClearsUnverifiedExtensionIdentityOnTokenError(t *testing.T) {
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{name: "env", account: &extcred.Account{
+			AppID:  "ext_app",
+			Brand:  "feishu",
+			OpenID: "ou_ext",
+		}, tokenErr: errors.New("token lookup failed")}},
+		nil,
+		nil,
+		func() (*http.Client, error) {
+			t.Fatal("httpClient() should not be called when token lookup fails")
+			return nil, nil
+		},
+	)
+
+	acct, err := cp.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if acct.UserOpenId != "" || acct.UserName != "" {
+		t.Fatalf("resolved user = (%q, %q), want cleared unverified identity", acct.UserOpenId, acct.UserName)
+	}
+}
+
+func TestCredentialProvider_ResolveAccountWarnsWhenExtensionIdentityVerificationFails(t *testing.T) {
+	var warnBuf bytes.Buffer
+
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{name: "env", account: &extcred.Account{
+			AppID:  "ext_app",
+			Brand:  "feishu",
+			OpenID: "ou_ext",
+		}, tokenErr: errors.New("token lookup failed")}},
+		nil,
+		nil,
+		func() (*http.Client, error) {
+			t.Fatal("httpClient() should not be called when token lookup fails")
+			return nil, nil
+		},
+	)
+	cp.SetWarnOut(&warnBuf)
+
+	acct, err := cp.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if acct.UserOpenId != "" || acct.UserName != "" {
+		t.Fatalf("resolved user = (%q, %q), want cleared unverified identity", acct.UserOpenId, acct.UserName)
+	}
+	if !strings.Contains(warnBuf.String(), "unable to verify user identity from credential source \"env\"") {
+		t.Fatalf("warning output = %q, want source-specific verification warning", warnBuf.String())
+	}
+	if !strings.Contains(warnBuf.String(), "token lookup failed") {
+		t.Fatalf("warning output = %q, want underlying error", warnBuf.String())
 	}
 }
 
