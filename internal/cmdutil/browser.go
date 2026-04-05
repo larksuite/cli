@@ -8,18 +8,28 @@ import (
 	"runtime"
 )
 
+// commandStarter abstracts process launching for testing.
+var commandStarter = func(name string, args ...string) *exec.Cmd {
+	return exec.Command(name, args...)
+}
+
 // OpenBrowser attempts to open a URL in the user's default browser.
 // Returns true if the attempt was made, false if the platform is unsupported
 // or the command failed to start.
 func OpenBrowser(url string) bool {
+	return openBrowser(url, runtime.GOOS)
+}
+
+// openBrowser is the internal implementation that accepts goos for testability.
+func openBrowser(url, goos string) bool {
 	var cmd *exec.Cmd
-	switch runtime.GOOS {
+	switch goos {
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = commandStarter("open", url)
 	case "linux":
-		cmd = exec.Command("xdg-open", url)
+		cmd = commandStarter("xdg-open", url)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", url)
+		cmd = commandStarter("cmd", "/c", "start", "", url)
 	default:
 		return false
 	}
