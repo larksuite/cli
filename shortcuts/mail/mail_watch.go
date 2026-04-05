@@ -438,27 +438,36 @@ var MailWatch = common.Shortcut{
 					fmt.Fprintf(errOut, "panic in signal handler: %v\n", r)
 				}
 			}()
-			<-sigCh
-			info(fmt.Sprintf("\nShutting down... (received %d events)", eventCount))
-			info("Unsubscribing mailbox events...")
-			if unsubErr := unsubscribe(); unsubErr != nil {
-				fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
-			} else {
-				info("Mailbox unsubscribed.")
+			select {
+			case <-sigCh:
+				info(fmt.Sprintf("\nShutting down... (received %d events)", eventCount))
+				close(shutdownBySignal)
+				cancelWatch()
+			case <-watchCtx.Done():
+				return
 			}
-			close(shutdownBySignal)
-			cancelWatch()
 		}()
 
 		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
 		if err := cli.Start(watchCtx); err != nil {
 			select {
 			case <-shutdownBySignal:
+				info("Unsubscribing mailbox events...")
+				if unsubErr := unsubscribe(); unsubErr != nil {
+					fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
+				} else {
+					info("Mailbox unsubscribed.")
+				}
 				return nil
 			default:
 			}
 			if errors.Is(err, context.Canceled) {
-				unsubscribe() //nolint:errcheck // best-effort cleanup
+				info("Unsubscribing mailbox events...")
+				if unsubErr := unsubscribe(); unsubErr != nil {
+					fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
+				} else {
+					info("Mailbox unsubscribed.")
+				}
 				return nil
 			}
 			unsubscribe() //nolint:errcheck // best-effort cleanup
