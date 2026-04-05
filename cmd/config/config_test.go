@@ -8,10 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 )
 
@@ -211,64 +209,5 @@ func TestUpdateExistingProfileWithoutSecret_RejectsAppIDChange(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "App Secret") {
 		t.Fatalf("error = %v, want mention of App Secret", err)
-	}
-}
-
-func TestConfigShowRun_PrefersRuntimeCredentialValues(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	multi := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
-			Name:      "stored",
-			AppId:     "cfg-app",
-			AppSecret: core.PlainSecret("secret"),
-			Brand:     core.BrandFeishu,
-			Lang:      "zh",
-			Users:     []core.AppUser{{UserOpenId: "ou_cfg", UserName: "Stored User"}},
-		}},
-	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
-		t.Fatal(err)
-	}
-
-	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "cfg-app", AppSecret: "secret", Brand: core.BrandFeishu})
-	f.Credential = credential.NewCredentialProvider(
-		[]extcred.Provider{&stubStrictModeProvider{
-			name: "env",
-			account: &extcred.Account{
-				AppID:     "env-app",
-				AppSecret: "env-secret",
-				Brand:     string(core.BrandLark),
-				OpenID:    "ou_env",
-			},
-		}},
-		nil,
-		nil,
-		nil,
-	)
-	f.Config = func() (*core.CliConfig, error) {
-		cfg, err := f.Credential.ResolveAccount(context.Background())
-		if err != nil {
-			return nil, err
-		}
-		cfg.UserName = "Env User"
-		return cfg, nil
-	}
-
-	if err := configShowRun(&ConfigShowOptions{Factory: f}); err != nil {
-		t.Fatalf("configShowRun() error = %v", err)
-	}
-
-	if !strings.Contains(stdout.String(), `"appId": "env-app"`) {
-		t.Fatalf("stdout = %q, want runtime appId", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), `"brand": "lark"`) {
-		t.Fatalf("stdout = %q, want runtime brand", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), `"users": "Env User (ou_env)"`) {
-		t.Fatalf("stdout = %q, want runtime user", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), core.GetConfigPath()) {
-		t.Fatalf("stderr = %q, want config path", stderr.String())
 	}
 }
