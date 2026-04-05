@@ -4,12 +4,28 @@
 package config
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 )
+
+type stubStrictModeProvider struct {
+	name    string
+	account *extcred.Account
+}
+
+func (p *stubStrictModeProvider) Name() string { return p.name }
+func (p *stubStrictModeProvider) ResolveAccount(ctx context.Context) (*extcred.Account, error) {
+	return p.account, nil
+}
+func (p *stubStrictModeProvider) ResolveToken(ctx context.Context, req extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
 
 func setupStrictModeTestConfig(t *testing.T) {
 	t.Helper()
@@ -128,5 +144,46 @@ func TestStrictMode_InvalidValue(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error for invalid value 'on'")
+	}
+}
+
+func TestStrictMode_Show_PrefersExternalCredentialSourceEvenWhenValueMatchesConfig(t *testing.T) {
+	setupStrictModeTestConfig(t)
+
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mode := core.StrictModeBot
+	multi.Apps[0].StrictMode = &mode
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app", AppSecret: "secret"})
+	f.Credential = credential.NewCredentialProvider(
+		[]extcred.Provider{&stubStrictModeProvider{
+			name: "env",
+			account: &extcred.Account{
+				AppID:               "env-app",
+				AppSecret:           "env-secret",
+				Brand:               string(core.BrandFeishu),
+				SupportedIdentities: extcred.SupportsBot,
+			},
+		}},
+		nil,
+		nil,
+		nil,
+	)
+
+	cmd := NewCmdConfigStrictMode(f)
+	cmd.SetArgs([]string{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := `strict-mode: bot (source: credential provider "env")`
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("output = %q, want substring %q", stdout.String(), want)
 	}
 }

@@ -31,12 +31,7 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			if len(args) == 0 {
-				current := app.DefaultAs
-				if current == "" {
-					current = "auto"
-				}
-				fmt.Fprintf(f.IOStreams.Out, "default-as: %s\n", current)
-				return nil
+				return showDefaultAs(f, app)
 			}
 
 			value := args[0]
@@ -53,4 +48,21 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func showDefaultAs(f *cmdutil.Factory, app *core.AppConfig) error {
+	current := ""
+	if f != nil && f.Config != nil {
+		if cfg, err := f.Config(); err == nil && cfg != nil {
+			current = cfg.DefaultAs
+		}
+	}
+	if current == "" && app != nil {
+		current = app.DefaultAs
+	}
+	if current == "" {
+		current = "auto"
+	}
+	fmt.Fprintf(f.IOStreams.Out, "default-as: %s\n", current)
+	return nil
 }
