@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -45,7 +44,7 @@ type Factory struct {
 
 // ResolveAs returns the effective identity type.
 // If the user explicitly passed --as, use that value; otherwise use the configured default.
-// When the value is "auto" (or unset), auto-detect based on login state.
+// When the value is "auto" (or unset), auto-detect based on credential hints.
 func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
 
@@ -61,39 +60,56 @@ func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Ident
 			return flagAs
 		}
 		// --as auto: fall through to auto-detect
-	} else if defaultAs := f.resolveDefaultAs(); defaultAs != "" && defaultAs != "auto" {
-		f.ResolvedIdentity = core.Identity(defaultAs)
-		return f.ResolvedIdentity
 	}
-	// Auto-detect based on login state
+
+	hint := f.resolveIdentityHint()
+	if cmd == nil || !cmd.Flags().Changed("as") {
+		if defaultAs := resolveDefaultAsFromHint(hint); defaultAs != "" && defaultAs != "auto" {
+			f.ResolvedIdentity = core.Identity(defaultAs)
+			return f.ResolvedIdentity
+		}
+	}
+
+	// Auto-detect based on credential hint
 	f.IdentityAutoDetected = true
-	result := f.autoDetectIdentity()
+	result := autoDetectIdentityFromHint(hint)
 	f.ResolvedIdentity = result
 	return result
 }
 
-// resolveDefaultAs returns the configured default identity from the resolved account/config.
-func (f *Factory) resolveDefaultAs() string {
-	if cfg, err := f.Config(); err == nil {
-		return cfg.DefaultAs
+func resolveDefaultAsFromHint(hint *credential.IdentityHint) string {
+	if hint != nil {
+		return hint.DefaultAs
 	}
 	return ""
 }
 
-// autoDetectIdentity checks the login state and returns user if logged in, bot otherwise.
+func autoDetectIdentityFromHint(hint *credential.IdentityHint) core.Identity {
+	if hint != nil && hint.AutoAs != "" {
+		return hint.AutoAs
+	}
+	return core.AsBot
+}
+
+// resolveDefaultAs returns the configured default identity from the resolved credential hint.
+func (f *Factory) resolveDefaultAs() string {
+	return resolveDefaultAsFromHint(f.resolveIdentityHint())
+}
+
+func (f *Factory) resolveIdentityHint() *credential.IdentityHint {
+	if f.Credential == nil {
+		return nil
+	}
+	hint, err := f.Credential.ResolveIdentityHint(context.Background())
+	if err != nil {
+		return nil
+	}
+	return hint
+}
+
+// autoDetectIdentity checks the resolved credential hint and returns bot by default.
 func (f *Factory) autoDetectIdentity() core.Identity {
-	cfg, err := f.Config()
-	if err != nil || cfg.UserOpenId == "" {
-		return core.AsBot
-	}
-	stored := auth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
-	if stored == nil {
-		return core.AsBot
-	}
-	if auth.TokenStatus(stored) == "expired" {
-		return core.AsBot
-	}
-	return core.AsUser
+	return autoDetectIdentityFromHint(f.resolveIdentityHint())
 }
 
 // CheckIdentity verifies the resolved identity is in the supported list.

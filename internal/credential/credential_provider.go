@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -24,9 +25,15 @@ type DefaultTokenResolver interface {
 	ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error)
 }
 
-type tokenSource interface {
+var (
+	getStoredToken       = auth.GetStoredToken
+	getStoredTokenStatus = auth.TokenStatus
+)
+
+type credentialSource interface {
 	Name() string
 	TryResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, bool, error)
+	ResolveIdentityHint(ctx context.Context, acct *Account) (*IdentityHint, error)
 }
 
 type extensionTokenSource struct {
@@ -47,9 +54,31 @@ func (s extensionTokenSource) TryResolveToken(ctx context.Context, req TokenSpec
 		return nil, false, nil
 	}
 	if tok.Value == "" {
-		return nil, false, fmt.Errorf("credential source %q returned an empty token for %s", s.Name(), req.Type)
+		return nil, false, &MalformedTokenResultError{Source: s.Name(), Type: req.Type, Reason: "empty token"}
 	}
 	return &TokenResult{Token: tok.Value, Scopes: tok.Scopes}, true, nil
+}
+
+func (s extensionTokenSource) ResolveIdentityHint(ctx context.Context, acct *Account) (*IdentityHint, error) {
+	hint := &IdentityHint{}
+	if acct == nil {
+		return hint, nil
+	}
+	hint.DefaultAs = acct.DefaultAs
+	// Extension sources verify user identity via enrichUserInfo, so a resolved
+	// UserOpenId is sufficient here; no keychain-backed token status lookup is needed.
+	if acct.UserOpenId != "" {
+		hint.AutoAs = core.AsUser
+		return hint, nil
+	}
+	ids := extcred.IdentitySupport(acct.SupportedIdentities)
+	switch {
+	case ids.UserOnly():
+		hint.AutoAs = core.AsUser
+	case ids.BotOnly():
+		hint.AutoAs = core.AsBot
+	}
+	return hint, nil
 }
 
 type defaultTokenSource struct {
@@ -66,10 +95,36 @@ func (s defaultTokenSource) TryResolveToken(ctx context.Context, req TokenSpec) 
 	if err != nil {
 		return nil, false, err
 	}
-	if result == nil || result.Token == "" {
-		return nil, false, nil
+	if result == nil {
+		return nil, false, &MalformedTokenResultError{Source: s.Name(), Type: req.Type, Reason: "nil token result"}
+	}
+	if result.Token == "" {
+		return nil, false, &MalformedTokenResultError{Source: s.Name(), Type: req.Type, Reason: "empty token"}
 	}
 	return result, true, nil
+}
+
+func (s defaultTokenSource) ResolveIdentityHint(ctx context.Context, acct *Account) (*IdentityHint, error) {
+	hint := &IdentityHint{}
+	if acct == nil {
+		return hint, nil
+	}
+	hint.DefaultAs = acct.DefaultAs
+	if acct.UserOpenId == "" {
+		hint.AutoAs = core.AsBot
+		return hint, nil
+	}
+	stored := getStoredToken(acct.AppID, acct.UserOpenId)
+	if stored == nil {
+		hint.AutoAs = core.AsBot
+		return hint, nil
+	}
+	if getStoredTokenStatus(stored) == "expired" {
+		hint.AutoAs = core.AsBot
+		return hint, nil
+	}
+	hint.AutoAs = core.AsUser
+	return hint, nil
 }
 
 // CredentialProvider is the unified entry point for all credential resolution.
@@ -82,7 +137,11 @@ type CredentialProvider struct {
 	accountOnce    sync.Once
 	account        *Account
 	accountErr     error
-	selectedSource tokenSource
+	selectedSource credentialSource
+
+	hintOnce sync.Once
+	hint     *IdentityHint
+	hintErr  error
 }
 
 // NewCredentialProvider creates a CredentialProvider.
@@ -140,7 +199,7 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 // enrichUserInfo resolves user identity when extension provides a UAT.
 // If UAT is available, user_info API call is mandatory (security: verify token validity).
 // If no UAT from extension, falls back to provider-supplied OpenID.
-func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, source tokenSource) error {
+func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, source credentialSource) error {
 	if p.httpClient == nil || source == nil {
 		return nil
 	}
@@ -169,7 +228,7 @@ func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, 
 	return nil
 }
 
-func (p *CredentialProvider) selectedTokenSource(ctx context.Context) (tokenSource, error) {
+func (p *CredentialProvider) selectedCredentialSource(ctx context.Context) (credentialSource, error) {
 	if p.selectedSource != nil {
 		return p.selectedSource, nil
 	}
@@ -185,7 +244,7 @@ func (p *CredentialProvider) selectedTokenSource(ctx context.Context) (tokenSour
 	return p.selectedSource, nil
 }
 
-func resolveTokenFromSource(ctx context.Context, source tokenSource, req TokenSpec) (*TokenResult, error) {
+func resolveTokenFromSource(ctx context.Context, source credentialSource, req TokenSpec) (*TokenResult, error) {
 	result, found, err := source.TryResolveToken(ctx, req)
 	if err != nil {
 		return nil, err
@@ -196,9 +255,44 @@ func resolveTokenFromSource(ctx context.Context, source tokenSource, req TokenSp
 	return result, nil
 }
 
+// ResolveIdentityHint resolves default/auto identity guidance from the selected source.
+// NOTE: Uses sync.Once — only the context from the first call is used for resolution.
+// This matches ResolveAccount and keeps identity decisions stable within one CLI invocation.
+func (p *CredentialProvider) ResolveIdentityHint(ctx context.Context) (*IdentityHint, error) {
+	p.hintOnce.Do(func() {
+		p.hint, p.hintErr = p.doResolveIdentityHint(ctx)
+	})
+	return p.hint, p.hintErr
+}
+
+func (p *CredentialProvider) doResolveIdentityHint(ctx context.Context) (*IdentityHint, error) {
+	acct, err := p.ResolveAccount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if acct == nil {
+		return &IdentityHint{}, nil
+	}
+	source, err := p.selectedCredentialSource(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if source == nil {
+		return &IdentityHint{}, nil
+	}
+	hint, err := source.ResolveIdentityHint(ctx, acct)
+	if err != nil {
+		return nil, err
+	}
+	if hint == nil {
+		return &IdentityHint{}, nil
+	}
+	return hint, nil
+}
+
 // ResolveToken resolves an access token.
 func (p *CredentialProvider) ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error) {
-	source, err := p.selectedTokenSource(ctx)
+	source, err := p.selectedCredentialSource(ctx)
 	if err != nil {
 		return nil, err
 	}

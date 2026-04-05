@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -191,6 +193,121 @@ func TestCredentialProvider_ResolveTokenPropagatesNonBlockExtensionError(t *test
 	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
 	if err == nil || err.Error() != "provider exploded" {
 		t.Fatalf("ResolveToken() error = %v, want provider exploded", err)
+	}
+}
+
+func TestCredentialProvider_ResolveIdentityHint_FromExtensionAccount(t *testing.T) {
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{name: "env", account: &extcred.Account{
+			AppID:               "ext_app",
+			Brand:               "feishu",
+			DefaultAs:           extcred.IdentityUser,
+			SupportedIdentities: extcred.SupportsUser,
+		}}},
+		nil, nil, nil,
+	)
+
+	hint, err := cp.ResolveIdentityHint(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveIdentityHint() error = %v", err)
+	}
+	if hint.DefaultAs != extcred.IdentityUser {
+		t.Fatalf("ResolveIdentityHint() defaultAs = %q, want %q", hint.DefaultAs, extcred.IdentityUser)
+	}
+	if hint.AutoAs != core.AsUser {
+		t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, core.AsUser)
+	}
+}
+
+func TestCredentialProvider_ResolveIdentityHint_DefaultSourceUsesStoredTokenState(t *testing.T) {
+	origGetStoredToken := getStoredToken
+	origTokenStatus := getStoredTokenStatus
+	t.Cleanup(func() {
+		getStoredToken = origGetStoredToken
+		getStoredTokenStatus = origTokenStatus
+	})
+
+	getStoredToken = func(appID, userOpenID string) *auth.StoredUAToken {
+		if appID != "default_app" || userOpenID != "ou_default" {
+			t.Fatalf("GetStoredToken() args = (%q, %q), want (%q, %q)", appID, userOpenID, "default_app", "ou_default")
+		}
+		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}
+	}
+	getStoredTokenStatus = func(token *auth.StoredUAToken) string {
+		return "valid"
+	}
+
+	cp := NewCredentialProvider(
+		nil,
+		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: core.BrandFeishu, UserOpenId: "ou_default"}},
+		&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
+		nil,
+	)
+
+	hint, err := cp.ResolveIdentityHint(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveIdentityHint() error = %v", err)
+	}
+	if hint.AutoAs != core.AsUser {
+		t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, core.AsUser)
+	}
+}
+
+func TestCredentialProvider_ResolveIdentityHint_CachesResult(t *testing.T) {
+	origGetStoredToken := getStoredToken
+	origTokenStatus := getStoredTokenStatus
+	t.Cleanup(func() {
+		getStoredToken = origGetStoredToken
+		getStoredTokenStatus = origTokenStatus
+	})
+
+	storedCalls := 0
+	statusCalls := 0
+	getStoredToken = func(appID, userOpenID string) *auth.StoredUAToken {
+		storedCalls++
+		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}
+	}
+	getStoredTokenStatus = func(token *auth.StoredUAToken) string {
+		statusCalls++
+		return "valid"
+	}
+
+	cp := NewCredentialProvider(
+		nil,
+		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: core.BrandFeishu, UserOpenId: "ou_default"}},
+		&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
+		nil,
+	)
+
+	for i := 0; i < 2; i++ {
+		hint, err := cp.ResolveIdentityHint(context.Background())
+		if err != nil {
+			t.Fatalf("ResolveIdentityHint() error = %v", err)
+		}
+		if hint.AutoAs != core.AsUser {
+			t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, core.AsUser)
+		}
+	}
+
+	if storedCalls != 1 {
+		t.Fatalf("GetStoredToken() calls = %d, want 1", storedCalls)
+	}
+	if statusCalls != 1 {
+		t.Fatalf("TokenStatus() calls = %d, want 1", statusCalls)
+	}
+}
+
+func TestCredentialProvider_ResolveTokenTreatsEmptyDefaultTokenAsMalformed(t *testing.T) {
+	cp := NewCredentialProvider(
+		nil,
+		nil,
+		&mockDefaultToken{result: &TokenResult{Token: ""}},
+		nil,
+	)
+
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	if err == nil || !strings.Contains(err.Error(), "empty token") {
+		t.Fatalf("ResolveToken() error = %v, want malformed empty token error", err)
 	}
 }
 

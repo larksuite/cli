@@ -47,8 +47,8 @@ func (s *staticTokenResolver) ResolveToken(_ context.Context, _ credential.Token
 
 type missingTokenResolver struct{}
 
-func (s *missingTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
-	return nil, nil
+func (s *missingTokenResolver) ResolveToken(_ context.Context, req credential.TokenSpec) (*credential.TokenResult, error) {
+	return nil, &credential.TokenUnavailableError{Source: "default", Type: req.Type}
 }
 
 // newTestAPIClient creates an APIClient with a mock HTTP transport.

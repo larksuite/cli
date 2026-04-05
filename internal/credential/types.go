@@ -52,6 +52,12 @@ type TokenResult struct {
 	Scopes string // optional, space-separated; empty = skip scope pre-check
 }
 
+// IdentityHint is credential-layer guidance for resolving the effective identity.
+type IdentityHint struct {
+	DefaultAs string
+	AutoAs    core.Identity
+}
+
 // TokenUnavailableError reports that no usable token was available.
 type TokenUnavailableError struct {
 	Source string
@@ -63,6 +69,17 @@ func (e *TokenUnavailableError) Error() string {
 		return fmt.Sprintf("no %s available from credential source %q", e.Type, e.Source)
 	}
 	return fmt.Sprintf("no credential provider returned a token for %s", e.Type)
+}
+
+// MalformedTokenResultError reports that a source returned an invalid token payload.
+type MalformedTokenResultError struct {
+	Source string
+	Type   TokenType
+	Reason string
+}
+
+func (e *MalformedTokenResultError) Error() string {
+	return fmt.Sprintf("credential source %q returned malformed %s token: %s", e.Source, e.Type, e.Reason)
 }
 
 // TokenProvider resolves a runtime access token.

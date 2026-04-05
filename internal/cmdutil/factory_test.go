@@ -4,7 +4,6 @@
 package cmdutil
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -207,13 +206,11 @@ func TestAutoDetectIdentity_EnvTokenDoesNotBypassConfigSource(t *testing.T) {
 
 func TestAutoDetectIdentity_ConfigError(t *testing.T) {
 	f := &Factory{
-		Config: func() (*core.CliConfig, error) {
-			return nil, os.ErrNotExist
-		},
+		Credential: nil,
 	}
 	got := f.autoDetectIdentity()
 	if got != core.AsBot {
-		t.Errorf("want bot (config error), got %s", got)
+		t.Errorf("want bot (no credential hint), got %s", got)
 	}
 }
 
