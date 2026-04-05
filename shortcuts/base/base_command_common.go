@@ -14,7 +14,7 @@ func baseTokenFlag(required bool) common.Flag {
 }
 
 func tableRefFlag(required bool) common.Flag {
-	return common.Flag{Name: "table-id", Desc: "table ID or name", Required: required}
+	return common.Flag{Name: "table-id", Desc: "table ID (must start with tbl if ID) or name", Required: required}
 }
 
 func fieldRefFlag(required bool) common.Flag {
