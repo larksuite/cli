@@ -41,16 +41,24 @@ AI agents are strictly prohibited from modifying this setting.`,
 			if err != nil {
 				return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
 			}
-			app := multi.CurrentAppConfig(f.Invocation.Profile)
-			if app == nil {
-				return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
-			}
 
 			if reset {
+				app := multi.CurrentAppConfig(f.Invocation.Profile)
+				if app == nil {
+					return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+				}
 				return resetStrictMode(f, multi, app, global, args)
 			}
 			if len(args) == 0 {
+				app := multi.CurrentAppConfig(f.Invocation.Profile)
+				if app == nil {
+					return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+				}
 				return showStrictMode(f, multi, app)
+			}
+			app := multi.CurrentAppConfig(f.Invocation.Profile)
+			if !global && app == nil {
+				return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
 			}
 			return setStrictMode(f, multi, app, args[0], global)
 		},
@@ -114,6 +122,9 @@ func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.App
 			}
 		}
 	} else {
+		if app == nil {
+			return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+		}
 		app.StrictMode = &mode
 	}
 

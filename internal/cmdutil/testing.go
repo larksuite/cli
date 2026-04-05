@@ -80,7 +80,7 @@ func (a *testDefaultAcct) ResolveAccount(ctx context.Context) (*credential.Accou
 	if a.config == nil {
 		return &credential.Account{}, nil
 	}
-	return a.config, nil
+	return credential.AccountFromCliConfig(a.config), nil
 }
 
 type testDefaultToken struct{}

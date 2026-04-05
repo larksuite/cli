@@ -55,14 +55,15 @@ func NewDefault(inv InvocationContext) *Factory {
 		ErrOut:     f.IOStreams.ErrOut,
 	})
 
-	// Phase 3: Config derived from Credential (Account is a type alias for CliConfig)
+	// Phase 3: Config derived from Credential via an explicit conversion boundary.
 	f.Config = sync.OnceValues(func() (*core.CliConfig, error) {
 		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
 			return nil, err
 		}
-		registry.InitWithBrand(acct.Brand)
-		return acct, nil
+		cfg := acct.ToCliConfig()
+		registry.InitWithBrand(cfg.Brand)
+		return cfg, nil
 	})
 
 	// Phase 4: LarkClient from Credential (placeholder AppSecret)

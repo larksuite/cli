@@ -41,7 +41,7 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 		return nil, err
 	}
 	cfg.SupportedIdentities = strictModeToIdentitySupport(multi, p.profile)
-	return cfg, nil
+	return AccountFromCliConfig(cfg), nil
 }
 
 // strictModeToIdentitySupport maps the config-level strict mode to
@@ -102,7 +102,7 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	token, err := auth.GetValidAccessToken(httpClient, auth.NewUATCallOptions(acct, p.errOut))
+	token, err := auth.GetValidAccessToken(httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
 	if err != nil {
 		return nil, err
 	}

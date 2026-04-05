@@ -313,20 +313,9 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 
 	// Step 8: Update config — overwrite Users to single user, clean old tokens
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil {
-		app := multi.FindApp(config.ProfileName)
-		if app != nil {
-			for _, oldUser := range app.Users {
-				if oldUser.UserOpenId != openId {
-					larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-				}
-			}
-			app.Users = []core.AppUser{{UserOpenId: openId, UserName: userName}}
-			if err := core.SaveMultiAppConfig(multi); err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-			}
-		}
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+		_ = larkauth.RemoveStoredToken(config.AppID, openId)
+		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
 	if opts.JSON {
@@ -395,23 +384,46 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	}
 
 	// Update config — overwrite Users to single user, clean old tokens
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil {
-		app := multi.FindApp(config.ProfileName)
-		if app != nil {
-			for _, oldUser := range app.Users {
-				if oldUser.UserOpenId != openId {
-					larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-				}
-			}
-			app.Users = []core.AppUser{{UserOpenId: openId, UserName: userName}}
-			if err := core.SaveMultiAppConfig(multi); err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-			}
-		}
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+		_ = larkauth.RemoveStoredToken(config.AppID, openId)
+		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
+	return nil
+}
+
+func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	app := findProfileByName(multi, profileName)
+	if app == nil {
+		return fmt.Errorf("profile %q not found in config", profileName)
+	}
+
+	oldUsers := append([]core.AppUser(nil), app.Users...)
+	app.Users = []core.AppUser{{UserOpenId: openID, UserName: userName}}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+
+	for _, oldUser := range oldUsers {
+		if oldUser.UserOpenId != openID {
+			_ = larkauth.RemoveStoredToken(appID, oldUser.UserOpenId)
+		}
+	}
+	return nil
+}
+
+func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.AppConfig {
+	for i := range multi.Apps {
+		if multi.Apps[i].ProfileName() == profileName {
+			return &multi.Apps[i]
+		}
+	}
 	return nil
 }
 

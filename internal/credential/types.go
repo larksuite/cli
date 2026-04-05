@@ -8,8 +8,53 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
-// Account is an alias for core.CliConfig — they carry the same fields.
-type Account = core.CliConfig
+// Account is the credential-layer view of the active runtime account.
+// It intentionally mirrors only the resolved fields needed by runtime auth
+// and identity selection, without exposing core.CliConfig as a dependency.
+type Account struct {
+	ProfileName         string
+	AppID               string
+	AppSecret           string
+	Brand               core.LarkBrand
+	DefaultAs           string
+	UserOpenId          string
+	UserName            string
+	SupportedIdentities uint8
+}
+
+// AccountFromCliConfig copies the resolved config view into a credential.Account.
+func AccountFromCliConfig(cfg *core.CliConfig) *Account {
+	if cfg == nil {
+		return nil
+	}
+	return &Account{
+		ProfileName:         cfg.ProfileName,
+		AppID:               cfg.AppID,
+		AppSecret:           cfg.AppSecret,
+		Brand:               cfg.Brand,
+		DefaultAs:           cfg.DefaultAs,
+		UserOpenId:          cfg.UserOpenId,
+		UserName:            cfg.UserName,
+		SupportedIdentities: cfg.SupportedIdentities,
+	}
+}
+
+// ToCliConfig copies the credential-layer account into the downstream config shape.
+func (a *Account) ToCliConfig() *core.CliConfig {
+	if a == nil {
+		return nil
+	}
+	return &core.CliConfig{
+		ProfileName:         a.ProfileName,
+		AppID:               a.AppID,
+		AppSecret:           a.AppSecret,
+		Brand:               a.Brand,
+		DefaultAs:           a.DefaultAs,
+		UserOpenId:          a.UserOpenId,
+		UserName:            a.UserName,
+		SupportedIdentities: a.SupportedIdentities,
+	}
+}
 
 // AccountProvider resolves app credentials.
 // Returns nil, nil to indicate "I don't handle this, try next provider".

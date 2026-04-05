@@ -327,16 +327,21 @@ func resolveURLMedia(ctx context.Context, runtime *common.RuntimeContext, s medi
 func resolveLocalMedia(ctx context.Context, runtime *common.RuntimeContext, s mediaSpec) (string, error) {
 	fmt.Fprintf(runtime.IO().ErrOut, "uploading %s: %s\n", s.mediaType, filepath.Base(s.value))
 
-	if s.kind == mediaKindImage {
-		return uploadImageToIM(ctx, runtime, s.value, "message")
+	safePath, err := validate.SafeInputPath(s.value)
+	if err != nil {
+		return "", err
 	}
 
-	ft := detectIMFileType(s.value)
+	if s.kind == mediaKindImage {
+		return uploadImageToIM(ctx, runtime, safePath, "message")
+	}
+
+	ft := detectIMFileType(safePath)
 	dur := ""
 	if s.withDuration {
-		dur = parseMediaDuration(s.value, ft)
+		dur = parseMediaDuration(safePath, ft)
 	}
-	return uploadFileToIM(ctx, runtime, s.value, ft, dur)
+	return uploadFileToIM(ctx, runtime, safePath, ft, dur)
 }
 
 // resolveVideoContent handles the video case which needs both a file_key and

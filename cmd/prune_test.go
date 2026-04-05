@@ -119,6 +119,22 @@ func TestPruneEmpty(t *testing.T) {
 	}
 }
 
+func TestPruneEmpty_PreservesOriginallyHiddenGroup(t *testing.T) {
+	root := &cobra.Command{Use: "root"}
+	hidden := &cobra.Command{Use: "hidden", Hidden: true}
+	root.AddCommand(hidden)
+	hidden.AddCommand(&cobra.Command{
+		Use:  "visible",
+		RunE: func(*cobra.Command, []string) error { return nil },
+	})
+
+	pruneEmpty(root)
+
+	if !hidden.Hidden {
+		t.Fatal("expected originally hidden group to remain hidden")
+	}
+}
+
 func TestPruneForStrictMode_Bot_DirectUserShortcutReturnsStrictMode(t *testing.T) {
 	root := newTestTree()
 	root.SilenceErrors = true

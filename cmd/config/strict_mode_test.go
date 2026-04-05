@@ -102,6 +102,38 @@ func TestStrictMode_SetBot_Global(t *testing.T) {
 	}
 }
 
+func TestStrictMode_SetGlobal_DoesNotRequireActiveProfile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "missing-profile",
+		Apps: []core.AppConfig{{
+			Name:      "default",
+			AppId:     "test-app",
+			AppSecret: core.PlainSecret("secret"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatal(err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app", AppSecret: "secret"})
+	cmd := NewCmdConfigStrictMode(f)
+	cmd.SetArgs([]string{"bot", "--global"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if saved.StrictMode != core.StrictModeBot {
+		t.Fatalf("StrictMode = %q, want %q", saved.StrictMode, core.StrictModeBot)
+	}
+}
+
 func TestStrictMode_Reset(t *testing.T) {
 	setupStrictModeTestConfig(t)
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app", AppSecret: "secret"})

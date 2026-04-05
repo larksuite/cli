@@ -64,7 +64,7 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 
 	// Best-effort credential cleanup after config commit

@@ -68,7 +68,6 @@ func pruneEmpty(parent *cobra.Command) {
 		}
 		switch {
 		case child.HasAvailableSubCommands():
-			child.Hidden = false
 		case len(child.Commands()) > 0:
 			child.Hidden = true
 		default:

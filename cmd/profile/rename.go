@@ -59,7 +59,7 @@ func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Profile renamed: %q -> %q", oldProfileName, newName))
