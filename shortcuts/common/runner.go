@@ -347,12 +347,18 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 // checkScopePrereqs performs a fast local check: does the token
 // contain all scopes declared by the shortcut? Returns the missing ones.
 // If scope data is unavailable, returns nil (let the API call handle it).
-func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, identity core.Identity, required []string) []string {
+func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, identity core.Identity, required []string) ([]string, error) {
 	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(identity, appID))
-	if err != nil || result == nil || result.Scopes == "" {
-		return nil
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, nil
 	}
-	return auth.MissingScopes(result.Scopes, required)
+	if result == nil || result.Scopes == "" {
+		return nil, nil
+	}
+	return auth.MissingScopes(result.Scopes, required), nil
 }
 
 // enhancePermissionError enriches a permission / auth error with the
@@ -491,7 +497,10 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 	if len(scopes) == 0 {
 		return nil
 	}
-	missing := checkScopePrereqs(f, ctx, config.AppID, as, scopes)
+	missing, err := checkScopePrereqs(f, ctx, config.AppID, as, scopes)
+	if err != nil {
+		return err
+	}
 	if len(missing) == 0 {
 		return nil
 	}

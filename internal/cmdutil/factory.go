@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -73,11 +72,8 @@ func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Ident
 	return result
 }
 
-// resolveDefaultAs returns the configured default identity: env var > config file.
+// resolveDefaultAs returns the configured default identity from the resolved account/config.
 func (f *Factory) resolveDefaultAs() string {
-	if v := os.Getenv("LARKSUITE_CLI_DEFAULT_AS"); v != "" {
-		return v
-	}
 	if cfg, err := f.Config(); err == nil {
 		return cfg.DefaultAs
 	}
@@ -86,9 +82,6 @@ func (f *Factory) resolveDefaultAs() string {
 
 // autoDetectIdentity checks the login state and returns user if logged in, bot otherwise.
 func (f *Factory) autoDetectIdentity() core.Identity {
-	if os.Getenv("LARK_USER_ACCESS_TOKEN") != "" {
-		return core.AsUser
-	}
 	cfg, err := f.Config()
 	if err != nil || cfg.UserOpenId == "" {
 		return core.AsBot

@@ -117,17 +117,22 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
 		util.WarnIfProxied(os.Stderr)
-		var sdkTransport = http.DefaultTransport
-		sdkTransport = &UserAgentTransport{Base: sdkTransport}
-		sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
 		opts = append(opts, lark.WithHttpClient(&http.Client{
-			Transport:     sdkTransport,
+			Transport:     buildSDKTransport(),
 			CheckRedirect: safeRedirectPolicy,
 		}))
 		ep := core.ResolveEndpoints(acct.Brand)
 		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
 		return lark.NewClient(acct.AppID, acct.AppSecret, opts...), nil
 	})
+}
+
+func buildSDKTransport() http.RoundTripper {
+	var sdkTransport http.RoundTripper = util.NewBaseTransport()
+	sdkTransport = &RetryTransport{Base: sdkTransport}
+	sdkTransport = &UserAgentTransport{Base: sdkTransport}
+	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
+	return sdkTransport
 }
 
 type credentialDeps struct {

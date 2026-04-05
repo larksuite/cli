@@ -5,6 +5,7 @@ package env
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/larksuite/cli/extension/credential"
@@ -29,27 +30,53 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	}
 	brand := os.Getenv("LARK_BRAND")
 	if brand == "" {
-		brand = "lark"
+		brand = "feishu"
 	}
 	acct := &credential.Account{AppID: appID, AppSecret: appSecret, Brand: brand}
+	hasUAT := os.Getenv("LARK_USER_ACCESS_TOKEN") != ""
+	hasTAT := os.Getenv("LARK_TENANT_ACCESS_TOKEN") != ""
+
+	switch defaultAs := os.Getenv("LARKSUITE_CLI_DEFAULT_AS"); defaultAs {
+	case "", credential.IdentityAuto:
+		acct.DefaultAs = defaultAs
+	case credential.IdentityUser, credential.IdentityBot:
+		acct.DefaultAs = defaultAs
+	default:
+		return nil, &credential.BlockError{
+			Provider: "env",
+			Reason:   fmt.Sprintf("invalid LARKSUITE_CLI_DEFAULT_AS %q (want user, bot, or auto)", defaultAs),
+		}
+	}
 
 	// Explicit strict mode policy takes priority
-	switch os.Getenv("LARKSUITE_CLI_STRICT_MODE") {
+	switch strictMode := os.Getenv("LARKSUITE_CLI_STRICT_MODE"); strictMode {
 	case "bot":
 		acct.SupportedIdentities = credential.SupportsBot
 	case "user":
 		acct.SupportedIdentities = credential.SupportsUser
 	case "off":
 		acct.SupportedIdentities = credential.SupportsAll
-	default:
+	case "":
 		// Infer from available tokens
-		hasUAT := os.Getenv("LARK_USER_ACCESS_TOKEN") != ""
-		hasTAT := os.Getenv("LARK_TENANT_ACCESS_TOKEN") != ""
 		if hasUAT {
 			acct.SupportedIdentities |= credential.SupportsUser
 		}
 		if hasTAT {
 			acct.SupportedIdentities |= credential.SupportsBot
+		}
+	default:
+		return nil, &credential.BlockError{
+			Provider: "env",
+			Reason:   fmt.Sprintf("invalid LARKSUITE_CLI_STRICT_MODE %q (want bot, user, or off)", strictMode),
+		}
+	}
+
+	if acct.DefaultAs == "" {
+		switch {
+		case hasUAT:
+			acct.DefaultAs = credential.IdentityUser
+		case hasTAT:
+			acct.DefaultAs = credential.IdentityBot
 		}
 	}
 

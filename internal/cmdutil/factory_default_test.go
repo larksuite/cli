@@ -7,6 +7,8 @@ import (
 	"errors"
 	"testing"
 
+	_ "github.com/larksuite/cli/extension/credential/env"
+	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -96,5 +98,41 @@ func TestNewDefault_InvocationProfileMissingSticksAcrossEarlyStrictMode(t *testi
 	}
 	if cfgErr.Message != `profile "missing" not found` {
 		t.Fatalf("Config() error message = %q, want %q", cfgErr.Message, `profile "missing" not found`)
+	}
+}
+
+func TestBuildSDKTransport_IncludesRetryTransport(t *testing.T) {
+	transport := buildSDKTransport()
+
+	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
+	if !ok {
+		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
+	}
+	ua, ok := sec.Base.(*UserAgentTransport)
+	if !ok {
+		t.Fatalf("middle transport type = %T, want *UserAgentTransport", sec.Base)
+	}
+	if _, ok := ua.Base.(*RetryTransport); !ok {
+		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
+	}
+}
+
+func TestNewDefault_ResolveAs_UsesDefaultAsFromEnvAccount(t *testing.T) {
+	t.Setenv("LARK_APP_ID", "env-app")
+	t.Setenv("LARK_APP_SECRET", "env-secret")
+	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
+	t.Setenv("LARK_USER_ACCESS_TOKEN", "")
+	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f := NewDefault(InvocationContext{})
+	cmd := newCmdWithAsFlag("auto", false)
+
+	got := f.ResolveAs(cmd, "auto")
+	if got != core.AsUser {
+		t.Fatalf("ResolveAs() = %q, want %q", got, core.AsUser)
+	}
+	if f.IdentityAutoDetected {
+		t.Fatal("IdentityAutoDetected = true, want false")
 	}
 }

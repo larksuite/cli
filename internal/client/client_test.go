@@ -7,16 +7,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/output"
 )
 
 // roundTripFunc is an adapter to use a function as http.RoundTripper.
@@ -39,6 +43,12 @@ type staticTokenResolver struct{}
 
 func (s *staticTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
 	return &credential.TokenResult{Token: "test-token"}, nil
+}
+
+type missingTokenResolver struct{}
+
+func (s *missingTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return nil, nil
 }
 
 // newTestAPIClient creates an APIClient with a mock HTTP transport.
@@ -335,5 +345,80 @@ func TestPaginateAll_NoStreamSummaryLog(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+	}
+}
+
+func TestDoStream_IgnoresBaseHTTPClientTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		time.Sleep(25 * time.Millisecond)
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	ac := &APIClient{
+		HTTP:       &http.Client{Timeout: 5 * time.Millisecond},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	resp, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    srv.URL,
+	}, core.AsBot)
+	if err != nil {
+		t.Fatalf("DoStream() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if string(body) != "ok" {
+		t.Fatalf("response body = %q, want %q", string(body), "ok")
+	}
+}
+
+func TestDoSDKRequest_MissingTokenReturnsAuthError(t *testing.T) {
+	ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatal("unexpected HTTP request")
+		return nil, nil
+	}))
+	ac.Credential = credential.NewCredentialProvider(nil, nil, &missingTokenResolver{}, nil)
+
+	_, err := ac.DoSDKRequest(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/test",
+	}, core.AsBot)
+	if err == nil {
+		t.Fatal("DoSDKRequest() error = nil, want auth error")
+	}
+	var exitErr *output.ExitError
+	if !strings.Contains(err.Error(), "no access token available") || !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "auth" {
+		t.Fatalf("DoSDKRequest() error = %v, want auth error", err)
+	}
+}
+
+func TestDoStream_MissingTokenReturnsAuthError(t *testing.T) {
+	ac := &APIClient{
+		HTTP:       &http.Client{},
+		Credential: credential.NewCredentialProvider(nil, nil, &missingTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	_, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "https://example.com/open-apis/test",
+	}, core.AsBot)
+	if err == nil {
+		t.Fatal("DoStream() error = nil, want auth error")
+	}
+	var exitErr *output.ExitError
+	if !strings.Contains(err.Error(), "no access token available") || !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "auth" {
+		t.Fatalf("DoStream() error = %v, want auth error", err)
 	}
 }

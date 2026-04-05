@@ -48,12 +48,9 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 
 	app := &multi.Apps[idx]
 	removedName := app.ProfileName()
-
-	// Cleanup keychain: app secret + user tokens
-	core.RemoveSecretStore(app.AppSecret, f.Keychain)
-	for _, user := range app.Users {
-		larkauth.RemoveStoredToken(app.AppId, user.UserOpenId)
-	}
+	appId := app.AppId
+	appSecret := app.AppSecret
+	users := app.Users
 
 	// Remove from slice
 	multi.Apps = append(multi.Apps[:idx], multi.Apps[idx+1:]...)
@@ -68,6 +65,12 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	// Best-effort credential cleanup after config commit
+	core.RemoveSecretStore(appSecret, f.Keychain)
+	for _, user := range users {
+		larkauth.RemoveStoredToken(appId, user.UserOpenId)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Profile %q removed", removedName))

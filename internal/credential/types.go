@@ -2,6 +2,7 @@ package credential
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
@@ -51,8 +52,22 @@ type TokenResult struct {
 	Scopes string // optional, space-separated; empty = skip scope pre-check
 }
 
+// TokenUnavailableError reports that no usable token was available.
+type TokenUnavailableError struct {
+	Source string
+	Type   TokenType
+}
+
+func (e *TokenUnavailableError) Error() string {
+	if e.Source != "" {
+		return fmt.Sprintf("no %s available from credential source %q", e.Type, e.Source)
+	}
+	return fmt.Sprintf("no credential provider returned a token for %s", e.Type)
+}
+
 // TokenProvider resolves a runtime access token.
-// Returns nil, nil to indicate "I don't handle this, try next provider".
+// Top-level resolvers should return a non-nil token or an error.
+// Chain participants may use nil, nil internally to indicate "try next source".
 type TokenProvider interface {
 	ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error)
 }

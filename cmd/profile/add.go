@@ -5,7 +5,9 @@ package profile
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -71,6 +73,9 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	// Load or create config
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return output.Errorf(output.ExitInternal, "internal", "failed to load config: %v", err)
+		}
 		multi = &core.MultiAppConfig{}
 	}
 

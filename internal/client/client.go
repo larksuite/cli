@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,6 +41,21 @@ type APIClient struct {
 	HTTP       *http.Client // Only for non-Lark API (OAuth, MCP, etc.)
 	ErrOut     io.Writer    // debug/progress output
 	Credential *credential.CredentialProvider
+}
+
+func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (string, error) {
+	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
+	if err != nil {
+		var unavailableErr *credential.TokenUnavailableError
+		if errors.As(err, &unavailableErr) {
+			return "", output.ErrAuth("no access token available for %s", as)
+		}
+		return "", err
+	}
+	if result.Token == "" {
+		return "", output.ErrAuth("no access token available for %s", as)
+	}
+	return result.Token, nil
 }
 
 // buildApiReq converts a RawApiRequest into SDK types and collects
@@ -78,16 +94,16 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as core.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	var opts []larkcore.RequestOptionFunc
 
-	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
+	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
 		return nil, err
 	}
 	if as.IsBot() {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}
-		opts = append(opts, larkcore.WithTenantAccessToken(result.Token))
+		opts = append(opts, larkcore.WithTenantAccessToken(token))
 	} else {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser}
-		opts = append(opts, larkcore.WithUserAccessToken(result.Token))
+		opts = append(opts, larkcore.WithUserAccessToken(token))
 	}
 
 	opts = append(opts, extraOpts...)
@@ -105,7 +121,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	cfg := buildConfig(opts)
 
 	// Resolve auth
-	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
+	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
 		return nil, err
 	}
@@ -122,12 +138,13 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 		return nil, err
 	}
 
-	// Timeout
+	// Timeout — use context deadline only; httpClient.Timeout would cut off
+	// healthy streaming responses because it includes body read time.
 	httpClient := *c.HTTP
+	httpClient.Timeout = 0
 	cancel := func() {}
 	requestCtx := ctx
 	if cfg.timeout > 0 {
-		httpClient.Timeout = cfg.timeout
 		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 			requestCtx, cancel = context.WithTimeout(ctx, cfg.timeout)
 		}
@@ -150,7 +167,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	if contentType != "" {
 		httpReq.Header.Set("Content-Type", contentType)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+result.Token)
+	httpReq.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {

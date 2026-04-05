@@ -24,6 +24,54 @@ type DefaultTokenResolver interface {
 	ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error)
 }
 
+type tokenSource interface {
+	Name() string
+	TryResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, bool, error)
+}
+
+type extensionTokenSource struct {
+	provider extcred.Provider
+}
+
+func (s extensionTokenSource) Name() string { return s.provider.Name() }
+
+func (s extensionTokenSource) TryResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, bool, error) {
+	tok, err := s.provider.ResolveToken(ctx, extcred.TokenSpec{
+		Type:  extcred.TokenType(req.Type.String()),
+		AppID: req.AppID,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if tok == nil {
+		return nil, false, nil
+	}
+	if tok.Value == "" {
+		return nil, false, fmt.Errorf("credential source %q returned an empty token for %s", s.Name(), req.Type)
+	}
+	return &TokenResult{Token: tok.Value, Scopes: tok.Scopes}, true, nil
+}
+
+type defaultTokenSource struct {
+	resolver DefaultTokenResolver
+}
+
+func (s defaultTokenSource) Name() string { return "default" }
+
+func (s defaultTokenSource) TryResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, bool, error) {
+	if s.resolver == nil {
+		return nil, false, nil
+	}
+	result, err := s.resolver.ResolveToken(ctx, req)
+	if err != nil {
+		return nil, false, err
+	}
+	if result == nil || result.Token == "" {
+		return nil, false, nil
+	}
+	return result, true, nil
+}
+
 // CredentialProvider is the unified entry point for all credential resolution.
 type CredentialProvider struct {
 	providers    []extcred.Provider
@@ -31,9 +79,10 @@ type CredentialProvider struct {
 	defaultToken DefaultTokenResolver
 	httpClient   func() (*http.Client, error)
 
-	accountOnce sync.Once
-	account     *Account
-	accountErr  error
+	accountOnce    sync.Once
+	account        *Account
+	accountErr     error
+	selectedSource tokenSource
 }
 
 // NewCredentialProvider creates a CredentialProvider.
@@ -65,18 +114,25 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		}
 		if acct != nil {
 			internal := convertAccount(acct)
-			if err := p.enrichUserInfo(ctx, internal); err != nil {
+			source := extensionTokenSource{provider: prov}
+			if err := p.enrichUserInfo(ctx, internal, source); err != nil {
 				// enrichUserInfo failure is non-fatal: SupportedIdentities
 				// (used for strict mode) is already set by the provider.
 				// Clear unverified user identity for safety.
 				internal.UserOpenId = ""
 				internal.UserName = ""
 			}
+			p.selectedSource = source
 			return internal, nil
 		}
 	}
 	if p.defaultAcct != nil {
-		return p.defaultAcct.ResolveAccount(ctx)
+		acct, err := p.defaultAcct.ResolveAccount(ctx)
+		if err != nil {
+			return nil, err
+		}
+		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
+		return acct, nil
 	}
 	return nil, fmt.Errorf("no credential provider returned an account; run 'lark-cli config' to set up")
 }
@@ -84,56 +140,91 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 // enrichUserInfo resolves user identity when extension provides a UAT.
 // If UAT is available, user_info API call is mandatory (security: verify token validity).
 // If no UAT from extension, falls back to provider-supplied OpenID.
-func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account) error {
-	if p.httpClient == nil {
+func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, source tokenSource) error {
+	if p.httpClient == nil || source == nil {
 		return nil
 	}
-	for _, prov := range p.providers {
-		tok, err := prov.ResolveToken(ctx, extcred.TokenSpec{Type: extcred.TokenTypeUAT})
-		if err != nil {
-			var blockErr *extcred.BlockError
-			if errors.As(err, &blockErr) {
-				return nil // provider explicitly blocks UAT; skip enrichment
-			}
-			continue
+	tok, found, err := source.TryResolveToken(ctx, TokenSpec{Type: TokenTypeUAT, AppID: acct.AppID})
+	if err != nil {
+		var blockErr *extcred.BlockError
+		if errors.As(err, &blockErr) {
+			return nil // provider explicitly blocks UAT; skip enrichment
 		}
-		if tok == nil {
-			continue
-		}
-		// Have UAT — must verify and resolve identity
-		hc, err := p.httpClient()
-		if err != nil {
-			return fmt.Errorf("failed to get HTTP client for user_info: %w", err)
-		}
-		info, err := fetchUserInfo(ctx, hc, acct.Brand, tok.Value)
-		if err != nil {
-			return fmt.Errorf("failed to verify user identity: %w", err)
-		}
-		acct.UserOpenId = info.OpenID
-		acct.UserName = info.Name
 		return nil
 	}
+	if !found {
+		return nil
+	}
+	// Have UAT — must verify and resolve identity
+	hc, err := p.httpClient()
+	if err != nil {
+		return fmt.Errorf("failed to get HTTP client for user_info: %w", err)
+	}
+	info, err := fetchUserInfo(ctx, hc, acct.Brand, tok.Token)
+	if err != nil {
+		return fmt.Errorf("failed to verify user identity: %w", err)
+	}
+	acct.UserOpenId = info.OpenID
+	acct.UserName = info.Name
 	return nil
+}
+
+func (p *CredentialProvider) selectedTokenSource(ctx context.Context) (tokenSource, error) {
+	if p.selectedSource != nil {
+		return p.selectedSource, nil
+	}
+	if p.defaultAcct == nil {
+		return nil, nil
+	}
+	if _, err := p.ResolveAccount(ctx); err != nil {
+		return nil, err
+	}
+	if p.selectedSource == nil {
+		return nil, fmt.Errorf("credential provider resolved an account without selecting a token source")
+	}
+	return p.selectedSource, nil
+}
+
+func resolveTokenFromSource(ctx context.Context, source tokenSource, req TokenSpec) (*TokenResult, error) {
+	result, found, err := source.TryResolveToken(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, &TokenUnavailableError{Source: source.Name(), Type: req.Type}
+	}
+	return result, nil
 }
 
 // ResolveToken resolves an access token.
 func (p *CredentialProvider) ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error) {
+	source, err := p.selectedTokenSource(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if source != nil {
+		return resolveTokenFromSource(ctx, source, req)
+	}
+
 	for _, prov := range p.providers {
-		tok, err := prov.ResolveToken(ctx, extcred.TokenSpec{
-			Type:  extcred.TokenType(req.Type.String()),
-			AppID: req.AppID,
-		})
+		source := extensionTokenSource{provider: prov}
+		result, found, err := source.TryResolveToken(ctx, req)
 		if err != nil {
 			return nil, err
 		}
-		if tok != nil {
-			return &TokenResult{Token: tok.Value, Scopes: tok.Scopes}, nil
+		if found {
+			return result, nil
 		}
 	}
-	if p.defaultToken != nil {
-		return p.defaultToken.ResolveToken(ctx, req)
+	source = defaultTokenSource{resolver: p.defaultToken}
+	result, found, err := source.TryResolveToken(ctx, req)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("no credential provider returned a token for %s", req.Type)
+	if found {
+		return result, nil
+	}
+	return nil, &TokenUnavailableError{Type: req.Type}
 }
 
 func convertAccount(ext *extcred.Account) *Account {

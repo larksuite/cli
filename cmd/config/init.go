@@ -6,6 +6,7 @@ package config
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -117,7 +118,7 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 		multi = &core.MultiAppConfig{}
 	}
 
-	if idx := multi.FindAppIndex(profileName); idx >= 0 {
+	if idx := findProfileIndexByName(multi, profileName); idx >= 0 {
 		// Clean up old keychain secret and user tokens if AppId changed
 		if multi.Apps[idx].AppId != appId {
 			core.RemoveSecretStore(multi.Apps[idx].AppSecret, kc)
@@ -132,6 +133,9 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 		multi.Apps[idx].Brand = brand
 		multi.Apps[idx].Lang = lang
 	} else {
+		if findAppIndexByAppID(multi, profileName) >= 0 {
+			return fmt.Errorf("profile name %q conflicts with existing appId", profileName)
+		}
 		// Append new profile
 		multi.Apps = append(multi.Apps, core.AppConfig{
 			Name:      profileName,
@@ -143,6 +147,59 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 		})
 	}
 	return core.SaveMultiAppConfig(multi)
+}
+
+func findProfileIndexByName(multi *core.MultiAppConfig, profileName string) int {
+	if multi == nil {
+		return -1
+	}
+	for i := range multi.Apps {
+		if multi.Apps[i].Name == profileName {
+			return i
+		}
+	}
+	return -1
+}
+
+func findAppIndexByAppID(multi *core.MultiAppConfig, appID string) int {
+	if multi == nil {
+		return -1
+	}
+	for i := range multi.Apps {
+		if multi.Apps[i].AppId == appID {
+			return i
+		}
+	}
+	return -1
+}
+
+func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileName, appID string, brand core.LarkBrand, lang string) error {
+	if existing == nil {
+		return output.ErrValidation("App Secret cannot be empty for new configuration")
+	}
+
+	var app *core.AppConfig
+	if profileName != "" {
+		if idx := findProfileIndexByName(existing, profileName); idx >= 0 {
+			app = &existing.Apps[idx]
+		} else {
+			return output.ErrValidation("App Secret cannot be empty for new profile")
+		}
+	} else {
+		app = existing.CurrentAppConfig("")
+		if app == nil {
+			return output.ErrValidation("App Secret cannot be empty for new configuration")
+		}
+	}
+
+	if app.AppId != appID {
+		return output.ErrValidation("App Secret cannot be empty when changing App ID")
+	}
+
+	app.AppId = appID
+	app.Brand = brand
+	app.Lang = lang
+	return core.SaveMultiAppConfig(existing)
 }
 
 func configInitRun(opts *ConfigInitOptions) error {
@@ -254,32 +311,12 @@ func configInitRun(opts *ConfigInitOptions) error {
 			}
 		} else if result.Mode == "existing" && result.AppID != "" {
 			// Existing app with unchanged secret — update app ID and brand only
-			if opts.ProfileName != "" && existing != nil {
-				// Profile mode: update named profile in-place
-				if idx := existing.FindAppIndex(opts.ProfileName); idx >= 0 {
-					existing.Apps[idx].AppId = result.AppID
-					existing.Apps[idx].Brand = result.Brand
-					existing.Apps[idx].Lang = opts.Lang
-				} else {
-					return output.ErrValidation("App Secret cannot be empty for new profile")
+			if err := updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang); err != nil {
+				var exitErr *output.ExitError
+				if errors.As(err, &exitErr) {
+					return err
 				}
-				if err := core.SaveMultiAppConfig(existing); err != nil {
-					return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-				}
-			} else if existing != nil {
-				app := existing.CurrentAppConfig("")
-				if app != nil {
-					app.AppId = result.AppID
-					app.Brand = result.Brand
-					app.Lang = opts.Lang
-					if err := core.SaveMultiAppConfig(existing); err != nil {
-						return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-					}
-				} else {
-					return output.ErrValidation("App Secret cannot be empty for new configuration")
-				}
-			} else {
-				return output.ErrValidation("App Secret cannot be empty for new configuration")
+				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 			}
 		} else {
 			return output.ErrValidation("App ID and App Secret cannot be empty")

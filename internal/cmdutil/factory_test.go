@@ -85,15 +85,18 @@ func TestResolveAs_DefaultAs_FromConfig(t *testing.T) {
 	}
 }
 
-func TestResolveAs_DefaultAs_FromEnv(t *testing.T) {
+func TestResolveAs_DefaultAs_EnvDoesNotBypassConfigSource(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
 
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("auto", false)
 
 	got := f.ResolveAs(cmd, "auto")
-	if got != core.AsUser {
-		t.Errorf("want user (from env), got %s", got)
+	if got != core.AsBot {
+		t.Errorf("want bot (env default-as should not bypass config source), got %s", got)
+	}
+	if !f.IdentityAutoDetected {
+		t.Error("IdentityAutoDetected should be true when no account default-as is set")
 	}
 }
 
@@ -189,6 +192,16 @@ func TestAutoDetectIdentity_NoUserOpenId(t *testing.T) {
 	got := f.autoDetectIdentity()
 	if got != core.AsBot {
 		t.Errorf("want bot (no UserOpenId), got %s", got)
+	}
+}
+
+func TestAutoDetectIdentity_EnvTokenDoesNotBypassConfigSource(t *testing.T) {
+	t.Setenv("LARK_USER_ACCESS_TOKEN", "env-uat")
+
+	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	got := f.autoDetectIdentity()
+	if got != core.AsBot {
+		t.Errorf("want bot (env token should not bypass config source), got %s", got)
 	}
 }
 
