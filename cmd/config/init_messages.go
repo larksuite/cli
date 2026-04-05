@@ -54,6 +54,7 @@ var initMsgEn = &initMsg{
 	BrowserOpened:      "Opened in browser. If it didn't work, copy the URL above.",
 }
 
+// getInitMsg returns the localized init message strings for the given language.
 func getInitMsg(lang string) *initMsg {
 	if lang == "en" {
 		return initMsgEn
