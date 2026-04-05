@@ -50,22 +50,64 @@ func configShowRun(opts *ConfigShowOptions) error {
 		fmt.Fprintln(f.IOStreams.ErrOut, "No active profile found.")
 		return nil
 	}
-	users := "(no logged-in users)"
-	if len(app.Users) > 0 {
-		var userStrs []string
-		for _, u := range app.Users {
-			userStrs = append(userStrs, fmt.Sprintf("%s (%s)", u.UserName, u.UserOpenId))
+	runtime := runtimeConfigSnapshot(f)
+	profile := app.ProfileName()
+	appID := app.AppId
+	brand := string(app.Brand)
+	users := formatStoredUsers(app.Users)
+
+	if runtime != nil {
+		if runtime.ProfileName != "" {
+			profile = runtime.ProfileName
 		}
-		users = strings.Join(userStrs, ", ")
+		if runtime.AppID != "" {
+			appID = runtime.AppID
+		}
+		if runtime.Brand != "" {
+			brand = string(runtime.Brand)
+		}
+		if runtime.UserOpenId != "" {
+			users = formatRuntimeUser(runtime.UserName, runtime.UserOpenId)
+		}
 	}
+
 	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
-		"profile":   app.ProfileName(),
-		"appId":     app.AppId,
+		"profile":   profile,
+		"appId":     appID,
 		"appSecret": "****",
-		"brand":     app.Brand,
+		"brand":     brand,
 		"lang":      app.Lang,
 		"users":     users,
 	})
 	fmt.Fprintf(f.IOStreams.ErrOut, "\nConfig file path: %s\n", core.GetConfigPath())
 	return nil
+}
+
+func runtimeConfigSnapshot(f *cmdutil.Factory) *core.CliConfig {
+	if f == nil || f.Config == nil {
+		return nil
+	}
+	cfg, err := f.Config()
+	if err != nil {
+		return nil
+	}
+	return cfg
+}
+
+func formatStoredUsers(users []core.AppUser) string {
+	if len(users) == 0 {
+		return "(no logged-in users)"
+	}
+	var userStrs []string
+	for _, u := range users {
+		userStrs = append(userStrs, formatRuntimeUser(u.UserName, u.UserOpenId))
+	}
+	return strings.Join(userStrs, ", ")
+}
+
+func formatRuntimeUser(name, openID string) string {
+	if name == "" {
+		return openID
+	}
+	return fmt.Sprintf("%s (%s)", name, openID)
 }
