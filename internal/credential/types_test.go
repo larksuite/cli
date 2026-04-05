@@ -82,3 +82,40 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 		t.Fatalf("acct.AppID = %q, want mutated value", acct.AppID)
 	}
 }
+
+func TestAccountToCliConfig_TokenOnlySecretPreservesNoAppSecret(t *testing.T) {
+	acct := &Account{
+		ProfileName: "env",
+		AppID:       "app-1",
+		AppSecret:   "",
+		Brand:       core.BrandFeishu,
+	}
+
+	cfg := acct.ToCliConfig()
+	if cfg == nil {
+		t.Fatal("ToCliConfig() = nil")
+	}
+	if cfg.AppSecret != "" {
+		t.Fatalf("AppSecret = %q, want empty string", cfg.AppSecret)
+	}
+
+	roundtrip := AccountFromCliConfig(cfg)
+	if roundtrip == nil {
+		t.Fatal("AccountFromCliConfig() = nil")
+	}
+	if roundtrip.AppSecret != "" {
+		t.Fatalf("roundtrip.AppSecret = %q, want empty string", roundtrip.AppSecret)
+	}
+}
+
+func TestRuntimeAppSecret_TokenOnlyUsesPlaceholder(t *testing.T) {
+	if got := RuntimeAppSecret(""); got == "" {
+		t.Fatal("RuntimeAppSecret(\"\") = empty, want non-empty placeholder")
+	}
+	if HasRealAppSecret(RuntimeAppSecret("")) {
+		t.Fatalf("HasRealAppSecret(RuntimeAppSecret(\"\")) = true, want false")
+	}
+	if got := RuntimeAppSecret("secret-1"); got != "secret-1" {
+		t.Fatalf("RuntimeAppSecret(real) = %q, want %q", got, "secret-1")
+	}
+}

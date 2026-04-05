@@ -8,6 +8,7 @@ import (
 	envprovider "github.com/larksuite/cli/extension/credential/env"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 type noopKC struct{}
@@ -17,9 +18,9 @@ func (n *noopKC) Set(service, account, value string) error    { return nil }
 func (n *noopKC) Remove(service, account string) error        { return nil }
 
 func TestFullChain_EnvWins(t *testing.T) {
-	t.Setenv("LARK_APP_ID", "env_app")
-	t.Setenv("LARK_APP_SECRET", "env_secret")
-	t.Setenv("LARK_USER_ACCESS_TOKEN", "env_uat")
+	t.Setenv(envvars.CliAppID, "env_app")
+	t.Setenv(envvars.CliAppSecret, "env_secret")
+	t.Setenv(envvars.CliUserAccessToken, "env_uat")
 
 	ep := &envprovider.Provider{}
 	cp := credential.NewCredentialProvider(
@@ -76,8 +77,8 @@ func (m *mockDefaultTokenProvider) ResolveToken(ctx context.Context, req credent
 }
 
 func TestFullChain_ConfigStrictMode(t *testing.T) {
-	t.Setenv("LARK_APP_ID", "")
-	t.Setenv("LARK_APP_SECRET", "")
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
 

@@ -51,7 +51,7 @@ func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer,
 		if config.Brand != "" {
 			opts = append(opts, lark.WithOpenBaseUrl(core.ResolveOpenBaseURL(config.Brand)))
 		}
-		testLarkClient = lark.NewClient(config.AppID, config.AppSecret, opts...)
+		testLarkClient = lark.NewClient(config.AppID, credential.RuntimeAppSecret(config.AppSecret), opts...)
 	}
 
 	testCred := credential.NewCredentialProvider(

@@ -5,7 +5,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -91,11 +90,7 @@ func showStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.Ap
 	configMode, configSource := resolveStrictModeStatus(multi, app)
 
 	if runtime != configMode {
-		source := "credential provider"
-		if os.Getenv("LARKSUITE_CLI_STRICT_MODE") != "" {
-			source = "env LARKSUITE_CLI_STRICT_MODE"
-		}
-		fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: %s)\n", runtime, source)
+		fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: credential provider)\n", runtime)
 		return nil
 	}
 	fmt.Fprintf(f.IOStreams.Out, "strict-mode: %s (source: %s)\n", configMode, configSource)

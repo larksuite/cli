@@ -11,6 +11,10 @@ const (
 	BrandFeishu = "feishu"
 )
 
+// NoAppSecret marks that a credential source does not provide a real app secret.
+// Token-only sources should return this value instead of inventing placeholder text.
+const NoAppSecret = ""
+
 // Identity constants for Account.DefaultAs.
 const (
 	IdentityUser = "user"
@@ -39,7 +43,7 @@ func (s IdentitySupport) BotOnly() bool { return s == SupportsBot }
 // Account holds resolved app credentials and configuration.
 type Account struct {
 	AppID               string
-	AppSecret           string
+	AppSecret           string // real app secret; empty or NoAppSecret means unavailable
 	Brand               string // BrandLark or BrandFeishu
 	DefaultAs           string // IdentityUser / IdentityBot / IdentityAuto; empty = not set
 	ProfileName         string
@@ -51,7 +55,7 @@ type Account struct {
 type Token struct {
 	Value  string
 	Scopes string // space-separated; empty = skip scope pre-check
-	Source string // e.g. "env:LARK_USER_ACCESS_TOKEN", "vault:addr"
+	Source string // e.g. "env:LARKSUITE_CLI_USER_ACCESS_TOKEN", "vault:addr"
 }
 
 // TokenType represents the kind of access token.

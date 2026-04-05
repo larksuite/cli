@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/cmd/service"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts"
@@ -101,11 +102,11 @@ func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.
 
 func newStrictModeDefaultFactory(t *testing.T, profile string, mode core.StrictMode) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
-	t.Setenv("LARK_APP_ID", "")
-	t.Setenv("LARK_APP_SECRET", "")
-	t.Setenv("LARK_USER_ACCESS_TOKEN", "")
-	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "")
-	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "")
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	t.Setenv(envvars.CliDefaultAs, "")
 
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -22,6 +23,32 @@ type Account struct {
 	SupportedIdentities uint8
 }
 
+const runtimePlaceholderAppSecret = "__LARKSUITE_CLI_TOKEN_ONLY__"
+
+// HasRealAppSecret reports whether secret is an actual app secret rather than
+// an empty/token-only marker or the internal runtime placeholder.
+func HasRealAppSecret(secret string) bool {
+	return secret != "" && secret != runtimePlaceholderAppSecret
+}
+
+// RuntimeAppSecret returns the SDK-compatible app secret used at runtime.
+// Token-only sources intentionally have no real secret; this helper injects a
+// private placeholder so downstream SDK validation can proceed while callers
+// still distinguish real secrets with HasRealAppSecret.
+func RuntimeAppSecret(secret string) string {
+	if HasRealAppSecret(secret) {
+		return secret
+	}
+	return runtimePlaceholderAppSecret
+}
+
+func normalizeAccountAppSecret(secret string) string {
+	if HasRealAppSecret(secret) {
+		return secret
+	}
+	return extcred.NoAppSecret
+}
+
 // AccountFromCliConfig copies the resolved config view into a credential.Account.
 func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 	if cfg == nil {
@@ -30,7 +57,7 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 	return &Account{
 		ProfileName:         cfg.ProfileName,
 		AppID:               cfg.AppID,
-		AppSecret:           cfg.AppSecret,
+		AppSecret:           normalizeAccountAppSecret(cfg.AppSecret),
 		Brand:               cfg.Brand,
 		DefaultAs:           cfg.DefaultAs,
 		UserOpenId:          cfg.UserOpenId,
@@ -47,7 +74,7 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 	return &core.CliConfig{
 		ProfileName:         a.ProfileName,
 		AppID:               a.AppID,
-		AppSecret:           a.AppSecret,
+		AppSecret:           normalizeAccountAppSecret(a.AppSecret),
 		Brand:               a.Brand,
 		DefaultAs:           a.DefaultAs,
 		UserOpenId:          a.UserOpenId,

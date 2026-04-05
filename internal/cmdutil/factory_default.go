@@ -124,7 +124,7 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 		}))
 		ep := core.ResolveEndpoints(acct.Brand)
 		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
-		return lark.NewClient(acct.AppID, acct.AppSecret, opts...), nil
+		return lark.NewClient(acct.AppID, credential.RuntimeAppSecret(acct.AppSecret), opts...), nil
 	})
 }
 

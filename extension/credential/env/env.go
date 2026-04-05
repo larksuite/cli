@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 // Provider resolves credentials from environment variables.
@@ -17,26 +18,36 @@ type Provider struct{}
 func (p *Provider) Name() string { return "env" }
 
 func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, error) {
-	appID := os.Getenv("LARK_APP_ID")
-	appSecret := os.Getenv("LARK_APP_SECRET")
+	appID := os.Getenv(envvars.CliAppID)
+	appSecret := os.Getenv(envvars.CliAppSecret)
+	hasUAT := os.Getenv(envvars.CliUserAccessToken) != ""
+	hasTAT := os.Getenv(envvars.CliTenantAccessToken) != ""
 	if appID == "" && appSecret == "" {
-		return nil, nil
+		switch {
+		case hasUAT:
+			return nil, &credential.BlockError{Provider: "env", Reason: envvars.CliUserAccessToken + " is set but " + envvars.CliAppID + " is missing"}
+		case hasTAT:
+			return nil, &credential.BlockError{Provider: "env", Reason: envvars.CliTenantAccessToken + " is set but " + envvars.CliAppID + " is missing"}
+		default:
+			return nil, nil
+		}
 	}
 	if appID == "" {
-		return nil, &credential.BlockError{Provider: "env", Reason: "LARK_APP_SECRET is set but LARK_APP_ID is missing"}
+		return nil, &credential.BlockError{Provider: "env", Reason: envvars.CliAppSecret + " is set but " + envvars.CliAppID + " is missing"}
 	}
-	if appSecret == "" {
-		return nil, &credential.BlockError{Provider: "env", Reason: "LARK_APP_ID is set but LARK_APP_SECRET is missing"}
+	if appSecret == "" && !hasUAT && !hasTAT {
+		return nil, &credential.BlockError{
+			Provider: "env",
+			Reason:   envvars.CliAppID + " is set but no app secret or access token is available",
+		}
 	}
-	brand := os.Getenv("LARK_BRAND")
+	brand := os.Getenv(envvars.CliBrand)
 	if brand == "" {
 		brand = "feishu"
 	}
 	acct := &credential.Account{AppID: appID, AppSecret: appSecret, Brand: brand}
-	hasUAT := os.Getenv("LARK_USER_ACCESS_TOKEN") != ""
-	hasTAT := os.Getenv("LARK_TENANT_ACCESS_TOKEN") != ""
 
-	switch defaultAs := os.Getenv("LARKSUITE_CLI_DEFAULT_AS"); defaultAs {
+	switch defaultAs := os.Getenv(envvars.CliDefaultAs); defaultAs {
 	case "", credential.IdentityAuto:
 		acct.DefaultAs = defaultAs
 	case credential.IdentityUser, credential.IdentityBot:
@@ -44,12 +55,12 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	default:
 		return nil, &credential.BlockError{
 			Provider: "env",
-			Reason:   fmt.Sprintf("invalid LARKSUITE_CLI_DEFAULT_AS %q (want user, bot, or auto)", defaultAs),
+			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envvars.CliDefaultAs, defaultAs),
 		}
 	}
 
 	// Explicit strict mode policy takes priority
-	switch strictMode := os.Getenv("LARKSUITE_CLI_STRICT_MODE"); strictMode {
+	switch strictMode := os.Getenv(envvars.CliStrictMode); strictMode {
 	case "bot":
 		acct.SupportedIdentities = credential.SupportsBot
 	case "user":
@@ -67,7 +78,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	default:
 		return nil, &credential.BlockError{
 			Provider: "env",
-			Reason:   fmt.Sprintf("invalid LARKSUITE_CLI_STRICT_MODE %q (want bot, user, or off)", strictMode),
+			Reason:   fmt.Sprintf("invalid %s %q (want bot, user, or off)", envvars.CliStrictMode, strictMode),
 		}
 	}
 
@@ -87,9 +98,9 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 	var envKey string
 	switch req.Type {
 	case credential.TokenTypeUAT:
-		envKey = "LARK_USER_ACCESS_TOKEN"
+		envKey = envvars.CliUserAccessToken
 	case credential.TokenTypeTAT:
-		envKey = "LARK_TENANT_ACCESS_TOKEN"
+		envKey = envvars.CliTenantAccessToken
 	default:
 		return nil, nil
 	}

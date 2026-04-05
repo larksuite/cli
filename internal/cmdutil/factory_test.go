@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 // newCmdWithAsFlag creates a cobra.Command with a --as string flag for testing.
@@ -85,7 +86,7 @@ func TestResolveAs_DefaultAs_FromConfig(t *testing.T) {
 }
 
 func TestResolveAs_DefaultAs_EnvDoesNotBypassConfigSource(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
+	t.Setenv(envvars.CliDefaultAs, "user")
 
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("auto", false)
@@ -195,7 +196,7 @@ func TestAutoDetectIdentity_NoUserOpenId(t *testing.T) {
 }
 
 func TestAutoDetectIdentity_EnvTokenDoesNotBypassConfigSource(t *testing.T) {
-	t.Setenv("LARK_USER_ACCESS_TOKEN", "env-uat")
+	t.Setenv(envvars.CliUserAccessToken, "env-uat")
 
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	got := f.autoDetectIdentity()

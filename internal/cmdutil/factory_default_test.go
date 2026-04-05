@@ -11,13 +11,15 @@ import (
 	_ "github.com/larksuite/cli/extension/credential/env"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
-	t.Setenv("LARK_APP_ID", "")
-	t.Setenv("LARK_APP_SECRET", "")
-	t.Setenv("LARK_USER_ACCESS_TOKEN", "")
-	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "")
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
 
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
@@ -62,10 +64,10 @@ func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
 }
 
 func TestNewDefault_InvocationProfileMissingSticksAcrossEarlyStrictMode(t *testing.T) {
-	t.Setenv("LARK_APP_ID", "")
-	t.Setenv("LARK_APP_SECRET", "")
-	t.Setenv("LARK_USER_ACCESS_TOKEN", "")
-	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "")
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
 
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
@@ -119,11 +121,11 @@ func TestBuildSDKTransport_IncludesRetryTransport(t *testing.T) {
 }
 
 func TestNewDefault_ResolveAs_UsesDefaultAsFromEnvAccount(t *testing.T) {
-	t.Setenv("LARK_APP_ID", "env-app")
-	t.Setenv("LARK_APP_SECRET", "env-secret")
-	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
-	t.Setenv("LARK_USER_ACCESS_TOKEN", "")
-	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "")
+	t.Setenv(envvars.CliAppID, "env-app")
+	t.Setenv(envvars.CliAppSecret, "env-secret")
+	t.Setenv(envvars.CliDefaultAs, "user")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	f := NewDefault(InvocationContext{})
@@ -139,11 +141,11 @@ func TestNewDefault_ResolveAs_UsesDefaultAsFromEnvAccount(t *testing.T) {
 }
 
 func TestNewDefault_ConfigReturnsCliConfigCopyOfCredentialAccount(t *testing.T) {
-	t.Setenv("LARK_APP_ID", "env-app")
-	t.Setenv("LARK_APP_SECRET", "env-secret")
-	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "")
-	t.Setenv("LARK_USER_ACCESS_TOKEN", "uat-token")
-	t.Setenv("LARK_TENANT_ACCESS_TOKEN", "")
+	t.Setenv(envvars.CliAppID, "env-app")
+	t.Setenv(envvars.CliAppSecret, "env-secret")
+	t.Setenv(envvars.CliDefaultAs, "")
+	t.Setenv(envvars.CliUserAccessToken, "uat-token")
+	t.Setenv(envvars.CliTenantAccessToken, "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	f := NewDefault(InvocationContext{})
@@ -160,5 +162,35 @@ func TestNewDefault_ConfigReturnsCliConfigCopyOfCredentialAccount(t *testing.T) 
 	cfg.AppID = "mutated-cli-config"
 	if acct.AppID != "env-app" {
 		t.Fatalf("credential account mutated via Config(): got %q, want %q", acct.AppID, "env-app")
+	}
+}
+
+func TestNewDefault_ConfigUsesRuntimePlaceholderForTokenOnlyEnvAccount(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "env-app")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliDefaultAs, "")
+	t.Setenv(envvars.CliUserAccessToken, "uat-token")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f := NewDefault(InvocationContext{})
+
+	acct, err := f.Credential.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if acct.AppSecret != "" {
+		t.Fatalf("credential account AppSecret = %q, want empty string", acct.AppSecret)
+	}
+
+	cfg, err := f.Config()
+	if err != nil {
+		t.Fatalf("Config() error = %v", err)
+	}
+	if cfg.AppSecret != "" {
+		t.Fatalf("Config().AppSecret = %q, want empty string for token-only account", cfg.AppSecret)
+	}
+	if credential.HasRealAppSecret(cfg.AppSecret) {
+		t.Fatalf("Config().AppSecret = %q, want token-only no-secret marker", cfg.AppSecret)
 	}
 }
