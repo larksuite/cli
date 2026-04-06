@@ -8,76 +8,50 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"regexp"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 )
 
 const dedupTTL = 5 * time.Minute
 
 // PipelineConfig configures the event processing pipeline.
 type PipelineConfig struct {
-	Mode      TransformMode // determined by --compact flag
-	JsonFlag  bool          // --json: pretty JSON instead of NDJSON
-	OutputDir string        // --output-dir: write events to files
-	Quiet     bool          // --quiet: suppress stderr status messages
-	Router    *EventRouter  // --route: regex-based output routing
+	Mode  TransformMode // determined by --compact flag
+	Quiet bool          // --quiet: suppress stderr status messages
 }
 
-// EventPipeline chains filter → dedup → transform → emit.
+// EventPipeline chains normalize -> match -> resolve -> filter -> dedupe -> dispatch.
 type EventPipeline struct {
-	registry   *ProcessorRegistry
-	filters    *FilterChain
-	config     PipelineConfig
-	eventCount atomic.Int64
-	seen       sync.Map // key → time.Time (first-seen timestamp)
-	out        io.Writer
-	errOut     io.Writer
+	registry    *HandlerRegistry
+	filters     *FilterChain
+	config      PipelineConfig
+	deduper     *Deduper
+	dispatcher  *Dispatcher
+	dispatchedN int64
+	out         io.Writer
+	errOut      io.Writer
 }
 
 // NewEventPipeline builds an event processing pipeline.
 func NewEventPipeline(
-	registry *ProcessorRegistry,
+	registry *HandlerRegistry,
 	filters *FilterChain,
 	config PipelineConfig,
 	out, errOut io.Writer,
 ) *EventPipeline {
+	if registry == nil {
+		registry = NewHandlerRegistry()
+	}
 	return &EventPipeline{
-		registry: registry,
-		filters:  filters,
-		config:   config,
-		out:      out,
-		errOut:   errOut,
+		registry:   registry,
+		filters:    filters,
+		config:     config,
+		deduper:    NewDeduper(dedupTTL),
+		dispatcher: NewDispatcher(registry),
+		out:        out,
+		errOut:     errOut,
 	}
-}
-
-// EnsureDirs creates all configured output directories once at startup.
-func (p *EventPipeline) EnsureDirs() error {
-	if p.config.OutputDir != "" {
-		if err := os.MkdirAll(p.config.OutputDir, 0700); err != nil {
-			return fmt.Errorf("create output dir: %w", err)
-		}
-	}
-	if p.config.Router != nil {
-		for _, route := range p.config.Router.routes {
-			if err := os.MkdirAll(route.dir, 0700); err != nil {
-				return fmt.Errorf("create route dir %s: %w", route.dir, err)
-			}
-		}
-	}
-	return nil
-}
-
-// EventCount returns the number of processed events.
-func (p *EventPipeline) EventCount() int64 {
-	return p.eventCount.Load()
 }
 
 func (p *EventPipeline) infof(format string, args ...interface{}) {
@@ -86,113 +60,148 @@ func (p *EventPipeline) infof(format string, args ...interface{}) {
 	}
 }
 
-// isDuplicate returns true if key was seen within dedupTTL.
-func (p *EventPipeline) isDuplicate(key string) bool {
-	now := time.Now()
-	if v, loaded := p.seen.LoadOrStore(key, now); loaded {
-		if ts, ok := v.(time.Time); ok && now.Sub(ts) < dedupTTL {
-			return true
-		}
-		p.seen.Store(key, now)
+// EventCount returns the number of dispatch records written by the pipeline.
+func (p *EventPipeline) EventCount() int64 {
+	if p == nil {
+		return 0
 	}
-	return false
+	return p.dispatchedN
 }
 
-func (p *EventPipeline) cleanupSeen(now time.Time) {
-	p.seen.Range(func(k, v any) bool {
-		if ts, ok := v.(time.Time); ok && now.Sub(ts) >= dedupTTL {
-			p.seen.Delete(k)
-		}
-		return true
-	})
-}
+// Process is the pipeline entry point.
+func (p *EventPipeline) Process(ctx context.Context, env InboundEnvelope) {
+	evt, err := NormalizeEnvelope(env)
+	if err != nil {
+		evt = malformedFallbackEvent(env, err)
+	}
 
-// Process is the pipeline entry point, called by the WebSocket callback.
-func (p *EventPipeline) Process(ctx context.Context, raw *RawEvent) {
-	eventType := raw.Header.EventType
-
-	// 1. Filter
-	if !p.filters.Allow(eventType) {
+	match, ok := MatchRawEventType(evt)
+	if !ok {
+		p.dispatch(ctx, evt)
 		return
 	}
 
-	// 2. Lookup processor
-	processor := p.registry.Lookup(eventType)
+	evt.EventType = match.EventType
+	if evt.Domain == "" {
+		evt.Domain = ResolveDomain(evt)
+	}
 
-	// 3. Dedup
-	if key := processor.DeduplicateKey(raw); key != "" && p.isDuplicate(key) {
-		p.infof("%s[dedup]%s %s (key=%s)", output.Dim, output.Reset, eventType, key)
+	if !p.filters.Allow(evt.EventType) {
 		return
 	}
 
-	n := p.eventCount.Add(1)
-	if n%100 == 0 {
-		p.cleanupSeen(time.Now())
+	if p.deduper.Seen(evt.IdempotencyKey, env.ReceivedAt) {
+		p.infof("%s[dedup]%s %s (key=%s)", output.Dim, output.Reset, evt.EventType, evt.IdempotencyKey)
+		return
 	}
 
-	// 4. Transform — processor returns the final serializable value
-	data := processor.Transform(ctx, raw, p.config.Mode)
+	p.dispatch(ctx, evt)
+}
 
-	// 5. Output routing (framework-controlled)
-	// 5a. Route-based output — matched events go to route dirs
-	if p.config.Router != nil {
-		if dirs := p.config.Router.Match(eventType); len(dirs) > 0 {
-			for _, dir := range dirs {
-				p.writeAndLog(dir, n, eventType, data, raw.Header)
-			}
+func (p *EventPipeline) dispatch(ctx context.Context, evt *Event) {
+	result := p.dispatcher.Dispatch(ctx, evt)
+	for _, record := range result.Results {
+		p.dispatchedN++
+		var entry map[string]interface{}
+		if p.config.Mode == TransformRaw && record.HandlerID == genericHandlerID {
+			entry = rawModeRecord(evt, record)
+		} else {
+			entry = compactModeRecord(evt, record)
+		}
+		if err := writeNDJSON(p.out, entry); err != nil {
+			output.PrintError(p.errOut, fmt.Sprintf("write failed: %v", err))
 			return
 		}
 	}
+}
 
-	// 5b. --output-dir
-	if p.config.OutputDir != "" {
-		p.writeAndLog(p.config.OutputDir, n, eventType, data, raw.Header)
+func compactModeRecord(evt *Event, record DispatchRecord) map[string]interface{} {
+	entry := map[string]interface{}{
+		"event_type": evt.EventType,
+		"handler_id": record.HandlerID,
+		"status":     record.Status,
+	}
+	mergeHandlerOutput(entry, record.Output)
+	if evt.Domain != "" {
+		entry["domain"] = evt.Domain
+	}
+	if evt.EventID != "" {
+		entry["event_id"] = evt.EventID
+	}
+	if evt.IdempotencyKey != "" {
+		entry["idempotency_key"] = evt.IdempotencyKey
+	}
+	if record.Reason != "" {
+		entry["reason"] = record.Reason
+	}
+	if record.Err != nil {
+		entry["error"] = record.Err.Error()
+	}
+	return entry
+}
+
+func rawModeRecord(evt *Event, record DispatchRecord) map[string]interface{} {
+	entry := map[string]interface{}{
+		"event_type":      evt.EventType,
+		"status":          record.Status,
+		"payload":         evt.Payload.Data,
+		"raw_payload":     string(evt.RawPayload),
+		"source":          evt.Source,
+		"idempotency_key": evt.IdempotencyKey,
+	}
+	if evt.Domain != "" {
+		entry["domain"] = evt.Domain
+	}
+	if evt.EventID != "" {
+		entry["event_id"] = evt.EventID
+	}
+	return entry
+}
+
+func malformedFallbackEvent(env InboundEnvelope, err error) *Event {
+	reason := "malformed"
+	if malformed, ok := err.(*MalformedEventError); ok && malformed.Reason != "" {
+		reason = malformed.Reason
+	}
+
+	metadata := map[string]interface{}{
+		"received_at":      env.ReceivedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
+		"malformed_reason": reason,
+	}
+	if err != nil {
+		metadata["normalization_error"] = err.Error()
+	}
+
+	payload := NormalizedPayload{Data: map[string]interface{}{"raw_payload": string(env.RawPayload)}}
+	return &Event{
+		Source:         env.Source,
+		EventType:      "malformed",
+		Domain:         DomainUnknown,
+		Payload:        payload,
+		RawPayload:     append([]byte(nil), env.RawPayload...),
+		Metadata:       metadata,
+		IdempotencyKey: buildIdempotencyKey(env.Source, "", env.RawPayload),
+	}
+}
+
+func mergeHandlerOutput(entry map[string]interface{}, outputValue interface{}) {
+	if entry == nil || outputValue == nil {
 		return
 	}
-
-	// 5c. Stdout
-	if p.config.JsonFlag {
-		output.PrintJson(p.out, data)
-	} else {
-		output.PrintNdjson(p.out, data)
+	if compact, ok := outputValue.(map[string]interface{}); ok {
+		for k, v := range compact {
+			entry[k] = v
+		}
+		return
 	}
-	p.infof("%s[%d]%s %s", output.Dim, n, output.Reset, eventType)
+	entry["output"] = outputValue
 }
 
-// writeAndLog writes an event to a directory and logs the result.
-func (p *EventPipeline) writeAndLog(dir string, n int64, eventType string, data interface{}, header larkevent.EventHeader) {
-	fp, err := writeEventFile(dir, data, header)
+func writeNDJSON(w io.Writer, value interface{}) error {
+	data, err := json.Marshal(value)
 	if err != nil {
-		output.PrintError(p.errOut, fmt.Sprintf("write failed (%s): %v", dir, err))
-	} else {
-		p.infof("%s[%d]%s %s → %s", output.Dim, n, output.Reset, eventType, fp)
+		return err
 	}
-}
-
-var filenameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
-
-func writeEventFile(dir string, data interface{}, header larkevent.EventHeader) (string, error) {
-	eventID := header.EventID
-	if eventID == "" {
-		eventID = "unknown"
-	}
-	ts := header.CreateTime
-	if ts == "" {
-		ts = fmt.Sprintf("%d", os.Getpid())
-	}
-
-	safeName := filenameSanitizer.ReplaceAllString(header.EventType, "_")
-	filename := fmt.Sprintf("%s_%s_%s.json", safeName, eventID, ts)
-	outPath := filepath.Join(dir, filename)
-
-	jsonData, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return "", err
-	}
-
-	if err := validate.AtomicWrite(outPath, append(jsonData, '\n'), 0600); err != nil {
-		return "", err
-	}
-
-	return outPath, nil
+	_, err = w.Write(append(data, '\n'))
+	return err
 }
