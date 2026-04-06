@@ -309,7 +309,7 @@ func TestPipeline_PreservesHandlerCompactOutput(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("RegisterEventHandler() error = %v", err)
 	}
-	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{}, &out, &errOut)
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformCompact}, &out, &errOut)
 
 	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
 
@@ -328,6 +328,43 @@ func TestPipeline_PreservesHandlerCompactOutput(t *testing.T) {
 	}
 	if record["content"] != "hello" {
 		t.Fatalf("content = %v, want hello", record["content"])
+	}
+}
+
+func TestPipeline_CompactModeWritesDispatchRecord(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{
+		id:        "compact-handler",
+		eventType: "im.message.receive_v1",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{
+				Status: HandlerStatusHandled,
+				Output: map[string]interface{}{
+					"type":       evt.EventType,
+					"message_id": "om_123",
+				},
+			}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformCompact}, &out, &errOut)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	var record map[string]interface{}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
+		t.Fatalf("invalid compact-mode output: %v", err)
+	}
+	if record["handler_id"] != "compact-handler" {
+		t.Fatalf("handler_id = %v", record["handler_id"])
+	}
+	if record["message_id"] != "om_123" {
+		t.Fatalf("message_id = %v", record["message_id"])
+	}
+	if record["status"] != "handled" {
+		t.Fatalf("status = %v", record["status"])
 	}
 }
 
