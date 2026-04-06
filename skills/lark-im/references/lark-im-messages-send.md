@@ -57,6 +57,9 @@ This means `--markdown` is convenient, but it is not a full-fidelity Markdown tr
 - It does **not** promise full CommonMark / GitHub Flavored Markdown support.
 - It always becomes a `post` payload with a single `zh_cn` locale.
 - It does **not** let you set a `post` title. If you need a title, use `--msg-type post --content ...`.
+- **Link parsing restrictions (Critical for silent drops):**
+    - Non-HTTP(S) URL schemes (e.g. `[query](from:user)`) are strictly forbidden and will cause the link (or sometimes the whole paragraph) to be silently dropped by the Feishu client.
+    - **No bold nested links**: Feishu's Markdown parser will silently destroy links if they are wrapped inside bold tags. Never write `**[Title](https://...)**`. Instead, place them outside like `**Item.** [Title](https://...)`.
 - Headings are rewritten:
     - `# Title` becomes `#### Title`
     - `##` to `######` are normalized to `#####` when the content contains H1-H3
