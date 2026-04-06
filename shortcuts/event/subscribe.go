@@ -50,8 +50,8 @@ func (l *stderrLogger) Error(_ context.Context, args ...interface{}) {
 var _ larkcore.Logger = (*stderrLogger)(nil)
 
 // subscribedEventTypes are the event types wired into the SDK dispatcher.
-// Keep this list aligned with NewBuiltinHandlerRegistry so catch-all mode only
-// registers event types that the builtin runtime can handle explicitly.
+// Keep this list aligned with NewBuiltinHandlerRegistry because the current SDK
+// only delivers websocket events to explicitly registered event types here.
 var subscribedEventTypes = []string{
 	"im.message.receive_v1",
 	"im.message.message_read_v1",
@@ -227,7 +227,8 @@ var EventSubscribe = common.Shortcut{
 		if explicitTypes != nil {
 			info(fmt.Sprintf("Listening for: %s%s%s", output.Green, strings.Join(explicitTypes, ", "), output.Reset))
 		} else {
-			info(fmt.Sprintf("Listening in %scatch-all%s mode for all runtime-supported delivered event types", output.Green, output.Reset))
+			info(fmt.Sprintf("Listening in %scatch-all%s mode for all delivered event types supported by the current SDK dispatcher", output.Green, output.Reset))
+			info(fmt.Sprintf("%sRegistration:%s SDK default handler via OnCustomizedEvent(\"\", ...)", output.Dim, output.Reset))
 			info(fmt.Sprintf("%sTip:%s use --event-types to narrow subscription", output.Dim, output.Reset))
 		}
 		if regexFilter != nil {
