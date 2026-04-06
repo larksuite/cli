@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/larksuite/cli/internal/validate"
@@ -90,6 +91,7 @@ type outputRouter struct {
 	fallback   OutputRecordWriter
 	seq        *uint64
 	writers    map[string]*dirRecordWriter
+	mu         sync.Mutex
 }
 
 func (r *outputRouter) WriteRecord(eventType string, record map[string]interface{}) error {
@@ -106,16 +108,24 @@ func (r *outputRouter) WriteRecord(eventType string, record map[string]interface
 	}
 
 	for _, dir := range dirs {
-		writer := r.writers[dir]
-		if writer == nil {
-			writer = &dirRecordWriter{dir: dir, seq: r.seq}
-			r.writers[dir] = writer
-		}
+		writer := r.writerForDir(dir)
 		if err := writer.WriteRecord(eventType, record); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *outputRouter) writerForDir(dir string) *dirRecordWriter {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	writer := r.writers[dir]
+	if writer == nil {
+		writer = &dirRecordWriter{dir: dir, seq: r.seq}
+		r.writers[dir] = writer
+	}
+	return writer
 }
 
 func (r *outputRouter) matchDirs(eventType string) []string {
@@ -138,7 +148,7 @@ type dirRecordWriter struct {
 }
 
 func (w *dirRecordWriter) WriteRecord(_ string, record map[string]interface{}) error {
-	if err := os.MkdirAll(w.dir, 0o755); err != nil {
+	if err := os.MkdirAll(w.dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(record)
@@ -146,7 +156,7 @@ func (w *dirRecordWriter) WriteRecord(_ string, record map[string]interface{}) e
 		return err
 	}
 	name := w.nextFileName(record)
-	return os.WriteFile(filepath.Join(w.dir, name), append(data, '\n'), 0o644)
+	return validate.AtomicWrite(filepath.Join(w.dir, name), append(data, '\n'), 0o600)
 }
 
 func (w *dirRecordWriter) nextFileName(record map[string]interface{}) string {

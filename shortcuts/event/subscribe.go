@@ -49,9 +49,27 @@ func (l *stderrLogger) Error(_ context.Context, args ...interface{}) {
 
 var _ larkcore.Logger = (*stderrLogger)(nil)
 
-// subscribedEventTypes are the event types wired into the SDK dispatcher.
-// Keep this list aligned with NewBuiltinHandlerRegistry because the current SDK
-// only delivers websocket events to explicitly registered event types here.
+type wsClient interface {
+	Start(ctx context.Context) error
+}
+
+var newWSClient = func(config *core.CliConfig, eventDispatcher *dispatcher.EventDispatcher, logger larkcore.Logger) wsClient {
+	domain := lark.FeishuBaseUrl
+	if config.Brand == core.BrandLark {
+		domain = lark.LarkBaseUrl
+	}
+
+	return larkws.NewClient(config.AppID, config.AppSecret,
+		larkws.WithEventHandler(eventDispatcher),
+		larkws.WithDomain(domain),
+		larkws.WithLogger(logger),
+	)
+}
+
+// subscribedEventTypes are the default SDK registrations used by catch-all mode.
+// Keep this list broad enough to preserve the long-standing mixed-domain surface
+// of event +subscribe. Event families without dedicated handlers still flow
+// through the generic fallback after normalization.
 var subscribedEventTypes = []string{
 	"im.message.receive_v1",
 	"im.message.message_read_v1",
@@ -64,6 +82,19 @@ var subscribedEventTypes = []string{
 	"im.chat.member.user.deleted_v1",
 	"im.chat.updated_v1",
 	"im.chat.disbanded_v1",
+	"contact.user.created_v3",
+	"contact.user.updated_v3",
+	"contact.user.deleted_v3",
+	"contact.department.created_v3",
+	"contact.department.updated_v3",
+	"contact.department.deleted_v3",
+	"calendar.calendar.acl.created_v4",
+	"calendar.calendar.event.changed_v4",
+	"approval.approval.updated",
+	"application.application.visibility.added_v6",
+	"task.task.update_tenant_v1",
+	"task.task.comment_updated_v1",
+	"drive.notice.comment_add_v1",
 }
 
 func subscribedEventTypesFor(eventTypesStr string) []string {
@@ -237,12 +268,6 @@ var EventSubscribe = common.Shortcut{
 			}
 		}
 
-		// --- WebSocket ---
-		domain := lark.FeishuBaseUrl
-		if runtime.Config.Brand == core.BrandLark {
-			domain = lark.LarkBaseUrl
-		}
-
 		info(fmt.Sprintf("%sConnecting to Lark event WebSocket...%s", output.Cyan, output.Reset))
 		if explicitTypes != nil {
 			info(fmt.Sprintf("Listening for: %s%s%s", output.Green, strings.Join(explicitTypes, ", "), output.Reset))
@@ -259,11 +284,7 @@ var EventSubscribe = common.Shortcut{
 			}
 		}
 
-		cli := larkws.NewClient(runtime.Config.AppID, runtime.Config.AppSecret,
-			larkws.WithEventHandler(eventDispatcher),
-			larkws.WithDomain(domain),
-			larkws.WithLogger(sdkLogger),
-		)
+		cli := newWSClient(runtime.Config, eventDispatcher, sdkLogger)
 
 		// --- Graceful shutdown ---
 		sigCh := make(chan os.Signal, 1)

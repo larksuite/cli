@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
@@ -29,7 +30,7 @@ type EventPipeline struct {
 	config       PipelineConfig
 	deduper      *Deduper
 	dispatcher   *Dispatcher
-	dispatchedN  int64
+	dispatchedN  atomic.Int64
 	out          io.Writer
 	errOut       io.Writer
 	recordWriter OutputRecordWriter
@@ -78,7 +79,7 @@ func (p *EventPipeline) EventCount() int64 {
 	if p == nil {
 		return 0
 	}
-	return p.dispatchedN
+	return p.dispatchedN.Load()
 }
 
 // Process is the pipeline entry point.
@@ -114,7 +115,6 @@ func (p *EventPipeline) Process(ctx context.Context, env InboundEnvelope) {
 func (p *EventPipeline) dispatch(ctx context.Context, evt *Event) {
 	result := p.dispatcher.Dispatch(ctx, evt)
 	for _, record := range result.Results {
-		p.dispatchedN++
 		var entry map[string]interface{}
 		if p.config.Mode == TransformRaw && p.recordWriter != nil {
 			entry = rawModeRecord(evt, record)
@@ -128,6 +128,7 @@ func (p *EventPipeline) dispatch(ctx context.Context, evt *Event) {
 				output.PrintError(p.errOut, fmt.Sprintf("write failed: %v", err))
 				return
 			}
+			p.dispatchedN.Add(1)
 			continue
 		}
 		if p.config.Mode == TransformRaw {
@@ -139,6 +140,7 @@ func (p *EventPipeline) dispatch(ctx context.Context, evt *Event) {
 			output.PrintError(p.errOut, fmt.Sprintf("write failed: %v", err))
 			return
 		}
+		p.dispatchedN.Add(1)
 	}
 }
 

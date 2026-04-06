@@ -74,7 +74,7 @@ func TestDispatcher_EventHandlerThenDomainHandlerOrder(t *testing.T) {
 func TestNewBuiltinHandlerRegistry_RegistersRequiredIMHandlers(t *testing.T) {
 	registry := NewBuiltinHandlerRegistry()
 
-	if got, want := subscribedEventTypes, []string{
+	requiredIMEvents := []string{
 		"im.message.receive_v1",
 		"im.message.message_read_v1",
 		"im.message.reaction.created_v1",
@@ -86,11 +86,17 @@ func TestNewBuiltinHandlerRegistry_RegistersRequiredIMHandlers(t *testing.T) {
 		"im.chat.member.user.deleted_v1",
 		"im.chat.updated_v1",
 		"im.chat.disbanded_v1",
-	}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("subscribedEventTypes = %v, want %v", got, want)
 	}
 
+	subscribedSet := make(map[string]struct{}, len(subscribedEventTypes))
 	for _, eventType := range subscribedEventTypes {
+		subscribedSet[eventType] = struct{}{}
+	}
+
+	for _, eventType := range requiredIMEvents {
+		if _, ok := subscribedSet[eventType]; !ok {
+			t.Fatalf("subscribedEventTypes missing required IM event %q", eventType)
+		}
 		handlers := registry.EventHandlers(eventType)
 		if len(handlers) != 1 {
 			t.Fatalf("EventHandlers(%q) len = %d, want 1", eventType, len(handlers))
@@ -120,7 +126,9 @@ func TestDispatcher_UsesFallbackWhenNoHandlersMatch(t *testing.T) {
 		result: HandlerResult{Status: HandlerStatusSkipped, Reason: "no route"},
 		called: &calls,
 	}
-	registry.SetFallbackHandler(fallback)
+	if err := registry.SetFallbackHandler(fallback); err != nil {
+		t.Fatalf("SetFallbackHandler() error = %v", err)
+	}
 
 	result := NewDispatcher(registry).Dispatch(context.Background(), &Event{
 		EventType: "unknown.event",
