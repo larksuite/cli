@@ -247,8 +247,7 @@ var EventSubscribe = common.Shortcut{
 		if explicitTypes != nil {
 			info(fmt.Sprintf("Listening for: %s%s%s", output.Green, strings.Join(explicitTypes, ", "), output.Reset))
 		} else {
-			info(fmt.Sprintf("Listening in %scatch-all%s mode for all delivered event types supported by the current SDK dispatcher", output.Green, output.Reset))
-			info(fmt.Sprintf("%sRegistration:%s SDK default handler via OnCustomizedEvent(\"\", ...)", output.Dim, output.Reset))
+			info(fmt.Sprintf("Listening in %scatch-all%s mode for the SDK-supported event types registered by this command", output.Green, output.Reset))
 			info(fmt.Sprintf("%sTip:%s use --event-types to narrow subscription", output.Dim, output.Reset))
 		}
 		if regexFilter != nil {

@@ -483,8 +483,104 @@ func TestPipeline_RawModeCanWriteViaOutputRouter(t *testing.T) {
 	if got, want := record["event_type"], "im.message.receive_v1"; got != want {
 		t.Fatalf("event_type = %v, want %v", got, want)
 	}
+	if got, want := record["raw_payload"], `{"schema":"2.0","header":{"event_id":"ev_test","event_type":"im.message.receive_v1"},"event":{"message":{"message_id":"om_123"}}}`; got != want {
+		t.Fatalf("raw_payload = %v, want %v", got, want)
+	}
 	if _, err := os.Stat(fallbackDir); !os.IsNotExist(err) {
 		t.Fatalf("fallback dir stat err = %v, want not exists", err)
+	}
+}
+
+func TestPipeline_RawModePrettyJSONStillWritesCompactFileJSONWhenRouted(t *testing.T) {
+	tmpDir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(cwd)
+	}()
+	router, err := ParseRoutes([]string{"^im\\.message=dir:./im"})
+	if err != nil {
+		t.Fatalf("ParseRoutes() error = %v", err)
+	}
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{id: genericHandlerID, eventType: "im.message.receive_v1", fn: func(_ context.Context, evt *Event) HandlerResult {
+		return HandlerResult{Status: HandlerStatusHandled}
+	}}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+	p := newEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw, PrettyJSON: true}, &out, &errOut, &outputRouter{router: router, fallback: ndjsonRecordWriter{w: &out}, seq: new(uint64), writers: map[string]*dirRecordWriter{}})
+
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	if out.Len() != 0 {
+		t.Fatalf("stdout output = %q, want empty when routed to files", out.String())
+	}
+	entries, err := os.ReadDir(filepath.Join(tmpDir, "im"))
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("routed files = %d, want 1", len(entries))
+	}
+	data, err := os.ReadFile(filepath.Join(tmpDir, "im", entries[0].Name()))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Contains(trimmed, []byte("\n  \"event_type\"")) {
+		t.Fatalf("routed file unexpectedly used pretty JSON: %q", string(data))
+	}
+	var record map[string]interface{}
+	if err := json.Unmarshal(trimmed, &record); err != nil {
+		t.Fatalf("invalid routed JSON: %v", err)
+	}
+	if got, want := record["event_type"], "im.message.receive_v1"; got != want {
+		t.Fatalf("event_type = %v, want %v", got, want)
+	}
+}
+
+func TestPipeline_RawModePrettyJSONFallsBackToPrettyStdoutWhenUnmatched(t *testing.T) {
+	tmpDir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(cwd)
+	}()
+	router, err := ParseRoutes([]string{"^contact\\.=dir:./contacts"})
+	if err != nil {
+		t.Fatalf("ParseRoutes() error = %v", err)
+	}
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{id: genericHandlerID, eventType: "im.message.receive_v1", fn: func(_ context.Context, evt *Event) HandlerResult {
+		return HandlerResult{Status: HandlerStatusHandled}
+	}}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+	p := newEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw, PrettyJSON: true}, &out, &errOut, &outputRouter{router: router, fallback: ndjsonRecordWriter{w: &out}, seq: new(uint64), writers: map[string]*dirRecordWriter{}})
+
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	got := out.String()
+	if !strings.Contains(got, `"event_type":"im.message.receive_v1"`) {
+		t.Fatalf("stdout output = %q, want compact fallback NDJSON", got)
+	}
+	if strings.Contains(got, "\n  \"event_type\"") {
+		t.Fatalf("stdout output = %q, want fallback writer to ignore PrettyJSON", got)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "contacts")); !os.IsNotExist(err) {
+		t.Fatalf("contacts dir stat err = %v, want not exists", err)
 	}
 }
 
