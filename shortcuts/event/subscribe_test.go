@@ -38,3 +38,23 @@ func TestCatchAllUsesSDKDefaultCustomizedHandler(t *testing.T) {
 		t.Fatalf("dispatcher.Do() error = %v, want concrete event type not found", err)
 	}
 }
+
+func TestSubscribePipelineConfigUsesCompactFlag(t *testing.T) {
+	config := pipelineConfigFor(false, true)
+	if config.Mode != TransformCompact {
+		t.Fatalf("Mode = %v, want TransformCompact", config.Mode)
+	}
+	if config.PrettyJSON {
+		t.Fatalf("PrettyJSON = true, want false")
+	}
+}
+
+func TestSubscribePipelineConfigUsesJSONFlag(t *testing.T) {
+	config := pipelineConfigFor(true, false)
+	if config.Mode != TransformRaw {
+		t.Fatalf("Mode = %v, want TransformRaw", config.Mode)
+	}
+	if !config.PrettyJSON {
+		t.Fatalf("PrettyJSON = false, want true")
+	}
+}

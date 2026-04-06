@@ -74,6 +74,17 @@ func subscribedEventTypesFor(eventTypesStr string) []string {
 	return filter.Types()
 }
 
+func pipelineConfigFor(jsonFlag, compactFlag bool) PipelineConfig {
+	mode := TransformRaw
+	if compactFlag {
+		mode = TransformCompact
+	}
+	return PipelineConfig{
+		Mode:       mode,
+		PrettyJSON: jsonFlag,
+	}
+}
+
 var EventSubscribe = common.Shortcut{
 	Service:     "event",
 	Command:     "+subscribe",
@@ -199,15 +210,9 @@ var EventSubscribe = common.Shortcut{
 		}
 
 		// --- Build pipeline ---
-		mode := TransformRaw
-		if compactFlag {
-			mode = TransformCompact
-		}
-		pipeline := newEventPipeline(NewBuiltinHandlerRegistry(), filters, PipelineConfig{
-			Mode:       mode,
-			Quiet:      quietFlag,
-			PrettyJSON: jsonFlag,
-		}, out, errOut, recordWriter)
+		config := pipelineConfigFor(jsonFlag, compactFlag)
+		config.Quiet = quietFlag
+		pipeline := newEventPipeline(NewBuiltinHandlerRegistry(), filters, config, out, errOut, recordWriter)
 
 		// --- Build SDK event dispatcher ---
 		rawHandler := func(ctx context.Context, event *larkevent.EventReq) error {
