@@ -539,6 +539,40 @@ func TestWrapWatchSubscribeErrorExitError(t *testing.T) {
 	}
 }
 
+func TestHandleMailWatchStartErrorGracefulShutdownSkipsCleanup(t *testing.T) {
+	watchCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	unsubscribeCalled := false
+	err := handleMailWatchStartError(assertErr("context canceled"), watchCtx, func() error {
+		unsubscribeCalled = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if unsubscribeCalled {
+		t.Fatal("unsubscribe should not be called for graceful shutdown")
+	}
+}
+
+func TestHandleMailWatchStartErrorNetworkFailureCleansUp(t *testing.T) {
+	unsubscribeCalled := false
+	err := handleMailWatchStartError(assertErr("boom"), context.Background(), func() error {
+		unsubscribeCalled = true
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !unsubscribeCalled {
+		t.Fatal("expected unsubscribe to be called for startup failure")
+	}
+	if !strings.Contains(err.Error(), "WebSocket connection failed: boom") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // --- watchFetchFormat ---
 
 func TestWatchFetchFormat(t *testing.T) {

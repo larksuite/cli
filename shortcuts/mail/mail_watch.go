@@ -427,7 +427,6 @@ var MailWatch = common.Shortcut{
 		watchCtx, cancelWatch := context.WithCancel(ctx)
 		defer cancelWatch()
 
-		shutdownCh := make(chan struct{})
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
@@ -446,23 +445,23 @@ var MailWatch = common.Shortcut{
 				info("Mailbox unsubscribed.")
 			}
 			cancelWatch()
-			close(shutdownCh)
 		}()
 
 		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
 		if err := cli.Start(watchCtx); err != nil {
-			// Distinguish between signal-triggered shutdown and real errors.
-			select {
-			case <-shutdownCh:
-				// Graceful shutdown via signal; not an error.
-				return nil
-			default:
-				unsubscribe() //nolint:errcheck // best-effort cleanup
-				return output.ErrNetwork("WebSocket connection failed: %v", err)
-			}
+			return handleMailWatchStartError(err, watchCtx, unsubscribe)
 		}
 		return nil
 	},
+}
+
+func handleMailWatchStartError(err error, watchCtx context.Context, unsubscribe func() error) error {
+	if watchCtx.Err() != nil {
+		// Graceful shutdown via signal cancellation; not an error.
+		return nil
+	}
+	unsubscribe() //nolint:errcheck // best-effort cleanup
+	return output.ErrNetwork("WebSocket connection failed: %v", err)
 }
 
 // extractMailEventBody extracts the event body from the Lark event envelope.
