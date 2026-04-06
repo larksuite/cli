@@ -1005,10 +1005,8 @@ const maxImageUploadSize = 5 * 1024 * 1024  // 5MB — Lark API limit for images
 const maxFileUploadSize = 100 * 1024 * 1024 // 100MB — Lark API limit for files
 
 func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, imageType string) (string, error) {
-	safePath, err := validate.SafeInputPath(filePath)
-	if err != nil {
-		return "", err
-	}
+	// filePath is already validated by the caller (resolveLocalMedia).
+	safePath := filePath
 
 	if info, err := vfs.Stat(safePath); err == nil && info.Size() > maxImageUploadSize {
 		return "", fmt.Errorf("image size %s exceeds limit (max 5MB)", common.FormatSize(info.Size()))
@@ -1047,10 +1045,8 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 }
 
 func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, fileType, duration string) (string, error) {
-	safePath, err := validate.SafeInputPath(filePath)
-	if err != nil {
-		return "", err
-	}
+	// filePath is already validated by the caller (resolveLocalMedia).
+	safePath := filePath
 
 	if info, err := vfs.Stat(safePath); err == nil && info.Size() > maxFileUploadSize {
 		return "", fmt.Errorf("file size %s exceeds limit (max 100MB)", common.FormatSize(info.Size()))

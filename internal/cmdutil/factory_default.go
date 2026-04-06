@@ -147,9 +147,11 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 	providers := extcred.Providers()
 	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
-	cp := credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
-	if deps.ErrOut != nil {
-		cp.SetWarnOut(deps.ErrOut)
-	}
-	return cp
+	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
+	// happens before the command runs, so any plain-text warning written
+	// to stderr would break the JSON envelope contract that AI agents
+	// depend on. enrichUserInfo failures are already non-fatal (the
+	// provider clears unverified identity fields), so silencing the
+	// warning is safe.
+	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
 }

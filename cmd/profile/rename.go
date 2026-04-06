@@ -42,9 +42,15 @@ func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 		return output.ErrValidation("profile %q not found, available profiles: %s", oldName, strings.Join(multi.ProfileNames(), ", "))
 	}
 
-	// Check new name uniqueness
-	if multi.FindApp(newName) != nil {
-		return output.ErrValidation("profile %q already exists", newName)
+	// Check new name uniqueness across other profiles, allowing renames to this
+	// profile's own appId or current name.
+	for i := range multi.Apps {
+		if i == idx {
+			continue
+		}
+		if multi.Apps[i].Name == newName || multi.Apps[i].AppId == newName {
+			return output.ErrValidation("profile %q already exists", newName)
+		}
 	}
 
 	oldProfileName := multi.Apps[idx].ProfileName()

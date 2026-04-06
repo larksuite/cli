@@ -155,6 +155,42 @@ func TestProfileRenameRun_UpdatesCurrentAndPreviousReferences(t *testing.T) {
 	}
 }
 
+func TestProfileRenameRun_AllowsRenameToOwnAppID(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp:  "old",
+		PreviousApp: "old",
+		Apps: []core.AppConfig{{
+			Name:      "old",
+			AppId:     "app-old",
+			AppSecret: core.PlainSecret("secret-old"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := profileRenameRun(f, "old", "app-old"); err != nil {
+		t.Fatalf("profileRenameRun() error = %v", err)
+	}
+
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if saved.CurrentApp != "app-old" {
+		t.Fatalf("CurrentApp = %q, want %q", saved.CurrentApp, "app-old")
+	}
+	if saved.PreviousApp != "app-old" {
+		t.Fatalf("PreviousApp = %q, want %q", saved.PreviousApp, "app-old")
+	}
+	if saved.Apps[0].Name != "app-old" {
+		t.Fatalf("Name = %q, want %q", saved.Apps[0].Name, "app-old")
+	}
+}
+
 func TestProfileUseRun_ToggleBackUsesPreviousProfile(t *testing.T) {
 	setupProfileConfigDir(t)
 	multi := &core.MultiAppConfig{

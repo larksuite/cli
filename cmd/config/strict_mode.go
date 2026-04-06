@@ -78,7 +78,7 @@ func resetStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.A
 	}
 	app.StrictMode = nil
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 	fmt.Fprintln(f.IOStreams.ErrOut, "Profile strict-mode reset (inherits global)")
 	return nil
@@ -124,7 +124,7 @@ func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.App
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 	scope := "profile"
 	if global {

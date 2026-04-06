@@ -91,11 +91,6 @@ func autoDetectIdentityFromHint(hint *credential.IdentityHint) core.Identity {
 	return core.AsBot
 }
 
-// resolveDefaultAs returns the configured default identity from the resolved credential hint.
-func (f *Factory) resolveDefaultAs() string {
-	return resolveDefaultAsFromHint(f.resolveIdentityHint())
-}
-
 func (f *Factory) resolveIdentityHint() *credential.IdentityHint {
 	if f.Credential == nil {
 		return nil

@@ -84,6 +84,14 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 		return output.ErrValidation("profile %q already exists", name)
 	}
 
+	// Check app-id uniqueness — keychain stores secrets by appId, so
+	// multiple profiles sharing the same appId would collide on credentials.
+	for _, a := range multi.Apps {
+		if a.AppId == appID {
+			return output.ErrValidation("app-id %q is already used by profile %q; each profile must have a unique app-id", appID, a.ProfileName())
+		}
+	}
+
 	// Store secret securely
 	secret, err := core.ForStorage(appID, core.PlainSecret(appSecret), f.Keychain)
 	if err != nil {
@@ -118,7 +126,7 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Profile %q added (%s, %s)", name, appID, parsedBrand))

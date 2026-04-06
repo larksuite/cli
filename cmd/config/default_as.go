@@ -46,7 +46,7 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 
 			app.DefaultAs = value
 			if err := core.SaveMultiAppConfig(multi); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
+				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 			}
 			fmt.Fprintf(f.IOStreams.ErrOut, "Default identity set to: %s\n", value)
 			return nil
