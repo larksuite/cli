@@ -29,7 +29,7 @@ func resetInit() {
 	testMetaURL = ""
 }
 
-// hasEmbeddedData returns true if meta_data.json is compiled in.
+// hasEmbeddedData returns true if the default embedded registry baseline is compiled in.
 func hasEmbeddedData() bool {
 	return len(embeddedMetaJSON) > 0
 }
@@ -77,7 +77,7 @@ func testEnvelopeNotModifiedJSON() []byte {
 
 func TestColdStart_UsesEmbedded(t *testing.T) {
 	if !hasEmbeddedData() {
-		t.Skip("no embedded from_meta data")
+		t.Skip("no embedded default registry baseline")
 	}
 	resetInit()
 	tmp := t.TempDir()

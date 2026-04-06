@@ -5,7 +5,6 @@ package event
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -50,8 +49,28 @@ func (l *stderrLogger) Error(_ context.Context, args ...interface{}) {
 
 var _ larkcore.Logger = (*stderrLogger)(nil)
 
-// commonEventTypes are well-known event types registered in catch-all mode.
-var commonEventTypes = []string{
+type wsClient interface {
+	Start(ctx context.Context) error
+}
+
+var newWSClient = func(config *core.CliConfig, eventDispatcher *dispatcher.EventDispatcher, logger larkcore.Logger) wsClient {
+	domain := lark.FeishuBaseUrl
+	if config.Brand == core.BrandLark {
+		domain = lark.LarkBaseUrl
+	}
+
+	return larkws.NewClient(config.AppID, config.AppSecret,
+		larkws.WithEventHandler(eventDispatcher),
+		larkws.WithDomain(domain),
+		larkws.WithLogger(logger),
+	)
+}
+
+// subscribedEventTypes are the default SDK registrations used by catch-all mode.
+// Keep this list broad enough to preserve the long-standing mixed-domain surface
+// of event +subscribe. Event families without dedicated handlers still flow
+// through the generic fallback after normalization.
+var subscribedEventTypes = []string{
 	"im.message.receive_v1",
 	"im.message.message_read_v1",
 	"im.message.reaction.created_v1",
@@ -76,6 +95,25 @@ var commonEventTypes = []string{
 	"task.task.update_tenant_v1",
 	"task.task.comment_updated_v1",
 	"drive.notice.comment_add_v1",
+}
+
+func subscribedEventTypesFor(eventTypesStr string) []string {
+	filter := NewEventTypeFilter(eventTypesStr)
+	if filter == nil {
+		return nil
+	}
+	return filter.Types()
+}
+
+func pipelineConfigFor(jsonFlag, compactFlag bool) PipelineConfig {
+	mode := TransformRaw
+	if compactFlag {
+		mode = TransformCompact
+	}
+	return PipelineConfig{
+		Mode:       mode,
+		PrettyJSON: jsonFlag,
+	}
 }
 
 var EventSubscribe = common.Shortcut{
@@ -170,6 +208,7 @@ var EventSubscribe = common.Shortcut{
 		}
 
 		// --- Build filter chain ---
+		explicitTypes := subscribedEventTypesFor(eventTypesStr)
 		eventTypeFilter := NewEventTypeFilter(eventTypesStr)
 		regexFilter, err := NewRegexFilter(filterStr)
 		if err != nil {
@@ -184,40 +223,34 @@ var EventSubscribe = common.Shortcut{
 		}
 		filters := NewFilterChain(filterList...)
 
-		// --- Parse route ---
-		router, err := ParseRoutes(routeSpecs)
-		if err != nil {
-			return output.ErrValidation("invalid --route: %v", err)
+		_ = jsonFlag
+		hasRoutes := len(routeSpecs) > 0
+		var recordWriter OutputRecordWriter
+		if hasRoutes || outputDir != "" {
+			router, err := ParseRoutes(routeSpecs)
+			if err != nil {
+				return output.ErrValidation("invalid --route: %v", err)
+			}
+			recordWriter = &outputRouter{
+				router:     router,
+				defaultDir: outputDir,
+				fallback:   ndjsonRecordWriter{w: out},
+				seq:        new(uint64),
+				writers:    map[string]*dirRecordWriter{},
+			}
 		}
 
 		// --- Build pipeline ---
-		mode := TransformRaw
-		if compactFlag {
-			mode = TransformCompact
-		}
-		pipeline := NewEventPipeline(DefaultRegistry(), filters, PipelineConfig{
-			Mode:      mode,
-			JsonFlag:  jsonFlag,
-			OutputDir: outputDir,
-			Quiet:     quietFlag,
-			Router:    router,
-		}, out, errOut)
-
-		if err := pipeline.EnsureDirs(); err != nil {
-			return err
-		}
+		config := pipelineConfigFor(jsonFlag, compactFlag)
+		config.Quiet = quietFlag
+		pipeline := newEventPipeline(NewBuiltinHandlerRegistry(), filters, config, out, errOut, recordWriter)
 
 		// --- Build SDK event dispatcher ---
 		rawHandler := func(ctx context.Context, event *larkevent.EventReq) error {
 			if event.Body == nil {
 				return nil
 			}
-			var raw RawEvent
-			if err := json.Unmarshal(event.Body, &raw); err != nil {
-				output.PrintError(errOut, fmt.Sprintf("failed to parse event: %v", err))
-				return nil
-			}
-			pipeline.Process(ctx, &raw)
+			pipeline.Process(ctx, BuildWebSocketEnvelope(event.Body))
 			return nil
 		}
 
@@ -225,43 +258,33 @@ var EventSubscribe = common.Shortcut{
 
 		eventDispatcher := dispatcher.NewEventDispatcher("", "")
 		eventDispatcher.InitConfig(larkevent.WithLogger(sdkLogger))
-		if eventTypeFilter != nil {
-			for _, et := range eventTypeFilter.Types() {
+		if explicitTypes != nil {
+			for _, et := range explicitTypes {
 				eventDispatcher.OnCustomizedEvent(et, rawHandler)
 			}
 		} else {
-			for _, et := range commonEventTypes {
+			for _, et := range subscribedEventTypes {
 				eventDispatcher.OnCustomizedEvent(et, rawHandler)
 			}
-		}
-
-		// --- WebSocket ---
-		domain := lark.FeishuBaseUrl
-		if runtime.Config.Brand == core.BrandLark {
-			domain = lark.LarkBaseUrl
 		}
 
 		info(fmt.Sprintf("%sConnecting to Lark event WebSocket...%s", output.Cyan, output.Reset))
-		if eventTypeFilter != nil {
-			info(fmt.Sprintf("Listening for: %s%s%s", output.Green, strings.Join(eventTypeFilter.Types(), ", "), output.Reset))
+		if explicitTypes != nil {
+			info(fmt.Sprintf("Listening for: %s%s%s", output.Green, strings.Join(explicitTypes, ", "), output.Reset))
 		} else {
-			info(fmt.Sprintf("Listening for %s%d common event types%s (catch-all mode)", output.Green, len(commonEventTypes), output.Reset))
-			info(fmt.Sprintf("%sTip:%s use --event-types to listen for specific event types", output.Dim, output.Reset))
+			info(fmt.Sprintf("Listening in %scatch-all%s mode for the SDK-supported event types registered by this command", output.Green, output.Reset))
+			info(fmt.Sprintf("%sTip:%s use --event-types to narrow subscription", output.Dim, output.Reset))
 		}
 		if regexFilter != nil {
 			info(fmt.Sprintf("Filter: %s%s%s", output.Yellow, regexFilter.String(), output.Reset))
 		}
-		if router != nil {
+		if hasRoutes {
 			for _, spec := range routeSpecs {
 				info(fmt.Sprintf("  Route: %s%s%s", output.Green, spec, output.Reset))
 			}
 		}
 
-		cli := larkws.NewClient(runtime.Config.AppID, runtime.Config.AppSecret,
-			larkws.WithEventHandler(eventDispatcher),
-			larkws.WithDomain(domain),
-			larkws.WithLogger(sdkLogger),
-		)
+		cli := newWSClient(runtime.Config, eventDispatcher, sdkLogger)
 
 		// --- Graceful shutdown ---
 		sigCh := make(chan os.Signal, 1)

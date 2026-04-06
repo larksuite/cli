@@ -11,6 +11,14 @@ type ProcessorRegistry struct {
 	fallback   EventProcessor
 }
 
+// HandlerRegistry manages event and domain scoped EventHandler registrations.
+type HandlerRegistry struct {
+	eventHandlers  map[string][]EventHandler
+	domainHandlers map[string][]EventHandler
+	fallback       EventHandler
+	ids            map[string]struct{}
+}
+
 // NewProcessorRegistry creates a registry with a fallback for unregistered event types.
 func NewProcessorRegistry(fallback EventProcessor) *ProcessorRegistry {
 	return &ProcessorRegistry{
@@ -56,4 +64,106 @@ func DefaultRegistry() *ProcessorRegistry {
 	_ = r.Register(&ImChatUpdatedProcessor{})
 	_ = r.Register(&ImChatDisbandedProcessor{})
 	return r
+}
+
+// NewHandlerRegistry creates an empty handler registry.
+func NewHandlerRegistry() *HandlerRegistry {
+	return &HandlerRegistry{
+		eventHandlers:  make(map[string][]EventHandler),
+		domainHandlers: make(map[string][]EventHandler),
+		ids:            make(map[string]struct{}),
+	}
+}
+
+// NewBuiltinHandlerRegistry creates a handler registry with the built-in runtime handlers.
+func NewBuiltinHandlerRegistry() *HandlerRegistry {
+	r := NewHandlerRegistry()
+	for _, h := range []EventHandler{
+		NewIMMessageReceiveHandler(),
+		NewIMMessageReadHandler(),
+		NewIMReactionCreatedHandler(),
+		NewIMReactionDeletedHandler(),
+		NewIMChatUpdatedHandler(),
+		NewIMChatDisbandedHandler(),
+		NewIMChatMemberBotAddedHandler(),
+		NewIMChatMemberBotDeletedHandler(),
+		NewIMChatMemberUserAddedHandler(),
+		NewIMChatMemberUserWithdrawnHandler(),
+		NewIMChatMemberUserDeletedHandler(),
+	} {
+		_ = r.RegisterEventHandler(h)
+	}
+	_ = r.SetFallbackHandler(NewGenericFallbackHandler())
+	return r
+}
+
+// RegisterEventHandler registers a handler for an exact event type.
+func (r *HandlerRegistry) RegisterEventHandler(h EventHandler) error {
+	if err := r.validateHandler(h, h.EventType(), "event type"); err != nil {
+		return err
+	}
+	r.eventHandlers[h.EventType()] = append(r.eventHandlers[h.EventType()], h)
+	return nil
+}
+
+// RegisterDomainHandler registers a handler for an exact domain.
+func (r *HandlerRegistry) RegisterDomainHandler(h EventHandler) error {
+	if err := r.validateHandler(h, h.Domain(), "domain"); err != nil {
+		return err
+	}
+	r.domainHandlers[h.Domain()] = append(r.domainHandlers[h.Domain()], h)
+	return nil
+}
+
+// SetFallbackHandler sets the fallback handler used when no handlers match.
+func (r *HandlerRegistry) SetFallbackHandler(h EventHandler) error {
+	if err := r.validateHandler(h, h.ID(), "fallback handler"); err != nil {
+		return err
+	}
+	r.fallback = h
+	return nil
+}
+
+// EventHandlers returns handlers registered for the exact event type.
+func (r *HandlerRegistry) EventHandlers(eventType string) []EventHandler {
+	if r == nil {
+		return nil
+	}
+	return r.eventHandlers[eventType]
+}
+
+// DomainHandlers returns handlers registered for the exact domain.
+func (r *HandlerRegistry) DomainHandlers(domain string) []EventHandler {
+	if r == nil {
+		return nil
+	}
+	return r.domainHandlers[domain]
+}
+
+// FallbackHandler returns the configured fallback handler.
+func (r *HandlerRegistry) FallbackHandler() EventHandler {
+	if r == nil {
+		return nil
+	}
+	return r.fallback
+}
+
+func (r *HandlerRegistry) validateHandler(h EventHandler, key string, scope string) error {
+	if r == nil {
+		return fmt.Errorf("nil handler registry")
+	}
+	if h == nil {
+		return fmt.Errorf("nil handler")
+	}
+	if h.ID() == "" {
+		return fmt.Errorf("handler ID is required")
+	}
+	if key == "" {
+		return fmt.Errorf("handler %q %s is required", h.ID(), scope)
+	}
+	if _, exists := r.ids[h.ID()]; exists {
+		return fmt.Errorf("duplicate handler ID: %s", h.ID())
+	}
+	r.ids[h.ID()] = struct{}{}
+	return nil
 }
