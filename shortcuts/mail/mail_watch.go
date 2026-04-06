@@ -424,6 +424,10 @@ var MailWatch = common.Shortcut{
 			larkws.WithLogger(sdkLogger),
 		)
 
+		watchCtx, cancelWatch := context.WithCancel(ctx)
+		defer cancelWatch()
+
+		shutdownCh := make(chan struct{})
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
@@ -433,6 +437,7 @@ var MailWatch = common.Shortcut{
 				}
 			}()
 			<-sigCh
+			signal.Stop(sigCh)
 			info(fmt.Sprintf("\nShutting down... (received %d events)", eventCount))
 			info("Unsubscribing mailbox events...")
 			if unsubErr := unsubscribe(); unsubErr != nil {
@@ -440,14 +445,21 @@ var MailWatch = common.Shortcut{
 			} else {
 				info("Mailbox unsubscribed.")
 			}
-			signal.Stop(sigCh)
-			os.Exit(0)
+			cancelWatch()
+			close(shutdownCh)
 		}()
 
 		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
-		if err := cli.Start(ctx); err != nil {
-			unsubscribe() //nolint:errcheck // best-effort cleanup
-			return output.ErrNetwork("WebSocket connection failed: %v", err)
+		if err := cli.Start(watchCtx); err != nil {
+			// Distinguish between signal-triggered shutdown and real errors.
+			select {
+			case <-shutdownCh:
+				// Graceful shutdown via signal; not an error.
+				return nil
+			default:
+				unsubscribe() //nolint:errcheck // best-effort cleanup
+				return output.ErrNetwork("WebSocket connection failed: %v", err)
+			}
 		}
 		return nil
 	},
