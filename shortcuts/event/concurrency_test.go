@@ -37,8 +37,7 @@ func TestOutputRouterWriteRecordConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for i := 0; i < workers; i++ {
-		i := i
-		go func() {
+		go func(i int) {
 			defer wg.Done()
 			if err := router.WriteRecord("im.message.receive_v1", map[string]interface{}{
 				"event_type": "im.message.receive_v1",
@@ -46,7 +45,7 @@ func TestOutputRouterWriteRecordConcurrent(t *testing.T) {
 			}); err != nil {
 				t.Errorf("WriteRecord() error = %v", err)
 			}
-		}()
+		}(i)
 	}
 	wg.Wait()
 }
@@ -69,15 +68,14 @@ func TestPipelineConcurrentProcessCountsAllDispatches(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for i := 0; i < workers; i++ {
-		i := i
-		go func() {
+		go func(i int) {
 			defer wg.Done()
 			p.Process(context.Background(), makeInboundEnvelopeWithEventID(
 				fmt.Sprintf("evt-%03d", i),
 				"im.message.receive_v1",
 				fmt.Sprintf(`{"message":{"message_id":"om_%03d"}}`, i),
 			))
-		}()
+		}(i)
 	}
 	wg.Wait()
 

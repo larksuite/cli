@@ -126,7 +126,9 @@ func TestDispatcher_UsesFallbackWhenNoHandlersMatch(t *testing.T) {
 		result: HandlerResult{Status: HandlerStatusSkipped, Reason: "no route"},
 		called: &calls,
 	}
-	registry.SetFallbackHandler(fallback)
+	if err := registry.SetFallbackHandler(fallback); err != nil {
+		t.Fatalf("SetFallbackHandler() error = %v", err)
+	}
 
 	result := NewDispatcher(registry).Dispatch(context.Background(), &Event{
 		EventType: "unknown.event",

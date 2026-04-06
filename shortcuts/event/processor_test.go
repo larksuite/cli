@@ -882,19 +882,6 @@ func (h testHandler) Handle(context.Context, *Event) HandlerResult {
 	return HandlerResult{Status: HandlerStatusHandled}
 }
 
-type handlerFunc string
-
-func (h handlerFunc) ID() string        { return string(h) }
-func (h handlerFunc) EventType() string { return "" }
-func (h handlerFunc) Domain() string    { return "" }
-func (h handlerFunc) Handle(context.Context, *Event) HandlerResult {
-	return HandlerResult{Status: HandlerStatusHandled}
-}
-
-func (h handlerFunc) with(fn func(context.Context, *Event) HandlerResult) EventHandler {
-	return handlerFuncWith{id: string(h), fn: fn}
-}
-
 type handlerFuncWith struct {
 	id        string
 	eventType string
