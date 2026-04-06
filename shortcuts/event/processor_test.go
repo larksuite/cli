@@ -593,6 +593,28 @@ func TestPipeline_RawModeMalformedEventPreservesRawPayload(t *testing.T) {
 	}
 }
 
+func TestPipeline_RawModePrettyJSONWritesIndentedObject(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{
+		id:        "raw-handler",
+		eventType: "im.message.receive_v1",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{Status: HandlerStatusHandled}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw, PrettyJSON: true}, &out, &errOut)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	got := out.String()
+	if !strings.Contains(got, "\n  \"event_type\"") {
+		t.Fatalf("pretty JSON output = %q, want indented object", got)
+	}
+}
+
 // --- Pipeline: Quiet ---
 
 func TestPipeline_Quiet(t *testing.T) {

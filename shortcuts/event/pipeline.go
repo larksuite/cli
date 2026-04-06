@@ -17,8 +17,9 @@ const dedupTTL = 5 * time.Minute
 
 // PipelineConfig configures the event processing pipeline.
 type PipelineConfig struct {
-	Mode  TransformMode // determined by --compact flag
-	Quiet bool          // --quiet: suppress stderr status messages
+	Mode       TransformMode // determined by --compact flag
+	Quiet      bool          // --quiet: suppress stderr status messages
+	PrettyJSON bool
 }
 
 // EventPipeline chains normalize -> match -> resolve -> filter -> dedupe -> dispatch.
@@ -134,7 +135,7 @@ func (p *EventPipeline) dispatch(ctx context.Context, evt *Event) {
 		} else {
 			entry = compactModeRecord(evt, record)
 		}
-		if err := writeNDJSON(p.out, entry); err != nil {
+		if err := p.writeRecord(entry); err != nil {
 			output.PrintError(p.errOut, fmt.Sprintf("write failed: %v", err))
 			return
 		}
@@ -250,14 +251,33 @@ type ndjsonRecordWriter struct {
 }
 
 func (w ndjsonRecordWriter) WriteRecord(_ string, value map[string]interface{}) error {
-	return writeNDJSON(w.w, value)
-}
-
-func writeNDJSON(w io.Writer, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(append(data, '\n'))
+	_, err = w.w.Write(append(data, '\n'))
+	return err
+}
+
+func (p *EventPipeline) writeRecord(value interface{}) error {
+	var (
+		data []byte
+		err  error
+	)
+	if p.config.PrettyJSON {
+		data, err = json.MarshalIndent(value, "", "  ")
+		if err == nil {
+			data = append(data, '\n')
+		}
+	} else {
+		data, err = json.Marshal(value)
+		if err == nil {
+			data = append(data, '\n')
+		}
+	}
+	if err != nil {
+		return err
+	}
+	_, err = p.out.Write(data)
 	return err
 }

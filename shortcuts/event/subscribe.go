@@ -204,8 +204,9 @@ var EventSubscribe = common.Shortcut{
 			mode = TransformCompact
 		}
 		pipeline := newEventPipeline(NewBuiltinHandlerRegistry(), filters, PipelineConfig{
-			Mode:  mode,
-			Quiet: quietFlag,
+			Mode:       mode,
+			Quiet:      quietFlag,
+			PrettyJSON: jsonFlag,
 		}, out, errOut, recordWriter)
 
 		// --- Build SDK event dispatcher ---
