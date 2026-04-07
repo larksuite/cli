@@ -25,6 +25,9 @@ const tagBytes = 16
 
 // StorageDir returns the directory where encrypted files are stored.
 func StorageDir(service string) string {
+	if dir := os.Getenv("LARKSUITE_CLI_DATA_DIR"); dir != "" {
+		return dir
+	}
 	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {
 		// If home is missing, fallback to relative path and print warning.
