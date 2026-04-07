@@ -102,11 +102,6 @@ func (f *Factory) resolveIdentityHint() *credential.IdentityHint {
 	return hint
 }
 
-// autoDetectIdentity checks the resolved credential hint and returns bot by default.
-func (f *Factory) autoDetectIdentity() core.Identity {
-	return autoDetectIdentityFromHint(f.resolveIdentityHint())
-}
-
 // CheckIdentity verifies the resolved identity is in the supported list.
 // On success, sets f.ResolvedIdentity. On failure, returns an error
 // tailored to whether the identity was explicit (--as) or auto-detected.

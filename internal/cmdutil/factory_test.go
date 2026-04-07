@@ -185,36 +185,6 @@ func TestCheckIdentity_Unsupported_AutoDetected(t *testing.T) {
 	}
 }
 
-// --- autoDetectIdentity tests ---
-
-func TestAutoDetectIdentity_NoUserOpenId(t *testing.T) {
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	got := f.autoDetectIdentity()
-	if got != core.AsBot {
-		t.Errorf("want bot (no UserOpenId), got %s", got)
-	}
-}
-
-func TestAutoDetectIdentity_EnvTokenDoesNotBypassConfigSource(t *testing.T) {
-	t.Setenv(envvars.CliUserAccessToken, "env-uat")
-
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	got := f.autoDetectIdentity()
-	if got != core.AsBot {
-		t.Errorf("want bot (env token should not bypass config source), got %s", got)
-	}
-}
-
-func TestAutoDetectIdentity_ConfigError(t *testing.T) {
-	f := &Factory{
-		Credential: nil,
-	}
-	got := f.autoDetectIdentity()
-	if got != core.AsBot {
-		t.Errorf("want bot (no credential hint), got %s", got)
-	}
-}
-
 // --- NewAPIClient / NewAPIClientWithConfig tests ---
 
 func TestNewAPIClient(t *testing.T) {
