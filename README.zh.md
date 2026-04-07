@@ -52,7 +52,9 @@
 
 #### 安装
 
-选择 **一种** CLI 安装方式，然后安装 Claude Code 插件。
+先安装 CLI。如果你使用 Claude Code，再安装插件。
+
+**第 1 步 — 安装 CLI（任选一种）：**
 
 **方式一 — 从 npm 安装（推荐）：**
 
@@ -60,14 +62,7 @@
 npm install -g @larksuite/cli
 ```
 
-**方式二 — 安装 Claude Code 插件（repo-first，推荐）**
-
-```bash
-claude plugin marketplace add larksuite/cli
-claude plugin install larksuite/cli@larksuite-cli-marketplace
-```
-
-**方式三 — 从源码安装：**
+**方式二 — 从源码安装：**
 
 需要 Go `v1.23`+ 和 Python 3。
 
@@ -75,6 +70,13 @@ claude plugin install larksuite/cli@larksuite-cli-marketplace
 git clone https://github.com/larksuite/cli.git
 cd cli
 make install
+```
+
+**第 2 步 — 安装 Claude Code 插件（Claude Code 用户推荐）：**
+
+```bash
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 **兼容 / 回退方案 — 安装旧版 standalone skills**
@@ -143,7 +145,7 @@ lark-cli auth login --recommend
 
 ```bash
 lark-cli auth status
-claude plugin validate .
+claude plugin list
 ```
 
 

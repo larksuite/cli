@@ -52,7 +52,9 @@ Before you start, make sure you have:
 
 #### Install
 
-Choose **one** CLI installation method, then install the Claude Code plugin.
+Install the CLI first. If you use Claude Code, then install the plugin.
+
+**Step 1 — Install the CLI (choose one):**
 
 **Option 1 — From npm (recommended):**
 
@@ -60,14 +62,7 @@ Choose **one** CLI installation method, then install the Claude Code plugin.
 npm install -g @larksuite/cli
 ```
 
-**Option 2 — Install the Claude Code plugin (repo-first, recommended)**
-
-```bash
-claude plugin marketplace add larksuite/cli
-claude plugin install larksuite/cli@larksuite-cli-marketplace
-```
-
-**Option 3 — From source:**
+**Option 2 — From source:**
 
 Requires Go `v1.23`+ and Python 3.
 
@@ -75,6 +70,13 @@ Requires Go `v1.23`+ and Python 3.
 git clone https://github.com/larksuite/cli.git
 cd cli
 make install
+```
+
+**Step 2 — Install the Claude Code plugin (recommended for Claude Code users):**
+
+```bash
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 **Compatibility / fallback — install legacy standalone skills**
@@ -143,7 +145,7 @@ lark-cli auth login --recommend
 
 ```bash
 lark-cli auth status
-claude plugin validate .
+claude plugin list
 ```
 
 ## Agent Skills
