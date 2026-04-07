@@ -64,7 +64,7 @@ func (l *LocalFileIO) Save(path string, _ fileio.SaveOptions, body io.Reader) (f
 	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		return nil, err
 	}
-	n, err := AtomicWriteFromReader(safePath, body, 0644)
+	n, err := atomicWriteFromReader(safePath, body, 0644)
 	if err != nil {
 		return nil, err
 	}

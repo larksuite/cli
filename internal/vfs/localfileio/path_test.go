@@ -167,45 +167,7 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	}
 }
 
-func Test_safeLocalFlagPath(t *testing.T) {
-	dir := t.TempDir()
-	dir, _ = filepath.EvalSymlinks(dir)
-	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
-	os.Chdir(dir)
-	os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("data"), 0600)
 
-	for _, tt := range []struct {
-		name    string
-		flag    string
-		value   string
-		want    string
-		wantErr string
-	}{
-		{"empty value passes through", "--image", "", "", ""},
-		{"http URL passes through", "--image", "http://example.com/a.jpg", "http://example.com/a.jpg", ""},
-		{"https URL passes through", "--image", "https://example.com/a.jpg", "https://example.com/a.jpg", ""},
-		{"relative path accepted, returned unchanged", "--file", "photo.jpg", "photo.jpg", ""},
-		{"path traversal rejected", "--file", "../escape.txt", "", "--file"},
-		{"absolute path rejected", "--image", "/etc/passwd", "", "--image"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := safeLocalFlagPath(tt.flag, tt.value)
-			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("safeLocalFlagPath(%q, %q) error = %v, want contains %q", tt.flag, tt.value, err, tt.wantErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("safeLocalFlagPath(%q, %q) unexpected error: %v", tt.flag, tt.value, err)
-			}
-			if got != tt.want {
-				t.Fatalf("safeLocalFlagPath(%q, %q) = %q, want %q", tt.flag, tt.value, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	// GIVEN: a real temp file (absolute path under os.TempDir())

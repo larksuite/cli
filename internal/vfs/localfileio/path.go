@@ -32,21 +32,6 @@ func safeInputPath(path string) (string, error) {
 	return safePath(path, "--file")
 }
 
-// safeLocalFlagPath validates a flag value as a local file path.
-// Empty values and http/https URLs are returned unchanged without validation,
-// allowing the caller to handle non-path inputs (e.g. API keys, URLs) upstream.
-// For all other values, safeInputPath rules apply.
-// The original relative path is returned unchanged (not resolved to absolute) so
-// upload helpers can re-validate at the actual I/O point via SafeUploadPath.
-func safeLocalFlagPath(flagName, value string) (string, error) {
-	if value == "" || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
-		return value, nil
-	}
-	if _, err := safeInputPath(value); err != nil {
-		return "", fmt.Errorf("%s: %v", flagName, err)
-	}
-	return value, nil
-}
 
 // safePath is the shared implementation for SafeOutputPath and safeInputPath.
 func safePath(raw, flagName string) (string, error) {

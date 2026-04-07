@@ -27,8 +27,8 @@ func AtomicWrite(path string, data []byte, perm os.FileMode) error {
 	})
 }
 
-// AtomicWriteFromReader atomically copies reader contents into path.
-func AtomicWriteFromReader(path string, reader io.Reader, perm os.FileMode) (int64, error) {
+// atomicWriteFromReader atomically copies reader contents into path.
+func atomicWriteFromReader(path string, reader io.Reader, perm os.FileMode) (int64, error) {
 	var copied int64
 	err := atomicWrite(path, perm, func(tmp *os.File) error {
 		n, err := io.Copy(tmp, reader)
