@@ -78,7 +78,7 @@ AI AGENT SKILLS:
         npx skills add larksuite/cli -s lark-calendar -y
         npx skills add larksuite/cli -s lark-im -y
 
-    Learn more: https://github.com/larksuite/cli#install-ai-agent-skills
+    Learn more: https://github.com/larksuite/cli#agent-skills
 
 COMMUNITY:
     GitHub:     https://github.com/larksuite/cli

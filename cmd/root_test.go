@@ -187,3 +187,12 @@ func TestEnrichPermissionError_SpecialCharsEscaped(t *testing.T) {
 		})
 	}
 }
+
+func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
+	if !strings.Contains(rootLong, "https://github.com/larksuite/cli#agent-skills") {
+		t.Fatalf("root help should link to the README Agent Skills section, got:\n%s", rootLong)
+	}
+	if strings.Contains(rootLong, "https://github.com/larksuite/cli#install-ai-agent-skills") {
+		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", rootLong)
+	}
+}
