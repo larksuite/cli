@@ -95,8 +95,8 @@ func cachedHttpClientFunc() func() (*http.Client, error) {
 		var transport http.RoundTripper = util.NewBaseTransport()
 		transport = &RetryTransport{Base: transport}
 		transport = &SecurityHeaderTransport{Base: transport}
-
 		transport = &auth.SecurityPolicyTransport{Base: transport} // Add our global response interceptor
+		transport = wrapWithExtension(transport)
 		client := &http.Client{
 			Transport:     transport,
 			Timeout:       30 * time.Second,
@@ -133,7 +133,7 @@ func buildSDKTransport() http.RoundTripper {
 	sdkTransport = &RetryTransport{Base: sdkTransport}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
 	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
-	return sdkTransport
+	return wrapWithExtension(sdkTransport)
 }
 
 type credentialDeps struct {

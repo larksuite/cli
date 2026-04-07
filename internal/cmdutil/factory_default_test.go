@@ -8,7 +8,10 @@ import (
 	"errors"
 	"testing"
 
+	"net/http"
+
 	_ "github.com/larksuite/cli/extension/credential/env"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -192,5 +195,60 @@ func TestNewDefault_ConfigUsesRuntimePlaceholderForTokenOnlyEnvAccount(t *testin
 	}
 	if credential.HasRealAppSecret(cfg.AppSecret) {
 		t.Fatalf("Config().AppSecret = %q, want token-only no-secret marker", cfg.AppSecret)
+	}
+}
+
+type stubTransportProvider struct{}
+
+func (s *stubTransportProvider) Name() string { return "stub" }
+func (s *stubTransportProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return &stubTransportImpl{}
+}
+
+type stubTransportImpl struct{}
+
+func (s *stubTransportImpl) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	return nil
+}
+
+func TestBuildSDKTransport_WithExtension(t *testing.T) {
+	exttransport.Register(&stubTransportProvider{})
+	t.Cleanup(func() { exttransport.Register(nil) })
+
+	transport := buildSDKTransport()
+
+	// Chain: extensionMiddleware → SecurityPolicy → UserAgent → Retry → Base
+	mid, ok := transport.(*extensionMiddleware)
+	if !ok {
+		t.Fatalf("outer transport type = %T, want *extensionMiddleware", transport)
+	}
+	sec, ok := mid.Base.(*internalauth.SecurityPolicyTransport)
+	if !ok {
+		t.Fatalf("transport type = %T, want *auth.SecurityPolicyTransport", mid.Base)
+	}
+	ua, ok := sec.Base.(*UserAgentTransport)
+	if !ok {
+		t.Fatalf("transport type = %T, want *UserAgentTransport", sec.Base)
+	}
+	if _, ok := ua.Base.(*RetryTransport); !ok {
+		t.Fatalf("innermost transport type = %T, want *RetryTransport", ua.Base)
+	}
+}
+
+func TestBuildSDKTransport_WithoutExtension(t *testing.T) {
+	exttransport.Register(nil)
+
+	transport := buildSDKTransport()
+
+	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
+	if !ok {
+		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
+	}
+	ua, ok := sec.Base.(*UserAgentTransport)
+	if !ok {
+		t.Fatalf("middle transport type = %T, want *UserAgentTransport", sec.Base)
+	}
+	if _, ok := ua.Base.(*RetryTransport); !ok {
+		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
 	}
 }
