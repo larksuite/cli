@@ -116,7 +116,7 @@ type extensionMiddleware struct {
 // the built-in chain, then calls the post hook if non-nil.
 func (m *extensionMiddleware) RoundTrip(req *http.Request) (*http.Response, error) {
 	origCtx := req.Context()
-	req = req.Clone(origCtx)       // isolate caller's request before extension mutations
+	req = req.Clone(origCtx) // isolate caller's request before extension mutations
 	post := m.Ext.PreRoundTrip(req)
 	req = req.WithContext(origCtx) // restore original context
 	resp, err := m.Base.RoundTrip(req)
