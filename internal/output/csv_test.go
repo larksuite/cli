@@ -5,6 +5,7 @@ package output
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -148,5 +149,28 @@ func TestFormatAsCSV_SingleObject(t *testing.T) {
 	}
 	if !strings.Contains(out, "Alice") {
 		t.Errorf("output should contain 'Alice', got:\n%s", out)
+	}
+}
+
+type failingCSVWriter struct{}
+
+func (failingCSVWriter) Write(p []byte) (int, error) {
+	return 0, errors.New("boom")
+}
+
+func TestFormatAsCSV_WriteError_UsesErrorSink(t *testing.T) {
+	origSink := ErrorSink
+	var errBuf bytes.Buffer
+	ErrorSink = &errBuf
+	defer func() { ErrorSink = origSink }()
+
+	data := []interface{}{
+		map[string]interface{}{"name": "Alice"},
+	}
+
+	FormatAsCSV(failingCSVWriter{}, data)
+
+	if got := errBuf.String(); got == "" || !strings.Contains(got, "csv write error: boom") {
+		t.Fatalf("expected csv write error in ErrorSink, got: %q", got)
 	}
 }
