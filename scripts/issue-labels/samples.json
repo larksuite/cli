@@ -601,20 +601,6 @@
     ]
   },
   {
-    "name": "#185 lark-cli 不支持多个 Gateway 实例共享配置",
-    "title": "lark-cli 不支持多个 Gateway 实例共享配置",
-    "body": "需要多个 Gateway 实例共享同一份配置。当前 `config.json` 只有一份且无法共享。",
-    "expected_type": null,
-    "expected_domains": [
-      "core"
-    ],
-    "source_url": "https://github.com/larksuite/cli/issues/185",
-    "source_labels": [
-      "bug",
-      "domain/event"
-    ]
-  },
-  {
     "name": "#265 wiki只能获取到标题，无法获取到内容，针对mindmap",
     "title": "wiki只能获取到标题，无法获取到内容，针对mindmap",
     "body": "",
