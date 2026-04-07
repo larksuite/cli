@@ -547,5 +547,85 @@
     ],
     "source_url": "https://github.com/larksuite/cli/issues/82",
     "source_labels": []
+  },
+  {
+    "name": "#254 你好",
+    "title": "你好",
+    "body": "",
+    "expected_type": null,
+    "expected_domains": [],
+    "source_url": "https://github.com/larksuite/cli/issues/254",
+    "source_labels": []
+  },
+  {
+    "name": "#9 Meeting room booking is possible, but room discovery is missing from CLI docs and command surface",
+    "title": "Meeting room booking is possible, but room discovery is missing from CLI docs and command surface",
+    "body": "Does it support meeting room discovery? Is there a `lark-cli calendar` command to discover meeting rooms? The CLI docs/command surface lacks room discovery.",
+    "expected_type": "question",
+    "expected_domains": [
+      "calendar",
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/9",
+    "source_labels": [
+      "enhancement"
+    ]
+  },
+  {
+    "name": "#81 mail +draft-edit: add_inline does not actually insert inline image into HTML body",
+    "title": "mail +draft-edit: add_inline does not actually insert inline image into HTML body",
+    "body": "`add_inline` fails to insert inline image into HTML body. Expected the image to be present; actual: missing.",
+    "expected_type": "bug",
+    "expected_domains": [
+      "mail"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/81",
+    "source_labels": [
+      "enhancement",
+      "domain/mail"
+    ]
+  },
+  {
+    "name": "#259 Feature: docs +fetch should support --resolve-media to auto-download images/files",
+    "title": "Feature: docs +fetch should support --resolve-media to auto-download images/files",
+    "body": "Feature request: `lark-cli docs +fetch` should support `--resolve-media` to download images/files referenced in docs.",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/259",
+    "source_labels": [
+      "bug",
+      "domain/doc",
+      "domain/core"
+    ]
+  },
+  {
+    "name": "#185 lark-cli 不支持多个 Gateway 实例共享配置",
+    "title": "lark-cli 不支持多个 Gateway 实例共享配置",
+    "body": "需要多个 Gateway 实例共享同一份配置。当前 `config.json` 只有一份且无法共享。",
+    "expected_type": null,
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/185",
+    "source_labels": [
+      "bug",
+      "domain/event"
+    ]
+  },
+  {
+    "name": "#265 wiki只能获取到标题，无法获取到内容，针对mindmap",
+    "title": "wiki只能获取到标题，无法获取到内容，针对mindmap",
+    "body": "",
+    "expected_type": "bug",
+    "expected_domains": [
+      "wiki"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/265",
+    "source_labels": [
+      "enhancement",
+      "domain/wiki"
+    ]
   }
 ]
