@@ -26,6 +26,10 @@ const keychainTimeout = 5 * time.Second
 const masterKeyBytes = 32
 const ivBytes = 12
 const tagBytes = 16
+const fileMasterKeyName = "master.key.file"
+
+var keyringGet = keyring.Get
+var keyringSet = keyring.Set
 
 // StorageDir returns the storage directory for a given service name on macOS.
 func StorageDir(service string) string {
@@ -57,7 +61,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	go func() {
 		defer func() { recover() }()
 
-		encodedKey, err := keyring.Get(service, "master.key")
+		encodedKey, err := keyringGet(service, "master.key")
 		if err == nil {
 			key, decodeErr := base64.StdEncoding.DecodeString(encodedKey)
 			if decodeErr == nil && len(key) == masterKeyBytes {
@@ -88,7 +92,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		}
 
 		encodedKeyStr := base64.StdEncoding.EncodeToString(key)
-		setErr := keyring.Set(service, "master.key", encodedKeyStr)
+		setErr := keyringSet(service, "master.key", encodedKeyStr)
 		if setErr != nil {
 			resCh <- result{key: nil, err: setErr}
 			return
@@ -103,6 +107,47 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		// Timeout is usually caused by ignored/blocked permission prompts
 		return nil, errors.New("keychain access blocked")
 	}
+}
+
+// getFileMasterKey retrieves the fallback master key from local storage.
+// If allowCreate is true, it generates and stores a new fallback master key when missing.
+func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
+	dir := StorageDir(service)
+	keyPath := filepath.Join(dir, fileMasterKeyName)
+
+	key, err := os.ReadFile(keyPath)
+	if err == nil && len(key) == masterKeyBytes {
+		return key, nil
+	}
+	if err == nil && len(key) != masterKeyBytes {
+		return nil, errors.New("keychain is corrupted")
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if !allowCreate {
+		return nil, errNotInitialized
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	key = make([]byte, masterKeyBytes)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	tmpKeyPath := filepath.Join(dir, fileMasterKeyName+"."+uuid.New().String()+".tmp")
+	defer os.Remove(tmpKeyPath)
+	if err := os.WriteFile(tmpKeyPath, key, 0600); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmpKeyPath, keyPath); err != nil {
+		existingKey, readErr := os.ReadFile(keyPath)
+		if readErr == nil && len(existingKey) == masterKeyBytes {
+			return existingKey, nil
+		}
+		return nil, err
+	}
+	return key, nil
 }
 
 // encryptData encrypts data using AES-GCM.
@@ -161,6 +206,11 @@ func platformGet(service, account string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if key, ferr := getFileMasterKey(service, false); ferr == nil {
+		if plaintext, derr := decryptData(data, key); derr == nil {
+			return plaintext, nil
+		}
+	}
 	key, err := getMasterKey(service, false)
 	if err != nil {
 		return "", err
@@ -174,9 +224,15 @@ func platformGet(service, account string) (string, error) {
 
 // platformSet stores a value in the macOS keychain.
 func platformSet(service, account, data string) error {
-	key, err := getMasterKey(service, true)
+	key, err := getFileMasterKey(service, false)
 	if err != nil {
-		return err
+		key, err = getMasterKey(service, true)
+		if err != nil {
+			key, err = getFileMasterKey(service, true)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	dir := StorageDir(service)
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
