@@ -75,6 +75,17 @@ func dryRunRecordHistoryList(_ context.Context, runtime *common.RuntimeContext) 
 }
 
 func validateRecordJSON(runtime *common.RuntimeContext) error {
+	body, err := parseJSONObject(runtime.Str("json"), "json")
+	if err != nil {
+		// Keep invalid JSON handling on the execution path unchanged; only
+		// intercept the common top-level shape mistake here.
+		return nil
+	}
+	if len(body) == 1 {
+		if fields, ok := body["fields"].(map[string]interface{}); ok && len(fields) > 0 {
+			return common.FlagErrorf("--json for +record-upsert must be a direct record object, not a top-level \"fields\" wrapper; use '{\"Name\":\"Alice\"}' instead of '{\"fields\":{\"Name\":\"Alice\"}}'. If your real field name is literally \"fields\", use the field ID as the key.")
+		}
+	}
 	return nil
 }
 
