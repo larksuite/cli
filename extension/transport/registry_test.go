@@ -19,7 +19,7 @@ type stubProvider struct {
 	name string
 }
 
-func (s *stubProvider) Name() string                                      { return s.name }
+func (s *stubProvider) Name() string                                   { return s.name }
 func (s *stubProvider) ResolveInterceptor(context.Context) Interceptor { return &stubInterceptor{} }
 
 func TestGetProvider_NilByDefault(t *testing.T) {

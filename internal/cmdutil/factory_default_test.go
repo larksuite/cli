@@ -287,11 +287,11 @@ func TestExtensionInterceptor_ContextTamperPrevented(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	var ctxSeenByBuiltIn context.Context
+	var ctxValue any
 
-	// Use a custom transport that captures the context seen by the built-in chain
+	// Use a custom transport that captures the context value seen by the built-in chain
 	capturer := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		ctxSeenByBuiltIn = req.Context()
+		ctxValue = req.Context().Value(testKey)
 		return http.DefaultTransport.RoundTrip(req)
 	})
 
@@ -313,8 +313,8 @@ func TestExtensionInterceptor_ContextTamperPrevented(t *testing.T) {
 	resp.Body.Close()
 
 	// Built-in chain should see original context, not tampered
-	if got := ctxSeenByBuiltIn.Value(testKey); got != "original" {
-		t.Fatalf("built-in chain saw context value %q, want %q", got, "original")
+	if ctxValue != "original" {
+		t.Fatalf("built-in chain saw context value %q, want %q", ctxValue, "original")
 	}
 }
 
