@@ -30,6 +30,7 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 |------|------|------|
 | `--meeting-ids <ids>` | 二选一 | 会议 ID，逗号分隔支持批量 |
 | `--calendar-event-ids <ids>` | 二选一 | 日程事件 ID，逗号分隔支持批量 |
+| `--format <fmt>` | 否 | 输出格式：json (默认) / pretty / table / ndjson / csv |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
 ## 核心约束
@@ -57,9 +58,11 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 | 字段 | 说明 |
 |------|------|
 | `meeting_id` | 会议 ID |
+| `calendar_event_id` | 日历事件 ID（仅 `--calendar-event-ids` 路径） |
 | `minute_token` | 从录制 URL 中解析的妙记 Token |
 | `recording_url` | 录制 URL |
 | `duration` | 录制时长（毫秒） |
+| `error` | 错误信息（仅查询失败时存在） |
 
 ## 如何获取输入参数
 

@@ -70,10 +70,12 @@ func fetchRecordingByMeetingID(_ context.Context, runtime *common.RuntimeContext
 	recordingURL, _ := recording["url"].(string)
 	duration, _ := recording["duration"].(string)
 
-	result := map[string]any{
-		"meeting_id":    meetingID,
-		"recording_url": recordingURL,
-		"duration":      duration,
+	result := map[string]any{"meeting_id": meetingID}
+	if recordingURL != "" {
+		result["recording_url"] = recordingURL
+	}
+	if duration != "" {
+		result["duration"] = duration
 	}
 	if token := extractMinuteToken(recordingURL); token != "" {
 		result["minute_token"] = token

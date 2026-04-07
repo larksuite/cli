@@ -735,8 +735,8 @@ func TestRecording_Execute_EmptyURL(t *testing.T) {
 		if _, exists := result["minute_token"]; exists {
 			t.Error("empty URL should not produce minute_token")
 		}
-		if result["recording_url"] != "" {
-			t.Errorf("recording_url should be empty string, got: %v", result["recording_url"])
+		if _, exists := result["recording_url"]; exists {
+			t.Error("empty URL should not produce recording_url")
 		}
 		if result["duration"] != "1000" {
 			t.Errorf("duration should be preserved, got: %v", result["duration"])
