@@ -804,7 +804,29 @@ async function main() {
     }
 
     const hasChange = effectiveToAdd.length > 0 || toRemove.length > 0;
-    if (args.onlyMissing && !hasChange) continue;
+    // When --only-missing is enabled (default), we still want JSON output to reflect
+    // issues that were "actionable" only by missing repo labels.
+    if (args.onlyMissing && !hasChange) {
+      if (args.json && missingForIssue.length > 0) {
+        results.skippedIssue += 1;
+        results.changes.push({
+          issue: {
+            number: issue.number,
+            title: issue.title,
+            url: issue.html_url,
+          },
+          desired: {
+            type: desiredType,
+            domains,
+          },
+          change: { toAdd: [], toRemove: [] },
+          skipped: true,
+          reason: "missing_managed_labels",
+          missingLabels: missingForIssue,
+        });
+      }
+      continue;
+    }
 
     const record = {
       issue: {
