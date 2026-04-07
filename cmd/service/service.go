@@ -181,7 +181,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	f := opts.Factory
 	opts.As = f.ResolveAs(opts.Cmd, opts.As)
 
-	if err := f.CheckStrictMode(opts.As); err != nil {
+	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
 		return err
 	}
 

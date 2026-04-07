@@ -280,7 +280,7 @@ func TestResolveStrictMode_NilCredential(t *testing.T) {
 func TestCheckStrictMode_BotMode_BotAllowed(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
-	if err := f.CheckStrictMode(core.AsBot); err != nil {
+	if err := f.CheckStrictMode(context.Background(),core.AsBot); err != nil {
 		t.Errorf("bot should be allowed in bot mode, got: %v", err)
 	}
 }
@@ -288,7 +288,7 @@ func TestCheckStrictMode_BotMode_BotAllowed(t *testing.T) {
 func TestCheckStrictMode_BotMode_UserBlocked(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
-	err := f.CheckStrictMode(core.AsUser)
+	err := f.CheckStrictMode(context.Background(),core.AsUser)
 	if err == nil {
 		t.Fatal("expected error for user in bot mode")
 	}
@@ -300,7 +300,7 @@ func TestCheckStrictMode_BotMode_UserBlocked(t *testing.T) {
 func TestCheckStrictMode_UserMode_UserAllowed(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
 	f, _, _, _ := TestFactory(t, cfg)
-	if err := f.CheckStrictMode(core.AsUser); err != nil {
+	if err := f.CheckStrictMode(context.Background(),core.AsUser); err != nil {
 		t.Errorf("user should be allowed in user mode, got: %v", err)
 	}
 }
@@ -308,7 +308,7 @@ func TestCheckStrictMode_UserMode_UserAllowed(t *testing.T) {
 func TestCheckStrictMode_UserMode_BotBlocked(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
 	f, _, _, _ := TestFactory(t, cfg)
-	err := f.CheckStrictMode(core.AsBot)
+	err := f.CheckStrictMode(context.Background(),core.AsBot)
 	if err == nil {
 		t.Fatal("expected error for bot in user mode")
 	}
@@ -316,10 +316,10 @@ func TestCheckStrictMode_UserMode_BotBlocked(t *testing.T) {
 
 func TestCheckStrictMode_Off_BothAllowed(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	if err := f.CheckStrictMode(core.AsUser); err != nil {
+	if err := f.CheckStrictMode(context.Background(),core.AsUser); err != nil {
 		t.Errorf("user should be allowed when off: %v", err)
 	}
-	if err := f.CheckStrictMode(core.AsBot); err != nil {
+	if err := f.CheckStrictMode(context.Background(),core.AsBot); err != nil {
 		t.Errorf("bot should be allowed when off: %v", err)
 	}
 }

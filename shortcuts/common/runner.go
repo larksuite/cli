@@ -482,7 +482,7 @@ func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	asFlag, _ := cmd.Flags().GetString("as")
 	as := f.ResolveAs(cmd, core.Identity(asFlag))
 
-	if err := f.CheckStrictMode(as); err != nil {
+	if err := f.CheckStrictMode(cmd.Context(), as); err != nil {
 		return "", err
 	}
 

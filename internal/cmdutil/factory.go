@@ -143,8 +143,8 @@ func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 }
 
 // CheckStrictMode returns an error if strict mode is active and identity is not allowed.
-func (f *Factory) CheckStrictMode(as core.Identity) error {
-	mode := f.ResolveStrictMode(context.Background()) // TODO: pass ctx from CheckStrictMode after signature change
+func (f *Factory) CheckStrictMode(ctx context.Context, as core.Identity) error {
+	mode := f.ResolveStrictMode(ctx)
 	if mode.IsActive() && !mode.AllowsIdentity(as) {
 		return output.Errorf(output.ExitValidation, "strict_mode",
 			"strict mode is %q, only %s identity is allowed. "+
