@@ -1,7 +1,7 @@
 ---
 name: lark-base
 version: 1.2.0
-description: "当需要用 lark-cli 操作飞书多维表格（Base）时调用：适用于建表、字段管理、记录读写、视图配置、历史查询，以及角色/表单/仪表盘管理；也适用于把旧的 +table / +field / +record 写法改成当前命令写法。涉及字段设计、公式字段、查找引用、跨表计算、行级派生指标、数据分析需求时也必须使用本 skill。"
+description: "当需要用 lark-cli 操作飞书多维表格（Base）时调用：适用于建表、字段管理、记录读写、视图配置、历史查询，以及角色/表单/仪表盘管理/工作流；也适用于把旧的 +table / +field / +record 写法改成当前命令写法。涉及字段设计、公式字段、查找引用、跨表计算、行级派生指标、数据分析需求时也必须使用本 skill。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -82,19 +82,24 @@ metadata:
 
 ## Workflow 专项规则
 
-1. **执行任何 workflow 命令前，必须先读两份文档：对应的命令文档 + [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)**
-   - `+workflow-create` → 先读 [lark-base-workflow-create.md](references/lark-base-workflow-create.md) + schema
-   - `+workflow-update` → 先读 [lark-base-workflow-update.md](references/lark-base-workflow-update.md) + schema
-   - `+workflow-list` → 先读 [lark-base-workflow-list.md](references/lark-base-workflow-list.md) + schema
-   - `+workflow-get` → 先读 [lark-base-workflow-get.md](references/lark-base-workflow-get.md) + schema
-   - `+workflow-enable` → 先读 [lark-base-workflow-enable.md](references/lark-base-workflow-enable.md) + schema
-   - `+workflow-disable` → 先读 [lark-base-workflow-disable.md](references/lark-base-workflow-disable.md) + schema
-   - schema 中定义了所有 StepType 枚举、步骤结构、Trigger/Action/Branch/Loop 的 data 格式、值引用语法等
-   - 禁止凭自然语言猜测 `type` 值（如把"新增记录"猜成 `CreateTrigger`），必须从 schema 的 StepType 枚举中复制准确的类型名称
-
-2. **创建前确认依赖信息**
-   - 先通过 `+table-list` / `+field-list` 获取真实的表名、字段名
+1. **执行任何 workflow 命令前，必须先读对应的命令文档**
+   - **创建**: 先读 [workflow-create.md](references/lark-base-workflow-create.md)（它会引导你读 schema）
+   - **修改**: 先读 [workflow-update.md](references/lark-base-workflow-update.md) + [workflow-get.md](references/lark-base-workflow-get.md) 获取现有配置
+   - **查询/批量操作**: 先读 [workflow-list.md](references/lark-base-workflow-list.md)（注意场景适用性）
+   - **获取详情**: 先读 [workflow-get.md](references/lark-base-workflow-get.md)，用于获取完整 workflow 定义（含 steps 结构）
+   - **启用**: 先读 [workflow-enable.md](references/lark-base-workflow-enable.md)，启用处于 `disabled` 状态的工作流
+   - **禁用**: 先读 [workflow-disable.md](references/lark-base-workflow-disable.md)，禁用处于 `enabled` 状态的工作流
+2. **禁止凭自然语言猜测 `type` 值**
+   - 必须从 schema 的 StepType 枚举中复制准确的类型名称
+   - 如 `AddRecordTrigger` 不是 `CreateTrigger`
+3. **创建前确认依赖信息**
+   - 通过 `+table-list` / `+field-list` 获取真实的表名、字段名
    - 禁止凭自然语言猜测表名/字段名填入 workflow 配置
+4. **workflow_id 与 table_id 区分**
+   - `workflow_id` 以 `wkf` 开头，从 `+workflow-list` 或 URL 的 `?table=wkf...` 参数获取
+   - `table_id` 以 `tbl` 开头，两者在 URL 的 `?table=` 参数里都会出现，需根据前缀判断
+5. **启用/禁用为写入操作**
+   - `+workflow-enable` / `+workflow-disable` 执行前必须向用户确认 base-token 和 workflow-id
 
 ## Dashboard（仪表盘/数据看板）模块
 **当用户提到 "仪表盘、dashboard、数据看板、图表、可视化、block、组件、添加组件、创建图表" 等仪表盘相关的关键词时，必须阅读** [lark-base-dashboard.md](references/lark-base-dashboard.md) 这个指引文档，了解仪表盘模块的命令和能力后再进行后续操作。

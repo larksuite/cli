@@ -19,7 +19,7 @@ var BaseWorkflowCreate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
-		{Name: "json", Desc: `workflow body JSON, e.g. {"title":"My Workflow","steps":[...]}; or @path/to/file.json for large definitions`, Required: true},
+		{Name: "json", Desc: `workflow body JSON, e.g. {"title":"My Workflow","steps":[...]}`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

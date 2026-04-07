@@ -1,6 +1,21 @@
 # Workflow 数据结构参考
 
-本文档定义 `+workflow-create` / `+workflow-update` 命令 `--json` body 的完整数据结构（V2 协议）。
+本文档定义 Workflow 的完整数据结构，适用于：
+- **查询场景**：理解 `+workflow-get` 返回的 `steps` 结构
+- **创建/修改场景**：构造 `+workflow-create` / `+workflow-update` 的 `--json` body
+> 💡 **本文档是纯字段参考**。如需**创建/修改**工作流的完整示例，请阅读 [workflow-guide.md](lark-base-workflow-guide.md)。
+---
+## 📖 快速导航
+
+根据你的需求跳转到对应章节：
+
+| 需求 | 章节 |
+|------|------|
+| 了解 Step 基础结构 | [WorkflowStep 基础结构](#workflowstep-基础结构) |
+| 查询 Trigger 类型及 data 字段 | [Trigger data](#trigger-data-详细结构) |
+| 查询 Action 类型及 data 字段 | [Action data](#action-data-详细结构) |
+| 查询 Branch/Loop 结构 | [Branch data](#branch-data-详细结构) / [System data](#system-data-详细结构) |
+| 查询 ValueInfo/Condition 等公共类型 | [公共类型](#公共类型) |
 
 ---
 
@@ -128,6 +143,7 @@
 
 ## Trigger data 详细结构
 
+
 ### AddRecordTrigger
 
 ```json
@@ -178,13 +194,13 @@
 ```
 
 | 字段 | 必填 | 说明 |
-|------|------|------|
-| `table_name` | 是 | 监控的数据表名 |
-| `record_watch_conjunction` | 否 | 记录筛选组合方式：`and` / `or`，默认 `and` |
-| `record_watch_info` | 否 | 记录级过滤条件（修改前值匹配），为空则监听全部 |
-| `field_watch_info` | 否 | 字段级监控条件列表，至少一个 |
-| `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+|------|----|------|
+| `table_name` | 是  | 监控的数据表名 |
+| `record_watch_conjunction` | 否  | 记录筛选组合方式：`and` / `or`，默认 `and` |
+| `record_watch_info` | 否  | 记录级过滤条件（修改前值匹配），为空则监听全部 |
+| `field_watch_info` | 是  | 字段级监控条件列表，至少一个 |
+| `trigger_control_list` | 否  | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
+| `condition_list` | 否  | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
 
 `FieldWatchItem`：
 
@@ -245,7 +261,7 @@
 ```json
 {
   "receive_scene": "group",
-  "receiver": [{ "value_type": "group", "value": "测试群" }],
+  "receiver": [{ "value_type": "group", "value": {"id": "oc_xxxx", "name": "测试群"} }],
   "scope": "all",
   "filter": {
     "conjunction": "and",
@@ -349,12 +365,12 @@
 
 ```json
 {
-  "receiver": [{ "value_type": "user", "value": "ou_xxxx" }],
+  "receiver": [{ "value_type": "user", "value": {"id": "ou_xxxx"} }],
   "send_to_everyone": false,
   "title": [{ "value_type": "text", "value": "新订单通知" }],
   "content": [
     { "value_type": "text", "value": "客户 " },
-    { "value_type": "ref", "value": "$.trigger_1.fieldIdxxx" },
+    { "value_type": "ref", "value": "$.trigger_1.fldCustomerName" },
     { "value_type": "text", "value": " 创建了新订单" }
   ],
   "btn_list": [
@@ -435,6 +451,8 @@
 
 ```json
 {
+  "mode": "exclusive",
+  "no_match_action": "classifyToOther",
   "child_branch_list": [
     {
       "name": "高优先级",
@@ -460,6 +478,10 @@
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
+| `mode` | 否 | 分支模式。`exclusive`：排他模式，仅执行一个满足条件的子分支；`parallel`：并行模式，执行所有满足条件的子分支。默认 `exclusive` |
+| `no_match_action` | 否 | `mode=exclusive` 时使用，无匹配时的处理策略。`classifyToOther`：归类到其他分支；`fail`：报错终止。默认 `classifyToOther` |
+| `fail_mode` | 否 | `mode=parallel` 时使用，部分分支出错时策略。`partialSuccess`：部分成功即继续；`fail`：任一失败即终止。默认 `partialSuccess` |
+| `match_mode` | 否 | `mode=parallel` 时使用，所有分支不满足时策略。`noneMatchSkip`：跳过继续；`noneMatchFail`：报错终止。默认 `noneMatchSkip` |
 | `child_branch_list` | 是 | BranchItem[]，1-10 个条件分支 |
 
 `BranchItem`：
@@ -480,7 +502,7 @@
 {
   "loop_mode": "continue",
   "max_loop_times": 100,
-  "data": [{ "value_type": "ref", "value": "$.find_record_stepIdxxx.records" }]
+  "data": [{ "value_type": "ref", "value": "$.find_record_stepIdxxx.fieldRecords" }]
 }
 ```
 
@@ -593,18 +615,18 @@ $.{stepId}.{pathId}.{childPathId}.{grandChildPathId}
 
 ##### FindRecordAction（查找记录）
 
-| pathId | 说明 | 引用示例 |
-|--------|------|----------|
-| `fieldRecords` | 所有找到的记录的引用（可用于 Loop 遍历） | 不支持引用 |
-| `firstfieldsRecord` | 第一条匹配记录 | `$.{stepId}.firstfieldsRecord` |
-| `firstfieldsRecord.{fieldId}` | 首条记录的字段值，可下钻字段属性 | `$.{stepId}.firstfieldsRecord.{fieldId}` |
-| `firstfieldsRecord.recordId` | 记录 ID 数组 | `$.{stepId}.firstfieldsRecord.recordId` |
-| `fields` | 查找到的所有记录某列值 | 不支持引用 |
-| `fields.{fieldId}` | 用户选择的字段 | `$.{stepId}.fields.{fieldId}` |
-| `fields.{fieldId}.fieldId` | 用户选择的字段id数组 | `$.{stepId}.fields.{fieldId}.fieldId` |
-| `fields.{fieldId}.fieldName` | 用户选择的字段名数组 | `$.{stepId}.fields.{fieldId}.fieldName` |
-| `fields.recordId` | 记录 ID 数组 | `$.{stepId}.fields.recordId` |
-| `recordNum` | 找到记录总数 | `$.{stepId}.recordNum` |
+| pathId | 说明 | 引用示例|
+|--------|------|-------|
+| `fieldRecords` | 所有找到的记录的引用（可用于 Loop 遍历） | `$.{stepId}.fieldRecords`|
+| `firstfieldsRecord` | 第一条匹配记录 | `$.{stepId}.firstfieldsRecord`|
+| `firstfieldsRecord.{fieldId}` | 首条记录的字段值，可下钻字段属性 | `$.{stepId}.firstfieldsRecord.{fieldId}`|
+| `firstfieldsRecord.recordId` | 记录 ID 数组 | `$.{stepId}.firstfieldsRecord.recordId`|
+| `fields` | 查找到的所有记录某列值 | 不支持引用|
+| `fields.{fieldId}` | 用户选择的字段 | `$.{stepId}.fields.{fieldId}`|
+| `fields.{fieldId}.fieldId` | 用户选择的字段id数组 | `$.{stepId}.fields.{fieldId}.fieldId`|
+| `fields.{fieldId}.fieldName` | 用户选择的字段名数组 | `$.{stepId}.fields.{fieldId}.fieldName`|
+| `fields.recordId` | 记录 ID 数组 | `$.{stepId}.fields.recordId`|
+| `recordNum` | 找到记录总数 | `$.{stepId}.recordNum`|
 
 ##### AddRecordAction（新增记录）
 

@@ -20,7 +20,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
-		{Name: "json", Desc: `workflow body JSON, e.g. {"title":"New Title","steps":[...]}; or @path/to/file.json for large definitions`, Required: true},
+		{Name: "json", Desc: `workflow body JSON, e.g. {"title":"New Title","steps":[...]}`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
