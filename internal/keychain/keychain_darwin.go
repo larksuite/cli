@@ -127,7 +127,7 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	dir := StorageDir(service)
 	keyPath := filepath.Join(dir, fileMasterKeyName)
 
-	key, err := os.ReadFile(keyPath)
+	key, err := vfs.ReadFile(keyPath)
 	if err == nil && len(key) == masterKeyBytes {
 		return key, nil
 	}
@@ -140,7 +140,7 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	if !allowCreate {
 		return nil, errNotInitialized
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
 	key = make([]byte, masterKeyBytes)
@@ -148,11 +148,11 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 		return nil, err
 	}
 
-	file, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := vfs.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			for i := 0; i < 3; i++ {
-				existingKey, readErr := os.ReadFile(keyPath)
+				existingKey, readErr := vfs.ReadFile(keyPath)
 				if readErr == nil && len(existingKey) == masterKeyBytes {
 					return existingKey, nil
 				}
@@ -171,7 +171,7 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	writeFailed := true
 	defer func() {
 		if writeFailed {
-			_ = os.Remove(keyPath)
+			_ = vfs.Remove(keyPath)
 		}
 	}()
 	if _, err := file.Write(key); err != nil {
@@ -183,9 +183,9 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	}
 	writeFailed = false
 
-	canonicalKey, err := os.ReadFile(keyPath)
+	canonicalKey, err := vfs.ReadFile(keyPath)
 	if err != nil {
-		existingKey, readErr := os.ReadFile(keyPath)
+		existingKey, readErr := vfs.ReadFile(keyPath)
 		if readErr == nil && len(existingKey) == masterKeyBytes {
 			return existingKey, nil
 		}
