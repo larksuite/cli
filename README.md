@@ -62,6 +62,10 @@ npm install -g @larksuite/cli
 
 # Install CLI SKILL (required)
 npx skills add larksuite/cli -y -g
+
+# Another option, install Claude Code SKILL
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 **Option 2 — From source:**
@@ -75,6 +79,10 @@ make install
 
 # Install CLI SKILL (required)
 npx skills add larksuite/cli -y -g
+
+# Another option, install Claude Code SKILL
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 #### Configure & Use
@@ -102,6 +110,10 @@ npm install -g @larksuite/cli
 
 # Install CLI SKILL (required)
 npx skills add larksuite/cli -y -g
+
+# If you are Claude Code, you can install it directly
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 **Step 2 — Configure app credentials**
