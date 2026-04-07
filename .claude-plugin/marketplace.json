@@ -1,0 +1,16 @@
+{
+  "name": "larksuite-cli-marketplace",
+  "owner": {
+    "name": "larksuite"
+  },
+  "metadata": {
+    "description": "Official Claude Code marketplace for the Lark CLI skill bundle."
+  },
+  "plugins": [
+    {
+      "name": "larksuite/cli",
+      "source": "./",
+      "description": "Official Claude Code plugin bundle for Lark CLI skills."
+    }
+  ]
+}
