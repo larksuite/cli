@@ -214,6 +214,9 @@ var CalendarSuggestion = common.Shortcut{
 			Body(req)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
+			return err
+		}
 		durationMinutes := runtime.Int(flagDurationMinutes)
 		if durationMinutes != 0 && (durationMinutes < 1 || durationMinutes > 1440) {
 			return output.ErrValidation("--duration-minutes must be between 1 and 1440")

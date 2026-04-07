@@ -40,6 +40,7 @@ type APIOptions struct {
 	PageLimit int
 	PageDelay int
 	Format    string
+	JqExpr    string
 	DryRun    bool
 }
 
@@ -96,6 +97,7 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.PageDelay, "page-delay", 200, "delay in ms between pages")
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
+	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
 
 	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -155,6 +157,9 @@ func apiRun(opts *APIOptions) error {
 	if opts.PageAll && opts.Output != "" {
 		return output.ErrValidation("--output and --page-all are mutually exclusive")
 	}
+	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
+		return err
+	}
 
 	request, err := buildAPIRequest(opts)
 	if err != nil {
@@ -184,7 +189,7 @@ func apiRun(opts *APIOptions) error {
 	}
 
 	if opts.PageAll {
-		return apiPaginate(opts.Ctx, ac, request, format, out, f.IOStreams.ErrOut,
+		return apiPaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay})
 	}
 
@@ -195,6 +200,7 @@ func apiRun(opts *APIOptions) error {
 	err = client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath: opts.Output,
 		Format:     format,
+		JqExpr:     opts.JqExpr,
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
 	})
@@ -210,7 +216,15 @@ func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.Cl
 	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
 }
 
-func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, out, errOut io.Writer, pagOpts client.PaginationOptions) error {
+func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions) error {
+	// When jq is set, always aggregate all pages then filter.
+	if jqExpr != "" {
+		if err := client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, client.CheckLarkResponse); err != nil {
+			return output.MarkRaw(err)
+		}
+		return nil
+	}
+
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
 		pf := output.NewPaginatedFormatter(out, format)

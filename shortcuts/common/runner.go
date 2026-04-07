@@ -33,6 +33,8 @@ type RuntimeContext struct {
 	Config     *core.CliConfig
 	Cmd        *cobra.Command
 	Format     string
+	JqExpr     string            // --jq expression; empty = no filter
+	outputErr  error             // deferred error from Out()/OutFormat() jq filtering
 	botOnly    bool              // set by framework for bot-only shortcuts
 	resolvedAs core.Identity     // effective identity resolved by framework
 	Factory    *cmdutil.Factory  // injected by framework
@@ -433,13 +435,27 @@ func (ctx *RuntimeContext) IO() *cmdutil.IOStreams {
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	env := output.Envelope{OK: true, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
+	if ctx.JqExpr != "" {
+		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
+			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
+			if ctx.outputErr == nil {
+				ctx.outputErr = err
+			}
+		}
+		return
+	}
 	b, _ := json.MarshalIndent(env, "", "  ")
 	fmt.Fprintln(ctx.IO().Out, string(b))
 }
 
 // OutFormat prints output based on --format flag.
 // "json" (default) outputs JSON envelope; "pretty" calls prettyFn; others delegate to FormatValue.
+// When JqExpr is set, routes through Out() regardless of format.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
+	if ctx.JqExpr != "" {
+		ctx.Out(data, meta)
+		return
+	}
 	switch ctx.Format {
 	case "pretty":
 		if prettyFn != nil {
@@ -560,6 +576,9 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	if err := validateEnumFlags(rctx, s.Flags); err != nil {
 		return err
 	}
+	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+		return err
+	}
 	if s.Validate != nil {
 		if err := s.Validate(rctx.ctx, rctx); err != nil {
 			return err
@@ -576,7 +595,10 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		}
 	}
 
-	return s.Execute(rctx.ctx, rctx)
+	if err := s.Execute(rctx.ctx, rctx); err != nil {
+		return err
+	}
+	return rctx.outputErr
 }
 
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
@@ -618,6 +640,7 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	if s.HasFormat {
 		rctx.Format = rctx.Str("format")
 	}
+	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
 }
 
@@ -698,6 +721,7 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
+	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().String("as", s.AuthTypes[0], "identity type: user | bot")
 
 	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {

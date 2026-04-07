@@ -31,6 +31,21 @@ metadata:
 ### 2. 整理会议纪要
 1. 整理纪要文档时默认给出纪要文档和逐字稿链接即可，无需读取纪要文档或逐字稿内容。
 2. 用户明确需要获取纪要文档中的总结、待办、章节产物时，再读取文档获取具体内容。
+3. 读取智能纪要（`note_doc_token`）内容时，纪要文档的**第一个 `<whiteboard>`** 标签是封面图（AI 生成的总结可视化），应同时下载展示给用户：
+```bash
+# 1. 读取纪要内容
+lark-cli docs +fetch --doc <note_doc_token>
+# 2. 从返回的 markdown 中提取第一个 <whiteboard token="xxx"/> 的 token
+# 3. 下载封面图到 artifact 目录（和逐字稿同目录，保持产物归拢）
+#    并非所有纪要都有封面画板，没有 <whiteboard> 标签时跳过即可
+lark-cli docs +media-download --type whiteboard --token <whiteboard_token> --output ./artifact-<title>/cover
+```
+> **产物目录规范**：同一会议的所有下载产物（封面图、逐字稿等）统一放到 `artifact-<title>/` 目录下，不要散落在当前工作目录。
+
+> **`note_doc_token` vs `verbatim_doc_token` — 两份不同的文档，根据用户意图选择：**
+> - `note_doc_token` → **智能纪要**（AI 总结 + 待办 + 章节）— 用户说"纪要""总结""待办""纪要内容"时用这个
+> - `verbatim_doc_token` → **逐字稿**（完整的逐句文字记录，含说话人和时间戳）— 用户说"逐字稿""完整记录""谁说了什么"时用这个
+> - 用户意图不明确时，应展示两个文档链接让用户选择，而不是替用户决定
 
 ### 3. 纪要文档与逐字稿链接
 1. 纪要文档、逐字稿文档与关联的共享文档默认使用文档 Token 返回。

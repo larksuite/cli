@@ -6,6 +6,8 @@ package cmdutil
 import (
 	"net/http"
 	"time"
+
+	"github.com/larksuite/cli/internal/util"
 )
 
 // RetryTransport is an http.RoundTripper that retries on 5xx responses
@@ -20,7 +22,7 @@ func (t *RetryTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return util.FallbackTransport()
 }
 
 func (t *RetryTransport) delay() time.Duration {
@@ -65,7 +67,7 @@ func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if t.Base != nil {
 		return t.Base.RoundTrip(req)
 	}
-	return http.DefaultTransport.RoundTrip(req)
+	return util.FallbackTransport().RoundTrip(req)
 }
 
 // SecurityHeaderTransport is an http.RoundTripper that injects CLI security
@@ -78,7 +80,7 @@ func (t *SecurityHeaderTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return util.FallbackTransport()
 }
 
 // RoundTrip implements http.RoundTripper.
