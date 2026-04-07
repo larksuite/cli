@@ -4,6 +4,7 @@
 package cmdutil
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -237,7 +238,7 @@ func TestNewAPIClientWithConfig_NilIOStreams(t *testing.T) {
 
 func TestResolveStrictMode_Off(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	if got := f.ResolveStrictMode(); got != core.StrictModeOff {
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeOff {
 		t.Errorf("expected off, got %q", got)
 	}
 }
@@ -245,7 +246,7 @@ func TestResolveStrictMode_Off(t *testing.T) {
 func TestResolveStrictMode_BotFromAccount(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2} // SupportsBot = 2
 	f, _, _, _ := TestFactory(t, cfg)
-	if got := f.ResolveStrictMode(); got != core.StrictModeBot {
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeBot {
 		t.Errorf("expected bot, got %q", got)
 	}
 }
@@ -253,7 +254,7 @@ func TestResolveStrictMode_BotFromAccount(t *testing.T) {
 func TestResolveStrictMode_UserFromAccount(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1} // SupportsUser = 1
 	f, _, _, _ := TestFactory(t, cfg)
-	if got := f.ResolveStrictMode(); got != core.StrictModeUser {
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeUser {
 		t.Errorf("expected user, got %q", got)
 	}
 }
@@ -261,7 +262,7 @@ func TestResolveStrictMode_UserFromAccount(t *testing.T) {
 func TestResolveStrictMode_BothIdentities(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 3} // SupportsAll = 3
 	f, _, _, _ := TestFactory(t, cfg)
-	if got := f.ResolveStrictMode(); got != core.StrictModeOff {
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeOff {
 		t.Errorf("expected off when both supported, got %q", got)
 	}
 }
@@ -269,7 +270,7 @@ func TestResolveStrictMode_BothIdentities(t *testing.T) {
 func TestResolveStrictMode_NilCredential(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	f.Credential = nil
-	if got := f.ResolveStrictMode(); got != core.StrictModeOff {
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeOff {
 		t.Errorf("expected off with nil credential, got %q", got)
 	}
 }

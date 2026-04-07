@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -121,7 +122,7 @@ func Execute() int {
 	shortcuts.RegisterShortcuts(rootCmd, f)
 
 	// Prune commands incompatible with strict mode.
-	if mode := f.ResolveStrictMode(); mode.IsActive() {
+	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}
 

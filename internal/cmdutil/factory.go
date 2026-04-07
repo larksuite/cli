@@ -49,7 +49,7 @@ func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Ident
 	f.IdentityAutoDetected = false
 
 	// Strict mode: force identity regardless of flags or config.
-	if forced := f.ResolveStrictMode().ForcedIdentity(); forced != "" {
+	if forced := f.ResolveStrictMode(context.Background()).ForcedIdentity(); forced != "" { // TODO: pass ctx from ResolveAs after signature change
 		f.ResolvedIdentity = forced
 		return forced
 	}
@@ -123,11 +123,11 @@ func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 
 // ResolveStrictMode returns the effective strict mode by reading
 // Account.SupportedIdentities from the credential provider chain.
-func (f *Factory) ResolveStrictMode() core.StrictMode {
+func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 	if f.Credential == nil {
 		return core.StrictModeOff
 	}
-	acct, err := f.Credential.ResolveAccount(context.Background())
+	acct, err := f.Credential.ResolveAccount(ctx)
 	if err != nil || acct == nil {
 		return core.StrictModeOff
 	}
@@ -144,7 +144,7 @@ func (f *Factory) ResolveStrictMode() core.StrictMode {
 
 // CheckStrictMode returns an error if strict mode is active and identity is not allowed.
 func (f *Factory) CheckStrictMode(as core.Identity) error {
-	mode := f.ResolveStrictMode()
+	mode := f.ResolveStrictMode(context.Background()) // TODO: pass ctx from CheckStrictMode after signature change
 	if mode.IsActive() && !mode.AllowsIdentity(as) {
 		return output.Errorf(output.ExitValidation, "strict_mode",
 			"strict mode is %q, only %s identity is allowed. "+

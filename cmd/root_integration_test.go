@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -94,7 +95,7 @@ func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
-	if mode := f.ResolveStrictMode(); mode.IsActive() {
+	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}
 	return rootCmd

@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -53,7 +54,7 @@ AI agents are strictly prohibited from modifying this setting.`,
 				if app == nil {
 					return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
 				}
-				return showStrictMode(f, multi, app)
+				return showStrictMode(cmd.Context(), f, multi, app)
 			}
 			app := multi.CurrentAppConfig(f.Invocation.Profile)
 			if !global && app == nil {
@@ -84,9 +85,9 @@ func resetStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.A
 	return nil
 }
 
-func showStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.AppConfig) error {
+func showStrictMode(ctx context.Context, f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.AppConfig) error {
 	// Runtime effective mode from credential provider chain is the source of truth.
-	runtime := f.ResolveStrictMode()
+	runtime := f.ResolveStrictMode(ctx)
 	configMode, configSource := resolveStrictModeStatus(multi, app)
 
 	if runtime != configMode {

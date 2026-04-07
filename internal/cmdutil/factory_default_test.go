@@ -48,7 +48,7 @@ func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
 	}
 
 	f := NewDefault(InvocationContext{Profile: "target"})
-	if got := f.ResolveStrictMode(); got != core.StrictModeBot {
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeBot {
 		t.Fatalf("ResolveStrictMode() = %q, want %q", got, core.StrictModeBot)
 	}
 	cfg, err := f.Config()
@@ -88,7 +88,7 @@ func TestNewDefault_InvocationProfileMissingSticksAcrossEarlyStrictMode(t *testi
 	}
 
 	f := NewDefault(InvocationContext{Profile: "missing"})
-	if got := f.ResolveStrictMode(); got != core.StrictModeOff {
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeOff {
 		t.Fatalf("ResolveStrictMode() = %q, want %q", got, core.StrictModeOff)
 	}
 	_, err := f.Config()
