@@ -54,8 +54,10 @@ var MailTriage = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "format", Default: "table", Desc: "output format: table | json | data (both json/data output messages array only)"},
+		{Name: "format", Default: "table", Desc: "output format: table | json | data"},
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
+		{Name: "page-size", Type: "int", Desc: "alias for --max"},
+		{Name: "page-token", Desc: "pagination token from a previous response to fetch the next page"},
 		{Name: "filter", Desc: `exact-match condition filter (JSON). Narrow results by folder, label, sender, recipient, etc. Run --print-filter-schema to see all fields. Example: {"folder":"INBOX","from":["alice@example.com"]}`},
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "query", Desc: `full-text keyword search across from/to/subject/body (max 50 chars). Example: "budget report"`},
@@ -66,13 +68,18 @@ var MailTriage = common.Shortcut{
 		mailbox := resolveMailboxID(runtime)
 		query := runtime.Str("query")
 		showLabels := runtime.Bool("labels")
-		maxCount := normalizeTriageMax(runtime.Int("max"))
+		maxCount := resolveTriagePageSize(runtime)
+		inputPageToken := runtime.Str("page-token")
 		filter, err := parseTriageFilter(runtime.Str("filter"))
 		d := common.NewDryRunAPI().Set("input_filter", runtime.Str("filter"))
 		if err != nil {
 			return d.Set("filter_error", err.Error())
 		}
-		if usesTriageSearchPath(query, filter) {
+		useSearch, pathErr := resolveTriagePath(inputPageToken, query, filter)
+		if pathErr != nil {
+			return d.Set("filter_error", pathErr.Error())
+		}
+		if useSearch {
 			resolvedFilter, err := resolveSearchFilter(runtime, mailbox, filter, true)
 			if err != nil {
 				return d.Set("filter_error", err.Error())
@@ -81,7 +88,8 @@ var MailTriage = common.Shortcut{
 			if pageSize > searchPageMax {
 				pageSize = searchPageMax
 			}
-			searchParams, searchBody, _ := buildSearchParams(runtime, mailbox, query, resolvedFilter, pageSize, "", true)
+			initialToken := strings.TrimPrefix(inputPageToken, "search:")
+			searchParams, searchBody, _ := buildSearchParams(runtime, mailbox, query, resolvedFilter, pageSize, initialToken, true)
 			d = d.POST(mailboxPath(mailbox, "search")).
 				Params(searchParams).
 				Body(searchBody).
@@ -101,7 +109,8 @@ var MailTriage = common.Shortcut{
 		if pageSize > listPageMax {
 			pageSize = listPageMax
 		}
-		listParams, _ := buildListParams(runtime, mailbox, resolvedFilter, pageSize, "", true)
+		initialToken := strings.TrimPrefix(inputPageToken, "list:")
+		listParams, _ := buildListParams(runtime, mailbox, resolvedFilter, pageSize, initialToken, true)
 		return d.GET(mailboxPath(mailbox, "messages")).
 			Params(listParams).
 			POST(mailboxPath(mailbox, "messages", "batch_get")).
@@ -128,16 +137,24 @@ var MailTriage = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		maxCount := normalizeTriageMax(runtime.Int("max"))
+		maxCount := resolveTriagePageSize(runtime)
+		inputPageToken := runtime.Str("page-token")
 
 		var messages []map[string]interface{}
+		var hasMore bool
+		var nextPageToken string
 
-		if usesTriageSearchPath(query, filter) {
+		useSearch, err := resolveTriagePath(inputPageToken, query, filter)
+		if err != nil {
+			return err
+		}
+
+		if useSearch {
 			resolvedFilter, err := resolveSearchFilter(runtime, mailbox, filter, false)
 			if err != nil {
 				return err
 			}
-			var pageToken string
+			pageToken := strings.TrimPrefix(inputPageToken, "search:")
 			for len(messages) < maxCount {
 				pageSize := maxCount - len(messages)
 				if pageSize > searchPageMax {
@@ -161,8 +178,12 @@ var MailTriage = common.Shortcut{
 				pageHasMore, _ := searchData["has_more"].(bool)
 				pageToken, _ = searchData["page_token"].(string)
 				if !pageHasMore || pageToken == "" {
+					hasMore = false
+					nextPageToken = ""
 					break
 				}
+				hasMore = pageHasMore
+				nextPageToken = "search:" + pageToken
 			}
 			if len(messages) > maxCount {
 				messages = messages[:maxCount]
@@ -185,7 +206,7 @@ var MailTriage = common.Shortcut{
 			}
 			var (
 				messageIDs []string
-				pageToken  string
+				pageToken  = strings.TrimPrefix(inputPageToken, "list:")
 			)
 			for len(messageIDs) < maxCount {
 				pageSize := maxCount - len(messageIDs)
@@ -209,8 +230,12 @@ var MailTriage = common.Shortcut{
 				pageHasMore, _ := listData["has_more"].(bool)
 				pageToken, _ = listData["page_token"].(string)
 				if !pageHasMore || pageToken == "" {
+					hasMore = false
+					nextPageToken = ""
 					break
 				}
+				hasMore = pageHasMore
+				nextPageToken = "list:" + pageToken
 			}
 			if len(messageIDs) > maxCount {
 				messageIDs = messageIDs[:maxCount]
@@ -221,9 +246,19 @@ var MailTriage = common.Shortcut{
 			}
 		}
 
+		if messages == nil {
+			messages = []map[string]interface{}{}
+		}
+
 		switch outFormat {
 		case "json", "data":
-			output.PrintJson(runtime.IO().Out, messages)
+			outData := map[string]interface{}{
+				"messages":   messages,
+				"total":      len(messages),
+				"has_more":   hasMore,
+				"page_token": nextPageToken,
+			}
+			output.PrintJson(runtime.IO().Out, outData)
 		default: // "table"
 			if len(messages) == 0 {
 				fmt.Fprintln(runtime.IO().ErrOut, "No messages found.")
@@ -244,6 +279,9 @@ var MailTriage = common.Shortcut{
 			}
 			output.PrintTable(runtime.IO().Out, rows)
 			fmt.Fprintf(runtime.IO().ErrOut, "\n%d message(s)\n", len(messages))
+			if hasMore && nextPageToken != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "next page: mail +triage --page-token '%s' ...\n", nextPageToken)
+			}
 			fmt.Fprintln(runtime.IO().ErrOut, "tip: use mail +message --message-id <id> to read full content")
 		}
 		return nil
@@ -839,6 +877,46 @@ func buildSearchCreateTime(rng *triageTimeRange) map[string]interface{} {
 		createTime["end_time"] = end
 	}
 	return createTime
+}
+
+// resolveTriagePath determines whether to use the search API path,
+// validating that --page-token prefix is consistent with query/filter params.
+//
+// Rules:
+//   - No token: path decided by usesTriageSearchPath(query, filter).
+//   - "search:" prefix: must not have list-only params (no query/search filter fields is OK for continuation).
+//   - "list:" prefix: must not have query or search-only filter fields that would be silently ignored.
+//   - Bare token (no prefix): rejected — all tokens emitted by triage carry a prefix.
+func resolveTriagePath(pageToken, query string, filter triageFilter) (useSearch bool, err error) {
+	if pageToken == "" {
+		return usesTriageSearchPath(query, filter), nil
+	}
+	paramWantsSearch := usesTriageSearchPath(query, filter)
+	switch {
+	case strings.HasPrefix(pageToken, "search:"):
+		if !paramWantsSearch && (query != "" || len(triageQueryFilterFields(filter)) > 0) {
+			// This shouldn't normally happen (query/search fields → paramWantsSearch=true),
+			// but guard against future changes.
+			return false, fmt.Errorf("--page-token has search: prefix but current --query/--filter parameters indicate list path; remove conflicting parameters or use the correct token")
+		}
+		return true, nil
+	case strings.HasPrefix(pageToken, "list:"):
+		if paramWantsSearch {
+			return false, fmt.Errorf("--page-token has list: prefix but --query or --filter contains search-only fields (e.g. from/to/subject); these parameters would be silently ignored — remove them or use a search: token")
+		}
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix (token was obtained from a previous mail +triage response)")
+	}
+}
+
+// resolveTriagePageSize returns the effective max count from --page-size or --max.
+// --page-size is an alias for --max; if both are set, --page-size takes priority.
+func resolveTriagePageSize(runtime *common.RuntimeContext) int {
+	if ps := runtime.Int("page-size"); ps > 0 {
+		return normalizeTriageMax(ps)
+	}
+	return normalizeTriageMax(runtime.Int("max"))
 }
 
 func normalizeTriageMax(maxCount int) int {

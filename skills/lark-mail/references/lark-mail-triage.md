@@ -32,7 +32,15 @@ lark-cli mail +triage --filter '{"label":"important"}'
 lark-cli mail +triage --filter '{"label":"重要邮件"}'
 
 # data 格式方便 jq 处理
-lark-cli mail +triage --format data | jq '.[].subject'
+lark-cli mail +triage --format json | jq '.messages[].subject'
+
+# 分页：先取 10 条，再用 page_token 翻页
+lark-cli mail +triage --max 10 --format json
+# 输出中包含 page_token，传入下一次请求
+lark-cli mail +triage --page-token 'list:FfccvoqPd...' --max 10 --format json
+
+# --page-size 是 --max 的别名
+lark-cli mail +triage --page-size 10
 ```
 
 ## 参数
@@ -41,8 +49,10 @@ lark-cli mail +triage --format data | jq '.[].subject'
 |------|------|------|
 | `--filter <json>` | — | 筛选条件（见下方字段说明） |
 | `--query <text>` | — | 全文搜索关键词 |
-| `--format <mode>` | `table` | `table` / `json` / `data`（`json` 和 `data` 都只输出 messages 数组） |
+| `--format <mode>` | `table` | `table` / `json` / `data` |
 | `--max <n>` | `20` | 最大返回条数（1-400），内部自动分页拉取 |
+| `--page-size <n>` | — | `--max` 的别名，两者含义相同；同时指定时 `--page-size` 优先 |
+| `--page-token <token>` | — | 上一次响应返回的分页令牌，传入后从该位置继续拉取。令牌带 `search:` 或 `list:` 前缀，标识来源路径，不可混用 |
 | `--labels` | — | table 格式时额外显示 labels 列 |
 | `--mailbox <id>` | `me` | 邮箱地址 |
 
@@ -69,15 +79,31 @@ lark-cli mail +triage --format data | jq '.[].subject'
 ## 输出（`--format json` / `--format data`）
 
 ```json
-[
-  {
-    "message_id": "SEU2...",
-    "date": "Fri, 21 Mar 2026 11:40:00 +0800",
-    "from": "Alice <alice@example.com>",
-    "subject": "Weekly update",
-    "labels": "INBOX,UNREAD"
-  }
-]
+{
+  "messages": [
+    {
+      "message_id": "SEU2...",
+      "date": "Fri, 21 Mar 2026 11:40:00 +0800",
+      "from": "Alice <alice@example.com>",
+      "subject": "Weekly update",
+      "labels": "INBOX,UNREAD"
+    }
+  ],
+  "total": 20,
+  "has_more": true,
+  "page_token": "list:FfccvoqPd_loLhtcRx8cx..."
+}
+```
+
+- `has_more`：是否还有下一页
+- `page_token`：传入 `--page-token` 可获取下一页；为空字符串表示已到末尾
+- token 前缀 `search:` / `list:` 标识来源 API 路径，翻页时需保持参数一致（不能把 search token 用于 list 路径，反之亦然）
+
+**table 格式**下，`page_token` 信息输出在 stderr：
+```
+15 message(s)
+next page: mail +triage --page-token 'list:FfccvoqPd...' ...
+tip: use mail +message --message-id <id> to read full content
 ```
 
 ## 参考
