@@ -336,7 +336,7 @@ func convertAccount(ext *extcred.Account) *Account {
 		AppID:               ext.AppID,
 		AppSecret:           ext.AppSecret,
 		Brand:               core.LarkBrand(ext.Brand),
-		DefaultAs:           ext.DefaultAs,
+		DefaultAs:           core.Identity(ext.DefaultAs),
 		ProfileName:         ext.ProfileName,
 		UserOpenId:          ext.OpenID,
 		SupportedIdentities: uint8(ext.SupportedIdentities),

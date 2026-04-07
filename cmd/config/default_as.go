@@ -44,7 +44,7 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 				return output.ErrValidation("invalid identity type %q, valid values: user | bot | auto", value)
 			}
 
-			app.DefaultAs = value
+			app.DefaultAs = core.Identity(value)
 			if err := core.SaveMultiAppConfig(multi); err != nil {
 				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 			}

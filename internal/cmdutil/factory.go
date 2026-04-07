@@ -64,8 +64,8 @@ func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Ident
 
 	hint := f.resolveIdentityHint()
 	if cmd == nil || !cmd.Flags().Changed("as") {
-		if defaultAs := resolveDefaultAsFromHint(hint); defaultAs != "" && defaultAs != "auto" {
-			f.ResolvedIdentity = core.Identity(defaultAs)
+		if defaultAs := resolveDefaultAsFromHint(hint); defaultAs != "" && defaultAs != core.AsAuto {
+			f.ResolvedIdentity = defaultAs
 			return f.ResolvedIdentity
 		}
 	}
@@ -77,7 +77,7 @@ func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Ident
 	return result
 }
 
-func resolveDefaultAsFromHint(hint *credential.IdentityHint) string {
+func resolveDefaultAsFromHint(hint *credential.IdentityHint) core.Identity {
 	if hint != nil {
 		return hint.DefaultAs
 	}

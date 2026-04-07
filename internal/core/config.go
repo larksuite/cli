@@ -43,7 +43,7 @@ type AppConfig struct {
 	AppSecret  SecretInput `json:"appSecret"`
 	Brand      LarkBrand   `json:"brand"`
 	Lang       string      `json:"lang,omitempty"`
-	DefaultAs  string      `json:"defaultAs,omitempty"` // "user" | "bot" | "auto"
+	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
 	Users      []AppUser   `json:"users"`
 }
@@ -157,7 +157,7 @@ type CliConfig struct {
 	AppID               string
 	AppSecret           string
 	Brand               LarkBrand
-	DefaultAs           string // "user" | "bot" | "auto" | "" (from config file)
+	DefaultAs           Identity // AsUser | AsBot | AsAuto | "" (from config file)
 	UserOpenId          string
 	UserName            string
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider

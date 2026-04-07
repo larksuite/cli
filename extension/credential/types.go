@@ -5,21 +5,25 @@ package credential
 
 import "context"
 
-// Brand constants for Account.Brand.
+// Brand represents the Lark platform brand.
+type Brand string
+
 const (
-	BrandLark   = "lark"
-	BrandFeishu = "feishu"
+	BrandLark   Brand = "lark"
+	BrandFeishu Brand = "feishu"
 )
 
 // NoAppSecret marks that a credential source does not provide a real app secret.
 // Token-only sources should return this value instead of inventing placeholder text.
 const NoAppSecret = ""
 
-// Identity constants for Account.DefaultAs.
+// Identity represents the caller identity type.
+type Identity string
+
 const (
-	IdentityUser = "user"
-	IdentityBot  = "bot"
-	IdentityAuto = "auto"
+	IdentityUser Identity = "user"
+	IdentityBot  Identity = "bot"
+	IdentityAuto Identity = "auto"
 )
 
 // IdentitySupport declares which identities a credential source can provide.
@@ -44,8 +48,8 @@ func (s IdentitySupport) BotOnly() bool { return s == SupportsBot }
 type Account struct {
 	AppID               string
 	AppSecret           string // real app secret; empty or NoAppSecret means unavailable
-	Brand               string // BrandLark or BrandFeishu
-	DefaultAs           string // IdentityUser / IdentityBot / IdentityAuto; empty = not set
+	Brand               Brand    // BrandLark or BrandFeishu
+	DefaultAs           Identity // IdentityUser / IdentityBot / IdentityAuto; empty = not set
 	ProfileName         string
 	OpenID              string          // optional; if UAT is available, API result takes precedence
 	SupportedIdentities IdentitySupport // zero = provider did not declare; treat as no restriction

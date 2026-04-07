@@ -220,8 +220,8 @@ func TestCredentialProvider_ResolveIdentityHint_FromExtensionAccount(t *testing.
 	if err != nil {
 		t.Fatalf("ResolveIdentityHint() error = %v", err)
 	}
-	if hint.DefaultAs != extcred.IdentityUser {
-		t.Fatalf("ResolveIdentityHint() defaultAs = %q, want %q", hint.DefaultAs, extcred.IdentityUser)
+	if hint.DefaultAs != core.AsUser {
+		t.Fatalf("ResolveIdentityHint() defaultAs = %q, want %q", hint.DefaultAs, core.AsUser)
 	}
 	if hint.AutoAs != core.AsUser {
 		t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, core.AsUser)

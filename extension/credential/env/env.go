@@ -41,21 +41,21 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 			Reason:   envvars.CliAppID + " is set but no app secret or access token is available",
 		}
 	}
-	brand := os.Getenv(envvars.CliBrand)
+	brand := credential.Brand(os.Getenv(envvars.CliBrand))
 	if brand == "" {
-		brand = "feishu"
+		brand = credential.BrandFeishu
 	}
 	acct := &credential.Account{AppID: appID, AppSecret: appSecret, Brand: brand}
 
-	switch defaultAs := os.Getenv(envvars.CliDefaultAs); defaultAs {
+	switch id := credential.Identity(os.Getenv(envvars.CliDefaultAs)); id {
 	case "", credential.IdentityAuto:
-		acct.DefaultAs = defaultAs
+		acct.DefaultAs = id
 	case credential.IdentityUser, credential.IdentityBot:
-		acct.DefaultAs = defaultAs
+		acct.DefaultAs = id
 	default:
 		return nil, &credential.BlockError{
 			Provider: "env",
-			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envvars.CliDefaultAs, defaultAs),
+			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envvars.CliDefaultAs, id),
 		}
 	}
 

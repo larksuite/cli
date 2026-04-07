@@ -17,7 +17,7 @@ type Account struct {
 	AppID               string
 	AppSecret           string
 	Brand               core.LarkBrand
-	DefaultAs           string
+	DefaultAs           core.Identity
 	UserOpenId          string
 	UserName            string
 	SupportedIdentities uint8
@@ -126,7 +126,7 @@ type TokenResult struct {
 
 // IdentityHint is credential-layer guidance for resolving the effective identity.
 type IdentityHint struct {
-	DefaultAs string
+	DefaultAs core.Identity
 	AutoAs    core.Identity
 }
 
