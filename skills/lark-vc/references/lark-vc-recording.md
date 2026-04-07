@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-获取会议录制信息，从 meeting_id 解析出 minute_token。这是 VC 域和 Minutes 域之间的桥梁命令。只读操作。
+通过 meeting_id 或 calendar_event_id 查询对应的 minute_token。这是 VC 域和 Minutes 域之间的桥梁命令。只读操作。
 
 本 skill 对应 shortcut：`lark-cli vc +recording`。
 

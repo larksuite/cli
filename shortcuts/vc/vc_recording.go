@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 //
-// vc +recording — get meeting recording info (meeting_id → minute_token)
+// vc +recording — query minute_token from meeting-ids or calendar-event-ids
 //
 // Two mutually exclusive input modes:
 //   meeting-ids:        recording API → extract minute_token from URL
@@ -85,7 +85,7 @@ func fetchRecordingByMeetingID(_ context.Context, runtime *common.RuntimeContext
 var VCRecording = common.Shortcut{
 	Service:     "vc",
 	Command:     "+recording",
-	Description: "Get meeting recording info (meeting_id → minute_token)",
+	Description: "Query minute_token from meeting-ids or calendar-event-ids",
 	Risk:        "read",
 	Scopes:      []string{"vc:record:readonly"},
 	AuthTypes:   []string{"user"},
