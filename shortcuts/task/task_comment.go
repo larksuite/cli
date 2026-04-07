@@ -26,7 +26,7 @@ var CommentTask = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "task-id", Desc: "task id", Required: true},
-		{Name: "content", Desc: "comment content", Required: true, Input: []string{common.File, common.Stdin}},
+		{Name: "content", Desc: "comment content", Required: true},
 	},
 
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
