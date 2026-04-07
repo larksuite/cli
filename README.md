@@ -52,14 +52,16 @@ Before you start, make sure you have:
 
 #### Install
 
-Install the CLI first. If you use Claude Code, then install the plugin.
-
-**Step 1 — Install the CLI (choose one):**
+Choose **one** of the following methods:
 
 **Option 1 — From npm (recommended):**
 
 ```bash
+# Install CLI
 npm install -g @larksuite/cli
+
+# Install CLI SKILL (required)
+npx skills add larksuite/cli -y -g
 ```
 
 **Option 2 — From source:**
@@ -70,21 +72,9 @@ Requires Go `v1.23`+ and Python 3.
 git clone https://github.com/larksuite/cli.git
 cd cli
 make install
-```
 
-**Step 2 — Install the Claude Code plugin (recommended for Claude Code users):**
-
-```bash
-claude plugin marketplace add larksuite/cli
-claude plugin install larksuite/cli@larksuite-cli-marketplace
-```
-
-**Compatibility / fallback — install legacy standalone skills**
-
-Use this only if you cannot use the Claude plugin workflow yet.
-
-```bash
-npx skills add larksuite/cli -g -y
+# Install CLI SKILL (required)
+npx skills add larksuite/cli -y -g
 ```
 
 #### Configure & Use
@@ -104,28 +94,17 @@ lark-cli calendar +agenda
 
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
 
-**Step 1 — Install the Claude Code plugin (repo-first, recommended)**
+**Step 1 — Install**
 
 ```bash
-claude plugin marketplace add larksuite/cli
-claude plugin install larksuite/cli@larksuite-cli-marketplace
-```
-
-**Step 2 — Install the CLI binary**
-
-```bash
+# Install CLI
 npm install -g @larksuite/cli
+
+# Install CLI SKILL (required)
+npx skills add larksuite/cli -y -g
 ```
 
-**Compatibility / fallback — install legacy standalone skills**
-
-Use this only if the Claude plugin workflow is not available yet.
-
-```bash
-npx skills add larksuite/cli -g -y
-```
-
-**Step 3 — Configure app credentials**
+**Step 2 — Configure app credentials**
 
 > Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
 
@@ -133,7 +112,7 @@ npx skills add larksuite/cli -g -y
 lark-cli config init --new
 ```
 
-**Step 4 — Login**
+**Step 3 — Login**
 
 > Same as above: run in the background, extract the authorization URL and send it to the user.
 
@@ -141,11 +120,10 @@ lark-cli config init --new
 lark-cli auth login --recommend
 ```
 
-**Step 5 — Verify**
+**Step 4 — Verify**
 
 ```bash
 lark-cli auth status
-claude plugin list
 ```
 
 ## Agent Skills

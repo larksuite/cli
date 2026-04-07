@@ -52,14 +52,16 @@
 
 #### 安装
 
-先安装 CLI。如果你使用 Claude Code，再安装插件。
-
-**第 1 步 — 安装 CLI（任选一种）：**
+以下两种方式**任选其一**：
 
 **方式一 — 从 npm 安装（推荐）：**
 
 ```bash
+# 安装 CLI
 npm install -g @larksuite/cli
+
+# 安装 CLI SKILL（必需）
+npx skills add larksuite/cli -y -g
 ```
 
 **方式二 — 从源码安装：**
@@ -70,21 +72,9 @@ npm install -g @larksuite/cli
 git clone https://github.com/larksuite/cli.git
 cd cli
 make install
-```
 
-**第 2 步 — 安装 Claude Code 插件（Claude Code 用户推荐）：**
-
-```bash
-claude plugin marketplace add larksuite/cli
-claude plugin install larksuite/cli@larksuite-cli-marketplace
-```
-
-**兼容 / 回退方案 — 安装旧版 standalone skills**
-
-仅当暂时无法使用 Claude 插件工作流时再使用：
-
-```bash
-npx skills add larksuite/cli -g -y
+# 安装 CLI SKILL（必需）
+npx skills add larksuite/cli -y -g
 ```
 
 #### 配置与使用
@@ -100,32 +90,21 @@ lark-cli auth login --recommend
 lark-cli calendar +agenda
 ```
 
-## 快速开始（AI Agent）
+### 快速开始（AI Agent）
 
 > 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
 
-**第 1 步 — 安装 Claude Code 插件（repo-first，推荐）**
+**第 1 步 — 安装**
 
 ```bash
-claude plugin marketplace add larksuite/cli
-claude plugin install larksuite/cli@larksuite-cli-marketplace
-```
-
-**第 2 步 — 安装 CLI 二进制**
-
-```bash
+# 安装 CLI
 npm install -g @larksuite/cli
+
+# 安装 CLI SKILL（必需）
+npx skills add larksuite/cli -y -g
 ```
 
-**兼容 / 回退方案 — 安装旧版 standalone skills**
-
-仅当 Claude 插件工作流暂不可用时再使用：
-
-```bash
-npx skills add larksuite/cli -g -y
-```
-
-**第 3 步 — 配置应用凭证**
+**第 2 步 — 配置应用凭证**
 
 > 在后台运行此命令，命令会输出一个授权链接，提取该链接并发送给用户，用户在浏览器中完成配置后命令会自动退出。
 
@@ -133,7 +112,7 @@ npx skills add larksuite/cli -g -y
 lark-cli config init --new
 ```
 
-**第 4 步 — 登录**
+**第 3 步 — 登录**
 
 > 同上，后台运行，提取授权链接发给用户。
 
@@ -141,11 +120,10 @@ lark-cli config init --new
 lark-cli auth login --recommend
 ```
 
-**第 5 步 — 验证**
+**第 4 步 — 验证**
 
 ```bash
 lark-cli auth status
-claude plugin list
 ```
 
 
