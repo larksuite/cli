@@ -30,7 +30,7 @@ func TestResolveAs_ExplicitAs(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("bot", true)
 
-	got := f.ResolveAs(context.Background(),cmd, core.AsBot)
+	got := f.ResolveAs(context.Background(), cmd, core.AsBot)
 	if got != core.AsBot {
 		t.Errorf("want bot, got %s", got)
 	}
@@ -46,7 +46,7 @@ func TestResolveAs_ExplicitAsUser(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("user", true)
 
-	got := f.ResolveAs(context.Background(),cmd, core.AsUser)
+	got := f.ResolveAs(context.Background(), cmd, core.AsUser)
 	if got != core.AsUser {
 		t.Errorf("want user, got %s", got)
 	}
@@ -61,7 +61,7 @@ func TestResolveAs_ExplicitAuto_FallsToAutoDetect(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("auto", true)
 
-	got := f.ResolveAs(context.Background(),cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsBot {
 		t.Errorf("want bot (auto-detect, no login), got %s", got)
 	}
@@ -77,7 +77,7 @@ func TestResolveAs_DefaultAs_FromConfig(t *testing.T) {
 	})
 	cmd := newCmdWithAsFlag("auto", false) // --as not changed
 
-	got := f.ResolveAs(context.Background(),cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsBot {
 		t.Errorf("want bot (from default-as config), got %s", got)
 	}
@@ -92,7 +92,7 @@ func TestResolveAs_DefaultAs_EnvDoesNotBypassConfigSource(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := newCmdWithAsFlag("auto", false)
 
-	got := f.ResolveAs(context.Background(),cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsBot {
 		t.Errorf("want bot (env default-as should not bypass config source), got %s", got)
 	}
@@ -109,7 +109,7 @@ func TestResolveAs_DefaultAs_AutoValue_FallsToAutoDetect(t *testing.T) {
 	})
 	cmd := newCmdWithAsFlag("auto", false)
 
-	got := f.ResolveAs(context.Background(),cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	// No UserOpenId → auto-detect returns bot
 	if got != core.AsBot {
 		t.Errorf("want bot (auto-detect), got %s", got)
@@ -122,7 +122,7 @@ func TestResolveAs_DefaultAs_AutoValue_FallsToAutoDetect(t *testing.T) {
 func TestResolveAs_NilCmd_AutoDetect(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 
-	got := f.ResolveAs(context.Background(),nil, "auto")
+	got := f.ResolveAs(context.Background(), nil, "auto")
 	if got != core.AsBot {
 		t.Errorf("want bot, got %s", got)
 	}
@@ -280,7 +280,7 @@ func TestResolveStrictMode_NilCredential(t *testing.T) {
 func TestCheckStrictMode_BotMode_BotAllowed(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
-	if err := f.CheckStrictMode(context.Background(),core.AsBot); err != nil {
+	if err := f.CheckStrictMode(context.Background(), core.AsBot); err != nil {
 		t.Errorf("bot should be allowed in bot mode, got: %v", err)
 	}
 }
@@ -288,7 +288,7 @@ func TestCheckStrictMode_BotMode_BotAllowed(t *testing.T) {
 func TestCheckStrictMode_BotMode_UserBlocked(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
-	err := f.CheckStrictMode(context.Background(),core.AsUser)
+	err := f.CheckStrictMode(context.Background(), core.AsUser)
 	if err == nil {
 		t.Fatal("expected error for user in bot mode")
 	}
@@ -300,7 +300,7 @@ func TestCheckStrictMode_BotMode_UserBlocked(t *testing.T) {
 func TestCheckStrictMode_UserMode_UserAllowed(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
 	f, _, _, _ := TestFactory(t, cfg)
-	if err := f.CheckStrictMode(context.Background(),core.AsUser); err != nil {
+	if err := f.CheckStrictMode(context.Background(), core.AsUser); err != nil {
 		t.Errorf("user should be allowed in user mode, got: %v", err)
 	}
 }
@@ -308,7 +308,7 @@ func TestCheckStrictMode_UserMode_UserAllowed(t *testing.T) {
 func TestCheckStrictMode_UserMode_BotBlocked(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
 	f, _, _, _ := TestFactory(t, cfg)
-	err := f.CheckStrictMode(context.Background(),core.AsBot)
+	err := f.CheckStrictMode(context.Background(), core.AsBot)
 	if err == nil {
 		t.Fatal("expected error for bot in user mode")
 	}
@@ -316,10 +316,10 @@ func TestCheckStrictMode_UserMode_BotBlocked(t *testing.T) {
 
 func TestCheckStrictMode_Off_BothAllowed(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
-	if err := f.CheckStrictMode(context.Background(),core.AsUser); err != nil {
+	if err := f.CheckStrictMode(context.Background(), core.AsUser); err != nil {
 		t.Errorf("user should be allowed when off: %v", err)
 	}
-	if err := f.CheckStrictMode(context.Background(),core.AsBot); err != nil {
+	if err := f.CheckStrictMode(context.Background(), core.AsBot); err != nil {
 		t.Errorf("bot should be allowed when off: %v", err)
 	}
 }
@@ -330,7 +330,7 @@ func TestResolveAs_StrictModeBot_ForceBot(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
 	cmd := newCmdWithAsFlag("auto", false)
-	got := f.ResolveAs(context.Background(),cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsBot {
 		t.Errorf("bot mode should force bot, got %s", got)
 	}
@@ -340,7 +340,7 @@ func TestResolveAs_StrictModeUser_ForceUser(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
 	f, _, _, _ := TestFactory(t, cfg)
 	cmd := newCmdWithAsFlag("auto", false)
-	got := f.ResolveAs(context.Background(),cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsUser {
 		t.Errorf("user mode should force user, got %s", got)
 	}
@@ -350,7 +350,7 @@ func TestResolveAs_StrictModeBot_IgnoresDefaultAsUser(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", DefaultAs: "user", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
 	cmd := newCmdWithAsFlag("auto", false)
-	got := f.ResolveAs(context.Background(),cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsBot {
 		t.Errorf("bot mode should override default-as user, got %s", got)
 	}
