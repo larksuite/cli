@@ -60,3 +60,39 @@ type EventProcessor interface {
 	// WindowStrategy returns window configuration. Zero value means disabled.
 	WindowStrategy() WindowConfig
 }
+
+// transformViaHandler keeps the legacy EventProcessor surface aligned with
+// the handler-based runtime by normalizing raw input and delegating compact
+// rendering to the current EventHandler implementation.
+func transformViaHandler(ctx context.Context, raw *RawEvent, mode TransformMode, handler EventHandler) interface{} {
+	if mode == TransformRaw {
+		return raw
+	}
+	evt, ok := legacyEventFromRaw(raw)
+	if !ok || handler == nil {
+		return raw
+	}
+	result := handler.Handle(ctx, evt)
+	if result.Output == nil {
+		return raw
+	}
+	return result.Output
+}
+
+func legacyEventFromRaw(raw *RawEvent) (*Event, bool) {
+	if raw == nil {
+		return nil, false
+	}
+	body, err := json.Marshal(raw)
+	if err != nil {
+		return nil, false
+	}
+	evt, err := NormalizeEnvelope(InboundEnvelope{
+		Source:     SourceWebSocket,
+		RawPayload: body,
+	})
+	if err != nil {
+		return nil, false
+	}
+	return evt, true
+}
