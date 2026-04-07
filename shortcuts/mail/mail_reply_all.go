@@ -168,7 +168,7 @@ var MailReplyAll = common.Shortcut{
 				bld = bld.AddFileInline(spec.FilePath, spec.CID)
 				userCIDs = append(userCIDs, spec.CID)
 			}
-			if err := validateInlineCIDs(fullHTML, userCIDs, srcCIDs); err != nil {
+			if err := validateInlineCIDs(resolved, userCIDs, srcCIDs); err != nil {
 				return err
 			}
 		} else {
