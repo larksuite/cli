@@ -30,7 +30,7 @@ lark-cli docs +media-insert --doc doxcnXXX --file ./arch.png --align center --ca
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--doc <id>` | 是 | 文档 ID 或 docx URL（仅支持 `/docx/<document_id>` 形式自动提取；**不支持 `/wiki/...` URL 自动提取**） |
-| `--file <path>` | 是 | 本地文件路径（最大 20MB） |
+| `--file <path>` | 是 | 本地文件路径（文件大于 20MB 时自动切换分片上传） |
 | `--type <type>` | 否 | `image`（默认）或 `file` |
 | `--align <align>` | 否 | 仅图片：`left` / `center`（默认）/ `right` |
 | `--caption <text>` | 否 | 仅图片：图片描述 |

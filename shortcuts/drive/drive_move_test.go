@@ -13,7 +13,6 @@ import (
 
 func TestDriveMoveUsesRootFolderWhenFolderTokenMissing(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/explorer/v2/root_folder/meta",
@@ -52,7 +51,6 @@ func TestDriveMoveUsesRootFolderWhenFolderTokenMissing(t *testing.T) {
 
 func TestDriveMoveRootFolderLookupRequiresToken(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/explorer/v2/root_folder/meta",

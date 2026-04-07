@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -20,8 +19,6 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-const maxDriveUploadFileSize = 20 * 1024 * 1024 // 20MB
 
 var DriveUpload = common.Shortcut{
 	Service:     "drive",
@@ -78,7 +75,7 @@ var DriveUpload = common.Shortcut{
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s)\n", fileName, common.FormatSize(fileSize))
 
 		var fileToken string
-		if fileSize > maxDriveUploadFileSize {
+		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 			fileToken, err = uploadFileMultipart(ctx, runtime, filePath, fileName, folderToken, fileSize)
 		} else {
@@ -183,7 +180,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 			partSize = remaining
 		}
 
-		partFile, err := os.Open(filePath)
+		partFile, err := vfs.Open(filePath)
 		if err != nil {
 			return "", output.ErrValidation("cannot open file: %v", err)
 		}
