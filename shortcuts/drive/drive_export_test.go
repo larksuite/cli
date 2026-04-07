@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -472,7 +473,7 @@ func TestSaveContentToOutputDirRejectsOverwriteWithoutFlag(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
-	_, err = saveContentToOutputDir(&cmdutil.LocalFileIO{}, ".", "exists.txt", []byte("new"), false)
+	_, err = saveContentToOutputDir(&localfileio.LocalFileIO{}, ".", "exists.txt", []byte("new"), false)
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("expected overwrite error, got %v", err)
 	}

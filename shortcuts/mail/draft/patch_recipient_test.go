@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "to",
@@ -51,7 +51,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "to",
@@ -76,7 +76,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "cc",
@@ -101,7 +101,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "bcc",
@@ -126,7 +126,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "to",
@@ -152,7 +152,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "to",
@@ -179,7 +179,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "to",
@@ -203,7 +203,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "to",
@@ -224,7 +224,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "cc",
@@ -246,7 +246,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "cc",
@@ -278,7 +278,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:        "set_recipients",
 			Field:     "cc",

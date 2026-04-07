@@ -118,7 +118,7 @@ func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
 // ── File saving ──
 
 // SaveResponse writes an API response body to the given outputPath and returns metadata.
-// When fio is non-nil, it delegates to FileIO.Save (with path validation and atomic write).
+// It delegates to FileIO.Save for path validation and atomic write; fio must not be nil.
 func SaveResponse(fio fileio.FileIO, resp *larkcore.ApiResp, outputPath string) (map[string]interface{}, error) {
 	result, err := fio.Save(outputPath, fileio.SaveOptions{
 		ContentType:   resp.Header.Get("Content-Type"),

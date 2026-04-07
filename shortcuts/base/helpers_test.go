@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 func TestParseHelpers(t *testing.T) {
@@ -32,7 +32,7 @@ func TestParseHelpers(t *testing.T) {
 		t.Fatalf("write temp file err=%v", err)
 	}
 	_ = tmp.Close()
-	fio := &cmdutil.LocalFileIO{}
+	fio := &localfileio.LocalFileIO{}
 	obj, err := parseJSONObject(nil, `{"name":"demo"}`, "json")
 	if err != nil || obj["name"] != "demo" {
 		t.Fatalf("obj=%v err=%v", obj, err)
@@ -265,7 +265,7 @@ func TestFilterAndSortHelpers(t *testing.T) {
 }
 
 func TestJSONInputHelpers(t *testing.T) {
-	fio2 := &cmdutil.LocalFileIO{}
+	fio2 := &localfileio.LocalFileIO{}
 	if got, err := loadJSONInput(nil, `{"name":"demo"}`, "json"); err != nil || got != `{"name":"demo"}` {
 		t.Fatalf("got=%q err=%v", got, err)
 	}

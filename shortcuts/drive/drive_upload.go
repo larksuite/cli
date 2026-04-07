@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -175,20 +174,16 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 			partSize = remaining
 		}
 
-		partFile, err := os.Open(filePath)
+		partFile, err := runtime.FileIO().Open(filePath)
 		if err != nil {
 			return "", output.ErrValidation("cannot open file: %v", err)
-		}
-		if _, err := partFile.Seek(offset, io.SeekStart); err != nil {
-			partFile.Close()
-			return "", output.Errorf(output.ExitInternal, "internal_error", "seek to block %d failed: %v", seq, err)
 		}
 
 		fd := larkcore.NewFormdata()
 		fd.AddField("upload_id", uploadID)
 		fd.AddField("seq", fmt.Sprintf("%d", seq))
 		fd.AddField("size", fmt.Sprintf("%d", partSize))
-		fd.AddFile("file", io.LimitReader(partFile, partSize))
+		fd.AddFile("file", io.NewSectionReader(partFile, offset, partSize))
 
 		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 			HttpMethod: http.MethodPost,

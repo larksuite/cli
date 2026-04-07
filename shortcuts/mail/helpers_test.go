@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -608,7 +609,7 @@ func TestCheckAttachmentSizeLimit_WithFiles(t *testing.T) {
 	}
 	defer os.Chdir(oldWd)
 
-	err := checkAttachmentSizeLimit(&cmdutil.LocalFileIO{}, []string{"./small.txt"}, 0)
+	err := checkAttachmentSizeLimit(&localfileio.LocalFileIO{}, []string{"./small.txt"}, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

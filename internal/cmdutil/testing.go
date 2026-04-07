@@ -88,7 +88,7 @@ func (a *testDefaultAcct) ResolveAccount(ctx context.Context) (*credential.Accou
 
 // TestChdir changes the working directory to dir for the duration of the test.
 // The original directory is restored via t.Cleanup.
-// This enables tests to use LocalFileIO (which resolves relative paths under cwd)
+// This enables tests to use localfileio.LocalFileIO (which resolves relative paths under cwd)
 // with temporary directories, keeping test artifacts out of the source tree.
 // Not compatible with t.Parallel() — os.Chdir is process-wide.
 func TestChdir(t *testing.T, dir string) {

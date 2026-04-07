@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ Content-Type: text/html; charset=UTF-8
 
 <p>hello</p>
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<div>updated</div>"}},
 	})
 	if err != nil {
@@ -45,7 +45,7 @@ Content-Type: text/html; charset=UTF-8
 func TestApplySetBodyNoPrimaryBodyFails(t *testing.T) {
 	// A multipart/signed draft has no editable primary body
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/multipart_signed_draft.eml"))
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "anything"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "no unique primary body") {
@@ -67,7 +67,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>old reply</div>`+quoteHTML+`
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_reply_body", Value: "<div>new reply</div>"}},
 	})
 	if err != nil {
@@ -103,7 +103,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>old note</div>`+quoteHTML+`
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_reply_body", Value: "<div>updated note</div>"}},
 	})
 	if err != nil {
@@ -132,7 +132,7 @@ Content-Type: text/html; charset=UTF-8
 
 <p>original body</p>
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_reply_body", Value: "<div>replaced</div>"}},
 	})
 	if err != nil {
@@ -166,7 +166,7 @@ Content-Type: text/html; charset=UTF-8
 <div>old reply</div>`+quoteHTML+`
 --alt--
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_reply_body", Value: "<div>new reply</div>"}},
 	})
 	if err != nil {
@@ -203,7 +203,7 @@ Content-Type: text/plain; charset=UTF-8
 
 original text
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_reply_body", Value: "replaced text"}},
 	})
 	if err != nil {
@@ -228,7 +228,7 @@ Content-Type: text/plain; charset=UTF-8
 
 original content
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "replace_body", BodyKind: "text/plain", Value: "replaced content"}},
 	})
 	if err != nil {
@@ -249,7 +249,7 @@ Content-Type: text/plain; charset=UTF-8
 
 original
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "append_body", BodyKind: "text/plain", Value: " appended"}},
 	})
 	if err != nil {
@@ -274,7 +274,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "replace_body", BodyKind: "text/csv", Value: "data"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "body_kind must be text/plain or text/html") {
@@ -295,7 +295,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "replace_body", BodyKind: "text/html", Value: "<p>new</p>"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "no primary text/html body part") {
@@ -324,7 +324,7 @@ Content-Type: text/html; charset=UTF-8
 <p>real body</p>
 --alt--
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "just plain text without any tags"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "requires HTML input") {
@@ -345,7 +345,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(&cmdutil.LocalFileIO{}, snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "set_subject", Value: "Updated Subject"},
 			{Op: "add_recipient", Field: "cc", Name: "Carol", Address: "carol@example.com"},

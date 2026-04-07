@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 func TestSerializeGoldenFixtures(t *testing.T) {
@@ -83,7 +83,7 @@ func TestSerializeGoldenFixtures(t *testing.T) {
 			if tc.patchFn != nil {
 				patch = tc.patchFn(t)
 			}
-			if err := Apply(&cmdutil.LocalFileIO{}, snapshot, patch); err != nil {
+			if err := Apply(&localfileio.LocalFileIO{}, snapshot, patch); err != nil {
 				t.Fatalf("Apply() error = %v", err)
 			}
 			raw, err := Serialize(snapshot)

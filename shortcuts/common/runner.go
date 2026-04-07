@@ -24,8 +24,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -298,11 +296,22 @@ func (ctx *RuntimeContext) IO() *cmdutil.IOStreams {
 }
 
 // FileIO resolves the FileIO using the current execution context.
+// Falls back to the globally registered provider when Factory or its
+// FileIOProvider is nil (e.g. in lightweight test helpers).
 func (ctx *RuntimeContext) FileIO() fileio.FileIO {
-	if ctx == nil || ctx.Factory == nil {
-		return nil
+	if ctx != nil && ctx.Factory != nil {
+		if fio := ctx.Factory.ResolveFileIO(ctx.ctx); fio != nil {
+			return fio
+		}
 	}
-	return ctx.Factory.ResolveFileIO(ctx.ctx)
+	if p := fileio.GetProvider(); p != nil {
+		c := context.Background()
+		if ctx != nil {
+			c = ctx.ctx
+		}
+		return p.ResolveFileIO(c)
+	}
+	return nil
 }
 
 // ── Output helpers ──
@@ -584,11 +593,12 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if path == "" {
 				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
 			}
-			safePath, err := validate.SafeInputPath(path)
+			f, err := rctx.FileIO().Open(path)
 			if err != nil {
-				return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}
-			data, err := vfs.ReadFile(safePath)
+			data, err := io.ReadAll(f)
+			f.Close()
 			if err != nil {
 				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}
