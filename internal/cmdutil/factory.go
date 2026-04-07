@@ -62,7 +62,7 @@ func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Ident
 		// --as auto: fall through to auto-detect
 	}
 
-	hint := f.resolveIdentityHint()
+	hint := f.resolveIdentityHint(context.Background()) // TODO: pass ctx from ResolveAs after signature change
 	if cmd == nil || !cmd.Flags().Changed("as") {
 		if defaultAs := resolveDefaultAsFromHint(hint); defaultAs != "" && defaultAs != core.AsAuto {
 			f.ResolvedIdentity = defaultAs
@@ -91,11 +91,11 @@ func autoDetectIdentityFromHint(hint *credential.IdentityHint) core.Identity {
 	return core.AsBot
 }
 
-func (f *Factory) resolveIdentityHint() *credential.IdentityHint {
+func (f *Factory) resolveIdentityHint(ctx context.Context) *credential.IdentityHint {
 	if f.Credential == nil {
 		return nil
 	}
-	hint, err := f.Credential.ResolveIdentityHint(context.Background())
+	hint, err := f.Credential.ResolveIdentityHint(ctx)
 	if err != nil {
 		return nil
 	}
