@@ -632,12 +632,9 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	}
 	contentType = detectedCT
 	contentType, mediaParams := normalizedDetectedMediaType(contentType)
-	finalCID := strings.Trim(strings.TrimSpace(cid), "<>")
+	finalCID := normalizeCID(cid)
 	if err := validateCID(finalCID); err != nil {
 		return err
-	}
-	if strings.ContainsAny(finalCID, " \t<>()") {
-		return fmt.Errorf("inline cid %q contains invalid characters (spaces, tabs, angle brackets, or parentheses are not allowed)", finalCID)
 	}
 	if err := validate.RejectCRLF(fileName, "inline filename"); err != nil {
 		return err
@@ -761,6 +758,18 @@ func findPart(root *Part, partID string) *Part {
 	return nil
 }
 
+// normalizeCID strips a single RFC 2392 angle-bracket wrapper (<...>) from the
+// CID if present, and trims surrounding whitespace.  Unlike strings.Trim, it
+// only removes a matched pair so that stray brackets like "test<>" are preserved
+// for validation to reject.
+func normalizeCID(cid string) string {
+	cid = strings.TrimSpace(cid)
+	if strings.HasPrefix(cid, "<") && strings.HasSuffix(cid, ">") {
+		cid = cid[1 : len(cid)-1]
+	}
+	return cid
+}
+
 // validateCID checks that a Content-ID value is non-empty and free of
 // characters that would break MIME headers or cause ambiguous references.
 func validateCID(cid string) error {
@@ -800,12 +809,9 @@ func newInlinePart(path string, content []byte, cid, fileName, contentType strin
 	}
 	contentType, mediaParams := normalizedDetectedMediaType(contentType)
 	mediaParams["name"] = fileName
-	cid = strings.Trim(strings.TrimSpace(cid), "<>")
+	cid = normalizeCID(cid)
 	if err := validateCID(cid); err != nil {
 		return nil, err
-	}
-	if strings.ContainsAny(cid, " \t<>()") {
-		return nil, fmt.Errorf("inline cid %q contains invalid characters (spaces, tabs, angle brackets, or parentheses are not allowed)", cid)
 	}
 	if err := validate.RejectCRLF(fileName, "inline filename"); err != nil {
 		return nil, err
