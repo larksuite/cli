@@ -16,6 +16,9 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
+	if fields := recordFields(runtime); len(fields) > 0 {
+		params["field"] = fields
+	}
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params["view_id"] = viewID
 	}
@@ -27,8 +30,13 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 }
 
 func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	params := map[string]interface{}{}
+	if fields := recordFields(runtime); len(fields) > 0 {
+		params["field"] = fields
+	}
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
+		Params(params).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime)).
 		Set("record_id", runtime.Str("record-id"))
@@ -78,6 +86,10 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func recordFields(runtime *common.RuntimeContext) []string {
+	return runtime.StrArray("field")
+}
+
 func executeRecordList(runtime *common.RuntimeContext) error {
 	offset := runtime.Int("offset")
 	if offset < 0 {
@@ -85,6 +97,10 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
+	fields := recordFields(runtime)
+	if len(fields) > 0 {
+		params["field"] = fields
+	}
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params["view_id"] = viewID
 	}
@@ -97,7 +113,11 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordGet(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", runtime.Str("record-id")), nil, nil)
+	params := map[string]interface{}{}
+	if fields := recordFields(runtime); len(fields) > 0 {
+		params["field"] = fields
+	}
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", runtime.Str("record-id")), params, nil)
 	if err != nil {
 		return err
 	}
