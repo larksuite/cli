@@ -168,13 +168,46 @@ func buildDocsSearchRequest(query, filterStr, pageToken, pageSizeStr string) (ma
 		return nil, err
 	}
 
-	requestData["doc_filter"] = filter
-	wikiFilter := make(map[string]interface{}, len(filter))
-	for k, v := range filter {
-		wikiFilter[k] = v
+	hasFolderTokens := hasNonEmptyFilterArray(filter, "folder_tokens")
+	hasSpaceIDs := hasNonEmptyFilterArray(filter, "space_ids")
+
+	if hasFolderTokens && hasSpaceIDs {
+		return nil, output.ErrValidation("--filter cannot contain both folder_tokens and space_ids; doc and wiki scoped search cannot be combined")
 	}
-	requestData["wiki_filter"] = wikiFilter
+
+	docFilter := cloneFilterMap(filter)
+	delete(docFilter, "space_ids")
+
+	wikiFilter := cloneFilterMap(filter)
+	delete(wikiFilter, "folder_tokens")
+
+	switch {
+	case hasFolderTokens:
+		requestData["doc_filter"] = docFilter
+	case hasSpaceIDs:
+		requestData["wiki_filter"] = wikiFilter
+	default:
+		requestData["doc_filter"] = docFilter
+		requestData["wiki_filter"] = wikiFilter
+	}
 	return requestData, nil
+}
+
+func cloneFilterMap(src map[string]interface{}) map[string]interface{} {
+	dst := make(map[string]interface{}, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func hasNonEmptyFilterArray(filter map[string]interface{}, key string) bool {
+	val, ok := filter[key]
+	if !ok || val == nil {
+		return false
+	}
+	items, ok := val.([]interface{})
+	return ok && len(items) > 0
 }
 
 // convertTimeRangeInFilter converts ISO 8601 time range to Unix seconds.
