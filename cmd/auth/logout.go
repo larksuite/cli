@@ -52,12 +52,16 @@ func authLogoutRun(opts *LogoutOptions) error {
 		return nil
 	}
 
-	for _, user := range app.Users {
-		if err := larkauth.RemoveStoredToken(app.AppId, user.UserOpenId); err != nil {
-			fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to remove token for %s: %v\n", user.UserOpenId, err)
-		}
+	active := core.ResolveActiveUser(app.Users)
+	if active == nil {
+		fmt.Fprintln(f.IOStreams.ErrOut, "Not logged in.")
+		return nil
 	}
-	app.Users = []core.AppUser{}
+
+	if err := larkauth.RemoveStoredToken(app.AppId, active.UserOpenId); err != nil {
+		fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to remove token for %s: %v\n", active.UserOpenId, err)
+	}
+	app.Users = core.RemoveUser(app.Users, active.UserOpenId)
 	if err := core.SaveMultiAppConfig(multi); err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}

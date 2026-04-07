@@ -129,11 +129,45 @@ func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
 		Brand:     app.Brand,
 		DefaultAs: app.DefaultAs,
 	}
-	if len(app.Users) > 0 {
-		cfg.UserOpenId = app.Users[0].UserOpenId
-		cfg.UserName = app.Users[0].UserName
+	if u := resolveActiveUser(app.Users); u != nil {
+		cfg.UserOpenId = u.UserOpenId
+		cfg.UserName = u.UserName
 	}
 	return cfg, nil
+}
+
+// ResolveActiveUser picks the active user from the list.
+// If LARKSUITE_CLI_USER_OPEN_ID is set, the matching user is returned;
+// if not found, nil is returned (caller will see "no user logged in").
+// If unset, the first user is returned.
+func ResolveActiveUser(users []AppUser) *AppUser {
+	return resolveActiveUser(users)
+}
+
+// RemoveUser returns a new slice with the user matching openId removed.
+func RemoveUser(users []AppUser, openId string) []AppUser {
+	out := users[:0:0]
+	for _, u := range users {
+		if u.UserOpenId != openId {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+func resolveActiveUser(users []AppUser) *AppUser {
+	if len(users) == 0 {
+		return nil
+	}
+	if id := os.Getenv("LARKSUITE_CLI_USER_OPEN_ID"); id != "" {
+		for i := range users {
+			if users[i].UserOpenId == id {
+				return &users[i]
+			}
+		}
+		return nil // env var set but user not found — do not fall back
+	}
+	return &users[0]
 }
 
 // RequireAuth loads config and ensures a user is logged in.
