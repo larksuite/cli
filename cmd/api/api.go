@@ -152,7 +152,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 
 func apiRun(opts *APIOptions) error {
 	f := opts.Factory
-	opts.As = f.ResolveAs(opts.Cmd, opts.As)
+	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
 
 	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
 		return err

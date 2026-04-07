@@ -131,7 +131,7 @@ func TestNewDefault_ResolveAs_UsesDefaultAsFromEnvAccount(t *testing.T) {
 	f := NewDefault(InvocationContext{})
 	cmd := newCmdWithAsFlag("auto", false)
 
-	got := f.ResolveAs(cmd, "auto")
+	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsUser {
 		t.Fatalf("ResolveAs() = %q, want %q", got, core.AsUser)
 	}

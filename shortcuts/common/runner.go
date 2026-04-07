@@ -480,7 +480,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
 	asFlag, _ := cmd.Flags().GetString("as")
-	as := f.ResolveAs(cmd, core.Identity(asFlag))
+	as := f.ResolveAs(cmd.Context(), cmd, core.Identity(asFlag))
 
 	if err := f.CheckStrictMode(cmd.Context(), as); err != nil {
 		return "", err

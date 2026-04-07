@@ -45,11 +45,11 @@ type Factory struct {
 // ResolveAs returns the effective identity type.
 // If the user explicitly passed --as, use that value; otherwise use the configured default.
 // When the value is "auto" (or unset), auto-detect based on credential hints.
-func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Identity {
+func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
 
 	// Strict mode: force identity regardless of flags or config.
-	if forced := f.ResolveStrictMode(context.Background()).ForcedIdentity(); forced != "" { // TODO: pass ctx from ResolveAs after signature change
+	if forced := f.ResolveStrictMode(ctx).ForcedIdentity(); forced != "" {
 		f.ResolvedIdentity = forced
 		return forced
 	}
@@ -62,7 +62,7 @@ func (f *Factory) ResolveAs(cmd *cobra.Command, flagAs core.Identity) core.Ident
 		// --as auto: fall through to auto-detect
 	}
 
-	hint := f.resolveIdentityHint(context.Background()) // TODO: pass ctx from ResolveAs after signature change
+	hint := f.resolveIdentityHint(ctx)
 	if cmd == nil || !cmd.Flags().Changed("as") {
 		if defaultAs := resolveDefaultAsFromHint(hint); defaultAs != "" && defaultAs != core.AsAuto {
 			f.ResolvedIdentity = defaultAs
