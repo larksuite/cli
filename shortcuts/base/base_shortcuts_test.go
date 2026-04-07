@@ -244,6 +244,9 @@ func TestBaseRecordValidate(t *testing.T) {
 	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"A"}`}, nil, nil)); err != nil {
 		t.Fatalf("upsert validate err=%v", err)
 	}
+	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"fields":{"Name":"A"}}`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "direct record object") {
+		t.Fatalf("err=%v", err)
+	}
 	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": "{"}, nil, nil)); err != nil {
 		t.Fatalf("invalid record json should bypass CLI validate, err=%v", err)
 	}
