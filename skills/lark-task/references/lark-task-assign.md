@@ -8,20 +8,20 @@ Assign or remove members (assignees) from a task.
 
 ```bash
 # Add an assignee
-lark-cli task +assign --task-id "t_xxx" --add "ou_aaa"
+lark-cli task +assign --task-id "<task_guid>" --add "ou_aaa"
 
 # Transfer an assignee (remove old, add new)
-lark-cli task +assign --task-id "t_xxx" --remove "ou_old" --add "ou_new"
+lark-cli task +assign --task-id "<task_guid>" --remove "ou_old" --add "ou_new"
 
 # Add multiple assignees
-lark-cli task +assign --task-id "t_xxx" --add "ou_aaa,ou_bbb"
+lark-cli task +assign --task-id "<task_guid>" --add "ou_aaa,ou_bbb"
 ```
 
 ## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--task-id <id>` | Yes | The ID of the task to modify. |
+| `--task-id <guid>` | Yes | The task GUID to modify. For Feishu task applinks, use the `guid` query parameter, not the `suite_entity_num` / display task ID like `t104121`. |
 | `--add <ids>` | No | Comma-separated list of user `open_id`s to add as assignees. |
 | `--remove <ids>` | No | Comma-separated list of user `open_id`s to remove from assignees. |
 
@@ -33,4 +33,3 @@ lark-cli task +assign --task-id "t_xxx" --add "ou_aaa,ou_bbb"
 
 > [!CAUTION]
 > This is a **Write Operation** -- You must confirm the user's intent before executing.
-EOF~
