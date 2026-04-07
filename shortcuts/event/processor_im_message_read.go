@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 )
 
-// ── im.message.message_read_v1 ──────────────────────────────────────────────
+const imMessageReadHandlerID = "builtin.im.message.read"
+
+// ── im.message.message_read_v1 ───────────────────────────────────────────────
 
 // ImMessageReadProcessor handles im.message.message_read_v1 events.
 //
@@ -19,25 +21,53 @@ import (
 //   - message_ids: list of message IDs that were read
 type ImMessageReadProcessor struct{}
 
-func (p *ImMessageReadProcessor) EventType() string { return "im.message.message_read_v1" }
+func NewIMMessageReadHandler() *ImMessageReadProcessor { return &ImMessageReadProcessor{} }
 
-func (p *ImMessageReadProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
+func (p *ImMessageReadProcessor) ID() string        { return imMessageReadHandlerID }
+func (p *ImMessageReadProcessor) EventType() string { return "im.message.message_read_v1" }
+func (p *ImMessageReadProcessor) Domain() string    { return "im" }
+
+func (p *ImMessageReadProcessor) Handle(_ context.Context, evt *Event) HandlerResult {
+	return HandlerResult{Status: HandlerStatusHandled, Output: imMessageReadCompactOutput(evt)}
+}
+
+func (p *ImMessageReadProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
+}
+
+func (p *ImMessageReadProcessor) DeduplicateKey(raw *RawEvent) string {
+	return raw.Header.EventID
+}
+func (p *ImMessageReadProcessor) WindowStrategy() WindowConfig { return WindowConfig{} }
+
+type imMessageReadPayload struct {
+	Reader struct {
+		ReaderID struct {
+			OpenID string `json:"open_id"`
+		} `json:"reader_id"`
+		ReadTime string `json:"read_time"`
+	} `json:"reader"`
+	MessageIDList []string `json:"message_id_list"`
+}
+
+func imMessageReadCompactOutput(evt *Event) map[string]interface{} {
+	if evt == nil {
+		return map[string]interface{}{"type": ""}
 	}
-	var ev struct {
-		Reader struct {
-			ReaderID struct {
-				OpenID string `json:"open_id"`
-			} `json:"reader_id"`
-			ReadTime string `json:"read_time"`
-		} `json:"reader"`
-		MessageIDList []string `json:"message_id_list"`
+	data, _ := json.Marshal(evt.Payload.Data)
+	var payload imMessageReadPayload
+	_ = json.Unmarshal(data, &payload)
+	return buildIMMessageReadCompactOutput(evt.EventType, evt.EventID, evt.Payload.Header.CreateTime, payload)
+}
+
+func buildIMMessageReadCompactOutput(eventType, eventID, createTime string, ev imMessageReadPayload) map[string]interface{} {
+	out := map[string]interface{}{"type": eventType}
+	if eventID != "" {
+		out["event_id"] = eventID
 	}
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
+	if createTime != "" {
+		out["timestamp"] = createTime
 	}
-	out := compactBase(raw)
 	if ev.Reader.ReaderID.OpenID != "" {
 		out["reader_id"] = ev.Reader.ReaderID.OpenID
 	}
@@ -49,8 +79,3 @@ func (p *ImMessageReadProcessor) Transform(_ context.Context, raw *RawEvent, mod
 	}
 	return out
 }
-
-func (p *ImMessageReadProcessor) DeduplicateKey(raw *RawEvent) string {
-	return raw.Header.EventID
-}
-func (p *ImMessageReadProcessor) WindowStrategy() WindowConfig { return WindowConfig{} }

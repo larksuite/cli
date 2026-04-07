@@ -29,39 +29,30 @@ func NewImChatBotAddedProcessor() *ImChatBotProcessor {
 	return &ImChatBotProcessor{eventType: "im.chat.member.bot.added_v1"}
 }
 
+func NewIMChatMemberBotAddedHandler() *ImChatBotProcessor { return NewImChatBotAddedProcessor() }
+
 // NewImChatBotDeletedProcessor creates a processor for im.chat.member.bot.deleted_v1.
 func NewImChatBotDeletedProcessor() *ImChatBotProcessor {
 	return &ImChatBotProcessor{eventType: "im.chat.member.bot.deleted_v1"}
 }
 
-func (p *ImChatBotProcessor) EventType() string { return p.eventType }
+func NewIMChatMemberBotDeletedHandler() *ImChatBotProcessor { return NewImChatBotDeletedProcessor() }
 
-func (p *ImChatBotProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-	var ev struct {
-		ChatID     string      `json:"chat_id"`
-		OperatorID interface{} `json:"operator_id"`
-		External   bool        `json:"external"`
-	}
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
-	}
-	out := compactBase(raw)
-	action := "added"
+func (p *ImChatBotProcessor) ID() string {
 	if strings.Contains(p.eventType, "deleted") {
-		action = "removed"
+		return "builtin.im.chat.member.bot.deleted"
 	}
-	out["action"] = action
-	if ev.ChatID != "" {
-		out["chat_id"] = ev.ChatID
-	}
-	if id := openID(ev.OperatorID); id != "" {
-		out["operator_id"] = id
-	}
-	out["external"] = ev.External
-	return out
+	return "builtin.im.chat.member.bot.added"
+}
+func (p *ImChatBotProcessor) EventType() string { return p.eventType }
+func (p *ImChatBotProcessor) Domain() string    { return "im" }
+
+func (p *ImChatBotProcessor) Handle(_ context.Context, evt *Event) HandlerResult {
+	return HandlerResult{Status: HandlerStatusHandled, Output: imChatBotCompactOutput(evt, p.eventType)}
+}
+
+func (p *ImChatBotProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
 }
 
 func (p *ImChatBotProcessor) DeduplicateKey(raw *RawEvent) string { return raw.Header.EventID }
@@ -88,9 +79,17 @@ func NewImChatMemberUserAddedProcessor() *ImChatMemberUserProcessor {
 	return &ImChatMemberUserProcessor{eventType: "im.chat.member.user.added_v1"}
 }
 
+func NewIMChatMemberUserAddedHandler() *ImChatMemberUserProcessor {
+	return NewImChatMemberUserAddedProcessor()
+}
+
 // NewImChatMemberUserWithdrawnProcessor creates a processor for im.chat.member.user.withdrawn_v1.
 func NewImChatMemberUserWithdrawnProcessor() *ImChatMemberUserProcessor {
 	return &ImChatMemberUserProcessor{eventType: "im.chat.member.user.withdrawn_v1"}
+}
+
+func NewIMChatMemberUserWithdrawnHandler() *ImChatMemberUserProcessor {
+	return NewImChatMemberUserWithdrawnProcessor()
 }
 
 // NewImChatMemberUserDeletedProcessor creates a processor for im.chat.member.user.deleted_v1.
@@ -98,29 +97,102 @@ func NewImChatMemberUserDeletedProcessor() *ImChatMemberUserProcessor {
 	return &ImChatMemberUserProcessor{eventType: "im.chat.member.user.deleted_v1"}
 }
 
-func (p *ImChatMemberUserProcessor) EventType() string { return p.eventType }
+func NewIMChatMemberUserDeletedHandler() *ImChatMemberUserProcessor {
+	return NewImChatMemberUserDeletedProcessor()
+}
 
-func (p *ImChatMemberUserProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-	var ev struct {
-		ChatID     string        `json:"chat_id"`
-		OperatorID interface{}   `json:"operator_id"`
-		External   bool          `json:"external"`
-		Users      []interface{} `json:"users"`
-	}
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
-	}
-	out := compactBase(raw)
-	// Derive action from event type suffix
+func (p *ImChatMemberUserProcessor) ID() string {
 	switch {
-	case strings.Contains(p.eventType, "added"):
-		out["action"] = "added"
 	case strings.Contains(p.eventType, "withdrawn"):
-		out["action"] = "withdrawn"
+		return "builtin.im.chat.member.user.withdrawn"
 	case strings.Contains(p.eventType, "deleted"):
+		return "builtin.im.chat.member.user.deleted"
+	default:
+		return "builtin.im.chat.member.user.added"
+	}
+}
+func (p *ImChatMemberUserProcessor) EventType() string { return p.eventType }
+func (p *ImChatMemberUserProcessor) Domain() string    { return "im" }
+
+func (p *ImChatMemberUserProcessor) Handle(_ context.Context, evt *Event) HandlerResult {
+	return HandlerResult{Status: HandlerStatusHandled, Output: imChatMemberUserCompactOutput(evt, p.eventType)}
+}
+
+func (p *ImChatMemberUserProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
+}
+
+func (p *ImChatMemberUserProcessor) DeduplicateKey(raw *RawEvent) string {
+	return raw.Header.EventID
+}
+func (p *ImChatMemberUserProcessor) WindowStrategy() WindowConfig {
+	return WindowConfig{}
+}
+
+type imChatMemberPayload struct {
+	ChatID     string        `json:"chat_id"`
+	OperatorID interface{}   `json:"operator_id"`
+	External   bool          `json:"external"`
+	Users      []interface{} `json:"users"`
+}
+
+func imChatBotCompactOutput(evt *Event, processorEventType string) map[string]interface{} {
+	if evt == nil {
+		return map[string]interface{}{"type": processorEventType}
+	}
+	data, _ := json.Marshal(evt.Payload.Data)
+	var payload imChatMemberPayload
+	_ = json.Unmarshal(data, &payload)
+	return buildIMChatBotCompactOutput(evt.EventType, evt.EventID, evt.Payload.Header.CreateTime, processorEventType, payload)
+}
+
+func buildIMChatBotCompactOutput(eventType, eventID, createTime, processorEventType string, ev imChatMemberPayload) map[string]interface{} {
+	out := map[string]interface{}{"type": eventType}
+	if eventID != "" {
+		out["event_id"] = eventID
+	}
+	if createTime != "" {
+		out["timestamp"] = createTime
+	}
+	action := "added"
+	if strings.Contains(processorEventType, "deleted") {
+		action = "removed"
+	}
+	out["action"] = action
+	if ev.ChatID != "" {
+		out["chat_id"] = ev.ChatID
+	}
+	if id := openID(ev.OperatorID); id != "" {
+		out["operator_id"] = id
+	}
+	out["external"] = ev.External
+	return out
+}
+
+func imChatMemberUserCompactOutput(evt *Event, processorEventType string) map[string]interface{} {
+	if evt == nil {
+		return map[string]interface{}{"type": processorEventType}
+	}
+	data, _ := json.Marshal(evt.Payload.Data)
+	var payload imChatMemberPayload
+	_ = json.Unmarshal(data, &payload)
+	return buildIMChatMemberUserCompactOutput(evt.EventType, evt.EventID, evt.Payload.Header.CreateTime, processorEventType, payload)
+}
+
+func buildIMChatMemberUserCompactOutput(eventType, eventID, createTime, processorEventType string, ev imChatMemberPayload) map[string]interface{} {
+	out := map[string]interface{}{"type": eventType}
+	if eventID != "" {
+		out["event_id"] = eventID
+	}
+	if createTime != "" {
+		out["timestamp"] = createTime
+	}
+	switch {
+	case strings.Contains(processorEventType, "added"):
+		out["action"] = "added"
+	case strings.Contains(processorEventType, "withdrawn"):
+		out["action"] = "withdrawn"
+	case strings.Contains(processorEventType, "deleted"):
 		out["action"] = "removed"
 	}
 	if ev.ChatID != "" {
@@ -134,11 +206,4 @@ func (p *ImChatMemberUserProcessor) Transform(_ context.Context, raw *RawEvent, 
 	}
 	out["external"] = ev.External
 	return out
-}
-
-func (p *ImChatMemberUserProcessor) DeduplicateKey(raw *RawEvent) string {
-	return raw.Header.EventID
-}
-func (p *ImChatMemberUserProcessor) WindowStrategy() WindowConfig {
-	return WindowConfig{}
 }

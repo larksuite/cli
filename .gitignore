@@ -28,6 +28,7 @@ vendor/
 #test
 test_scripts/
 tests/mail/reports/
+internal/registry/meta_data.json
 
 /log/
 

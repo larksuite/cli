@@ -19,9 +19,6 @@ import (
 //go:embed scope_priorities.json scope_overrides.json
 var registryFS embed.FS
 
-// embeddedMetaJSON is set by loader_embedded.go when meta_data.json is compiled in.
-var embeddedMetaJSON []byte
-
 var (
 	mergedServices    = make(map[string]map[string]interface{}) // project name → parsed spec
 	mergedProjectList []string                                  // sorted project names
@@ -43,7 +40,7 @@ func Init() {
 func InitWithBrand(brand core.LarkBrand) {
 	initOnce.Do(func() {
 		configuredBrand = brand
-		// 1. Load embedded meta_data.json as baseline (no-op if not compiled in)
+		// 1. Load embedded default registry baseline
 		loadEmbeddedIntoMerged()
 		// 2. Remote overlay
 		if remoteEnabled() && cacheWritable() {
@@ -69,8 +66,8 @@ func InitWithBrand(brand core.LarkBrand) {
 	})
 }
 
-// loadEmbeddedIntoMerged parses the embedded meta_data.json and populates
-// mergedServices. No-op if meta_data.json is not compiled in.
+// loadEmbeddedIntoMerged parses the embedded default registry JSON and populates
+// mergedServices. No-op if no embedded baseline is compiled in.
 func loadEmbeddedIntoMerged() {
 	if len(embeddedMetaJSON) == 0 {
 		return

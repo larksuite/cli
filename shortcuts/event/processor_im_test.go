@@ -8,36 +8,96 @@ import (
 	"testing"
 )
 
+func makeNormalizedEvent(eventType string, data map[string]interface{}) *Event {
+	return &Event{
+		Source:    SourceWebSocket,
+		EventID:   "ev_test",
+		EventType: eventType,
+		Domain:    "im",
+		Payload: NormalizedPayload{
+			Header: EventHeader{
+				EventID:    "ev_test",
+				EventType:  eventType,
+				CreateTime: "1700000000",
+			},
+			Data: data,
+		},
+		IdempotencyKey: "ws:ev_test",
+	}
+}
+
+// --- im.message.receive_v1 handler ---
+
+func TestIMMessageHandler_Handle(t *testing.T) {
+	h := NewIMMessageReceiveHandler()
+	evt := makeNormalizedEvent("im.message.receive_v1", map[string]interface{}{
+		"message": map[string]interface{}{
+			"message_id":   "om_123",
+			"chat_id":      "oc_456",
+			"chat_type":    "p2p",
+			"message_type": "text",
+			"content":      `{"text":"hello"}`,
+			"create_time":  "1700000001",
+		},
+		"sender": map[string]interface{}{
+			"sender_id": map[string]interface{}{"open_id": "ou_sender"},
+		},
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
+	}
+	out, ok := result.Output.(map[string]interface{})
+	if !ok {
+		t.Fatal("output should be compact map")
+	}
+	if out["message_id"] != "om_123" || out["id"] != "om_123" {
+		t.Fatalf("message identifiers = %v", out)
+	}
+	if out["chat_id"] != "oc_456" {
+		t.Fatalf("chat_id = %v", out["chat_id"])
+	}
+	if out["sender_id"] != "ou_sender" {
+		t.Fatalf("sender_id = %v", out["sender_id"])
+	}
+	if out["content"] != "hello" {
+		t.Fatalf("content = %v", out["content"])
+	}
+}
+
 // --- im.message.message_read_v1 ---
 
-func TestImMessageReadProcessor_Compact(t *testing.T) {
-	p := &ImMessageReadProcessor{}
-	if p.EventType() != "im.message.message_read_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
-	}
-	raw := makeRawEvent("im.message.message_read_v1", `{
-		"reader": {
-			"reader_id": {"open_id": "ou_reader"},
-			"read_time": "1700000001"
+func TestIMMessageReadHandler_Handle(t *testing.T) {
+	h := NewIMMessageReadHandler()
+	evt := makeNormalizedEvent("im.message.message_read_v1", map[string]interface{}{
+		"reader": map[string]interface{}{
+			"reader_id": map[string]interface{}{"open_id": "ou_reader"},
+			"read_time": "1700000001",
 		},
-		"message_id_list": ["msg_001", "msg_002"]
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+		"message_id_list": []interface{}{"msg_001", "msg_002"},
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
+	}
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["type"] != "im.message.message_read_v1" {
-		t.Errorf("type = %v", result["type"])
+	if out["type"] != "im.message.message_read_v1" {
+		t.Errorf("type = %v", out["type"])
 	}
-	if result["reader_id"] != "ou_reader" {
-		t.Errorf("reader_id = %v", result["reader_id"])
+	if out["reader_id"] != "ou_reader" {
+		t.Errorf("reader_id = %v", out["reader_id"])
 	}
-	if result["read_time"] != "1700000001" {
-		t.Errorf("read_time = %v", result["read_time"])
+	if out["read_time"] != "1700000001" {
+		t.Errorf("read_time = %v", out["read_time"])
 	}
-	ids, ok := result["message_ids"].([]string)
+	ids, ok := out["message_ids"].([]string)
 	if !ok || len(ids) != 2 {
-		t.Errorf("message_ids = %v", result["message_ids"])
+		t.Errorf("message_ids = %v", out["message_ids"])
 	}
 }
 
@@ -75,56 +135,60 @@ func TestImMessageReadProcessor_Dedup(t *testing.T) {
 
 // --- im.message.reaction.created_v1 / deleted_v1 ---
 
-func TestImReactionCreatedProcessor_Compact(t *testing.T) {
-	p := NewImReactionCreatedProcessor()
-	if p.EventType() != "im.message.reaction.created_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
-	}
-	raw := makeRawEvent("im.message.reaction.created_v1", `{
-		"message_id": "msg_react",
-		"reaction_type": {"emoji_type": "THUMBSUP"},
+func TestIMReactionCreatedHandler_Handle(t *testing.T) {
+	h := NewIMReactionCreatedHandler()
+	evt := makeNormalizedEvent("im.message.reaction.created_v1", map[string]interface{}{
+		"message_id":    "msg_react",
+		"reaction_type": map[string]interface{}{"emoji_type": "THUMBSUP"},
 		"operator_type": "user",
-		"user_id": {"open_id": "ou_reactor"},
-		"action_time": "1700000002"
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+		"user_id":       map[string]interface{}{"open_id": "ou_reactor"},
+		"action_time":   "1700000002",
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
+	}
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["action"] != "added" {
-		t.Errorf("action = %v, want added", result["action"])
+	if out["action"] != "added" {
+		t.Errorf("action = %v, want added", out["action"])
 	}
-	if result["message_id"] != "msg_react" {
-		t.Errorf("message_id = %v", result["message_id"])
+	if out["message_id"] != "msg_react" {
+		t.Errorf("message_id = %v", out["message_id"])
 	}
-	if result["emoji_type"] != "THUMBSUP" {
-		t.Errorf("emoji_type = %v", result["emoji_type"])
+	if out["emoji_type"] != "THUMBSUP" {
+		t.Errorf("emoji_type = %v", out["emoji_type"])
 	}
-	if result["operator_id"] != "ou_reactor" {
-		t.Errorf("operator_id = %v", result["operator_id"])
+	if out["operator_id"] != "ou_reactor" {
+		t.Errorf("operator_id = %v", out["operator_id"])
 	}
-	if result["action_time"] != "1700000002" {
-		t.Errorf("action_time = %v", result["action_time"])
+	if out["action_time"] != "1700000002" {
+		t.Errorf("action_time = %v", out["action_time"])
 	}
 }
 
-func TestImReactionDeletedProcessor_Compact(t *testing.T) {
-	p := NewImReactionDeletedProcessor()
-	if p.EventType() != "im.message.reaction.deleted_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMReactionDeletedHandler_Handle(t *testing.T) {
+	h := NewIMReactionDeletedHandler()
+	evt := makeNormalizedEvent("im.message.reaction.deleted_v1", map[string]interface{}{
+		"message_id":    "msg_unreact",
+		"reaction_type": map[string]interface{}{"emoji_type": "THUMBSUP"},
+		"user_id":       map[string]interface{}{"open_id": "ou_reactor"},
+		"action_time":   "1700000003",
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.message.reaction.deleted_v1", `{
-		"message_id": "msg_unreact",
-		"reaction_type": {"emoji_type": "THUMBSUP"},
-		"user_id": {"open_id": "ou_reactor"},
-		"action_time": "1700000003"
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["action"] != "removed" {
-		t.Errorf("action = %v, want removed", result["action"])
+	if out["action"] != "removed" {
+		t.Errorf("action = %v, want removed", out["action"])
 	}
 }
 
@@ -146,53 +210,57 @@ func TestImReactionProcessor_UnmarshalError(t *testing.T) {
 
 // --- im.chat.member.bot.added_v1 / deleted_v1 ---
 
-func TestImChatBotAddedProcessor_Compact(t *testing.T) {
-	p := NewImChatBotAddedProcessor()
-	if p.EventType() != "im.chat.member.bot.added_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMChatMemberBotAddedHandler_Handle(t *testing.T) {
+	h := NewIMChatMemberBotAddedHandler()
+	evt := makeNormalizedEvent("im.chat.member.bot.added_v1", map[string]interface{}{
+		"chat_id":     "oc_bot",
+		"operator_id": map[string]interface{}{"open_id": "ou_operator"},
+		"external":    false,
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.chat.member.bot.added_v1", `{
-		"chat_id": "oc_bot",
-		"operator_id": {"open_id": "ou_operator"},
-		"external": false
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["action"] != "added" {
-		t.Errorf("action = %v", result["action"])
+	if out["action"] != "added" {
+		t.Errorf("action = %v", out["action"])
 	}
-	if result["chat_id"] != "oc_bot" {
-		t.Errorf("chat_id = %v", result["chat_id"])
+	if out["chat_id"] != "oc_bot" {
+		t.Errorf("chat_id = %v", out["chat_id"])
 	}
-	if result["operator_id"] != "ou_operator" {
-		t.Errorf("operator_id = %v", result["operator_id"])
+	if out["operator_id"] != "ou_operator" {
+		t.Errorf("operator_id = %v", out["operator_id"])
 	}
-	if result["external"] != false {
-		t.Errorf("external = %v", result["external"])
+	if out["external"] != false {
+		t.Errorf("external = %v", out["external"])
 	}
 }
 
-func TestImChatBotDeletedProcessor_Compact(t *testing.T) {
-	p := NewImChatBotDeletedProcessor()
-	if p.EventType() != "im.chat.member.bot.deleted_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMChatMemberBotDeletedHandler_Handle(t *testing.T) {
+	h := NewIMChatMemberBotDeletedHandler()
+	evt := makeNormalizedEvent("im.chat.member.bot.deleted_v1", map[string]interface{}{
+		"chat_id":     "oc_bot2",
+		"operator_id": map[string]interface{}{"open_id": "ou_op2"},
+		"external":    true,
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.chat.member.bot.deleted_v1", `{
-		"chat_id": "oc_bot2",
-		"operator_id": {"open_id": "ou_op2"},
-		"external": true
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["action"] != "removed" {
-		t.Errorf("action = %v, want removed", result["action"])
+	if out["action"] != "removed" {
+		t.Errorf("action = %v, want removed", out["action"])
 	}
-	if result["external"] != true {
-		t.Errorf("external = %v, want true", result["external"])
+	if out["external"] != true {
+		t.Errorf("external = %v, want true", out["external"])
 	}
 }
 
@@ -214,78 +282,84 @@ func TestImChatBotProcessor_UnmarshalError(t *testing.T) {
 
 // --- im.chat.member.user.added_v1 / withdrawn_v1 / deleted_v1 ---
 
-func TestImChatMemberUserAddedProcessor_Compact(t *testing.T) {
-	p := NewImChatMemberUserAddedProcessor()
-	if p.EventType() != "im.chat.member.user.added_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMChatMemberUserAddedHandler_Handle(t *testing.T) {
+	h := NewIMChatMemberUserAddedHandler()
+	evt := makeNormalizedEvent("im.chat.member.user.added_v1", map[string]interface{}{
+		"chat_id":     "oc_members",
+		"operator_id": map[string]interface{}{"open_id": "ou_admin"},
+		"external":    false,
+		"users": []interface{}{
+			map[string]interface{}{"user_id": map[string]interface{}{"open_id": "ou_user1"}, "name": "Alice"},
+			map[string]interface{}{"user_id": map[string]interface{}{"open_id": "ou_user2"}, "name": "Bob"},
+		},
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.chat.member.user.added_v1", `{
-		"chat_id": "oc_members",
-		"operator_id": {"open_id": "ou_admin"},
-		"external": false,
-		"users": [
-			{"user_id": {"open_id": "ou_user1"}, "name": "Alice"},
-			{"user_id": {"open_id": "ou_user2"}, "name": "Bob"}
-		]
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["action"] != "added" {
-		t.Errorf("action = %v", result["action"])
+	if out["action"] != "added" {
+		t.Errorf("action = %v", out["action"])
 	}
-	if result["chat_id"] != "oc_members" {
-		t.Errorf("chat_id = %v", result["chat_id"])
+	if out["chat_id"] != "oc_members" {
+		t.Errorf("chat_id = %v", out["chat_id"])
 	}
-	if result["operator_id"] != "ou_admin" {
-		t.Errorf("operator_id = %v", result["operator_id"])
+	if out["operator_id"] != "ou_admin" {
+		t.Errorf("operator_id = %v", out["operator_id"])
 	}
-	userIDs, ok := result["user_ids"].([]string)
+	userIDs, ok := out["user_ids"].([]string)
 	if !ok || len(userIDs) != 2 {
-		t.Fatalf("user_ids = %v", result["user_ids"])
+		t.Fatalf("user_ids = %v", out["user_ids"])
 	}
 	if userIDs[0] != "ou_user1" || userIDs[1] != "ou_user2" {
 		t.Errorf("user_ids = %v", userIDs)
 	}
 }
 
-func TestImChatMemberUserWithdrawnProcessor_Compact(t *testing.T) {
-	p := NewImChatMemberUserWithdrawnProcessor()
-	if p.EventType() != "im.chat.member.user.withdrawn_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMChatMemberUserWithdrawnHandler_Handle(t *testing.T) {
+	h := NewIMChatMemberUserWithdrawnHandler()
+	evt := makeNormalizedEvent("im.chat.member.user.withdrawn_v1", map[string]interface{}{
+		"chat_id":     "oc_w",
+		"operator_id": map[string]interface{}{"open_id": "ou_self"},
+		"external":    false,
+		"users":       []interface{}{map[string]interface{}{"user_id": map[string]interface{}{"open_id": "ou_self"}, "name": "Self"}},
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.chat.member.user.withdrawn_v1", `{
-		"chat_id": "oc_w",
-		"operator_id": {"open_id": "ou_self"},
-		"external": false,
-		"users": [{"user_id": {"open_id": "ou_self"}, "name": "Self"}]
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["action"] != "withdrawn" {
-		t.Errorf("action = %v, want withdrawn", result["action"])
+	if out["action"] != "withdrawn" {
+		t.Errorf("action = %v, want withdrawn", out["action"])
 	}
 }
 
-func TestImChatMemberUserDeletedProcessor_Compact(t *testing.T) {
-	p := NewImChatMemberUserDeletedProcessor()
-	if p.EventType() != "im.chat.member.user.deleted_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMChatMemberUserDeletedHandler_Handle(t *testing.T) {
+	h := NewIMChatMemberUserDeletedHandler()
+	evt := makeNormalizedEvent("im.chat.member.user.deleted_v1", map[string]interface{}{
+		"chat_id":     "oc_del",
+		"operator_id": map[string]interface{}{"open_id": "ou_admin"},
+		"users":       []interface{}{map[string]interface{}{"user_id": map[string]interface{}{"open_id": "ou_kicked"}}},
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.chat.member.user.deleted_v1", `{
-		"chat_id": "oc_del",
-		"operator_id": {"open_id": "ou_admin"},
-		"users": [{"user_id": {"open_id": "ou_kicked"}}]
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["action"] != "removed" {
-		t.Errorf("action = %v, want removed", result["action"])
+	if out["action"] != "removed" {
+		t.Errorf("action = %v, want removed", out["action"])
 	}
 }
 
@@ -307,39 +381,41 @@ func TestImChatMemberUserProcessor_UnmarshalError(t *testing.T) {
 
 // --- im.chat.updated_v1 ---
 
-func TestImChatUpdatedProcessor_Compact(t *testing.T) {
-	p := &ImChatUpdatedProcessor{}
-	if p.EventType() != "im.chat.updated_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMChatUpdatedHandler_Handle(t *testing.T) {
+	h := NewIMChatUpdatedHandler()
+	evt := makeNormalizedEvent("im.chat.updated_v1", map[string]interface{}{
+		"chat_id":       "oc_updated",
+		"operator_id":   map[string]interface{}{"open_id": "ou_updater"},
+		"external":      false,
+		"after_change":  map[string]interface{}{"name": "New Name"},
+		"before_change": map[string]interface{}{"name": "Old Name"},
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.chat.updated_v1", `{
-		"chat_id": "oc_updated",
-		"operator_id": {"open_id": "ou_updater"},
-		"external": false,
-		"after_change": {"name": "New Name"},
-		"before_change": {"name": "Old Name"}
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["type"] != "im.chat.updated_v1" {
-		t.Errorf("type = %v", result["type"])
+	if out["type"] != "im.chat.updated_v1" {
+		t.Errorf("type = %v", out["type"])
 	}
-	if result["chat_id"] != "oc_updated" {
-		t.Errorf("chat_id = %v", result["chat_id"])
+	if out["chat_id"] != "oc_updated" {
+		t.Errorf("chat_id = %v", out["chat_id"])
 	}
-	if result["operator_id"] != "ou_updater" {
-		t.Errorf("operator_id = %v", result["operator_id"])
+	if out["operator_id"] != "ou_updater" {
+		t.Errorf("operator_id = %v", out["operator_id"])
 	}
-	after, ok := result["after_change"].(map[string]interface{})
+	after, ok := out["after_change"].(map[string]interface{})
 	if !ok {
 		t.Fatal("after_change should be a map")
 	}
 	if after["name"] != "New Name" {
 		t.Errorf("after_change.name = %v", after["name"])
 	}
-	before, ok := result["before_change"].(map[string]interface{})
+	before, ok := out["before_change"].(map[string]interface{})
 	if !ok {
 		t.Fatal("before_change should be a map")
 	}
@@ -366,31 +442,33 @@ func TestImChatUpdatedProcessor_UnmarshalError(t *testing.T) {
 
 // --- im.chat.disbanded_v1 ---
 
-func TestImChatDisbandedProcessor_Compact(t *testing.T) {
-	p := &ImChatDisbandedProcessor{}
-	if p.EventType() != "im.chat.disbanded_v1" {
-		t.Fatalf("EventType = %q", p.EventType())
+func TestIMChatDisbandedHandler_Handle(t *testing.T) {
+	h := NewIMChatDisbandedHandler()
+	evt := makeNormalizedEvent("im.chat.disbanded_v1", map[string]interface{}{
+		"chat_id":     "oc_disbanded",
+		"operator_id": map[string]interface{}{"open_id": "ou_disbander"},
+		"external":    true,
+	})
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
 	}
-	raw := makeRawEvent("im.chat.disbanded_v1", `{
-		"chat_id": "oc_disbanded",
-		"operator_id": {"open_id": "ou_disbander"},
-		"external": true
-	}`)
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	out, ok := result.Output.(map[string]interface{})
 	if !ok {
-		t.Fatal("compact should return map")
+		t.Fatal("output should be compact map")
 	}
-	if result["type"] != "im.chat.disbanded_v1" {
-		t.Errorf("type = %v", result["type"])
+	if out["type"] != "im.chat.disbanded_v1" {
+		t.Errorf("type = %v", out["type"])
 	}
-	if result["chat_id"] != "oc_disbanded" {
-		t.Errorf("chat_id = %v", result["chat_id"])
+	if out["chat_id"] != "oc_disbanded" {
+		t.Errorf("chat_id = %v", out["chat_id"])
 	}
-	if result["operator_id"] != "ou_disbander" {
-		t.Errorf("operator_id = %v", result["operator_id"])
+	if out["operator_id"] != "ou_disbander" {
+		t.Errorf("operator_id = %v", out["operator_id"])
 	}
-	if result["external"] != true {
-		t.Errorf("external = %v, want true", result["external"])
+	if out["external"] != true {
+		t.Errorf("external = %v, want true", out["external"])
 	}
 }
 
@@ -407,6 +485,44 @@ func TestImChatDisbandedProcessor_UnmarshalError(t *testing.T) {
 	raw := makeRawEvent("im.chat.disbanded_v1", `nope`)
 	if _, ok := p.Transform(context.Background(), raw, TransformCompact).(*RawEvent); !ok {
 		t.Fatal("unmarshal error should fallback to *RawEvent")
+	}
+}
+
+// --- generic fallback handler ---
+
+func TestGenericFallbackHandler_HandleUnknownEvent(t *testing.T) {
+	h := NewGenericFallbackHandler()
+	evt := &Event{
+		Source:    SourceWebhook,
+		EventType: "unknown.event",
+		EventID:   "ev_unknown",
+		Domain:    DomainUnknown,
+		Payload: NormalizedPayload{
+			Header: EventHeader{EventID: "ev_unknown", EventType: "unknown.event", CreateTime: "1700000009"},
+			Data:   map[string]interface{}{"foo": "bar"},
+		},
+		RawPayload: []byte(`{"foo":"bar","nested":{"x":1}}`),
+	}
+
+	result := h.Handle(context.Background(), evt)
+	if result.Status != HandlerStatusHandled {
+		t.Fatalf("status = %q", result.Status)
+	}
+	out, ok := result.Output.(map[string]interface{})
+	if !ok {
+		t.Fatal("output should be a map")
+	}
+	if out["type"] != "unknown.event" {
+		t.Fatalf("type = %v", out["type"])
+	}
+	if out["event_id"] != "ev_unknown" {
+		t.Fatalf("event_id = %v", out["event_id"])
+	}
+	if out["foo"] != "bar" {
+		t.Fatalf("foo = %v", out["foo"])
+	}
+	if out["raw_payload"] != `{"foo":"bar","nested":{"x":1}}` {
+		t.Fatalf("raw_payload = %v", out["raw_payload"])
 	}
 }
 

@@ -29,6 +29,11 @@ func resetInit() {
 	testMetaURL = ""
 }
 
+// hasEmbeddedData returns true if the default embedded registry baseline is compiled in.
+func hasEmbeddedData() bool {
+	return len(embeddedMetaJSON) > 0
+}
+
 // hasEmbeddedServices returns true if meta_data.json with real services is compiled in.
 func hasEmbeddedServices() bool {
 	if len(embeddedMetaJSON) == 0 {

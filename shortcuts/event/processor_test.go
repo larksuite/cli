@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,20 +16,6 @@ import (
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 )
-
-// chdirTemp changes cwd to a fresh temp dir for the test duration.
-func chdirTemp(t *testing.T) {
-	t.Helper()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chdir(orig) })
-}
 
 // helper to build a RawEvent from event-level JSON and header fields.
 func makeRawEvent(eventType string, eventJSON string) *RawEvent {
@@ -42,6 +27,66 @@ func makeRawEvent(eventType string, eventJSON string) *RawEvent {
 		},
 		Event: json.RawMessage(eventJSON),
 	}
+}
+
+func makeInboundEnvelope(eventType, eventJSON string) InboundEnvelope {
+	body := `{"schema":"2.0","header":{"event_id":"ev_test","event_type":"` + eventType + `"},"event":` + eventJSON + `}`
+	return InboundEnvelope{
+		Source:     SourceWebSocket,
+		ReceivedAt: time.Unix(1700000000, 0).UTC(),
+		RawPayload: []byte(body),
+	}
+}
+
+func TestBuildWebSocketEnvelope(t *testing.T) {
+	body := []byte(`{"schema":"2.0","header":{"event_id":"ev_test","event_type":"im.message.receive_v1"},"event":{"message":{"message_id":"om_123"}}}`)
+	before := time.Now()
+	env := BuildWebSocketEnvelope(body)
+	after := time.Now()
+
+	if env.Source != SourceWebSocket {
+		t.Fatalf("Source = %q, want %q", env.Source, SourceWebSocket)
+	}
+	if env.ReceivedAt.Before(before) || env.ReceivedAt.After(after) {
+		t.Fatalf("ReceivedAt = %v, want between %v and %v", env.ReceivedAt, before, after)
+	}
+	if !bytes.Equal(env.RawPayload, body) {
+		t.Fatalf("RawPayload = %s, want %s", env.RawPayload, body)
+	}
+	if &env.RawPayload[0] == &body[0] {
+		t.Fatal("RawPayload should copy input bytes")
+	}
+}
+
+func TestBuildWebSocketEnvelopePreservesValidJSON(t *testing.T) {
+	body := []byte(`{"schema":"2.0","header":{"event_id":"ev_test","event_type":"im.message.receive_v1"},"event":{"message":{"message_id":"om_123"}}}`)
+	env := BuildWebSocketEnvelope(body)
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(env.RawPayload, &decoded); err != nil {
+		t.Fatalf("RawPayload should remain valid JSON: %v", err)
+	}
+}
+
+func makeTestRegistry(handler EventHandler, fallback EventHandler) *HandlerRegistry {
+	registry := NewHandlerRegistry()
+	if handler != nil {
+		if handler.EventType() != "" {
+			if err := registry.RegisterEventHandler(handler); err != nil {
+				panic(err)
+			}
+		} else if handler.Domain() != "" {
+			if err := registry.RegisterDomainHandler(handler); err != nil {
+				panic(err)
+			}
+		}
+	}
+	if fallback != nil {
+		if err := registry.SetFallbackHandler(fallback); err != nil {
+			panic(err)
+		}
+	}
+	return registry
 }
 
 // --- Registry ---
@@ -190,53 +235,394 @@ func TestGenericProcessor_Raw(t *testing.T) {
 
 // --- Pipeline ---
 
-func TestPipeline_Raw(t *testing.T) {
+func TestPipeline_NormalizesAndDispatchesEventHandler(t *testing.T) {
+	var calls []string
+	handler := &testEventHandler{
+		id:        "event-handler",
+		eventType: "im.message.receive_v1",
+		result:    HandlerResult{Status: HandlerStatusHandled},
+		called:    &calls,
+	}
+	registry := makeTestRegistry(handler, nil)
 	filters := NewFilterChain()
 	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformRaw}, &out, &errOut)
+	p := NewEventPipeline(registry, filters, PipelineConfig{Mode: TransformCompact}, &out, &errOut)
 
-	eventJSON := `{"file_token":"xxx"}`
-	raw := makeRawEvent("drive.file.edit_v1", eventJSON)
-	raw.Header.EventID = "ev_raw"
-	raw.Header.CreateTime = "1700000000"
-	raw.Header.AppID = "cli_test"
-	p.Process(context.Background(), raw)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"id":"1"}}`))
 
-	// Raw output should be the complete original event (schema + header + event)
-	var outputMap map[string]interface{}
-	if err := json.Unmarshal(out.Bytes(), &outputMap); err != nil {
-		t.Fatalf("failed to parse output: %v", err)
+	if got, want := calls, []string{"event-handler"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %v, want %v", got, want)
 	}
-	if outputMap["schema"] != "2.0" {
-		t.Errorf("schema = %v, want 2.0", outputMap["schema"])
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("got %d output lines, want 1", len(lines))
 	}
-	header, ok := outputMap["header"].(map[string]interface{})
-	if !ok {
-		t.Fatal("raw output should contain header object")
+	var record map[string]interface{}
+	if err := json.Unmarshal([]byte(lines[0]), &record); err != nil {
+		t.Fatalf("invalid NDJSON line: %v", err)
 	}
-	if header["event_type"] != "drive.file.edit_v1" {
-		t.Errorf("header.event_type = %v", header["event_type"])
+	if record["event_type"] != "im.message.receive_v1" {
+		t.Fatalf("event_type = %v", record["event_type"])
 	}
-	if header["app_id"] != "cli_test" {
-		t.Errorf("header.app_id = %v, want cli_test", header["app_id"])
+	if record["handler_id"] != "event-handler" {
+		t.Fatalf("handler_id = %v", record["handler_id"])
+	}
+	if record["domain"] != "im" {
+		t.Fatalf("domain = %v", record["domain"])
 	}
 }
 
 func TestPipeline_Filtered(t *testing.T) {
 	filters := NewFilterChain(NewEventTypeFilter("im.message.receive_v1"))
 	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{}, &out, &errOut)
+	p := NewEventPipeline(NewHandlerRegistry(), filters, PipelineConfig{}, &out, &errOut)
 
-	raw := makeRawEvent("drive.file.edit_v1", `{}`)
-	p.Process(context.Background(), raw)
+	p.Process(context.Background(), makeInboundEnvelope("drive.file.edit_v1", `{}`))
 
-	if p.EventCount() != 0 {
-		t.Errorf("filtered event should not be counted")
-	}
 	if out.Len() != 0 {
 		t.Error("filtered event should produce no output")
+	}
+}
+
+func TestNewBuiltinHandlerRegistryRegistersBuiltins(t *testing.T) {
+	registry := NewBuiltinHandlerRegistry()
+	if got := registry.EventHandlers("im.message.receive_v1"); len(got) != 1 || got[0].ID() != imMessageHandlerID {
+		t.Fatalf("EventHandlers(im.message.receive_v1) = %#v, want built-in IM handler", got)
+	}
+	if got := registry.FallbackHandler(); got == nil || got.ID() != genericHandlerID {
+		t.Fatalf("FallbackHandler() = %#v, want built-in generic fallback", got)
+	}
+}
+
+func TestPipeline_PreservesHandlerCompactOutput(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{id: "compact", eventType: "im.message.receive_v1", fn: func(_ context.Context, evt *Event) HandlerResult {
+		return HandlerResult{
+			Status: HandlerStatusHandled,
+			Output: map[string]interface{}{
+				"type":       evt.EventType,
+				"message_id": "om_123",
+				"content":    "hello",
+			},
+		}
+	}}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformCompact}, &out, &errOut)
+
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	var record map[string]interface{}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
+		t.Fatalf("invalid NDJSON line: %v", err)
+	}
+	if record["handler_id"] != "compact" {
+		t.Fatalf("handler_id = %v, want compact", record["handler_id"])
+	}
+	if record["type"] != "im.message.receive_v1" {
+		t.Fatalf("type = %v, want im.message.receive_v1", record["type"])
+	}
+	if record["message_id"] != "om_123" {
+		t.Fatalf("message_id = %v, want om_123", record["message_id"])
+	}
+	if record["content"] != "hello" {
+		t.Fatalf("content = %v, want hello", record["content"])
+	}
+}
+
+func TestPipeline_CompactModeWritesDispatchRecord(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{
+		id:        "compact-handler",
+		eventType: "im.message.receive_v1",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{
+				Status: HandlerStatusHandled,
+				Output: map[string]interface{}{
+					"type":       evt.EventType,
+					"message_id": "om_123",
+				},
+			}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformCompact}, &out, &errOut)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	var record map[string]interface{}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
+		t.Fatalf("invalid compact-mode output: %v", err)
+	}
+	if record["handler_id"] != "compact-handler" {
+		t.Fatalf("handler_id = %v", record["handler_id"])
+	}
+	if record["message_id"] != "om_123" {
+		t.Fatalf("message_id = %v", record["message_id"])
+	}
+	if record["status"] != "handled" {
+		t.Fatalf("status = %v", record["status"])
+	}
+}
+
+func TestPipeline_EventCountTracksInboundEventsWithMultipleHandlers(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{
+		id:        "event-handler",
+		eventType: "im.message.receive_v1",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{
+				Status: HandlerStatusHandled,
+				Output: map[string]interface{}{"type": evt.EventType, "source": "event"},
+			}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterEventHandler(event) error = %v", err)
+	}
+	if err := registry.RegisterDomainHandler(handlerFuncWith{
+		id:     "domain-handler",
+		domain: "im",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{
+				Status: HandlerStatusHandled,
+				Output: map[string]interface{}{"type": evt.EventType, "source": "domain"},
+			}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterDomainHandler(domain) error = %v", err)
+	}
+
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformCompact}, &out, &errOut)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("len(lines) = %d, want 2 dispatch records", len(lines))
+	}
+	if got, want := p.EventCount(), int64(1); got != want {
+		t.Fatalf("EventCount() = %d, want %d inbound event", got, want)
+	}
+	if got, want := p.DispatchCount(), int64(2); got != want {
+		t.Fatalf("DispatchCount() = %d, want %d dispatch records", got, want)
+	}
+}
+
+func TestPipeline_RawModeWritesEventRecord(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{id: genericHandlerID, eventType: "im.message.receive_v1", fn: func(_ context.Context, evt *Event) HandlerResult {
+		return HandlerResult{
+			Status: HandlerStatusHandled,
+			Output: map[string]interface{}{
+				"content": "handler-output-should-not-leak",
+			},
+		}
+	}}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw}, &out, &errOut)
+	rawPayload := `{"message":{"message_id":"om_123","message_type":"text","content":"{\"text\":\"hello\"}"}}`
+
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", rawPayload))
+
+	var record map[string]interface{}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
+		t.Fatalf("invalid NDJSON line: %v", err)
+	}
+	if got, want := record["event_type"], "im.message.receive_v1"; got != want {
+		t.Fatalf("event_type = %v, want %v", got, want)
+	}
+	if got, want := record["status"], string(HandlerStatusHandled); got != want {
+		t.Fatalf("status = %v, want %v", got, want)
+	}
+	if got, want := record["source"], string(SourceWebSocket); got != want {
+		t.Fatalf("source = %v, want %v", got, want)
+	}
+	if got := record["idempotency_key"]; got == nil || got == "" {
+		t.Fatalf("idempotency_key = %v, want non-empty", got)
+	}
+	if got, want := record["raw_payload"], `{"schema":"2.0","header":{"event_id":"ev_test","event_type":"im.message.receive_v1"},"event":{"message":{"message_id":"om_123","message_type":"text","content":"{\"text\":\"hello\"}"}}}`; got != want {
+		t.Fatalf("raw_payload = %v, want %v", got, want)
+	}
+	payload, ok := record["payload"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload = %T, want object", record["payload"])
+	}
+	message, ok := payload["message"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload.message = %T, want object", payload["message"])
+	}
+	if got, want := message["message_id"], "om_123"; got != want {
+		t.Fatalf("payload.message.message_id = %v, want %v", got, want)
+	}
+	if got, want := message["content"], `{"text":"hello"}`; got != want {
+		t.Fatalf("payload.message.content = %v, want %v", got, want)
+	}
+	if got, want := record["domain"], "im"; got != want {
+		t.Fatalf("domain = %v, want %v", got, want)
+	}
+	if got, want := record["event_id"], "ev_test"; got != want {
+		t.Fatalf("event_id = %v, want %v", got, want)
+	}
+	if _, exists := record["handler_id"]; exists {
+		t.Fatalf("handler_id should be absent in raw mode: %v", record["handler_id"])
+	}
+	if _, exists := record["content"]; exists {
+		t.Fatalf("content should be absent in raw mode: %v", record["content"])
+	}
+}
+
+func TestPipeline_RawModeCanWriteViaOutputRouter(t *testing.T) {
+	tmpDir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(cwd)
+	}()
+	router, err := ParseRoutes([]string{"^im\\.message=dir:./im"})
+	if err != nil {
+		t.Fatalf("ParseRoutes() error = %v", err)
+	}
+	fallbackDir := filepath.Join(tmpDir, "default")
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{id: genericHandlerID, eventType: "im.message.receive_v1", fn: func(_ context.Context, evt *Event) HandlerResult {
+		return HandlerResult{Status: HandlerStatusHandled}
+	}}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+	p := newEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw}, &out, &errOut, &outputRouter{router: router, defaultDir: fallbackDir, fallback: ndjsonRecordWriter{w: &out}, seq: new(uint64), writers: map[string]*dirRecordWriter{}})
+
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	if out.Len() != 0 {
+		t.Fatalf("stdout output = %q, want empty when routed to files", out.String())
+	}
+	entries, err := os.ReadDir(filepath.Join(tmpDir, "im"))
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("routed files = %d, want 1", len(entries))
+	}
+	data, err := os.ReadFile(filepath.Join(tmpDir, "im", entries[0].Name()))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	var record map[string]interface{}
+	if err := json.Unmarshal(bytes.TrimSpace(data), &record); err != nil {
+		t.Fatalf("invalid routed JSON: %v", err)
+	}
+	if got, want := record["event_type"], "im.message.receive_v1"; got != want {
+		t.Fatalf("event_type = %v, want %v", got, want)
+	}
+	if got, want := record["raw_payload"], `{"schema":"2.0","header":{"event_id":"ev_test","event_type":"im.message.receive_v1"},"event":{"message":{"message_id":"om_123"}}}`; got != want {
+		t.Fatalf("raw_payload = %v, want %v", got, want)
+	}
+	if _, err := os.Stat(fallbackDir); !os.IsNotExist(err) {
+		t.Fatalf("fallback dir stat err = %v, want not exists", err)
+	}
+}
+
+func TestPipeline_RawModePrettyJSONStillWritesCompactFileJSONWhenRouted(t *testing.T) {
+	tmpDir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(cwd)
+	}()
+	router, err := ParseRoutes([]string{"^im\\.message=dir:./im"})
+	if err != nil {
+		t.Fatalf("ParseRoutes() error = %v", err)
+	}
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{id: genericHandlerID, eventType: "im.message.receive_v1", fn: func(_ context.Context, evt *Event) HandlerResult {
+		return HandlerResult{Status: HandlerStatusHandled}
+	}}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+	p := newEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw, PrettyJSON: true}, &out, &errOut, &outputRouter{router: router, fallback: ndjsonRecordWriter{w: &out}, seq: new(uint64), writers: map[string]*dirRecordWriter{}})
+
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	if out.Len() != 0 {
+		t.Fatalf("stdout output = %q, want empty when routed to files", out.String())
+	}
+	entries, err := os.ReadDir(filepath.Join(tmpDir, "im"))
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("routed files = %d, want 1", len(entries))
+	}
+	data, err := os.ReadFile(filepath.Join(tmpDir, "im", entries[0].Name()))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Contains(trimmed, []byte("\n  \"event_type\"")) {
+		t.Fatalf("routed file unexpectedly used pretty JSON: %q", string(data))
+	}
+	var record map[string]interface{}
+	if err := json.Unmarshal(trimmed, &record); err != nil {
+		t.Fatalf("invalid routed JSON: %v", err)
+	}
+	if got, want := record["event_type"], "im.message.receive_v1"; got != want {
+		t.Fatalf("event_type = %v, want %v", got, want)
+	}
+}
+
+func TestPipeline_RawModePrettyJSONFallsBackToPrettyStdoutWhenUnmatched(t *testing.T) {
+	tmpDir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(cwd)
+	}()
+	router, err := ParseRoutes([]string{"^contact\\.=dir:./contacts"})
+	if err != nil {
+		t.Fatalf("ParseRoutes() error = %v", err)
+	}
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{id: genericHandlerID, eventType: "im.message.receive_v1", fn: func(_ context.Context, evt *Event) HandlerResult {
+		return HandlerResult{Status: HandlerStatusHandled}
+	}}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+	p := newEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw, PrettyJSON: true}, &out, &errOut, &outputRouter{router: router, fallback: ndjsonRecordWriter{w: &out}, seq: new(uint64), writers: map[string]*dirRecordWriter{}})
+
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	got := out.String()
+	if !strings.Contains(got, `"event_type":"im.message.receive_v1"`) {
+		t.Fatalf("stdout output = %q, want compact fallback NDJSON", got)
+	}
+	if strings.Contains(got, "\n  \"event_type\"") {
+		t.Fatalf("stdout output = %q, want fallback writer to ignore PrettyJSON", got)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "contacts")); !os.IsNotExist(err) {
+		t.Fatalf("contacts dir stat err = %v, want not exists", err)
 	}
 }
 
@@ -250,115 +636,120 @@ func TestDeduplicateKey(t *testing.T) {
 	}
 }
 
-func TestPipeline_Dedup(t *testing.T) {
+func TestPipeline_DedupePreventsDuplicateDispatch(t *testing.T) {
+	var calls []string
+	handler := &testEventHandler{
+		id:        "event-handler",
+		eventType: "im.message.receive_v1",
+		result:    HandlerResult{Status: HandlerStatusHandled},
+		called:    &calls,
+	}
+	registry := makeTestRegistry(handler, nil)
 	filters := NewFilterChain()
 	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformRaw}, &out, &errOut)
+	p := NewEventPipeline(registry, filters, PipelineConfig{}, &out, &errOut)
+	env := makeInboundEnvelope("im.message.receive_v1", `{"message":{"id":"1"}}`)
 
-	raw := makeRawEvent("im.message.receive_v1", `{"message":{"id":"1"}}`)
+	p.Process(context.Background(), env)
+	p.Process(context.Background(), env)
 
-	// First event should pass
-	p.Process(context.Background(), raw)
-	if p.EventCount() != 1 {
-		t.Fatalf("EventCount = %d, want 1", p.EventCount())
+	if got, want := calls, []string{"event-handler"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %v, want %v", got, want)
 	}
-	firstLen := out.Len()
-	if firstLen == 0 {
-		t.Fatal("expected output from first event")
-	}
-
-	// Same event_id again should be deduped
-	p.Process(context.Background(), raw)
-	if p.EventCount() != 1 {
-		t.Errorf("EventCount = %d, want 1 (deduped)", p.EventCount())
-	}
-	if out.Len() != firstLen {
-		t.Error("duplicate event should produce no additional output")
-	}
-
-	// Different event_id should pass
-	raw2 := makeRawEvent("im.message.receive_v1", `{"message":{"id":"2"}}`)
-	raw2.Header.EventID = "ev_other"
-	p.Process(context.Background(), raw2)
-	if p.EventCount() != 2 {
-		t.Errorf("EventCount = %d, want 2", p.EventCount())
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("got %d output lines, want 1", len(lines))
 	}
 }
 
-// --- Pipeline: OutputDir ---
-
-func TestPipeline_OutputDir(t *testing.T) {
-	dir := t.TempDir()
-	filters := NewFilterChain()
-	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformCompact, OutputDir: dir}, &out, &errOut)
-	if err := p.EnsureDirs(); err != nil {
-		t.Fatal(err)
+func TestPipeline_MalformedEventUsesFallback(t *testing.T) {
+	var captured *Event
+	registry := NewHandlerRegistry()
+	if err := registry.SetFallbackHandler(handlerFuncWith{id: "fallback", fn: func(_ context.Context, evt *Event) HandlerResult {
+		captured = evt
+		return HandlerResult{Status: HandlerStatusHandled}
+	}}); err != nil {
+		t.Fatalf("SetFallbackHandler() error = %v", err)
 	}
+	var out, errOut bytes.Buffer
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{}, &out, &errOut)
 
-	eventJSON := `{
-		"message": {
-			"message_id": "msg_file", "chat_id": "oc_001",
-			"chat_type": "group", "message_type": "text",
-			"content": "{\"text\":\"file test\"}", "create_time": "1700000000"
+	p.Process(context.Background(), InboundEnvelope{
+		Source:     SourceWebhook,
+		ReceivedAt: time.Unix(1700000001, 0).UTC(),
+		RawPayload: []byte("not-json"),
+	})
+
+	if captured == nil {
+		t.Fatal("expected fallback to capture malformed event")
+	}
+	if captured.EventType != "malformed" {
+		t.Fatalf("fallback event type = %q, want malformed", captured.EventType)
+	}
+	if captured.Domain != DomainUnknown {
+		t.Fatalf("fallback domain = %q, want %q", captured.Domain, DomainUnknown)
+	}
+	if captured.Metadata["malformed_reason"] != "invalid_json" {
+		t.Fatalf("malformed_reason = %v, want invalid_json", captured.Metadata["malformed_reason"])
+	}
+	if payload, ok := captured.Payload.Data["raw_payload"].(string); !ok || payload != "not-json" {
+		t.Fatalf("raw payload = %v, want not-json", captured.Payload.Data["raw_payload"])
+	}
+}
+
+func TestPipeline_RawModeMalformedEventPreservesRawPayload(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.SetFallbackHandler(handlerFuncWith{
+		id: "fallback",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{Status: HandlerStatusHandled}
 		},
-		"sender": {"sender_id": {"open_id": "ou_001"}}
-	}`
-	raw := makeRawEvent("im.message.receive_v1", eventJSON)
-	raw.Header.EventID = "ev_file"
-	raw.Header.CreateTime = "1700000000"
-	p.Process(context.Background(), raw)
-
-	// stdout should be empty (output goes to file)
-	if out.Len() != 0 {
-		t.Error("OutputDir mode should not write to stdout")
+	}); err != nil {
+		t.Fatalf("SetFallbackHandler() error = %v", err)
 	}
 
-	// Verify file was created
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 file, got %d", len(entries))
-	}
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw}, &out, &errOut)
+	p.Process(context.Background(), InboundEnvelope{
+		Source:     SourceWebhook,
+		ReceivedAt: time.Unix(1700000001, 0).UTC(),
+		RawPayload: []byte("not-json"),
+	})
 
-	// Verify file content is valid JSON
-	data, err := os.ReadFile(filepath.Join(dir, entries[0].Name()))
-	if err != nil {
-		t.Fatal(err)
+	var record map[string]interface{}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
+		t.Fatalf("invalid raw-mode malformed output: %v", err)
 	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("file content is not valid JSON: %v", err)
+	if record["event_type"] != "malformed" {
+		t.Fatalf("event_type = %v", record["event_type"])
 	}
-	if m["type"] != "im.message.receive_v1" {
-		t.Errorf("type = %v", m["type"])
+	if record["raw_payload"] != "not-json" {
+		t.Fatalf("raw_payload = %v", record["raw_payload"])
+	}
+	if record["status"] != "handled" {
+		t.Fatalf("status = %v", record["status"])
 	}
 }
 
-// --- Pipeline: JsonFlag ---
-
-func TestPipeline_JsonFlag(t *testing.T) {
-	filters := NewFilterChain()
+func TestPipeline_RawModePrettyJSONWritesIndentedObject(t *testing.T) {
 	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformRaw, JsonFlag: true}, &out, &errOut)
-
-	raw := makeRawEvent("drive.file.edit_v1", `{"key":"val"}`)
-	p.Process(context.Background(), raw)
-
-	// --json output should be pretty-printed (contain newlines + indentation)
-	output := out.String()
-	if !strings.Contains(output, "\n") {
-		t.Error("--json output should be pretty-printed")
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{
+		id:        "raw-handler",
+		eventType: "im.message.receive_v1",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{Status: HandlerStatusHandled}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
 	}
 
-	var m map[string]interface{}
-	if err := json.Unmarshal([]byte(output), &m); err != nil {
-		t.Fatalf("output is not valid JSON: %v", err)
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformRaw, PrettyJSON: true}, &out, &errOut)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	got := out.String()
+	if !strings.Contains(got, "\n  \"event_type\"") {
+		t.Fatalf("pretty JSON output = %q, want indented object", got)
 	}
 }
 
@@ -367,60 +758,13 @@ func TestPipeline_JsonFlag(t *testing.T) {
 func TestPipeline_Quiet(t *testing.T) {
 	filters := NewFilterChain()
 	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformRaw, Quiet: true}, &out, &errOut)
+	p := NewEventPipeline(NewHandlerRegistry(), filters,
+		PipelineConfig{Quiet: true}, &out, &errOut)
 
-	raw := makeRawEvent("im.message.receive_v1", `{}`)
-	p.Process(context.Background(), raw)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{}`))
 
 	if errOut.Len() != 0 {
 		t.Errorf("quiet mode should suppress stderr, got: %s", errOut.String())
-	}
-}
-
-// --- writeEventFile ---
-
-func TestWriteEventFile(t *testing.T) {
-	dir := t.TempDir()
-	header := larkevent.EventHeader{
-		EventType:  "im.message.receive_v1",
-		EventID:    "ev_write",
-		CreateTime: "1700000000",
-	}
-	data := map[string]string{"hello": "world"}
-
-	path, err := writeEventFile(dir, data, header)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(path, "ev_write") {
-		t.Errorf("path should contain event ID, got: %s", path)
-	}
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(content), `"hello"`) {
-		t.Error("file should contain data")
-	}
-}
-
-func TestWriteEventFile_EmptyFields(t *testing.T) {
-	dir := t.TempDir()
-	header := larkevent.EventHeader{EventType: "test.type"}
-	_, err := writeEventFile(dir, "data", header)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != 1 {
-		t.Fatal("expected 1 file")
-	}
-	name := entries[0].Name()
-	if !strings.Contains(name, "unknown") {
-		t.Errorf("empty EventID should fallback to 'unknown', got: %s", name)
 	}
 }
 
@@ -516,7 +860,7 @@ func TestImMessageProcessor_CompactUnmarshalError(t *testing.T) {
 	}
 }
 
-func TestImMessageProcessor_CompactInteractiveFallsBackToRaw(t *testing.T) {
+func TestImMessageProcessor_CompactInteractiveMatchesHandlerFallback(t *testing.T) {
 	p := &ImMessageProcessor{}
 	raw := makeRawEvent("im.message.receive_v1", `{
 		"message": {
@@ -526,32 +870,26 @@ func TestImMessageProcessor_CompactInteractiveFallsBackToRaw(t *testing.T) {
 		}
 	}`)
 
-	origStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe() error = %v", err)
-	}
-	os.Stderr = w
-	defer func() {
-		os.Stderr = origStderr
-	}()
+	result := p.Transform(context.Background(), raw, TransformCompact)
 
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(*RawEvent)
-	if err := w.Close(); err != nil {
-		t.Fatalf("stderr close error = %v", err)
-	}
-	hint, readErr := io.ReadAll(r)
-	if readErr != nil {
-		t.Fatalf("ReadAll(stderr) error = %v", readErr)
-	}
+	out, ok := result.(map[string]interface{})
 	if !ok {
-		t.Fatal("interactive compact conversion should fallback to *RawEvent")
+		t.Fatalf("interactive compact conversion should follow handler fallback output, got %T", result)
 	}
-	if result != raw {
-		t.Fatal("interactive compact conversion should return the original raw event")
+	evt, ok := legacyEventFromRaw(raw)
+	if !ok {
+		t.Fatal("legacyEventFromRaw() = !ok, want normalized event")
 	}
-	if !strings.Contains(string(hint), "interactive") || !strings.Contains(string(hint), "returning raw event data") {
-		t.Fatalf("stderr hint = %q, want interactive fallback message", string(hint))
+	want, ok := p.Handle(context.Background(), evt).Output.(map[string]interface{})
+	if !ok {
+		t.Fatal("handler fallback output should be compact map")
+	}
+	if !reflect.DeepEqual(out, want) {
+		t.Fatalf("transform output = %#v, want handler output %#v", out, want)
+	}
+	rawPayload, _ := out["raw_payload"].(string)
+	if !strings.Contains(rawPayload, `"message_type":"interactive"`) {
+		t.Fatalf("raw_payload = %q, want original interactive payload", rawPayload)
 	}
 }
 
@@ -567,361 +905,68 @@ func TestGenericProcessor_CompactUnmarshalError(t *testing.T) {
 	}
 }
 
-// --- Router ---
-
-func TestParseRoutes(t *testing.T) {
-	routes, err := ParseRoutes([]string{
-		`^im\.message=dir:./messages/`,
-		`^contact\.=dir:./contacts/`,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if routes == nil {
-		t.Fatal("expected non-nil router")
-	}
-	if len(routes.routes) != 2 {
-		t.Errorf("expected 2 routes, got %d", len(routes.routes))
-	}
+type testHandler struct {
+	id        string
+	eventType string
+	domain    string
 }
 
-func TestParseRoutes_Empty(t *testing.T) {
-	routes, err := ParseRoutes(nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if routes != nil {
-		t.Error("expected nil router for empty input")
-	}
-
-	routes2, err2 := ParseRoutes([]string{})
-	if err2 != nil {
-		t.Fatalf("unexpected error: %v", err2)
-	}
-	if routes2 != nil {
-		t.Error("expected nil router for empty slice")
-	}
+func (h testHandler) ID() string        { return h.id }
+func (h testHandler) EventType() string { return h.eventType }
+func (h testHandler) Domain() string    { return h.domain }
+func (h testHandler) Handle(context.Context, *Event) HandlerResult {
+	return HandlerResult{Status: HandlerStatusHandled}
 }
 
-func TestParseRoutes_MissingEquals(t *testing.T) {
-	_, err := ParseRoutes([]string{"no-equals-sign"})
+type handlerFunc string
+
+func (h handlerFunc) ID() string        { return string(h) }
+func (h handlerFunc) EventType() string { return "" }
+func (h handlerFunc) Domain() string    { return "" }
+func (h handlerFunc) Handle(context.Context, *Event) HandlerResult {
+	return HandlerResult{Status: HandlerStatusHandled}
+}
+
+func (h handlerFunc) with(fn func(context.Context, *Event) HandlerResult) EventHandler {
+	return handlerFuncWith{id: string(h), fn: fn}
+}
+
+type handlerFuncWith struct {
+	id        string
+	eventType string
+	domain    string
+	fn        func(context.Context, *Event) HandlerResult
+}
+
+func (h handlerFuncWith) ID() string        { return h.id }
+func (h handlerFuncWith) EventType() string { return h.eventType }
+func (h handlerFuncWith) Domain() string    { return h.domain }
+func (h handlerFuncWith) Handle(ctx context.Context, evt *Event) HandlerResult {
+	return h.fn(ctx, evt)
+}
+
+func TestHandlerRegistryRejectsDuplicateFallbackHandlerID(t *testing.T) {
+	r := NewHandlerRegistry()
+	if err := r.RegisterEventHandler(testHandler{id: "dup", eventType: "im.message.receive_v1"}); err != nil {
+		t.Fatalf("RegisterEventHandler() error = %v", err)
+	}
+
+	err := r.SetFallbackHandler(testHandler{id: "dup", eventType: "fallback", domain: "fallback"})
 	if err == nil {
-		t.Error("expected error for missing =")
+		t.Fatal("expected duplicate fallback handler ID to be rejected")
+	}
+	if !strings.Contains(err.Error(), "duplicate handler ID: dup") {
+		t.Fatalf("error = %v, want duplicate handler ID", err)
 	}
 }
 
-func TestParseRoutes_InvalidRegex(t *testing.T) {
-	_, err := ParseRoutes([]string{"[invalid=dir:./foo/"})
-	if err == nil {
-		t.Error("expected error for invalid regex")
+func TestHandlerRegistrySetFallbackHandlerStoresHandler(t *testing.T) {
+	r := NewHandlerRegistry()
+	h := testHandler{id: "fallback", eventType: "fallback", domain: "fallback"}
+	if err := r.SetFallbackHandler(h); err != nil {
+		t.Fatalf("SetFallbackHandler() error = %v", err)
 	}
-}
-
-func TestParseRoutes_MissingPrefix(t *testing.T) {
-	_, err := ParseRoutes([]string{`^im\.message=./messages/`})
-	if err == nil {
-		t.Error("expected error for missing dir: prefix")
-	}
-	if !strings.Contains(err.Error(), "dir:") {
-		t.Errorf("error should mention dir: prefix, got: %v", err)
-	}
-}
-
-func TestParseRoutes_EmptyPath(t *testing.T) {
-	_, err := ParseRoutes([]string{`^im\.message=dir:`})
-	if err == nil {
-		t.Error("expected error for empty path")
-	}
-}
-
-func TestParseRoutes_RejectsAbsolutePath(t *testing.T) {
-	_, err := ParseRoutes([]string{`^test=dir:/tmp/evil`})
-	if err == nil {
-		t.Error("expected error for absolute path in route")
-	}
-}
-
-func TestParseRoutes_RejectsTraversal(t *testing.T) {
-	_, err := ParseRoutes([]string{`^test=dir:../../etc/evil`})
-	if err == nil {
-		t.Error("expected error for path traversal in route")
-	}
-}
-
-func TestParseRoutes_PathSafety(t *testing.T) {
-	routes, err := ParseRoutes([]string{`^test=dir:./foo/../bar/`})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	dir := routes.routes[0].dir
-	if !filepath.IsAbs(dir) {
-		t.Errorf("expected absolute path, got %s", dir)
-	}
-	if strings.Contains(dir, "..") {
-		t.Errorf("expected cleaned path without .., got %s", dir)
-	}
-}
-
-func TestEventRouter_Match(t *testing.T) {
-	chdirTemp(t)
-
-	router, err := ParseRoutes([]string{
-		`^im\.message=dir:./test_messages`,
-		`^contact\.=dir:./test_contacts`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Single match
-	dirs := router.Match("im.message.receive_v1")
-	if len(dirs) != 1 {
-		t.Errorf("expected 1 match, got %v", dirs)
-	}
-
-	dirs = router.Match("contact.user.created_v3")
-	if len(dirs) != 1 {
-		t.Errorf("expected 1 match, got %v", dirs)
-	}
-
-	// No match
-	dirs = router.Match("drive.file.edit_v1")
-	if len(dirs) != 0 {
-		t.Errorf("expected no match, got %v", dirs)
-	}
-}
-
-func TestEventRouter_Match_FanOut(t *testing.T) {
-	chdirTemp(t)
-
-	router, err := ParseRoutes([]string{
-		`^im\.=dir:./test_im`,
-		`message=dir:./test_msg`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// "im.message.receive_v1" matches both patterns
-	dirs := router.Match("im.message.receive_v1")
-	if len(dirs) != 2 {
-		t.Errorf("expected 2 matches (fan-out), got %d: %v", len(dirs), dirs)
-	}
-}
-
-// --- Pipeline: Route ---
-
-func TestPipeline_Route(t *testing.T) {
-	chdirTemp(t)
-	router, err := ParseRoutes([]string{
-		`^im\.message=dir:./route_out`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := router.routes[0].dir
-
-	filters := NewFilterChain()
-	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformCompact, Router: router}, &out, &errOut)
-	if err := p.EnsureDirs(); err != nil {
-		t.Fatal(err)
-	}
-
-	eventJSON := `{
-		"message": {
-			"message_id": "msg_route", "chat_id": "oc_001",
-			"chat_type": "group", "message_type": "text",
-			"content": "{\"text\":\"routed\"}", "create_time": "1700000000"
-		},
-		"sender": {"sender_id": {"open_id": "ou_001"}}
-	}`
-	raw := makeRawEvent("im.message.receive_v1", eventJSON)
-	raw.Header.EventID = "ev_route"
-	raw.Header.CreateTime = "1700000000"
-	p.Process(context.Background(), raw)
-
-	// stdout should be empty — output goes to route dir
-	if out.Len() != 0 {
-		t.Errorf("routed event should not appear on stdout, got: %s", out.String())
-	}
-
-	// Verify file was created in route dir
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 file in route dir, got %d", len(entries))
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, entries[0].Name()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("file content is not valid JSON: %v", err)
-	}
-	if m["type"] != "im.message.receive_v1" {
-		t.Errorf("type = %v", m["type"])
-	}
-}
-
-func TestPipeline_Route_NoMatch(t *testing.T) {
-	chdirTemp(t)
-	fallbackDir := t.TempDir()
-
-	router, err := ParseRoutes([]string{
-		`^im\.message=dir:./route_dir`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	routeDir := router.routes[0].dir
-
-	filters := NewFilterChain()
-	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformCompact, Router: router, OutputDir: fallbackDir}, &out, &errOut)
-	if err := p.EnsureDirs(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Send an event that does NOT match the route
-	raw := makeRawEvent("drive.file.edit_v1", `{"file_token":"xxx"}`)
-	raw.Header.EventID = "ev_nomatch"
-	raw.Header.CreateTime = "1700000000"
-	p.Process(context.Background(), raw)
-
-	// stdout should be empty
-	if out.Len() != 0 {
-		t.Errorf("should not appear on stdout, got: %s", out.String())
-	}
-
-	// Route dir should be empty
-	routeEntries, _ := os.ReadDir(routeDir)
-	if len(routeEntries) != 0 {
-		t.Errorf("route dir should be empty, got %d files", len(routeEntries))
-	}
-
-	// Fallback dir should have the file
-	fallbackEntries, _ := os.ReadDir(fallbackDir)
-	if len(fallbackEntries) != 1 {
-		t.Fatalf("fallback dir should have 1 file, got %d", len(fallbackEntries))
-	}
-}
-
-func TestPipeline_Route_NoMatch_Stdout(t *testing.T) {
-	chdirTemp(t)
-
-	router, err := ParseRoutes([]string{
-		`^im\.message=dir:./route_dir`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	routeDir := router.routes[0].dir
-
-	filters := NewFilterChain()
-	var out, errOut bytes.Buffer
-	// No OutputDir — unmatched events should go to stdout
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformRaw, Router: router}, &out, &errOut)
-	if err := p.EnsureDirs(); err != nil {
-		t.Fatal(err)
-	}
-
-	raw := makeRawEvent("drive.file.edit_v1", `{"file_token":"xxx"}`)
-	raw.Header.EventID = "ev_stdout"
-	raw.Header.CreateTime = "1700000000"
-	p.Process(context.Background(), raw)
-
-	// Route dir should be empty
-	routeEntries, _ := os.ReadDir(routeDir)
-	if len(routeEntries) != 0 {
-		t.Errorf("route dir should be empty, got %d files", len(routeEntries))
-	}
-
-	// stdout should have the event
-	if out.Len() == 0 {
-		t.Error("unmatched event should fall through to stdout")
-	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
-		t.Fatalf("stdout is not valid JSON: %v", err)
-	}
-}
-
-func TestPipeline_Route_FanOut(t *testing.T) {
-	chdirTemp(t)
-
-	router, err := ParseRoutes([]string{
-		`^im\.=dir:./fanout1`,
-		`message=dir:./fanout2`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir1 := router.routes[0].dir
-	dir2 := router.routes[1].dir
-
-	filters := NewFilterChain()
-	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformCompact, Router: router}, &out, &errOut)
-	if err := p.EnsureDirs(); err != nil {
-		t.Fatal(err)
-	}
-
-	eventJSON := `{
-		"message": {
-			"message_id": "msg_fanout", "chat_id": "oc_001",
-			"chat_type": "group", "message_type": "text",
-			"content": "{\"text\":\"fanout\"}", "create_time": "1700000000"
-		},
-		"sender": {"sender_id": {"open_id": "ou_001"}}
-	}`
-	raw := makeRawEvent("im.message.receive_v1", eventJSON)
-	raw.Header.EventID = "ev_fanout"
-	raw.Header.CreateTime = "1700000000"
-	p.Process(context.Background(), raw)
-
-	// stdout should be empty
-	if out.Len() != 0 {
-		t.Errorf("fan-out event should not appear on stdout, got: %s", out.String())
-	}
-
-	// Both dirs should have a file
-	entries1, _ := os.ReadDir(dir1)
-	entries2, _ := os.ReadDir(dir2)
-	if len(entries1) != 1 {
-		t.Errorf("dir1 should have 1 file, got %d", len(entries1))
-	}
-	if len(entries2) != 1 {
-		t.Errorf("dir2 should have 1 file, got %d", len(entries2))
-	}
-}
-
-// --- cleanupSeen ---
-
-func TestCleanupSeen(t *testing.T) {
-	filters := NewFilterChain()
-	var out, errOut bytes.Buffer
-	p := NewEventPipeline(DefaultRegistry(), filters,
-		PipelineConfig{Mode: TransformRaw}, &out, &errOut)
-
-	// Insert an expired entry directly
-	p.seen.Store("old_key", time.Now().Add(-10*time.Minute))
-	p.seen.Store("fresh_key", time.Now())
-
-	p.cleanupSeen(time.Now())
-
-	if _, ok := p.seen.Load("old_key"); ok {
-		t.Error("expired key should be cleaned up")
-	}
-	if _, ok := p.seen.Load("fresh_key"); !ok {
-		t.Error("fresh key should be kept")
+	if got := r.FallbackHandler(); got == nil || got.ID() != h.ID() {
+		t.Fatalf("FallbackHandler() = %v, want handler %q", got, h.ID())
 	}
 }
