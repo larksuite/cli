@@ -21,6 +21,10 @@ var (
 )
 
 func authLogDir() string {
+	if dir := os.Getenv("LARKSUITE_CLI_LOG_DIR"); dir != "" {
+		return dir
+	}
+
 	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
 		return filepath.Join(dir, "logs")
 	}
