@@ -31,15 +31,8 @@ func (p *ImMessageReadProcessor) Handle(_ context.Context, evt *Event) HandlerRe
 	return HandlerResult{Status: HandlerStatusHandled, Output: imMessageReadCompactOutput(evt)}
 }
 
-func (p *ImMessageReadProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-	var ev imMessageReadPayload
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
-	}
-	return buildIMMessageReadCompactOutput(raw.Header.EventType, raw.Header.EventID, raw.Header.CreateTime, ev)
+func (p *ImMessageReadProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
 }
 
 func (p *ImMessageReadProcessor) DeduplicateKey(raw *RawEvent) string {

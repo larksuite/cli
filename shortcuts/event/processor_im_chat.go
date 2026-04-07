@@ -31,15 +31,8 @@ func (p *ImChatUpdatedProcessor) Handle(_ context.Context, evt *Event) HandlerRe
 	return HandlerResult{Status: HandlerStatusHandled, Output: imChatUpdatedCompactOutput(evt)}
 }
 
-func (p *ImChatUpdatedProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-	var ev imChatPayload
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
-	}
-	return buildIMChatCompactOutput(raw.Header.EventType, raw.Header.EventID, raw.Header.CreateTime, ev, true)
+func (p *ImChatUpdatedProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
 }
 
 func (p *ImChatUpdatedProcessor) DeduplicateKey(raw *RawEvent) string {
@@ -68,15 +61,8 @@ func (p *ImChatDisbandedProcessor) Handle(_ context.Context, evt *Event) Handler
 	return HandlerResult{Status: HandlerStatusHandled, Output: imChatDisbandedCompactOutput(evt)}
 }
 
-func (p *ImChatDisbandedProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-	var ev imChatPayload
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
-	}
-	return buildIMChatCompactOutput(raw.Header.EventType, raw.Header.EventID, raw.Header.CreateTime, ev, false)
+func (p *ImChatDisbandedProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
 }
 
 func (p *ImChatDisbandedProcessor) DeduplicateKey(raw *RawEvent) string {

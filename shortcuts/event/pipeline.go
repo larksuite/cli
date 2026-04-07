@@ -30,6 +30,7 @@ type EventPipeline struct {
 	config       PipelineConfig
 	deduper      *Deduper
 	dispatcher   *Dispatcher
+	receivedN    atomic.Int64
 	dispatchedN  atomic.Int64
 	out          io.Writer
 	errOut       io.Writer
@@ -74,8 +75,16 @@ func (p *EventPipeline) infof(format string, args ...interface{}) {
 	}
 }
 
-// EventCount returns the number of dispatch records written by the pipeline.
+// EventCount returns the number of inbound events received by the pipeline.
 func (p *EventPipeline) EventCount() int64 {
+	if p == nil {
+		return 0
+	}
+	return p.receivedN.Load()
+}
+
+// DispatchCount returns the number of dispatch records written by the pipeline.
+func (p *EventPipeline) DispatchCount() int64 {
 	if p == nil {
 		return 0
 	}
@@ -84,6 +93,8 @@ func (p *EventPipeline) EventCount() int64 {
 
 // Process is the pipeline entry point.
 func (p *EventPipeline) Process(ctx context.Context, env InboundEnvelope) {
+	p.receivedN.Add(1)
+
 	evt, err := NormalizeEnvelope(env)
 	if err != nil {
 		evt = malformedFallbackEvent(env, err)
@@ -114,16 +125,22 @@ func (p *EventPipeline) Process(ctx context.Context, env InboundEnvelope) {
 
 func (p *EventPipeline) dispatch(ctx context.Context, evt *Event) {
 	result := p.dispatcher.Dispatch(ctx, evt)
+	summarizedReason := summarizeDispatchReason(result)
 	for _, record := range result.Results {
+		p.logDispatchHint(record)
 		var entry map[string]interface{}
-		if p.config.Mode == TransformRaw && p.recordWriter != nil {
+		if p.config.Mode == TransformRaw {
 			entry = rawModeRecord(evt, record)
 			if len(evt.Metadata) > 0 {
 				entry["metadata"] = evt.Metadata
 			}
-			if reason := summarizeDispatchReason(result); reason != "" {
-				entry["reason"] = reason
+			if summarizedReason != "" {
+				entry["reason"] = summarizedReason
 			}
+		} else {
+			entry = compactModeRecord(evt, record)
+		}
+		if p.recordWriter != nil {
 			if err := p.recordWriter.WriteRecord(evt.EventType, entry); err != nil {
 				output.PrintError(p.errOut, fmt.Sprintf("write failed: %v", err))
 				return
@@ -131,16 +148,21 @@ func (p *EventPipeline) dispatch(ctx context.Context, evt *Event) {
 			p.dispatchedN.Add(1)
 			continue
 		}
-		if p.config.Mode == TransformRaw {
-			entry = rawModeRecord(evt, record)
-		} else {
-			entry = compactModeRecord(evt, record)
-		}
 		if err := p.writeRecord(entry); err != nil {
 			output.PrintError(p.errOut, fmt.Sprintf("write failed: %v", err))
 			return
 		}
 		p.dispatchedN.Add(1)
+	}
+}
+
+func (p *EventPipeline) logDispatchHint(record DispatchRecord) {
+	if p == nil {
+		return
+	}
+	switch record.Reason {
+	case "interactive_fallback":
+		p.infof("%s[hint]%s card message (interactive) compact conversion is not yet supported, returning raw event data", output.Dim, output.Reset)
 	}
 }
 

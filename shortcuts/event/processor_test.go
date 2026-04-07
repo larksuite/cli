@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -366,6 +365,49 @@ func TestPipeline_CompactModeWritesDispatchRecord(t *testing.T) {
 	}
 	if record["status"] != "handled" {
 		t.Fatalf("status = %v", record["status"])
+	}
+}
+
+func TestPipeline_EventCountTracksInboundEventsWithMultipleHandlers(t *testing.T) {
+	var out, errOut bytes.Buffer
+	registry := NewHandlerRegistry()
+	if err := registry.RegisterEventHandler(handlerFuncWith{
+		id:        "event-handler",
+		eventType: "im.message.receive_v1",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{
+				Status: HandlerStatusHandled,
+				Output: map[string]interface{}{"type": evt.EventType, "source": "event"},
+			}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterEventHandler(event) error = %v", err)
+	}
+	if err := registry.RegisterDomainHandler(handlerFuncWith{
+		id:     "domain-handler",
+		domain: "im",
+		fn: func(_ context.Context, evt *Event) HandlerResult {
+			return HandlerResult{
+				Status: HandlerStatusHandled,
+				Output: map[string]interface{}{"type": evt.EventType, "source": "domain"},
+			}
+		},
+	}); err != nil {
+		t.Fatalf("RegisterDomainHandler(domain) error = %v", err)
+	}
+
+	p := NewEventPipeline(registry, NewFilterChain(), PipelineConfig{Mode: TransformCompact}, &out, &errOut)
+	p.Process(context.Background(), makeInboundEnvelope("im.message.receive_v1", `{"message":{"message_id":"om_123"}}`))
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("len(lines) = %d, want 2 dispatch records", len(lines))
+	}
+	if got, want := p.EventCount(), int64(1); got != want {
+		t.Fatalf("EventCount() = %d, want %d inbound event", got, want)
+	}
+	if got, want := p.DispatchCount(), int64(2); got != want {
+		t.Fatalf("DispatchCount() = %d, want %d dispatch records", got, want)
 	}
 }
 
@@ -818,7 +860,7 @@ func TestImMessageProcessor_CompactUnmarshalError(t *testing.T) {
 	}
 }
 
-func TestImMessageProcessor_CompactInteractiveFallsBackToRaw(t *testing.T) {
+func TestImMessageProcessor_CompactInteractiveMatchesHandlerFallback(t *testing.T) {
 	p := &ImMessageProcessor{}
 	raw := makeRawEvent("im.message.receive_v1", `{
 		"message": {
@@ -828,32 +870,26 @@ func TestImMessageProcessor_CompactInteractiveFallsBackToRaw(t *testing.T) {
 		}
 	}`)
 
-	origStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe() error = %v", err)
-	}
-	os.Stderr = w
-	defer func() {
-		os.Stderr = origStderr
-	}()
+	result := p.Transform(context.Background(), raw, TransformCompact)
 
-	result, ok := p.Transform(context.Background(), raw, TransformCompact).(*RawEvent)
-	if err := w.Close(); err != nil {
-		t.Fatalf("stderr close error = %v", err)
-	}
-	hint, readErr := io.ReadAll(r)
-	if readErr != nil {
-		t.Fatalf("ReadAll(stderr) error = %v", readErr)
-	}
+	out, ok := result.(map[string]interface{})
 	if !ok {
-		t.Fatal("interactive compact conversion should fallback to *RawEvent")
+		t.Fatalf("interactive compact conversion should follow handler fallback output, got %T", result)
 	}
-	if result != raw {
-		t.Fatal("interactive compact conversion should return the original raw event")
+	evt, ok := legacyEventFromRaw(raw)
+	if !ok {
+		t.Fatal("legacyEventFromRaw() = !ok, want normalized event")
 	}
-	if !strings.Contains(string(hint), "interactive") || !strings.Contains(string(hint), "returning raw event data") {
-		t.Fatalf("stderr hint = %q, want interactive fallback message", string(hint))
+	want, ok := p.Handle(context.Background(), evt).Output.(map[string]interface{})
+	if !ok {
+		t.Fatal("handler fallback output should be compact map")
+	}
+	if !reflect.DeepEqual(out, want) {
+		t.Fatalf("transform output = %#v, want handler output %#v", out, want)
+	}
+	rawPayload, _ := out["raw_payload"].(string)
+	if !strings.Contains(rawPayload, `"message_type":"interactive"`) {
+		t.Fatalf("raw_payload = %q, want original interactive payload", rawPayload)
 	}
 }
 

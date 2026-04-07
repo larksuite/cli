@@ -27,11 +27,8 @@ func (p *GenericProcessor) Handle(_ context.Context, evt *Event) HandlerResult {
 	}
 }
 
-func (p *GenericProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-	return genericCompactMap(raw)
+func (p *GenericProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
 }
 
 func (p *GenericProcessor) DeduplicateKey(raw *RawEvent) string { return raw.Header.EventID }

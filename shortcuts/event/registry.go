@@ -5,6 +5,11 @@ package event
 
 import "fmt"
 
+type builtinEventRuntime interface {
+	EventHandler
+	EventProcessor
+}
+
 // ProcessorRegistry manages event_type → EventProcessor mappings.
 type ProcessorRegistry struct {
 	processors map[string]EventProcessor
@@ -48,21 +53,10 @@ func (r *ProcessorRegistry) Lookup(eventType string) EventProcessor {
 // DefaultRegistry builds the standard processor registry.
 // To add a new processor, just add r.Register(...) here.
 func DefaultRegistry() *ProcessorRegistry {
-	r := NewProcessorRegistry(&GenericProcessor{})
-	// im.message
-	_ = r.Register(&ImMessageProcessor{})
-	_ = r.Register(&ImMessageReadProcessor{})
-	_ = r.Register(NewImReactionCreatedProcessor())
-	_ = r.Register(NewImReactionDeletedProcessor())
-	// im.chat.member
-	_ = r.Register(NewImChatBotAddedProcessor())
-	_ = r.Register(NewImChatBotDeletedProcessor())
-	_ = r.Register(NewImChatMemberUserAddedProcessor())
-	_ = r.Register(NewImChatMemberUserWithdrawnProcessor())
-	_ = r.Register(NewImChatMemberUserDeletedProcessor())
-	// im.chat
-	_ = r.Register(&ImChatUpdatedProcessor{})
-	_ = r.Register(&ImChatDisbandedProcessor{})
+	r := NewProcessorRegistry(NewGenericFallbackHandler())
+	for _, p := range builtinEventRuntimes() {
+		_ = r.Register(p)
+	}
 	return r
 }
 
@@ -78,7 +72,15 @@ func NewHandlerRegistry() *HandlerRegistry {
 // NewBuiltinHandlerRegistry creates a handler registry with the built-in runtime handlers.
 func NewBuiltinHandlerRegistry() *HandlerRegistry {
 	r := NewHandlerRegistry()
-	for _, h := range []EventHandler{
+	for _, h := range builtinEventRuntimes() {
+		_ = r.RegisterEventHandler(h)
+	}
+	_ = r.SetFallbackHandler(NewGenericFallbackHandler())
+	return r
+}
+
+func builtinEventRuntimes() []builtinEventRuntime {
+	return []builtinEventRuntime{
 		NewIMMessageReceiveHandler(),
 		NewIMMessageReadHandler(),
 		NewIMReactionCreatedHandler(),
@@ -90,11 +92,18 @@ func NewBuiltinHandlerRegistry() *HandlerRegistry {
 		NewIMChatMemberUserAddedHandler(),
 		NewIMChatMemberUserWithdrawnHandler(),
 		NewIMChatMemberUserDeletedHandler(),
-	} {
-		_ = r.RegisterEventHandler(h)
 	}
-	_ = r.SetFallbackHandler(NewGenericFallbackHandler())
-	return r
+}
+
+func builtinEventTypes() []string {
+	runtimes := builtinEventRuntimes()
+	types := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if eventType := runtime.EventType(); eventType != "" {
+			types = append(types, eventType)
+		}
+	}
+	return types
 }
 
 // RegisterEventHandler registers a handler for an exact event type.

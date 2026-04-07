@@ -6,10 +6,7 @@ package event
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
 
-	"github.com/larksuite/cli/internal/output"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 )
 
@@ -41,20 +38,8 @@ func (p *ImMessageProcessor) Handle(_ context.Context, evt *Event) HandlerResult
 	return HandlerResult{Status: HandlerStatusHandled, Output: out}
 }
 
-func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-
-	var ev imMessagePayload
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
-	}
-	out, ok := buildIMMessageCompactOutput(raw.Header.EventType, raw.Header.CreateTime, ev)
-	if !ok {
-		return raw
-	}
-	return out
+func (p *ImMessageProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
 }
 
 func (p *ImMessageProcessor) DeduplicateKey(raw *RawEvent) string { return raw.Header.EventID }
@@ -96,7 +81,6 @@ func buildIMMessageCompactOutput(eventType, headerCreateTime string, ev imMessag
 	// Card messages (interactive) are not yet supported for compact conversion;
 	// return raw event data directly.
 	if ev.Message.MessageType == "interactive" {
-		fmt.Fprintf(os.Stderr, "%s[hint]%s card message (interactive) compact conversion is not yet supported, returning raw event data\n", output.Dim, output.Reset)
 		return nil, false
 	}
 

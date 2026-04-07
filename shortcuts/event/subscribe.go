@@ -67,21 +67,10 @@ var newWSClient = func(config *core.CliConfig, eventDispatcher *dispatcher.Event
 }
 
 // subscribedEventTypes are the default SDK registrations used by catch-all mode.
-// Keep this list broad enough to preserve the long-standing mixed-domain surface
-// of event +subscribe. Event families without dedicated handlers still flow
-// through the generic fallback after normalization.
-var subscribedEventTypes = []string{
-	"im.message.receive_v1",
-	"im.message.message_read_v1",
-	"im.message.reaction.created_v1",
-	"im.message.reaction.deleted_v1",
-	"im.chat.member.bot.added_v1",
-	"im.chat.member.bot.deleted_v1",
-	"im.chat.member.user.added_v1",
-	"im.chat.member.user.withdrawn_v1",
-	"im.chat.member.user.deleted_v1",
-	"im.chat.updated_v1",
-	"im.chat.disbanded_v1",
+// Built-in handler event types come from builtinEventTypes(); the extra legacy
+// non-IM families stay subscribed so catch-all preserves the long-standing
+// mixed-domain surface and still flows through the generic fallback.
+var subscribedEventTypes = append(builtinEventTypes(), []string{
 	"contact.user.created_v3",
 	"contact.user.updated_v3",
 	"contact.user.deleted_v3",
@@ -95,7 +84,7 @@ var subscribedEventTypes = []string{
 	"task.task.update_tenant_v1",
 	"task.task.comment_updated_v1",
 	"drive.notice.comment_add_v1",
-}
+}...)
 
 func subscribedEventTypesFor(eventTypesStr string) []string {
 	filter := NewEventTypeFilter(eventTypesStr)

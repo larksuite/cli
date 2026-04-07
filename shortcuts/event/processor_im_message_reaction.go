@@ -54,15 +54,8 @@ func (p *ImMessageReactionProcessor) Handle(_ context.Context, evt *Event) Handl
 	return HandlerResult{Status: HandlerStatusHandled, Output: imMessageReactionCompactOutput(evt, p.eventType)}
 }
 
-func (p *ImMessageReactionProcessor) Transform(_ context.Context, raw *RawEvent, mode TransformMode) interface{} {
-	if mode == TransformRaw {
-		return raw
-	}
-	var ev imMessageReactionPayload
-	if err := json.Unmarshal(raw.Event, &ev); err != nil {
-		return raw
-	}
-	return buildIMMessageReactionCompactOutput(raw.Header.EventType, raw.Header.EventID, raw.Header.CreateTime, p.eventType, ev)
+func (p *ImMessageReactionProcessor) Transform(ctx context.Context, raw *RawEvent, mode TransformMode) interface{} {
+	return transformViaHandler(ctx, raw, mode, p)
 }
 
 func (p *ImMessageReactionProcessor) DeduplicateKey(raw *RawEvent) string {
