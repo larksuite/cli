@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -17,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -120,7 +120,7 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Validate file
-		stat, err := os.Stat(filePath)
+		stat, err := vfs.Stat(filePath)
 		if err != nil {
 			return output.ErrValidation("file not found: %s", filePath)
 		}
@@ -359,7 +359,7 @@ func extractCreatedBlockTargets(createData map[string]interface{}, mediaType str
 
 // uploadMediaFile uploads a file to Feishu drive as media.
 func uploadMediaFile(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, mediaType, parentNode, docId string) (string, error) {
-	f, err := os.Open(filePath)
+	f, err := vfs.Open(filePath)
 	if err != nil {
 		return "", err
 	}

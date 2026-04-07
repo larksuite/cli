@@ -68,6 +68,9 @@ var CalendarFreebusy = common.Shortcut{
 			Body(map[string]interface{}{"time_min": timeMin, "time_max": timeMax, "user_id": userId, "need_rsvp_status": true})
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
+			return err
+		}
 		userId := runtime.Str("user-id")
 		if userId == "" && runtime.IsBot() {
 			return common.FlagErrorf("--user-id is required for bot identity")

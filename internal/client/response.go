@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // ── Response routing ──
@@ -26,6 +26,7 @@ import (
 type ResponseOptions struct {
 	OutputPath string        // --output flag; "" = auto-detect
 	Format     output.Format // output format for JSON responses
+	JqExpr     string        // if set, apply jq filter instead of Format
 	Out        io.Writer     // stdout
 	ErrOut     io.Writer     // stderr
 	// CheckError is called on parsed JSON results. Nil defaults to CheckLarkResponse.
@@ -62,11 +63,17 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		if opts.OutputPath != "" {
 			return saveAndPrint(resp, opts.OutputPath, opts.Out)
 		}
+		if opts.JqExpr != "" {
+			return output.JqFilter(opts.Out, result, opts.JqExpr)
+		}
 		output.FormatValue(opts.Out, result, opts.Format)
 		return nil
 	}
 
 	// Non-JSON (binary) responses.
+	if opts.JqExpr != "" {
+		return output.ErrValidation("--jq requires a JSON response (got Content-Type: %s)", ct)
+	}
 	if opts.OutputPath != "" {
 		return saveAndPrint(resp, opts.OutputPath, opts.Out)
 	}
@@ -118,7 +125,7 @@ func SaveResponse(resp *larkcore.ApiResp, outputPath string) (map[string]interfa
 		return nil, fmt.Errorf("unsafe output path: %s", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
 		return nil, fmt.Errorf("create directory: %s", err)
 	}
 

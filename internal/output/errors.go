@@ -40,10 +40,11 @@ func WriteErrorEnvelope(w io.Writer, err *ExitError, identity string) {
 	if err.Detail == nil {
 		return
 	}
-	env := ErrorEnvelope{
+	env := &ErrorEnvelope{
 		OK:       false,
 		Identity: identity,
 		Error:    err.Detail,
+		Notice:   GetNotice(),
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

@@ -12,14 +12,15 @@ import (
 	"net/http"
 	netmail "net/mail"
 	"net/url"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -217,24 +218,24 @@ func mailboxPath(mailboxID string, segments ...string) string {
 }
 
 // fetchMailboxPrimaryEmail retrieves mailbox primary_email_address from
-// user_mailboxes.profile. Returns empty string on failure (non-fatal).
-func fetchMailboxPrimaryEmail(runtime *common.RuntimeContext, mailboxID string) string {
+// user_mailboxes.profile. Returns the email address or an error.
+func fetchMailboxPrimaryEmail(runtime *common.RuntimeContext, mailboxID string) (string, error) {
 	if mailboxID == "" {
 		mailboxID = "me"
 	}
 	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "profile"), nil, nil)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	if email := extractPrimaryEmail(data); email != "" {
-		return email
+		return email, nil
 	}
 	if nested, ok := data["data"].(map[string]interface{}); ok {
 		if email := extractPrimaryEmail(nested); email != "" {
-			return email
+			return email, nil
 		}
 	}
-	return ""
+	return "", fmt.Errorf("profile API returned no primary_email_address")
 }
 
 func extractPrimaryEmail(data map[string]interface{}) string {
@@ -251,7 +252,8 @@ func extractPrimaryEmail(data map[string]interface{}) string {
 
 // fetchCurrentUserEmail retrieves the current mailbox primary email.
 func fetchCurrentUserEmail(runtime *common.RuntimeContext) string {
-	return fetchMailboxPrimaryEmail(runtime, "me")
+	email, _ := fetchMailboxPrimaryEmail(runtime, "me")
+	return email
 }
 
 // fetchSelfEmailSet returns a set containing the primary email of the given
@@ -263,7 +265,7 @@ func fetchSelfEmailSet(runtime *common.RuntimeContext, mailboxID string) map[str
 		mailboxID = "me"
 	}
 	set := make(map[string]bool)
-	if email := fetchMailboxPrimaryEmail(runtime, mailboxID); email != "" {
+	if email, _ := fetchMailboxPrimaryEmail(runtime, mailboxID); email != "" {
 		set[strings.ToLower(email)] = true
 	}
 	return set
@@ -679,6 +681,9 @@ func addUniqueID(dst *[]string, seen map[string]bool, id string) {
 }
 
 func listMailboxFolders(runtime *common.RuntimeContext, mailboxID string) ([]folderInfo, error) {
+	if err := validateFolderReadScope(runtime); err != nil {
+		return nil, err
+	}
 	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "folders"), nil, nil)
 	if err != nil {
 		return nil, output.ErrValidation("unable to resolve --folder: failed to list folders (%v). %s", err, resolveLookupHint("folder", mailboxID))
@@ -700,6 +705,9 @@ func listMailboxFolders(runtime *common.RuntimeContext, mailboxID string) ([]fol
 }
 
 func listMailboxLabels(runtime *common.RuntimeContext, mailboxID string) ([]labelInfo, error) {
+	if err := validateLabelReadScope(runtime); err != nil {
+		return nil, err
+	}
 	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "labels"), nil, nil)
 	if err != nil {
 		return nil, output.ErrValidation("unable to resolve --label: failed to list labels (%v). %s", err, resolveLookupHint("label", mailboxID))
@@ -1841,7 +1849,7 @@ func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount .
 		if err != nil {
 			return fmt.Errorf("unsafe attachment path %s: %w", p, err)
 		}
-		info, err := os.Stat(safePath)
+		info, err := vfs.Stat(safePath)
 		if err != nil {
 			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
 		}
@@ -1850,6 +1858,79 @@ func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount .
 	if totalBytes > MaxAttachmentBytes {
 		return fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB limit",
 			float64(totalBytes)/1024/1024)
+	}
+	return nil
+}
+
+// validateConfirmSendScope checks that the user's token includes the
+// mail:user_mailbox.message:send scope when --confirm-send is set.
+// This scope is not declared in the shortcut's static Scopes (to keep the
+// default draft-only path accessible without the sensitive send permission),
+// so we validate it dynamically here.
+func validateConfirmSendScope(runtime *common.RuntimeContext) error {
+	if !runtime.Bool("confirm-send") {
+		return nil
+	}
+	appID := runtime.Config.AppID
+	userOpenId := runtime.UserOpenId()
+	if appID == "" || userOpenId == "" {
+		return nil
+	}
+	stored := auth.GetStoredToken(appID, userOpenId)
+	if stored == nil {
+		return nil
+	}
+	required := []string{"mail:user_mailbox.message:send"}
+	if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
+		return output.ErrWithHint(output.ExitAuth, "missing_scope",
+			fmt.Sprintf("--confirm-send requires scope: %s", strings.Join(missing, ", ")),
+			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant the send permission", strings.Join(missing, " ")))
+	}
+	return nil
+}
+
+// validateFolderReadScope checks that the user's token includes the
+// mail:user_mailbox.folder:read scope. Called on-demand by listMailboxFolders
+// before hitting the folders API. System folders are resolved locally and
+// never reach this check.
+func validateFolderReadScope(runtime *common.RuntimeContext) error {
+	appID := runtime.Config.AppID
+	userOpenId := runtime.UserOpenId()
+	if appID == "" || userOpenId == "" {
+		return nil
+	}
+	stored := auth.GetStoredToken(appID, userOpenId)
+	if stored == nil {
+		return nil
+	}
+	required := []string{"mail:user_mailbox.folder:read"}
+	if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
+		return output.ErrWithHint(output.ExitAuth, "missing_scope",
+			fmt.Sprintf("folder resolution requires scope: %s", strings.Join(missing, ", ")),
+			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant folder read permission", strings.Join(missing, " ")))
+	}
+	return nil
+}
+
+// validateLabelReadScope checks that the user's token includes the
+// mail:user_mailbox.message:modify scope. Called on-demand by listMailboxLabels
+// before hitting the labels API. System labels are resolved locally and
+// never reach this check.
+func validateLabelReadScope(runtime *common.RuntimeContext) error {
+	appID := runtime.Config.AppID
+	userOpenId := runtime.UserOpenId()
+	if appID == "" || userOpenId == "" {
+		return nil
+	}
+	stored := auth.GetStoredToken(appID, userOpenId)
+	if stored == nil {
+		return nil
+	}
+	required := []string{"mail:user_mailbox.message:modify"}
+	if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
+		return output.ErrWithHint(output.ExitAuth, "missing_scope",
+			fmt.Sprintf("label resolution requires scope: %s", strings.Join(missing, ", ")),
+			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant label access permission", strings.Join(missing, " ")))
 	}
 	return nil
 }

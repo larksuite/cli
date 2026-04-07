@@ -46,6 +46,12 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 For AI agents: this command blocks until the user completes authorization in the
 browser. Run it in the background and retrieve the verification URL from its output.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if mode := f.ResolveStrictMode(cmd.Context()); mode == core.StrictModeBot {
+				return output.Errorf(output.ExitValidation, "strict_mode",
+					"strict mode is %q, user login is not allowed. "+
+						"This setting is managed by the administrator and must not be modified by AI agents.",
+					mode)
+			}
 			opts.Ctx = cmd.Context()
 			if runF != nil {
 				return runF(opts)
@@ -53,6 +59,7 @@ browser. Run it in the background and retrieve the verification URL from its out
 			return authLoginRun(opts)
 		},
 	}
+	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space-separated)")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
@@ -90,6 +97,7 @@ func completeDomain(toComplete string) []string {
 	return completions
 }
 
+// authLoginRun executes the login command logic.
 func authLoginRun(opts *LoginOptions) error {
 	f := opts.Factory
 
@@ -100,8 +108,10 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// Determine UI language from saved config
 	lang := "zh"
-	if multi, _ := core.LoadMultiAppConfig(); multi != nil && len(multi.Apps) > 0 {
-		lang = multi.Apps[0].Lang
+	if multi, _ := core.LoadMultiAppConfig(); multi != nil {
+		if app := multi.FindApp(config.ProfileName); app != nil {
+			lang = app.Lang
+		}
 	}
 	msg := getLoginMsg(lang)
 
@@ -225,26 +235,34 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// --no-wait: return immediately with device code and URL
 	if opts.NoWait {
-		b, _ := json.Marshal(map[string]interface{}{
+		data := map[string]interface{}{
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
 			"expires_in":       authResp.ExpiresIn,
 			"hint":             fmt.Sprintf("Show verification_url to user, then immediately execute: lark-cli auth login --device-code %s (blocks until authorized or timeout). Do not instruct the user to run this command themselves.", authResp.DeviceCode),
-		})
-		fmt.Fprintln(f.IOStreams.Out, string(b))
+		}
+		encoder := json.NewEncoder(f.IOStreams.Out)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(data); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+		}
 		return nil
 	}
 
 	// Step 2: Show user code and verification URL
 	if opts.JSON {
-		b, _ := json.Marshal(map[string]interface{}{
+		data := map[string]interface{}{
 			"event":                     "device_authorization",
 			"verification_uri":          authResp.VerificationUri,
 			"verification_uri_complete": authResp.VerificationUriComplete,
 			"user_code":                 authResp.UserCode,
 			"expires_in":                authResp.ExpiresIn,
-		})
-		fmt.Fprintln(f.IOStreams.Out, string(b))
+		}
+		encoder := json.NewEncoder(f.IOStreams.Out)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(data); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+		}
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
@@ -295,18 +313,9 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 
 	// Step 8: Update config — overwrite Users to single user, clean old tokens
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil && len(multi.Apps) > 0 {
-		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != openId {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: openId, UserName: userName}}
-		if err := core.SaveMultiAppConfig(multi); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-		}
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+		_ = larkauth.RemoveStoredToken(config.AppID, openId)
+		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
 	if opts.JSON {
@@ -375,21 +384,46 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	}
 
 	// Update config — overwrite Users to single user, clean old tokens
-	multi, _ := core.LoadMultiAppConfig()
-	if multi != nil && len(multi.Apps) > 0 {
-		app := &multi.Apps[0]
-		for _, oldUser := range app.Users {
-			if oldUser.UserOpenId != openId {
-				larkauth.RemoveStoredToken(config.AppID, oldUser.UserOpenId)
-			}
-		}
-		app.Users = []core.AppUser{{UserOpenId: openId, UserName: userName}}
-		if err := core.SaveMultiAppConfig(multi); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-		}
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+		_ = larkauth.RemoveStoredToken(config.AppID, openId)
+		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
+	return nil
+}
+
+func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	app := findProfileByName(multi, profileName)
+	if app == nil {
+		return fmt.Errorf("profile %q not found in config", profileName)
+	}
+
+	oldUsers := append([]core.AppUser(nil), app.Users...)
+	app.Users = []core.AppUser{{UserOpenId: openID, UserName: userName}}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+
+	for _, oldUser := range oldUsers {
+		if oldUser.UserOpenId != openID {
+			_ = larkauth.RemoveStoredToken(appID, oldUser.UserOpenId)
+		}
+	}
+	return nil
+}
+
+func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.AppConfig {
+	for i := range multi.Apps {
+		if multi.Apps[i].ProfileName() == profileName {
+			return &multi.Apps[i]
+		}
+	}
 	return nil
 }
 

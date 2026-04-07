@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // AtomicWrite writes data to path atomically by creating a temp file in the
@@ -41,7 +43,7 @@ func AtomicWriteFromReader(path string, reader io.Reader, perm os.FileMode) (int
 
 func atomicWrite(path string, perm os.FileMode, writeFn func(tmp *os.File) error) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	tmp, err := vfs.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
@@ -51,7 +53,7 @@ func atomicWrite(path string, perm os.FileMode, writeFn func(tmp *os.File) error
 	defer func() {
 		if !success {
 			tmp.Close()
-			os.Remove(tmpName)
+			vfs.Remove(tmpName)
 		}
 	}()
 
@@ -67,7 +69,7 @@ func atomicWrite(path string, perm os.FileMode, writeFn func(tmp *os.File) error
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := vfs.Rename(tmpName, path); err != nil {
 		return err
 	}
 	success = true

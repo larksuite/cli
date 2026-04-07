@@ -63,12 +63,6 @@ func TestFetchMergeForwardSubMessages(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case strings.Contains(req.URL.Path, "tenant_access_token"):
-				return convertlibJSONResponse(200, map[string]interface{}{
-					"code":                0,
-					"tenant_access_token": "tenant-token",
-					"expire":              7200,
-				}), nil
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_root"):
 				return convertlibJSONResponse(200, map[string]interface{}{
 					"code": 0,
@@ -95,12 +89,6 @@ func TestFetchMergeForwardSubMessages(t *testing.T) {
 	t.Run("empty data", func(t *testing.T) {
 		runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case strings.Contains(req.URL.Path, "tenant_access_token"):
-				return convertlibJSONResponse(200, map[string]interface{}{
-					"code":                0,
-					"tenant_access_token": "tenant-token",
-					"expire":              7200,
-				}), nil
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_bad"):
 				return convertlibJSONResponse(200, map[string]interface{}{"code": 0}), nil
 			default:
@@ -118,12 +106,6 @@ func TestFetchMergeForwardSubMessages(t *testing.T) {
 func TestMergeForwardConverterWithRuntime(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_root"):
 			return convertlibJSONResponse(200, map[string]interface{}{
 				"code": 0,

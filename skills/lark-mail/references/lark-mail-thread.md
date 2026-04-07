@@ -67,7 +67,8 @@ lark-cli mail +thread --thread-id <thread-id> --dry-run
 
 ## 注意事项
 
-- JSON 输出中 `messages[].body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变）。
+- **JSON 输出可直接使用**，可直接读取，无需额外编码转换。
+- JSON 输出中 `messages[].body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变，`jq -r` 可还原）。
 - `mail +thread` 不再在读取会话时获取附件/图片下载 URL。如后续步骤需要 URL，请针对特定的 `message_id` 和 `attachment_ids` 调用原生附件 URL API。
 - 与 `+message` 一样，普通附件和内嵌图片都出现在 `messages[].attachments[]` 中，使用同一个 `user_mailbox.message.attachments download_url` API。
 - 查看某条邮件的原始 HTML：

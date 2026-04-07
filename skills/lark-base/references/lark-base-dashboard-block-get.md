@@ -1,8 +1,8 @@
 # base +dashboard-block-get
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [lark-base-dashboard.md](lark-base-dashboard.md) 了解整体工作流。
 
-获取仪表盘中单个 Block 的详情。
+获取仪表盘中单个组件的详情（包含 data_config 完整配置）。常用于：1) 查看组件的完整配置；2) 编辑组件前了解当前配置。
 
 ## 推荐命令
 
@@ -10,7 +10,7 @@
 lark-cli base +dashboard-block-get \
   --base-token bascn***************CtadY \
   --dashboard-id blkxxx \
-  --block-id 9v7g********idcd
+  --block-id chtxxxxxxxx
 ```
 
 ## 参数
@@ -24,35 +24,34 @@ lark-cli base +dashboard-block-get \
 | `--format <fmt>` | 否 | 输出格式 |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
-## API 入参详情
+## 返回示例
 
-**HTTP 方法和路径：**
-
+```json
+{
+  "block": {
+    "block_id": "chtxxxxxxxx",
+    "name": "柱状图",
+    "type": "column",
+    "data_config": {
+      "table_name": "电商交易明细",
+      "series": [{"field_name": "营销费用", "rollup": "SUM"}],
+      "group_by": [{"field_name": "品类", "mode": "integrated"}]
+    },
+    "layout": {"x": 0, "y": 0, "w": 6, "h": 4}
+  }
+}
 ```
-GET /open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id
-```
-
-**Query 参数：**
-
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `user_id_type` | 否 | 用户 ID 类型，默认 open_id（仅在 filter 涉及人员字段时使用） |
 
 ## 返回重点
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `block_id` | string | Block ID |
-| `name` | string | Block 名称 |
-| `type` | string | Block 类型 |
-| `layout` | object | 布局信息（只读） |
-| `layout.x` | int | X 坐标 |
-| `layout.y` | int | Y 坐标 |
-| `layout.w` | int | 宽度 |
-| `layout.h` | int | 高度 |
-| `data_config` | object | 数据配置 |
+| 字段 | 说明                            |
+|------|-------------------------------|
+| `block.block_id` | 组件 ID                         |
+| `block.name` | 组件名称                          |
+| `block.type` | 组件类型（如 `column`/`line`/`pie`） |
+| `block.data_config` | 数据配置（新建/编辑组件时可基于此字段修改）        |
+| `block.layout` | 布局信息（只读，x/y/w/h 坐标和尺寸）        |
 
 ## 参考
 
-- [lark-base-dashboard-block.md](lark-base-dashboard-block.md) — block 索引页
-- [dashboard-block-data-config.md](dashboard-block-data-config.md) — data_config 结构详解
+- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块指引

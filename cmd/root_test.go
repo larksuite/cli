@@ -65,7 +65,7 @@ func TestPersistentPreRunE_ConfigSubcommands(t *testing.T) {
 	}
 }
 
-func TestHandleRootError_RawError_SkipsEnrichmentAndEnvelope(t *testing.T) {
+func TestHandleRootError_RawError_SkipsEnrichmentButWritesEnvelope(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
@@ -82,9 +82,9 @@ func TestHandleRootError_RawError_SkipsEnrichmentAndEnvelope(t *testing.T) {
 	if code != output.ExitAPI {
 		t.Errorf("expected exit code %d, got %d", output.ExitAPI, code)
 	}
-	// stderr should be empty — no envelope written
-	if stderr.Len() != 0 {
-		t.Errorf("expected empty stderr for Raw error, got: %s", stderr.String())
+	// stderr should contain the error envelope
+	if stderr.Len() == 0 {
+		t.Error("expected non-empty stderr for Raw error — WriteErrorEnvelope should always run")
 	}
 	// The message should NOT have been enriched by enrichPermissionError
 	// (ErrAPI sets "Permission denied [code]" but enrichment would replace it with "App scope not enabled: ...")

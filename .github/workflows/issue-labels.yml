@@ -1,0 +1,57 @@
+name: Issue Labels
+
+on:
+  schedule:
+    - cron: '0 * * * *' # every hour
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Do not write labels, only print planned changes"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-labels
+  cancel-in-progress: true
+
+jobs:
+  sync-issue-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # v6+ uses Node 24 runtime for JavaScript actions.
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Sync managed issue labels
+        id: sync_issue_labels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          args=(
+            "--max-issues" "300"
+          )
+
+          # Schedule runs should write labels by default.
+          # Manual runs default to dry-run unless explicitly disabled.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "${INPUT_DRY_RUN:-true}" = "true" ]; then
+            args+=("--dry-run" "--json")
+          fi
+
+          node scripts/issue-labels/index.js "${args[@]}"
+
+      - name: Warn when label sync fails
+        if: ${{ always() && steps.sync_issue_labels.outcome == 'failure' }}
+        run: |
+          echo "::warning::Issue label sync failed; labels may be stale."
+          echo "⚠️ Issue label sync failed; labels may be stale." >> "$GITHUB_STEP_SUMMARY"

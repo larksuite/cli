@@ -96,6 +96,9 @@ metadata:
    - 先通过 `+table-list` / `+field-list` 获取真实的表名、字段名
    - 禁止凭自然语言猜测表名/字段名填入 workflow 配置
 
+## Dashboard（仪表盘/数据看板）模块
+**当用户提到 "仪表盘、dashboard、数据看板、图表、可视化、block、组件、添加组件、创建图表" 等仪表盘相关的关键词时，必须阅读** [lark-base-dashboard.md](references/lark-base-dashboard.md) 这个指引文档，了解仪表盘模块的命令和能力后再进行后续操作。
+
 ## 核心规则
 
 1. **只使用原子命令** — 使用 `+table-list / +table-get / +field-create / +record-upsert / +view-set-filter / +record-history-list / +base-get` 这类一命令一动作的写法，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`
@@ -145,10 +148,7 @@ metadata:
 | 列表 / 获取表单 | `lark-cli base +form-list` / `+form-get` | 原子命令 |
 | 创建 / 更新 / 删除表单 | `lark-cli base +form-create` / `+form-update` / `+form-delete` | 一命令一动作 |
 | 列表 / 创建 / 更新 / 删除表单问题 | `lark-cli base +form-questions-list` / `+form-questions-create` / `+form-questions-update` / `+form-questions-delete` | 一命令一动作 |
-| 列表 / 获取仪表盘 | `lark-cli base +dashboard-list` / `+dashboard-get` | 原子命令 |
-| 创建 / 更新 / 删除仪表盘 | `lark-cli base +dashboard-create` / `+dashboard-update` / `+dashboard-delete` | 一命令一动作 |
-| 列表 / 获取仪表盘 Block | `lark-cli base +dashboard-block-list` / `+dashboard-block-get` | 原子命令 |
-| 创建 / 更新 / 删除仪表盘 Block | `lark-cli base +dashboard-block-create` / `+dashboard-block-update` / `+dashboard-block-delete` | 一命令一动作 |
+| 创建/管理仪表盘及图表 | `+dashboard-* / +dashboard-block-*` | **必须先读** [lark-base-dashboard.md](references/lark-base-dashboard.md) |
 
 
 ## 操作注意事项
@@ -166,7 +166,6 @@ metadata:
 - **`+base-create / +base-copy` 结果返回规范**：创建或复制成功后，回复中必须主动返回新 Base 的标识信息。若返回结果里带可访问链接（如 `base.url`），要一并返回
 - **`+base-create / +base-copy` 友好性规则**：`--folder-token`、`--time-zone`、复制时的 `--name` 都是可选项。用户没有特别要求时，不要为了这些可选参数额外打断；能直接创建/复制就直接执行
 - **`+base-create / +base-copy` 权限处理（bot 创建）**：若 Base 由应用身份（bot）创建，创建或复制成功后默认继续使用 bot 身份为当前可用 user（指当前 CLI 中 auth 模块已登录且可用的用户身份）添加 `full_access`（管理员）权限，并在回复中明确授权结果（成功 / 无可用 user / 授权失败及原因）。若授权未完成，要继续给出后续引导（稍后重试授权或继续用 bot）；owner 转移必须单独确认，禁止擅自执行
-- **dashboard 使用方式**：`+dashboard-create` 创建后返回 `dashboard_id`；Block 的 `data_config` 通过 JSON 字符串传入，支持 `@file.json` 读取文件
 - **advperm 使用方式**：`+advperm-enable` 启用高级权限后才能管理角色（`+role-*`）；`+advperm-disable` 是高风险操作，停用后已有自定义角色全部失效；操作用户必须为 Base 管理员；先读 [lark-base-advperm-enable.md](references/lark-base-advperm-enable.md) / [lark-base-advperm-disable.md](references/lark-base-advperm-disable.md)
 - **role 使用方式**：`+role-create` 仅支持 `custom_role`；`+role-update` 采用 Delta Merge（`role_name` 和 `role_type` 必须始终提供）；`+role-delete` 不可逆且仅支持自定义角色；角色配置支持 `base_rule_map`（Base 级复制/下载）、`table_rule_map`（表级权限含记录/字段粒度）、`dashboard_rule_map`（仪表盘权限）、`docx_rule_map`（文档权限）；写角色前先读 [role-config.md](references/role-config.md)
 - **表单 form-id**：通过 `+form-list` 获取；`+form-create` 返回的 `id` 即 `form-id`，可用于 `+form-questions-*` 操作
@@ -279,8 +278,7 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 - [lark-base-role-create.md](references/lark-base-role-create.md) — `+role-create` 创建角色
 - [lark-base-role-update.md](references/lark-base-role-update.md) — `+role-update` 更新角色
 - [lark-base-role-delete.md](references/lark-base-role-delete.md) — `+role-delete` 删除角色
-- [lark-base-dashboard.md](references/lark-base-dashboard.md) — dashboard 命令索引（每个命令已拆到独立文档）
-- [lark-base-dashboard-block.md](references/lark-base-dashboard-block.md) — dashboard block 命令索引（每个命令已拆到独立文档）
+- [lark-base-dashboard.md](references/lark-base-dashboard.md) — dashboard 模块工作流指引
 - [dashboard-block-data-config.md](references/dashboard-block-data-config.md) — Block data_config 结构、图表类型、filter 规则
 - [lark-base-workflow.md](references/lark-base-workflow.md) — workflow 命令索引
 - [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) — `+workflow-create/+workflow-update` JSON body 数据结构详解，包含触发器及各类节点的配置规则（强烈推荐）
@@ -305,5 +303,4 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 | [`form commands`](references/lark-base-form-create.md) | `+form-list / +form-get / +form-create / +form-update / +form-delete` |
 | [`form questions commands`](references/lark-base-form-questions-create.md) | `+form-questions-list / +form-questions-create / +form-questions-update / +form-questions-delete` |
 | [`workflow commands`](references/lark-base-workflow.md) | `+workflow-list / +workflow-get / +workflow-create / +workflow-update / +workflow-enable / +workflow-disable` |
-| [`dashboard commands`](references/lark-base-dashboard.md) | `+dashboard-list / +dashboard-get / +dashboard-create / +dashboard-update / +dashboard-delete` |
-| [`dashboard block commands`](references/lark-base-dashboard-block.md) | `+dashboard-block-list / +dashboard-block-get / +dashboard-block-create / +dashboard-block-update / +dashboard-block-delete` |
+| [`dashboard / dashboard-block commands`](references/lark-base-dashboard.md) | `+dashboard-list / +dashboard-get / +dashboard-create / +dashboard-update / +dashboard-delete / +dashboard-block-list / +dashboard-block-get / +dashboard-block-create / +dashboard-block-update / +dashboard-block-delete` |

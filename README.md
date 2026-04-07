@@ -2,17 +2,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
-A command-line tool for [Lark/Feishu](https://www.larksuite.com/) Open Platform — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Calendar, Mail, Tasks, Meetings, and more, with 200+ commands and 19 AI Agent [Skills](./skills/).
+The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Calendar, Mail, Tasks, Meetings, and more, with 200+ commands and 20 AI Agent [Skills](./skills/).
 
 [Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
 
 ## Why lark-cli?
 
-- **Agent-Native Design** — 19 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
-- **Wide Coverage** — 11 business domains, 200+ curated commands, 19 AI Agent [Skills](./skills/)
+- **Agent-Native Design** — 20 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
+- **Wide Coverage** — 12 business domains, 200+ curated commands, 20 AI Agent [Skills](./skills/)
 - **AI-Friendly & Optimized** — Every command is tested with real Agents, featuring concise parameters, smart defaults, and structured output to maximize Agent call success rates
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
@@ -21,19 +22,20 @@ A command-line tool for [Lark/Feishu](https://www.larksuite.com/) Open Platform 
 
 ## Features
 
-| Category      | Capabilities                                                                        |
-| ------------- | ----------------------------------------------------------------------------------- |
-| 📅 Calendar   | View agenda, create events, invite attendees, check free/busy status, time suggestions |
-| 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media |
-| 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards          |
-| 📁 Drive      | Upload and download files, search docs & wiki, manage comments                      |
-| 📊 Base       | Create and manage tables, fields, records, views, dashboards, data aggregation & analytics |
-| 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                      |
-| ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders |
-| 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                            |
-| 👤 Contact    | Search users by name/email/phone, get user profiles                                 |
-| 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail    |
-| 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                          |
+| Category      | Capabilities                                                                                                                      |
+| ------------- |-----------------------------------------------------------------------------------------------------------------------------------|
+| 📅 Calendar   | View agenda, create events, invite attendees, check free/busy status, time suggestions                                            |
+| 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media                  |
+| 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards                                                        |
+| 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
+| 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
+| 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                                                                    |
+| ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders                                      |
+| 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
+| 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
+| 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
+| 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                                                                        |
+| ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 
 ## Installation & Quick Start
 
@@ -46,16 +48,20 @@ Before you start, make sure you have:
 
 ### Quick Start (Human Users)
 
-> **Tip:** If you have an AI Agent, you can hand this README to it and let the AI handle installation and setup — jump to [Quick Start (AI Agent)](#quick-start-ai-agent).
+> **Note for AI assistants:** If you are an AI Agent helping the user with installation, jump directly to [Quick Start (AI Agent)](#quick-start-ai-agent), which contains all the steps you need to complete.
 
-#### Install CLI
+#### Install
 
 Choose **one** of the following methods:
 
 **Option 1 — From npm (recommended):**
 
 ```bash
+# Install CLI
 npm install -g @larksuite/cli
+
+# Install CLI SKILL (required)
+npx skills add larksuite/cli -y -g
 ```
 
 **Option 2 — From source:**
@@ -66,17 +72,8 @@ Requires Go `v1.23`+ and Python 3.
 git clone https://github.com/larksuite/cli.git
 cd cli
 make install
-```
 
-#### Install AI Agent Skills
-
-[Skills](./skills/) are structured instruction documents that enable AI Agents to use this CLI:
-
-```bash
-# Install all skills to current directory
-npx skills add larksuite/cli -y
-
-# Install all skills globally
+# Install CLI SKILL (required)
 npx skills add larksuite/cli -y -g
 ```
 
@@ -97,21 +94,17 @@ lark-cli calendar +agenda
 
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
 
-**Step 1 — Install CLI**
+**Step 1 — Install**
 
 ```bash
+# Install CLI
 npm install -g @larksuite/cli
+
+# Install CLI SKILL (required)
+npx skills add larksuite/cli -y -g
 ```
 
-**Step 2 — Install Skills (core step, do not skip)**
-
-> Skills are the instruction files that tell the AI Agent what commands are available and how to call them. This step is essential for the Agent to work with lark-cli.
-
-```bash
-npx skills add larksuite/cli --all -y
-```
-
-**Step 3 — Configure app credentials**
+**Step 2 — Configure app credentials**
 
 > Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
 
@@ -119,7 +112,7 @@ npx skills add larksuite/cli --all -y
 lark-cli config init --new
 ```
 
-**Step 4 — Login**
+**Step 3 — Login**
 
 > Same as above: run in the background, extract the authorization URL and send it to the user.
 
@@ -127,7 +120,7 @@ lark-cli config init --new
 lark-cli auth login --recommend
 ```
 
-**Step 5 — Verify**
+**Step 4 — Verify**
 
 ```bash
 lark-cli auth status
@@ -135,27 +128,28 @@ lark-cli auth status
 
 ## Agent Skills
 
-| Skill                           | Description                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
+| Skill                           | Description                                                                                                    |
+| ------------------------------- |----------------------------------------------------------------------------------------------------------------|
 | `lark-shared`                   | App config, auth login, identity switching, scope management, security rules (auto-loaded by all other skills) |
-| `lark-calendar`                 | Calendar events, agenda view, free/busy queries, time suggestions                     |
-| `lark-im`                       | Send/reply messages, group chat management, message search, upload/download images & files, reactions |
-| `lark-doc`                      | Create, read, update, search documents (Markdown-based)                               |
-| `lark-drive`                    | Upload, download files, manage permissions & comments                                 |
-| `lark-sheets`                   | Create, read, write, append, find, export spreadsheets                                |
-| `lark-base`                     | Tables, fields, records, views, dashboards, data aggregation & analytics              |
-| `lark-task`                     | Tasks, task lists, subtasks, reminders, member assignment                              |
-| `lark-mail`                     | Browse, search, read emails, send, reply, forward, draft management, watch new mail   |
-| `lark-contact`                  | Search users by name/email/phone, get user profiles                                   |
-| `lark-wiki`                     | Knowledge spaces, nodes, documents                                                    |
-| `lark-event`                    | Real-time event subscriptions (WebSocket), regex routing & agent-friendly format       |
-| `lark-vc`                       | Search meeting records, query meeting minutes (summary, todos, transcript)             |
-| `lark-whiteboard`               | Whiteboard/chart DSL rendering                                                        |
-| `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters)                            |
-| `lark-openapi-explorer`         | Explore underlying APIs from official docs                                            |
-| `lark-skill-maker`              | Custom skill creation framework                                                       |
-| `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                              |
-| `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                       |
+| `lark-calendar`                 | Calendar events, agenda view, free/busy queries, time suggestions                                              |
+| `lark-im`                       | Send/reply messages, group chat management, message search, upload/download images & files, reactions          |
+| `lark-doc`                      | Create, read, update, search documents (Markdown-based)                                                        |
+| `lark-drive`                    | Upload, download files, manage permissions & comments                                                          |
+| `lark-sheets`                   | Create, read, write, append, find, export spreadsheets                                                         |
+| `lark-base`                     | Tables, fields, records, views, dashboards, data aggregation & analytics                                       |
+| `lark-task`                     | Tasks, task lists, subtasks, reminders, member assignment                                                      |
+| `lark-mail`                     | Browse, search, read emails, send, reply, forward, draft management, watch new mail                            |
+| `lark-contact`                  | Search users by name/email/phone, get user profiles                                                            |
+| `lark-wiki`                     | Knowledge spaces, nodes, documents                                                                             |
+| `lark-event`                    | Real-time event subscriptions (WebSocket), regex routing & agent-friendly format                               |
+| `lark-vc`                       | Search meeting records, query meeting minutes (summary, todos, transcript)                                     |
+| `lark-whiteboard`               | Whiteboard/chart DSL rendering                                                                                 |
+| `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters)                                                     |
+| `lark-openapi-explorer`         | Explore underlying APIs from official docs                                                                     |
+| `lark-skill-maker`              | Custom skill creation framework                                                                                |
+| `lark-approval`                 | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                   |
+| `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                                                      |
+| `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                                                |
 
 ## Authentication
 
@@ -272,6 +266,10 @@ To reduce these risks, the tool enables default security protections at multiple
 We recommend using the Lark/Feishu bot integrated with this tool as a private conversational assistant. Do not add it to group chats or allow other users to interact with it, to avoid abuse of permissions or data leakage.
 
 Please fully understand all usage risks. By using this tool, you are deemed to voluntarily assume all related responsibilities.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
 
 ## Contributing
 

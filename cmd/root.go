@@ -4,11 +4,14 @@
 package cmd
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strconv"
 
 	"github.com/larksuite/cli/cmd/api"
@@ -16,6 +19,7 @@ import (
 	"github.com/larksuite/cli/cmd/completion"
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/doctor"
+	"github.com/larksuite/cli/cmd/profile"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/cmd/service"
 	internalauth "github.com/larksuite/cli/internal/auth"
@@ -24,6 +28,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
@@ -58,6 +63,8 @@ FLAGS:
     --page-limit <N>      max pages to fetch with --page-all (default: 10, 0 for unlimited)
     --page-delay <MS>     delay in ms between pages (default: 200, only with --page-all)
     -o, --output <path>   output file path for binary responses
+    --jq <expr>           jq expression to filter JSON output
+    -q <expr>             shorthand for --jq
     --dry-run             print request without executing
 
 AI AGENT SKILLS:
@@ -65,7 +72,7 @@ AI AGENT SKILLS:
     teach the agent Lark API patterns, best practices, and workflows.
 
     Install all skills:
-        npx skills add larksuite/cli --all -y
+        npx skills add larksuite/cli -g -y
 
     Or pick specific domains:
         npx skills add larksuite/cli -s lark-calendar -y
@@ -82,8 +89,14 @@ More help: lark-cli <command> --help`
 
 // Execute runs the root command and returns the process exit code.
 func Execute() int {
-	f := cmdutil.NewDefault()
+	inv, err := BootstrapInvocationContext(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		return 1
+	}
+	f := cmdutil.NewDefault(inv)
 
+	globals := &GlobalOptions{Profile: inv.Profile}
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
 		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
@@ -92,12 +105,15 @@ func Execute() int {
 	}
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
+
+	RegisterGlobalFlags(rootCmd.PersistentFlags(), globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
 	}
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
+	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
@@ -105,10 +121,71 @@ func Execute() int {
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
 
+	// Prune commands incompatible with strict mode.
+	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
+		pruneForStrictMode(rootCmd, mode)
+	}
+
+	// --- Update check (non-blocking) ---
+	if !isCompletionCommand(os.Args) {
+		setupUpdateNotice()
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		return handleRootError(f, err)
 	}
 	return 0
+}
+
+// setupUpdateNotice starts an async update check and wires the output decorator.
+func setupUpdateNotice() {
+	// Sync: check cache immediately (no network, fast).
+	if info := update.CheckCached(build.Version); info != nil {
+		update.SetPending(info)
+	}
+
+	// Async: refresh cache for this run (and future runs).
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "update check panic: %v\n", r)
+			}
+		}()
+		update.RefreshCache(build.Version)
+		// If cache was just populated for the first time, set pending now.
+		if update.GetPending() == nil {
+			if info := update.CheckCached(build.Version); info != nil {
+				update.SetPending(info)
+			}
+		}
+	}()
+
+	// Wire the output decorator so JSON envelopes include "_notice".
+	output.PendingNotice = func() map[string]interface{} {
+		info := update.GetPending()
+		if info == nil {
+			return nil
+		}
+		return map[string]interface{}{
+			"update": map[string]interface{}{
+				"current": info.Current,
+				"latest":  info.Latest,
+				"message": info.Message(),
+			},
+		}
+	}
+}
+
+// isCompletionCommand returns true if args indicate a shell completion request.
+// Update notifications must be suppressed for these to avoid corrupting
+// machine-parseable completion output.
+func isCompletionCommand(args []string) bool {
+	for _, arg := range args {
+		if arg == "completion" || arg == "__complete" {
+			return true
+		}
+	}
+	return false
 }
 
 // handleRootError dispatches a command error to the appropriate handler
@@ -126,12 +203,11 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 
 	// All other structured errors normalize to ExitError.
 	if exitErr := asExitError(err); exitErr != nil {
-		if exitErr.Raw {
-			// Raw errors (e.g. from `api` command) already printed the full API
-			// response to stdout; skip enrichment and duplicate stderr envelope.
-			return exitErr.Code
+		if !exitErr.Raw {
+			// Raw errors (e.g. from `api` command) preserve the original API
+			// error detail; skip enrichment which would clear it.
+			enrichPermissionError(f, exitErr)
 		}
-		enrichPermissionError(f, exitErr)
 		output.WriteErrorEnvelope(errOut, exitErr, string(f.ResolvedIdentity))
 		return exitErr.Code
 	}
@@ -184,12 +260,18 @@ func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyErr
 	}
 
 	env := map[string]interface{}{"ok": false, "error": errData}
-	b, err := json.MarshalIndent(env, "", "  ")
+
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	err := encoder.Encode(env)
+
 	if err != nil {
 		fmt.Fprintln(w, `{"ok":false,"error":{"type":"internal_error","code":"marshal_error","message":"failed to marshal error"}}`)
 		return
 	}
-	fmt.Fprintln(w, string(b))
+	fmt.Fprint(w, buffer.String())
 }
 
 // installTipsHelpFunc wraps the default help function to append a TIPS section

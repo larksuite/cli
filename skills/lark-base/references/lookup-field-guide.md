@@ -1,4 +1,4 @@
-# Bitable Lookup Field Configuration Guide
+# Base Lookup Field Configuration Guide
 
 ## Mandatory Read Acknowledgement
 

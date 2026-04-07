@@ -12,7 +12,6 @@ import (
 
 func TestBaseWorkflowExecuteGet(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_1",
@@ -31,7 +30,6 @@ func TestBaseWorkflowExecuteGet(t *testing.T) {
 
 func TestBaseWorkflowExecuteGetWithUserIDType(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "user_id_type=open_id",
@@ -67,7 +65,6 @@ func TestBaseWorkflowExecuteGetValidate(t *testing.T) {
 
 func TestBaseWorkflowExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases/app_x/workflows",
@@ -103,7 +100,6 @@ func TestBaseWorkflowExecuteCreateValidate(t *testing.T) {
 
 func TestBaseWorkflowExecuteDisable(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_1/disable",

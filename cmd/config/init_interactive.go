@@ -61,8 +61,8 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 	// Load existing config for defaults
 	existing, _ := core.LoadMultiAppConfig()
 	var firstApp *core.AppConfig
-	if existing != nil && len(existing.Apps) > 0 {
-		firstApp = &existing.Apps[0]
+	if existing != nil {
+		firstApp = existing.CurrentAppConfig("")
 	}
 
 	var appID, appSecret, brand string

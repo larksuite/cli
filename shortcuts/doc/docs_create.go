@@ -18,7 +18,7 @@ var DocsCreate = common.Shortcut{
 	Scopes:      []string{"docx:document:create"},
 	Flags: []common.Flag{
 		{Name: "title", Desc: "document title"},
-		{Name: "markdown", Desc: "Markdown content (Lark-flavored)", Required: true},
+		{Name: "markdown", Desc: "Markdown content (Lark-flavored)", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "folder-token", Desc: "parent folder token"},
 		{Name: "wiki-node", Desc: "wiki node token"},
 		{Name: "wiki-space", Desc: "wiki space ID (use my_library for personal library)"},

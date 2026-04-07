@@ -14,7 +14,7 @@ import (
 var BaseDataQuery = common.Shortcut{
 	Service:     "base",
 	Command:     "+data-query",
-	Description: "Query and analyze Bitable data with JSON DSL (aggregation, filter, sort)",
+	Description: "Query and analyze Base data with JSON DSL (aggregation, filter, sort)",
 	Risk:        "read",
 	Scopes:      []string{"base:table:read"},
 	AuthTypes:   authTypes(),

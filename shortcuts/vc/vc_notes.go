@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,8 +23,10 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -253,7 +254,7 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 	dirName := filepath.Join(base, sanitizeDirName(title, minuteToken))
 	if !runtime.Bool("overwrite") {
 		transcriptPath := filepath.Join(dirName, "transcript.txt")
-		if _, statErr := os.Stat(transcriptPath); statErr == nil {
+		if _, statErr := vfs.Stat(transcriptPath); statErr == nil {
 			fmt.Fprintf(errOut, "%s transcript already exists: %s (use --overwrite to replace)\n", logPrefix, transcriptPath)
 			return transcriptPath
 		}
@@ -265,7 +266,7 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
 		return ""
 	}
-	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
 		return ""
 	}
@@ -443,16 +444,12 @@ var VCNotes = common.Shortcut{
 		default:
 			// unreachable: ExactlyOne already ensures one flag is set
 		}
-		appID := runtime.Config.AppID
-		userOpenId := runtime.UserOpenId()
-		if appID != "" && userOpenId != "" {
-			stored := auth.GetStoredToken(appID, userOpenId)
-			if stored != nil {
-				if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-					return output.ErrWithHint(output.ExitAuth, "missing_scope",
-						fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-						fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
-				}
+		result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
+		if err == nil && result != nil && result.Scopes != "" {
+			if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
+				return output.ErrWithHint(output.ExitAuth, "missing_scope",
+					fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
+					fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
 			}
 		}
 		return nil

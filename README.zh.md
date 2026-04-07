@@ -2,17 +2,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
 
-飞书/Lark 开放平台命令行工具 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、日历、邮箱、任务、会议等核心业务域，提供 200+ 命令及 19 个 AI Agent [Skills](./skills/)。
+飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、日历、邮箱、任务、会议等核心业务域，提供 200+ 命令及 20 个 AI Agent [Skills](./skills/)。
 
 [安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
 
 ## 为什么选 lark-cli？
 
 - **为 Agent 原生设计** — [Skills](./skills/) 开箱即用，适配主流 AI 工具，Agent 无需额外适配即可操作飞书
-- **覆盖面广** — 11 大业务域、200+ 精选命令、 19 个 AI Agent [Skills](./skills/)
+- **覆盖面广** — 12 大业务域、200+ 精选命令、 20 个 AI Agent [Skills](./skills/)
 - **AI 友好调优** — 每条命令经过 Agent 实测验证，提供更友好的参数、智能默认值和结构化输出，大幅提升 Agent 调用成功率
 - **开源零门槛** — MIT 协议，开箱即用，`npm install` 即可使用
 - **三分钟上手** — 一键创建应用、交互式登录授权，从安装到第一次 API 调用只需三步
@@ -21,19 +22,20 @@
 
 ## 功能
 
-| 类别        | 能力                                                                      |
-| ------------- | --------------------------------------------------------------------------- |
-| 📅 日历     | 查看日程、创建日程、邀请参会人、查询忙闲状态、时间建议                    |
-| 💬 即时通讯 | 发送/回复消息、创建和管理群聊、查看聊天记录与话题、搜索消息、下载媒体文件 |
-| 📄 云文档   | 创建、读取、更新文档、搜索文档、读写素材与画板                            |
-| 📁 云空间   | 上传和下载文件、搜索文档与知识库、管理评论                                |
-| 📊 多维表格 | 创建和管理多维表格、字段、记录、视图、仪表盘，数据聚合分析                |
-| 📈 电子表格 | 创建、读取、写入、追加、查找和导出表格数据                                |
-| ✅ 任务     | 创建、查询、更新和完成任务；管理任务清单、子任务、评论与提醒              |
-| 📚 知识库   | 创建和管理知识空间、节点和文档                                            |
-| 👤 通讯录   | 按姓名/邮箱/手机号搜索用户、获取用户信息                                  |
-| 📧 邮箱     | 浏览、搜索、阅读邮件，发送、回复、转发邮件，管理草稿，监听新邮件          |
-| 🎥 视频会议 | 搜索会议记录、查询会议纪要与录制                                          |
+| 类别        | 能力                                         |
+| ------------- |--------------------------------------------|
+| 📅 日历     | 查看日程、创建日程、邀请参会人、查询忙闲状态、时间建议                |
+| 💬 即时通讯 | 发送/回复消息、创建和管理群聊、查看聊天记录与话题、搜索消息、下载媒体文件      |
+| 📄 云文档   | 创建、读取、更新文档、搜索文档、读写素材与画板                    |
+| 📁 云空间   | 上传和下载文件、搜索文档与知识库、管理评论                      |
+| 📊 多维表格 | 创建和管理数据表、字段、记录、视图、仪表盘、自动化流程、表单、角色权限，数据聚合分析 |
+| 📈 电子表格 | 创建、读取、写入、追加、查找和导出表格数据                      |
+| ✅ 任务     | 创建、查询、更新和完成任务；管理任务清单、子任务、评论与提醒             |
+| 📚 知识库   | 创建和管理知识空间、节点和文档                            |
+| 👤 通讯录   | 按姓名/邮箱/手机号搜索用户、获取用户信息                      |
+| 📧 邮箱     | 浏览、搜索、阅读邮件，发送、回复、转发邮件，管理草稿，监听新邮件           |
+| 🎥 视频会议 | 搜索会议记录、查询会议纪要与录制                           |
+| ✍️ 审批     | 查询审批任务、同意/拒绝/转交审批任务、撤回与抄送审批实例              |
 
 ## 安装与快速开始
 
@@ -46,16 +48,20 @@
 
 ### 快速开始（人类用户）
 
-> **Tip:** 如果你拥有 AI Agent，可以直接把本 README 丢给它，让 AI 帮你完成安装和配置 — 跳转到[快速开始（AI Agent）](#快速开始ai-agent)查看。
+> **Note for AI assistants:** 如果你是 AI Agent 且正在协助用户执行安装，请直接跳转到[快速开始（AI Agent）](#快速开始ai-agent)执行，那里包含你需要完成的所有步骤。
 
-#### 安装 CLI
+#### 安装
 
 以下两种方式**任选其一**：
 
 **方式一 — 从 npm 安装（推荐）：**
 
 ```bash
+# 安装 CLI
 npm install -g @larksuite/cli
+
+# 安装 CLI SKILL（必需）
+npx skills add larksuite/cli -y -g
 ```
 
 **方式二 — 从源码安装：**
@@ -66,17 +72,8 @@ npm install -g @larksuite/cli
 git clone https://github.com/larksuite/cli.git
 cd cli
 make install
-```
 
-#### 安装 AI Agent Skills
-
-[Skills](./skills/) 是结构化的指令文档，使 AI Agent 能够使用本 CLI：
-
-```bash
-# 安装所有 skills 到当前目录
-npx skills add larksuite/cli -y
-
-# 安装所有 skills 到全局
+# 安装 CLI SKILL（必需）
 npx skills add larksuite/cli -y -g
 ```
 
@@ -97,21 +94,17 @@ lark-cli calendar +agenda
 
 > 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
 
-**第 1 步 — 安装 CLI**
+**第 1 步 — 安装**
 
 ```bash
+# 安装 CLI
 npm install -g @larksuite/cli
+
+# 安装 CLI SKILL（必需）
+npx skills add larksuite/cli -y -g
 ```
 
-**第 2 步 — 安装 Skills（核心步骤，请勿跳过）**
-
-> Skills 是告诉 AI Agent 有哪些命令可用及如何调用的指令文件，是 Agent 使用 lark-cli 的前提。
-
-```bash
-npx skills add larksuite/cli --all -y
-```
-
-**第 3 步 — 配置应用凭证**
+**第 2 步 — 配置应用凭证**
 
 > 在后台运行此命令，命令会输出一个授权链接，提取该链接并发送给用户，用户在浏览器中完成配置后命令会自动退出。
 
@@ -119,7 +112,7 @@ npx skills add larksuite/cli --all -y
 lark-cli config init --new
 ```
 
-**第 4 步 — 登录**
+**第 3 步 — 登录**
 
 > 同上，后台运行，提取授权链接发给用户。
 
@@ -127,7 +120,7 @@ lark-cli config init --new
 lark-cli auth login --recommend
 ```
 
-**第 5 步 — 验证**
+**第 4 步 — 验证**
 
 ```bash
 lark-cli auth status
@@ -136,27 +129,28 @@ lark-cli auth status
 
 ## Agent Skills
 
-| Skill                           | 说明                                                                        |
-| --------------------------------- | ----------------------------------------------------------------------------- |
+| Skill                           | 说明                                        |
+| --------------------------------- |-------------------------------------------|
 | `lark-shared`                   | 应用配置、认证登录、身份切换、权限管理、安全规则（所有其他 skill 自动加载） |
-| `lark-calendar`                 | 日历日程、议程查看、忙闲查询、时间建议                                      |
-| `lark-im`                       | 发送/回复消息、群聊管理、消息搜索、上传下载图片与文件、表情回复             |
-| `lark-doc`                      | 创建、读取、更新、搜索文档（基于 Markdown）                                 |
-| `lark-drive`                    | 上传、下载文件，管理权限与评论                                              |
-| `lark-sheets`                   | 创建、读取、写入、追加、查找、导出电子表格                                  |
-| `lark-base`                     | 多维表格、字段、记录、视图、仪表盘、数据聚合分析                            |
-| `lark-task`                     | 任务、任务清单、子任务、提醒、成员分配                                      |
-| `lark-mail`                     | 浏览、搜索、阅读邮件，发送、回复、转发，草稿管理，监听新邮件                |
-| `lark-contact`                  | 按姓名/邮箱/手机号搜索用户，获取用户信息                                    |
-| `lark-wiki`                     | 知识空间、节点、文档                                                        |
-| `lark-event`                    | 实时事件订阅（WebSocket），支持正则路由与 Agent 友好格式                    |
-| `lark-vc`                       | 搜索会议记录、查询会议纪要产物（总结、待办、逐字稿）                        |
-| `lark-whiteboard`               | 画板/图表 DSL 渲染                                                          |
-| `lark-minutes`                  | 妙记元数据与 AI 产物（总结、待办、章节）                                    |
-| `lark-openapi-explorer`         | 从官方文档探索底层 API                                                      |
-| `lark-skill-maker`              | 自定义 skill 创建框架                                                       |
-| `lark-workflow-meeting-summary` | 工作流：会议纪要汇总与结构化报告                                            |
-| `lark-workflow-standup-report`  | 工作流：日程待办摘要                                                        |
+| `lark-calendar`                 | 日历日程、议程查看、忙闲查询、时间建议                       |
+| `lark-im`                       | 发送/回复消息、群聊管理、消息搜索、上传下载图片与文件、表情回复          |
+| `lark-doc`                      | 创建、读取、更新、搜索文档（基于 Markdown）                |
+| `lark-drive`                    | 上传、下载文件，管理权限与评论                           |
+| `lark-sheets`                   | 创建、读取、写入、追加、查找、导出电子表格                     |
+| `lark-base`                     | 多维表格、字段、记录、视图、仪表盘、数据聚合分析                  |
+| `lark-task`                     | 任务、任务清单、子任务、提醒、成员分配                       |
+| `lark-mail`                     | 浏览、搜索、阅读邮件，发送、回复、转发，草稿管理，监听新邮件            |
+| `lark-contact`                  | 按姓名/邮箱/手机号搜索用户，获取用户信息                     |
+| `lark-wiki`                     | 知识空间、节点、文档                                |
+| `lark-event`                    | 实时事件订阅（WebSocket），支持正则路由与 Agent 友好格式      |
+| `lark-vc`                       | 搜索会议记录、查询会议纪要产物（总结、待办、逐字稿）                |
+| `lark-whiteboard`               | 画板/图表 DSL 渲染                              |
+| `lark-minutes`                  | 妙记元数据与 AI 产物（总结、待办、章节）                    |
+| `lark-openapi-explorer`         | 从官方文档探索底层 API                             |
+| `lark-skill-maker`              | 自定义 skill 创建框架                            |
+| `lark-approval`                 | 审批任务查询、同意/拒绝/转交审批任务、撤回与抄送审批实例             |
+| `lark-workflow-meeting-summary` | 工作流：会议纪要汇总与结构化报告                          |
+| `lark-workflow-standup-report`  | 工作流：日程待办摘要                                |
 
 ## 认证
 
@@ -273,6 +267,10 @@ lark-cli schema im.messages.delete
 我们建议您将对接本工具的飞书机器人作为私人对话助手使用，请勿将其拉入群聊或允许其他用户与其交互，以避免权限被滥用或数据泄露。
 
 请您充分知悉全部使用风险，使用本工具即视为您自愿承担相关所有责任。
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
 
 ## 贡献
 

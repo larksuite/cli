@@ -14,6 +14,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 )
 
@@ -48,7 +49,7 @@ type userInfoResponse struct {
 func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, name string, err error) {
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
-		ApiPath:                   "/open-apis/authen/v1/user_info",
+		ApiPath:                   larkauth.PathUserInfoV1,
 		SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser},
 	}, larkcore.WithUserAccessToken(accessToken))
 	if err != nil {
@@ -109,7 +110,7 @@ func getAppInfo(ctx context.Context, f *cmdutil.Factory, appId string) (*appInfo
 
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
-		ApiPath:                   "/open-apis/application/v6/applications/" + appId,
+		ApiPath:                   larkauth.ApplicationInfoPath(appId),
 		QueryParams:               queryParams,
 		SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant},
 	})

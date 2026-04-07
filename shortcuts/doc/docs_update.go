@@ -38,7 +38,7 @@ var DocsUpdate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL or token", Required: true},
 		{Name: "mode", Desc: "update mode: append | overwrite | replace_range | replace_all | insert_before | insert_after | delete_range", Required: true},
-		{Name: "markdown", Desc: "new content (Lark-flavored Markdown; create blank whiteboards with <whiteboard type=\"blank\"></whiteboard>, repeat to create multiple boards)"},
+		{Name: "markdown", Desc: "new content (Lark-flavored Markdown; create blank whiteboards with <whiteboard type=\"blank\"></whiteboard>, repeat to create multiple boards)", Input: []string{common.File, common.Stdin}},
 		{Name: "selection-with-ellipsis", Desc: "content locator (e.g. 'start...end')"},
 		{Name: "selection-by-title", Desc: "title locator (e.g. '## Section')"},
 		{Name: "new-title", Desc: "also update document title"},

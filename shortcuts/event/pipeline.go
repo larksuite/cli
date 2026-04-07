@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 const dedupTTL = 5 * time.Minute
@@ -67,6 +68,28 @@ func newEventPipeline(
 		errOut:       errOut,
 		recordWriter: recordWriter,
 	}
+}
+
+// EnsureDirs creates all configured output directories once at startup.
+func (p *EventPipeline) EnsureDirs() error {
+	if p == nil {
+		return nil
+	}
+	if router, ok := p.recordWriter.(*outputRouter); ok && router != nil {
+		if router.defaultDir != "" {
+			if err := vfs.MkdirAll(router.defaultDir, 0o700); err != nil {
+				return fmt.Errorf("create output dir: %w", err)
+			}
+		}
+		if router.router != nil {
+			for _, route := range router.router.routes {
+				if err := vfs.MkdirAll(route.dir, 0o700); err != nil {
+					return fmt.Errorf("create route dir %s: %w", route.dir, err)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (p *EventPipeline) infof(format string, args ...interface{}) {

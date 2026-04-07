@@ -18,10 +18,12 @@ import (
 var ImMessagesSend = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-send",
-	Description: "Send a message to a chat or direct message with bot identity; bot-only; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key",
+	Description: "Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key",
 	Risk:        "write",
 	Scopes:      []string{"im:message:send_as_bot"},
-	AuthTypes:   []string{"bot"},
+	UserScopes:  []string{"im:message.send_as_user", "im:message"},
+	BotScopes:   []string{"im:message:send_as_bot"},
+	AuthTypes:   []string{"bot", "user"},
 	Flags: []common.Flag{
 		{Name: "chat-id", Desc: "(required, mutually exclusive with --user-id) chat ID (oc_xxx)"},
 		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id) user open_id (ou_xxx)"},
@@ -188,7 +190,7 @@ var ImMessagesSend = common.Shortcut{
 				return output.ErrValidation("%v", err)
 			}
 		}
-
+		// Resolve content type
 		if markdown != "" {
 			msgType, content = "post", resolveMarkdownAsPost(ctx, runtime, markdown)
 		} else if mt, c, err := resolveMediaContent(ctx, runtime, text, imageVal, fileVal, videoVal, videoCoverVal, audioVal); err != nil {

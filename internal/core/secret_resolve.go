@@ -5,10 +5,10 @@ package core
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 const secretKeyPrefix = "appsecret:"
@@ -25,7 +25,7 @@ func ResolveSecretInput(s SecretInput, kc keychain.KeychainAccess) (string, erro
 	}
 	switch s.Ref.Source {
 	case "file":
-		data, err := os.ReadFile(s.Ref.ID)
+		data, err := vfs.ReadFile(s.Ref.ID)
 		if err != nil {
 			return "", fmt.Errorf("failed to read secret file %s: %w", s.Ref.ID, err)
 		}

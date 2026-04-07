@@ -24,7 +24,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		dashboardIDFlag(true),
 		blockIDFlag(true),
 		{Name: "name", Desc: "new block name"},
-		{Name: "data-config", Desc: "data config JSON object (table_name, series, count_all, group_by, filter, etc.)"},
+		{Name: "data-config", Desc: "data config JSON: table_name, series|count_all (mutually exclusive), group_by, filter. See dashboard-block-data-config.md for details."},
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
 	},

@@ -243,7 +243,6 @@ func TestBaseRoleShortcutMetadata(t *testing.T) {
 
 func TestBaseRoleCreateExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases/app_x/roles",
@@ -267,7 +266,6 @@ func TestBaseRoleCreateExecute(t *testing.T) {
 
 func TestBaseRoleDeleteExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/base/v3/bases/app_x/roles/rol_1",
@@ -288,7 +286,6 @@ func TestBaseRoleDeleteExecute(t *testing.T) {
 
 func TestBaseRoleGetExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/roles/rol_1",
@@ -316,7 +313,6 @@ func TestBaseRoleGetExecute(t *testing.T) {
 
 func TestBaseRoleListExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/roles",
@@ -343,7 +339,6 @@ func TestBaseRoleListExecute(t *testing.T) {
 
 func TestBaseRoleUpdateExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/roles/rol_1",
@@ -371,7 +366,6 @@ func TestBaseRoleUpdateExecute(t *testing.T) {
 
 func TestBaseRoleCreateExecuteAPIError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases/app_x/roles",
@@ -388,7 +382,6 @@ func TestBaseRoleCreateExecuteAPIError(t *testing.T) {
 
 func TestBaseRoleListExecuteTransportError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/roles",
@@ -403,7 +396,6 @@ func TestBaseRoleListExecuteTransportError(t *testing.T) {
 
 func TestBaseRoleListExecuteAPIError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/roles",
@@ -420,7 +412,6 @@ func TestBaseRoleListExecuteAPIError(t *testing.T) {
 
 func TestBaseRoleDeleteExecuteAPIError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/base/v3/bases/app_x/roles/rol_1",
@@ -437,7 +428,6 @@ func TestBaseRoleDeleteExecuteAPIError(t *testing.T) {
 
 func TestBaseRoleUpdateExecuteAPIError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/roles/rol_1",
@@ -454,7 +444,6 @@ func TestBaseRoleUpdateExecuteAPIError(t *testing.T) {
 
 func TestBaseRoleGetExecuteBusinessError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/roles/rol_bad",

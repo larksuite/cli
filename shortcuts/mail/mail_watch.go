@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -23,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
@@ -79,8 +82,8 @@ var MailWatch = common.Shortcut{
 	Command:     "+watch",
 	Description: "Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output.",
 	Risk:        "read",
-	Scopes:      []string{"mail:event", "mail:user_mailbox.message:readonly", "mail:user_mailbox.folder:read", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
-	AuthTypes:   []string{"user", "bot"},
+	Scopes:      []string{"mail:event", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
+	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "format", Default: "data", Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
 		{Name: "msg-format", Default: "metadata", Desc: "message payload mode: metadata(headers + meta, for triage/notification) | minimal(IDs and state only, no headers, for tracking read/folder changes) | plain_text_full(all metadata fields + full plain-text body) | event(raw WebSocket event, no API call, for debug) | full(full message including HTML body and attachments)"},
@@ -138,6 +141,11 @@ var MailWatch = common.Shortcut{
 			Desc(fmt.Sprintf("Subscribe mailbox events (effective_folder_ids=%s, effective_label_ids=%s)", effectiveFolderDisplay, effectiveLabelDisplay)).
 			Body(map[string]interface{}{"event_type": 1})
 
+		if mailbox == "me" {
+			d.GET(mailboxPath("me", "profile")).
+				Desc("Resolve mailbox address for event filtering (requires scope mail:user_mailbox:readonly)")
+		}
+
 		if len(resolvedLabelIDs) > 0 {
 			d.Set("filter_label_ids", strings.Join(resolvedLabelIDs, ","))
 		}
@@ -172,7 +180,7 @@ var MailWatch = common.Shortcut{
 		outputDir := runtime.Str("output-dir")
 		if outputDir != "" {
 			if outputDir == "~" || strings.HasPrefix(outputDir, "~/") {
-				home, err := os.UserHomeDir()
+				home, err := vfs.UserHomeDir()
 				if err != nil {
 					return fmt.Errorf("cannot expand ~: %w", err)
 				}
@@ -193,7 +201,7 @@ var MailWatch = common.Shortcut{
 			// Resolve symlinks on the output directory so all writes use the real
 			// filesystem path. This prevents a symlink from redirecting writes to
 			// an unintended location (TOCTOU mitigation).
-			if err := os.MkdirAll(outputDir, 0700); err != nil {
+			if err := vfs.MkdirAll(outputDir, 0700); err != nil {
 				return fmt.Errorf("cannot create output directory %q: %w", outputDir, err)
 			}
 			resolved, err := filepath.EvalSymlinks(outputDir)
@@ -244,11 +252,24 @@ var MailWatch = common.Shortcut{
 		}
 		info("Mailbox subscribed.")
 
-		// mailboxFilter: only apply event-level filtering when an explicit email address is given
-		// "me" is a server-side alias and cannot be matched against event.mail_address
-		mailboxFilter := ""
-		if mailbox != "me" {
-			mailboxFilter = mailbox
+		var unsubOnce sync.Once
+		var unsubErr error
+		unsubscribe := func() error {
+			unsubOnce.Do(func() {
+				_, unsubErr = runtime.CallAPI("POST", mailboxPath(mailbox, "event", "unsubscribe"), nil, map[string]interface{}{"event_type": 1})
+			})
+			return unsubErr
+		}
+
+		// Resolve "me" to the actual email address so we can filter events.
+		mailboxFilter := mailbox
+		if mailbox == "me" {
+			resolved, profileErr := fetchMailboxPrimaryEmail(runtime, "me")
+			if profileErr != nil {
+				unsubscribe() //nolint:errcheck // best-effort cleanup; primary error is profileErr
+				return enhanceProfileError(profileErr)
+			}
+			mailboxFilter = resolved
 		}
 
 		eventCount := 0
@@ -257,10 +278,10 @@ var MailWatch = common.Shortcut{
 			// Extract event body
 			eventBody := extractMailEventBody(data)
 
-			// Filter by --mailbox (only when an explicit email address was provided)
+			// Filter by --mailbox
 			if mailboxFilter != "" {
 				mailAddr, _ := eventBody["mail_address"].(string)
-				if mailAddr != mailboxFilter {
+				if !strings.EqualFold(mailAddr, mailboxFilter) {
 					return
 				}
 			}
@@ -414,12 +435,19 @@ var MailWatch = common.Shortcut{
 			}()
 			<-sigCh
 			info(fmt.Sprintf("\nShutting down... (received %d events)", eventCount))
+			info("Unsubscribing mailbox events...")
+			if unsubErr := unsubscribe(); unsubErr != nil {
+				fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
+			} else {
+				info("Mailbox unsubscribed.")
+			}
 			signal.Stop(sigCh)
 			os.Exit(0)
 		}()
 
 		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
 		if err := cli.Start(ctx); err != nil {
+			unsubscribe() //nolint:errcheck // best-effort cleanup
 			return output.ErrNetwork("WebSocket connection failed: %v", err)
 		}
 		return nil
@@ -690,6 +718,25 @@ func wrapWatchSubscribeError(err error) error {
 		return output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, msg, hint)
 	}
 	return output.ErrWithHint(output.ExitAPI, "api_error", fmt.Sprintf("subscribe mailbox events failed: %v", err), hint)
+}
+
+// enhanceProfileError wraps a profile API error with actionable hints.
+// Permission errors get a scope-specific hint; other errors (network, 5xx)
+// are reported as-is so diagnostics aren't misleading.
+func enhanceProfileError(err error) error {
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) && exitErr.Detail != nil {
+		errType := exitErr.Detail.Type
+		lower := strings.ToLower(exitErr.Detail.Message)
+		if errType == "permission" || errType == "missing_scope" ||
+			strings.Contains(lower, "permission") || strings.Contains(lower, "scope") {
+			return output.ErrWithHint(output.ExitAuth, "missing_scope",
+				"unable to resolve mailbox address: "+exitErr.Detail.Message,
+				"run `lark-cli auth login --scope \"mail:user_mailbox:readonly\"` to grant mailbox profile access")
+		}
+	}
+	// Preserve original error (and its exit code) for non-permission failures.
+	return err
 }
 
 // decodeBodyFieldsForFile returns a shallow copy of outputData with body_html and

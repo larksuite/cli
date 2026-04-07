@@ -4,7 +4,6 @@
 package im
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -282,7 +280,7 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 		{
 			name:  "heading downgrade H1 and H2",
 			input: "# Title\n## Section\ntext",
-			want:  "#### Title\n<br>\n##### Section\ntext",
+			want:  "#### Title\n\n##### Section\ntext",
 		},
 		{
 			name:  "no downgrade when no H1-H3",
@@ -292,17 +290,17 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 		{
 			name:  "code block protected",
 			input: "# Title\n```\n# not a heading\n```\ntext",
-			want:  "#### Title\n\n<br>\n```\n# not a heading\n```\n<br>\n\ntext",
+			want:  "#### Title\n```\n# not a heading\n```\ntext",
 		},
 		{
 			name:  "table spacing",
 			input: "text\n| A | B |\n| - | - |\n| 1 | 2 |\nafter",
-			want:  "text\n<br>\n| A | B |\n| - | - |\n| 1 | 2 |\n<br>\nafter",
+			want:  "text\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nafter",
 		},
 		{
 			name:  "table spacing keeps heading separation",
 			input: "# Title\n| A | B |\n| - | - |\n| 1 | 2 |\n## Next",
-			want:  "#### Title\n\n<br>\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<br>\n##### Next",
+			want:  "#### Title\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n##### Next",
 		},
 		{
 			name:  "excess blank lines compressed",
@@ -471,19 +469,13 @@ func TestNormalizeDownloadOutputPath(t *testing.T) {
 }
 
 func TestDownloadIMResourceToPathHTTPClientError(t *testing.T) {
-	runtime := &common.RuntimeContext{
-		Factory: &cmdutil.Factory{
-			HttpClient: func() (*http.Client, error) {
-				return nil, errors.New("http client unavailable")
-			},
-			IOStreams: &cmdutil.IOStreams{
-				Out:    &bytes.Buffer{},
-				ErrOut: &bytes.Buffer{},
-			},
-		},
-	}
+	// DoAPIStream now goes through APIClient, which requires a fully constructed Factory.
+	// When HttpClient returns an error, NewAPIClient fails, and getAPIClient propagates it.
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("http client unavailable")
+	}))
 
-	_, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "img_123", "image", "out.bin")
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "img_123", "image", "out.bin")
 	if err == nil || !strings.Contains(err.Error(), "http client unavailable") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
