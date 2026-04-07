@@ -22,13 +22,25 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// keychainTimeout bounds system keychain access to avoid hanging on blocked prompts.
 const keychainTimeout = 5 * time.Second
+
+// masterKeyBytes is the AES-256 key size used to encrypt stored secrets.
 const masterKeyBytes = 32
+
+// ivBytes is the nonce size used by AES-GCM.
 const ivBytes = 12
+
+// tagBytes is the authentication tag size produced by AES-GCM.
 const tagBytes = 16
+
+// fileMasterKeyName is the local fallback master key file name.
 const fileMasterKeyName = "master.key.file"
 
+// keyringGet is overridden in tests to simulate system keychain reads.
 var keyringGet = keyring.Get
+
+// keyringSet is overridden in tests to simulate system keychain writes.
 var keyringSet = keyring.Set
 
 // StorageDir returns the storage directory for a given service name on macOS.
