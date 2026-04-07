@@ -17,10 +17,12 @@ import (
 var ImMessagesReply = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-reply",
-	Description: "Reply to a message (supports thread replies) with bot identity; bot-only; supports text/markdown/post/media replies, reply-in-thread, idempotency key",
+	Description: "Reply to a message (supports thread replies); user/bot; supports text/markdown/post/media replies, reply-in-thread, idempotency key",
 	Risk:        "write",
 	Scopes:      []string{"im:message:send_as_bot"},
-	AuthTypes:   []string{"bot"},
+	UserScopes:  []string{"im:message.send_as_user"},
+	BotScopes:   []string{"im:message:send_as_bot"},
+	AuthTypes:   []string{"bot", "user"},
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
 		{Name: "msg-type", Default: "text", Desc: "message type for --content JSON; when using --text/--markdown/--image/--file/--video/--audio, the effective type is inferred automatically", Enum: []string{"text", "post", "image", "file", "audio", "media", "interactive", "share_chat", "share_user"}},

@@ -164,6 +164,11 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+upload`](references/lark-drive-upload.md) | Upload a local file to Drive |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
 | [`+add-comment`](references/lark-drive-add-comment.md) | Add a full-document comment, or a local comment to selected docx text (also supports wiki URL resolving to doc/docx) |
+| [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable to a local file with limited polling |
+| [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token |
+| [`+import`](references/lark-drive-import.md) | Import a local file to Drive as a cloud document (docx, sheet, bitable) |
+| [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive |
+| [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
 
 ## API Resources
 
@@ -177,6 +182,8 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 ### files
 
   - `copy` — 复制文件
+  - `create_folder` — 新建文件夹
+  - `list` — 获取文件夹下的清单
 
 ### file.comments
 
@@ -208,11 +215,21 @@ lark-cli drive <resource> <method> [flags] # 调用 API
   - `subscription` — 订阅用户、应用维度事件（本次开放评论添加事件）
   - `subscription_status` — 查询用户、应用对指定事件的订阅状态
 
+### file.statistics
+
+  - `get` — 获取文件统计信息
+
+### file.view_records
+
+  - `list` — 获取文档的访问者记录
+
 ## 权限表
 
 | 方法 | 所需 scope |
 |------|-----------|
 | `files.copy` | `docs:document:copy` |
+| `files.create_folder` | `space:folder:create` |
+| `files.list` | `space:document:retrieve` |
 | `file.comments.batch_query` | `docs:document.comment:read` |
 | `file.comments.create_v2` | `docs:document.comment:create` |
 | `file.comments.list` | `docs:document.comment:read` |
@@ -228,4 +245,5 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 | `user.remove_subscription` | `docs:event:subscribe` |
 | `user.subscription` | `docs:event:subscribe` |
 | `user.subscription_status` | `docs:event:subscribe` |
-
+| `file.statistics.get` | `drive:drive.metadata:readonly` |
+| `file.view_records.list` | `drive:file:view_record:readonly` |
