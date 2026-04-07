@@ -3,7 +3,7 @@
     "name": "#234 现在使用必须要创建应用吗？",
     "title": "现在使用必须要创建应用吗？",
     "body": "能不能支持使用个人身份呢？",
-    "expected_type": null,
+    "expected_type": "enhancement",
     "expected_domains": [],
     "source_url": "https://github.com/larksuite/cli/issues/234",
     "source_labels": []
@@ -23,7 +23,7 @@
     "name": "#244 安装脚本没有给 Trae CN 安装 skills",
     "title": "安装脚本没有给 Trae CN 安装 skills",
     "body": "Trae CN 的 skills 位置在：`~/.trae-cn/skills`，希望可以加入检测",
-    "expected_type": null,
+    "expected_type": "bug",
     "expected_domains": [
       "core"
     ],
@@ -58,7 +58,7 @@
     "name": "#204 CLI的多用户授权支持需求",
     "title": "CLI的多用户授权支持需求",
     "body": "当支持多用户的Agent使用CLI时，无法根据openid对不同用户进行授权管理，可能与当前CLI针对个人助理方向有关。但这对企业级多用户Agent也是非常广泛的和有价值需求，希望增加不同openid的授权模式功能。",
-    "expected_type": "bug",
+    "expected_type": "enhancement",
     "expected_domains": [
       "auth",
       "core"
@@ -123,7 +123,7 @@
     "name": "#18 为什么代码层面写死了只能以 bot 身份发",
     "title": "为什么代码层面写死了只能以 bot 身份发",
     "body": "",
-    "expected_type": null,
+    "expected_type": "question",
     "expected_domains": [],
     "source_url": "https://github.com/larksuite/cli/issues/18",
     "source_labels": []
@@ -246,7 +246,7 @@
     "name": "#76 飞书auth login支持自定义权限，或者auth机器人已申请的权限",
     "title": "飞书auth login支持自定义权限，或者auth机器人已申请的权限",
     "body": "lark-cli auth login 的生成的链接不支持自定义权限，如移除部分权限，也无法批量auth机器人已经拥有的权限。\n建议支持仅auth已拥有的权限，或者批量导入json权限配置",
-    "expected_type": "bug",
+    "expected_type": "enhancement",
     "expected_domains": [
       "auth"
     ],
@@ -257,7 +257,7 @@
     "name": "#203 ⚠️ 过程状态卡片更新失败，已降级为独立结果消息",
     "title": "⚠️ 过程状态卡片更新失败，已降级为独立结果消息",
     "body": "<img width=\"596\" height=\"117\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/85060bfc-a914-4bad-a600-e91d64a03174\" />",
-    "expected_type": "bug",
+    "expected_type": null,
     "expected_domains": [
       "im"
     ],
@@ -301,7 +301,7 @@
     "name": "#128 一台电脑上能否创建多个飞书 cli？",
     "title": "一台电脑上能否创建多个飞书 cli？",
     "body": "如题。个人账号和飞书账号都想使用，之前在个人账号创建了一个飞书 cli，想在公司做演示，用公司的账号又创建了一个飞书 cli，但是原来个人账号创建的不见了。家目录的 .lark-cli/config.json 只有一份。",
-    "expected_type": "enhancement",
+    "expected_type": null,
     "expected_domains": [
       "core"
     ],
@@ -332,7 +332,7 @@
     "name": "#195 这个和feishu-mcp有什么区别",
     "title": "这个和feishu-mcp有什么区别",
     "body": "相关链接 https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/mcp_integration/mcp_introduction",
-    "expected_type": null,
+    "expected_type": "question",
     "expected_domains": [],
     "source_url": "https://github.com/larksuite/cli/issues/195",
     "source_labels": []
@@ -378,7 +378,7 @@
     "name": "#189 [Doc] base +record-list 分页读取时字段顺序不稳定的说明与最佳实践",
     "title": "[Doc] base +record-list 分页读取时字段顺序不稳定的说明与最佳实践",
     "body": "## 问题描述\n\n在使用 `lark-cli base +record-list` 分页读取多维表格数据时，发现一个容易被忽视的问题：\n\n**API 返回的 `field_id_list` 顺序在不同分页中可能不同**\n\n这会导致：\n1. 用硬编码索引定位字段时，第二页数据解析错误\n2. 数据匹配失败，程序误判为\"读取完成\"\n3. 实际数据遗漏，但不会报错\n\n## 复现场景\n\n```python\n# 错误做法 - 假设字段顺序固定\nresult = run_lark_cli(['base', '+record-list', '--offset', '0', '--limit', '500'])\nfields = result['data']['fields']\nid_idx = fields.index('编号')  # 第一页：索引可能是 0\n\n# 第二页\nresult = run_lark_cli(['base', '+record-list', '--offset', '500', '--limit', '500'])\nfields = result['data']['fields']\nrecord = result['data']['data'][0]\nsample_id = record[id_idx]  # 第二页：索引可能是 11，数据错位！\n```\n\n**实际案例**：\n- 表格总记录：254 条\n- 第一页返回：200 条，字段顺序 A\n- 第二页返回：54 条，字段顺序 B（与 A 不同）\n- 结果：第二页数据全部解析错误，匹配失败\n\n## 解决方案\n\n**必须使用 `field_id_list` 定位字段，且每页都要重新计算索引**：\n\n```python\nID_FIELD_ID = \"fld64hLsFo\"  # 编号字段的 field_id（固定不变）\n\ndef load_all_records(base_token, table_id):\n    record_map = {}\n    offset = 0\n    page_size = 500\n\n    while True:\n        result = run_lark_cli([\n            'base', '+record-list',\n            '--base-token', base_token,\n            '--table-id', table_id,\n            '--limit', str(page_size),\n            '--offset', str(offset)\n        ])\n\n        data = result.get('data', {})\n        fie\n\n...(truncated)",
-    "expected_type": "bug",
+    "expected_type": "documentation",
     "expected_domains": [
       "base",
       "doc"
@@ -462,7 +462,6 @@
   {
     "name": "#248 [Bug] macOS: `config init --new` creates encrypted files but does not persist `master.key` to Keychain, causing fresh processes to fail",
     "title": "[Bug] macOS: `config init --new` creates encrypted files but does not persist `master.key` to Keychain, causing fresh processes to fail",
-    "body": "## Summary\n\nOn macOS, `lark-cli` appears to create encrypted secret files under `~/Library/Application Support/lark-cli/`, but the Keychain entry for `service=lark-cli, account=master.key` is not actually persisted.\n\nAs a result, the initial flow may appear to work, but fresh processes (for example, a new Codex thread / new shell process) cannot decrypt the stored files and fail with keychain-related config errors.\n\n## Environment\n\n- OS: macOS\n- CLI version: `lark-cli version 1.0.0`\n\n## What I did\n\n1. Ran:\n   ```bash\n   lark-cli config init --new\n   lark-cli auth login\nLogin succeeded:\n\nOK: 登录成功! 用户: 陈俊宏 (ou_cb729d3fab97f85ac99e52820ff90588)\nFiles were created under:\n\n~/Library/Application Support/lark-cli/appsecret_cli_a9427f94c9389bb4.enc\n~/Library/Application Support/lark-cli/cli_a9427f94c9389bb4_ou_cb729d3fab97f85ac99e52820ff90588.enc\nBut the expected Keychain item is missing:\n\nsecurity find-generic-password -s 'lark-cli' -a 'master.key' ~/Library/Keychains/login.keychain-db\nOutput:\n\nsecurity: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.\nExpected behavior\nAfter lark-cli config init --new, the CLI should persist the Keychain item used to decrypt stored .enc files:\n\nservice: lark-cli\naccount: master.key\nFresh processes should then be able to read the stored app secret and user token successfully.\n\nActual behavior\nThe encrypted .enc files are created, but master.key is not present in the macOS login keychain.\n\nFresh processes later fail when trying to read stored config/secrets.\n\nIn my environment this surfaces as config/keychain errors such as:\n\nkeychain entry not found: lark-cli/appsecret:cli_a9427f94c9389bb4\nWhy I think this is a bug\nFrom the current implementation, macOS storage seems to work like this:\n\nKeychain stores master.key\nsecret payloads are encrypted into files in ~/Library/Application Support/lark-cli/*.enc\nRelevant code:\n\ninternal/keychain/keychain.go\ninternal/keychain/keychain_darwin.go\nIt looks like platformSet(...) can proceed to write .enc files even when the underlying Keychain persistence did not actually land.\n\nMy guess is that getMasterKey(..., true) / keyring.Set(service, \"master.key\", ...) may need a read-after-write verification step before treating initialization as successful.\n\nReproduction hints\nRun lark-cli config init --new\nRun lark-cli auth login\nConfirm .enc files exist in ~/Library/Application Support/lark-cli/\nCheck Keychain:\nsecurity find-generic-password -s 'lark-cli' -a 'master.key' ~/Library/Keychains/login.keychain-db\nObserve item not found\nStart a fresh process and try a command that needs stored credentials\nAdditional note\nThis is especially visible in agent/sandboxed workflows where each task may run in a fresh process. The initial process may appear fine, but subsequent processes fail consistently because the Keychain master key is missing.",
     "expected_type": "bug",
     "expected_domains": [
       "auth",

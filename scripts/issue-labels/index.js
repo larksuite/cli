@@ -54,6 +54,12 @@ const TYPE_TIE_BREAKER = [
   "question",
 ];
 
+// More conservative type labeling: prefer "no label" over mislabeling.
+// - Require a minimum score.
+// - When the top two candidates are too close, treat as ambiguous and do not label.
+const TYPE_MIN_SCORE = 2;
+const TYPE_MIN_MARGIN = 1;
+
 /**
  * Pause execution for the provided number of milliseconds.
  *
@@ -214,55 +220,88 @@ function scoreTypeFromText(title, body) {
 
   const rules = {
     bug: [
-      /\bbug\b/i,
-      /报错|错误|异常|崩溃|无法|失败|不工作|丢失|被忽略/,
-      /\berror\b|\bexception\b|\bcrash\b|\bbroken\b|\bfails?\b|\bsigkill\b|\binvalid json\b|\bno stdout\b|\bno stderr\b|\bno output\b|\bsilently fail\w*\b|\bsilently drop\w*\b|\bdiscard\w*\b/i,
+      // explicit
+      { re: /\bbug\b/i, w: 2 },
+      // strong signals (stack traces, errors, crashes)
+      { re: /\berror\b|\bexception\b|\bcrash\b|\bpanic\b|\bstack\s*trace\b|\bbroken\b|\bfails?\b|\bsigkill\b|\binvalid json\b|\bno stdout\b|\bno stderr\b|\bno output\b|\bsilently fail\w*\b|\bsilently drop\w*\b|\bdiscard\w*\b/i, w: 2 },
+      // Chinese strong/medium signals
+      { re: /报错|错误|异常|崩溃|闪退|卡死|死机|无输出|静默失败|截断|不生效|无法正确|不能正确|被忽略|丢失|没有给/, w: 2 },
+      // Contextual "cannot/fail" patterns that are usually bugs (avoid labeling based on a bare "无法/失败").
+      { re: /(无法|失败)(正常)?(.{0,16})?(使用|运行|执行|发送|创建|获取|写入|读取|安装|登录|导出|更新|上传|下载)/, w: 2 },
+      // weak motivation words (do NOT label bug based on these alone)
+      { re: /无法|失败|没法|不能用|不可用/, w: 1 },
     ],
     enhancement: [
-      /希望支持|建议|新增|能否|是否可以/,
-      /\bfeature request\b|\badd support\b|\bplease add\b|\bwish\b/i,
-      /\benhancement\b|\bfeature\b/i,
+      // Chinese/English explicit feature request
+      { re: /功能请求|需求|\bfeature request\b|\badd support\b|\bplease add\b/i, w: 2 },
+      { re: /希望支持|建议|新增|支持.*(能力|功能)/, w: 2 },
+      // common Chinese ask forms that usually indicate a request
+      { re: /能不能支持|能否支持|希望增加|希望新增/, w: 2 },
+      // weak asks
+      { re: /能否|是否可以|可否|能不能|是否能够|希望能|希望可以|请求/, w: 1 },
+      { re: /\benhancement\b|\bfeature\b/i, w: 1 },
     ],
     question: [
-      /如何使用|怎么配置|请问|怎么用|是否支持/,
-      /\bhow to\b|\busage\b|\bis it possible\b|\bdoes it support\b|\bquestion\b|\bwhat is the difference\b/i,
+      // comparison/usage questions
+      { re: /有什么区别|有什么不同|区别是什么|\bwhat is the difference\b/i, w: 2 },
+      { re: /\bhow to\b|\busage\b|\bis it possible\b|\bdoes it support\b|\bquestion\b/i, w: 2 },
+      // weak question forms
+      { re: /为什么/, w: 2 },
+      { re: /请问|是否支持|有没有.*(支持|能力)|怎么(用|配置|接入|做)|如何(使用|配置|接入|做)|可以.*吗|能.*吗|对比/, w: 1 },
     ],
     documentation: [
-      /\bdocumentation\b|\breadme\b|\btypo\b|\bexample\b|\bbest practice\b/i,
-      /示例|拼写|安装说明/,
+      // Treat docs-related words as weaker unless paired with an explicit docs-fix signal.
+      { re: /\btypo\b|\bspell(ing)?\b/i, w: 2 },
+      // Avoid generic "文档" (many issues are about the document product); require a docs-fix context.
+      { re: /拼写|文档(错误|修正|修复|补充|改进)|文档.*(缺失|不完整)|安装说明/, w: 2 },
+      { re: /\bdocumentation\b|\breadme\b|\bexample\b|\bbest practice\b/i, w: 1 },
+      { re: /示例/, w: 1 },
     ],
     performance: [
-      /慢|卡住|超时|高内存|响应慢|耗时/,
-      /\bperformance\b|\bperf\b|\bslow\b|\bhang\b|\btimeout\b|\blatency\b|\boom\b|10-100x faster|60\+ seconds/i,
+      // Avoid generic "slow" causing false positives (many issues mention slow networks).
+      { re: /\bperformance\b|\bperf\b|\bhang\b|\btimeout\b|\blatency\b|\boom\b|10-100x faster|60\+ seconds/i, w: 2 },
+      { re: /\bslow\b/i, w: 1 },
+      { re: /慢|卡住|超时|高内存|响应慢|耗时/, w: 1 },
     ],
     security: [
-      /凭据泄漏|注入|权限绕过|token\s*暴露|密钥泄露/,
-      /\bvuln\b|\bcve\b|\binjection\b|\btoken exposure\b|\bpermission bypass\b|\bcredential leak\b/i,
+      { re: /\bvuln\b|\bcve\b|\binjection\b|\btoken exposure\b|\bpermission bypass\b|\bcredential leak\b/i, w: 2 },
+      { re: /凭据泄漏|注入|权限绕过|token\s*暴露|密钥泄露/, w: 2 },
     ],
   };
 
   const scores = {};
   for (const type of TYPE_LABELS) {
     scores[type] = 0;
-    for (const re of rules[type] || []) {
-      if (re.test(text)) scores[type] += 1;
+    for (const rule of rules[type] || []) {
+      const re = rule && rule.re;
+      const w = rule && typeof rule.w === "number" ? rule.w : 1;
+      if (re && re.test(text)) scores[type] += w;
     }
   }
 
   if (/^\s*\[bug\]/i.test(titleText) || /^\s*bug[:(]/i.test(titleText)) {
-    scores.bug += 2;
+    scores.bug += 3;
   }
   if (/^\s*\[(feature|feature request)\]/i.test(titleText) || /\bfeature request\b/i.test(titleText) || /^\s*feat[:(]/i.test(titleText)) {
-    scores.enhancement += 2;
+    scores.enhancement += 3;
+  }
+  if (/^\s*[【\[]\s*(feature|需求|功能)\s*[】\]]/.test(titleText)) {
+    scores.enhancement += 3;
+  }
+  // Common Chinese feature request prefixes.
+  if (/^\s*(功能请求|需求)[:：]/.test(titleText) || /\bfeature\b[:：]/i.test(titleText)) {
+    scores.enhancement += 3;
   }
   if (/希望支持|能否支持|是否可以/.test(titleText)) {
     scores.enhancement += 1;
   }
   if (/^\s*\[doc\]/i.test(titleText)) {
-    scores.documentation += 1;
+    scores.documentation += 4;
+    // If user explicitly marks it as a documentation issue, reduce the chance of mislabeling it as a bug.
+    if (scores.bug > 0) scores.bug = Math.max(0, scores.bug - 3);
   }
   if (/^request\b/i.test(titleText)) {
-    scores.enhancement += 2;
+    scores.enhancement += 3;
   }
 
   return scores;
@@ -275,13 +314,17 @@ function scoreTypeFromText(title, body) {
  * @returns {string|null}
  */
 function chooseTypeFromScores(scores) {
-  let max = 0;
-  for (const v of Object.values(scores || {})) {
-    if (v > max) max = v;
-  }
-  if (max <= 0) return null;
+  const entries = TYPE_LABELS.map((t) => ({ t, v: (scores && scores[t]) || 0 }))
+    .sort((a, b) => b.v - a.v);
+  const top = entries[0] || { t: null, v: 0 };
+  const second = entries[1] || { t: null, v: 0 };
 
-  const candidates = TYPE_LABELS.filter((t) => scores[t] === max);
+  if (top.v < TYPE_MIN_SCORE) return null;
+  // Ambiguous: top two are too close.
+  if (top.v - second.v < TYPE_MIN_MARGIN) return null;
+
+  // Preserve deterministic choice when multiple labels have same score (should be rare after margin check).
+  const candidates = TYPE_LABELS.filter((t) => (scores && scores[t]) === top.v);
   if (candidates.length === 1) return candidates[0];
   for (const t of TYPE_TIE_BREAKER) {
     if (candidates.includes(t)) return t;
@@ -748,34 +791,20 @@ async function main() {
       overrideType: args.overrideType,
     });
 
-    const hasChange = toAdd.length > 0 || toRemove.length > 0;
-    if (args.onlyMissing && !hasChange) continue;
-
+    // If some managed labels do not exist in the repository, drop only those labels
+    // (still apply the rest) instead of skipping the entire issue.
     const missingForIssue = toAdd.filter((name) => missingManagedLabels.has(name));
-    if (missingForIssue.length > 0) {
-      const warning = `warning: skipping ${formatIssueRef(repo, issue.number)} because labels are missing in ${repo}: ${missingForIssue.join(", ")}`;
-      console.warn(warning);
-      results.skippedIssue += 1;
+    const effectiveToAdd = missingForIssue.length > 0
+      ? toAdd.filter((name) => !missingManagedLabels.has(name))
+      : toAdd;
 
-      if (args.json) {
-        results.changes.push({
-          issue: {
-            number: issue.number,
-            title: issue.title,
-            url: issue.html_url,
-          },
-          desired: {
-            type: desiredType,
-            domains,
-          },
-          skipped: true,
-          reason: "missing_managed_labels",
-          missingLabels: missingForIssue,
-          change: { toAdd, toRemove },
-        });
-      }
-      continue;
+    if (missingForIssue.length > 0) {
+      const warning = `warning: ${formatIssueRef(repo, issue.number)} missing labels in ${repo}: ${missingForIssue.join(", ")}`;
+      console.warn(warning);
     }
+
+    const hasChange = effectiveToAdd.length > 0 || toRemove.length > 0;
+    if (args.onlyMissing && !hasChange) continue;
 
     const record = {
       issue: {
@@ -787,19 +816,23 @@ async function main() {
         type: desiredType,
         domains,
       },
-      change: { toAdd, toRemove },
+      change: { toAdd: effectiveToAdd, toRemove },
     };
+
+    if (missingForIssue.length > 0) {
+      record.missingLabels = missingForIssue;
+    }
 
     if (args.json) {
       results.changes.push(record);
     } else {
-      console.log(`[${formatIssueRef(repo, issue.number)}] +${toAdd.join(", ") || "-"} -${toRemove.join(", ") || "-"}`);
+      console.log(`[${formatIssueRef(repo, issue.number)}] +${effectiveToAdd.join(", ") || "-"} -${toRemove.join(", ") || "-"}`);
     }
 
     if (!args.dryRun) {
       // Add first to avoid leaving a temporary empty state.
-      if (toAdd.length > 0) {
-        await client.addIssueLabels(issue.number, toAdd);
+      if (effectiveToAdd.length > 0) {
+        await client.addIssueLabels(issue.number, effectiveToAdd);
       }
       for (const name of toRemove) {
         await client.removeIssueLabel(issue.number, name);
