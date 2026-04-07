@@ -12,6 +12,8 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// TestPlatformSetFallsBackToFileMasterKey verifies writes fall back to a file master key
+// when the system keychain cannot create the master key.
 func TestPlatformSetFallsBackToFileMasterKey(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -50,6 +52,8 @@ func TestPlatformSetFallsBackToFileMasterKey(t *testing.T) {
 	}
 }
 
+// TestPlatformGetPrefersFileMasterKey verifies reads prefer the file-based master key
+// before trying the system keychain master key.
 func TestPlatformGetPrefersFileMasterKey(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -104,6 +108,8 @@ func TestPlatformGetPrefersFileMasterKey(t *testing.T) {
 	}
 }
 
+// TestPlatformSetPrefersExistingFileMasterKey verifies writes stay on the file-based
+// master key path once the fallback master key already exists.
 func TestPlatformSetPrefersExistingFileMasterKey(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

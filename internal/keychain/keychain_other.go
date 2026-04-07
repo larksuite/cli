@@ -88,9 +88,11 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		if readErr == nil && len(existingKey) == masterKeyBytes {
 			return existingKey, nil
 		}
+		if readErr == nil && len(existingKey) != masterKeyBytes {
+			return nil, errors.New("keychain is corrupted")
+		}
 		return nil, err
 	}
-
 	return key, nil
 }
 
