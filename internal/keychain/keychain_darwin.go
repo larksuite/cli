@@ -184,12 +184,6 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	writeFailed = false
 
 	canonicalKey, err := os.ReadFile(keyPath)
-	if err == nil && len(canonicalKey) == masterKeyBytes {
-		return canonicalKey, nil
-	}
-	if err == nil && len(canonicalKey) != masterKeyBytes {
-		return nil, errors.New("keychain is corrupted")
-	}
 	if err != nil {
 		existingKey, readErr := os.ReadFile(keyPath)
 		if readErr == nil && len(existingKey) == masterKeyBytes {
@@ -200,7 +194,10 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 		}
 		return nil, err
 	}
-	return key, nil
+	if len(canonicalKey) != masterKeyBytes {
+		return nil, errors.New("keychain is corrupted")
+	}
+	return canonicalKey, nil
 }
 
 // encryptData encrypts data using AES-GCM.
