@@ -151,13 +151,19 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	file, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
-			existingKey, readErr := os.ReadFile(keyPath)
-			if readErr == nil && len(existingKey) == masterKeyBytes {
-				return existingKey, nil
+			for i := 0; i < 3; i++ {
+				existingKey, readErr := os.ReadFile(keyPath)
+				if readErr == nil && len(existingKey) == masterKeyBytes {
+					return existingKey, nil
+				}
+				if readErr != nil {
+					return nil, readErr
+				}
+				if i < 2 {
+					time.Sleep(5 * time.Millisecond)
+				}
 			}
-			if readErr == nil && len(existingKey) != masterKeyBytes {
-				return nil, errors.New("keychain is corrupted")
-			}
+			return nil, errors.New("keychain is corrupted")
 		}
 		return nil, err
 	}
