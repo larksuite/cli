@@ -44,7 +44,14 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 		return output.ErrValidation("not configured yet")
 	}
 
-	// Clean up keychain entries for all apps
+	// Save empty config first. If this fails, keep secrets and tokens intact so the
+	// existing config can still be retried instead of ending up half-removed.
+	empty := &core.MultiAppConfig{Apps: []core.AppConfig{}}
+	if err := core.SaveMultiAppConfig(empty); err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+	}
+
+	// Clean up keychain entries for all apps after config is cleared.
 	for _, app := range config.Apps {
 		core.RemoveSecretStore(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
@@ -52,11 +59,6 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 		}
 	}
 
-	// Save empty config
-	empty := &core.MultiAppConfig{Apps: []core.AppConfig{}}
-	if err := core.SaveMultiAppConfig(empty); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
-	}
 	output.PrintSuccess(f.IOStreams.ErrOut, "Configuration removed")
 	userCount := 0
 	for _, app := range config.Apps {
