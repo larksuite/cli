@@ -6,9 +6,9 @@ package cmdutil
 import (
 	"context"
 	"errors"
-	"testing"
-
 	"net/http"
+	"net/http/httptest"
+	"testing"
 
 	_ "github.com/larksuite/cli/extension/credential/env"
 	exttransport "github.com/larksuite/cli/extension/transport"
@@ -198,10 +198,15 @@ func TestNewDefault_ConfigUsesRuntimePlaceholderForTokenOnlyEnvAccount(t *testin
 	}
 }
 
-type stubTransportProvider struct{}
+type stubTransportProvider struct {
+	interceptor exttransport.Interceptor
+}
 
 func (s *stubTransportProvider) Name() string { return "stub" }
 func (s *stubTransportProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	if s.interceptor != nil {
+		return s.interceptor
+	}
 	return &stubTransportImpl{}
 }
 
@@ -210,6 +215,113 @@ type stubTransportImpl struct{}
 func (s *stubTransportImpl) PreRoundTrip(req *http.Request) func(*http.Response, error) {
 	return nil
 }
+
+// headerCapturingInterceptor sets custom headers in PreRoundTrip and records
+// whether PostRoundTrip was called, to verify execution order.
+type headerCapturingInterceptor struct {
+	preCalled  bool
+	postCalled bool
+}
+
+func (h *headerCapturingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	h.preCalled = true
+	// Set a custom header that should survive (no built-in override)
+	req.Header.Set("X-Custom-Trace", "ext-trace-123")
+	// Try to override a security header — should be overwritten by SecurityHeaderTransport
+	req.Header.Set(HeaderSource, "ext-tampered")
+	return func(resp *http.Response, err error) {
+		h.postCalled = true
+	}
+}
+
+func TestExtensionInterceptor_ExecutionOrder(t *testing.T) {
+	var receivedHeaders http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ic := &headerCapturingInterceptor{}
+	exttransport.Register(&stubTransportProvider{interceptor: ic})
+	t.Cleanup(func() { exttransport.Register(nil) })
+
+	// Use HTTP transport chain (has SecurityHeaderTransport)
+	var base http.RoundTripper = http.DefaultTransport
+	base = &RetryTransport{Base: base}
+	base = &SecurityHeaderTransport{Base: base}
+	transport := wrapWithExtension(base)
+	client := &http.Client{Transport: transport}
+
+	req, _ := http.NewRequest("GET", srv.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	// PreRoundTrip was called
+	if !ic.preCalled {
+		t.Fatal("PreRoundTrip was not called")
+	}
+	// PostRoundTrip (closure) was called
+	if !ic.postCalled {
+		t.Fatal("PostRoundTrip closure was not called")
+	}
+	// Custom header set by extension survives (no built-in override)
+	if got := receivedHeaders.Get("X-Custom-Trace"); got != "ext-trace-123" {
+		t.Fatalf("X-Custom-Trace = %q, want %q", got, "ext-trace-123")
+	}
+	// Security header overridden by extension is restored by SecurityHeaderTransport
+	if got := receivedHeaders.Get(HeaderSource); got != SourceValue {
+		t.Fatalf("%s = %q, want %q (built-in should override extension)", HeaderSource, got, SourceValue)
+	}
+}
+
+func TestExtensionInterceptor_ContextTamperPrevented(t *testing.T) {
+	type ctxKeyType string
+	const testKey ctxKeyType = "original"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	var ctxSeenByBuiltIn context.Context
+
+	// Use a custom transport that captures the context seen by the built-in chain
+	capturer := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		ctxSeenByBuiltIn = req.Context()
+		return http.DefaultTransport.RoundTrip(req)
+	})
+
+	// Interceptor that tries to tamper with context
+	tamperIC := interceptorFunc(func(req *http.Request) func(*http.Response, error) {
+		// Try to replace context with a new one
+		*req = *req.WithContext(context.WithValue(req.Context(), testKey, "tampered"))
+		return nil
+	})
+
+	mid := &extensionMiddleware{Base: capturer, Ext: tamperIC}
+
+	origCtx := context.WithValue(context.Background(), testKey, "original")
+	req, _ := http.NewRequestWithContext(origCtx, "GET", srv.URL, nil)
+	resp, err := mid.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	// Built-in chain should see original context, not tampered
+	if got := ctxSeenByBuiltIn.Value(testKey); got != "original" {
+		t.Fatalf("built-in chain saw context value %q, want %q", got, "original")
+	}
+}
+
+// interceptorFunc adapts a function to exttransport.Interceptor.
+type interceptorFunc func(*http.Request) func(*http.Response, error)
+
+func (f interceptorFunc) PreRoundTrip(req *http.Request) func(*http.Response, error) { return f(req) }
 
 func TestBuildSDKTransport_WithExtension(t *testing.T) {
 	exttransport.Register(&stubTransportProvider{})
