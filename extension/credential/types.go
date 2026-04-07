@@ -47,7 +47,7 @@ func (s IdentitySupport) BotOnly() bool { return s == SupportsBot }
 // Account holds resolved app credentials and configuration.
 type Account struct {
 	AppID               string
-	AppSecret           string // real app secret; empty or NoAppSecret means unavailable
+	AppSecret           string   // real app secret; empty or NoAppSecret means unavailable
 	Brand               Brand    // BrandLark or BrandFeishu
 	DefaultAs           Identity // IdentityUser / IdentityBot / IdentityAuto; empty = not set
 	ProfileName         string
