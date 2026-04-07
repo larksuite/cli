@@ -609,6 +609,9 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	if err := validate.RejectCRLF(finalCID, "inline cid"); err != nil {
 		return err
 	}
+	if strings.ContainsAny(finalCID, " \t<>()") {
+		return fmt.Errorf("inline cid %q contains invalid characters (spaces, tabs, angle brackets, or parentheses are not allowed)", finalCID)
+	}
 	if err := validate.RejectCRLF(fileName, "inline filename"); err != nil {
 		return err
 	}
@@ -762,6 +765,9 @@ func newInlinePart(path string, content []byte, cid, fileName, contentType strin
 	if err := validate.RejectCRLF(cid, "inline cid"); err != nil {
 		return nil, err
 	}
+	if strings.ContainsAny(cid, " \t<>()") {
+		return nil, fmt.Errorf("inline cid %q contains invalid characters (spaces, tabs, angle brackets, or parentheses are not allowed)", cid)
+	}
 	if err := validate.RejectCRLF(fileName, "inline filename"); err != nil {
 		return nil, err
 	}
@@ -862,7 +868,7 @@ func removeHeader(headers *[]Header, name string) {
 // prevent broken CID references, but NOT during Parse (where broken CIDs
 // should not block opening the draft).
 func validateInlineCIDAfterApply(snapshot *DraftSnapshot) error {
-	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	htmlPart := findPrimaryBodyPart(snapshot.Body, "text/html")
 	if htmlPart == nil {
 		return nil
 	}
@@ -890,7 +896,7 @@ func validateInlineCIDAfterApply(snapshot *DraftSnapshot) error {
 // An orphaned inline part (CID exists but HTML has no <img src="cid:...">) will
 // be displayed as an unexpected attachment by most mail clients.
 func validateOrphanedInlineCIDAfterApply(snapshot *DraftSnapshot) error {
-	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	htmlPart := findPrimaryBodyPart(snapshot.Body, "text/html")
 	if htmlPart == nil {
 		return nil
 	}
