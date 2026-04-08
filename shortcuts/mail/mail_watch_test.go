@@ -306,6 +306,24 @@ func TestWaitForMailWatchShutdownReturnsStartError(t *testing.T) {
 	}
 }
 
+func TestFinalizeMailWatchCleanup(t *testing.T) {
+	runErr := assertErr("run failed")
+	cleanupErr := assertErr("cleanup failed")
+
+	if err := finalizeMailWatchCleanup(nil, nil); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	if err := finalizeMailWatchCleanup(runErr, nil); err != runErr {
+		t.Fatalf("expected runErr when cleanup succeeds, got %v", err)
+	}
+	if err := finalizeMailWatchCleanup(nil, cleanupErr); err != cleanupErr {
+		t.Fatalf("expected cleanupErr when run succeeds, got %v", err)
+	}
+	if err := finalizeMailWatchCleanup(runErr, cleanupErr); err != runErr {
+		t.Fatalf("expected primary runErr to win, got %v", err)
+	}
+}
+
 func TestDecodeBodyFieldsForFileDecodesMessageWrapper(t *testing.T) {
 	htmlEncoded := base64.URLEncoding.EncodeToString([]byte("<h1>Hello</h1>"))
 	plainEncoded := base64.URLEncoding.EncodeToString([]byte("Hello plain"))
