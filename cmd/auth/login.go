@@ -284,6 +284,9 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 		return output.ErrAuth("authorization failed: %s", result.Message)
 	}
+	if result.Token == nil {
+		return output.ErrAuth("authorization succeeded but no token returned")
+	}
 
 	// Step 6: Get user info
 	log(msg.AuthSuccess)
@@ -295,6 +298,8 @@ func authLoginRun(opts *LoginOptions) error {
 	if err != nil {
 		return output.ErrAuth("failed to get user info: %v", err)
 	}
+
+	scopeSummary := loadLoginScopeSummary(config.AppID, openId, finalScope, result.Token.Scope)
 
 	// Step 7: Store token
 	now := time.Now().UnixMilli()
@@ -318,21 +323,11 @@ func authLoginRun(opts *LoginOptions) error {
 		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
-	if opts.JSON {
-		b, _ := json.Marshal(map[string]interface{}{
-			"event":        "authorization_complete",
-			"user_open_id": openId,
-			"user_name":    userName,
-			"scope":        result.Token.Scope,
-		})
-		fmt.Fprintln(f.IOStreams.Out, string(b))
-	} else {
-		fmt.Fprintln(f.IOStreams.ErrOut)
-		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
-		if result.Token.Scope != "" {
-			fmt.Fprintf(f.IOStreams.ErrOut, msg.GrantedScopes, result.Token.Scope)
-		}
+	if issue := ensureRequestedScopesGranted(finalScope, result.Token.Scope, msg, scopeSummary); issue != nil {
+		return handleLoginScopeIssue(opts, msg, f, issue, openId, userName)
 	}
+
+	writeLoginSuccess(opts, msg, f, openId, userName, scopeSummary)
 	return nil
 }
 
@@ -367,6 +362,8 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		return output.ErrAuth("failed to get user info: %v", err)
 	}
 
+	scopeSummary := loadLoginScopeSummary(config.AppID, openId, "", result.Token.Scope)
+
 	// Store token
 	now := time.Now().UnixMilli()
 	storedToken := &larkauth.StoredUAToken{
@@ -389,7 +386,11 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
-	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
+	if issue := ensureRequestedScopesGranted("", result.Token.Scope, msg, scopeSummary); issue != nil {
+		return handleLoginScopeIssue(opts, msg, f, issue, openId, userName)
+	}
+
+	writeLoginSuccess(opts, msg, f, openId, userName, scopeSummary)
 	return nil
 }
 
