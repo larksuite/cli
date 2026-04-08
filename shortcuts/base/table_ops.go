@@ -107,9 +107,9 @@ func executeTableCreate(runtime *common.RuntimeContext) error {
 	}
 	result := map[string]interface{}{"table": created}
 	tableIDValue := tableID(created)
-	fio := runtime.FileIO()
+	pc := newParseCtx(runtime)
 	if tableIDValue != "" && runtime.Str("fields") != "" {
-		fieldItems, err := parseJSONArray(fio, runtime.Str("fields"), "fields")
+		fieldItems, err := parseJSONArray(pc, runtime.Str("fields"), "fields")
 		if err != nil {
 			return err
 		}
@@ -140,7 +140,7 @@ func executeTableCreate(runtime *common.RuntimeContext) error {
 		result["fields"] = createdFields
 	}
 	if tableIDValue != "" && runtime.Str("view") != "" {
-		viewItems, err := parseObjectList(fio, runtime.Str("view"), "view")
+		viewItems, err := parseObjectList(pc, runtime.Str("view"), "view")
 		if err != nil {
 			return err
 		}

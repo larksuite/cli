@@ -13,11 +13,20 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// parseCtx carries file I/O dependency for JSON/file parsing helpers.
+type parseCtx struct {
+	fio fileio.FileIO
+}
+
+func newParseCtx(runtime *common.RuntimeContext) *parseCtx {
+	return &parseCtx{fio: runtime.FileIO()}
+}
+
 func baseTableID(runtime *common.RuntimeContext) string {
 	return strings.TrimSpace(runtime.Str("table-id"))
 }
 
-func loadJSONInput(fio fileio.FileIO, raw string, flagName string) (string, error) {
+func loadJSONInput(pc *parseCtx, raw string, flagName string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", common.FlagErrorf("--%s cannot be empty", flagName)
@@ -29,7 +38,7 @@ func loadJSONInput(fio fileio.FileIO, raw string, flagName string) (string, erro
 	if path == "" {
 		return "", common.FlagErrorf("--%s file path cannot be empty after @", flagName)
 	}
-	f, err := fio.Open(path)
+	f, err := pc.fio.Open(path)
 	if err != nil {
 		return "", common.FlagErrorf("--%s invalid JSON file path %q: %v", flagName, path, err)
 	}
@@ -87,18 +96,18 @@ func baseAction(runtime *common.RuntimeContext, boolFlags []string, stringFlags 
 	return active[0], nil
 }
 
-func parseObjectList(fio fileio.FileIO, raw string, flagName string) ([]map[string]interface{}, error) {
+func parseObjectList(pc *parseCtx, raw string, flagName string) ([]map[string]interface{}, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 	var err error
-	raw, err = loadJSONInput(fio, raw, flagName)
+	raw, err = loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
 	if strings.HasPrefix(raw, "[") {
-		arr, err := parseJSONArray(fio, raw, flagName)
+		arr, err := parseJSONArray(pc, raw, flagName)
 		if err != nil {
 			return nil, err
 		}
@@ -112,16 +121,16 @@ func parseObjectList(fio fileio.FileIO, raw string, flagName string) ([]map[stri
 		}
 		return items, nil
 	}
-	obj, err := parseJSONObject(fio, raw, flagName)
+	obj, err := parseJSONObject(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
 	return []map[string]interface{}{obj}, nil
 }
 
-func parseJSONValue(fio fileio.FileIO, raw string, flagName string) (interface{}, error) {
+func parseJSONValue(pc *parseCtx, raw string, flagName string) (interface{}, error) {
 	var err error
-	raw, err = loadJSONInput(fio, raw, flagName)
+	raw, err = loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}

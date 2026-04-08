@@ -16,7 +16,6 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -30,8 +29,8 @@ type fieldTypeSpec struct {
 	Extra map[string]interface{}
 }
 
-func parseJSONObject(fio fileio.FileIO, raw string, flagName string) (map[string]interface{}, error) {
-	resolved, err := loadJSONInput(fio, raw, flagName)
+func parseJSONObject(pc *parseCtx, raw string, flagName string) (map[string]interface{}, error) {
+	resolved, err := loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
@@ -42,8 +41,8 @@ func parseJSONObject(fio fileio.FileIO, raw string, flagName string) (map[string
 	return result, nil
 }
 
-func parseJSONArray(fio fileio.FileIO, raw string, flagName string) ([]interface{}, error) {
-	resolved, err := loadJSONInput(fio, raw, flagName)
+func parseJSONArray(pc *parseCtx, raw string, flagName string) ([]interface{}, error) {
+	resolved, err := loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
@@ -54,12 +53,12 @@ func parseJSONArray(fio fileio.FileIO, raw string, flagName string) ([]interface
 	return result, nil
 }
 
-func parseStringListFlexible(fio fileio.FileIO, raw string, flagName string) ([]string, error) {
+func parseStringListFlexible(pc *parseCtx, raw string, flagName string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
-	resolved, err := loadJSONInput(fio, raw, flagName)
+	resolved, err := loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
