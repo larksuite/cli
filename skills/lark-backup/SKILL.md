@@ -115,7 +115,15 @@ bash scripts/lark-backup.sh base \
 - 大型 Base 或大文件夹：接受脚本运行较久；不要把 `+record-list` 并发化
 - `slides` / `mindnote` / 其他不在脚本覆盖范围内的类型：保留元数据并提示用户改走单独导出策略
 
+## 本地自检
+
+```bash
+bash scripts/lark-backup.sh --help
+bash scripts/lark-backup-smoke-test.sh
+```
+
 ## 资源
 
 - [references/backup-layout.md](references/backup-layout.md) — 输出结构、对象覆盖范围、已知边界
 - [scripts/lark-backup.sh](scripts/lark-backup.sh) — 备份脚本
+- [scripts/lark-backup-smoke-test.sh](scripts/lark-backup-smoke-test.sh) — 编号宽度与排序 smoke test
