@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/task"
 	"github.com/larksuite/cli/shortcuts/vc"
 	"github.com/larksuite/cli/shortcuts/whiteboard"
+	"github.com/larksuite/cli/shortcuts/wiki"
 )
 
 // allShortcuts aggregates shortcuts from all domain packages.
@@ -41,6 +42,7 @@ func init() {
 	allShortcuts = append(allShortcuts, task.Shortcuts()...)
 	allShortcuts = append(allShortcuts, vc.Shortcuts()...)
 	allShortcuts = append(allShortcuts, whiteboard.Shortcuts()...)
+	allShortcuts = append(allShortcuts, wiki.Shortcuts()...)
 }
 
 // AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).
