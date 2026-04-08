@@ -17,10 +17,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -1858,7 +1858,7 @@ func inlineSpecFilePaths(specs []InlineSpec) []string {
 // MaxAttachmentCount or the combined size exceeds MaxAttachmentBytes.
 // filePaths are read via os.Stat (no full read); extraBytes / extraCount account for
 // already-loaded content (e.g. downloaded original attachments in +forward).
-func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount ...int) error {
+func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes int64, extraCount ...int) error {
 	extra := 0
 	for _, c := range extraCount {
 		extra += c
@@ -1869,13 +1869,9 @@ func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount .
 	}
 	totalBytes := extraBytes
 	for _, p := range filePaths {
-		safePath, err := validate.SafeInputPath(p)
+		info, err := fio.Stat(p)
 		if err != nil {
 			return fmt.Errorf("unsafe attachment path %s: %w", p, err)
-		}
-		info, err := vfs.Stat(safePath)
-		if err != nil {
-			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
 		}
 		totalBytes += info.Size()
 	}
@@ -1976,7 +1972,7 @@ func validateRecipientCount(to, cc, bcc string) error {
 	return nil
 }
 
-func validateComposeInlineAndAttachments(attachFlag, inlineFlag string, plainText bool, body string) error {
+func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
 			return fmt.Errorf("--inline is not supported with --plain-text (inline images require HTML body)")
@@ -1994,5 +1990,5 @@ func validateComposeInlineAndAttachments(attachFlag, inlineFlag string, plainTex
 		return err
 	}
 	allFiles := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
-	return checkAttachmentSizeLimit(allFiles, 0)
+	return checkAttachmentSizeLimit(fio, allFiles, 0)
 }

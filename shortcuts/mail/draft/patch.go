@@ -5,6 +5,7 @@ package draft
 
 import (
 	"fmt"
+	"io"
 	"mime"
 	"path/filepath"
 	"regexp"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
@@ -479,21 +479,22 @@ func newMultipartContainer(mediaType string) *Part {
 }
 
 func addAttachment(snapshot *DraftSnapshot, path string) error {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return fmt.Errorf("attachment %q: %w", path, err)
-	}
 	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
 		return err
 	}
-	info, err := vfs.Stat(safePath)
+	info, err := snapshot.FIO.Stat(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("attachment %q: %w", path, err)
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := snapshot.FIO.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -544,18 +545,19 @@ func addAttachment(snapshot *DraftSnapshot, path string) error {
 // multipart/related container. If container is non-nil it is reused;
 // otherwise the container is resolved from the snapshot.
 func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, container *Part) (*Part, error) {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return nil, fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
+	info, err := snapshot.FIO.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return nil, err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := snapshot.FIO.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("inline image %q: %w", path, err)
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
@@ -567,7 +569,7 @@ func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, co
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
-	inline, err := newInlinePart(safePath, content, cid, name, detectedCT)
+	inline, err := newInlinePart(path, content, cid, name, detectedCT)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
@@ -599,18 +601,19 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	if !isInlinePart(part) {
 		return fmt.Errorf("part %q is not an inline MIME part", partID)
 	}
-	safePath, err := validate.SafeInputPath(path)
+	info, err := snapshot.FIO.Stat(path)
 	if err != nil {
 		return fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
-	if err != nil {
-		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), part); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := snapshot.FIO.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}

@@ -19,6 +19,7 @@ func TestAddAttachmentToNilBodyCreatesRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := &DraftSnapshot{
+		FIO:     testFIO,
 		DraftID: "d-nil",
 		Headers: []Header{
 			{Name: "Subject", Value: "Empty"},

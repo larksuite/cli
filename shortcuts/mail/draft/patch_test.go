@@ -7,7 +7,11 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
+
+var testFIO = &localfileio.LocalFileIO{}
 
 func chdirTemp(t *testing.T) {
 	t.Helper()
@@ -784,6 +788,7 @@ func mustParseFixtureDraft(t *testing.T, raw string) *DraftSnapshot {
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
+	snapshot.FIO = testFIO
 	return snapshot
 }
 

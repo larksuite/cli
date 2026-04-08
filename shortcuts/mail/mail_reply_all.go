@@ -56,7 +56,7 @@ var MailReplyAll = common.Shortcut{
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
 		}
-		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
+		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
@@ -124,7 +124,7 @@ var MailReplyAll = common.Shortcut{
 			bodyStr = body
 		}
 		quoted := quoteForReply(&orig, useHTML)
-		bld := emlbuilder.New().
+		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(buildReplySubject(orig.subject)).
 			ToAddrs(parseNetAddrs(toList))
 		if senderEmail != "" {
@@ -175,7 +175,7 @@ var MailReplyAll = common.Shortcut{
 			bld = bld.TextBody([]byte(bodyStr + quoted))
 		}
 		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
+		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
 			return err
 		}
 		for _, path := range splitByComma(attachFlag) {

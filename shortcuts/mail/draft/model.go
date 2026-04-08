@@ -9,6 +9,8 @@ import (
 	"mime"
 	"net/mail"
 	"strings"
+
+	"github.com/larksuite/cli/extension/fileio"
 )
 
 type DraftRaw struct {
@@ -99,6 +101,7 @@ func (p *Part) FileName() string {
 }
 
 type DraftSnapshot struct {
+	FIO     fileio.FileIO `json:"-"` // injected file I/O; nil falls back to legacy validate+vfs
 	DraftID string
 	Headers []Header
 	Body    *Part
