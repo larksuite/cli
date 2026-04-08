@@ -366,6 +366,24 @@ func WrapOpenError(err error, pathMsg, readMsg string) error {
 	return fmt.Errorf("%s: %w", readMsg, err)
 }
 
+// WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
+// using standardized messages and the given error category (e.g. "api_error", "io").
+// Path validation errors always use ErrValidation (exit code 2).
+func WrapSaveErrorByCategory(err error, category string) error {
+	if err == nil {
+		return nil
+	}
+	var me *fileio.MkdirError
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return output.ErrValidation("unsafe output path: %s", err)
+	case errors.As(err, &me):
+		return output.Errorf(output.ExitInternal, category, "cannot create parent directory: %s", err)
+	default:
+		return output.Errorf(output.ExitInternal, category, "cannot create file: %s", err)
+	}
+}
+
 // ValidatePath checks that path is a valid relative input path within the
 // working directory by delegating to FileIO.Stat. Returns nil if the path is
 // valid or does not exist yet; returns an error only for illegal paths
