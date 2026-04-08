@@ -424,6 +424,28 @@ func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
 	}
 }
 
+func TestWriteLoginSuccess_JSONEmptySlicesNotNull(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	writeLoginSuccess(&LoginOptions{JSON: true}, getLoginMsg("en"), f, "ou_user", "tester", &loginScopeSummary{
+		Granted: []string{"offline_access"},
+	})
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
+		t.Fatalf("Unmarshal(stdout) error = %v, stdout=%s", err, stdout.String())
+	}
+	for _, k := range []string{"requested", "newly_granted", "already_granted", "missing", "granted"} {
+		v, ok := data[k]
+		if !ok {
+			t.Fatalf("missing key %q in payload: %v", k, data)
+		}
+		if _, ok := v.([]interface{}); !ok {
+			t.Fatalf("%s = %#v, want JSON array", k, v)
+		}
+	}
+}
+
 func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -443,10 +465,10 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 				"登录成功! 用户: tester (ou_user)",
 				"本次请求 scopes: im:message:send im:message:reply",
 				"本次新增 scopes: im:message:send",
+				"已有 scopes: im:message:reply",
 				"最终已授权 scopes: im:message:send im:message:reply",
 			},
 			expectedAbsent: []string{
-				"已有 scopes:",
 				"未授权 scopes:",
 			},
 		},
@@ -460,10 +482,10 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			expectedPresent: []string{
 				"本次请求 scopes: im:message:send",
 				"本次新增 scopes: （空）",
+				"已有 scopes: im:message:send",
 				"最终已授权 scopes: im:message:send contact:user.base:readonly",
 			},
 			expectedAbsent: []string{
-				"已有 scopes:",
 				"未授权 scopes:",
 			},
 		},

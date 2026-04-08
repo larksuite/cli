@@ -125,19 +125,25 @@ func formatScopeList(scopes []string, empty string) string {
 	return strings.Join(scopes, " ")
 }
 
+// emptyIfNil normalizes nil slices to empty slices for stable JSON output.
+func emptyIfNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
 // writeLoginScopeBreakdown renders the requested/newly granted/missing/final
 // granted scope breakdown to stderr.
-func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary *loginScopeSummary, pendingLabel string) {
+func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary *loginScopeSummary) {
 	if summary == nil {
 		summary = &loginScopeSummary{}
 	}
 	fmt.Fprintf(errOut.ErrOut, msg.RequestedScopes, formatScopeList(summary.Requested, msg.NoScopes))
-	if pendingLabel != "" {
-		fmt.Fprintf(errOut.ErrOut, msg.NewlyGrantedScopes, pendingLabel)
-		fmt.Fprintf(errOut.ErrOut, msg.MissingScopes, pendingLabel)
-		return
-	}
 	fmt.Fprintf(errOut.ErrOut, msg.NewlyGrantedScopes, formatScopeList(summary.NewlyGranted, msg.NoScopes))
+	if len(summary.AlreadyGranted) > 0 {
+		fmt.Fprintf(errOut.ErrOut, msg.AlreadyGrantedScopes, formatScopeList(summary.AlreadyGranted, msg.NoScopes))
+	}
 	if len(summary.Missing) > 0 {
 		fmt.Fprintf(errOut.ErrOut, msg.MissingScopes, formatScopeList(summary.Missing, msg.NoScopes))
 	}
@@ -158,7 +164,7 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
-	writeLoginScopeBreakdown(f.IOStreams, msg, summary, "")
+	writeLoginScopeBreakdown(f.IOStreams, msg, summary)
 }
 
 // handleLoginScopeIssue prints or returns a structured missing-scope result
@@ -199,7 +205,7 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 	if loginSucceeded {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
 	}
-	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary, "")
+	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary)
 	if issue.ShortHint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.ShortHint)
 	} else if issue.Hint != "" {
@@ -222,11 +228,11 @@ func authorizationCompletePayload(openId, userName string, summary *loginScopeSu
 		"user_open_id":    openId,
 		"user_name":       userName,
 		"scope":           strings.Join(summary.Granted, " "),
-		"requested":       summary.Requested,
-		"newly_granted":   summary.NewlyGranted,
-		"already_granted": summary.AlreadyGranted,
-		"missing":         summary.Missing,
-		"granted":         summary.Granted,
+		"requested":       emptyIfNil(summary.Requested),
+		"newly_granted":   emptyIfNil(summary.NewlyGranted),
+		"already_granted": emptyIfNil(summary.AlreadyGranted),
+		"missing":         emptyIfNil(summary.Missing),
+		"granted":         emptyIfNil(summary.Granted),
 	}
 	if issue != nil {
 		payload["warning"] = map[string]interface{}{

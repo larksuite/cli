@@ -28,7 +28,6 @@ type loginMsg struct {
 	ScopeMismatch        string
 	ScopeHint            string
 	ScopeHintShort       string
-	PendingScopes        string
 	RequestedScopes      string
 	NewlyGrantedScopes   string
 	AlreadyGrantedScopes string
@@ -68,7 +67,6 @@ var loginMsgZh = &loginMsg{
 	ScopeMismatch:        "授权完成，但以下请求 scopes 未被授予: %s",
 	ScopeHint:            "实际已授予 scopes: %s。请检查应用在飞书开发者后台是否已启用这些 scopes，并确认授权页已同意对应权限。可执行 `lark-cli auth scopes` 查看应用已启用 scopes。",
 	ScopeHintShort:       "请检查应用在飞书开发者后台是否已启用这些 scopes，并确认授权页已同意对应权限。可执行 `lark-cli auth scopes` 查看应用已启用 scopes。",
-	PendingScopes:        "（授权后确认）",
 	RequestedScopes:      "  本次请求 scopes: %s\n",
 	NewlyGrantedScopes:   "  本次新增 scopes: %s\n",
 	AlreadyGrantedScopes: "  已有 scopes: %s\n",
@@ -107,7 +105,6 @@ var loginMsgEn = &loginMsg{
 	ScopeMismatch:        "authorization completed, but these requested scopes were not granted: %s",
 	ScopeHint:            "Granted scopes: %s. Check whether the app has enabled these scopes in the developer console and whether the user approved them on the authorization page. Run `lark-cli auth scopes` to inspect the app's enabled scopes.",
 	ScopeHintShort:       "Check whether the app has enabled these scopes in the developer console and whether the user approved them on the authorization page. Run `lark-cli auth scopes` to inspect the app's enabled scopes.",
-	PendingScopes:        "(determined after authorization)",
 	RequestedScopes:      "  Requested scopes: %s\n",
 	NewlyGrantedScopes:   "  Newly granted scopes: %s\n",
 	AlreadyGrantedScopes: "  Already granted scopes: %s\n",
