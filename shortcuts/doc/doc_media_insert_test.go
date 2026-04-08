@@ -388,8 +388,9 @@ func TestLocateInsertIndexDryRunIncludesMCPStep(t *testing.T) {
 	var dry struct {
 		Description string `json:"description"`
 		API         []struct {
-			Desc string `json:"desc"`
-			URL  string `json:"url"`
+			Desc string                 `json:"desc"`
+			URL  string                 `json:"url"`
+			Body map[string]interface{} `json:"body"`
 		} `json:"api"`
 	}
 	if err := json.Unmarshal(raw, &dry); err != nil {
@@ -407,6 +408,17 @@ func TestLocateInsertIndexDryRunIncludesMCPStep(t *testing.T) {
 	}
 	if !strings.Contains(dry.Description, "locate-doc") {
 		t.Fatalf("dry-run description should mention 'locate-doc', got: %s", dry.Description)
+	}
+
+	// Verify create-block step shows <locate_index> not <children_len>
+	for _, step := range dry.API {
+		if strings.Contains(step.URL, "/children") && step.Body != nil {
+			if idx, ok := step.Body["index"]; ok {
+				if idx != "<locate_index>" {
+					t.Fatalf("create-block index in selection mode = %q, want <locate_index>", idx)
+				}
+			}
+		}
 	}
 }
 

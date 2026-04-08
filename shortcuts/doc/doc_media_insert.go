@@ -66,7 +66,11 @@ var DocMediaInsert = common.Shortcut{
 
 		parentType := parentTypeForMediaType(mediaType)
 		createBlockData := buildCreateBlockData(mediaType, 0)
-		createBlockData["index"] = "<children_len>"
+		if hasSelection {
+			createBlockData["index"] = "<locate_index>"
+		} else {
+			createBlockData["index"] = "<children_len>"
+		}
 		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption)
 
 		d := common.NewDryRunAPI()
