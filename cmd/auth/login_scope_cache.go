@@ -19,14 +19,18 @@ type loginScopeCacheRecord struct {
 	RequestedScope string `json:"requested_scope"`
 }
 
+// loginScopeCacheDir returns the directory used to persist auth login --no-wait
+// requested scopes keyed by device_code.
 func loginScopeCacheDir() string {
 	return filepath.Join(core.GetConfigDir(), "cache", "auth_login_scopes")
 }
 
+// loginScopeCachePath returns the cache file path for a given device_code.
 func loginScopeCachePath(deviceCode string) string {
 	return filepath.Join(loginScopeCacheDir(), sanitizeLoginScopeCacheKey(deviceCode)+".json")
 }
 
+// sanitizeLoginScopeCacheKey converts a device_code into a safe filename token.
 func sanitizeLoginScopeCacheKey(deviceCode string) string {
 	sanitized := loginScopeCacheSafeChars.ReplaceAllString(deviceCode, "_")
 	if sanitized == "" {
@@ -35,6 +39,7 @@ func sanitizeLoginScopeCacheKey(deviceCode string) string {
 	return sanitized
 }
 
+// saveLoginRequestedScope persists the requested scope string for a device_code.
 func saveLoginRequestedScope(deviceCode, requestedScope string) error {
 	if err := vfs.MkdirAll(loginScopeCacheDir(), 0700); err != nil {
 		return err
@@ -46,6 +51,8 @@ func saveLoginRequestedScope(deviceCode, requestedScope string) error {
 	return validate.AtomicWrite(loginScopeCachePath(deviceCode), data, 0600)
 }
 
+// loadLoginRequestedScope loads the cached requested scope string for a device_code.
+// It returns an empty string if no cache entry exists.
 func loadLoginRequestedScope(deviceCode string) (string, error) {
 	data, err := vfs.ReadFile(loginScopeCachePath(deviceCode))
 	if err != nil {
@@ -62,6 +69,7 @@ func loadLoginRequestedScope(deviceCode string) (string, error) {
 	return record.RequestedScope, nil
 }
 
+// removeLoginRequestedScope deletes the cache entry for a device_code.
 func removeLoginRequestedScope(deviceCode string) error {
 	err := vfs.Remove(loginScopeCachePath(deviceCode))
 	if errors.Is(err, os.ErrNotExist) {
@@ -70,6 +78,8 @@ func removeLoginRequestedScope(deviceCode string) error {
 	return err
 }
 
+// shouldRemoveLoginRequestedScope indicates whether the requested-scope cache
+// should be removed after polling finishes.
 func shouldRemoveLoginRequestedScope(result *larkauth.DeviceFlowResult) bool {
 	if result == nil {
 		return false

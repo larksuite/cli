@@ -25,6 +25,8 @@ type loginScopeIssue struct {
 	Summary   *loginScopeSummary
 }
 
+// ensureRequestedScopesGranted checks whether all requested scopes were granted
+// and returns a structured issue when any requested scope is missing.
 func ensureRequestedScopesGranted(requestedScope, grantedScope string, msg *loginMsg, summary *loginScopeSummary) *loginScopeIssue {
 	requested := uniqueScopeList(requestedScope)
 	if len(requested) == 0 {
@@ -57,6 +59,8 @@ func ensureRequestedScopesGranted(requestedScope, grantedScope string, msg *logi
 	}
 }
 
+// loadLoginScopeSummary builds a scope summary by comparing the requested scopes,
+// previously stored scopes, and the newly granted scopes from the current login.
 func loadLoginScopeSummary(appID, openId, requestedScope, grantedScope string) *loginScopeSummary {
 	previousScope := ""
 	if previous := larkauth.GetStoredToken(appID, openId); previous != nil {
@@ -65,6 +69,8 @@ func loadLoginScopeSummary(appID, openId, requestedScope, grantedScope string) *
 	return buildLoginScopeSummary(requestedScope, previousScope, grantedScope)
 }
 
+// buildLoginScopeSummary classifies requested scopes into newly granted,
+// already granted, and missing buckets while preserving the final granted list.
 func buildLoginScopeSummary(requestedScope, previousScope, grantedScope string) *loginScopeSummary {
 	requested := uniqueScopeList(requestedScope)
 	previous := uniqueScopeList(previousScope)
@@ -96,6 +102,7 @@ func buildLoginScopeSummary(requestedScope, previousScope, grantedScope string) 
 	return summary
 }
 
+// uniqueScopeList splits a scope string into a de-duplicated ordered slice.
 func uniqueScopeList(scope string) []string {
 	seen := make(map[string]bool)
 	var result []string
@@ -109,6 +116,8 @@ func uniqueScopeList(scope string) []string {
 	return result
 }
 
+// formatScopeList joins scopes for display and falls back to the provided empty
+// label when the input slice is empty.
 func formatScopeList(scopes []string, empty string) string {
 	if len(scopes) == 0 {
 		return empty
@@ -116,6 +125,8 @@ func formatScopeList(scopes []string, empty string) string {
 	return strings.Join(scopes, " ")
 }
 
+// writeLoginScopeBreakdown renders the requested/newly granted/missing/final
+// granted scope breakdown to stderr.
 func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary *loginScopeSummary, pendingLabel string) {
 	if summary == nil {
 		summary = &loginScopeSummary{}
@@ -133,6 +144,8 @@ func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary 
 	fmt.Fprintf(errOut.ErrOut, msg.FinalGrantedScopes, formatScopeList(summary.Granted, msg.NoScopes))
 }
 
+// writeLoginSuccess emits the successful login payload in either JSON or text
+// format together with the computed scope breakdown.
 func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, openId, userName string, summary *loginScopeSummary) {
 	if summary == nil {
 		summary = &loginScopeSummary{}
@@ -148,6 +161,8 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 	writeLoginScopeBreakdown(f.IOStreams, msg, summary, "")
 }
 
+// handleLoginScopeIssue prints or returns a structured missing-scope result
+// while preserving a successful login outcome when authorization completed.
 func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, issue *loginScopeIssue, openId, userName string) error {
 	if issue == nil {
 		return nil
@@ -196,6 +211,8 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 	return output.ErrBare(output.ExitAuth)
 }
 
+// authorizationCompletePayload builds the JSON payload for a completed login,
+// optionally attaching a warning when requested scopes are missing.
 func authorizationCompletePayload(openId, userName string, summary *loginScopeSummary, issue *loginScopeIssue) map[string]interface{} {
 	if summary == nil {
 		summary = &loginScopeSummary{}
