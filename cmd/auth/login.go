@@ -249,7 +249,7 @@ func authLoginRun(opts *LoginOptions) error {
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(data); err != nil {
-			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+			return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
 		}
 		return nil
 	}
@@ -266,7 +266,7 @@ func authLoginRun(opts *LoginOptions) error {
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(data); err != nil {
-			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+			return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
 		}
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
@@ -280,11 +280,14 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !result.OK {
 		if opts.JSON {
-			b, _ := json.Marshal(map[string]interface{}{
+			encoder := json.NewEncoder(f.IOStreams.Out)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(map[string]interface{}{
 				"event": "authorization_failed",
 				"error": result.Message,
-			})
-			fmt.Fprintln(f.IOStreams.Out, string(b))
+			}); err != nil {
+				return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
+			}
 			return output.ErrBare(output.ExitAuth)
 		}
 		return output.ErrAuth("authorization failed: %s", result.Message)

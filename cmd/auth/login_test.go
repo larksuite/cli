@@ -781,7 +781,7 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 	}
 }
 
-func TestAuthLoginRun_JSONWriteFailure_NoWaitIgnoresWriterError(t *testing.T) {
+func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
@@ -810,12 +810,15 @@ func TestAuthLoginRun_JSONWriteFailure_NoWaitIgnoresWriterError(t *testing.T) {
 		NoWait:  true,
 		JSON:    true,
 	})
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "failed to write JSON output") {
+		t.Fatalf("error = %v, want JSON write failure", err)
 	}
 }
 
-func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationStillPolls(t *testing.T) {
+func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
@@ -847,6 +850,9 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationStillPolls(t *testing.
 	})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "failed to write JSON output") {
+		t.Fatalf("error = %v, want JSON write failure", err)
 	}
 }
 
