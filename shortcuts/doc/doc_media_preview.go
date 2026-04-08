@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -17,17 +16,6 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-var previewMimeToExt = map[string]string{
-	"image/png":       ".png",
-	"image/jpeg":      ".jpg",
-	"image/gif":       ".gif",
-	"image/webp":      ".webp",
-	"image/svg+xml":   ".svg",
-	"application/pdf": ".pdf",
-	"video/mp4":       ".mp4",
-	"text/plain":      ".txt",
-}
 
 const PreviewType_SOURCE_FILE = "16"
 
@@ -82,16 +70,7 @@ var DocMediaPreview = common.Shortcut{
 		}
 		defer resp.Body.Close()
 
-		finalPath := outputPath
-		currentExt := filepath.Ext(outputPath)
-		if currentExt == "" {
-			contentType := resp.Header.Get("Content-Type")
-			mimeType := strings.Split(contentType, ";")[0]
-			mimeType = strings.TrimSpace(mimeType)
-			if ext, ok := previewMimeToExt[mimeType]; ok {
-				finalPath = outputPath + ext
-			}
-		}
+		finalPath := resolveDocMediaOutputPath(outputPath, token, resp.Header, "")
 
 		safePath, err := validate.SafeOutputPath(finalPath)
 		if err != nil {
