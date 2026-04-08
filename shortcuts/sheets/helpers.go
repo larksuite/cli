@@ -109,6 +109,29 @@ func validateSheetRangeInput(sheetID, input string) error {
 	return nil
 }
 
+// validateSingleCellRange rejects multi-cell spans (e.g. "A1:B2") that are
+// invalid for single-cell operations like write-image. Empty and single-cell
+// values pass through.
+func validateSingleCellRange(input string) error {
+	input = normalizeSheetRangeSeparators(input)
+	if input == "" {
+		return nil
+	}
+	// Extract the sub-range after the sheet ID prefix, if present.
+	subRange := input
+	if _, sr, ok := splitSheetRange(input); ok {
+		subRange = sr
+	}
+	if cellSpanRangePattern.MatchString(subRange) {
+		parts := strings.SplitN(subRange, ":", 2)
+		if strings.EqualFold(parts[0], parts[1]) {
+			return nil
+		}
+		return common.FlagErrorf("--range %q must be a single cell (e.g. A1 or A1:A1), got a multi-cell span", input)
+	}
+	return nil
+}
+
 func looksLikeRelativeRange(input string) bool {
 	input = normalizeSheetRangeSeparators(input)
 	if input == "" {

@@ -11,6 +11,7 @@ func Shortcuts() []common.Shortcut {
 		SheetInfo,
 		SheetRead,
 		SheetWrite,
+		SheetWriteImage,
 		SheetAppend,
 		SheetFind,
 		SheetCreate,
