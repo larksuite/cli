@@ -55,6 +55,16 @@ func TestFixBoldSpacing(t *testing.T) {
 			want:  "**foo** and `**bar **`",
 		},
 		{
+			name:  "double-backtick inline code not modified",
+			input: "``**hello **`` and **world **",
+			want:  "``**hello **`` and **world**",
+		},
+		{
+			name:  "double-backtick span containing literal backtick not modified",
+			input: "`` a`b `` and **bold **",
+			want:  "`` a`b `` and **bold**",
+		},
+		{
 			name:  "heading with multiple bold spans left unchanged",
 			input: "# **foo** and **bar**",
 			want:  "# **foo** and **bar**",

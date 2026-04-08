@@ -106,9 +106,6 @@ func fixBlockquoteHardBreaks(md string) string {
 	return strings.Join(out, "\n")
 }
 
-// inlineCodeRe matches inline code spans (single-backtick delimiters).
-var inlineCodeRe = regexp.MustCompile("`[^`]+`")
-
 // fixBoldSpacing fixes two issues with bold markers exported by Lark:
 //
 //  1. Trailing whitespace before closing **: "**text **" → "**text**"
@@ -141,6 +138,47 @@ func fixBoldSpacing(md string) string {
 // atxHeadingRe matches ATX heading lines (# ... through ###### ...).
 var atxHeadingRe = regexp.MustCompile(`^#{1,6}\s`)
 
+// scanInlineCodeSpans returns the byte ranges [start, end) of all inline code
+// spans in line. It handles multi-backtick delimiters (e.g. `` `foo` ``) by
+// finding the opening run of N backticks and searching for the next identical
+// run to close the span, per CommonMark spec §6.1.
+func scanInlineCodeSpans(line string) [][2]int {
+	var spans [][2]int
+	i := 0
+	for i < len(line) {
+		if line[i] != '`' {
+			i++
+			continue
+		}
+		// Count the opening backtick run.
+		start := i
+		for i < len(line) && line[i] == '`' {
+			i++
+		}
+		delim := line[start:i] // e.g. "`" or "``" or "```"
+		// Search for the closing run of the same length.
+		j := i
+		for j <= len(line)-len(delim) {
+			if line[j] == '`' {
+				k := j
+				for k < len(line) && line[k] == '`' {
+					k++
+				}
+				if k-j == len(delim) {
+					spans = append(spans, [2]int{start, k})
+					i = k
+					break
+				}
+				j = k // skip this backtick run and keep searching
+			} else {
+				j++
+			}
+		}
+		// No closing delimiter found — not a code span, continue.
+	}
+	return spans
+}
+
 // fixBoldSpacingLine applies bold/italic trailing-space fixes to a single line,
 // skipping content inside inline code spans to avoid corrupting literal code.
 // ATX heading lines are also skipped here because headingBoldRe in fixBoldSpacing
@@ -150,15 +188,15 @@ func fixBoldSpacingLine(line string) string {
 	if atxHeadingRe.MatchString(line) {
 		return line
 	}
-	locs := inlineCodeRe.FindAllStringIndex(line, -1)
-	if len(locs) == 0 {
+	spans := scanInlineCodeSpans(line)
+	if len(spans) == 0 {
 		line = boldTrailingSpaceRe.ReplaceAllString(line, "$1$2")
 		line = italicTrailingSpaceRe.ReplaceAllString(line, "$1$2")
 		return line
 	}
 	var sb strings.Builder
 	pos := 0
-	for _, loc := range locs {
+	for _, loc := range spans {
 		// Process the non-code segment before this inline code span.
 		seg := line[pos:loc[0]]
 		seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
