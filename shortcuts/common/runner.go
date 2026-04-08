@@ -13,6 +13,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -32,17 +33,18 @@ import (
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
-	ctx        context.Context // from cmd.Context(), propagated through the call chain
-	Config     *core.CliConfig
-	Cmd        *cobra.Command
-	Format     string
-	JqExpr     string            // --jq expression; empty = no filter
-	outputErr  error             // deferred error from Out()/OutFormat() jq filtering
-	botOnly    bool              // set by framework for bot-only shortcuts
-	resolvedAs core.Identity     // effective identity resolved by framework
-	Factory    *cmdutil.Factory  // injected by framework
-	apiClient  *client.APIClient // lazily initialized, cached
-	larkSDK    *lark.Client      // eagerly initialized in mountDeclarative
+	ctx           context.Context // from cmd.Context(), propagated through the call chain
+	Config        *core.CliConfig
+	Cmd           *cobra.Command
+	Format        string
+	JqExpr        string                            // --jq expression; empty = no filter
+	outputErrOnce sync.Once                         // guards first-error capture in Out()/OutFormat()
+	outputErr     error                             // deferred error from jq filtering; written at most once
+	botOnly       bool                              // set by framework for bot-only shortcuts
+	resolvedAs    core.Identity                     // effective identity resolved by framework
+	Factory       *cmdutil.Factory                  // injected by framework
+	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
 }
 
 // ── Identity ──
@@ -75,18 +77,13 @@ func (ctx *RuntimeContext) UserOpenId() string { return ctx.Config.UserOpenId }
 func (ctx *RuntimeContext) Ctx() context.Context { return ctx.ctx }
 
 // getAPIClient returns the cached APIClient, creating it on first use.
+// Thread-safe via sync.OnceValues (initialized in newRuntimeContext).
+// Falls back to direct construction for test contexts that bypass newRuntimeContext.
 func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
-	if ctx.apiClient != nil {
-		return ctx.apiClient, nil
+	if ctx.apiClientFunc != nil {
+		return ctx.apiClientFunc()
 	}
-	ac, err := ctx.Factory.NewAPIClient()
-	if err != nil {
-		return nil, err
-	}
-	// Override config with the one resolved for this context (may differ from Factory's)
-	ac.Config = ctx.Config
-	ctx.apiClient = ac
-	return ac, nil
+	return ctx.Factory.NewAPIClientWithConfig(ctx.Config)
 }
 
 // AccessToken returns a valid access token for the current identity.
@@ -362,9 +359,7 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	if ctx.JqExpr != "" {
 		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
-			if ctx.outputErr == nil {
-				ctx.outputErr = err
-			}
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
 		}
 		return
 	}
@@ -572,6 +567,9 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
 	rctx := &RuntimeContext{ctx: ctx, Config: config, Cmd: cmd, botOnly: botOnly, resolvedAs: as, Factory: f}
+	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
+		return f.NewAPIClientWithConfig(config)
+	})
 
 	sdk, err := f.LarkClient()
 	if err != nil {
