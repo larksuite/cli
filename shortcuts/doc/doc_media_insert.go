@@ -199,6 +199,7 @@ var DocMediaInsert = common.Shortcut{
 	},
 }
 
+// blockTypeForMediaType maps the logical media type to the target docx block type.
 func blockTypeForMediaType(mediaType string) int {
 	if mediaType == "file" {
 		return 23
@@ -206,6 +207,7 @@ func blockTypeForMediaType(mediaType string) int {
 	return 27
 }
 
+// parentTypeForMediaType returns the upload parent_type required by the doc media API.
 func parentTypeForMediaType(mediaType string) string {
 	if mediaType == "file" {
 		return "docx_file"
@@ -213,6 +215,7 @@ func parentTypeForMediaType(mediaType string) string {
 	return "docx_image"
 }
 
+// buildCreateBlockData creates the placeholder block creation payload for the media type.
 func buildCreateBlockData(mediaType string, index int) map[string]interface{} {
 	child := map[string]interface{}{
 		"block_type": blockTypeForMediaType(mediaType),
@@ -230,6 +233,7 @@ func buildCreateBlockData(mediaType string, index int) map[string]interface{} {
 	}
 }
 
+// buildDeleteBlockData creates the rollback payload for deleting the inserted placeholder block.
 func buildDeleteBlockData(index int) map[string]interface{} {
 	return map[string]interface{}{
 		"start_index": index,
@@ -237,6 +241,7 @@ func buildDeleteBlockData(index int) map[string]interface{} {
 	}
 }
 
+// buildBatchUpdateData creates the payload that binds an uploaded token to the new block.
 func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption string) map[string]interface{} {
 	request := map[string]interface{}{
 		"block_id": blockID,
@@ -264,6 +269,7 @@ func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption strin
 	}
 }
 
+// extractAppendTarget resolves the parent block and child index used for append-style insertion.
 func extractAppendTarget(rootData map[string]interface{}, fallbackBlockID string) (string, int, error) {
 	block, _ := rootData["block"].(map[string]interface{})
 	if len(block) == 0 {
@@ -279,6 +285,7 @@ func extractAppendTarget(rootData map[string]interface{}, fallbackBlockID string
 	return parentBlockID, len(children), nil
 }
 
+// extractCreatedBlockTargets finds the block IDs needed for upload binding after block creation.
 func extractCreatedBlockTargets(createData map[string]interface{}, mediaType string) (blockID, uploadParentNode, replaceBlockID string) {
 	children, _ := createData["children"].([]interface{})
 	if len(children) == 0 {
@@ -307,6 +314,7 @@ func extractCreatedBlockTargets(createData map[string]interface{}, mediaType str
 	return blockID, uploadParentNode, replaceBlockID
 }
 
+// appendDocMediaInsertUploadDryRun appends the upload step to the dry-run orchestration output.
 func appendDocMediaInsertUploadDryRun(d *common.DryRunAPI, filePath, parentType string, step int) {
 	// The upload step runs only after the empty placeholder block is created, so
 	// dry-run can refer to that future block ID only symbolically. For large

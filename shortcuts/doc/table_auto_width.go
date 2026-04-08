@@ -183,6 +183,7 @@ func resizeOneTable(runtime *common.RuntimeContext, documentID, blockID string, 
 	return ""
 }
 
+// shouldSkipTableWidthUpdate returns true when the computed widths do not require any patch calls.
 func shouldSkipTableWidthUpdate(currentWidths, columnWidths []int, colSize int) bool {
 	if sameColumnWidths(currentWidths, columnWidths) {
 		return true
@@ -202,6 +203,7 @@ func cellContentWidth(cellID string, blockMap map[string]map[string]interface{})
 	return blockSubtreeWidth(cellID, blockMap, map[string]bool{})
 }
 
+// blockSubtreeWidth returns the maximum text width found in a block subtree.
 func blockSubtreeWidth(blockID string, blockMap map[string]map[string]interface{}, visited map[string]bool) int {
 	if blockID == "" || visited[blockID] {
 		return 0
@@ -254,6 +256,7 @@ func blockTextWidth(block map[string]interface{}) int {
 	return totalWidth
 }
 
+// textElementWidth estimates the display width contribution of a single rich-text element.
 func textElementWidth(elem map[string]interface{}) int {
 	if textRun := common.GetMap(elem, "text_run"); textRun != nil {
 		return stringDisplayWidth(common.GetString(textRun, "content"))
@@ -377,6 +380,7 @@ func computePixelWidths(charWidths []int, colSize int) []int {
 	return pixelWidths
 }
 
+// tableColumnWidths extracts existing per-column widths from table properties.
 func tableColumnWidths(prop map[string]interface{}) []int {
 	raw, ok := prop["column_width"]
 	if !ok {
@@ -395,6 +399,7 @@ func tableColumnWidths(prop map[string]interface{}) []int {
 	return widths
 }
 
+// sameColumnWidths reports whether both width slices match exactly.
 func sameColumnWidths(left, right []int) bool {
 	if len(left) != len(right) {
 		return false
@@ -407,6 +412,7 @@ func sameColumnWidths(left, right []int) bool {
 	return true
 }
 
+// interfaceToInt converts the numeric API field variants used in decoded JSON to int.
 func interfaceToInt(v interface{}) (int, bool) {
 	switch n := v.(type) {
 	case int:
@@ -424,6 +430,7 @@ func interfaceToInt(v interface{}) (int, bool) {
 	}
 }
 
+// firstNonEmpty returns the first non-empty string from the provided candidates.
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value != "" {

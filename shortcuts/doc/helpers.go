@@ -17,6 +17,7 @@ type documentRef struct {
 	Token string
 }
 
+// parseDocumentRef classifies a user-supplied document reference as wiki, docx, or legacy doc.
 func parseDocumentRef(input string) (documentRef, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
@@ -42,6 +43,7 @@ func parseDocumentRef(input string) (documentRef, error) {
 	return documentRef{Kind: "docx", Token: raw}, nil
 }
 
+// extractDocumentToken pulls the token that follows a known path marker from a URL-like input.
 func extractDocumentToken(raw, marker string) (string, bool) {
 	idx := strings.Index(raw, marker)
 	if idx < 0 {
@@ -58,6 +60,7 @@ func extractDocumentToken(raw, marker string) (string, bool) {
 	return token, true
 }
 
+// buildDriveRouteExtra marshals the drive upload routing metadata expected by the media upload API.
 func buildDriveRouteExtra(docID string) (string, error) {
 	extra, err := json.Marshal(map[string]string{"drive_route_token": docID})
 	if err != nil {
@@ -66,6 +69,7 @@ func buildDriveRouteExtra(docID string) (string, error) {
 	return string(extra), nil
 }
 
+// resolveDocxDocumentID resolves docx and wiki inputs to a concrete docx document token.
 func resolveDocxDocumentID(runtime *common.RuntimeContext, input, operation string) (string, error) {
 	docRef, err := parseDocumentRef(input)
 	if err != nil {

@@ -136,6 +136,7 @@ var DocsUpdate = common.Shortcut{
 	},
 }
 
+// normalizeDocsUpdateResult normalizes tool output for markdown that creates whiteboards.
 func normalizeDocsUpdateResult(result map[string]interface{}, markdown string) {
 	if !isWhiteboardCreateMarkdown(markdown) {
 		return
@@ -143,6 +144,7 @@ func normalizeDocsUpdateResult(result map[string]interface{}, markdown string) {
 	result["board_tokens"] = normalizeBoardTokens(result["board_tokens"])
 }
 
+// isWhiteboardCreateMarkdown reports whether markdown requests whiteboard creation semantics.
 func isWhiteboardCreateMarkdown(markdown string) bool {
 	lower := strings.ToLower(markdown)
 	if strings.Contains(lower, "```mermaid") || strings.Contains(lower, "```plantuml") {
@@ -152,6 +154,7 @@ func isWhiteboardCreateMarkdown(markdown string) bool {
 		(strings.Contains(lower, `type="blank"`) || strings.Contains(lower, `type='blank'`))
 }
 
+// normalizeBoardTokens converts the tool result field to a stable []string shape.
 func normalizeBoardTokens(raw interface{}) []string {
 	switch v := raw.(type) {
 	case nil:
@@ -176,6 +179,7 @@ func normalizeBoardTokens(raw interface{}) []string {
 	}
 }
 
+// shouldAutoResizeAfterUpdate decides whether an update operation should run table auto-width.
 func shouldAutoResizeAfterUpdate(mode, markdown string) bool {
 	if mode == "delete_range" || strings.TrimSpace(markdown) == "" {
 		return false
@@ -183,6 +187,7 @@ func shouldAutoResizeAfterUpdate(mode, markdown string) bool {
 	return markdownLikelyContainsTable(markdown)
 }
 
+// markdownLikelyContainsTable uses lightweight heuristics to detect markdown or HTML tables.
 func markdownLikelyContainsTable(markdown string) bool {
 	filtered := stripFencedCodeBlocks(markdown)
 	lower := strings.ToLower(filtered)
@@ -199,6 +204,7 @@ func markdownLikelyContainsTable(markdown string) bool {
 	return false
 }
 
+// stripFencedCodeBlocks removes fenced code blocks so table heuristics ignore code samples.
 func stripFencedCodeBlocks(markdown string) string {
 	lines := strings.Split(markdown, "\n")
 	kept := make([]string, 0, len(lines))
@@ -227,6 +233,7 @@ func stripFencedCodeBlocks(markdown string) string {
 	return strings.Join(kept, "\n")
 }
 
+// fencedCodeMarker returns the fence marker used to enter or exit a fenced code block.
 func fencedCodeMarker(trimmed string) (string, bool) {
 	if strings.HasPrefix(trimmed, "```") {
 		return "```", true
@@ -237,6 +244,7 @@ func fencedCodeMarker(trimmed string) (string, bool) {
 	return "", false
 }
 
+// isMarkdownTableRow checks whether a line looks like a markdown table header or row.
 func isMarkdownTableRow(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if strings.Count(trimmed, "|") < 1 {
@@ -245,6 +253,7 @@ func isMarkdownTableRow(line string) bool {
 	return strings.Trim(trimmed, "| :-\t") != ""
 }
 
+// isMarkdownTableSeparator checks whether a line looks like a markdown table separator row.
 func isMarkdownTableSeparator(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if !strings.Contains(trimmed, "|") || !strings.Contains(trimmed, "-") {
