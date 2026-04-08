@@ -54,8 +54,8 @@ EXAMPLES:
     lark-cli api GET /open-apis/calendar/v4/calendars
 
 FLAGS:
-    --params <json>       URL/query parameters JSON
-    --data <json>         request body JSON (POST/PATCH/PUT/DELETE)
+    --params <json>       URL/query parameters JSON, @file, or - for stdin
+    --data <json>         request body JSON, @file, or - for stdin
     --as <type>           identity type: user | bot | auto (default: auto)
     --format <fmt>        output format: json (default) | ndjson | table | csv | pretty
     --page-all            automatically paginate through all pages

@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -110,6 +111,42 @@ func TestApiCmd_InvalidParamsJSON(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected validation error for invalid JSON")
+	}
+}
+
+func TestApiCmd_ParamsFromFile(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	tmpDir := t.TempDir()
+	cmdutil.TestChdir(t, tmpDir)
+	if err := vfs.WriteFile("params.json", []byte(`{"foo":"bar"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--params", "@params.json", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"foo": "bar"`) {
+		t.Fatalf("expected params from file in dry-run output, got: %s", stdout.String())
+	}
+}
+
+func TestApiCmd_ParamsFromStdin(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.IOStreams.In = strings.NewReader(`{"foo":"bar"}`)
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--params", "-", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"foo": "bar"`) {
+		t.Fatalf("expected params from stdin in dry-run output, got: %s", stdout.String())
 	}
 }
 

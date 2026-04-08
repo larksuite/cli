@@ -5,7 +5,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -148,10 +147,10 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON, @file, or - for stdin")
 	switch httpMethod {
 	case "POST", "PUT", "PATCH", "DELETE":
-		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON")
+		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON, @file, or - for stdin")
 	}
 	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
@@ -309,11 +308,13 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 	method := opts.Method
 	schemaPath := opts.SchemaPath
 	httpMethod := registry.GetStrFromMap(method, "httpMethod")
+	var err error
 
 	var params map[string]interface{}
 	if opts.Params != "" {
-		if err := json.Unmarshal([]byte(opts.Params), &params); err != nil {
-			return client.RawApiRequest{}, output.ErrValidation("--params invalid JSON format")
+		params, err = cmdutil.ParseJSONMap(opts.Params, "--params", opts.Factory.IOStreams.In)
+		if err != nil {
+			return client.RawApiRequest{}, err
 		}
 	} else {
 		params = map[string]interface{}{}
@@ -365,7 +366,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		}
 	}
 
-	data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data)
+	data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, opts.Factory.IOStreams.In)
 	if err != nil {
 		return client.RawApiRequest{}, err
 	}
