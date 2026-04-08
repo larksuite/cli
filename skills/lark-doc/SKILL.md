@@ -123,6 +123,49 @@ Drive Folder (云空间文件夹)
 - `docs +search` 不是只搜文档 / Wiki；结果里会直接返回 `SHEET` 等云空间对象。
 - 拿到 spreadsheet URL / token 后，再切到 `lark-sheets` 做对象内部读取、筛选、写入等操作。
 
+## AI Usage Guidance：企业知识搜索方法论 ⭐
+
+> **强制阅读**：搜索（`docs +search`）类任务，下面这套方法论是默认动作，不能跳过。详见 [`references/lark-doc-search-recipes.md`](references/lark-doc-search-recipes.md)。
+
+### 1. 多轮关键词改写是默认动作
+
+**单次搜索的召回率非常低**。开放问题或有明确目标的搜索任务，**至少跑 2-3 轮不同关键词**才算 baseline。每一轮换一个角度：
+
+| 轮次 | 策略 | 例子（query: "飞书Office SaaS直销政策"） |
+|---|---|---|
+| 1 | 原始关键词 | `--query "飞书Office SaaS 直销 政策"` |
+| 2 | 去掉修饰词，保留核心词 | `--query "SaaS 直销 售卖政策"` |
+| 3 | 换同义词或具体术语 | `--query "飞书 售卖 折扣 政策"` |
+| 4（如需） | 加业务术语限定 | `--query "Office 套件 价格 直销"` |
+
+**反模式**：第一轮搜了一个看似贴近的候选就一头扎进去深挖。正确做法是先比较多轮的 top 结果，挑相关度最高的再深挖。
+
+### 2. 广撒网 → 深挖，而不是一头扎进去
+
+每一轮搜索看 top 5 候选（不是 top 1），按以下顺序判断哪个最相关：
+
+1. **标题包含 query 核心词** > 标题不含
+2. **标题用户场景对应** > 标题是评测集 / 周报 / 通用文档
+3. **doc_types 匹配预期**（找权威文档优先 docx/wiki，找数据优先 sheet/bitable）
+4. **owner / update_time 信号**（owner 是相关业务方、update_time 较近）
+
+### 3. 空查询时不要轻易 abstain
+
+如果搜了 2-3 轮都没明确命中，**不要直接说"找不到"**：
+
+- **开放性问题**（用户问"为什么 X"、"怎么写 Y"）：可以基于通用知识 + 找到的弱相关材料 给出 best-effort 答案，但要明确标注"未找到权威文档，以下是基于通用知识 + 部分相关材料的推断"
+- **事实性问题**（用户问具体数字、具体人）：才适合直接说"找不到"
+- **聚合性问题**（用户问"列出所有 X"）：列出搜到的部分，并说明这是不完全列表
+
+### 4. 大文档处理：先看摘要，必要时分段
+
+`docs +fetch` 在体积特别大的文档上可能 504 timeout。处理策略：
+
+1. 先看 search 结果里的 `summary_highlighted` 字段（已含关键句）
+2. 若必须 fetch 全文，用 `--limit 50 --offset 0` 分段
+3. 还失败时退到 raw API：`lark-cli api GET /open-apis/docx/v1/documents/<token>/blocks --params '{"page_size":20}'` 拉 block 列表，再针对相关 block 单独取内容
+4. 详见 [`references/lark-doc-fetch.md`](references/lark-doc-fetch.md) 的"大文档处理"段
+
 ## 补充说明 
 `docs +search` 除了搜索文档 / Wiki，也承担“先定位云空间对象，再切回对应业务 skill 操作”的资源发现入口角色；当用户口头说“表格 / 报表”时，也优先从这里开始。
 
