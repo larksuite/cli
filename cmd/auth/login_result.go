@@ -38,22 +38,16 @@ func ensureRequestedScopesGranted(requestedScope, grantedScope string, msg *logi
 		return nil
 	}
 
-	granted := strings.Fields(grantedScope)
-	grantedDisplay := msg.NoScopes
-	if len(granted) > 0 {
-		grantedDisplay = strings.Join(granted, " ")
-	}
-
 	if summary == nil {
 		summary = &loginScopeSummary{
 			Requested: requested,
-			Granted:   granted,
+			Granted:   strings.Fields(grantedScope),
 			Missing:   missing,
 		}
 	}
 	return &loginScopeIssue{
 		Message:   fmt.Sprintf(msg.ScopeMismatch, strings.Join(missing, " ")),
-		Hint:      fmt.Sprintf(msg.ScopeHint, grantedDisplay),
+		Hint:      msg.ScopeHint,
 		ShortHint: msg.ScopeHintShort,
 		Summary:   summary,
 	}
@@ -133,21 +127,17 @@ func emptyIfNil(s []string) []string {
 	return s
 }
 
-// writeLoginScopeBreakdown renders the requested/newly granted/missing/final
-// granted scope breakdown to stderr.
+// writeLoginScopeBreakdown renders the requested/newly granted/missing scope
+// breakdown to stderr.
 func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary *loginScopeSummary) {
 	if summary == nil {
 		summary = &loginScopeSummary{}
 	}
 	fmt.Fprintf(errOut.ErrOut, msg.RequestedScopes, formatScopeList(summary.Requested, msg.NoScopes))
 	fmt.Fprintf(errOut.ErrOut, msg.NewlyGrantedScopes, formatScopeList(summary.NewlyGranted, msg.NoScopes))
-	if len(summary.AlreadyGranted) > 0 {
-		fmt.Fprintf(errOut.ErrOut, msg.AlreadyGrantedScopes, formatScopeList(summary.AlreadyGranted, msg.NoScopes))
-	}
 	if len(summary.Missing) > 0 {
 		fmt.Fprintf(errOut.ErrOut, msg.MissingScopes, formatScopeList(summary.Missing, msg.NoScopes))
 	}
-	fmt.Fprintf(errOut.ErrOut, msg.FinalGrantedScopes, formatScopeList(summary.Granted, msg.NoScopes))
 }
 
 // writeLoginSuccess emits the successful login payload in either JSON or text

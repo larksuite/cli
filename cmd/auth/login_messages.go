@@ -20,20 +20,17 @@ type loginMsg struct {
 	ConfirmAuth     string
 
 	// Non-interactive prompts (login.go)
-	OpenURL              string
-	WaitingAuth          string
-	AuthSuccess          string
-	LoginSuccess         string
-	GrantedScopes        string
-	ScopeMismatch        string
-	ScopeHint            string
-	ScopeHintShort       string
-	RequestedScopes      string
-	NewlyGrantedScopes   string
-	AlreadyGrantedScopes string
-	MissingScopes        string
-	FinalGrantedScopes   string
-	NoScopes             string
+	OpenURL            string
+	WaitingAuth        string
+	AuthSuccess        string
+	LoginSuccess       string
+	ScopeMismatch      string
+	ScopeHint          string
+	ScopeHintShort     string
+	RequestedScopes    string
+	NewlyGrantedScopes string
+	MissingScopes      string
+	NoScopes           string
 
 	// Non-interactive hint (no flags)
 	HintHeader  string
@@ -59,20 +56,17 @@ var loginMsgZh = &loginMsg{
 	ErrNoDomain:     "请至少选择一个业务域",
 	ConfirmAuth:     "确认授权?",
 
-	OpenURL:              "在浏览器中打开以下链接进行认证:\n\n",
-	WaitingAuth:          "等待用户授权...",
-	AuthSuccess:          "授权成功，正在获取用户信息...",
-	LoginSuccess:         "登录成功! 用户: %s (%s)",
-	GrantedScopes:        "  已授权 scopes: %s\n",
-	ScopeMismatch:        "授权完成，但以下请求 scopes 未被授予: %s",
-	ScopeHint:            "实际已授予 scopes: %s。请检查应用在飞书开发者后台是否已启用这些 scopes，并确认授权页已同意对应权限。可执行 `lark-cli auth scopes` 查看应用已启用 scopes。",
-	ScopeHintShort:       "请检查应用在飞书开发者后台是否已启用这些 scopes，并确认授权页已同意对应权限。可执行 `lark-cli auth scopes` 查看应用已启用 scopes。",
-	RequestedScopes:      "  本次请求 scopes: %s\n",
-	NewlyGrantedScopes:   "  本次新增 scopes: %s\n",
-	AlreadyGrantedScopes: "  已有 scopes: %s\n",
-	MissingScopes:        "  未授权 scopes: %s\n",
-	FinalGrantedScopes:   "  最终已授权 scopes: %s\n",
-	NoScopes:             "（空）",
+	OpenURL:            "在浏览器中打开以下链接进行认证:\n\n",
+	WaitingAuth:        "等待用户授权...",
+	AuthSuccess:        "授权成功，正在获取用户信息...",
+	LoginSuccess:       "登录成功! 用户: %s (%s)",
+	ScopeMismatch:      "授权完成，但以下请求 scopes 未被授予: %s",
+	ScopeHint:          "以上未授权 scopes 是用户本次授权的最终结果，请不要持续重试。可执行 `lark-cli auth status` 查看当前账号实际已授权 scopes，执行 `lark-cli auth scopes` 查看应用已启用 scopes；如果仍需这些权限，请检查应用在飞书开发者后台是否已启用对应 scopes，并确认用户在授权页已同意相关权限。",
+	ScopeHintShort:     "以上未授权 scopes 是用户本次授权的最终结果，请不要持续重试。可执行 `lark-cli auth status` 查看当前账号实际已授权 scopes，执行 `lark-cli auth scopes` 查看应用已启用 scopes。",
+	RequestedScopes:    "  本次请求 scopes: %s\n",
+	NewlyGrantedScopes: "  本次新增 scopes: %s\n",
+	MissingScopes:      "  未授权 scopes: %s\n",
+	NoScopes:           "（空）",
 
 	HintHeader:  "请指定要授权的权限:\n",
 	HintCommon1: "  --recommend                     授权推荐权限",
@@ -97,20 +91,17 @@ var loginMsgEn = &loginMsg{
 	ErrNoDomain:     "please select at least one domain",
 	ConfirmAuth:     "Confirm authorization?",
 
-	OpenURL:              "Open this URL in your browser to authenticate:\n\n",
-	WaitingAuth:          "Waiting for user authorization...",
-	AuthSuccess:          "Authorization successful, fetching user info...",
-	LoginSuccess:         "Login successful! User: %s (%s)",
-	GrantedScopes:        "  Granted scopes: %s\n",
-	ScopeMismatch:        "authorization completed, but these requested scopes were not granted: %s",
-	ScopeHint:            "Granted scopes: %s. Check whether the app has enabled these scopes in the developer console and whether the user approved them on the authorization page. Run `lark-cli auth scopes` to inspect the app's enabled scopes.",
-	ScopeHintShort:       "Check whether the app has enabled these scopes in the developer console and whether the user approved them on the authorization page. Run `lark-cli auth scopes` to inspect the app's enabled scopes.",
-	RequestedScopes:      "  Requested scopes: %s\n",
-	NewlyGrantedScopes:   "  Newly granted scopes: %s\n",
-	AlreadyGrantedScopes: "  Already granted scopes: %s\n",
-	MissingScopes:        "  Missing scopes: %s\n",
-	FinalGrantedScopes:   "  Final granted scopes: %s\n",
-	NoScopes:             "(none)",
+	OpenURL:            "Open this URL in your browser to authenticate:\n\n",
+	WaitingAuth:        "Waiting for user authorization...",
+	AuthSuccess:        "Authorization successful, fetching user info...",
+	LoginSuccess:       "Login successful! User: %s (%s)",
+	ScopeMismatch:      "authorization completed, but these requested scopes were not granted: %s",
+	ScopeHint:          "These missing scopes are the final outcome of this authorization and should not be retried continuously. Run `lark-cli auth status` to inspect the scopes currently granted to this account, and run `lark-cli auth scopes` to inspect the scopes enabled for the app. If these scopes are still required, verify the app configuration in the developer console and confirm that the user approved them on the authorization page.",
+	ScopeHintShort:     "These missing scopes are the final outcome of this authorization and should not be retried continuously. Run `lark-cli auth status` to inspect the scopes currently granted to this account, and run `lark-cli auth scopes` to inspect the scopes enabled for the app.",
+	RequestedScopes:    "  Requested scopes: %s\n",
+	NewlyGrantedScopes: "  Newly granted scopes: %s\n",
+	MissingScopes:      "  Missing scopes: %s\n",
+	NoScopes:           "(none)",
 
 	HintHeader:  "Please specify the scopes to authorize:\n",
 	HintCommon1: "  --recommend                     authorize recommended scopes",
