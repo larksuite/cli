@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"testing"
@@ -739,6 +741,43 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	}
 	if got, err := loadLoginRequestedScope("device-code"); err != nil || got != "" {
 		t.Fatalf("loadLoginRequestedScope() after cleanup = (%q, %v), want empty", got, err)
+	}
+}
+
+func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
+	keyring.MockInit()
+	setupLoginConfigDir(t)
+
+	if err := saveLoginRequestedScope("device-code", "im:message:send"); err != nil {
+		t.Fatalf("saveLoginRequestedScope() error = %v", err)
+	}
+
+	original := pollDeviceToken
+	t.Cleanup(func() { pollDeviceToken = original })
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+		return &larkauth.DeviceFlowResult{OK: true, Token: nil}
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+
+	err := authLoginRun(&LoginOptions{
+		Factory:    f,
+		Ctx:        context.Background(),
+		DeviceCode: "device-code",
+	})
+	if err == nil {
+		t.Fatal("expected error for nil token")
+	}
+	if !strings.Contains(err.Error(), "authorization succeeded but no token returned") {
+		t.Fatalf("error = %v, want nil token error", err)
+	}
+	if got, err := loadLoginRequestedScope("device-code"); err != nil || got != "" {
+		t.Fatalf("loadLoginRequestedScope() after nil token = (%q, %v), want empty", got, err)
 	}
 }
 

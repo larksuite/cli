@@ -34,6 +34,8 @@ type LoginOptions struct {
 	DeviceCode string
 }
 
+var pollDeviceToken = larkauth.PollDeviceToken
+
 // NewCmdAuthLogin creates the auth login subcommand.
 func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.Command {
 	opts := &LoginOptions{Factory: f}
@@ -273,7 +275,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result := larkauth.PollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 
 	if !result.OK {
@@ -353,7 +355,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		}
 	}
 	log(msg.WaitingAuth)
-	result := larkauth.PollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		opts.DeviceCode, 5, 180, f.IOStreams.ErrOut)
 
 	if !result.OK {
@@ -362,10 +364,10 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		}
 		return output.ErrAuth("authorization failed: %s", result.Message)
 	}
+	defer cleanupRequestedScope()
 	if result.Token == nil {
 		return output.ErrAuth("authorization succeeded but no token returned")
 	}
-	defer cleanupRequestedScope()
 
 	// Get user info
 	log(msg.AuthSuccess)
