@@ -8,6 +8,7 @@ record 相关命令索引。
 
 | 文档 | 命令 | 说明 |
 |------|------|------|
+| [lark-base-record-search.md](lark-base-record-search.md) | `+record-search` | 按关键词和字段范围检索记录 |
 | [lark-base-record-list.md](lark-base-record-list.md) | `+record-list` | 分页列记录 |
 | [lark-base-record-get.md](lark-base-record-get.md) | `+record-get` | 获取单条记录 |
 | [lark-base-record-upsert.md](lark-base-record-upsert.md) | `+record-upsert` | 创建或更新记录 |

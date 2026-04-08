@@ -49,6 +49,15 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 		Set("record_id", runtime.Str("record-id"))
 }
 
+func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	body, _ := parseRecordSearchBody(runtime)
+	return common.NewDryRunAPI().
+		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/search").
+		Body(body).
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", baseTableID(runtime))
+}
+
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	body, _ := parseJSONObject(runtime.Str("json"), "json")
 	if recordID := runtime.Str("record-id"); recordID != "" {
@@ -150,6 +159,19 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func executeRecordSearch(runtime *common.RuntimeContext) error {
+	body, err := parseRecordSearchBody(runtime)
+	if err != nil {
+		return err
+	}
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search"), nil, body)
+	if err != nil {
+		return err
+	}
+	runtime.Out(data, nil)
+	return nil
+}
+
 func executeRecordUpsert(runtime *common.RuntimeContext) error {
 	body, err := parseJSONObject(runtime.Str("json"), "json")
 	if err != nil {
@@ -208,4 +230,12 @@ func executeRecordDelete(runtime *common.RuntimeContext) error {
 	}
 	runtime.Out(map[string]interface{}{"deleted": true, "record_id": runtime.Str("record-id")}, nil)
 	return nil
+}
+
+func parseRecordSearchBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+	body, err := parseJSONObject(runtime.Str("json"), "json")
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
 }

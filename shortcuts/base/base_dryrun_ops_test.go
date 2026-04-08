@@ -79,6 +79,29 @@ func TestDryRunRecordOps(t *testing.T) {
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, commaFieldRT), "limit=1", "offset=0", "field_id=A%2CB", "field_id=C")
 
+	searchRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"json":       `{"view_id":"viw_1","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"filter":{"conjunction":"and","conditions":[]},"offset":-1,"limit":500}`,
+		},
+		nil, nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordSearch(ctx, searchRT),
+		"POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/search",
+		`"view_id":"viw_1"`,
+		`"keyword":"Created"`,
+		`"search_fields":["Title","fld_owner"]`,
+		`"select_fields":["Title","fld_owner"]`,
+		`"filter":{`,
+		`"conjunction":"and"`,
+		`"conditions":[]`,
+		`"offset":-1`,
+		`"limit":500`,
+	)
+
 	upsertCreateRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"Name":"A"}`},
 		nil, nil,

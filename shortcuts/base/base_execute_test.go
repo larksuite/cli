@@ -556,6 +556,59 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("search", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title", "Owner"},
+					"field_id_list":  []interface{}{"fld_title", "fld_owner"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"Created by AI", "Alice"}},
+					"has_more":       false,
+					"query_context": map[string]interface{}{
+						"record_scope": "filtered_records",
+						"field_scope":  "selected_fields",
+						"search_scope": "fld_title(Title)",
+					},
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(
+			t,
+			BaseRecordSearch,
+			[]string{
+				"+record-search",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--json", `{"view_id":"vew_x","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"filter":{"conjunction":"and","conditions":[{"field_name":"Title","operator":"contains","value":["Created"]}]},"offset":0,"limit":2}`,
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) || !strings.Contains(got, `"query_context"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(searchStub.CapturedBody)
+		if !strings.Contains(body, `"view_id":"vew_x"`) ||
+			!strings.Contains(body, `"keyword":"Created"`) ||
+			!strings.Contains(body, `"search_fields":["Title","fld_owner"]`) ||
+			!strings.Contains(body, `"select_fields":["Title","fld_owner"]`) ||
+			!strings.Contains(body, `"filter":{`) ||
+			!strings.Contains(body, `"conjunction":"and"`) ||
+			!strings.Contains(body, `"conditions":[{"field_name":"Title","operator":"contains","value":["Created"]}]`) ||
+			!strings.Contains(body, `"offset":0`) ||
+			!strings.Contains(body, `"limit":2`) {
+			t.Fatalf("captured body=%s", body)
+		}
+	})
+
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
