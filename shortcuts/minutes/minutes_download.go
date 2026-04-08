@@ -286,10 +286,10 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 		ContentLength: resp.ContentLength,
 	}, resp.Body)
 	if err != nil {
-		return nil, common.WrapSaveErrorByCategory(err, "api_error")
+		return nil, common.WrapSaveErrorByCategory(err, "io")
 	}
-	resolvedPath, _ := opts.fio.ResolvePath(outputPath)
-	if resolvedPath == "" {
+	resolvedPath, err := opts.fio.ResolvePath(outputPath)
+	if err != nil || resolvedPath == "" {
 		resolvedPath = outputPath
 	}
 	return &downloadResult{savedPath: resolvedPath, sizeBytes: result.Size()}, nil
