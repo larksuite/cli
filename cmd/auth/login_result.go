@@ -19,10 +19,9 @@ type loginScopeSummary struct {
 }
 
 type loginScopeIssue struct {
-	Message   string
-	Hint      string
-	ShortHint string
-	Summary   *loginScopeSummary
+	Message string
+	Hint    string
+	Summary *loginScopeSummary
 }
 
 // ensureRequestedScopesGranted checks whether all requested scopes were granted
@@ -46,10 +45,9 @@ func ensureRequestedScopesGranted(requestedScope, grantedScope string, msg *logi
 		}
 	}
 	return &loginScopeIssue{
-		Message:   fmt.Sprintf(msg.ScopeMismatch, strings.Join(missing, " ")),
-		Hint:      msg.ScopeHint,
-		ShortHint: msg.ScopeHintShort,
-		Summary:   summary,
+		Message: fmt.Sprintf(msg.ScopeMismatch, strings.Join(missing, " ")),
+		Hint:    msg.ScopeHint,
+		Summary: summary,
 	}
 }
 
@@ -135,9 +133,7 @@ func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary 
 	}
 	fmt.Fprintf(errOut.ErrOut, msg.RequestedScopes, formatScopeList(summary.Requested, msg.NoScopes))
 	fmt.Fprintf(errOut.ErrOut, msg.NewlyGrantedScopes, formatScopeList(summary.NewlyGranted, msg.NoScopes))
-	if len(summary.Missing) > 0 {
-		fmt.Fprintf(errOut.ErrOut, msg.MissingScopes, formatScopeList(summary.Missing, msg.NoScopes))
-	}
+	fmt.Fprintf(errOut.ErrOut, msg.MissingScopes, formatScopeList(summary.Missing, msg.NoScopes))
 }
 
 // writeLoginSuccess emits the successful login payload in either JSON or text
@@ -155,6 +151,9 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	writeLoginScopeBreakdown(f.IOStreams, msg, summary)
+	if len(summary.Missing) == 0 && msg.StatusHint != "" {
+		fmt.Fprintln(f.IOStreams.ErrOut, msg.StatusHint)
+	}
 }
 
 // handleLoginScopeIssue prints or returns a structured missing-scope result
@@ -196,9 +195,7 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
 	}
 	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary)
-	if issue.ShortHint != "" {
-		fmt.Fprintln(f.IOStreams.ErrOut, issue.ShortHint)
-	} else if issue.Hint != "" {
+	if issue.Hint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Hint)
 	}
 	if loginSucceeded {

@@ -303,7 +303,7 @@ func TestEnsureRequestedScopesGranted(t *testing.T) {
 	if !strings.Contains(issue.Message, "im:message:send") {
 		t.Fatalf("message %q missing requested scope", issue.Message)
 	}
-	for _, want := range []string{"should not be retried continuously", "lark-cli auth status", "lark-cli auth scopes"} {
+	for _, want := range []string{"Do not retry continuously", "scope being disabled", "lark-cli auth status"} {
 		if !strings.Contains(issue.Hint, want) {
 			t.Fatalf("hint %q missing %q", issue.Hint, want)
 		}
@@ -363,9 +363,8 @@ func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
 func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
 	err := handleLoginScopeIssue(&LoginOptions{}, getLoginMsg("zh"), f, &loginScopeIssue{
-		Message:   "授权完成，但以下请求 scopes 未被授予: im:message:send",
-		Hint:      "以上未授权 scopes 是用户本次授权的最终结果，请不要持续重试。可执行 `lark-cli auth status` 查看当前账号实际已授权 scopes，执行 `lark-cli auth scopes` 查看应用已启用 scopes；如果仍需这些权限，请检查应用在飞书开发者后台是否已启用对应 scopes，并确认用户在授权页已同意相关权限。",
-		ShortHint: "以上未授权 scopes 是用户本次授权的最终结果，请不要持续重试。可执行 `lark-cli auth status` 查看当前账号实际已授权 scopes，执行 `lark-cli auth scopes` 查看应用已启用 scopes。",
+		Message: "授权完成，但以下请求 scopes 未被授予: im:message:send",
+		Hint:    "以上结果是本次授权请求用户最终确认后的结果，请勿持续重试；Scopes 未授予的原因是多样的，如 scope 被禁用；具体原因已通过授权页提示用户。可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 		Summary: &loginScopeSummary{
 			Requested: []string{"im:message:send"},
 			Missing:   []string{"im:message:send"},
@@ -380,11 +379,11 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 		"OK: 登录成功! 用户: tester (ou_user)",
 		"授权完成，但以下请求 scopes 未被授予: im:message:send",
 		"本次请求 scopes: im:message:send",
-		"本次新增 scopes: （空）",
-		"未授权 scopes: im:message:send",
-		"以上未授权 scopes 是用户本次授权的最终结果，请不要持续重试",
+		"本次新授予 scopes: （空）",
+		"本次未授予 scopes: im:message:send",
+		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
+		"scope 被禁用",
 		"lark-cli auth status",
-		"lark-cli auth scopes",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stderr missing %q, got:\n%s", want, got)
@@ -472,10 +471,11 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			expectedPresent: []string{
 				"登录成功! 用户: tester (ou_user)",
 				"本次请求 scopes: im:message:send im:message:reply",
-				"本次新增 scopes: im:message:send",
+				"本次新授予 scopes: im:message:send",
+				"本次未授予 scopes: （空）",
+				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 			},
 			expectedAbsent: []string{
-				"未授权 scopes:",
 				"最终已授权 scopes:",
 				"已有 scopes:",
 			},
@@ -489,10 +489,11 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			},
 			expectedPresent: []string{
 				"本次请求 scopes: im:message:send",
-				"本次新增 scopes: （空）",
+				"本次新授予 scopes: （空）",
+				"本次未授予 scopes: （空）",
+				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 			},
 			expectedAbsent: []string{
-				"未授权 scopes:",
 				"最终已授权 scopes:",
 				"已有 scopes:",
 			},
@@ -506,12 +507,13 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			},
 			expectedPresent: []string{
 				"本次请求 scopes: im:message:send im:message:reply",
-				"本次新增 scopes: （空）",
-				"未授权 scopes: im:message:send",
+				"本次新授予 scopes: （空）",
+				"本次未授予 scopes: im:message:send",
 			},
 			expectedAbsent: []string{
 				"已有 scopes:",
 				"最终已授权 scopes:",
+				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 			},
 		},
 	}
@@ -620,10 +622,10 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		"OK: 登录成功! 用户: tester (ou_user)",
 		"授权完成，但以下请求 scopes 未被授予: im:message:send",
 		"本次请求 scopes: im:message:send",
-		"未授权 scopes: im:message:send",
-		"以上未授权 scopes 是用户本次授权的最终结果，请不要持续重试",
+		"本次未授予 scopes: im:message:send",
+		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
+		"scope 被禁用",
 		"lark-cli auth status",
-		"lark-cli auth scopes",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stderr missing %q, got:\n%s", want, got)
@@ -743,7 +745,8 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	for _, want := range []string{
 		"OK: 登录成功! 用户: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
-		"本次新增 scopes: im:message:send",
+		"本次新授予 scopes: im:message:send",
+		"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stderr missing %q, got:\n%s", want, got)
@@ -754,6 +757,29 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	}
 	if got, err := loadLoginRequestedScope("device-code"); err != nil || got != "" {
 		t.Fatalf("loadLoginRequestedScope() after cleanup = (%q, %v), want empty", got, err)
+	}
+}
+
+func TestWriteLoginSuccess_TextOutputEnglishIncludesStatusHintWhenNoMissingScopes(t *testing.T) {
+	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+
+	writeLoginSuccess(&LoginOptions{}, getLoginMsg("en"), f, "ou_user", "tester", &loginScopeSummary{
+		Requested:    []string{"im:message:send"},
+		NewlyGranted: []string{"im:message:send"},
+		Granted:      []string{"im:message:send"},
+	})
+
+	got := stderr.String()
+	for _, want := range []string{
+		"Login successful! User: tester (ou_user)",
+		"Requested scopes: im:message:send",
+		"Newly granted scopes: im:message:send",
+		"Not granted scopes: (none)",
+		"Run `lark-cli auth status` to inspect all scopes currently granted to the account.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stderr missing %q, got:\n%s", want, got)
+		}
 	}
 }
 
