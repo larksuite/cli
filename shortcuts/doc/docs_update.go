@@ -235,11 +235,14 @@ func stripFencedCodeBlocks(markdown string) string {
 
 // fencedCodeMarker returns the fence marker used to enter or exit a fenced code block.
 func fencedCodeMarker(trimmed string) (string, bool) {
-	if strings.HasPrefix(trimmed, "```") {
-		return "```", true
-	}
-	if strings.HasPrefix(trimmed, "~~~") {
-		return "~~~", true
+	for _, base := range []string{"```", "~~~"} {
+		if strings.HasPrefix(trimmed, base) {
+			marker := base
+			for i := len(base); i < len(trimmed) && trimmed[i] == base[0]; i++ {
+				marker += string(base[0])
+			}
+			return marker, true
+		}
 	}
 	return "", false
 }

@@ -174,3 +174,23 @@ func TestStripFencedCodeBlocks(t *testing.T) {
 		t.Fatalf("stripFencedCodeBlocks() = %q, want %q", got, "before\nafter")
 	}
 }
+
+func TestFencedCodeMarker(t *testing.T) {
+	tests := []struct {
+		line string
+		want string
+		ok   bool
+	}{
+		{line: "```go", want: "```", ok: true},
+		{line: "````markdown", want: "````", ok: true},
+		{line: "~~~~html", want: "~~~~", ok: true},
+		{line: "plain text", want: "", ok: false},
+	}
+
+	for _, tt := range tests {
+		got, ok := fencedCodeMarker(tt.line)
+		if got != tt.want || ok != tt.ok {
+			t.Fatalf("fencedCodeMarker(%q) = (%q, %v), want (%q, %v)", tt.line, got, ok, tt.want, tt.ok)
+		}
+	}
+}

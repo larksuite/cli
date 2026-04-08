@@ -5,6 +5,7 @@ package doc
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/util"
@@ -178,7 +179,7 @@ func resizeOneTable(runtime *common.RuntimeContext, documentID, blockID string, 
 		}
 	}
 	if len(updateErrors) > 0 {
-		return fmt.Sprintf("failed to update table %s (%s)", blockID, updateErrors)
+		return fmt.Sprintf("failed to update table %s (%s)", blockID, strings.Join(updateErrors, "; "))
 	}
 	return ""
 }
