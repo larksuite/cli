@@ -54,9 +54,7 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 	// Clean up keychain entries for all apps after config is cleared.
 	for _, app := range config.Apps {
 		core.RemoveSecretStore(app.AppSecret, f.Keychain)
-		for _, user := range app.Users {
-			auth.RemoveStoredToken(app.AppId, user.UserOpenId)
-		}
+			_ = auth.RemoveStoredToken(app.AppId, user.UserOpenId)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, "Configuration removed")
