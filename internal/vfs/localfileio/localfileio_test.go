@@ -289,10 +289,10 @@ func TestLocalFileIO_RejectsControlCharsInPath(t *testing.T) {
 
 	fio := &LocalFileIO{}
 	paths := []string{
-		"file\x00name.txt",     // null byte
-		"file\x1fname.txt",     // control char
-		"file\u200Bname.txt",   // zero-width space
-		"file\u202Ename.txt",   // bidi override
+		"file\x00name.txt",   // null byte
+		"file\x1fname.txt",   // control char
+		"file\u200Bname.txt", // zero-width space
+		"file\u202Ename.txt", // bidi override
 	}
 
 	for _, p := range paths {

@@ -28,7 +28,7 @@ type ResponseOptions struct {
 	JqExpr     string        // if set, apply jq filter instead of Format
 	Out        io.Writer     // stdout
 	ErrOut     io.Writer     // stderr
-	FileIO     fileio.FileIO // file transfer abstraction; nil falls back to direct os calls
+	FileIO     fileio.FileIO // file transfer abstraction; required when saving files (--output or binary response)
 	// CheckError is called on parsed JSON results. Nil defaults to CheckLarkResponse.
 	CheckError func(interface{}) error
 }
