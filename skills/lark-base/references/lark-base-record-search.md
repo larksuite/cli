@@ -2,11 +2,11 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-按关键词在指定字段范围内检索记录；CLI 侧通过 `--json` 透传请求体。
+按关键词检索记录；CLI 侧通过 `--json` 透传请求体。
 
 ## 适用场景
 
-- 需要“按关键词 + 指定字段”快速检索记录。
+- 需要关键词检索记录。
 - 需要附带 `view_id / select_fields` 控制检索范围与返回字段。
 - 不用于聚合统计。涉及 SUM/AVG/COUNT/MAX/MIN 时改用 `+data-query`。
 
@@ -46,14 +46,15 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records/search
 |------|------|------|------|
 | `view_id` | 否 | string | 无额外约束 |
 | `keyword` | 是 | string | 非空，最小长度 `1` |
-| `search_fields` | 是 | string[] | 数组长度 `1-100`；每项是 `FieldRef`（字符串，长度 `1-100`） |
-| `select_fields` | 否 | string[] | 数组长度 `<=100`；每项是 `FieldRef`（字符串，长度 `1-100`） |
+| `search_fields` | 是 | string[] | 数组长度 `1-20`；每项是字段 `field_id` 或字段名，代表在这些字段中做关键词搜索 |
+| `select_fields` | 否 | string[] | 数组长度 `<=50`；每项是字段 `field_id` 或字段名 |
 | `offset` | 否 | int | `>=0`，默认 `0` |
 | `limit` | 否 | int | `1-200`，默认 `10` |
 
 ## 坑点
 
 - ⚠️ `+record-search` 用于检索，不用于聚合分析；聚合场景使用 `+data-query`。
+- ⚠️ 部分字段不支持搜索（例如 `attachment`、`link`）；传入后通常不会报错，但可能导致无法命中对应记录。
 
 ## 参考
 

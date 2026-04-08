@@ -20,7 +20,7 @@ metadata:
    - 临时统计 / 聚合分析 → `+data-query`
    - 要把结果长期显示在表里 → formula 字段
    - 用户明确要 lookup，或确实更适合 `from/select/where/aggregate` → lookup 字段
-   - 明细读取 / 条件检索 / 导出 → `+record-search / +record-list / +record-get`
+   - 明细读取 / 关键词检索 / 导出 → `+record-search / +record-list / +record-get`
 2. **先拿结构，再写命令**
    - 至少先拿当前表结构：`+field-list` 或 `+table-get`
    - 跨表场景必须再查**目标表**的结构
@@ -59,7 +59,7 @@ metadata:
    - 特征：要把结果长期显示在 Base 里，跟随记录自动更新。
 3. **显式要求 Lookup，或确实要按 source/select/where/aggregate 建模** → 用 lookup 字段
    - 默认仍优先考虑 formula。lookup 只在用户明确要求、或更符合固定查找配置时使用。
-4. **原始记录读取 / 条件检索 / 明细导出** → `+record-search / +record-list / +record-get`
+4. **原始记录读取 / 关键词检索 / 明细导出** → `+record-search / +record-list / +record-get`
    - 不要把 `+record-list / +record-search` 当分析引擎；它们负责取明细，不负责聚合计算。
 
 ## 公式 / Lookup 专项规则
@@ -104,7 +104,7 @@ metadata:
 1. **只使用原子命令** — 使用 `+table-list / +table-get / +field-create / +record-upsert / +view-set-filter / +record-history-list / +base-get` 这类一命令一动作的写法，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`
 2. **写记录前先读字段结构** — 先调用 `+field-list` 获取字段结构，再读 [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) 确认各字段类型的写入值格式
 3. **写字段前先看字段属性规范** — 先读 [lark-base-shortcut-field-properties.md](references/lark-base-shortcut-field-properties.md) 确认 `+field-create/+field-update` 的 JSON 结构
-4. **筛选查询按场景执行** — 先读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)、[lark-base-record-list.md](references/lark-base-record-list.md)、[lark-base-record-search.md](references/lark-base-record-search.md)；视图筛选读取用 `+view-set-filter` + `+record-list`，关键词/字段检索用 `+record-search`
+4. **筛选查询按场景执行** — 先读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)、[lark-base-record-list.md](references/lark-base-record-list.md)、[lark-base-record-search.md](references/lark-base-record-search.md)；视图筛选读取用 `+view-set-filter` + `+record-list`，关键词检索用 `+record-search`
 5. **对记录进行分析（涉及"最高/最低/总计/平均/排名/比较/数量"等分析意图）** — 先读 [lark-base-data-query.md](references/lark-base-data-query.md)，通过 `+data-query` 进行数据筛选聚合的服务端计算
 6. **聚合分析与取数互斥** — 需要分组统计 / SUM / MAX / AVG / COUNT 时，必须使用 `+data-query`（服务端计算），禁止用 `+record-list / +record-search` 拉全量记录再手动计算；反之，`+data-query` 不返回原始记录，取数场景走 `+record-search / +record-list / +record-get`
 7. **所有 `+xxx-list` 禁止并发调用** — `+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list` 只能串行执行
@@ -132,7 +132,7 @@ metadata:
 | 创建 / 更新字段 | `lark-cli base +field-create` / `+field-update` | 使用 `--json` |
 | 创建 / 更新公式字段 | `lark-cli base +field-create` / `+field-update` | `type=formula`；先读 formula guide，再创建 / 更新 |
 | 创建 / 更新 lookup 字段 | `lark-cli base +field-create` / `+field-update` | `type=lookup`；先读 lookup guide，再创建 / 更新，默认先判断 formula 是否更合适 |
-| 搜索记录（关键词 + 指定字段） | `lark-cli base +record-search` | 透传搜索参数；适合条件检索，不用于聚合分析 |
+| 关键词搜索记录 | `lark-cli base +record-search` | 透传搜索参数；用于关键词检索，不用于聚合分析 |
 | 列表 / 获取记录 | `lark-cli base +record-list` / `+record-get` | 原子命令，如果需要`聚合计算`，`分组统计` 推荐走 `+data-query` |
 | 创建 / 更新记录 | `lark-cli base +record-upsert` | `--table-id [--record-id] --json` |
 | 聚合分析 / 比较排序 / 求最值 / 筛选统计 | `lark-cli base +data-query` | 不要用 `+record-list / +record-search` 拉全量数据再手动计算，需使用 `+data-query` 走服务端计算 |
@@ -273,7 +273,7 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 - [lookup-field-guide.md](references/lookup-field-guide.md) — lookup 字段配置规则、where/aggregate 约束、与 formula 的取舍
 - [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) — 视图筛选配置
 - [lark-base-record-list.md](references/lark-base-record-list.md) — 记录列表读取与分页
-- [lark-base-record-search.md](references/lark-base-record-search.md) — 记录条件检索（关键词 + 字段范围）
+- [lark-base-record-search.md](references/lark-base-record-search.md) — 关键词搜索记录
 - [lark-base-advperm-enable.md](references/lark-base-advperm-enable.md) — `+advperm-enable` 启用高级权限
 - [lark-base-advperm-disable.md](references/lark-base-advperm-disable.md) — `+advperm-disable` 停用高级权限
 - [lark-base-role-list.md](references/lark-base-role-list.md) — `+role-list` 列出角色
