@@ -39,7 +39,7 @@ lark-cli base +view-set-visible-fields \
 PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/visible_fields
 ```
 
-**接口 body 线形态：**
+**接口 body 格式：**
 
 ```json
 {
@@ -49,14 +49,13 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/visible
 
 ## 返回重点
 
-- 返回更新后的可见字段列表；返回顺序即视图字段展示顺序（受主字段强制置顶规则影响）。
+- 返回可见字段列表与顺序（`primaryField` 会被强制置顶）。
 
 ## 结构规则
 
 - `visible_fields`：字符串数组，每项可传字段 id 或字段名
-- 数组顺序用于控制视图字段顺序（除主字段 `primaryField` 外）
+- 数组顺序用于控制视图字段顺序；主字段 `primaryField` 必须存在且位于第一位，否则 API 会强制将其提升到第一位
 - `--json` 必须传对象：`{ "visible_fields": [...] }`
-- 后端会强制显示 `primaryField`，并且会把 `primaryField` 放在第一位；CLI 不会在本地补齐或重排
 
 ## 工作流
 

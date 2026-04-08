@@ -8,9 +8,9 @@
 
 ```bash
 lark-cli base +view-get-visible-fields \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --view-id viw_xxx
+  --base-token XXXXXX \
+  --table-id tblXXX \
+  --view-id vewXXX
 ```
 
 ## 参数
