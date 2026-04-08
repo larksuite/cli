@@ -12,11 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test coverage preview:
+// Workflow Coverage:
 //
-//	| Workflow | Commands |
+//	| t.Run | Command |
 //	| --- | --- |
-//	| advanced permissions | base +base-create, base +advperm-enable, base +advperm-disable |
+//	| `Setup` | `base +base-create` |
+//	| `enable` | `base +advperm-enable` |
+//	| `disable` | `base +advperm-disable` |
 func TestBase_AdvpermWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)

@@ -14,12 +14,19 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Test coverage preview:
+// Workflow Coverage:
 //
-//	| Workflow | Commands |
+//	| t.Run | Command |
 //	| --- | --- |
-//	| dashboard lifecycle | base +base-create, base +table-create, base +dashboard-create, base +dashboard-list, base +dashboard-get, base +dashboard-update, base +dashboard-delete, base +dashboard-block-create, base +dashboard-block-list, base +dashboard-block-get, base +dashboard-block-update, base +dashboard-block-delete |
-//	| form lifecycle | base +base-create, base +table-create, base +form-create, base +form-get, base +form-list, base +form-update, base +form-delete, base +form-questions-create, base +form-questions-list, base +form-questions-update, base +form-questions-delete |
+//	| `Setup` | `base +base-create`, `base +table-create`, `base +dashboard-create`, `base +dashboard-block-create` |
+//	| `dashboard list` | `base +dashboard-list` |
+//	| `dashboard get` | `base +dashboard-get` |
+//	| `dashboard update` | `base +dashboard-update` |
+//	| `dashboard block list` | `base +dashboard-block-list` |
+//	| `dashboard block get` | `base +dashboard-block-get` |
+//	| `dashboard block update` | `base +dashboard-block-update` |
+//	| `dashboard block delete` | `base +dashboard-block-delete` |
+//	| `dashboard delete` | `base +dashboard-delete` |
 func TestBase_DashboardWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
@@ -146,6 +153,19 @@ func TestBase_DashboardWorkflow(t *testing.T) {
 	_ = tableID
 }
 
+// Workflow Coverage:
+//
+//	| t.Run | Command |
+//	| --- | --- |
+//	| `Setup` | `base +base-create`, `base +table-create`, `base +form-create` |
+//	| `form get` | `base +form-get` |
+//	| `form list` | `base +form-list` |
+//	| `form update` | `base +form-update` |
+//	| `form questions create` | `base +form-questions-create` |
+//	| `form questions list` | `base +form-questions-list` |
+//	| `form questions update` | `base +form-questions-update` |
+//	| `form questions delete` | `base +form-questions-delete` |
+//	| `form delete` | `base +form-delete` |
 func TestBase_FormWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)

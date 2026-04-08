@@ -14,11 +14,15 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Test coverage preview:
+// Workflow Coverage:
 //
-//	| Workflow | Commands |
+//	| t.Run | Command |
 //	| --- | --- |
-//	| role lifecycle | base +base-create, base +advperm-enable, base +role-create, base +role-list, base +role-get, base +role-update, base +role-delete |
+//	| `Setup` | `base +base-create`, `base +advperm-enable`, `base +role-create` |
+//	| `list` | `base +role-list` |
+//	| `get` | `base +role-get` |
+//	| `update` | `base +role-update`, `base +role-get` |
+//	| `Cleanup` | `base +role-delete` |
 func TestBase_RoleWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)

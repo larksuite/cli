@@ -14,11 +14,13 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Test coverage preview:
+// Workflow Coverage:
 //
-//	| Workflow | Commands |
+//	| t.Run | Command |
 //	| --- | --- |
-//	| core | base +base-create, base +base-get, base +base-copy |
+//	| `Setup` | `base +base-create` |
+//	| `get base` | `base +base-get` |
+//	| `copy base` | `base +base-copy` |
 func TestBase_CoreWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)

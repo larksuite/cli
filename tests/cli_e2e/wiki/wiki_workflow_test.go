@@ -14,11 +14,18 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Test coverage preview:
+// Workflow Coverage:
 //
-//	| Workflow | Commands |
+//	| t.Run | Command |
 //	| --- | --- |
-//	| node workflow | wiki nodes create, wiki spaces get_node, wiki spaces get, wiki spaces list, wiki nodes list, wiki nodes copy |
+//	| `create node` | `wiki nodes create` |
+//	| `get created node` | `wiki spaces get_node` |
+//	| `get space` | `wiki spaces get` |
+//	| `list spaces` | `wiki spaces list` |
+//	| `list nodes and find created node` | `wiki nodes list` |
+//	| `copy node` | `wiki nodes copy` |
+//	| `list nodes and find copied node` | `wiki nodes list` |
+
 func TestWiki_NodeWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
