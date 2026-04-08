@@ -222,7 +222,7 @@ func TestBaseRecordExecuteUpsertUpdate(t *testing.T) {
 			"data": map[string]interface{}{"record_id": "rec_x", "fields": map[string]interface{}{"Name": "Alice"}},
 		},
 	})
-	if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_x", "--json", `{"fields":{"Name":"Alice"}}`}, factory, stdout); err != nil {
+	if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_x", "--json", `{"Name":"Alice"}`}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
 	if got := stdout.String(); !strings.Contains(got, `"updated": true`) || !strings.Contains(got, `"rec_x"`) {
@@ -544,10 +544,21 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 				"data": map[string]interface{}{"record_id": "rec_new", "fields": map[string]interface{}{"Name": "Alice"}},
 			},
 		})
-		if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"fields":{"Name":"Alice"}}`}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"Name":"Alice"}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"rec_new"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("reject top-level fields wrapper", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"fields":{"Name":"Alice"}}`}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "direct record object") {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); got != "" {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -587,7 +598,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_att",
 			Body: map[string]interface{}{
 				"code": 0,
-				"data": map[string]interface{}{"id": "fld_att", "name": "附件", "type": "attachment"},
+				"data": map[string]interface{}{"id": "fld_att", "name": "éä»¶", "type": "attachment"},
 			},
 		})
 		reg.Register(&httpmock.Stub{
@@ -598,7 +609,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 				"data": map[string]interface{}{
 					"record_id": "rec_x",
 					"fields": map[string]interface{}{
-						"附件": []interface{}{
+						"éä»¶": []interface{}{
 							map[string]interface{}{
 								"file_token":                "existing_tok",
 								"name":                      "existing.pdf",
@@ -629,7 +640,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 				"data": map[string]interface{}{
 					"record_id": "rec_x",
 					"fields": map[string]interface{}{
-						"附件": []interface{}{
+						"éä»¶": []interface{}{
 							map[string]interface{}{
 								"file_token":                "existing_tok",
 								"name":                      "existing.pdf",
@@ -671,7 +682,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 
 		updateBody := string(updateStub.CapturedBody)
-		if !strings.Contains(updateBody, `"附件"`) ||
+		if !strings.Contains(updateBody, `"éä»¶"`) ||
 			!strings.Contains(updateBody, `"file_token":"existing_tok"`) ||
 			!strings.Contains(updateBody, `"name":"existing.pdf"`) ||
 			!strings.Contains(updateBody, `"size":2048`) ||
@@ -704,7 +715,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_status",
 			Body: map[string]interface{}{
 				"code": 0,
-				"data": map[string]interface{}{"id": "fld_status", "name": "状态", "type": "text"},
+				"data": map[string]interface{}{"id": "fld_status", "name": "ç¶æ", "type": "text"},
 			},
 		})
 
@@ -899,13 +910,13 @@ func TestBaseFieldExecuteSearchOptions(t *testing.T) {
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_amount/options",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"options": []interface{}{map[string]interface{}{"id": "opt_1", "name": "已完成"}}, "total": 1},
+			"data": map[string]interface{}{"options": []interface{}{map[string]interface{}{"id": "opt_1", "name": "å·²å®æ"}}, "total": 1},
 		},
 	})
-	if err := runShortcut(t, BaseFieldSearchOptions, []string{"+field-search-options", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_amount", "--keyword", "已", "--limit", "10"}, factory, stdout); err != nil {
+	if err := runShortcut(t, BaseFieldSearchOptions, []string{"+field-search-options", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_amount", "--keyword", "å·²", "--limit", "10"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"options"`) || !strings.Contains(got, `"已完成"`) {
+	if got := stdout.String(); !strings.Contains(got, `"options"`) || !strings.Contains(got, `"å·²å®æ"`) {
 		t.Fatalf("stdout=%s", got)
 	}
 }
