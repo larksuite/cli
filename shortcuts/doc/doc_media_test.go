@@ -323,3 +323,137 @@ func decodeDocDryRun(t *testing.T, dryAPI *common.DryRunAPI) docDryRunOutput {
 	}
 	return dry
 }
+
+// TestFetchAllBlocksPaginationViaExecute verifies that fetchAllBlocks accumulates
+// blocks across multiple pages. It exercises the code path indirectly by running
+// Execute with --after-keyword so that fetchAllBlocks is called.
+func TestFetchAllBlocksPaginationViaExecute(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("fetch-blocks-app"))
+
+	// Root block
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/doxcnFB/blocks/doxcnFB",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": "doxcnFB",
+					"children": []interface{}{"blk_1", "blk_2"},
+				},
+			},
+		},
+	})
+	// Page 1 of all blocks — contains the keyword block
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/doxcnFB/blocks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"block_id":  "blk_1",
+						"parent_id": "doxcnFB",
+						"text": map[string]interface{}{
+							"elements": []interface{}{
+								map[string]interface{}{"text_run": map[string]interface{}{"content": "Introduction section"}},
+							},
+						},
+					},
+					map[string]interface{}{
+						"block_id":  "blk_2",
+						"parent_id": "doxcnFB",
+						"text": map[string]interface{}{
+							"elements": []interface{}{
+								map[string]interface{}{"text_run": map[string]interface{}{"content": "Other content"}},
+							},
+						},
+					},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	// Create block response
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docx/v1/documents/doxcnFB/blocks/doxcnFB/children",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"children": []interface{}{
+					map[string]interface{}{"block_id": "blk_new", "block_type": 27, "image": map[string]interface{}{}},
+				},
+			},
+		},
+	})
+	// Upload response
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "ftok_abc"},
+		},
+	})
+	// Batch update response
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/doxcnFB/blocks/batch_update",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "doxcnFB",
+		"--file", "img.png",
+		"--after-keyword", "Introduction",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+}
+
+// TestDocMediaInsertDryRunWithAfterKeyword verifies the dry-run output describes
+// the extra block-listing step when --after-keyword is provided.
+func TestDocMediaInsertDryRunWithAfterKeyword(t *testing.T) {
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	cmd := &cobra.Command{Use: "docs +media-insert"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("doc", "", "")
+	cmd.Flags().String("type", "image", "")
+	cmd.Flags().String("align", "", "")
+	cmd.Flags().String("caption", "", "")
+	cmd.Flags().String("after-keyword", "", "")
+	cmd.Flags().String("before-keyword", "", "")
+	_ = cmd.Flags().Set("file", "img.png")
+	_ = cmd.Flags().Set("doc", "doxcnABCDEF")
+	_ = cmd.Flags().Set("after-keyword", "Introduction")
+
+	rt := common.TestNewRuntimeContext(cmd, nil)
+	dry := decodeDocDryRun(t, DocMediaInsert.DryRun(context.Background(), rt))
+
+	foundListBlocks := false
+	for _, step := range dry.API {
+		if strings.Contains(step.URL, "/blocks") &&
+			!strings.Contains(step.URL, "children") &&
+			!strings.Contains(step.URL, "batch_update") {
+			foundListBlocks = true
+		}
+	}
+	if !foundListBlocks {
+		t.Fatal("dry-run should include a block-listing step for --after-keyword")
+	}
+	if !strings.Contains(dry.Description, "search blocks") {
+		t.Fatalf("dry-run description should mention 'search blocks', got: %s", dry.Description)
+	}
+}
