@@ -9,6 +9,12 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `has_more` | boolean | 是否还有下一页数据；`true` 表示可继续翻页，`false` 表示已到末页 |
+| `query_context.record_scope` | string | 记录范围：`all_records`（全表）或 `view_filtered_records`（按视图过滤） |
+| `query_context.field_scope` | string | 字段范围：`selected_fields`（显式传 `--field-id`）/ `view_visible_fields`（未传 `--field-id` 且按视图可见字段）/ `all_fields`（未传 `--field-id` 且无视图限制） |
+
+## 字段返回优先级
+
+- `query_context.field_scope` 的优先级为：`selected_fields`（explicit `--field-id`） > `view_visible_fields`（view visible fields） > `all_fields`（table all fields）。
 
 ## 按需翻页规则
 
