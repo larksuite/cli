@@ -107,12 +107,17 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 	return runtime
 }
 
+func newUserShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeContext {
+	t.Helper()
+	runtime := newBotShortcutRuntime(t, rt)
+	setRuntimeField(t, runtime, "resolvedAs", core.AsUser)
+	return runtime
+}
+
 func TestResolveP2PChatID(t *testing.T) {
-	var gotAuth string
-	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+	runtime := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
-			gotAuth = req.Header.Get("Authorization")
 			return shortcutJSONResponse(200, map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
@@ -133,13 +138,10 @@ func TestResolveP2PChatID(t *testing.T) {
 	if got != "oc_123" {
 		t.Fatalf("resolveP2PChatID() = %q, want %q", got, "oc_123")
 	}
-	if gotAuth != "Bearer tenant-token" {
-		t.Fatalf("Authorization header = %q, want %q", gotAuth, "Bearer tenant-token")
-	}
 }
 
 func TestResolveP2PChatIDNotFound(t *testing.T) {
-	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+	runtime := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
 			return shortcutJSONResponse(200, map[string]interface{}{
@@ -156,6 +158,17 @@ func TestResolveP2PChatIDNotFound(t *testing.T) {
 	_, err := resolveP2PChatID(runtime, "ou_404")
 	if err == nil || !strings.Contains(err.Error(), "P2P chat not found") {
 		t.Fatalf("resolveP2PChatID() error = %v", err)
+	}
+}
+
+func TestResolveP2PChatIDRejectsBot(t *testing.T) {
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+
+	_, err := resolveP2PChatID(runtime, "ou_123")
+	if err == nil || !strings.Contains(err.Error(), "requires user identity") {
+		t.Fatalf("resolveP2PChatID() error = %v, want requires user identity", err)
 	}
 }
 
