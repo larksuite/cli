@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -261,6 +263,51 @@ func TestMailWatchLoggerSuppressesDebugAlways(t *testing.T) {
 	logger.Debug(context.Background(), "debug message")
 	if got := buf.String(); got != "" {
 		t.Fatalf("expected debug suppressed, got: %q", got)
+	}
+}
+
+func TestHandleMailWatchSignal_UnsubscribesAndCancels(t *testing.T) {
+	var buf bytes.Buffer
+	unsubscribed := false
+	stopped := false
+	canceled := false
+
+	handleMailWatchSignal(&buf, os.Interrupt, 3, func() error {
+		unsubscribed = true
+		return nil
+	}, func() {
+		stopped = true
+	}, func() {
+		canceled = true
+	})
+
+	if !unsubscribed {
+		t.Fatal("expected unsubscribe to be called")
+	}
+	if !stopped {
+		t.Fatal("expected signal stop to be called")
+	}
+	if !canceled {
+		t.Fatal("expected cancel to be called")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Shutting down... (received 3 events)") {
+		t.Fatalf("missing shutdown message, got: %q", out)
+	}
+	if !strings.Contains(out, "Mailbox unsubscribed.") {
+		t.Fatalf("missing unsubscribe success message, got: %q", out)
+	}
+}
+
+func TestHandleMailWatchSignal_ReportsUnsubscribeFailure(t *testing.T) {
+	var buf bytes.Buffer
+
+	handleMailWatchSignal(&buf, os.Interrupt, 1, func() error {
+		return errors.New("boom")
+	}, nil, nil)
+
+	if got := buf.String(); !strings.Contains(got, "Warning: unsubscribe failed: boom") {
+		t.Fatalf("expected unsubscribe warning, got: %q", got)
 	}
 }
 

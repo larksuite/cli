@@ -50,6 +50,22 @@ func (l *mailWatchLogger) Error(_ context.Context, args ...interface{}) {
 
 var _ larkcore.Logger = (*mailWatchLogger)(nil)
 
+func handleMailWatchSignal(errOut io.Writer, sig os.Signal, eventCount int, unsubscribe func() error, stopSignals func(), cancel context.CancelFunc) {
+	fmt.Fprintf(errOut, "\nShutting down... (received %d events)\n", eventCount)
+	fmt.Fprintln(errOut, "Unsubscribing mailbox events...")
+	if unsubErr := unsubscribe(); unsubErr != nil {
+		fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
+	} else {
+		fmt.Fprintln(errOut, "Mailbox unsubscribed.")
+	}
+	if stopSignals != nil {
+		stopSignals()
+	}
+	if cancel != nil {
+		cancel()
+	}
+}
+
 const mailEventType = "mail.user_mailbox.event.message_received_v1"
 
 // promptInjectionPatterns lists known prompt injection trigger phrases.
@@ -425,32 +441,53 @@ var MailWatch = common.Shortcut{
 			larkws.WithLogger(sdkLogger),
 		)
 
+		watchCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		stopSignals := func() { signal.Stop(sigCh) }
+		defer stopSignals()
+
+		startErrCh := make(chan error, 1)
+		go func() {
+			startErrCh <- cli.Start(watchCtx)
+		}()
+
+		shutdownBySignal := make(chan struct{}, 1)
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Fprintf(errOut, "panic in signal handler: %v\n", r)
 				}
 			}()
-			<-sigCh
-			info(fmt.Sprintf("\nShutting down... (received %d events)", eventCount))
-			info("Unsubscribing mailbox events...")
-			if unsubErr := unsubscribe(); unsubErr != nil {
-				fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
-			} else {
-				info("Mailbox unsubscribed.")
+			sig, ok := <-sigCh
+			if !ok {
+				return
 			}
-			signal.Stop(sigCh)
-			os.Exit(0)
+			handleMailWatchSignal(errOut, sig, eventCount, unsubscribe, stopSignals, cancel)
+			select {
+			case shutdownBySignal <- struct{}{}:
+			default:
+			}
 		}()
 
 		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
-		if err := cli.Start(ctx); err != nil {
-			unsubscribe() //nolint:errcheck // best-effort cleanup
-			return output.ErrNetwork("WebSocket connection failed: %v", err)
+		select {
+		case <-shutdownBySignal:
+			return nil
+		case err := <-startErrCh:
+			select {
+			case <-shutdownBySignal:
+				return nil
+			default:
+			}
+			if err != nil {
+				unsubscribe() //nolint:errcheck // best-effort cleanup
+				return output.ErrNetwork("WebSocket connection failed: %v", err)
+			}
+			return nil
 		}
-		return nil
 	},
 }
 
