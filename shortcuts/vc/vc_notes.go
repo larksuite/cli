@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -296,7 +297,15 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		return ""
 	}
 	if _, err := runtime.FileIO().Save(transcriptPath, fileio.SaveOptions{}, bytes.NewReader(apiResp.RawBody)); err != nil {
-		fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
+		var me *fileio.MkdirError
+		switch {
+		case errors.Is(err, fileio.ErrPathValidation):
+			fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
+		case errors.As(err, &me):
+			fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
+		default:
+			fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
+		}
 		return ""
 	}
 	return transcriptPath
