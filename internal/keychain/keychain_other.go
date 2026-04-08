@@ -16,6 +16,7 @@ import (
 	"regexp"
 
 	"github.com/google/uuid"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -26,7 +27,11 @@ const tagBytes = 16
 // StorageDir returns the directory where encrypted files are stored.
 func StorageDir(service string) string {
 	if dir := os.Getenv("LARKSUITE_CLI_DATA_DIR"); dir != "" {
-		return dir
+		safeDir, err := validate.SafeEnvDirPath(dir, "LARKSUITE_CLI_DATA_DIR")
+		if err == nil {
+			return filepath.Join(safeDir, service)
+		}
+		fmt.Fprintf(os.Stderr, "warning: ignoring invalid LARKSUITE_CLI_DATA_DIR: %v\n", err)
 	}
 	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {

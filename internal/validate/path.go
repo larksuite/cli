@@ -32,6 +32,23 @@ func SafeInputPath(path string) (string, error) {
 	return safePath(path, "--file")
 }
 
+func SafeEnvDirPath(path, envName string) (string, error) {
+	if err := RejectControlChars(path, envName); err != nil {
+		return "", err
+	}
+
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("%s must be an absolute path, got %q", envName, path)
+	}
+
+	resolved, err := resolveNearestAncestor(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve symlinks: %w", err)
+	}
+	return resolved, nil
+}
+
 // SafeLocalFlagPath validates a flag value as a local file path.
 // Empty values and http/https URLs are returned unchanged without validation,
 // allowing the caller to handle non-path inputs (e.g. API keys, URLs) upstream.

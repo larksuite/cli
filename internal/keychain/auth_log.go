@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -22,7 +23,11 @@ var (
 
 func authLogDir() string {
 	if dir := os.Getenv("LARKSUITE_CLI_LOG_DIR"); dir != "" {
-		return dir
+		safeDir, err := validate.SafeEnvDirPath(dir, "LARKSUITE_CLI_LOG_DIR")
+		if err == nil {
+			return safeDir
+		}
+		fmt.Fprintf(os.Stderr, "warning: ignoring invalid LARKSUITE_CLI_LOG_DIR: %v\n", err)
 	}
 
 	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {

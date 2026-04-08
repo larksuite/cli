@@ -1,0 +1,33 @@
+//go:build linux
+
+package keychain
+
+import (
+	"path/filepath"
+	"testing"
+)
+
+func TestStorageDir_UsesValidatedDataDirEnv(t *testing.T) {
+	base := t.TempDir()
+	base, _ = filepath.EvalSymlinks(base)
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", filepath.Join(base, "data", "..", "store"))
+
+	got := StorageDir("svc")
+	want := filepath.Join(base, "store", "svc")
+	if got != want {
+		t.Fatalf("StorageDir() = %q, want %q", got, want)
+	}
+}
+
+func TestStorageDir_InvalidDataDirFallsBackToDefault(t *testing.T) {
+	home := t.TempDir()
+	home, _ = filepath.EvalSymlinks(home)
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", "relative-data")
+	t.Setenv("HOME", home)
+
+	got := StorageDir("svc")
+	want := filepath.Join(home, ".local", "share", "svc")
+	if got != want {
+		t.Fatalf("StorageDir() = %q, want %q", got, want)
+	}
+}
