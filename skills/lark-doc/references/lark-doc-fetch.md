@@ -31,6 +31,29 @@ lark-cli docs +fetch --doc Z1FjxxxxxxxxxxxxxxxxxxxtnAc --format pretty
 | `--limit` | 否 | 分页大小 |
 | `--format` | 否 | 输出格式：json（默认，含 title、markdown、has_more 等字段） \| pretty |
 
+## 大文档处理 ⚠️
+
+**已知问题**：对体积特别大的文档（万行级别、内嵌大量表格 / 媒体），`docs +fetch` 可能直接返回 `MCP HTTP 504 Gateway Timeout`。日志类文档（每日更新型）尤其常见。
+
+### 处理策略（按优先级）
+
+1. **先看 search 结果的 summary**：`docs +search --query "..."` 返回结果的 `summary_highlighted` 字段已经包含 query 命中的关键句，很多时候这就够答题了，根本不需要 fetch 全文
+2. **分段 fetch**：`lark-cli docs +fetch --doc <token> --offset 0 --limit 50`，先拿前 50 个 block 看看结构和命中位置
+3. **退到 raw blocks API**：
+   ```bash
+   # 列 block_id（很快，不会 timeout）
+   lark-cli api GET /open-apis/docx/v1/documents/<token>/blocks --params '{"page_size":50}'
+
+   # 拿到 block_id 列表后，针对相关 block 单独取内容
+   lark-cli api GET /open-apis/docx/v1/documents/<token>/blocks/<block_id>/children --params '{"page_size":50}'
+   ```
+4. **wiki 包装的大文档**：先用 `lark-cli wiki +resolve-node --token <wiki_token>` 拿到真正的 `obj_token`，再用上面的策略
+
+### 反模式
+
+- **不要在 fetch 失败后直接说"找不到"** —— 大文档 fetch 失败 ≠ 内容找不到，源文档已经定位了，只是工具能力暂时拿不到全文
+- **不要在 fetch 失败后无限重试** —— 504 通常是稳定失败，重试 1 次仍然失败就该切策略
+
 ## 重要：图片、文件、画板的处理
 
 **文档中的图片、文件、画板需要通过 `lark-doc-media-download`（docs +media-download）单独获取！**
