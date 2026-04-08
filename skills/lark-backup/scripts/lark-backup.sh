@@ -177,14 +177,13 @@ infer_type() {
       ;;
     *)
       case "$clean" in
-        fld*) echo "folder" ;;
-        wikcn*) echo "wiki" ;;
-        sht*) echo "sheet" ;;
-        dox*) echo "docx" ;;
-        doccn*) echo "doc" ;;
-        # Keep known token families, but require --type for ambiguous raw tokens.
-        app_*|bascn*) echo "bitable" ;;
-        box*) echo "file" ;;
+        # Documented token prefixes per Lark/Feishu API
+        fld*) echo "folder" ;;  # fldcn... for folders
+        dox*) echo "docx" ;;    # doxcn... for new documents
+        sht*) echo "sheet" ;;   # shtcn... for sheets
+        box*) echo "file" ;;    # boxcn... for files
+        # Legacy/undocumented prefixes - require explicit --type
+        # Removed: wikcn*, doccn*, app_*, bascn* to avoid misclassification
         *) fail "cannot infer target type from token: $target; pass --type" ;;
       esac
       ;;
