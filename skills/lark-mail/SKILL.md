@@ -224,6 +224,12 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 
 > **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
 
+### user_mailboxes
+
+  - `accessible_mailboxes` — 获取主账号的所有可访问邮箱，包括主邮箱和公共邮箱
+  - `profile` — 用于在用户身份下获取自己的邮箱主地址
+  - `search` — 搜索邮件
+
 ### user_mailbox.drafts
 
   - `create` — 创建草稿
@@ -272,15 +278,22 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `batch_modify` — 本接口提供修改邮件的能力，支持移动邮件的文件夹、给邮件添加和移除标签、标记邮件读和未读、移动邮件至垃圾邮件等能力。不支持移动邮件到已删除文件夹，如需，请使用批量删除邮件接口。
   - `batch_trash` — 通过指定邮件ID，批量移动邮件到已删除文件夹
   - `get` — 获取邮件详情
-  - `list` — 根据用户指定的标签或文件夹，列出对应位置下的邮件列表
+  - `list` — 根据用户指定的标签或文件夹，列出对应位置下的邮件列表。注意，必须填写folder_id或label_id中的一个字段。
   - `modify` — 本接口提供修改邮件的能力，支持移动邮件的文件夹、给邮件添加和移除标签、标记邮件已读和未读、移动邮件至垃圾邮件等能力。不支持移动邮件到已删除文件夹，如需删除邮件，请使用删除邮件接口。至少填写add_label_ids、remove_label_ids、add_folder中的一个参数。
   - `send_status` — 查询邮件发送状态
   - `trash` — 移动邮件到已删除文件夹。注意，该接口无法删除草稿，如需删除草稿，请使用删除草稿接口
 
-### user_mailboxes
+### user_mailbox.rules
 
-  - `profile` — 用于在用户身份下获取自己的邮箱主地址
-  - `search` — 搜索邮件
+  - `create` — 创建收信规则
+  - `delete` — 删除收信规则
+  - `list` — 列出收信规则
+  - `reorder` — 
+  - `update` — 
+
+### user_mailbox.settings
+
+  - `send_as` — 获取账号的所有可发信地址，包括主地址、别名地址、邮件组。可以使用用户地址访问该接口，也可以使用用户有权限的公共邮箱地址访问该接口。
 
 ### user_mailbox.threads
 
@@ -295,6 +308,9 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 
 | 方法 | 所需 scope |
 |------|-----------|
+| `user_mailboxes.accessible_mailboxes` | `mail:user_mailbox:readonly` |
+| `user_mailboxes.profile` | `mail:user_mailbox:readonly` |
+| `user_mailboxes.search` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.drafts.create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.drafts.delete` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.drafts.get` | `mail:user_mailbox.message:readonly` |
@@ -327,8 +343,12 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.messages.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.messages.send_status` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.messages.trash` | `mail:user_mailbox.message:modify` |
-| `user_mailboxes.profile` | `mail:user_mailbox:readonly` |
-| `user_mailboxes.search` | `mail:user_mailbox.message:readonly` |
+| `user_mailbox.rules.create` | `mail:user_mailbox.rule:write` |
+| `user_mailbox.rules.delete` | `mail:user_mailbox.rule:write` |
+| `user_mailbox.rules.list` | `mail:user_mailbox.rule:read` |
+| `user_mailbox.rules.reorder` | `mail:user_mailbox.rule:write` |
+| `user_mailbox.rules.update` | `mail:user_mailbox.rule:write` |
+| `user_mailbox.settings.send_as` | `mail:user_mailbox:readonly` |
 | `user_mailbox.threads.batch_modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.batch_trash` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.get` | `mail:user_mailbox.message:readonly` |
