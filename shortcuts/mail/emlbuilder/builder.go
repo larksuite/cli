@@ -73,7 +73,7 @@ func readFile(fio fileio.FileIO, path string) ([]byte, error) {
 // All setter methods return a copy of the Builder (immutable/fluent style),
 // so a base builder can be reused across multiple goroutines safely.
 type Builder struct {
-	fio                 fileio.FileIO // injected file I/O; nil falls back to legacy validate+vfs
+	fio                 fileio.FileIO // injected via WithFileIO; must be set before AddFile* calls
 	from                mail.Address
 	to                  []mail.Address
 	cc                  []mail.Address

@@ -101,7 +101,7 @@ func (p *Part) FileName() string {
 }
 
 type DraftSnapshot struct {
-	FIO     fileio.FileIO `json:"-"` // injected file I/O; nil falls back to legacy validate+vfs
+	FIO     fileio.FileIO `json:"-"` // injected file I/O; must be set before calling Apply
 	DraftID string
 	Headers []Header
 	Body    *Part

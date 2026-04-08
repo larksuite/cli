@@ -481,14 +481,14 @@ func newMultipartContainer(mediaType string) *Part {
 }
 
 func addAttachment(snapshot *DraftSnapshot, path string) error {
-	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
-		return err
-	}
 	info, err := snapshot.FIO.Stat(path)
 	if err != nil {
 		if errors.Is(err, fileio.ErrPathValidation) {
 			return fmt.Errorf("attachment %q: %w", path, err)
 		}
+		return err
+	}
+	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
