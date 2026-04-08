@@ -245,6 +245,66 @@ backup_file() {
   }
 }
 
+list_all_base_tables() {
+  local token="$1"
+  local out_json="$2"
+  local offset=0
+  local limit=100
+  local total=0
+  local count=0
+  local merged_json page_json items_json next_merged_json
+
+  merged_json="$(json_tmp)"
+  printf '%s\n' '[]' >"$merged_json"
+
+  while :; do
+    page_json="$(json_tmp)"
+    run_shortcut_json "$page_json" \
+      lark-cli base +table-list --as "$IDENTITY" --base-token "$token" --offset "$offset" --limit "$limit"
+
+    items_json="$(json_tmp)"
+    jq -c '.data.items // []' "$page_json" >"$items_json"
+
+    next_merged_json="$(json_tmp)"
+    jq -s '.[0] + .[1]' "$merged_json" "$items_json" >"$next_merged_json"
+    mv "$next_merged_json" "$merged_json"
+
+    count="$(jq -r '(.data.items // []) | length' "$page_json")"
+    total="$(jq -r '.data.total // 0' "$page_json")"
+
+    if [[ "$count" -eq 0 ]]; then
+      break
+    fi
+
+    offset=$((offset + count))
+
+    if [[ "$total" =~ ^[0-9]+$ ]] && [[ "$total" -gt 0 ]] && [[ "$offset" -lt "$total" ]]; then
+      continue
+    fi
+    if [[ "$count" -lt "$limit" ]]; then
+      break
+    fi
+  done
+
+  jq -n \
+    --slurpfile items "$merged_json" \
+    --argjson total "$total" \
+    --argjson limit "$limit" \
+    '
+      ($items[0]) as $merged
+      | {
+          ok: true,
+          data: {
+            items: $merged,
+            offset: 0,
+            limit: $limit,
+            count: ($merged | length),
+            total: (if $total > 0 then $total else ($merged | length) end)
+          }
+        }
+    ' >"$out_json"
+}
+
 backup_base() {
   local token="$1"
   local outdir="$2"
@@ -261,8 +321,7 @@ backup_base() {
     --token "$token" --doc-type bitable --file-extension xlsx --output-dir "$outdir"
 
   tables_json="$(json_tmp)"
-  run_shortcut_json "$tables_json" \
-    lark-cli base +table-list --as "$IDENTITY" --base-token "$token" --offset 0 --limit 100
+  list_all_base_tables "$token" "$tables_json"
   write_json_copy "$tables_json" "$outdir/tables.json"
 
   while IFS=$'\t' read -r table_id table_name; do
