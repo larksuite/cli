@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 func chdirTemp(t *testing.T) {
@@ -37,7 +39,7 @@ Content-Transfer-Encoding: 7bit
 hello
 `)
 
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_subject", Value: "Updated"}},
 	})
 	if err != nil {
@@ -67,7 +69,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_header", Name: "Message-ID", Value: "<changed@example.com>"}},
 	})
 	if err == nil {
@@ -84,7 +86,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:    "set_recipients",
 			Field: "to",
@@ -115,7 +117,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "updated"}},
 	})
 	if err != nil {
@@ -143,7 +145,7 @@ Content-Type: text/html; charset=UTF-8
 <p>hello</p>
 --alt--
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<section>updated <strong>body</strong></section>"}},
 	})
 	if err != nil {
@@ -174,7 +176,7 @@ Content-Type: text/html; charset=UTF-8
 <p>hello</p>
 --alt--
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "updated plain text"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "draft main body is text/html") {
@@ -199,7 +201,7 @@ Content-Type: text/html; charset=UTF-8
 <div>hello <b>world</b></div>
 --alt--
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<section>updated <strong>body</strong></section>"}},
 	})
 	if err != nil {
@@ -224,7 +226,7 @@ Content-Transfer-Encoding: 7bit
 hello
 `)
 
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "replace_body", BodyKind: "text/html", Selector: "primary", Value: "<p>hello</p>"}},
 		Options: PatchOptions{
 			RewriteEntireDraft: true,
@@ -264,7 +266,7 @@ Content-Type: text/html; charset=UTF-8
 <p>hello</p>
 --alt--
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "replace_body", BodyKind: "text/html", Selector: "primary", Value: "<div>updated</div>"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "edit them together with set_body") {
@@ -289,7 +291,7 @@ Content-Type: text/html; charset=UTF-8
 <p>hello</p>
 --alt--
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "append_body", BodyKind: "text/plain", Selector: "primary", Value: "\nappend"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "edit them together with set_body") {
@@ -319,7 +321,7 @@ aGVsbG8=
 --rel--
 `)
 
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "replace_body", BodyKind: "text/plain", Selector: "primary", Value: "hello plain"}},
 		Options: PatchOptions{
 			RewriteEntireDraft: true,
@@ -345,7 +347,7 @@ aGVsbG8=
 
 func TestRemoveAttachmentKeepsRemainingOrder(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/forward_draft.eml"))
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_attachment", Target: AttachmentTarget{PartID: "1.3"}}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -380,7 +382,7 @@ Content-Transfer-Encoding: base64
 cG5n
 --rel--
 `)
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_inline", Target: AttachmentTarget{CID: "logo-cid"}}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -404,7 +406,7 @@ Content-Transfer-Encoding: 7bit
 
 <div>hello<img src="cid:logo" /></div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "add_inline", Path: "logo.png", CID: "logo"},
 		},
@@ -431,7 +433,7 @@ func TestReplaceInlineKeepsCIDByDefault(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	snapshot := mustParseFixtureDraft(t, fixtureData)
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "replace_inline", Target: AttachmentTarget{PartID: "1.2"}, Path: "updated.png"},
 		},
@@ -450,7 +452,7 @@ func TestReplaceInlineKeepsCIDByDefault(t *testing.T) {
 
 func TestRemoveInlineFailsWhenHTMLStillReferencesCID(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/html_inline_draft.eml"))
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "remove_inline", Target: AttachmentTarget{PartID: "1.2"}},
 		},
@@ -481,7 +483,7 @@ cG5n
 --rel--
 `)
 	// set_body that drops the existing cid:logo reference → logo becomes orphaned
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<div>replaced body without cid reference</div>"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "orphaned cids") {
@@ -510,7 +512,7 @@ cG5n
 --rel--
 `)
 	// set_body that preserves the existing cid:logo reference → should succeed
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div>updated body<img src="cid:logo" /></div>`}},
 	})
 	if err != nil {
@@ -520,7 +522,7 @@ cG5n
 
 func TestApplySetBodyRejectsSignedDraft(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/multipart_signed_draft.eml"))
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "updated"}},
 	})
 	if err == nil {
@@ -535,7 +537,7 @@ func TestApplyAppendTextKeepsCalendarPart(t *testing.T) {
 		t.Fatalf("calendar part missing before patch")
 	}
 	originalCalendar := string(calendar.RawEntity)
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "append_body", BodyKind: "text/plain", Selector: "primary", Value: "\nupdated"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -559,7 +561,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "add_attachment", Path: "note.txt"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -597,7 +599,7 @@ Content-Type: text/html; charset=UTF-8
 <div>hello</div>
 `)
 	for _, bad := range []string{"my logo", "cid\there", "lo<go>id", "img(1)"} {
-		err := Apply(snapshot, Patch{
+		err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 			Ops: []PatchOp{{Op: "add_inline", Path: "logo.png", CID: bad}},
 		})
 		if err == nil {
@@ -625,7 +627,7 @@ Content-Type: text/html; charset=UTF-8
 <div><img src="cid:logo" /></div>
 `)
 	// Step 1: add inline — this wraps body into multipart/related
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "add_inline", Path: "logo.png", CID: "logo"}},
 	})
 	if err != nil {
@@ -634,7 +636,7 @@ Content-Type: text/html; charset=UTF-8
 
 	// Step 2: set_body — this restructures the MIME tree, potentially making
 	// PrimaryHTMLPartID stale
-	err = Apply(snapshot, Patch{
+	err = Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div>updated<img src="cid:logo" /></div>`}},
 	})
 	if err != nil {
@@ -642,7 +644,7 @@ Content-Type: text/html; charset=UTF-8
 	}
 
 	// Step 3: set_body again dropping the CID reference — should fail validation
-	err = Apply(snapshot, Patch{
+	err = Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div>no image here</div>`}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "orphaned cids") {
@@ -664,7 +666,7 @@ Content-Type: text/html; charset=UTF-8
 <div>hello</div>
 `)
 	for _, bad := range []string{"logo\ninjected", "logo\rinjected", "lo\r\ngo"} {
-		err := Apply(snapshot, Patch{
+		err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 			Ops: []PatchOp{{Op: "add_inline", Path: "logo.png", CID: bad}},
 		})
 		if err == nil {
@@ -687,7 +689,7 @@ Content-Type: text/html; charset=UTF-8
 <div>hello</div>
 `)
 	for _, bad := range []string{"logo\ninjected.png", "logo\r.png", "lo\r\ngo.png"} {
-		err := Apply(snapshot, Patch{
+		err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 			Ops: []PatchOp{{Op: "add_inline", Path: "logo.png", CID: "safecid", FileName: bad}},
 		})
 		if err == nil {
@@ -704,7 +706,7 @@ func TestReplaceInlineRejectsInvalidCharactersInCID(t *testing.T) {
 	}
 	snapshot := mustParseFixtureDraft(t, fixtureData)
 	for _, bad := range []string{"my logo", "cid\there", "lo<go>id", "img(1)"} {
-		err := Apply(snapshot, Patch{
+		err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 			Ops: []PatchOp{{Op: "replace_inline", Target: AttachmentTarget{PartID: "1.2"}, Path: "updated.png", CID: bad}},
 		})
 		if err == nil {
@@ -723,7 +725,7 @@ func TestReplaceInlineRejectsCRLFInCID(t *testing.T) {
 	}
 	snapshot := mustParseFixtureDraft(t, fixtureData)
 	for _, bad := range []string{"logo\ninjected", "logo\rinjected"} {
-		err := Apply(snapshot, Patch{
+		err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 			Ops: []PatchOp{{Op: "replace_inline", Target: AttachmentTarget{PartID: "1.2"}, Path: "updated.png", CID: bad}},
 		})
 		if err == nil {
@@ -740,7 +742,7 @@ func TestReplaceInlineRejectsCRLFInFileName(t *testing.T) {
 	}
 	snapshot := mustParseFixtureDraft(t, fixtureData)
 	for _, bad := range []string{"logo\ninjected.png", "logo\r.png"} {
-		err := Apply(snapshot, Patch{
+		err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 			Ops: []PatchOp{{Op: "replace_inline", Target: AttachmentTarget{PartID: "1.2"}, Path: "updated.png", FileName: bad}},
 		})
 		if err == nil {

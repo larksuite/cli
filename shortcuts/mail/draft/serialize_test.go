@@ -6,6 +6,8 @@ package draft
 import (
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 func TestSerializeRoundTripKeepsAttachmentsAndHTML(t *testing.T) {
@@ -41,7 +43,7 @@ aGVsbG8=
 --mix--
 `)
 
-	err := Apply(snapshot, Patch{
+	err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "set_subject", Value: "Updated"},
 			{Op: "set_body", Value: "<div>updated <strong>body</strong></div>"},
@@ -104,7 +106,7 @@ aGVsbG8=
 --mix--
 `
 	snapshot := mustParseFixtureDraft(t, original)
-	if err := Apply(snapshot, Patch{Ops: []PatchOp{{Op: "set_subject", Value: "Updated"}}}); err != nil {
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{Ops: []PatchOp{{Op: "set_subject", Value: "Updated"}}}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	serialized, err := Serialize(snapshot)
@@ -141,7 +143,7 @@ Content-Transfer-Encoding: quoted-printable
 
 caf=E9
 `)
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "append_body", BodyKind: "text/plain", Selector: "primary", Value: " déjà"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -173,7 +175,7 @@ caf=E9
 func TestSerializeSubjectOnlyPreservesEmbeddedMessageAttachment(t *testing.T) {
 	original := mustReadFixture(t, "testdata/message_rfc822_draft.eml")
 	snapshot := mustParseFixtureDraft(t, original)
-	if err := Apply(snapshot, Patch{Ops: []PatchOp{{Op: "set_subject", Value: "Updated forward"}}}); err != nil {
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{Ops: []PatchOp{{Op: "set_subject", Value: "Updated forward"}}}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	serialized, err := Serialize(snapshot)
@@ -196,7 +198,7 @@ func TestSerializeSubjectOnlyPreservesEmbeddedMessageAttachment(t *testing.T) {
 func TestSerializeSubjectOnlyPreservesSignedBodyEntity(t *testing.T) {
 	original := mustReadFixture(t, "testdata/multipart_signed_draft.eml")
 	snapshot := mustParseFixtureDraft(t, original)
-	if err := Apply(snapshot, Patch{Ops: []PatchOp{{Op: "set_subject", Value: "Updated signed"}}}); err != nil {
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{Ops: []PatchOp{{Op: "set_subject", Value: "Updated signed"}}}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	serialized, err := Serialize(snapshot)
@@ -226,7 +228,7 @@ func TestSerializeSubjectOnlyPreservesSignedBodyEntity(t *testing.T) {
 func TestSerializeDirtyMultipartKeepsPreambleAndEpilogue(t *testing.T) {
 	original := mustReadFixture(t, "testdata/dirty_multipart_preamble.eml")
 	snapshot := mustParseFixtureDraft(t, original)
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&localfileio.LocalFileIO{}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "append_body", BodyKind: "text/plain", Selector: "primary", Value: "\nworld"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)

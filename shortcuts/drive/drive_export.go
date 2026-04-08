@@ -114,7 +114,7 @@ var DriveExport = common.Shortcut{
 				title = spec.Token
 			}
 			fileName := ensureExportFileExtension(sanitizeExportFileName(title, spec.Token), spec.FileExtension)
-			savedPath, err := saveContentToOutputDir(outputDir, fileName, []byte(common.GetString(data, "content")), overwrite)
+			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(common.GetString(data, "content")), overwrite)
 			if err != nil {
 				return err
 			}

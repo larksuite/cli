@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 var fixedDate = time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
@@ -958,9 +960,10 @@ func TestAddFileAttachmentBlockedExtension(t *testing.T) {
 	for _, name := range blocked {
 		os.WriteFile(name, []byte("content"), 0o644)
 	}
+	fio := &localfileio.LocalFileIO{}
 	for _, name := range blocked {
 		t.Run(name, func(t *testing.T) {
-			_, err := New().
+			_, err := New().WithFileIO(fio).
 				From("", "alice@example.com").
 				To("", "bob@example.com").
 				Subject("test").
@@ -991,9 +994,10 @@ func TestAddFileInlineBlockedFormat(t *testing.T) {
 	// .png extension but EXE content → rejected (bad content)
 	os.WriteFile("evil.png", []byte("MZ"), 0o644)
 
+	fio := &localfileio.LocalFileIO{}
 	for _, name := range []string{"icon.svg", "evil.png"} {
 		t.Run(name, func(t *testing.T) {
-			_, err := New().
+			_, err := New().WithFileIO(fio).
 				From("", "alice@example.com").
 				To("", "bob@example.com").
 				Subject("test").
@@ -1020,9 +1024,10 @@ func TestAddFileInlineAllowedFormat(t *testing.T) {
 	os.WriteFile("logo.png", pngContent, 0o644)
 	os.WriteFile("photo.jpg", jpegContent, 0o644)
 
+	fio := &localfileio.LocalFileIO{}
 	for _, name := range []string{"logo.png", "photo.jpg"} {
 		t.Run(name, func(t *testing.T) {
-			_, err := New().
+			_, err := New().WithFileIO(fio).
 				From("", "alice@example.com").
 				To("", "bob@example.com").
 				Subject("test").
@@ -1048,9 +1053,10 @@ func TestAddFileAttachmentAllowedExtension(t *testing.T) {
 	for _, name := range allowed {
 		os.WriteFile(name, []byte("content"), 0o644)
 	}
+	fio := &localfileio.LocalFileIO{}
 	for _, name := range allowed {
 		t.Run(name, func(t *testing.T) {
-			_, err := New().
+			_, err := New().WithFileIO(fio).
 				From("", "alice@example.com").
 				To("", "bob@example.com").
 				Subject("test").

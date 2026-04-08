@@ -15,8 +15,6 @@ import (
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -58,14 +56,8 @@ var MediaUpload = common.Shortcut{
 		parentNode := runtime.Str("parent-node")
 		docId := runtime.Str("doc-id")
 
-		safeFilePath, pathErr := validate.SafeInputPath(filePath)
-		if pathErr != nil {
-			return output.ErrValidation("unsafe file path: %s", pathErr)
-		}
-		filePath = safeFilePath
-
 		// Validate file
-		stat, err := vfs.Stat(filePath)
+		stat, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
 			return output.ErrValidation("file not found: %s", filePath)
 		}
@@ -76,7 +68,7 @@ var MediaUpload = common.Shortcut{
 		fileName := filepath.Base(filePath)
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%d bytes)\n", fileName, stat.Size())
 
-		f, err := vfs.Open(filePath)
+		f, err := runtime.FileIO().Open(filePath)
 		if err != nil {
 			return output.ErrValidation("cannot open file: %v", err)
 		}

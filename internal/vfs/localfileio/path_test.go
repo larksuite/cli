@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package validate
+package localfileio
 
 import (
 	"os"
@@ -167,46 +167,6 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	}
 }
 
-func TestSafeLocalFlagPath(t *testing.T) {
-	dir := t.TempDir()
-	dir, _ = filepath.EvalSymlinks(dir)
-	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
-	os.Chdir(dir)
-	os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("data"), 0600)
-
-	for _, tt := range []struct {
-		name    string
-		flag    string
-		value   string
-		want    string
-		wantErr string
-	}{
-		{"empty value passes through", "--image", "", "", ""},
-		{"http URL passes through", "--image", "http://example.com/a.jpg", "http://example.com/a.jpg", ""},
-		{"https URL passes through", "--image", "https://example.com/a.jpg", "https://example.com/a.jpg", ""},
-		{"relative path accepted, returned unchanged", "--file", "photo.jpg", "photo.jpg", ""},
-		{"path traversal rejected", "--file", "../escape.txt", "", "--file"},
-		{"absolute path rejected", "--image", "/etc/passwd", "", "--image"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := SafeLocalFlagPath(tt.flag, tt.value)
-			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("SafeLocalFlagPath(%q, %q) error = %v, want contains %q", tt.flag, tt.value, err, tt.wantErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("SafeLocalFlagPath(%q, %q) unexpected error: %v", tt.flag, tt.value, err)
-			}
-			if got != tt.want {
-				t.Fatalf("SafeLocalFlagPath(%q, %q) = %q, want %q", tt.flag, tt.value, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	// GIVEN: a real temp file (absolute path under os.TempDir())
 	f, err := os.CreateTemp("", "upload-test-*.bin")
@@ -218,7 +178,7 @@ func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	t.Cleanup(func() { os.Remove(tmpPath) })
 
 	// WHEN: SafeUploadPath validates the absolute temp path
-	_, err = SafeInputPath(tmpPath)
+	_, err = safeInputPath(tmpPath)
 
 	// THEN: absolute paths are rejected even in temp dir
 	if err == nil {
@@ -229,7 +189,7 @@ func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 func TestSafeUploadPath_RejectsNonTempAbsolutePath(t *testing.T) {
 	// GIVEN: an absolute path outside the temp directory
 	// WHEN / THEN: SafeUploadPath rejects it
-	_, err := SafeInputPath("/etc/passwd")
+	_, err := safeInputPath("/etc/passwd")
 	if err == nil {
 		t.Error("expected error for absolute non-temp path, got nil")
 	}
@@ -246,7 +206,7 @@ func TestSafeUploadPath_AcceptsRelativePath(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "upload.bin"), []byte("data"), 0600)
 
 	// WHEN: SafeUploadPath validates a relative path to an existing file
-	got, err := SafeInputPath("upload.bin")
+	got, err := safeInputPath("upload.bin")
 
 	// THEN: accepted and returned as absolute canonical path
 	if err != nil {
@@ -258,11 +218,11 @@ func TestSafeUploadPath_AcceptsRelativePath(t *testing.T) {
 	}
 }
 
-func TestSafeInputPath_ErrorMessageContainsCorrectFlagName(t *testing.T) {
+func Test_safeInputPath_ErrorMessageContainsCorrectFlagName(t *testing.T) {
 	// GIVEN: an absolute path
 
-	// WHEN: SafeInputPath rejects it
-	_, err := SafeInputPath("/etc/passwd")
+	// WHEN: safeInputPath rejects it
+	_, err := safeInputPath("/etc/passwd")
 
 	// THEN: error message mentions --file (not --output)
 	if err == nil {

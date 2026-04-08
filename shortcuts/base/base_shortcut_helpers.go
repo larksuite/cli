@@ -6,10 +6,10 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -17,7 +17,7 @@ func baseTableID(runtime *common.RuntimeContext) string {
 	return strings.TrimSpace(runtime.Str("table-id"))
 }
 
-func loadJSONInput(raw string, flagName string) (string, error) {
+func loadJSONInput(fio fileio.FileIO, raw string, flagName string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", common.FlagErrorf("--%s cannot be empty", flagName)
@@ -29,11 +29,12 @@ func loadJSONInput(raw string, flagName string) (string, error) {
 	if path == "" {
 		return "", common.FlagErrorf("--%s file path cannot be empty after @", flagName)
 	}
-	safePath, err := validate.SafeInputPath(path)
+	f, err := fio.Open(path)
 	if err != nil {
 		return "", common.FlagErrorf("--%s invalid JSON file path %q: %v", flagName, path, err)
 	}
-	data, err := vfs.ReadFile(safePath)
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return "", common.FlagErrorf("--%s cannot read JSON file %q: %v", flagName, path, err)
 	}
@@ -86,18 +87,18 @@ func baseAction(runtime *common.RuntimeContext, boolFlags []string, stringFlags 
 	return active[0], nil
 }
 
-func parseObjectList(raw string, flagName string) ([]map[string]interface{}, error) {
+func parseObjectList(fio fileio.FileIO, raw string, flagName string) ([]map[string]interface{}, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 	var err error
-	raw, err = loadJSONInput(raw, flagName)
+	raw, err = loadJSONInput(fio, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
 	if strings.HasPrefix(raw, "[") {
-		arr, err := parseJSONArray(raw, flagName)
+		arr, err := parseJSONArray(fio, raw, flagName)
 		if err != nil {
 			return nil, err
 		}
@@ -111,16 +112,16 @@ func parseObjectList(raw string, flagName string) ([]map[string]interface{}, err
 		}
 		return items, nil
 	}
-	obj, err := parseJSONObject(raw, flagName)
+	obj, err := parseJSONObject(fio, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
 	return []map[string]interface{}{obj}, nil
 }
 
-func parseJSONValue(raw string, flagName string) (interface{}, error) {
+func parseJSONValue(fio fileio.FileIO, raw string, flagName string) (interface{}, error) {
 	var err error
-	raw, err = loadJSONInput(raw, flagName)
+	raw, err = loadJSONInput(fio, raw, flagName)
 	if err != nil {
 		return nil, err
 	}

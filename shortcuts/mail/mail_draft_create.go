@@ -71,7 +71,7 @@ var MailDraftCreate = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("body")) == "" {
 			return output.ErrValidation("--body is required; pass the full email body")
 		}
-		if err := validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
 			return err
 		}
 		return nil
@@ -133,7 +133,7 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 		return "", err
 	}
 
-	bld := emlbuilder.New().
+	bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 		AllowNoRecipients().
 		Subject(input.Subject)
 	if strings.TrimSpace(input.To) != "" {

@@ -63,7 +63,7 @@ var MailForward = common.Shortcut{
 				return err
 			}
 		}
-		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
+		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
@@ -99,7 +99,7 @@ var MailForward = common.Shortcut{
 			return err
 		}
 
-		bld := emlbuilder.New().
+		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(buildForwardSubject(orig.subject)).
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
@@ -173,7 +173,7 @@ var MailForward = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if err := checkAttachmentSizeLimit(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), origAttBytes, len(origAtts)); err != nil {
+		if err := checkAttachmentSizeLimit(runtime.FileIO(), append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), origAttBytes, len(origAtts)); err != nil {
 			return err
 		}
 		for _, att := range origAtts {

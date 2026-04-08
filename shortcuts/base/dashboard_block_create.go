@@ -36,7 +36,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		if strings.TrimSpace(raw) == "" {
 			return nil // 允许无 data_config 的创建（某些类型可先创建后配置）
 		}
-		cfg, err := parseJSONObject(raw, "data-config")
+		cfg, err := parseJSONObject(runtime.FileIO(), raw, "data-config")
 		if err != nil {
 			return err
 		}
@@ -58,7 +58,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 			body["type"] = t
 		}
 		if raw := runtime.Str("data-config"); raw != "" {
-			if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+			if parsed, err := parseJSONObject(runtime.FileIO(), raw, "data-config"); err == nil {
 				body["data_config"] = parsed
 			}
 		}

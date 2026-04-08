@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 func TestParseHelpers(t *testing.T) {
@@ -30,36 +32,37 @@ func TestParseHelpers(t *testing.T) {
 		t.Fatalf("write temp file err=%v", err)
 	}
 	_ = tmp.Close()
-	obj, err := parseJSONObject(`{"name":"demo"}`, "json")
+	fio := &localfileio.LocalFileIO{}
+	obj, err := parseJSONObject(nil, `{"name":"demo"}`, "json")
 	if err != nil || obj["name"] != "demo" {
 		t.Fatalf("obj=%v err=%v", obj, err)
 	}
-	if _, err := parseJSONObject(`[1]`, "json"); err == nil || !strings.Contains(err.Error(), "invalid JSON object") {
+	if _, err := parseJSONObject(nil, `[1]`, "json"); err == nil || !strings.Contains(err.Error(), "invalid JSON object") {
 		t.Fatalf("err=%v", err)
 	}
-	obj, err = parseJSONObject("@"+tmp.Name(), "json")
+	obj, err = parseJSONObject(fio, "@"+tmp.Name(), "json")
 	if err != nil || obj["name"] != "from-file" {
 		t.Fatalf("file obj=%v err=%v", obj, err)
 	}
-	arr, err := parseJSONArray(`[1,2]`, "items")
+	arr, err := parseJSONArray(nil, `[1,2]`, "items")
 	if err != nil || len(arr) != 2 {
 		t.Fatalf("arr=%v err=%v", arr, err)
 	}
-	if _, err := parseJSONArray(`{"a":1}`, "items"); err == nil || !strings.Contains(err.Error(), "invalid JSON array") {
+	if _, err := parseJSONArray(nil, `{"a":1}`, "items"); err == nil || !strings.Contains(err.Error(), "invalid JSON array") {
 		t.Fatalf("err=%v", err)
 	}
-	list, err := parseStringListFlexible("a, b, ,c", "fields")
+	list, err := parseStringListFlexible(nil, "a, b, ,c", "fields")
 	if err != nil || !reflect.DeepEqual(list, []string{"a", "b", "c"}) {
 		t.Fatalf("list=%v err=%v", list, err)
 	}
-	list, err = parseStringListFlexible(`["x","y"]`, "fields")
+	list, err = parseStringListFlexible(nil, `["x","y"]`, "fields")
 	if err != nil || !reflect.DeepEqual(list, []string{"x", "y"}) {
 		t.Fatalf("list=%v err=%v", list, err)
 	}
-	if _, err := parseStringListFlexible(`[1]`, "fields"); err == nil || !strings.Contains(err.Error(), "invalid JSON string array") {
+	if _, err := parseStringListFlexible(nil, `[1]`, "fields"); err == nil || !strings.Contains(err.Error(), "invalid JSON string array") {
 		t.Fatalf("err=%v", err)
 	}
-	if _, err := parseJSONValue("{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a JSON object/array directly") {
+	if _, err := parseJSONValue(nil, "{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a JSON object/array directly") {
 		t.Fatalf("err=%v", err)
 	}
 	if !reflect.DeepEqual(parseStringList("m,n"), []string{"m", "n"}) {
@@ -262,10 +265,11 @@ func TestFilterAndSortHelpers(t *testing.T) {
 }
 
 func TestJSONInputHelpers(t *testing.T) {
-	if got, err := loadJSONInput(`{"name":"demo"}`, "json"); err != nil || got != `{"name":"demo"}` {
+	fio2 := &localfileio.LocalFileIO{}
+	if got, err := loadJSONInput(nil, `{"name":"demo"}`, "json"); err != nil || got != `{"name":"demo"}` {
 		t.Fatalf("got=%q err=%v", got, err)
 	}
-	if _, err := loadJSONInput("@", "json"); err == nil || !strings.Contains(err.Error(), "file path cannot be empty") {
+	if _, err := loadJSONInput(nil, "@", "json"); err == nil || !strings.Contains(err.Error(), "file path cannot be empty") {
 		t.Fatalf("err=%v", err)
 	}
 	tmp := t.TempDir()
@@ -281,7 +285,7 @@ func TestJSONInputHelpers(t *testing.T) {
 	if err := os.WriteFile(emptyPath, []byte("  \n"), 0o644); err != nil {
 		t.Fatalf("write empty file err=%v", err)
 	}
-	if _, err := loadJSONInput("@"+emptyPath, "json"); err == nil || !strings.Contains(err.Error(), "is empty") {
+	if _, err := loadJSONInput(fio2, "@"+emptyPath, "json"); err == nil || !strings.Contains(err.Error(), "is empty") {
 		t.Fatalf("err=%v", err)
 	}
 	syntaxErr := formatJSONError("json", "object", &json.SyntaxError{Offset: 7})

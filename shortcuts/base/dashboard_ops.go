@@ -103,7 +103,7 @@ func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContex
 		body["type"] = blockType
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+		if parsed, err := parseJSONObject(runtime.FileIO(), raw, "data-config"); err == nil {
 			body["data_config"] = parsed
 		}
 	}
@@ -124,7 +124,7 @@ func dryRunDashboardBlockUpdate(_ context.Context, runtime *common.RuntimeContex
 		body["name"] = name
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+		if parsed, err := parseJSONObject(runtime.FileIO(), raw, "data-config"); err == nil {
 			body["data_config"] = parsed
 		}
 	}
@@ -248,7 +248,7 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 		body["type"] = blockType
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		parsed, err := parseJSONObject(raw, "data-config")
+		parsed, err := parseJSONObject(runtime.FileIO(), raw, "data-config")
 		if err != nil {
 			return err
 		}
@@ -274,7 +274,7 @@ func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 		body["name"] = name
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		parsed, err := parseJSONObject(raw, "data-config")
+		parsed, err := parseJSONObject(runtime.FileIO(), raw, "data-config")
 		if err != nil {
 			return err
 		}

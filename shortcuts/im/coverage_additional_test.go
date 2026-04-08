@@ -16,6 +16,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
+
+	"github.com/larksuite/cli/internal/cmdutil"
 )
 
 func TestSanitizeURLForDisplay(t *testing.T) {
@@ -404,39 +406,36 @@ func TestBuildSearchChatBodyAdditionalBranches(t *testing.T) {
 
 func TestParseMediaDurationSuccess(t *testing.T) {
 	t.Run("mp4", func(t *testing.T) {
-		f, err := os.CreateTemp("", "im-duration-*.mp4")
-		if err != nil {
-			t.Fatalf("CreateTemp() error = %v", err)
+		cmdutil.TestChdir(t, t.TempDir())
+		fname := "im-duration-test.mp4"
+		if err := os.WriteFile(fname, wrapInMoov(buildMvhdBox(0, 1000, 5000)), 0644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
 		}
-		defer os.Remove(f.Name())
-		defer f.Close()
-
-		if _, err := f.Write(wrapInMoov(buildMvhdBox(0, 1000, 5000))); err != nil {
-			t.Fatalf("Write() error = %v", err)
-		}
-		if got := parseMediaDuration(f.Name(), "mp4"); got != "5000" {
+		rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("unexpected")
+		}))
+		if got := parseMediaDuration(rt, fname, "mp4"); got != "5000" {
 			t.Fatalf("parseMediaDuration(mp4) = %q, want %q", got, "5000")
 		}
 	})
 
 	t.Run("opus", func(t *testing.T) {
-		f, err := os.CreateTemp("", "im-duration-*.ogg")
-		if err != nil {
-			t.Fatalf("CreateTemp() error = %v", err)
-		}
-		defer os.Remove(f.Name())
-		defer f.Close()
-
+		cmdutil.TestChdir(t, t.TempDir())
 		page := make([]byte, 27)
 		copy(page[0:4], "OggS")
 		page[5] = 4
 		page[6] = 0x00
 		page[7] = 0x53
 		page[8] = 0x07
-		if _, err := f.Write(page); err != nil {
-			t.Fatalf("Write() error = %v", err)
+
+		fname := "im-duration-test.ogg"
+		if err := os.WriteFile(fname, page, 0644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
 		}
-		if got := parseMediaDuration(f.Name(), "opus"); got != "10000" {
+		rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("unexpected")
+		}))
+		if got := parseMediaDuration(rt, fname, "opus"); got != "10000" {
 			t.Fatalf("parseMediaDuration(opus) = %q, want %q", got, "10000")
 		}
 	})

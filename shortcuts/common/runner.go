@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 
@@ -17,14 +18,13 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -294,6 +294,51 @@ func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.Quer
 // IO returns the IOStreams from the Factory.
 func (ctx *RuntimeContext) IO() *cmdutil.IOStreams {
 	return ctx.Factory.IOStreams
+}
+
+// FileIO resolves the FileIO using the current execution context.
+// Falls back to the globally registered provider when Factory or its
+// FileIOProvider is nil (e.g. in lightweight test helpers).
+func (ctx *RuntimeContext) FileIO() fileio.FileIO {
+	if ctx != nil && ctx.Factory != nil {
+		if fio := ctx.Factory.ResolveFileIO(ctx.ctx); fio != nil {
+			return fio
+		}
+	}
+	if p := fileio.GetProvider(); p != nil {
+		c := context.Background()
+		if ctx != nil {
+			c = ctx.ctx
+		}
+		return p.ResolveFileIO(c)
+	}
+	return nil
+}
+
+// ValidatePath checks that path is a valid relative path within the working
+// directory (via FileIO.Stat). Returns nil if the path is valid or does not
+// exist yet; returns an error only for illegal paths (absolute, traversal,
+// symlink escape, control chars).
+// ResolveSavePath returns the validated absolute path for user-facing output.
+// Falls back to the original path if resolution fails (e.g. server mode).
+func (ctx *RuntimeContext) ResolveSavePath(path string) string {
+	if fio := ctx.FileIO(); fio != nil {
+		if resolved, err := fio.ResolvePath(path); err == nil && resolved != "" {
+			return resolved
+		}
+	}
+	return path
+}
+
+func (ctx *RuntimeContext) ValidatePath(path string) error {
+	fio := ctx.FileIO()
+	if fio == nil {
+		return fmt.Errorf("no file I/O provider registered")
+	}
+	if _, err := fio.Stat(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // ── Output helpers ──
@@ -575,11 +620,12 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if path == "" {
 				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
 			}
-			safePath, err := validate.SafeInputPath(path)
+			f, err := rctx.FileIO().Open(path)
 			if err != nil {
-				return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}
-			data, err := vfs.ReadFile(safePath)
+			data, err := io.ReadAll(f)
+			f.Close()
 			if err != nil {
 				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}

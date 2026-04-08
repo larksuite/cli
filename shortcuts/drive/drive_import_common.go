@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/vfs"
-
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
@@ -97,7 +95,7 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 // uploadMediaForImport uploads the source file to the temporary import media
 // endpoint and returns the file token consumed by import_tasks.
 func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, docType string) (string, error) {
-	importInfo, err := vfs.Stat(filePath)
+	importInfo, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
 		return "", output.ErrValidation("cannot read file: %s", err)
 	}
@@ -126,7 +124,7 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 }
 
 func uploadMediaForImportAll(runtime *common.RuntimeContext, filePath, fileName string, fileSize int, extra string) (string, error) {
-	f, err := vfs.Open(filePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
 		return "", output.ErrValidation("cannot read file: %s", err)
 	}
@@ -165,7 +163,7 @@ func uploadMediaForImportMultipart(runtime *common.RuntimeContext, filePath, fil
 	totalBlocks := session.BlockNum
 	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", totalBlocks, common.FormatSize(int64(session.BlockSize)))
 
-	f, err := vfs.Open(filePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
 		return "", output.ErrValidation("cannot read file: %s", err)
 	}

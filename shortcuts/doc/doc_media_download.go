@@ -12,9 +12,9 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -66,8 +66,7 @@ var DocMediaDownload = common.Shortcut{
 		if err := validate.ResourceName(token, "--token"); err != nil {
 			return output.ErrValidation("%s", err)
 		}
-		// Early path validation before API call (final validation after auto-extension below)
-		if _, err := validate.SafeOutputPath(outputPath); err != nil {
+		if err := runtime.ValidatePath(outputPath); err != nil {
 			return output.ErrValidation("unsafe output path: %s", err)
 		}
 
@@ -105,26 +104,24 @@ var DocMediaDownload = common.Shortcut{
 			}
 		}
 
-		safePath, err := validate.SafeOutputPath(finalPath)
-		if err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
-		}
-		if err := common.EnsureWritableFile(safePath, overwrite); err != nil {
-			return err
-		}
-
-		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-			return output.Errorf(output.ExitInternal, "io", "cannot create parent directory: %v", err)
+		// Overwrite check on final path (after extension detection)
+		if !overwrite {
+			if _, statErr := runtime.FileIO().Stat(finalPath); statErr == nil {
+				return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", finalPath)
+			}
 		}
 
-		sizeBytes, err := validate.AtomicWriteFromReader(safePath, resp.Body, 0600)
+		result, err := runtime.FileIO().Save(finalPath, fileio.SaveOptions{
+			ContentType:   resp.Header.Get("Content-Type"),
+			ContentLength: resp.ContentLength,
+		}, resp.Body)
 		if err != nil {
 			return output.Errorf(output.ExitInternal, "io", "cannot create file: %v", err)
 		}
 
 		runtime.Out(map[string]interface{}{
-			"saved_path":   safePath,
-			"size_bytes":   sizeBytes,
+			"saved_path":   runtime.ResolveSavePath(finalPath),
+			"size_bytes":   result.Size(),
 			"content_type": resp.Header.Get("Content-Type"),
 		}, nil)
 		return nil

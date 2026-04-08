@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -263,10 +264,13 @@ func TestParseMp4Duration(t *testing.T) {
 }
 
 func TestParseMediaDuration(t *testing.T) {
-	if got := parseMediaDuration("test.pdf", "pdf"); got != "" {
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected")
+	}))
+	if got := parseMediaDuration(rt, "test.pdf", "pdf"); got != "" {
 		t.Fatalf("parseMediaDuration(pdf) = %q, want empty", got)
 	}
-	if got := parseMediaDuration("nonexistent.opus", "opus"); got != "" {
+	if got := parseMediaDuration(rt, "nonexistent.opus", "opus"); got != "" {
 		t.Fatalf("parseMediaDuration(missing) = %q, want empty", got)
 	}
 }

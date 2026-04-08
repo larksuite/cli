@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -40,7 +41,11 @@ func newBaseTestRuntime(stringFlags map[string]string, boolFlags map[string]bool
 	for name, value := range intFlags {
 		_ = cmd.Flags().Set(name, strconv.Itoa(value))
 	}
-	return &common.RuntimeContext{Cmd: cmd, Config: &core.CliConfig{UserOpenId: "ou_test"}}
+	return &common.RuntimeContext{
+		Cmd:     cmd,
+		Config:  &core.CliConfig{UserOpenId: "ou_test"},
+		Factory: &cmdutil.Factory{FileIOProvider: fileio.GetProvider()},
+	}
 }
 
 func TestBaseAction(t *testing.T) {
@@ -70,22 +75,22 @@ func TestBaseAction(t *testing.T) {
 }
 
 func TestParseObjectList(t *testing.T) {
-	items, err := parseObjectList("", "view")
+	items, err := parseObjectList(nil, "", "view")
 	if err != nil || items != nil {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	items, err = parseObjectList(`{"name":"grid"}`, "view")
+	items, err = parseObjectList(nil, `{"name":"grid"}`, "view")
 	if err != nil || len(items) != 1 || items[0]["name"] != "grid" {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	items, err = parseObjectList(`[{"name":"grid"}]`, "view")
+	items, err = parseObjectList(nil, `[{"name":"grid"}]`, "view")
 	if err != nil || len(items) != 1 || items[0]["name"] != "grid" {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	_, err = parseObjectList(`[1]`, "view")
+	_, err = parseObjectList(nil, `[1]`, "view")
 	if err == nil || !strings.Contains(err.Error(), "must be an object") {
 		t.Fatalf("err=%v", err)
 	}

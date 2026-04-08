@@ -5,12 +5,13 @@ package draft
 
 import (
 	"fmt"
+	"io"
 	"mime"
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
@@ -24,12 +25,12 @@ var protectedHeaders = map[string]bool{
 	"reply-to":                  true,
 }
 
-func Apply(snapshot *DraftSnapshot, patch Patch) error {
+func Apply(fio fileio.FileIO, snapshot *DraftSnapshot, patch Patch) error {
 	if err := patch.Validate(); err != nil {
 		return err
 	}
 	for _, op := range patch.Ops {
-		if err := applyOp(snapshot, op, patch.Options); err != nil {
+		if err := applyOp(fio, snapshot, op, patch.Options); err != nil {
 			return err
 		}
 	}
@@ -42,7 +43,7 @@ func Apply(snapshot *DraftSnapshot, patch Patch) error {
 	return validateOrphanedInlineCIDAfterApply(snapshot)
 }
 
-func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
+func applyOp(fio fileio.FileIO, snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 	switch op.Op {
 	case "set_subject":
 		if strings.ContainsAny(op.Value, "\r\n") {
@@ -84,7 +85,7 @@ func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 		}
 		removeHeader(&snapshot.Headers, op.Name)
 	case "add_attachment":
-		return addAttachment(snapshot, op.Path)
+		return addAttachment(fio, snapshot, op.Path)
 	case "remove_attachment":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
@@ -92,13 +93,13 @@ func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 		}
 		return removeAttachment(snapshot, partID)
 	case "add_inline":
-		return addInline(snapshot, op.Path, op.CID, op.FileName, op.ContentType)
+		return addInline(fio, snapshot, op.Path, op.CID, op.FileName, op.ContentType)
 	case "replace_inline":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
 			return fmt.Errorf("replace_inline: %w", err)
 		}
-		return replaceInline(snapshot, partID, op.Path, op.CID, op.FileName, op.ContentType)
+		return replaceInline(fio, snapshot, partID, op.Path, op.CID, op.FileName, op.ContentType)
 	case "remove_inline":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
@@ -462,22 +463,23 @@ func newMultipartContainer(mediaType string) *Part {
 	}
 }
 
-func addAttachment(snapshot *DraftSnapshot, path string) error {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return fmt.Errorf("attachment %q: %w", path, err)
-	}
+func addAttachment(fio fileio.FileIO, snapshot *DraftSnapshot, path string) error {
 	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
 		return err
 	}
-	info, err := vfs.Stat(safePath)
+	info, err := fio.Stat(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("attachment %q: %w", path, err)
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := fio.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -523,19 +525,20 @@ func addAttachment(snapshot *DraftSnapshot, path string) error {
 	return nil
 }
 
-func addInline(snapshot *DraftSnapshot, path, cid, fileName, contentType string) error {
-	safePath, err := validate.SafeInputPath(path)
+func addInline(fio fileio.FileIO, snapshot *DraftSnapshot, path, cid, fileName, contentType string) error {
+	info, err := fio.Stat(path)
 	if err != nil {
 		return fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
-	if err != nil {
-		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := fio.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -564,7 +567,7 @@ func addInline(snapshot *DraftSnapshot, path, cid, fileName, contentType string)
 	return nil
 }
 
-func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, contentType string) error {
+func replaceInline(fio fileio.FileIO, snapshot *DraftSnapshot, partID, path, cid, fileName, contentType string) error {
 	part := findPart(snapshot.Body, partID)
 	if part == nil {
 		return fmt.Errorf("inline part %q not found", partID)
@@ -572,18 +575,19 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	if !isInlinePart(part) {
 		return fmt.Errorf("part %q is not an inline MIME part", partID)
 	}
-	safePath, err := validate.SafeInputPath(path)
+	info, err := fio.Stat(path)
 	if err != nil {
 		return fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
-	if err != nil {
-		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), part); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := fio.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}

@@ -4,8 +4,6 @@
 package common
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -170,78 +168,3 @@ func TestParseIntBounded(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ValidateSafeOutputDir — symlink escape prevention
-// ---------------------------------------------------------------------------
-
-// chdirForTest changes CWD to dir and restores the original CWD on cleanup.
-func chdirForTest(t *testing.T, dir string) {
-	t.Helper()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir(%q): %v", dir, err)
-	}
-	t.Cleanup(func() { os.Chdir(orig) })
-}
-
-// TestValidateSafeOutputDir_RejectsSymlinkEscape verifies that a relative path
-// that resolves to a symlink pointing outside CWD is rejected.
-func TestValidateSafeOutputDir_RejectsSymlinkEscape(t *testing.T) {
-	outside := t.TempDir() // target outside CWD
-	workDir := t.TempDir()
-	chdirForTest(t, workDir)
-
-	// Create a symlink inside CWD pointing to outside.
-	if err := os.Symlink(outside, filepath.Join(workDir, "evil_out")); err != nil {
-		t.Fatalf("Symlink: %v", err)
-	}
-
-	if err := ValidateSafeOutputDir("evil_out"); err == nil {
-		t.Fatal("expected error for symlink pointing outside CWD, got nil")
-	}
-}
-
-// TestValidateSafeOutputDir_RejectsDanglingSymlink verifies that a dangling
-// symlink (target does not exist) is rejected to prevent future escapes.
-func TestValidateSafeOutputDir_RejectsDanglingSymlink(t *testing.T) {
-	workDir := t.TempDir()
-	chdirForTest(t, workDir)
-
-	if err := os.Symlink("/nonexistent/outside/target", filepath.Join(workDir, "dangling")); err != nil {
-		t.Fatalf("Symlink: %v", err)
-	}
-
-	if err := ValidateSafeOutputDir("dangling"); err == nil {
-		t.Fatal("expected error for dangling symlink, got nil")
-	}
-}
-
-// TestValidateSafeOutputDir_AllowsNormalSubdir verifies that an existing real
-// subdirectory within CWD is accepted.
-func TestValidateSafeOutputDir_AllowsNormalSubdir(t *testing.T) {
-	workDir := t.TempDir()
-	chdirForTest(t, workDir)
-
-	subDir := filepath.Join(workDir, "output")
-	if err := os.Mkdir(subDir, 0700); err != nil {
-		t.Fatalf("Mkdir: %v", err)
-	}
-
-	if err := ValidateSafeOutputDir("output"); err != nil {
-		t.Fatalf("expected no error for real subdir, got: %v", err)
-	}
-}
-
-// TestValidateSafeOutputDir_AllowsNonExistentPath verifies that a path that
-// does not yet exist (new output directory) is accepted.
-func TestValidateSafeOutputDir_AllowsNonExistentPath(t *testing.T) {
-	workDir := t.TempDir()
-	chdirForTest(t, workDir)
-
-	if err := ValidateSafeOutputDir("new_output_dir"); err != nil {
-		t.Fatalf("expected no error for non-existent path, got: %v", err)
-	}
-}

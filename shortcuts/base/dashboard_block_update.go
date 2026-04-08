@@ -36,7 +36,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		if strings.TrimSpace(raw) == "" {
 			return nil
 		}
-		cfg, err := parseJSONObject(raw, "data-config")
+		cfg, err := parseJSONObject(runtime.FileIO(), raw, "data-config")
 		if err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			body["name"] = name
 		}
 		if raw := runtime.Str("data-config"); raw != "" {
-			if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+			if parsed, err := parseJSONObject(runtime.FileIO(), raw, "data-config"); err == nil {
 				body["data_config"] = parsed
 			}
 		}

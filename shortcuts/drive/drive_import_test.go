@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -218,8 +219,8 @@ func TestDriveImportDryRunReturnsErrorForUnsafePath(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if got.Error == "" || !strings.Contains(got.Error, "unsafe file path") {
-		t.Fatalf("dry-run error = %q, want unsafe file path error", got.Error)
+	if got.Error == "" || !strings.Contains(got.Error, "resolves outside the current working directory") {
+		t.Fatalf("dry-run error = %q, want path escape error", got.Error)
 	}
 	if len(got.API) != 0 {
 		t.Fatalf("expected no API calls when preflight fails, got %d", len(got.API))

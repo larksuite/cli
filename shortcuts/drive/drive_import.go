@@ -10,10 +10,8 @@ import (
 
 	"strings"
 
-	"github.com/larksuite/cli/internal/vfs"
-
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -50,7 +48,7 @@ var DriveImport = common.Shortcut{
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
 		}
-		fileSize, err := preflightDriveImportFile(&spec)
+		fileSize, err := preflightDriveImportFile(runtime.FileIO(), &spec)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
@@ -77,7 +75,7 @@ var DriveImport = common.Shortcut{
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
 		}
-		if _, err := preflightDriveImportFile(&spec); err != nil {
+		if _, err := preflightDriveImportFile(runtime.FileIO(), &spec); err != nil {
 			return err
 		}
 
@@ -140,16 +138,11 @@ var DriveImport = common.Shortcut{
 	},
 }
 
-func preflightDriveImportFile(spec *driveImportSpec) (int64, error) {
+func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, error) {
 	// Keep dry-run and execution aligned on path normalization, file existence,
 	// and format-specific size limits before planning the upload path.
-	safeFilePath, err := validate.SafeInputPath(spec.FilePath)
-	if err != nil {
-		return 0, output.ErrValidation("unsafe file path: %s", err)
-	}
-	spec.FilePath = safeFilePath
-
-	info, err := vfs.Stat(spec.FilePath)
+	// Path validation (SafeInputPath) is handled internally by fio.Stat.
+	info, err := fio.Stat(spec.FilePath)
 	if err != nil {
 		return 0, output.ErrValidation("cannot read file: %s", err)
 	}
