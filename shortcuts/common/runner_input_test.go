@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/spf13/cobra"
 )
 

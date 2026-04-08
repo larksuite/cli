@@ -11,12 +11,25 @@ import (
 	"testing"
 
 	_ "github.com/larksuite/cli/extension/credential/env"
+	"github.com/larksuite/cli/extension/fileio"
 	exttransport "github.com/larksuite/cli/extension/transport"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
+
+type countingFileIOProvider struct {
+	resolveCalls int
+}
+
+func (p *countingFileIOProvider) Name() string { return "counting" }
+
+func (p *countingFileIOProvider) ResolveFileIO(context.Context) fileio.FileIO {
+	p.resolveCalls++
+	return &localfileio.LocalFileIO{}
+}
 
 func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "")
@@ -198,6 +211,27 @@ func TestNewDefault_ConfigUsesRuntimePlaceholderForTokenOnlyEnvAccount(t *testin
 	}
 }
 
+func TestNewDefault_FileIOProviderDoesNotResolveDuringInitialization(t *testing.T) {
+	prev := fileio.GetProvider()
+	provider := &countingFileIOProvider{}
+	fileio.Register(provider)
+	t.Cleanup(func() { fileio.Register(prev) })
+
+	f := NewDefault(InvocationContext{})
+	if f.FileIOProvider != provider {
+		t.Fatalf("NewDefault() provider = %T, want %T", f.FileIOProvider, provider)
+	}
+	if provider.resolveCalls != 0 {
+		t.Fatalf("ResolveFileIO() calls after NewDefault() = %d, want 0", provider.resolveCalls)
+	}
+
+	if got := f.ResolveFileIO(context.Background()); got == nil {
+		t.Fatal("ResolveFileIO() = nil, want non-nil")
+	}
+	if provider.resolveCalls != 1 {
+		t.Fatalf("ResolveFileIO() calls after explicit resolve = %d, want 1", provider.resolveCalls)
+	}
+}
 type stubTransportProvider struct {
 	interceptor exttransport.Interceptor
 }

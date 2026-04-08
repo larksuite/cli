@@ -25,8 +25,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -335,6 +333,35 @@ func (ctx *RuntimeContext) ResolveSavePath(path string) (string, error) {
 	return resolved, nil
 }
 
+// WrapSaveError matches a FileIO.Save error against known categories and wraps
+// it with the caller-provided message prefix, preserving backward-compatible
+// error text per shortcut.
+func WrapSaveError(err error, pathMsg, mkdirMsg, writeMsg string) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return fmt.Errorf("%s: %w", pathMsg, err)
+	case errors.Is(err, fileio.ErrMkdir):
+		return fmt.Errorf("%s: %w", mkdirMsg, err)
+	default:
+		return fmt.Errorf("%s: %w", writeMsg, err)
+	}
+}
+
+// WrapOpenError matches a FileIO.Open/Stat error and wraps it with the
+// caller-provided message prefix.
+func WrapOpenError(err error, pathMsg, readMsg string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return fmt.Errorf("%s: %w", pathMsg, err)
+	}
+	return fmt.Errorf("%s: %w", readMsg, err)
+}
+
 // ValidatePath checks that path is a valid relative input path within the
 // working directory by delegating to FileIO.Stat. Returns nil if the path is
 // valid or does not exist yet; returns an error only for illegal paths
@@ -633,11 +660,15 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if path == "" {
 				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
 			}
-			safePath, err := validate.SafeInputPath(path)
+			f, err := rctx.FileIO().Open(path)
 			if err != nil {
-				return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+				if errors.Is(err, fileio.ErrPathValidation) {
+					return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+				}
+				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}
-			data, err := vfs.ReadFile(safePath)
+			data, err := io.ReadAll(f)
+			f.Close()
 			if err != nil {
 				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}
