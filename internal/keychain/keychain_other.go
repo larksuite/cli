@@ -31,7 +31,6 @@ func StorageDir(service string) string {
 		if err == nil {
 			return filepath.Join(safeDir, service)
 		}
-		fmt.Fprintf(os.Stderr, "warning: ignoring invalid LARKSUITE_CLI_DATA_DIR: %v\n", err)
 	}
 	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {

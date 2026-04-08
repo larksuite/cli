@@ -27,7 +27,6 @@ func authLogDir() string {
 		if err == nil {
 			return safeDir
 		}
-		fmt.Fprintf(os.Stderr, "warning: ignoring invalid LARKSUITE_CLI_LOG_DIR: %v\n", err)
 	}
 
 	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
