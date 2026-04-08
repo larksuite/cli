@@ -771,6 +771,9 @@ func TestResolveComposeSenderEmail(t *testing.T) {
 	// Note: the "no flags" case falls through to fetchMailboxPrimaryEmail which
 	// requires an API client. That path is covered by integration/shortcut tests.
 	// Here we test the flag-based short-circuit paths only.
+	// Note: "mailbox=me without from" falls through to fetchMailboxPrimaryEmail
+	// (same as "no flags"), which requires an API client — covered by
+	// integration/shortcut tests.
 	tests := []struct {
 		name    string
 		mailbox string
@@ -780,7 +783,6 @@ func TestResolveComposeSenderEmail(t *testing.T) {
 		{"from only", "", "alias@example.com", "alias@example.com"},
 		{"mailbox only", "shared@example.com", "", "shared@example.com"},
 		{"from takes priority over mailbox", "shared@example.com", "alias@example.com", "alias@example.com"},
-		{"mailbox=me without from", "me", "", "me"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

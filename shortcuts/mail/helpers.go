@@ -263,7 +263,7 @@ func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
 	if from := runtime.Str("from"); from != "" {
 		return from
 	}
-	if mb := runtime.Str("mailbox"); mb != "" {
+	if mb := runtime.Str("mailbox"); mb != "" && mb != "me" {
 		return mb
 	}
 	email, _ := fetchMailboxPrimaryEmail(runtime, "me")
@@ -283,6 +283,10 @@ func fetchSelfEmailSet(runtime *common.RuntimeContext, mailboxID string) map[str
 	// Include mailboxID itself (covers shared mailbox addresses).
 	if mailboxID != "" && mailboxID != "me" {
 		set[strings.ToLower(mailboxID)] = true
+	}
+	// Include --from alias address so it's excluded from reply-all recipients.
+	if from := runtime.Str("from"); from != "" {
+		set[strings.ToLower(from)] = true
 	}
 	return set
 }
