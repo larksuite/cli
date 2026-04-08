@@ -8,6 +8,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -576,6 +579,66 @@ func TestSetKeysSorted(t *testing.T) {
 	got := setKeys(map[string]bool{"c": true, "a": true, "b": true})
 	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
 		t.Fatalf("unexpected: %v", got)
+	}
+}
+
+// --- handleMailWatchSignal ---
+
+func TestHandleMailWatchSignalUnsubscribesAndCancels(t *testing.T) {
+	var buf bytes.Buffer
+	unsubscribed := false
+	stopped := false
+	canceled := false
+
+	handleMailWatchSignal(&buf, os.Interrupt, 3, func() {
+		unsubscribed = true
+	}, func() {
+		stopped = true
+	}, func() {
+		canceled = true
+	})
+
+	if !unsubscribed {
+		t.Fatal("expected unsubscribeWithLog to be called")
+	}
+	if !stopped {
+		t.Fatal("expected signal stop to be called")
+	}
+	if !canceled {
+		t.Fatal("expected cancel to be called")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Shutting down (signal: interrupt)... (received 3 events)") {
+		t.Fatalf("missing shutdown message, got: %q", out)
+	}
+}
+
+func TestHandleMailWatchSignalReportsUnsubscribeFailure(t *testing.T) {
+	var buf bytes.Buffer
+
+	handleMailWatchSignal(&buf, os.Interrupt, 1, func() {
+		fmt.Fprintln(&buf, "Warning: unsubscribe failed: boom")
+	}, func() {}, func() {})
+
+	if got := buf.String(); !strings.Contains(got, "Warning: unsubscribe failed: boom") {
+		t.Fatalf("expected unsubscribe warning, got: %q", got)
+	}
+}
+
+func TestHandleMailWatchSignalCallOrder(t *testing.T) {
+	var order []string
+
+	handleMailWatchSignal(io.Discard, os.Interrupt, 0, func() {
+		order = append(order, "unsub")
+	}, func() {
+		order = append(order, "stop")
+	}, func() {
+		order = append(order, "cancel")
+	})
+
+	// Expected: stop → unsub → cancel
+	if len(order) != 3 || order[0] != "stop" || order[1] != "unsub" || order[2] != "cancel" {
+		t.Fatalf("unexpected call order: %v, want [stop unsub cancel]", order)
 	}
 }
 
