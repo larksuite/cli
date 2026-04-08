@@ -291,7 +291,7 @@ func TestHandleMailWatchSignal_UnsubscribesAndCancels(t *testing.T) {
 		t.Fatal("expected cancel to be called")
 	}
 	out := buf.String()
-	if !strings.Contains(out, "Shutting down... (received 3 events)") {
+	if !strings.Contains(out, "Shutting down (signal: interrupt)... (received 3 events)") {
 		t.Fatalf("missing shutdown message, got: %q", out)
 	}
 	if !strings.Contains(out, "Mailbox unsubscribed.") {

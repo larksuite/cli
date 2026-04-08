@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -51,7 +52,7 @@ func (l *mailWatchLogger) Error(_ context.Context, args ...interface{}) {
 var _ larkcore.Logger = (*mailWatchLogger)(nil)
 
 func handleMailWatchSignal(errOut io.Writer, sig os.Signal, eventCount int, unsubscribe func() error, stopSignals func(), cancel context.CancelFunc) {
-	fmt.Fprintf(errOut, "\nShutting down... (received %d events)\n", eventCount)
+	fmt.Fprintf(errOut, "\nShutting down (signal: %v)... (received %d events)\n", sig, eventCount)
 	fmt.Fprintln(errOut, "Unsubscribing mailbox events...")
 	if unsubErr := unsubscribe(); unsubErr != nil {
 		fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
@@ -288,7 +289,7 @@ var MailWatch = common.Shortcut{
 			mailboxFilter = resolved
 		}
 
-		eventCount := 0
+		var eventCount atomic.Int64
 
 		handleEvent := func(data map[string]interface{}) {
 			// Extract event body
@@ -354,7 +355,7 @@ var MailWatch = common.Shortcut{
 				}
 			}
 
-			eventCount++
+			eventCount.Add(1)
 
 			// Prompt injection detection: warn when email body contains known injection patterns.
 			// Body fields may be base64url-encoded; decode before scanning.
@@ -465,7 +466,7 @@ var MailWatch = common.Shortcut{
 			if !ok {
 				return
 			}
-			handleMailWatchSignal(errOut, sig, eventCount, unsubscribe, stopSignals, cancel)
+			handleMailWatchSignal(errOut, sig, int(eventCount.Load()), unsubscribe, stopSignals, cancel)
 			select {
 			case shutdownBySignal <- struct{}{}:
 			default:
