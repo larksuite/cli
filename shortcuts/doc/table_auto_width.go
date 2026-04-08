@@ -29,6 +29,7 @@ const (
 	reminderFallbackWidth    = 10
 	equationFallbackWidth    = 8
 	linkPreviewFallbackWidth = 12
+	maxBlockPageFetches      = 100
 )
 
 // autoResizeTableColumns fetches all blocks from a document, finds table blocks,
@@ -78,7 +79,7 @@ func autoResizeTableColumns(runtime *common.RuntimeContext, documentID string) s
 func fetchAllBlocks(runtime *common.RuntimeContext, documentID string) ([]interface{}, error) {
 	var allItems []interface{}
 	var pageToken string
-	for {
+	for pageCount := 0; pageCount < maxBlockPageFetches; pageCount++ {
 		params := map[string]interface{}{
 			"page_size": 500,
 		}
@@ -103,6 +104,9 @@ func fetchAllBlocks(runtime *common.RuntimeContext, documentID string) ([]interf
 			break
 		}
 		pageToken = nextToken
+	}
+	if pageToken != "" {
+		return nil, fmt.Errorf("block pagination exceeded %d pages", maxBlockPageFetches)
 	}
 	return allItems, nil
 }
@@ -167,6 +171,7 @@ func resizeOneTable(runtime *common.RuntimeContext, documentID, blockID string, 
 	// Update table column widths — one PATCH per column because batch_update
 	// silently ignores multiple update_table_property ops on the same table
 	// in a single request.
+	var updateErrors []string
 	for i, w := range columnWidths {
 		if i < len(currentWidths) && currentWidths[i] == w {
 			continue
@@ -185,8 +190,11 @@ func resizeOneTable(runtime *common.RuntimeContext, documentID, blockID string, 
 				},
 			})
 		if err != nil {
-			return fmt.Sprintf("failed to update table %s column %d: %v", blockID, i, err)
+			updateErrors = append(updateErrors, fmt.Sprintf("column %d: %v", i, err))
 		}
+	}
+	if len(updateErrors) > 0 {
+		return fmt.Sprintf("failed to update table %s (%s)", blockID, updateErrors)
 	}
 	return ""
 }
@@ -351,13 +359,13 @@ func computePixelWidths(charWidths []int, colSize int) []int {
 		}
 	}
 
-	// 缩放后二次检查：min-clamp 可能导致总宽重新超出容器
+	// Re-check after min clamping because the total width may exceed the container again.
 	total2 := 0
 	for _, w := range pixelWidths {
 		total2 += w
 	}
 	if total2 > docContainerWidth {
-		// 按比例再缩放，不强制 minColumnWidth，确保总宽 ≤ 容器宽度
+		// Scale proportionally without reapplying the minimum width so the total fits.
 		scale2 := float64(docContainerWidth) / float64(total2)
 		for i := range pixelWidths {
 			scaled := int(float64(pixelWidths[i]) * scale2)

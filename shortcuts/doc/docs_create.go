@@ -86,11 +86,13 @@ var DocsCreate = common.Shortcut{
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
 
-		// Post-process: auto-resize table column widths
-		docID := common.GetString(result, "doc_id")
-		if docID != "" {
-			if warn := autoResizeTableColumns(runtime, docID); warn != "" {
-				fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
+		if markdownLikelyContainsTable(runtime.Str("markdown")) {
+			// Post-process: auto-resize table column widths
+			docID := common.GetString(result, "doc_id")
+			if docID != "" {
+				if warn := autoResizeTableColumns(runtime, docID); warn != "" {
+					fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
+				}
 			}
 		}
 		runtime.Out(result, nil)
