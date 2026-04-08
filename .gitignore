@@ -32,9 +32,6 @@ tests/mail/reports/
 /log/
 
 
-# Temporary test files
-.tmp/
-
 # Generated / test artifacts
 internal/registry/meta_data.json
 cmd/api/download.bin

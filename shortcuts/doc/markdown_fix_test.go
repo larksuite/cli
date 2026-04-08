@@ -44,6 +44,21 @@ func TestFixBoldSpacing(t *testing.T) {
 			input: "**foo **\n**bar **",
 			want:  "**foo**\n**bar**",
 		},
+		{
+			name:  "inline code span not modified",
+			input: "`**hello **`",
+			want:  "`**hello **`",
+		},
+		{
+			name:  "inline code preserved, bold outside fixed",
+			input: "**foo ** and `**bar **`",
+			want:  "**foo** and `**bar **`",
+		},
+		{
+			name:  "heading with multiple bold spans left unchanged",
+			input: "# **foo** and **bar**",
+			want:  "# **foo** and **bar**",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,6 +175,31 @@ func TestFixTopLevelSoftbreaks(t *testing.T) {
 			name:  "blockquote lines not split",
 			input: "> line1\n> line2",
 			want:  "> line1\n> line2",
+		},
+		{
+			name:  "consecutive unordered list items not split",
+			input: "- item a\n- item b\n- item c",
+			want:  "- item a\n- item b\n- item c",
+		},
+		{
+			name:  "consecutive ordered list items not split",
+			input: "1. first\n2. second\n3. third",
+			want:  "1. first\n2. second\n3. third",
+		},
+		{
+			name:  "list continuation not split from item",
+			input: "- item a\n  continuation",
+			want:  "- item a\n  continuation",
+		},
+		{
+			name:  "text to list transition gets blank line",
+			input: "paragraph\n- list item",
+			want:  "paragraph\n\n- list item",
+		},
+		{
+			name:  "adjacent callout blocks get blank line between them",
+			input: "<callout>\ncontent1\n</callout>\n<callout>\ncontent2\n</callout>",
+			want:  "<callout>\n\ncontent1\n</callout>\n\n<callout>\n\ncontent2\n</callout>",
 		},
 	}
 	for _, tt := range tests {
@@ -280,6 +320,34 @@ func TestFixCodeBlockTrailingBlanks(t *testing.T) {
 				t.Errorf("fixCodeBlockTrailingBlanks(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestApplyOutsideCodeFences(t *testing.T) {
+	// Transforms should not modify content inside fenced code blocks.
+	input := "```md\n**x **\n> a\n> b\nline\n---\n```"
+
+	if got := applyOutsideCodeFences(input, fixBoldSpacing); got != input {
+		t.Fatalf("fixBoldSpacing (via applyOutsideCodeFences) modified fenced code:\ngot  %q\nwant %q", got, input)
+	}
+	if got := applyOutsideCodeFences(input, fixSetextAmbiguity); got != input {
+		t.Fatalf("fixSetextAmbiguity (via applyOutsideCodeFences) modified fenced code:\ngot  %q\nwant %q", got, input)
+	}
+	if got := applyOutsideCodeFences(input, fixBlockquoteHardBreaks); got != input {
+		t.Fatalf("fixBlockquoteHardBreaks (via applyOutsideCodeFences) modified fenced code:\ngot  %q\nwant %q", got, input)
+	}
+
+	// Content outside the fence should still be transformed.
+	mixed := "**foo ** before\n```\n**x **\n```\n**bar ** after"
+	got := applyOutsideCodeFences(mixed, fixBoldSpacing)
+	if strings.Contains(got, "**foo **") {
+		t.Errorf("fixBoldSpacing did not fix bold before fence: %q", got)
+	}
+	if strings.Contains(got, "**bar **") {
+		t.Errorf("fixBoldSpacing did not fix bold after fence: %q", got)
+	}
+	if !strings.Contains(got, "```\n**x **\n```") {
+		t.Errorf("fixBoldSpacing modified content inside fence: %q", got)
 	}
 }
 
