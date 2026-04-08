@@ -90,17 +90,30 @@ func getPrimaryCalendarID(runtime *common.RuntimeContext) (string, error) {
 	return calID, nil
 }
 
+// eventRelationInfo holds the resolved relation info from mget_instance_relation_info API.
+type eventRelationInfo struct {
+	MeetingIDs     []string // meeting IDs (one event may spawn multiple meetings)
+	MeetingNotes   []string // meeting note doc tokens
+	AIMeetingNotes []string // AI meeting note doc tokens
+}
+
 // resolveMeetingIDsFromCalendarEvent resolves a calendar event instance to its
-// associated meeting IDs via the mget_instance_relation_info API.
+// associated meeting IDs and optionally note doc tokens via the mget_instance_relation_info API.
+// When needNotes is true, meeting_notes and ai_meeting_notes are also requested.
 // Shared by +notes and +recording for the --calendar-event-ids path.
-func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instanceID string, calendarID string) ([]string, error) {
+func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instanceID string, calendarID string, needNotes bool) (*eventRelationInfo, error) {
+	body := map[string]any{
+		"instance_ids":              []string{instanceID},
+		"need_meeting_instance_ids": true,
+	}
+	if needNotes {
+		body["need_meeting_notes"] = true
+		body["need_ai_meeting_notes"] = true
+	}
 	data, err := runtime.DoAPIJSON(http.MethodPost,
 		fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/mget_instance_relation_info", validate.EncodePathSegment(calendarID)),
 		nil,
-		map[string]any{
-			"instance_ids":              []string{instanceID},
-			"need_meeting_instance_ids": true,
-		})
+		body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query event relation info: %w", err)
 	}
@@ -116,7 +129,7 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 		return nil, fmt.Errorf("no associated video meeting for this event")
 	}
 
-	var ids []string
+	result := &eventRelationInfo{}
 	for _, mid := range rawIDs {
 		if mid == nil {
 			continue
@@ -130,35 +143,119 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 		default:
 			meetingID = fmt.Sprintf("%v", v)
 		}
-		ids = append(ids, meetingID)
+		result.MeetingIDs = append(result.MeetingIDs, meetingID)
 	}
-	return ids, nil
+
+	// extract note doc tokens directly from mget_instance_relation_info
+	result.MeetingNotes = extractStringSlice(info, "meeting_notes")
+	result.AIMeetingNotes = extractStringSlice(info, "ai_meeting_notes")
+
+	return result, nil
+}
+
+// extractStringSlice extracts a []string from a JSON array field in a map.
+func extractStringSlice(m map[string]any, key string) []string {
+	raw, _ := m[key].([]any)
+	var out []string
+	for _, v := range raw {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // fetchNoteByCalendarEventID queries notes via calendar event instance ID.
-// Chain: primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note_id
+// Two sources of doc tokens are collected and deduplicated:
+//   - mget_instance_relation_info: meeting_notes + ai_meeting_notes
+//   - meeting_id chain: meeting.get → note detail (note_doc_token, verbatim_doc_token, shared_doc_tokens)
 func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeContext, instanceID string, calendarID string) map[string]any {
 	errOut := runtime.IO().ErrOut
 
-	meetingIDs, err := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID)
+	relInfo, err := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID, true)
 	if err != nil {
 		return map[string]any{"calendar_event_id": instanceID, "error": err.Error()}
 	}
 
-	if len(meetingIDs) > 1 {
-		fmt.Fprintf(errOut, "%s event %s has %d meetings, trying each\n", logPrefix, sanitizeLogValue(instanceID), len(meetingIDs))
+	result := map[string]any{"calendar_event_id": instanceID}
+
+	// source 1: doc tokens directly from mget_instance_relation_info
+	if len(relInfo.MeetingNotes) > 0 {
+		result["meeting_notes"] = relInfo.MeetingNotes
+	}
+	if len(relInfo.AIMeetingNotes) > 0 {
+		result["ai_meeting_notes"] = relInfo.AIMeetingNotes
 	}
 
-	// try each associated meeting until one has notes
-	for _, meetingID := range meetingIDs {
+	// source 2: meeting_id → meeting.get → note detail (for shared_doc_tokens etc.)
+	if len(relInfo.MeetingIDs) > 1 {
+		fmt.Fprintf(errOut, "%s event %s has %d meetings, trying each\n", logPrefix, sanitizeLogValue(instanceID), len(relInfo.MeetingIDs))
+	}
+
+	for _, meetingID := range relInfo.MeetingIDs {
 		fmt.Fprintf(errOut, "%s event %s → meeting_id=%s\n", logPrefix, sanitizeLogValue(instanceID), sanitizeLogValue(meetingID))
-		result := fetchNoteByMeetingID(ctx, runtime, meetingID)
-		if result["error"] == nil {
+		noteResult := fetchNoteByMeetingID(ctx, runtime, meetingID)
+		if noteResult["error"] == nil {
+			for k, v := range noteResult {
+				result[k] = v
+			}
+			deduplicateDocTokens(result)
 			return result
 		}
-		fmt.Fprintf(errOut, "%s meeting_id=%s: %s, trying next\n", logPrefix, sanitizeLogValue(meetingID), result["error"])
+		fmt.Fprintf(errOut, "%s meeting_id=%s: %s, trying next\n", logPrefix, sanitizeLogValue(meetingID), noteResult["error"])
 	}
-	return map[string]any{"calendar_event_id": instanceID, "error": "no notes found in any associated meeting"}
+
+	// meeting chain failed, but still succeed if relation info returned note tokens
+	if len(relInfo.MeetingNotes) > 0 || len(relInfo.AIMeetingNotes) > 0 {
+		return result
+	}
+	result["error"] = "no notes found in any associated meeting"
+	return result
+}
+
+// deduplicateDocTokens removes tokens from meeting_notes / ai_meeting_notes
+// that already appear in note detail fields (note_doc_token, verbatim_doc_token, shared_doc_tokens).
+func deduplicateDocTokens(result map[string]any) {
+	seen := map[string]bool{}
+	if v, _ := result["note_doc_token"].(string); v != "" {
+		seen[v] = true
+	}
+	if v, _ := result["verbatim_doc_token"].(string); v != "" {
+		seen[v] = true
+	}
+	for _, tok := range toStringSlice(result["shared_doc_tokens"]) {
+		seen[tok] = true
+	}
+
+	result["meeting_notes"] = filterUnseen(toStringSlice(result["meeting_notes"]), seen)
+	result["ai_meeting_notes"] = filterUnseen(toStringSlice(result["ai_meeting_notes"]), seen)
+
+	if len(toStringSlice(result["meeting_notes"])) == 0 {
+		delete(result, "meeting_notes")
+	}
+	if len(toStringSlice(result["ai_meeting_notes"])) == 0 {
+		delete(result, "ai_meeting_notes")
+	}
+}
+
+func toStringSlice(v any) []string {
+	if v == nil {
+		return nil
+	}
+	if ss, ok := v.([]string); ok {
+		return ss
+	}
+	return nil
+}
+
+func filterUnseen(tokens []string, seen map[string]bool) []string {
+	var out []string
+	for _, t := range tokens {
+		if !seen[t] {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // fetchNoteByMeetingID queries notes via meeting_id.

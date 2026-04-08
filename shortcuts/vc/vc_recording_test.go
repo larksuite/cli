@@ -357,10 +357,11 @@ func TestResolveMeetingIDs_TypeCoercion(t *testing.T) {
 		Command:   "+resolve-test",
 		AuthTypes: []string{"bot"},
 		Execute: func(_ context.Context, rctx *common.RuntimeContext) error {
-			ids, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001")
+			relInfo, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001", false)
 			if err != nil {
 				return err
 			}
+			ids := relInfo.MeetingIDs
 			if len(ids) != 2 {
 				t.Errorf("expected 2 IDs (nil skipped), got %d: %v", len(ids), ids)
 			}
@@ -408,7 +409,7 @@ func TestResolveMeetingIDs_NoMeetings(t *testing.T) {
 		Command:   "+resolve-no-meetings",
 		AuthTypes: []string{"bot"},
 		Execute: func(_ context.Context, rctx *common.RuntimeContext) error {
-			_, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001")
+			_, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001", false)
 			if err == nil {
 				t.Error("expected error for no meetings")
 			}
@@ -449,7 +450,7 @@ func TestResolveMeetingIDs_NoRelationInfo(t *testing.T) {
 		Command:   "+resolve-no-info",
 		AuthTypes: []string{"bot"},
 		Execute: func(_ context.Context, rctx *common.RuntimeContext) error {
-			_, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001")
+			_, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001", false)
 			if err == nil {
 				t.Error("expected error for no relation info")
 			}
@@ -581,15 +582,15 @@ func TestRecording_Execute_CalendarPath_ResolveAndFetch(t *testing.T) {
 	})
 
 	err := botExec(t, "cal-resolve", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
-		ids, resolveErr := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001")
+		relInfo, resolveErr := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001", false)
 		if resolveErr != nil {
 			t.Fatalf("resolve failed: %v", resolveErr)
 		}
-		if len(ids) != 1 || ids[0] != "m001" {
-			t.Fatalf("expected [m001], got %v", ids)
+		if len(relInfo.MeetingIDs) != 1 || relInfo.MeetingIDs[0] != "m001" {
+			t.Fatalf("expected [m001], got %v", relInfo.MeetingIDs)
 		}
 
-		result := fetchRecordingByMeetingID(ctx, rctx, ids[0])
+		result := fetchRecordingByMeetingID(ctx, rctx, relInfo.MeetingIDs[0])
 		if result["error"] != nil {
 			t.Errorf("fetch should succeed, got: %v", result["error"])
 		}
@@ -641,17 +642,17 @@ func TestRecording_Execute_CalendarPath_MultiMeetingFallback(t *testing.T) {
 	})
 
 	err := botExec(t, "cal-fallback", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
-		ids, resolveErr := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001")
+		relInfo, resolveErr := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001", false)
 		if resolveErr != nil {
 			t.Fatalf("resolve failed: %v", resolveErr)
 		}
-		if len(ids) != 2 {
-			t.Fatalf("expected 2 meeting IDs, got %d", len(ids))
+		if len(relInfo.MeetingIDs) != 2 {
+			t.Fatalf("expected 2 meeting IDs, got %d", len(relInfo.MeetingIDs))
 		}
 
 		// simulate fallback: try each until success
 		var found bool
-		for _, meetingID := range ids {
+		for _, meetingID := range relInfo.MeetingIDs {
 			result := fetchRecordingByMeetingID(ctx, rctx, meetingID)
 			if result["error"] == nil {
 				if result["minute_token"] != "obcnfallback" {
