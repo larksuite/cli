@@ -18,9 +18,16 @@ import (
 )
 
 func newBaseTestRuntime(stringFlags map[string]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
+	return newBaseTestRuntimeWithArrays(stringFlags, nil, boolFlags, intFlags)
+}
+
+func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "test"}
 	for name := range stringFlags {
 		cmd.Flags().String(name, "", "")
+	}
+	for name := range stringArrayFlags {
+		cmd.Flags().StringArray(name, nil, "")
 	}
 	for name := range boolFlags {
 		cmd.Flags().Bool(name, false, "")
@@ -31,6 +38,11 @@ func newBaseTestRuntime(stringFlags map[string]string, boolFlags map[string]bool
 	_ = cmd.ParseFlags(nil)
 	for name, value := range stringFlags {
 		_ = cmd.Flags().Set(name, value)
+	}
+	for name, values := range stringArrayFlags {
+		for _, value := range values {
+			_ = cmd.Flags().Set(name, value)
+		}
 	}
 	for name, value := range boolFlags {
 		if value {
@@ -236,10 +248,10 @@ func TestBaseTableValidate(t *testing.T) {
 func TestBaseRecordValidate(t *testing.T) {
 	ctx := context.Background()
 	if BaseRecordList.Validate != nil {
-		t.Fatalf("record list validate should be nil after removing --fields")
+		t.Fatalf("record list validate should be nil for repeatable --field-id")
 	}
 	if BaseRecordGet.Validate != nil {
-		t.Fatalf("record get validate should be nil after removing --fields")
+		t.Fatalf("record get validate should be nil for repeatable --field-id")
 	}
 	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"A"}`}, nil, nil)); err != nil {
 		t.Fatalf("upsert validate err=%v", err)

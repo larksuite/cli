@@ -368,7 +368,18 @@ func baseV3Path(parts ...string) string {
 func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	queryParams := make(larkcore.QueryParams)
 	for k, v := range params {
-		queryParams.Set(k, fmt.Sprintf("%v", v))
+		switch val := v.(type) {
+		case []string:
+			for _, item := range val {
+				queryParams.Add(k, item)
+			}
+		case []interface{}:
+			for _, item := range val {
+				queryParams.Add(k, fmt.Sprintf("%v", item))
+			}
+		default:
+			queryParams.Set(k, fmt.Sprintf("%v", v))
+		}
 	}
 	req := &larkcore.ApiReq{
 		HttpMethod:  strings.ToUpper(method),

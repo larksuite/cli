@@ -5,6 +5,8 @@ package base
 
 import (
 	"context"
+	"net/url"
+	"strconv"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -15,20 +17,33 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	params := map[string]interface{}{"offset": offset, "limit": limit}
-	if viewID := runtime.Str("view-id"); viewID != "" {
-		params["view_id"] = viewID
+	params := url.Values{}
+	params.Set("offset", strconv.Itoa(offset))
+	params.Set("limit", strconv.Itoa(limit))
+	for _, field := range recordFields(runtime) {
+		params.Add("field_id", field)
 	}
+	if viewID := runtime.Str("view-id"); viewID != "" {
+		params.Set("view_id", viewID)
+	}
+	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records?" + params.Encode()
 	return common.NewDryRunAPI().
-		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/records").
-		Params(params).
+		GET(path).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
 }
 
 func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id"
+	if fields := recordFields(runtime); len(fields) > 0 {
+		params := url.Values{}
+		for _, field := range fields {
+			params.Add("field", field)
+		}
+		path += "?" + params.Encode()
+	}
 	return common.NewDryRunAPI().
-		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
+		GET(path).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime)).
 		Set("record_id", runtime.Str("record-id"))
@@ -96,6 +111,10 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func recordFields(runtime *common.RuntimeContext) []string {
+	return runtime.StrArray("field-id")
+}
+
 func executeRecordList(runtime *common.RuntimeContext) error {
 	offset := runtime.Int("offset")
 	if offset < 0 {
@@ -103,6 +122,10 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
+	fields := recordFields(runtime)
+	if len(fields) > 0 {
+		params["field_id"] = fields
+	}
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params["view_id"] = viewID
 	}
@@ -115,7 +138,11 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordGet(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", runtime.Str("record-id")), nil, nil)
+	params := map[string]interface{}{}
+	if fields := recordFields(runtime); len(fields) > 0 {
+		params["field"] = fields
+	}
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", runtime.Str("record-id")), params, nil)
 	if err != nil {
 		return err
 	}

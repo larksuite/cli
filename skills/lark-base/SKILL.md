@@ -159,6 +159,7 @@ metadata:
 - **`+xxx-list` 调用纪律**：`+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list / +dashboard-list / +dashboard-block-list / +workflow-list` 禁止并发调用；批量执行时只能串行
 - **`+record-list` 分页规则**：`--limit` 最大 `200`。先拉首批并检查返回 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时，再用 `offset` 递增分页拉取。用户只要样例或前 N 条时，不要继续拉全量
 - **`+record-batch-add` 适用边界**：优先用于大量新增写入（如 CSV/Excel 导入）。当输入是长表格或长文本时，先按 [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) 做字段映射和类型规范化，再组装 `fields + rows` 调用命令写入
+- **记录读取字段筛选**：`+record-list / +record-get` 统一使用 repeatable `--field-id`；每次传一个字段，接受字段 ID 或字段名，例如 `--field-id fld_status --field-id 项目名称`；不指定字段时默认返回所有字段
 - **字段可写性先判断**：存储字段才可写；公式 / lookup / 系统字段默认只读，写记录时应跳过
 - **公式能力要主动想到**：用户说“算一下”“生成标签”“判断是否异常”“跨表汇总”“按日期差预警”时，要先判断是否应该建公式字段，而不是只返回手工分析方案
 - **lookup 不是默认首选**：lookup 只在用户明确要求或确实更适合固定查找模型时使用；常规计算、跨表聚合和条件判断优先 formula
