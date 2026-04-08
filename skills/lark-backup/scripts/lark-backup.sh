@@ -93,6 +93,29 @@ prepare_output_dir() {
   printf '%s\n' "$dir"
 }
 
+index_width() {
+  local total="${1:-0}"
+  local width=2
+
+  if [[ "$total" =~ ^[0-9]+$ ]] && (( total > 0 )); then
+    width="${#total}"
+    if (( width < 2 )); then
+      width=2
+    fi
+  fi
+
+  printf '%s\n' "$width"
+}
+
+format_index() {
+  local index="$1"
+  local total="${2:-0}"
+  local width
+
+  width="$(index_width "$total")"
+  printf "%0${width}d\n" "$index"
+}
+
 run_shortcut_json() {
   local out="$1"
   local err_out
@@ -249,7 +272,7 @@ backup_doc() {
 backup_sheet() {
   local token="$1"
   local outdir="$2"
-  local info_json
+  local info_json total_sheets
   local idx=0
 
   mkdir -p "$outdir/csv"
@@ -259,6 +282,7 @@ backup_sheet() {
   run_shortcut_json "$info_json" \
     lark-cli sheets +info --as "$IDENTITY" --spreadsheet-token "$token"
   write_json_copy "$info_json" "$outdir/info.json"
+  total_sheets="$(jq -r '(.data.sheets // []) | length' "$info_json")"
 
   run_shortcut_json "$outdir/export-xlsx.json" \
     lark-cli sheets +export --as "$IDENTITY" \
@@ -267,14 +291,15 @@ backup_sheet() {
   while IFS=$'\t' read -r sheet_id title; do
     [[ -z "$sheet_id" ]] && continue
     idx=$((idx + 1))
-    local safe_title
+    local safe_title sheet_prefix
     safe_title="$(sanitize_name "$title")"
+    sheet_prefix="$(format_index "$idx" "$total_sheets")"
     run_shortcut_json "$outdir/csv-${idx}.json" \
       lark-cli sheets +export --as "$IDENTITY" \
       --spreadsheet-token "$token" \
       --file-extension csv \
       --sheet-id "$sheet_id" \
-      --output-path "$outdir/csv/$(printf '%02d' "$idx")-${safe_title}.csv"
+      --output-path "$outdir/csv/${sheet_prefix}-${safe_title}.csv"
   done < <(jq -r '.data.sheets[]? | [.sheet_id, (.title // .sheet_id)] | @tsv' "$info_json")
 }
 
@@ -480,7 +505,8 @@ backup_auto() {
 backup_folder() {
   local folder_token="$1"
   local outdir="$2"
-  local list_json idx=0
+  local list_json total_entries
+  local idx=0
 
   if [[ -n "${SEEN_FOLDERS[$folder_token]:-}" ]]; then
     log "skip already visited folder: ${folder_token}"
@@ -496,12 +522,13 @@ backup_folder() {
     lark-cli drive files list --as "$IDENTITY" --format json --page-all \
     --params "$(jq -cn --arg folder_token "$folder_token" '{folder_token:$folder_token,page_size:100}')"
   write_json_copy "$list_json" "$outdir/folder-items.json"
+  total_entries="$(jq -r '(.data.files // []) | length' "$list_json")"
 
   while IFS= read -r entry; do
     [[ -z "$entry" ]] && continue
     idx=$((idx + 1))
 
-    local entry_name entry_type entry_token shortcut_type shortcut_token entry_dir safe_name
+    local entry_name entry_type entry_token shortcut_type shortcut_token entry_dir safe_name entry_prefix
     entry_name="$(jq -r '.name // "item"' <<<"$entry")"
     entry_type="$(jq -r '.type // empty' <<<"$entry")"
     entry_token="$(jq -r '.token // empty' <<<"$entry")"
@@ -514,7 +541,8 @@ backup_folder() {
     fi
 
     safe_name="$(sanitize_name "$entry_name")"
-    entry_dir="$outdir/items/$(printf '%02d' "$idx")-${safe_name}"
+    entry_prefix="$(format_index "$idx" "$total_entries")"
+    entry_dir="$outdir/items/${entry_prefix}-${safe_name}"
     mkdir -p "$entry_dir"
     jq . <<<"$entry" >"$entry_dir/entry.json"
 
@@ -669,4 +697,6 @@ main() {
   echo "$OUTPUT_DIR"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
