@@ -284,6 +284,8 @@ func TestSafeInputPath_ErrorMessageContainsCorrectFlagName(t *testing.T) {
 	}
 }
 
+// TestSafeEnvDirPath_RequiresAbsolutePath verifies that environment-provided
+// directory paths must be absolute.
 func TestSafeEnvDirPath_RequiresAbsolutePath(t *testing.T) {
 	_, err := SafeEnvDirPath("logs", "LARKSUITE_CLI_LOG_DIR")
 	if err == nil {
@@ -294,6 +296,8 @@ func TestSafeEnvDirPath_RequiresAbsolutePath(t *testing.T) {
 	}
 }
 
+// TestSafeEnvDirPath_ReturnsNormalizedAbsolutePath verifies that a valid
+// absolute environment directory is cleaned and resolved to its canonical path.
 func TestSafeEnvDirPath_ReturnsNormalizedAbsolutePath(t *testing.T) {
 	base := t.TempDir()
 	base, _ = filepath.EvalSymlinks(base)

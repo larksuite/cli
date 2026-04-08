@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+// TestAuthLogDir_UsesValidatedLogDirEnv verifies that a valid absolute
+// LARKSUITE_CLI_LOG_DIR is normalized and used as the auth log directory.
 func TestAuthLogDir_UsesValidatedLogDirEnv(t *testing.T) {
 	base := t.TempDir()
 	base, _ = filepath.EvalSymlinks(base)
@@ -18,6 +20,8 @@ func TestAuthLogDir_UsesValidatedLogDirEnv(t *testing.T) {
 	}
 }
 
+// TestAuthLogDir_InvalidLogDirFallsBackToConfigDir verifies that an invalid
+// LARKSUITE_CLI_LOG_DIR falls back to LARKSUITE_CLI_CONFIG_DIR/logs.
 func TestAuthLogDir_InvalidLogDirFallsBackToConfigDir(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_LOG_DIR", "relative-logs")
 	configDir := t.TempDir()

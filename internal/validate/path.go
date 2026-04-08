@@ -32,6 +32,10 @@ func SafeInputPath(path string) (string, error) {
 	return safePath(path, "--file")
 }
 
+// SafeEnvDirPath validates an environment-provided application directory path.
+// It requires an absolute path, rejects control characters, normalizes the
+// input, and resolves symlinks through the nearest existing ancestor so callers
+// receive a canonical path for subsequent filesystem operations.
 func SafeEnvDirPath(path, envName string) (string, error) {
 	if err := RejectControlChars(path, envName); err != nil {
 		return "", err

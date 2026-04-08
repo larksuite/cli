@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+// TestStorageDir_UsesValidatedDataDirEnv verifies that a valid absolute
+// LARKSUITE_CLI_DATA_DIR is normalized and still preserves service isolation.
 func TestStorageDir_UsesValidatedDataDirEnv(t *testing.T) {
 	base := t.TempDir()
 	base, _ = filepath.EvalSymlinks(base)
@@ -19,6 +21,8 @@ func TestStorageDir_UsesValidatedDataDirEnv(t *testing.T) {
 	}
 }
 
+// TestStorageDir_InvalidDataDirFallsBackToDefault verifies that an invalid
+// LARKSUITE_CLI_DATA_DIR falls back to the default per-service storage path.
 func TestStorageDir_InvalidDataDirFallsBackToDefault(t *testing.T) {
 	home := t.TempDir()
 	home, _ = filepath.EvalSymlinks(home)
