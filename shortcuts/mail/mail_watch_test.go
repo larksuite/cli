@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -261,6 +262,47 @@ func TestMailWatchLoggerSuppressesDebugAlways(t *testing.T) {
 	logger.Debug(context.Background(), "debug message")
 	if got := buf.String(); got != "" {
 		t.Fatalf("expected debug suppressed, got: %q", got)
+	}
+}
+
+func TestWaitForMailWatchShutdownReturnsOnSignalWithoutStartResult(t *testing.T) {
+	startErrCh := make(chan error)
+	shutdownBySignal := make(chan struct{})
+	close(shutdownBySignal)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- waitForMailWatchShutdown(startErrCh, shutdownBySignal)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("expected nil on signal shutdown, got %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("waitForMailWatchShutdown blocked after signal shutdown")
+	}
+}
+
+func TestWaitForMailWatchShutdownReturnsNilOnContextCanceled(t *testing.T) {
+	startErrCh := make(chan error, 1)
+	shutdownBySignal := make(chan struct{})
+	startErrCh <- context.Canceled
+
+	if err := waitForMailWatchShutdown(startErrCh, shutdownBySignal); err != nil {
+		t.Fatalf("expected nil for context.Canceled, got %v", err)
+	}
+}
+
+func TestWaitForMailWatchShutdownReturnsStartError(t *testing.T) {
+	startErrCh := make(chan error, 1)
+	shutdownBySignal := make(chan struct{})
+	want := assertErr("boom")
+	startErrCh <- want
+
+	if err := waitForMailWatchShutdown(startErrCh, shutdownBySignal); err != want {
+		t.Fatalf("expected original error, got %v", err)
 	}
 }
 
