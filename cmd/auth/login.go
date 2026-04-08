@@ -235,6 +235,9 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// --no-wait: return immediately with device code and URL
 	if opts.NoWait {
+		if err := saveLoginRequestedScope(authResp.DeviceCode, finalScope); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to cache requested scopes: %v\n", err)
+		}
 		data := map[string]interface{}{
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
@@ -340,16 +343,29 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return err
 	}
+	requestedScope, err := loadLoginRequestedScope(opts.DeviceCode)
+	if err != nil {
+		fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to load cached requested scopes: %v\n", err)
+	}
+	cleanupRequestedScope := func() {
+		if err := removeLoginRequestedScope(opts.DeviceCode); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to remove cached requested scopes: %v\n", err)
+		}
+	}
 	log(msg.WaitingAuth)
 	result := larkauth.PollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		opts.DeviceCode, 5, 180, f.IOStreams.ErrOut)
 
 	if !result.OK {
+		if shouldRemoveLoginRequestedScope(result) {
+			cleanupRequestedScope()
+		}
 		return output.ErrAuth("authorization failed: %s", result.Message)
 	}
 	if result.Token == nil {
 		return output.ErrAuth("authorization succeeded but no token returned")
 	}
+	defer cleanupRequestedScope()
 
 	// Get user info
 	log(msg.AuthSuccess)
@@ -362,7 +378,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		return output.ErrAuth("failed to get user info: %v", err)
 	}
 
-	scopeSummary := loadLoginScopeSummary(config.AppID, openId, "", result.Token.Scope)
+	scopeSummary := loadLoginScopeSummary(config.AppID, openId, requestedScope, result.Token.Scope)
 
 	// Store token
 	now := time.Now().UnixMilli()
@@ -386,7 +402,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
-	if issue := ensureRequestedScopesGranted("", result.Token.Scope, msg, scopeSummary); issue != nil {
+	if issue := ensureRequestedScopesGranted(requestedScope, result.Token.Scope, msg, scopeSummary); issue != nil {
 		return handleLoginScopeIssue(opts, msg, f, issue, openId, userName)
 	}
 
