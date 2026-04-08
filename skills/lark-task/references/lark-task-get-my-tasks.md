@@ -19,10 +19,13 @@ By default, the command will automatically paginate up to 20 times. Use `--page-
 # Search for a specific task by name
 lark-cli task +get-my-tasks --query "Lobster No. 1"
 
-# Get my incomplete tasks (fetches up to 20 pages by default)
+# Get all my tasks (fetches up to 20 pages by default)
 lark-cli task +get-my-tasks
 
-# Fetch all tasks (up to 40 pages)
+# Get my incomplete tasks (fetches up to 20 pages by default)
+lark-cli task +get-my-tasks --complete=false
+
+# Fetch all my tasks (up to 40 pages)
 lark-cli task +get-my-tasks --page-all
 
 # Fetch up to 10 pages

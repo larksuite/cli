@@ -29,7 +29,7 @@ var GetMyTasks = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search for tasks by summary (exact match first, then partial match)"},
-		{Name: "complete", Type: "bool", Desc: "if true, query completed tasks; default is false"},
+		{Name: "complete", Type: "bool", Desc: "if true, query completed tasks;if false, query incompleted tasks; if not provided, both completed and incompleted tasks are queried."},
 		{Name: "created_at", Desc: "query tasks created after this time (date/relative/ms)"},
 		{Name: "due-start", Desc: "query tasks with due date after this time (date/relative/ms)"},
 		{Name: "due-end", Desc: "query tasks with due date before this time (date/relative/ms)"},

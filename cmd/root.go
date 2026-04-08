@@ -45,7 +45,7 @@ EXAMPLES:
     lark-cli calendar +agenda
 
     # List calendar events
-    lark-cli calendar events list --params '{"calendar_id":"primary"}'
+    lark-cli calendar events instance_view --params '{"calendar_id":"primary","start_time":"1700000000","end_time":"1700086400"}'
 
     # Search users
     lark-cli contact +search-user --query "John"
@@ -78,7 +78,7 @@ AI AGENT SKILLS:
         npx skills add larksuite/cli -s lark-calendar -y
         npx skills add larksuite/cli -s lark-im -y
 
-    Learn more: https://github.com/larksuite/cli#install-ai-agent-skills
+    Learn more: https://github.com/larksuite/cli#agent-skills
 
 COMMUNITY:
     GitHub:     https://github.com/larksuite/cli

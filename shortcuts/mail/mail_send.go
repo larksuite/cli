@@ -92,25 +92,42 @@ var MailSend = common.Shortcut{
 		if bccFlag != "" {
 			bld = bld.BCCAddrs(parseNetAddrs(bccFlag))
 		}
+		inlineSpecs, err := parseInlineSpecs(inlineFlag)
+		if err != nil {
+			return err
+		}
+		var autoResolvedPaths []string
 		if plainText {
 			bld = bld.TextBody([]byte(body))
 		} else if bodyIsHTML(body) {
-			bld = bld.HTMLBody([]byte(body))
+			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(body)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			bld = bld.HTMLBody([]byte(resolved))
+			var allCIDs []string
+			for _, ref := range refs {
+				bld = bld.AddFileInline(ref.FilePath, ref.CID)
+				autoResolvedPaths = append(autoResolvedPaths, ref.FilePath)
+				allCIDs = append(allCIDs, ref.CID)
+			}
+			for _, spec := range inlineSpecs {
+				bld = bld.AddFileInline(spec.FilePath, spec.CID)
+				allCIDs = append(allCIDs, spec.CID)
+			}
+			if err := validateInlineCIDs(resolved, allCIDs, nil); err != nil {
+				return err
+			}
 		} else {
 			bld = bld.TextBody([]byte(body))
 		}
-
-		inlineSpecs, err := parseInlineSpecs(inlineFlag)
-		if err != nil {
+		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
+		if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
 			return err
 		}
 
 		for _, path := range splitByComma(attachFlag) {
 			bld = bld.AddFileAttachment(path)
-		}
-
-		for _, spec := range inlineSpecs {
-			bld = bld.AddFileInline(spec.FilePath, spec.CID)
 		}
 
 		rawEML, err := bld.BuildBase64URL()

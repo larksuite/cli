@@ -127,7 +127,6 @@ func TestDriveTaskResultDryRunExportIncludesTokenParam(t *testing.T) {
 
 func TestDriveTaskResultImportIncludesReadyFlags(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/v1/import_tasks/tk_import",
@@ -161,7 +160,6 @@ func TestDriveTaskResultImportIncludesReadyFlags(t *testing.T) {
 
 func TestDriveTaskResultTaskCheckIncludesReadyFlags(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/v1/files/task_check",

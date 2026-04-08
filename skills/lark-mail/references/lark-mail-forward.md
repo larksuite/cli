@@ -39,8 +39,8 @@ lark-cli mail +forward --message-id <邮件ID> --to alice@example.com --body '<p
 # 转发并附加说明 + 抄送（草稿）
 lark-cli mail +forward --message-id <邮件ID> --to alice@example.com --cc bob@example.com --body '<b>请参考</b>'
 
-# 转发时插入内嵌图片（CID 为唯一标识符，可用随机字符串）
-lark-cli mail +forward --message-id <邮件ID> --to alice@example.com --body '<img src="cid:a1b2c3d4e5f6a7b8c9d0"> 详见图示。' --inline '[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'
+# 转发时插入内嵌图片（推荐：直接用相对路径，自动解析）
+lark-cli mail +forward --message-id <邮件ID> --to alice@example.com --body '<p>详见图示：<img src="./logo.png" /></p>'
 
 # 纯文本转发（仅在内容极简时使用）
 lark-cli mail +forward --message-id <邮件ID> --to alice@example.com
@@ -58,13 +58,13 @@ lark-cli mail +forward --message-id <邮件ID> --to alice@example.com --dry-run
 |------|------|------|
 | `--message-id <id>` | 是 | 被转发的邮件 ID |
 | `--to <emails>` | 是 | 收件人邮箱，多个用逗号分隔 |
-| `--body <text>` | 否 | 转发时附加的说明文字。推荐使用 HTML 获得富文本排版；也支持纯文本。根据转发正文和原邮件正文自动检测 HTML。使用 `--plain-text` 可强制纯文本模式 |
+| `--body <text>` | 否 | 转发时附加的说明文字。推荐使用 HTML 获得富文本排版；也支持纯文本。根据转发正文和原邮件正文自动检测 HTML。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径） |
 | `--from <email>` | 否 | 发件人邮箱地址（默认读取 user_mailboxes.profile.primary_email_address） |
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用 |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔，追加在原邮件附件之后。相对路径 |
-| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid`（唯一标识符，可用随机十六进制字符串，如 `a1b2c3d4e5f6a7b8c9d0`）和 `file_path`（相对路径）。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用，在 body 中用 `<img src="cid:...">` 引用 |
+| `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
 | `--confirm-send` | 否 | 确认发送转发（默认只保存草稿）。仅在用户明确确认后使用 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 

@@ -8,20 +8,20 @@ Update an existing task in Lark.
 
 ```bash
 # Update task summary
-lark-cli task +update --task-id "t_xxx" --summary "New Summary"
+lark-cli task +update --task-id "<task_guid>" --summary "New Summary"
 
 # Update multiple tasks' due dates
-lark-cli task +update --task-id "t_xxx,t_yyy" --due "+2d"
+lark-cli task +update --task-id "<task_guid>,<another_task_guid>" --due "+2d"
 
 # Update with JSON data
-lark-cli task +update --task-id "t_xxx" --data '{"description": "New description"}'
+lark-cli task +update --task-id "<task_guid>" --data '{"description": "New description"}'
 ```
 
 ## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--task-id <id>` | Yes | The ID of the task to update. Comma-separated list supported for multiple tasks. |
+| `--task-id <guid>` | Yes | The task GUID to update. Comma-separated task GUIDs are supported for multiple tasks. For Feishu task applinks, use the `guid` query parameter, not the `suite_entity_num` / display task ID like `t104121`. |
 | `--summary <text>` | No | New summary/title for the task. |
 | `--description <text>` | No | New description for the task. |
 | `--due <time>` | No | New due date (supports relative time). |

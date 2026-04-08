@@ -22,11 +22,13 @@ metadata:
 > 2. 若同时设置了 `start`（开始时间）和 `due`（截止时间），开始时间必须小于或等于截止时间。
 > 3. 使用 tenant_access_token（应用身份）时，无法跨租户添加任务成员。
 
-
 > **查询注意**：
 > 1. 在输出任务详情时，如果需要渲染负责人、创建人等人员字段，除了展示 `id` (例如 open_id) 外，还必须通过其他方式（例如调用通讯录技能）尝试获取并展示这个人的真实名字，以便用户更容易识别。
 > 2. 在输出任务详情时，如果需要渲染创建时间、截止时间等字段，需要使用本地时区来渲染（格式为2006-01-02 15:04:05）。
 
+> **Task GUID 定义**：
+> Task OpenAPI 中用于更新/操作任务的 `guid` 是任务的全局唯一标识（GUID），不是客户端展示的任务编号（例如 `t104121` / `suite_entity_num`）。
+> 对于 Feishu 的任务 applink（例如 `.../client/todo/task?guid=...`），必须使用 URL query 里的 `guid` 参数作为 task guid。
 
 ## Shortcuts
 
@@ -102,4 +104,3 @@ lark-cli task <resource> <method> [flags] # 调用 API
 | `subtasks.list` | `task:task:read` |
 | `members.add` | `task:task:write` |
 | `members.remove` | `task:task:write` |
-

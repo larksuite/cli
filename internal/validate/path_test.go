@@ -283,3 +283,30 @@ func TestSafeInputPath_ErrorMessageContainsCorrectFlagName(t *testing.T) {
 		t.Errorf("error should mention --output, got: %s", err.Error())
 	}
 }
+
+// TestSafeEnvDirPath_RequiresAbsolutePath verifies that environment-provided
+// directory paths must be absolute.
+func TestSafeEnvDirPath_RequiresAbsolutePath(t *testing.T) {
+	_, err := SafeEnvDirPath("logs", "LARKSUITE_CLI_LOG_DIR")
+	if err == nil {
+		t.Fatal("expected error for relative path")
+	}
+	if !strings.Contains(err.Error(), "LARKSUITE_CLI_LOG_DIR") {
+		t.Fatalf("error should mention env name, got %v", err)
+	}
+}
+
+// TestSafeEnvDirPath_ReturnsNormalizedAbsolutePath verifies that a valid
+// absolute environment directory is cleaned and resolved to its canonical path.
+func TestSafeEnvDirPath_ReturnsNormalizedAbsolutePath(t *testing.T) {
+	base := t.TempDir()
+	base, _ = filepath.EvalSymlinks(base)
+	got, err := SafeEnvDirPath(filepath.Join(base, "logs", "..", "auth"), "LARKSUITE_CLI_LOG_DIR")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(base, "auth")
+	if got != want {
+		t.Fatalf("SafeEnvDirPath() = %q, want %q", got, want)
+	}
+}
