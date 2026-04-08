@@ -139,7 +139,7 @@ func fixBoldSpacing(md string) string {
 var atxHeadingRe = regexp.MustCompile(`^#{1,6}\s`)
 
 // scanInlineCodeSpans returns the byte ranges [start, end) of all inline code
-// spans in line. It handles multi-backtick delimiters (e.g. `` `foo` ``) by
+// spans in line. It handles multi-backtick delimiters (e.g. “ `foo` “) by
 // finding the opening run of N backticks and searching for the next identical
 // run to close the span, per CommonMark spec §6.1.
 func scanInlineCodeSpans(line string) [][2]int {
