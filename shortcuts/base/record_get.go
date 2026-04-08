@@ -20,7 +20,6 @@ var BaseRecordGet = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordRefFlag(true),
-		{Name: "field-id", Type: "string_array", Desc: "field ID or field name to include (repeatable)"},
 	},
 	DryRun: dryRunRecordGet,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

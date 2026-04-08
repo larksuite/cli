@@ -158,7 +158,8 @@ metadata:
 
 - **Base token 口径统一**：统一使用 `--base-token`
 - **`+xxx-list` 调用纪律**：`+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list / +dashboard-list / +dashboard-block-list / +workflow-list` 禁止并发调用；批量执行时只能串行
-- **`+record-list` 分页规则**：`--limit` 最大 `200`。先拉首批并检查返回 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时再继续翻页。用户只要样例或前 N 条时，不要继续拉全量
+- **`+record-list` 分页与 limit**：`--limit` 最大 `200`。先拉首批并检查 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时再按 `offset` 递增翻页，禁止单次传超过 `200`
+- **记录读取字段筛选**：`+record-list` 支持重复传参 --field-id 做字段筛选
 - **`+record-list / +record-search` 选择规则**：优先使用 `+record-list`；仅当用户给出明确搜索关键词时，才使用 `+record-search`
 - **`+record-search` 使用规则**：仅通过 `--json` 传搜索请求体；`keyword/search_fields/offset/limit` 等字段合法性由 API 侧按 schema 校验
 - **`+record-batch-create` 适用边界**：优先用于大量创建写入（如 CSV/Excel 导入）。当输入是长表格或长文本时，先按 [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) 做字段映射和类型规范化，再组装 `fields + rows` 调用命令写入

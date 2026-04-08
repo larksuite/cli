@@ -110,13 +110,12 @@ func TestDryRunRecordOps(t *testing.T) {
 	assertDryRunContains(t, dryRunRecordBatchCreate(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch")
 	assertDryRunContains(t, dryRunRecordBatchUpdate(ctx, upsertCreateRT), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch")
 
-	rt := newBaseTestRuntimeWithArrays(
+	rt := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "record-id": "rec_1", "json": `{"Name":"B"}`},
-		map[string][]string{"field-id": {"Name", "Age"}},
 		nil,
 		map[string]int{"max-version": 11, "page-size": 30},
 	)
-	assertDryRunContains(t, dryRunRecordGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1", "field=Name", "field=Age")
+	assertDryRunContains(t, dryRunRecordGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
 	assertDryRunContains(t, dryRunRecordUpsert(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
 	assertDryRunContains(t, dryRunRecordDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
 	assertDryRunContains(t, dryRunRecordHistoryList(ctx, rt), "GET /open-apis/base/v3/bases/app_x/record_history", "max_version=11", "page_size=30", "record_id=rec_1", "table_id=tbl_1")
