@@ -401,31 +401,15 @@ func TestExtractStringSlice(t *testing.T) {
 	}
 }
 
-func TestToStringSlice(t *testing.T) {
-	if got := toStringSlice(nil); got != nil {
+func TestAsStringSlice(t *testing.T) {
+	if got := asStringSlice(nil); got != nil {
 		t.Errorf("nil: got %v, want nil", got)
 	}
-	if got := toStringSlice([]string{"a", "b"}); len(got) != 2 || got[0] != "a" {
+	if got := asStringSlice([]string{"a", "b"}); len(got) != 2 || got[0] != "a" {
 		t.Errorf("[]string: got %v", got)
 	}
-	if got := toStringSlice("not a slice"); got != nil {
+	if got := asStringSlice("not a slice"); got != nil {
 		t.Errorf("string: got %v, want nil", got)
-	}
-}
-
-func TestFilterUnseen(t *testing.T) {
-	seen := map[string]bool{"a": true, "c": true}
-	got := filterUnseen([]string{"a", "b", "c", "d"}, seen)
-	if len(got) != 2 || got[0] != "b" || got[1] != "d" {
-		t.Errorf("got %v, want [b d]", got)
-	}
-	got = filterUnseen([]string{"a", "c"}, seen)
-	if got != nil {
-		t.Errorf("all seen: got %v, want nil", got)
-	}
-	got = filterUnseen(nil, seen)
-	if got != nil {
-		t.Errorf("nil input: got %v, want nil", got)
 	}
 }
 
@@ -436,15 +420,11 @@ func TestDeduplicateDocTokens(t *testing.T) {
 		"verbatim_doc_token": "doc_verb",
 		"shared_doc_tokens":  []string{"doc_shared"},
 		"meeting_notes":      []string{"doc_main", "unique_note"},
-		"ai_meeting_notes":   []string{"doc_main", "doc_verb"},
 	}
 	deduplicateDocTokens(result)
-	mn := toStringSlice(result["meeting_notes"])
+	mn := asStringSlice(result["meeting_notes"])
 	if len(mn) != 1 || mn[0] != "unique_note" {
 		t.Errorf("meeting_notes: got %v, want [unique_note]", mn)
-	}
-	if _, exists := result["ai_meeting_notes"]; exists {
-		t.Errorf("ai_meeting_notes should be removed (all duplicates), got %v", result["ai_meeting_notes"])
 	}
 
 	// case 2: no overlap
@@ -453,7 +433,7 @@ func TestDeduplicateDocTokens(t *testing.T) {
 		"meeting_notes":  []string{"doc_b"},
 	}
 	deduplicateDocTokens(result2)
-	mn2 := toStringSlice(result2["meeting_notes"])
+	mn2 := asStringSlice(result2["meeting_notes"])
 	if len(mn2) != 1 || mn2[0] != "doc_b" {
 		t.Errorf("no overlap: got %v, want [doc_b]", mn2)
 	}
@@ -467,20 +447,15 @@ func TestDeduplicateDocTokens(t *testing.T) {
 		t.Errorf("should not have meeting_notes key")
 	}
 
-	// case 4: cross-dedup between meeting_notes and ai_meeting_notes
+	// case 4: all meeting_notes are duplicates
 	result4 := map[string]any{
-		"note_doc_token":   "doc_a",
-		"meeting_notes":    []string{"shared_tok", "only_mn"},
-		"ai_meeting_notes": []string{"shared_tok", "only_ai"},
+		"note_doc_token":    "doc_a",
+		"shared_doc_tokens": []string{"doc_b"},
+		"meeting_notes":     []string{"doc_a", "doc_b"},
 	}
 	deduplicateDocTokens(result4)
-	mn4 := toStringSlice(result4["meeting_notes"])
-	if len(mn4) != 2 || mn4[0] != "shared_tok" || mn4[1] != "only_mn" {
-		t.Errorf("case4 meeting_notes: got %v, want [shared_tok only_mn]", mn4)
-	}
-	ai4 := toStringSlice(result4["ai_meeting_notes"])
-	if len(ai4) != 1 || ai4[0] != "only_ai" {
-		t.Errorf("case4 ai_meeting_notes: got %v, want [only_ai] (shared_tok deduped)", ai4)
+	if _, exists := result4["meeting_notes"]; exists {
+		t.Errorf("case4: meeting_notes should be removed (all duplicates), got %v", result4["meeting_notes"])
 	}
 }
 
@@ -488,7 +463,7 @@ func TestDeduplicateDocTokens(t *testing.T) {
 // Integration: calendar-event-ids path with meeting_notes + dedup
 // ---------------------------------------------------------------------------
 
-func calendarRelationStub(calendarID, instanceID string, meetingIDs []string, meetingNotes, aiMeetingNotes []string) *httpmock.Stub {
+func calendarRelationStub(calendarID, instanceID string, meetingIDs []string, meetingNotes []string) *httpmock.Stub {
 	infos := map[string]interface{}{
 		"instance_id": instanceID,
 	}
@@ -503,13 +478,6 @@ func calendarRelationStub(calendarID, instanceID string, meetingIDs []string, me
 			notes[i] = n
 		}
 		infos["meeting_notes"] = notes
-	}
-	if len(aiMeetingNotes) > 0 {
-		notes := make([]interface{}, len(aiMeetingNotes))
-		for i, n := range aiMeetingNotes {
-			notes[i] = n
-		}
-		infos["ai_meeting_notes"] = notes
 	}
 	return &httpmock.Stub{
 		Method: "POST",
@@ -547,8 +515,8 @@ func TestNotes_CalendarPath_MeetingNotesDedup(t *testing.T) {
 
 	calID := "cal_test"
 	reg.Register(primaryCalendarStub(calID))
-	// mget returns meeting_notes=["doc_main","unique_note"], ai_meeting_notes=["doc_main"]
-	reg.Register(calendarRelationStub(calID, "evt_001", []string{"m001"}, []string{"doc_main", "unique_note"}, []string{"doc_main"}))
+	// mget returns meeting_notes=["doc_main","unique_note"], doc_main overlaps with note_doc_token
+	reg.Register(calendarRelationStub(calID, "evt_001", []string{"m001"}, []string{"doc_main", "unique_note"}))
 	reg.Register(meetingGetStub("m001", "note_001"))
 	reg.Register(noteDetailStub("note_001"))
 
@@ -577,11 +545,6 @@ func TestNotes_CalendarPath_MeetingNotesDedup(t *testing.T) {
 	if mn[0] != "unique_note" {
 		t.Errorf("meeting_notes[0] = %v, want unique_note", mn[0])
 	}
-
-	// ai_meeting_notes should be completely removed (all duplicates)
-	if _, exists := note["ai_meeting_notes"]; exists {
-		t.Errorf("ai_meeting_notes should be removed after dedup, got %v", note["ai_meeting_notes"])
-	}
 }
 
 func TestNotes_CalendarPath_FallbackWhenMeetingChainFails(t *testing.T) {
@@ -590,7 +553,7 @@ func TestNotes_CalendarPath_FallbackWhenMeetingChainFails(t *testing.T) {
 	calID := "cal_test"
 	reg.Register(primaryCalendarStub(calID))
 	// mget returns note tokens but meeting chain will fail
-	reg.Register(calendarRelationStub(calID, "evt_002", []string{"m_bad"}, []string{"fallback_note"}, nil))
+	reg.Register(calendarRelationStub(calID, "evt_002", []string{"m_bad"}, []string{"fallback_note"}))
 	// meeting.get returns error
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -672,7 +635,7 @@ func TestNotes_CalendarPath_NeedNotes_RequestBody(t *testing.T) {
 	if v, ok := body["need_meeting_notes"]; !ok || v != true {
 		t.Errorf("need_meeting_notes: got %v, want true", v)
 	}
-	if v, ok := body["need_ai_meeting_notes"]; !ok || v != true {
-		t.Errorf("need_ai_meeting_notes: got %v, want true", v)
+	if _, ok := body["need_ai_meeting_notes"]; ok {
+		t.Errorf("need_ai_meeting_notes should not be requested")
 	}
 }

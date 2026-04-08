@@ -18,7 +18,8 @@ metadata:
 - **会议记录（Meeting Record）**：视频会议结束后生成的记录，支持通过关键词、时间段、参会人、组织者、会议室等筛选条件搜索会议室。
 - **会议纪要（Note）**：视频会议结束后生成的结构化文档，包含纪要文档（包含总结、待办、章节）和逐字稿文档。
 - **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写和会议纪要，通过 minute\_token 标识。
-- **纪要文档（MainDoc）**：会议纪要的主文档，包含 AI 生成的总结和待办。
+- **纪要文档（MainDoc）**：AI 智能纪要的主文档，包含 AI 生成的总结和待办，对应 `note_doc_token`。
+- **用户会议纪要（MeetingNotes）**：用户主动绑定到会议的纪要文档，对应 `meeting_notes`。仅通过 `--calendar-event-ids` 路径返回。
 - **逐字稿（VerbatimDoc）**：会议的逐句文字记录，包含说话人和时间戳。
 
 ## 核心场景
@@ -42,10 +43,12 @@ lark-cli docs +media-download --type whiteboard --token <whiteboard_token> --out
 ```
 > **产物目录规范**：同一会议的所有下载产物（封面图、逐字稿等）统一放到 `artifact-<title>/` 目录下，不要散落在当前工作目录。
 
-> **`note_doc_token` vs `verbatim_doc_token` — 两份不同的文档，根据用户意图选择：**
-> - `note_doc_token` → **智能纪要**（AI 总结 + 待办 + 章节）— 用户说"纪要""总结""待办""纪要内容"时用这个
+> **纪要相关文档 — 根据用户意图选择：**
+> - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办 + 章节）
+> - `meeting_notes` → **用户绑定的会议纪要**（用户主动关联到会议的文档，仅 `--calendar-event-ids` 路径返回）
 > - `verbatim_doc_token` → **逐字稿**（完整的逐句文字记录，含说话人和时间戳）— 用户说"逐字稿""完整记录""谁说了什么"时用这个
-> - 用户意图不明确时，应展示两个文档链接让用户选择，而不是替用户决定
+> - 用户说"纪要""总结""纪要内容"时，应同时返回 `note_doc_token` 和 `meeting_notes`（如有）
+> - 用户意图不明确时，应展示所有文档链接让用户选择，而不是替用户决定
 
 ### 3. 纪要文档与逐字稿链接
 1. 纪要文档、逐字稿文档与关联的共享文档默认使用文档 Token 返回。
@@ -68,8 +71,9 @@ lark-cli docs +fetch --doc <doc_token>
 ```
 Meeting (视频会议)
 ├── Note (会议纪要)
-│   ├── MainDoc (主纪要文档)
-│   ├── VerbatimDoc (逐字稿)
+│   ├── MainDoc (AI 智能纪要文档, note_doc_token)
+│   ├── MeetingNotes (用户绑定的会议纪要文档, meeting_notes)
+│   ├── VerbatimDoc (逐字稿, verbatim_doc_token)
 │   └── SharedDoc (会中共享文档)
 └── Minutes (妙记) ← minute_token 标识，+recording 从 meeting_id 获取
     ├── Transcript (文字记录)

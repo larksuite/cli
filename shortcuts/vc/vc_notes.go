@@ -92,14 +92,13 @@ func getPrimaryCalendarID(runtime *common.RuntimeContext) (string, error) {
 
 // eventRelationInfo holds the resolved relation info from mget_instance_relation_info API.
 type eventRelationInfo struct {
-	MeetingIDs     []string // meeting IDs (one event may spawn multiple meetings)
-	MeetingNotes   []string // meeting note doc tokens
-	AIMeetingNotes []string // AI meeting note doc tokens
+	MeetingIDs   []string // meeting IDs (one event may spawn multiple meetings)
+	MeetingNotes []string // user-bound meeting note doc tokens
 }
 
 // resolveMeetingIDsFromCalendarEvent resolves a calendar event instance to its
 // associated meeting IDs and optionally note doc tokens via the mget_instance_relation_info API.
-// When needNotes is true, meeting_notes and ai_meeting_notes are also requested.
+// When needNotes is true, meeting_notes are also requested.
 // Shared by +notes and +recording for the --calendar-event-ids path.
 func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instanceID string, calendarID string, needNotes bool) (*eventRelationInfo, error) {
 	body := map[string]any{
@@ -108,7 +107,6 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 	}
 	if needNotes {
 		body["need_meeting_notes"] = true
-		body["need_ai_meeting_notes"] = true
 	}
 	data, err := runtime.DoAPIJSON(http.MethodPost,
 		fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/mget_instance_relation_info", validate.EncodePathSegment(calendarID)),
@@ -146,9 +144,7 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 		result.MeetingIDs = append(result.MeetingIDs, meetingID)
 	}
 
-	// extract note doc tokens directly from mget_instance_relation_info
 	result.MeetingNotes = extractStringSlice(info, "meeting_notes")
-	result.AIMeetingNotes = extractStringSlice(info, "ai_meeting_notes")
 
 	return result, nil
 }
@@ -167,7 +163,7 @@ func extractStringSlice(m map[string]any, key string) []string {
 
 // fetchNoteByCalendarEventID queries notes via calendar event instance ID.
 // Two sources of doc tokens are collected and deduplicated:
-//   - mget_instance_relation_info: meeting_notes + ai_meeting_notes
+//   - mget_instance_relation_info: meeting_notes (user-bound note doc tokens)
 //   - meeting_id chain: meeting.get → note detail (note_doc_token, verbatim_doc_token, shared_doc_tokens)
 func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeContext, instanceID string, calendarID string) map[string]any {
 	errOut := runtime.IO().ErrOut
@@ -179,12 +175,9 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 
 	result := map[string]any{"calendar_event_id": instanceID}
 
-	// source 1: doc tokens directly from mget_instance_relation_info
+	// source 1: user-bound meeting note doc tokens from mget_instance_relation_info
 	if len(relInfo.MeetingNotes) > 0 {
 		result["meeting_notes"] = relInfo.MeetingNotes
-	}
-	if len(relInfo.AIMeetingNotes) > 0 {
-		result["ai_meeting_notes"] = relInfo.AIMeetingNotes
 	}
 
 	// source 2: meeting_id → meeting.get → note detail (for shared_doc_tokens etc.)
@@ -206,16 +199,14 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 	}
 
 	// meeting chain failed, but still succeed if relation info returned note tokens
-	if len(relInfo.MeetingNotes) > 0 || len(relInfo.AIMeetingNotes) > 0 {
+	if len(relInfo.MeetingNotes) > 0 {
 		return result
 	}
 	result["error"] = "no notes found in any associated meeting"
 	return result
 }
 
-// deduplicateDocTokens removes tokens from meeting_notes / ai_meeting_notes
-// that already appear in note detail fields (note_doc_token, verbatim_doc_token, shared_doc_tokens),
-// and also cross-deduplicates between meeting_notes and ai_meeting_notes.
+// deduplicateDocTokens removes meeting_notes entries that duplicate note detail fields.
 func deduplicateDocTokens(result map[string]any) {
 	seen := map[string]bool{}
 	if v, _ := result["note_doc_token"].(string); v != "" {
@@ -224,46 +215,27 @@ func deduplicateDocTokens(result map[string]any) {
 	if v, _ := result["verbatim_doc_token"].(string); v != "" {
 		seen[v] = true
 	}
-	for _, tok := range toStringSlice(result["shared_doc_tokens"]) {
+	for _, tok := range asStringSlice(result["shared_doc_tokens"]) {
 		seen[tok] = true
 	}
 
-	// filter meeting_notes first, then mark its tokens as seen
-	filtered := filterUnseen(toStringSlice(result["meeting_notes"]), seen)
-	result["meeting_notes"] = filtered
-	for _, tok := range filtered {
-		seen[tok] = true
-	}
-
-	// filter ai_meeting_notes against note detail fields + meeting_notes
-	result["ai_meeting_notes"] = filterUnseen(toStringSlice(result["ai_meeting_notes"]), seen)
-
-	if len(toStringSlice(result["meeting_notes"])) == 0 {
-		delete(result, "meeting_notes")
-	}
-	if len(toStringSlice(result["ai_meeting_notes"])) == 0 {
-		delete(result, "ai_meeting_notes")
-	}
-}
-
-func toStringSlice(v any) []string {
-	if v == nil {
-		return nil
-	}
-	if ss, ok := v.([]string); ok {
-		return ss
-	}
-	return nil
-}
-
-func filterUnseen(tokens []string, seen map[string]bool) []string {
-	var out []string
-	for _, t := range tokens {
-		if !seen[t] {
-			out = append(out, t)
+	var filtered []string
+	for _, tok := range asStringSlice(result["meeting_notes"]) {
+		if !seen[tok] {
+			filtered = append(filtered, tok)
 		}
 	}
-	return out
+	if len(filtered) > 0 {
+		result["meeting_notes"] = filtered
+	} else {
+		delete(result, "meeting_notes")
+	}
+}
+
+// asStringSlice casts v to []string; returns nil for non-[]string or nil values.
+func asStringSlice(v any) []string {
+	ss, _ := v.([]string)
+	return ss
 }
 
 // fetchNoteByMeetingID queries notes via meeting_id.
@@ -692,11 +664,8 @@ var VCNotes = common.Shortcut{
 					if v, _ := m["shared_doc_tokens"].([]string); len(v) > 0 {
 						row["shared_docs"] = strings.Join(v, ", ")
 					}
-					if v := toStringSlice(m["meeting_notes"]); len(v) > 0 {
+					if v := asStringSlice(m["meeting_notes"]); len(v) > 0 {
 						row["meeting_notes"] = strings.Join(v, ", ")
-					}
-					if v := toStringSlice(m["ai_meeting_notes"]); len(v) > 0 {
-						row["ai_meeting_notes"] = strings.Join(v, ", ")
 					}
 					if v, _ := m["source"].(string); v != "" {
 						row["source"] = v
