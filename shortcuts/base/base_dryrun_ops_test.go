@@ -75,6 +75,8 @@ func TestDryRunRecordOps(t *testing.T) {
 		nil, nil,
 	)
 	assertDryRunContains(t, dryRunRecordUpsert(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records")
+	assertDryRunContains(t, dryRunRecordBatchAdd(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch")
+	assertDryRunContains(t, dryRunRecordBatchSet(ctx, upsertCreateRT), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch")
 
 	rt := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "record-id": "rec_1", "json": `{"Name":"B"}`},

@@ -36,17 +36,17 @@ metadata:
 - 不要把 `+record-list` 当聚合分析引擎
 - 不要没读 guide 就直接创建 formula / lookup 字段
 - 不要凭自然语言猜表名、字段名、公式表达式里的字段引用
-- 不要把系统字段、formula 字段、lookup 字段当成 `+record-upsert` 的写入目标
+- 不要把系统字段、formula 字段、lookup 字段当成 `+record-upsert / +record-batch-add / +record-batch-set` 的写入目标
 - 不要在 Base 场景改走 `lark-cli api GET /open-apis/bitable/v1/...`
 - 不要因为 wiki 解析结果里的 `obj_type=bitable` 就去找 `bitable.*`；在本 CLI 里应继续使用 `lark-cli base +...`
 
 ## Base 基本心智模型
 
 1. **Base 字段分三类**
-   - **存储字段**：真实存用户输入的数据，通常适合 `+record-upsert` 写入，例如文本、数字、日期、单选、多选、人员、关联。**附件字段例外**：对 agent 而言，文件上传必须走 `+record-upload-attachment`。
+   - **存储字段**：真实存用户输入的数据，通常适合 `+record-upsert / +record-batch-add / +record-batch-set` 写入，例如文本、数字、日期、单选、多选、人员、关联。**附件字段例外**：对 agent 而言，文件上传必须走 `+record-upload-attachment`。
    - **系统字段**：平台自动维护，只读，典型包括创建时间、最后更新时间、创建人、修改人、自动编号。
    - **计算字段**：通过表达式或跨表规则推导，只读，典型包括 **公式字段（formula）** 和 **查找引用字段（lookup）**。
-2. **写记录前先判断字段类别** — 只有存储字段可直接写；公式 / lookup / 创建时间 / 更新时间 / 创建人 / 修改人 / 自动编号都应视为只读输出字段，不能拿来做 `+record-upsert` 入参。
+2. **写记录前先判断字段类别** — 只有存储字段可直接写；公式 / lookup / 创建时间 / 更新时间 / 创建人 / 修改人 / 自动编号都应视为只读输出字段，不能拿来做 `+record-upsert / +record-batch-add / +record-batch-set` 入参。
 3. **Base 不只是存表数据，也能内建计算** — 用户提出“统计、比较、排名、文本拼接、日期差、跨表汇总、状态判断”等需求时，不能默认导出数据后手算；要先判断是否应通过 `+data-query` 或公式字段在 Base 内完成。
 
 ## 分析路径决策
@@ -101,7 +101,7 @@ metadata:
 
 ## 核心规则
 
-1. **只使用原子命令** — 使用 `+table-list / +table-get / +field-create / +record-upsert / +view-set-filter / +record-history-list / +base-get` 这类一命令一动作的写法，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`
+1. **只使用原子命令** — 使用 `+table-list / +table-get / +field-create / +record-upsert / +record-batch-add / +record-batch-set / +view-set-filter / +record-history-list / +base-get` 这类一命令一动作的写法，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`
 2. **写记录前先读字段结构** — 先调用 `+field-list` 获取字段结构，再读 [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) 确认各字段类型的写入值格式
 3. **写字段前先看字段属性规范** — 先读 [lark-base-shortcut-field-properties.md](references/lark-base-shortcut-field-properties.md) 确认 `+field-create/+field-update` 的 JSON 结构
 4. **筛选查询按视图能力执行** — 先读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) 和 [lark-base-record-list.md](references/lark-base-record-list.md)，通过 `+view-set-filter` + `+record-list` 组合完成筛选读取
@@ -134,6 +134,8 @@ metadata:
 | 创建 / 更新 lookup 字段 | `lark-cli base +field-create` / `+field-update` | `type=lookup`；先读 lookup guide，再创建 / 更新，默认先判断 formula 是否更合适 |
 | 列表 / 获取记录 | `lark-cli base +record-list` / `+record-get` | 原子命令，如果需要`聚合计算`，`分组统计` 推荐走 `+data-query` |
 | 创建 / 更新记录 | `lark-cli base +record-upsert` | `--table-id [--record-id] --json` |
+| 批量新增记录 | `lark-cli base +record-batch-add` | 适合大量新增写入（如 CSV/Excel 导入）；先按 record-value 规范整理为 `json.fields + json.rows` |
+| 批量更新指定记录 | `lark-cli base +record-batch-set` | `--table-id --json`（`json.record_id_list + json.patch`） |
 | 聚合分析 / 比较排序 / 求最值 / 筛选统计 | `lark-cli base +data-query` | 不要用 `+record-list` 拉全量数据再手动计算，需使用 `+data-query` 走服务端计算 |
 | 配置 / 查询视图 | `lark-cli base +view-*` | `list/get/create/delete/get-*/set-*/rename` |
 | 查看记录历史 | `lark-cli base +record-history-list` | 按表和记录查询变更历史 |
@@ -155,7 +157,8 @@ metadata:
 
 - **Base token 口径统一**：统一使用 `--base-token`
 - **`+xxx-list` 调用纪律**：`+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list / +dashboard-list / +dashboard-block-list / +workflow-list` 禁止并发调用；批量执行时只能串行
-- **`+record-list` 分页规则**：`--limit` 最大 `200`。先拉首批并检查返回 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时再继续翻页。用户只要样例或前 N 条时，不要继续拉全量
+- **`+record-list` 分页规则**：`--limit` 最大 `200`。先拉首批并检查返回 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时，再用 `offset` 递增分页拉取。用户只要样例或前 N 条时，不要继续拉全量
+- **`+record-batch-add` 适用边界**：优先用于大量新增写入（如 CSV/Excel 导入）。当输入是长表格或长文本时，先按 [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) 做字段映射和类型规范化，再组装 `fields + rows` 调用命令写入
 - **字段可写性先判断**：存储字段才可写；公式 / lookup / 系统字段默认只读，写记录时应跳过
 - **公式能力要主动想到**：用户说“算一下”“生成标签”“判断是否异常”“跨表汇总”“按日期差预警”时，要先判断是否应该建公式字段，而不是只返回手工分析方案
 - **lookup 不是默认首选**：lookup 只在用户明确要求或确实更适合固定查找模型时使用；常规计算、跨表聚合和条件判断优先 formula
@@ -264,9 +267,11 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 
 ## 参考文档
 
-- [lark-base-shortcut-field-properties.md](references/lark-base-shortcut-field-properties.md) — `+field-create/+field-update` JSON 规范（推荐）
+- [lark-base-shortcut-field-properties.md](references/lark-base-shortcut-field-properties.md) — `+field-create/+field-update` 调用前必看，各类型 field JSON 规范
 - [role-config.md](references/role-config.md) — 角色权限配置详解
-- [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) — `+record-upsert` 值格式规范（推荐）
+- [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) — record 写入（`+record-upsert / +record-batch-add / +record-batch-set`）调用前必看，各类型 record JSON 规范
+- [lark-base-record-batch-add.md](references/lark-base-record-batch-add.md) — `+record-batch-add` 用法与 `--json` 结构
+- [lark-base-record-batch-set.md](references/lark-base-record-batch-set.md) — `+record-batch-set` 用法与 `--json` 结构
 - [formula-field-guide.md](references/formula-field-guide.md) — formula 字段写法、函数约束、CurrentValue 规则、跨表计算模式（强烈推荐）
 - [lookup-field-guide.md](references/lookup-field-guide.md) — lookup 字段配置规则、where/aggregate 约束、与 formula 的取舍
 - [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) — 视图筛选配置
@@ -293,7 +298,7 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 |----------|------|
 | [`table commands`](references/lark-base-table.md) | `+table-list / +table-get / +table-create / +table-update / +table-delete` |
 | [`field commands`](references/lark-base-field.md) | `+field-list / +field-get / +field-create / +field-update / +field-delete / +field-search-options` |
-| [`record commands`](references/lark-base-record.md) | `+record-list / +record-get / +record-upsert / +record-upload-attachment / +record-delete` |
+| [`record commands`](references/lark-base-record.md) | `+record-list / +record-get / +record-upsert / +record-batch-add / +record-batch-set / +record-upload-attachment / +record-delete` |
 | [`view commands`](references/lark-base-view.md) | `+view-list / +view-get / +view-create / +view-delete / +view-get-* / +view-set-* / +view-rename` |
 | [`data-query commands`](references/lark-base-data-query.md) | `+data-query` |
 | [`history commands`](references/lark-base-history.md) | `+record-history-list` |

@@ -11,6 +11,8 @@ record 相关命令索引。
 | [lark-base-record-list.md](lark-base-record-list.md) | `+record-list` | 分页列记录 |
 | [lark-base-record-get.md](lark-base-record-get.md) | `+record-get` | 获取单条记录 |
 | [lark-base-record-upsert.md](lark-base-record-upsert.md) | `+record-upsert` | 创建或更新记录 |
+| [lark-base-record-batch-add.md](lark-base-record-batch-add.md) | `+record-batch-add` | 按 `fields/rows` 批量新增记录 |
+| [lark-base-record-batch-set.md](lark-base-record-batch-set.md) | `+record-batch-set` | 批量更新记录 |
 | [lark-base-record-upload-attachment.md](lark-base-record-upload-attachment.md) | `+record-upload-attachment` | 上传本地文件到附件字段并更新记录 |
 | [lark-base-record-delete.md](lark-base-record-delete.md) | `+record-delete` | 删除记录 |
 

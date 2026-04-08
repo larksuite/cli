@@ -552,6 +552,78 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("batch add", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		registerTokenStub(reg)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name"},
+					"record_id_list": []interface{}{"rec_1", "rec_2"},
+					"data":           []interface{}{[]interface{}{"Alice"}, []interface{}{"Bob"}},
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordBatchAdd, []string{"+record-batch-add", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"fields":["Name"],"rows":[["Alice"],["Bob"]]}`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) || !strings.Contains(got, `"Alice"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("batch set", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		registerTokenStub(reg)
+		reg.Register(&httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"has_more":       false,
+					"record_id_list": []interface{}{"rec_1"},
+					"update":         map[string]interface{}{"Status": "Done"},
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordBatchSet, []string{"+record-batch-set", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_1"],"patch":{"Status":"Done"}}`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"update"`) || !strings.Contains(got, `"Done"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("batch set passthrough", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		registerTokenStub(reg)
+		updateStub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_1"},
+				},
+			},
+		}
+		reg.Register(updateStub)
+		if err := runShortcut(t, BaseRecordBatchSet, []string{"+record-batch-set", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_1"],"patch":{"Name":"Alice","Status":"Done"}}`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(updateStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_1"]`) || !strings.Contains(body, `"patch":{"Name":"Alice","Status":"Done"}`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
 	t.Run("delete", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
