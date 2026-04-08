@@ -121,14 +121,39 @@ var MailForward = common.Shortcut{
 		if strings.TrimSpace(inlineFlag) != "" && !useHTML {
 			return fmt.Errorf("--inline requires HTML mode, but neither the new body nor the original message contains HTML")
 		}
+		inlineSpecs, err := parseInlineSpecs(inlineFlag)
+		if err != nil {
+			return err
+		}
+		var autoResolvedPaths []string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("forward blocked: %w", err)
 			}
 			processedBody := buildBodyDiv(body, bodyIsHTML(body))
-			bld = bld.HTMLBody([]byte(processedBody + buildForwardQuoteHTML(&orig)))
-			bld, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
+			forwardQuote := buildForwardQuoteHTML(&orig)
+			var srcCIDs []string
+			bld, srcCIDs, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
 			if err != nil {
+				return err
+			}
+			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(processedBody)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			fullHTML := resolved + forwardQuote
+			bld = bld.HTMLBody([]byte(fullHTML))
+			var userCIDs []string
+			for _, ref := range refs {
+				bld = bld.AddFileInline(ref.FilePath, ref.CID)
+				autoResolvedPaths = append(autoResolvedPaths, ref.FilePath)
+				userCIDs = append(userCIDs, ref.CID)
+			}
+			for _, spec := range inlineSpecs {
+				bld = bld.AddFileInline(spec.FilePath, spec.CID)
+				userCIDs = append(userCIDs, spec.CID)
+			}
+			if err := validateInlineCIDs(resolved, userCIDs, srcCIDs); err != nil {
 				return err
 			}
 		} else {
@@ -169,11 +194,8 @@ var MailForward = common.Shortcut{
 			}
 			bld = bld.Header("X-Lms-Large-Attachment-Ids", base64.StdEncoding.EncodeToString(idsJSON))
 		}
-		inlineSpecs, err := parseInlineSpecs(inlineFlag)
-		if err != nil {
-			return err
-		}
-		if err := checkAttachmentSizeLimit(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), origAttBytes, len(origAtts)); err != nil {
+		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
+		if err := checkAttachmentSizeLimit(allFilePaths, origAttBytes, len(origAtts)); err != nil {
 			return err
 		}
 		for _, att := range origAtts {
@@ -181,9 +203,6 @@ var MailForward = common.Shortcut{
 		}
 		for _, path := range splitByComma(attachFlag) {
 			bld = bld.AddFileAttachment(path)
-		}
-		for _, spec := range inlineSpecs {
-			bld = bld.AddFileInline(spec.FilePath, spec.CID)
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {

@@ -615,6 +615,67 @@ func TestCheckAttachmentSizeLimit_WithFiles(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// validateInlineCIDs — bidirectional CID consistency
+// ---------------------------------------------------------------------------
+
+func TestValidateInlineCIDs_UserOrphanError(t *testing.T) {
+	// User-provided CID not referenced in body → error.
+	err := validateInlineCIDs(`<p>no image</p>`, []string{"orphan-cid"}, nil)
+	if err == nil {
+		t.Fatal("expected orphaned CID error")
+	}
+	if !strings.Contains(err.Error(), "orphan-cid") {
+		t.Fatalf("expected error mentioning orphan-cid, got: %v", err)
+	}
+}
+
+func TestValidateInlineCIDs_SourceOrphanAllowed(t *testing.T) {
+	// Source-message CID not referenced in body → allowed (quoting may drop references).
+	err := validateInlineCIDs(`<p>no image</p>`, nil, []string{"source-unused"})
+	if err != nil {
+		t.Fatalf("source CID orphan should not error, got: %v", err)
+	}
+}
+
+func TestValidateInlineCIDs_SourceAndUserMixed(t *testing.T) {
+	// Body references both a source CID and a user CID.
+	// Source has an extra unreferenced CID — should not error.
+	html := `<p><img src="cid:src-used" /><img src="cid:user-img" /></p>`
+	err := validateInlineCIDs(html, []string{"user-img"}, []string{"src-used", "src-unused"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateInlineCIDs_MissingRefError(t *testing.T) {
+	// Body references a CID that nobody provided → error.
+	html := `<p><img src="cid:exists" /><img src="cid:missing" /></p>`
+	err := validateInlineCIDs(html, []string{"exists"}, nil)
+	if err == nil {
+		t.Fatal("expected missing CID error")
+	}
+	if !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("expected error mentioning missing, got: %v", err)
+	}
+}
+
+func TestValidateInlineCIDs_MissingRefSatisfiedBySource(t *testing.T) {
+	// Body references a CID that only exists in source (extraCIDs) → ok.
+	html := `<p><img src="cid:from-source" /></p>`
+	err := validateInlineCIDs(html, nil, []string{"from-source"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateInlineCIDs_NoCIDsNoError(t *testing.T) {
+	err := validateInlineCIDs(`<p>plain text</p>`, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // downloadAttachmentContent — size limit enforcement
 // ---------------------------------------------------------------------------
 
@@ -678,7 +739,7 @@ func TestAddInlineImagesToBuilder_EmptyCIDSkipped(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "logo.png", ContentType: "image/png", CID: "", DownloadURL: srv.URL + "/img1"},
 	}
-	_, err := addInlineImagesToBuilder(rt, bld, images)
+	_, _, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -699,7 +760,7 @@ func TestAddInlineImagesToBuilder_Success(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "banner.png", ContentType: "image/png", CID: "cid:banner", DownloadURL: srv.URL + "/img1"},
 	}
-	result, err := addInlineImagesToBuilder(rt, bld, images)
+	result, _, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

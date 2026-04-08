@@ -4,20 +4,14 @@
 package drive
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/larksuite/cli/internal/vfs"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -36,12 +30,6 @@ const (
 	driveImport600MBFileSizeLimit int64 = 600 * 1024 * 1024
 	driveImport800MBFileSizeLimit int64 = 800 * 1024 * 1024
 )
-
-type driveMultipartUploadSession struct {
-	UploadID  string
-	BlockSize int
-	BlockNum  int
-}
 
 // driveImportExtToDocTypes defines which source file extensions can be imported
 // into which Drive-native document types.
@@ -106,163 +94,41 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 	if err = validateDriveImportFileSize(filePath, docType, fileSize); err != nil {
 		return "", err
 	}
-	fileSizeValue, err := driveUploadSizeValue(fileSize)
-	if err != nil {
-		return "", err
-	}
 
 	extra, err := buildImportMediaExtra(filePath, docType)
 	if err != nil {
 		return "", err
 	}
 
-	if fileSize <= maxDriveUploadFileSize {
+	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import: %s (%s)\n", fileName, common.FormatSize(fileSize))
-		return uploadMediaForImportAll(runtime, filePath, fileName, fileSizeValue, extra)
+		// upload_all for import works without parent_node; omitting it preserves
+		// the existing root-level import staging behavior.
+		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: "ccm_import_open",
+			Extra:      extra,
+		})
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import via multipart upload: %s (%s)\n", fileName, common.FormatSize(fileSize))
-	return uploadMediaForImportMultipart(runtime, filePath, fileName, fileSizeValue, extra)
-}
-
-func uploadMediaForImportAll(runtime *common.RuntimeContext, filePath, fileName string, fileSize int, extra string) (string, error) {
-	f, err := vfs.Open(filePath)
-	if err != nil {
-		return "", output.ErrValidation("cannot read file: %s", err)
-	}
-	defer f.Close()
-
-	fd := larkcore.NewFormdata()
-	fd.AddField("file_name", fileName)
-	fd.AddField("parent_type", "ccm_import_open")
-	fd.AddField("size", fmt.Sprintf("%d", fileSize))
-	fd.AddField("extra", extra)
-	fd.AddFile("file", f)
-
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod: http.MethodPost,
-		ApiPath:    "/open-apis/drive/v1/medias/upload_all",
-		Body:       fd,
-	}, larkcore.WithFileUpload())
-	if err != nil {
-		return "", wrapDriveUploadRequestError(err, "upload media failed")
-	}
-
-	data, err := parseDriveUploadResponse(apiResp, "upload media failed")
-	if err != nil {
-		return "", err
-	}
-	return extractDriveUploadFileToken(data, "upload media failed")
-}
-
-func uploadMediaForImportMultipart(runtime *common.RuntimeContext, filePath, fileName string, fileSize int, extra string) (string, error) {
-	session, err := prepareMediaImportUpload(runtime, fileName, fileSize, extra)
-	if err != nil {
-		fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload prepare failed: %s\n", err)
-		return "", err
-	}
-
-	totalBlocks := session.BlockNum
-	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", totalBlocks, common.FormatSize(int64(session.BlockSize)))
-
-	f, err := vfs.Open(filePath)
-	if err != nil {
-		return "", output.ErrValidation("cannot read file: %s", err)
-	}
-	defer f.Close()
-
-	buffer := make([]byte, session.BlockSize)
-	remaining := fileSize
-	uploadedBlocks := 0
-	for remaining > 0 {
-		chunkSize := session.BlockSize
-		if chunkSize > remaining {
-			chunkSize = remaining
-		}
-
-		n, readErr := io.ReadFull(f, buffer[:chunkSize])
-		if readErr != nil {
-			return "", output.ErrValidation("cannot read file: %s", readErr)
-		}
-
-		if err = uploadMediaImportPart(runtime, session.UploadID, uploadedBlocks, buffer[:n]); err != nil {
-			fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload part failed: %s\n", err)
-			return "", err
-		}
-
-		remaining -= n
-		uploadedBlocks++
-	}
-
-	if session.BlockNum > 0 && session.BlockNum != uploadedBlocks {
-		return "", output.Errorf(output.ExitAPI, "api_error", "upload prepare mismatch: expected %d blocks, uploaded %d", session.BlockNum, uploadedBlocks)
-	}
-
-	return finishMediaImportUpload(runtime, session.UploadID, uploadedBlocks)
-}
-
-func prepareMediaImportUpload(runtime *common.RuntimeContext, fileName string, fileSize int, extra string) (driveMultipartUploadSession, error) {
-	data, err := runtime.CallAPI("POST", "/open-apis/drive/v1/medias/upload_prepare", nil, map[string]interface{}{
-		"file_name":   fileName,
-		"parent_type": "ccm_import_open", // For media import uploads, parent_type must be ccm_import_open.
-		"size":        fileSize,
-		"extra":       extra,
-		"parent_node": "", // For media import uploads, parent_node must be an explicit empty string; unlike medias/upload_all, this field cannot be omitted.
+	// upload_prepare is stricter than upload_all here and expects parent_node to
+	// be sent explicitly, even when import uses the implicit root staging area.
+	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+		FilePath:   filePath,
+		FileName:   fileName,
+		FileSize:   fileSize,
+		ParentType: "ccm_import_open",
+		ParentNode: "",
+		Extra:      extra,
 	})
-	if err != nil {
-		return driveMultipartUploadSession{}, err
-	}
-
-	session := driveMultipartUploadSession{
-		UploadID:  common.GetString(data, "upload_id"),
-		BlockSize: int(common.GetFloat(data, "block_size")),
-		BlockNum:  int(common.GetFloat(data, "block_num")),
-	}
-	if session.UploadID == "" {
-		return driveMultipartUploadSession{}, output.Errorf(output.ExitAPI, "api_error", "upload prepare failed: no upload_id returned")
-	}
-	if session.BlockSize <= 0 {
-		return driveMultipartUploadSession{}, output.Errorf(output.ExitAPI, "api_error", "upload prepare failed: invalid block_size returned")
-	}
-	if session.BlockNum <= 0 {
-		return driveMultipartUploadSession{}, output.Errorf(output.ExitAPI, "api_error", "upload prepare failed: invalid block_num returned")
-	}
-	return session, nil
-}
-
-func uploadMediaImportPart(runtime *common.RuntimeContext, uploadID string, seq int, chunk []byte) error {
-	fd := larkcore.NewFormdata()
-	fd.AddField("upload_id", uploadID)
-	fd.AddField("seq", seq)
-	fd.AddField("size", len(chunk))
-	fd.AddFile("file", bytes.NewReader(chunk))
-
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod: http.MethodPost,
-		ApiPath:    "/open-apis/drive/v1/medias/upload_part",
-		Body:       fd,
-	}, larkcore.WithFileUpload())
-	if err != nil {
-		return wrapDriveUploadRequestError(err, "upload media part failed")
-	}
-
-	_, err = parseDriveUploadResponse(apiResp, "upload media part failed")
-	return err
-}
-
-func finishMediaImportUpload(runtime *common.RuntimeContext, uploadID string, blockNum int) (string, error) {
-	data, err := runtime.CallAPI("POST", "/open-apis/drive/v1/medias/upload_finish", nil, map[string]interface{}{
-		"upload_id": uploadID,
-		"block_num": blockNum,
-	})
-	if err != nil {
-		fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload finish failed: %s\n", err)
-		return "", err
-	}
-	return extractDriveUploadFileToken(data, "upload media finish failed")
 }
 
 func buildImportMediaExtra(filePath, docType string) (string, error) {
+	// The import media endpoint uses extra to decide both the target native type
+	// and how to interpret the uploaded source file.
 	extraBytes, err := json.Marshal(map[string]string{
 		"obj_type":       docType,
 		"file_extension": strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), "."),
@@ -316,45 +182,6 @@ func validateDriveImportFileSize(filePath, docType string, fileSize int64) error
 		common.FormatSize(limit),
 		ext,
 	)
-}
-
-func driveUploadSizeValue(fileSize int64) (int, error) {
-	maxInt := int64(^uint(0) >> 1)
-	if fileSize > maxInt {
-		return 0, output.ErrValidation("file %s is too large to upload", common.FormatSize(fileSize))
-	}
-	return int(fileSize), nil
-}
-
-func wrapDriveUploadRequestError(err error, action string) error {
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) {
-		return err
-	}
-	return output.ErrNetwork("%s: %v", action, err)
-}
-
-func parseDriveUploadResponse(apiResp *larkcore.ApiResp, action string) (map[string]interface{}, error) {
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "%s: invalid response JSON: %v", action, err)
-	}
-
-	if larkCode := int(common.GetFloat(result, "code")); larkCode != 0 {
-		msg, _ := result["msg"].(string)
-		return nil, output.ErrAPI(larkCode, fmt.Sprintf("%s: [%d] %s", action, larkCode, msg), result["error"])
-	}
-
-	data, _ := result["data"].(map[string]interface{})
-	return data, nil
-}
-
-func extractDriveUploadFileToken(data map[string]interface{}, action string) (string, error) {
-	fileToken := common.GetString(data, "file_token")
-	if fileToken == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "%s: no file_token returned", action)
-	}
-	return fileToken, nil
 }
 
 // validateDriveImportSpec enforces the CLI-level compatibility rules before any

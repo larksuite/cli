@@ -5,6 +5,8 @@ package validate
 
 import (
 	"testing"
+
+	"github.com/larksuite/cli/internal/charcheck"
 )
 
 func TestSanitizeForTerminal_StripsEscapesAndDangerousChars(t *testing.T) {
@@ -74,16 +76,16 @@ func TestIsDangerousUnicode_IdentifiesAllDangerousRanges(t *testing.T) {
 		0x2066, 0x2067, 0x2068, 0x2069, // isolates
 	}
 	for _, r := range dangerous {
-		if !isDangerousUnicode(r) {
-			t.Errorf("isDangerousUnicode(%U) = false, want true", r)
+		if !charcheck.IsDangerousUnicode(r) {
+			t.Errorf("charcheck.IsDangerousUnicode(%U) = false, want true", r)
 		}
 	}
 
 	// ── GIVEN: safe Unicode code points → THEN: returns false ──
 	safe := []rune{'A', '中', '!', ' ', '\t', '\n', 0x200A, 0x2070}
 	for _, r := range safe {
-		if isDangerousUnicode(r) {
-			t.Errorf("isDangerousUnicode(%U) = true, want false", r)
+		if charcheck.IsDangerousUnicode(r) {
+			t.Errorf("charcheck.IsDangerousUnicode(%U) = true, want false", r)
 		}
 	}
 }

@@ -7,14 +7,17 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"os"
 	"testing"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // noopKeychain is a no-op KeychainAccess for tests that don't need keychain.
@@ -62,12 +65,13 @@ func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer,
 	)
 
 	f := &Factory{
-		Config:     func() (*core.CliConfig, error) { return config, nil },
-		HttpClient: func() (*http.Client, error) { return mockClient, nil },
-		LarkClient: func() (*lark.Client, error) { return testLarkClient, nil },
-		IOStreams:  &IOStreams{In: nil, Out: stdoutBuf, ErrOut: stderrBuf},
-		Keychain:   &noopKeychain{},
-		Credential: testCred,
+		Config:         func() (*core.CliConfig, error) { return config, nil },
+		HttpClient:     func() (*http.Client, error) { return mockClient, nil },
+		LarkClient:     func() (*lark.Client, error) { return testLarkClient, nil },
+		IOStreams:      &IOStreams{In: nil, Out: stdoutBuf, ErrOut: stderrBuf},
+		Keychain:       &noopKeychain{},
+		Credential:     testCred,
+		FileIOProvider: fileio.GetProvider(),
 	}
 	return f, stdoutBuf, stderrBuf, reg
 }
@@ -81,6 +85,23 @@ func (a *testDefaultAcct) ResolveAccount(ctx context.Context) (*credential.Accou
 		return &credential.Account{}, nil
 	}
 	return credential.AccountFromCliConfig(a.config), nil
+}
+
+// TestChdir changes the working directory to dir for the duration of the test.
+// The original directory is restored via t.Cleanup.
+// This enables tests to use LocalFileIO (which resolves relative paths under cwd)
+// with temporary directories, keeping test artifacts out of the source tree.
+// Not compatible with t.Parallel() — os.Chdir is process-wide.
+func TestChdir(t *testing.T, dir string) {
+	t.Helper()
+	orig, err := vfs.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil { //nolint:forbidigo // no vfs.Chdir yet; test-only, process-wide chdir
+		t.Fatalf("Chdir(%s): %v", dir, err)
+	}
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:forbidigo // matching restore
 }
 
 type testDefaultToken struct{}

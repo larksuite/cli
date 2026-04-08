@@ -460,7 +460,7 @@ func TestRemoveInlineFailsWhenHTMLStillReferencesCID(t *testing.T) {
 	}
 }
 
-func TestApplySetBodyOrphanedInlineCIDIsRejected(t *testing.T) {
+func TestApplySetBodyOrphanedInlineCIDIsAutoRemoved(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, `Subject: Inline
 From: Alice <alice@example.com>
 To: Bob <bob@example.com>
@@ -480,12 +480,18 @@ Content-Transfer-Encoding: base64
 cG5n
 --rel--
 `)
-	// set_body that drops the existing cid:logo reference → logo becomes orphaned
+	// set_body that drops the existing cid:logo reference → logo is auto-removed
 	err := Apply(snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<div>replaced body without cid reference</div>"}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "orphaned cids") {
-		t.Fatalf("expected orphaned cid error, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	// The orphaned inline part should be removed from the MIME tree.
+	for _, part := range flattenParts(snapshot.Body) {
+		if part != nil && part.ContentID == "logo" {
+			t.Fatal("expected orphaned inline part 'logo' to be removed")
+		}
 	}
 }
 
@@ -641,12 +647,18 @@ Content-Type: text/html; charset=UTF-8
 		t.Fatalf("Apply(set_body) error = %v", err)
 	}
 
-	// Step 3: set_body again dropping the CID reference — should fail validation
+	// Step 3: set_body again dropping the CID reference — orphaned inline part
+	// should be auto-removed (not error), matching the auto-cleanup behavior.
 	err = Apply(snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div>no image here</div>`}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "orphaned cids") {
-		t.Fatalf("expected orphaned cid error, got: %v", err)
+	if err != nil {
+		t.Fatalf("Apply(set_body drop CID) error = %v", err)
+	}
+	for _, part := range flattenParts(snapshot.Body) {
+		if part != nil && part.ContentID == "logo" {
+			t.Fatal("expected orphaned inline part 'logo' to be auto-removed")
+		}
 	}
 }
 
@@ -723,6 +735,23 @@ func TestReplaceInlineRejectsCRLFInCID(t *testing.T) {
 	}
 	snapshot := mustParseFixtureDraft(t, fixtureData)
 	for _, bad := range []string{"logo\ninjected", "logo\rinjected"} {
+		err := Apply(snapshot, Patch{
+			Ops: []PatchOp{{Op: "replace_inline", Target: AttachmentTarget{PartID: "1.2"}, Path: "updated.png", CID: bad}},
+		})
+		if err == nil {
+			t.Errorf("expected error for CID %q, got nil", bad)
+		}
+	}
+}
+
+func TestReplaceInlineRejectsInvalidCIDChars(t *testing.T) {
+	fixtureData := mustReadFixture(t, "testdata/html_inline_draft.eml")
+	chdirTemp(t)
+	if err := os.WriteFile("updated.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	snapshot := mustParseFixtureDraft(t, fixtureData)
+	for _, bad := range []string{"my logo", "a\tb", "cid<x>", "cid(x)"} {
 		err := Apply(snapshot, Patch{
 			Ops: []PatchOp{{Op: "replace_inline", Target: AttachmentTarget{PartID: "1.2"}, Path: "updated.png", CID: bad}},
 		})

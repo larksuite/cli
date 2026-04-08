@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
+	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
 
@@ -1770,11 +1771,33 @@ func normalizeInlineCID(cid string) string {
 	return strings.TrimSpace(trimmed)
 }
 
-func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, error) {
+// validateInlineCIDs checks bidirectional CID consistency between HTML body and
+// inline MIME parts — the same checks as postProcessInlineImages in draft-edit.
+//  1. Every cid: reference in HTML must have a corresponding inline part (checked
+//     against userCIDs + extraCIDs combined).
+//  2. Every user-provided inline part must be referenced in HTML (orphan check
+//     against userCIDs only — extraCIDs such as source-message images in
+//     reply/forward are excluded because quoting may drop some references).
+func validateInlineCIDs(html string, userCIDs, extraCIDs []string) error {
+	allCIDs := append(append([]string{}, userCIDs...), extraCIDs...)
+	if err := draftpkg.ValidateCIDReferences(html, allCIDs); err != nil {
+		return err
+	}
+	if len(userCIDs) > 0 {
+		orphaned := draftpkg.FindOrphanedCIDs(html, userCIDs)
+		if len(orphaned) > 0 {
+			return fmt.Errorf("inline images with cids %v are not referenced by any <img src=\"cid:...\"> in the HTML body and will appear as unexpected attachments; remove unused --inline entries or add matching <img> tags", orphaned)
+		}
+	}
+	return nil
+}
+
+func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, []string, error) {
+	var cids []string
 	for _, img := range images {
 		content, err := downloadAttachmentContent(runtime, img.DownloadURL)
 		if err != nil {
-			return bld, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
+			return bld, nil, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
 		}
 		cid := normalizeInlineCID(img.CID)
 		if cid == "" {
@@ -1785,8 +1808,9 @@ func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Bui
 			contentType = "application/octet-stream"
 		}
 		bld = bld.AddInline(content, contentType, img.Filename, cid)
+		cids = append(cids, cid)
 	}
-	return bld, nil
+	return bld, cids, nil
 }
 
 // InlineSpec represents one inline image entry from the --inline JSON array.
@@ -1961,13 +1985,14 @@ func validateComposeInlineAndAttachments(attachFlag, inlineFlag string, plainTex
 			return fmt.Errorf("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
 		}
 	}
+	// Validate explicitly provided files (--attach + --inline) early so that
+	// dry-run and reply/forward can catch local errors before Execute.
+	// Auto-resolved local images are only known at Execute time, so Execute
+	// performs a second, complete size check that includes them.
 	inlineSpecs, err := parseInlineSpecs(inlineFlag)
 	if err != nil {
 		return err
 	}
 	allFiles := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
-	if err := checkAttachmentSizeLimit(allFiles, 0); err != nil {
-		return err
-	}
-	return nil
+	return checkAttachmentSizeLimit(allFiles, 0)
 }

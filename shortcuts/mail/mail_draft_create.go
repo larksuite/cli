@@ -148,22 +148,41 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 	if input.BCC != "" {
 		bld = bld.BCCAddrs(parseNetAddrs(input.BCC))
 	}
-	if input.PlainText {
-		bld = bld.TextBody([]byte(input.Body))
-	} else if bodyIsHTML(input.Body) {
-		bld = bld.HTMLBody([]byte(input.Body))
-	} else {
-		bld = bld.TextBody([]byte(input.Body))
-	}
 	inlineSpecs, err := parseInlineSpecs(input.Inline)
 	if err != nil {
 		return "", output.ErrValidation("%v", err)
 	}
+	var autoResolvedPaths []string
+	if input.PlainText {
+		bld = bld.TextBody([]byte(input.Body))
+	} else if bodyIsHTML(input.Body) {
+		resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(input.Body)
+		if resolveErr != nil {
+			return "", resolveErr
+		}
+		bld = bld.HTMLBody([]byte(resolved))
+		var allCIDs []string
+		for _, ref := range refs {
+			bld = bld.AddFileInline(ref.FilePath, ref.CID)
+			autoResolvedPaths = append(autoResolvedPaths, ref.FilePath)
+			allCIDs = append(allCIDs, ref.CID)
+		}
+		for _, spec := range inlineSpecs {
+			bld = bld.AddFileInline(spec.FilePath, spec.CID)
+			allCIDs = append(allCIDs, spec.CID)
+		}
+		if err := validateInlineCIDs(resolved, allCIDs, nil); err != nil {
+			return "", err
+		}
+	} else {
+		bld = bld.TextBody([]byte(input.Body))
+	}
+	allFilePaths := append(append(splitByComma(input.Attach), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
+	if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
+		return "", err
+	}
 	for _, path := range splitByComma(input.Attach) {
 		bld = bld.AddFileAttachment(path)
-	}
-	for _, spec := range inlineSpecs {
-		bld = bld.AddFileInline(spec.FilePath, spec.CID)
 	}
 	rawEML, err := bld.BuildBase64URL()
 	if err != nil {

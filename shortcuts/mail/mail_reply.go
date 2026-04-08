@@ -128,23 +128,44 @@ var MailReply = common.Shortcut{
 		if messageId != "" {
 			bld = bld.LMSReplyToMessageID(messageId)
 		}
+		var autoResolvedPaths []string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply blocked: %w", err)
 			}
-			bld = bld.HTMLBody([]byte(bodyStr + quoted))
-			bld, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
+			var srcCIDs []string
+			bld, srcCIDs, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
 			if err != nil {
+				return err
+			}
+			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(bodyStr)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			fullHTML := resolved + quoted
+			bld = bld.HTMLBody([]byte(fullHTML))
+			var userCIDs []string
+			for _, ref := range refs {
+				bld = bld.AddFileInline(ref.FilePath, ref.CID)
+				autoResolvedPaths = append(autoResolvedPaths, ref.FilePath)
+				userCIDs = append(userCIDs, ref.CID)
+			}
+			for _, spec := range inlineSpecs {
+				bld = bld.AddFileInline(spec.FilePath, spec.CID)
+				userCIDs = append(userCIDs, spec.CID)
+			}
+			if err := validateInlineCIDs(resolved, userCIDs, srcCIDs); err != nil {
 				return err
 			}
 		} else {
 			bld = bld.TextBody([]byte(bodyStr + quoted))
 		}
+		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
+		if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
+			return err
+		}
 		for _, path := range splitByComma(attachFlag) {
 			bld = bld.AddFileAttachment(path)
-		}
-		for _, spec := range inlineSpecs {
-			bld = bld.AddFileInline(spec.FilePath, spec.CID)
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {

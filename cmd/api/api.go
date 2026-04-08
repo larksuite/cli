@@ -199,7 +199,7 @@ func apiRun(opts *APIOptions) error {
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
-		return output.MarkRaw(output.ErrNetwork("API call failed: %v", err))
+		return output.MarkRaw(client.WrapDoAPIError(err))
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath: opts.Output,
@@ -207,6 +207,7 @@ func apiRun(opts *APIOptions) error {
 		JqExpr:     opts.JqExpr,
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
+		FileIO:     f.ResolveFileIO(opts.Ctx),
 	})
 	// MarkRaw tells root error handler to skip enrichPermissionError,
 	// preserving the original API error detail (log_id, troubleshooter, etc.).
