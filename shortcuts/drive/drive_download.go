@@ -7,13 +7,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
+	"os"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -51,12 +51,12 @@ var DriveDownload = common.Shortcut{
 		if outputPath == "" {
 			outputPath = fileToken
 		}
-		safePath, err := validate.SafeOutputPath(outputPath)
-		if err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
-		}
-		if err := common.EnsureWritableFile(safePath, overwrite); err != nil {
-			return err
+
+		// Early path validation + overwrite check via FileIO.Stat
+		if _, statErr := runtime.FileIO().Stat(outputPath); statErr != nil && !os.IsNotExist(statErr) {
+			return output.ErrValidation("unsafe output path: %s", statErr)
+		} else if statErr == nil && !overwrite {
+			return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Downloading: %s\n", common.MaskToken(fileToken))
@@ -70,18 +70,21 @@ var DriveDownload = common.Shortcut{
 		}
 		defer resp.Body.Close()
 
-		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-			return output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
-		}
-
-		sizeBytes, err := validate.AtomicWriteFromReader(safePath, resp.Body, 0600)
+		result, err := runtime.FileIO().Save(outputPath, fileio.SaveOptions{
+			ContentType:   resp.Header.Get("Content-Type"),
+			ContentLength: resp.ContentLength,
+		}, resp.Body)
 		if err != nil {
-			return output.Errorf(output.ExitInternal, "api_error", "cannot create file: %s", err)
+			return common.WrapSaveErrorByCategory(err, "api_error")
 		}
 
+		savedPath, _ := runtime.ResolveSavePath(outputPath)
+		if savedPath == "" {
+			savedPath = outputPath
+		}
 		runtime.Out(map[string]interface{}{
-			"saved_path": safePath,
-			"size_bytes": sizeBytes,
+			"saved_path": savedPath,
+			"size_bytes": result.Size(),
 		}, nil)
 		return nil
 	},

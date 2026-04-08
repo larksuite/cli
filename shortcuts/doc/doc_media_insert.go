@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -79,7 +79,7 @@ var DocMediaInsert = common.Shortcut{
 			POST("/open-apis/docx/v1/documents/:document_id/blocks/:document_id/children").
 			Desc(fmt.Sprintf("[%d] Create empty block at document end", stepBase+1)).
 			Body(createBlockData)
-		appendDocMediaInsertUploadDryRun(d, filePath, parentType, stepBase+2)
+		appendDocMediaInsertUploadDryRun(d, runtime.FileIO(), filePath, parentType, stepBase+2)
 		d.PATCH("/open-apis/docx/v1/documents/:document_id/blocks/batch_update").
 			Desc(fmt.Sprintf("[%d] Bind uploaded file token to the new block", stepBase+3)).
 			Body(batchUpdateData)
@@ -93,20 +93,15 @@ var DocMediaInsert = common.Shortcut{
 		alignStr := runtime.Str("align")
 		caption := runtime.Str("caption")
 
-		safeFilePath, pathErr := validate.SafeInputPath(filePath)
-		if pathErr != nil {
-			return output.ErrValidation("unsafe file path: %s", pathErr)
-		}
-
 		documentID, err := resolveDocxDocumentID(runtime, docInput)
 		if err != nil {
 			return err
 		}
 
 		// Validate file
-		stat, err := vfs.Stat(safeFilePath)
+		stat, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return output.ErrValidation("file not found: %s", filePath)
+			return common.WrapInputStatError(err, "file not found")
 		}
 		if !stat.Mode().IsRegular() {
 			return output.ErrValidation("file must be a regular file: %s", filePath)
@@ -347,12 +342,12 @@ func extractCreatedBlockTargets(createData map[string]interface{}, mediaType str
 	return blockID, uploadParentNode, replaceBlockID
 }
 
-func appendDocMediaInsertUploadDryRun(d *common.DryRunAPI, filePath, parentType string, step int) {
+func appendDocMediaInsertUploadDryRun(d *common.DryRunAPI, fio fileio.FileIO, filePath, parentType string, step int) {
 	// The upload step runs only after the empty placeholder block is created, so
 	// dry-run can refer to that future block ID only symbolically. For large
 	// files, keep multipart internals as substeps of the single user-facing
 	// "upload file" step.
-	if docMediaShouldUseMultipart(filePath) {
+	if docMediaShouldUseMultipart(fio, filePath) {
 		d.POST("/open-apis/drive/v1/medias/upload_prepare").
 			Desc(fmt.Sprintf("[%da] Initialize multipart upload", step)).
 			Body(map[string]interface{}{
