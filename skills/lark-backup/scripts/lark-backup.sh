@@ -116,6 +116,46 @@ format_index() {
   printf "%0${width}d\n" "$index"
 }
 
+table_list_page_info() {
+  local page_json="$1"
+  local err_out info
+
+  err_out="$(json_tmp)"
+  if ! info="$(jq -er '
+    [
+      ((.data.items // []) | length),
+      (.data.has_more // false),
+      (.data.total // 0)
+    ] | @tsv
+  ' "$page_json" 2>"$err_out")"; then
+    [[ -s "$err_out" ]] && cat "$err_out" >&2
+    fail "failed to parse base +table-list pagination metadata from $page_json"
+  fi
+
+  printf '%s\n' "$info"
+}
+
+record_list_page_info() {
+  local page_json="$1"
+  local err_out info
+
+  err_out="$(json_tmp)"
+  if ! info="$(jq -er '
+    if (.data.records.rows? | type) == "array" then
+      [(.data.records.rows | length), (.data.has_more // false), (.data.total // 0)] | @tsv
+    elif (.data.data? | type) == "array" then
+      [(.data.data | length), (.data.has_more // false), (.data.total // 0)] | @tsv
+    else
+      error("expected .data.records.rows or .data.data array")
+    end
+  ' "$page_json" 2>"$err_out")"; then
+    [[ -s "$err_out" ]] && cat "$err_out" >&2
+    fail "unsupported base +record-list response shape in $page_json"
+  fi
+
+  printf '%s\n' "$info"
+}
+
 run_shortcut_json() {
   local out="$1"
   local err_out
@@ -341,9 +381,7 @@ list_all_base_tables() {
     jq -s '.[0] + .[1]' "$merged_json" "$items_json" >"$next_merged_json"
     mv "$next_merged_json" "$merged_json"
 
-    count="$(jq -r '(.data.items // []) | length' "$page_json")"
-    has_more="$(jq -r '.data.has_more // false' "$page_json")"
-    total="$(jq -r '.data.total // 0' "$page_json")"
+    IFS=$'\t' read -r count has_more total <<<"$(table_list_page_info "$page_json")"
 
     if [[ "$count" -eq 0 ]]; then
       break
@@ -417,9 +455,7 @@ backup_base() {
         lark-cli base +record-list --as "$IDENTITY" \
         --base-token "$token" --table-id "$table_id" --offset "$offset" --limit 200
 
-      count="$(jq -r '((.data.records.rows // .data.data // []) | length)' "$page_json")"
-      has_more="$(jq -r '.data.has_more // false' "$page_json")"
-      total="$(jq -r '.data.total // 0' "$page_json")"
+      IFS=$'\t' read -r count has_more total <<<"$(record_list_page_info "$page_json")"
 
       if [[ "$count" -eq 0 ]]; then
         break
