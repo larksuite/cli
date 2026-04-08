@@ -14,10 +14,9 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -91,14 +90,11 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 
 func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 	filePath := runtime.Str("file")
-	safeFilePath, err := validate.SafeInputPath(filePath)
+	fileInfo, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
-		return output.ErrValidation("unsafe file path: %s", err)
-	}
-	filePath = safeFilePath
-
-	fileInfo, err := vfs.Stat(filePath)
-	if err != nil {
+		if errors.Is(err, fileio.ErrPathValidation) {
+			return output.ErrValidation("unsafe file path: %s", err)
+		}
 		return output.ErrValidation("file not found: %s", filePath)
 	}
 	if fileInfo.Size() > baseAttachmentUploadMaxFileSize {
@@ -209,7 +205,7 @@ func normalizeAttachmentForPatch(attachment map[string]interface{}) map[string]i
 }
 
 func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, baseToken string, fileSize int64) (map[string]interface{}, error) {
-	f, err := vfs.Open(filePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
 		return nil, output.ErrValidation("cannot open file: %v", err)
 	}

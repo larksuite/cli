@@ -35,7 +35,7 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 }
 
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, _ := parseJSONObject(runtime.Str("json"), "json")
+	body, _ := parseJSONObject(runtime.FileIO(), runtime.Str("json"), "json")
 	if recordID := runtime.Str("record-id"); recordID != "" {
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
@@ -106,7 +106,7 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordUpsert(runtime *common.RuntimeContext) error {
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	body, err := parseJSONObject(runtime.FileIO(), runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}

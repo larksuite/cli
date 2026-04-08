@@ -36,7 +36,7 @@ func dryRunViewGet(_ context.Context, runtime *common.RuntimeContext) *common.Dr
 
 func dryRunViewCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	api := dryRunViewBase(runtime)
-	bodyList, err := parseObjectList(runtime.Str("json"), "json")
+	bodyList, err := parseObjectList(runtime.FileIO(), runtime.Str("json"), "json")
 	if err != nil || len(bodyList) == 0 {
 		return api.POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/views")
 	}
@@ -57,14 +57,14 @@ func dryRunViewGetProperty(runtime *common.RuntimeContext, segment string) *comm
 }
 
 func dryRunViewSetJSONObject(runtime *common.RuntimeContext, segment string) *common.DryRunAPI {
-	body, _ := parseJSONObject(runtime.Str("json"), "json")
+	body, _ := parseJSONObject(runtime.FileIO(), runtime.Str("json"), "json")
 	return dryRunViewBase(runtime).
 		PUT(fmt.Sprintf("/open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/%s", url.PathEscape(segment))).
 		Body(body)
 }
 
 func dryRunViewSetWrapped(runtime *common.RuntimeContext, segment string, wrapper string) *common.DryRunAPI {
-	raw, err := parseJSONValue(runtime.Str("json"), "json")
+	raw, err := parseJSONValue(runtime.FileIO(), runtime.Str("json"), "json")
 	if err != nil {
 		raw = nil
 	}
@@ -170,7 +170,7 @@ func executeViewGet(runtime *common.RuntimeContext) error {
 func executeViewCreate(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
-	viewItems, err := parseObjectList(runtime.Str("json"), "json")
+	viewItems, err := parseObjectList(runtime.FileIO(), runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}
@@ -214,7 +214,7 @@ func executeViewSetJSONObject(runtime *common.RuntimeContext, segment string, ke
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	body, err := parseJSONObject(runtime.FileIO(), runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}
@@ -230,7 +230,7 @@ func executeViewSetWrapped(runtime *common.RuntimeContext, segment string, wrapp
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
-	raw, err := parseJSONValue(runtime.Str("json"), "json")
+	raw, err := parseJSONValue(runtime.FileIO(), runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}

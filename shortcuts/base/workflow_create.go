@@ -25,19 +25,19 @@ var BaseWorkflowCreate = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
 			return common.FlagErrorf("--base-token must not be blank")
 		}
-		raw, err := loadJSONInput(runtime.Str("json"), "json")
+		raw, err := loadJSONInput(runtime.FileIO(), runtime.Str("json"), "json")
 		if err != nil {
 			return err
 		}
-		if _, err := parseJSONObject(raw, "json"); err != nil {
+		if _, err := parseJSONObject(runtime.FileIO(), raw, "json"); err != nil {
 			return err
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		var body map[string]interface{}
-		if raw, err := loadJSONInput(runtime.Str("json"), "json"); err == nil {
-			body, _ = parseJSONObject(raw, "json")
+		if raw, err := loadJSONInput(runtime.FileIO(), runtime.Str("json"), "json"); err == nil {
+			body, _ = parseJSONObject(runtime.FileIO(), raw, "json")
 		}
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/workflows").
@@ -45,11 +45,11 @@ var BaseWorkflowCreate = common.Shortcut{
 			Set("base_token", runtime.Str("base-token"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		raw, err := loadJSONInput(runtime.Str("json"), "json")
+		raw, err := loadJSONInput(runtime.FileIO(), runtime.Str("json"), "json")
 		if err != nil {
 			return err
 		}
-		body, err := parseJSONObject(raw, "json")
+		body, err := parseJSONObject(runtime.FileIO(), raw, "json")
 		if err != nil {
 			return err
 		}
