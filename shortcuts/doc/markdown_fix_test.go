@@ -284,45 +284,6 @@ func TestFixCalloutEmoji(t *testing.T) {
 	}
 }
 
-func TestFixCodeBlockTrailingBlanks(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "blank before closing fence removed",
-			input: "```\ncode\n\n```",
-			want:  "```\ncode\n```",
-		},
-		{
-			name:  "no trailing blank unchanged",
-			input: "```\ncode\n```",
-			want:  "```\ncode\n```",
-		},
-		{
-			// Inside a code block, ```go is just content; only plain ``` closes.
-			// This handles create-doc's malformed output where ``` (no lang) closes blocks.
-			name:  "language fence inside block is content, plain fence closes",
-			input: "```markdown\n```go\nfunc f() {}\n\n```",
-			want:  "```markdown\n```go\nfunc f() {}\n```",
-		},
-		{
-			name:  "outside code block blank lines untouched",
-			input: "text\n\nmore",
-			want:  "text\n\nmore",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := fixCodeBlockTrailingBlanks(tt.input)
-			if got != tt.want {
-				t.Errorf("fixCodeBlockTrailingBlanks(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestApplyOutsideCodeFences(t *testing.T) {
 	// Transforms should not modify content inside fenced code blocks.
 	input := "```md\n**x **\n> a\n> b\nline\n---\n```"
