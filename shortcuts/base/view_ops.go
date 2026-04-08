@@ -146,10 +146,6 @@ func validateViewJSONValue(runtime *common.RuntimeContext) error {
 	return nil
 }
 
-func validateViewVisibleFields(_ *common.RuntimeContext) error {
-	return nil
-}
-
 func executeViewList(runtime *common.RuntimeContext) error {
 	offset := runtime.Int("offset")
 	if offset < 0 {

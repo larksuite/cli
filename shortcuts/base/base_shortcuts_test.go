@@ -120,36 +120,9 @@ func TestWrapViewPropertyBody(t *testing.T) {
 	}
 }
 
-func TestValidateViewVisibleFields(t *testing.T) {
-	ctx := context.Background()
-	validRT := newBaseTestRuntime(map[string]string{
-		"base-token": "app_x",
-		"table-id":   "tbl_x",
-		"view-id":    "vew_x",
-		"json":       `{"visible_fields":["fld_status"]}`,
-	}, nil, nil)
-	if err := BaseViewSetVisibleFields.Validate(ctx, validRT); err != nil {
-		t.Fatalf("valid json err=%v", err)
-	}
-
-	missingKeyRT := newBaseTestRuntime(map[string]string{
-		"base-token": "app_x",
-		"table-id":   "tbl_x",
-		"view-id":    "vew_x",
-		"json":       `{"fields":["fld_status"]}`,
-	}, nil, nil)
-	if err := BaseViewSetVisibleFields.Validate(ctx, missingKeyRT); err != nil {
-		t.Fatalf("err=%v", err)
-	}
-
-	arrayRT := newBaseTestRuntime(map[string]string{
-		"base-token": "app_x",
-		"table-id":   "tbl_x",
-		"view-id":    "vew_x",
-		"json":       `["fld_status"]`,
-	}, nil, nil)
-	if err := BaseViewSetVisibleFields.Validate(ctx, arrayRT); err != nil {
-		t.Fatalf("err=%v", err)
+func TestViewSetVisibleFieldsNoValidateHook(t *testing.T) {
+	if BaseViewSetVisibleFields.Validate != nil {
+		t.Fatalf("expected no validate hook, got non-nil")
 	}
 }
 
