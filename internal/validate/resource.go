@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/larksuite/cli/internal/charcheck"
 )
 
 // unsafeResourceChars matches URL-special characters, control characters,
@@ -35,7 +37,7 @@ func ResourceName(name, flagName string) error {
 		return fmt.Errorf("%s contains invalid characters", flagName)
 	}
 	for _, r := range name {
-		if isDangerousUnicode(r) {
+		if charcheck.IsDangerousUnicode(r) {
 			return fmt.Errorf("%s contains dangerous Unicode characters", flagName)
 		}
 	}

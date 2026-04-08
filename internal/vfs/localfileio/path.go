@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/internal/charcheck"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -37,7 +38,7 @@ func SafeLocalFlagPath(flagName, value string) (string, error) {
 // It requires an absolute path, rejects control characters, normalizes the
 // input, and resolves symlinks through the nearest existing ancestor.
 func SafeEnvDirPath(path, envName string) (string, error) {
-	if err := rejectControlChars(path, envName); err != nil {
+	if err := charcheck.RejectControlChars(path, envName); err != nil {
 		return "", err
 	}
 
@@ -55,7 +56,7 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 
 // safePath is the shared implementation for SafeOutputPath and SafeInputPath.
 func safePath(raw, flagName string) (string, error) {
-	if err := rejectControlChars(raw, flagName); err != nil {
+	if err := charcheck.RejectControlChars(raw, flagName); err != nil {
 		return "", err
 	}
 
@@ -121,33 +122,10 @@ func isUnderDir(child, parent string) bool {
 	return !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".."
 }
 
-// rejectControlChars rejects C0 control characters (except \t and \n) and
-// dangerous Unicode characters (Bidi overrides, zero-width, line/paragraph
-// separators) that enable visual spoofing attacks.
-func rejectControlChars(value, flagName string) error {
-	for _, r := range value {
-		if r != '\t' && r != '\n' && (r < 0x20 || r == 0x7f) {
-			return fmt.Errorf("%s contains invalid control characters", flagName)
-		}
-		if isDangerousUnicode(r) {
-			return fmt.Errorf("%s contains dangerous Unicode characters", flagName)
-		}
-	}
-	return nil
-}
+// RejectControlChars delegates to charcheck.RejectControlChars.
+// Kept as a package-level alias for backward compatibility with callers
+// that import localfileio directly.
+var RejectControlChars = charcheck.RejectControlChars
 
-func isDangerousUnicode(r rune) bool {
-	switch {
-	case r >= 0x200B && r <= 0x200D: // zero-width space/non-joiner/joiner
-		return true
-	case r == 0xFEFF: // BOM / ZWNBSP
-		return true
-	case r >= 0x202A && r <= 0x202E: // Bidi: LRE/RLE/PDF/LRO/RLO
-		return true
-	case r >= 0x2028 && r <= 0x2029: // line/paragraph separator
-		return true
-	case r >= 0x2066 && r <= 0x2069: // Bidi isolates: LRI/RLI/FSI/PDI
-		return true
-	}
-	return false
-}
+// IsDangerousUnicode delegates to charcheck.IsDangerousUnicode.
+var IsDangerousUnicode = charcheck.IsDangerousUnicode

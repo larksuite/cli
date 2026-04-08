@@ -317,21 +317,32 @@ func (ctx *RuntimeContext) FileIO() fileio.FileIO {
 	return nil
 }
 
-// ResolveSavePath returns the validated absolute path for user-facing output.
-// Falls back to the original path if resolution fails (e.g. server mode).
-func (ctx *RuntimeContext) ResolveSavePath(path string) string {
-	if fio := ctx.FileIO(); fio != nil {
-		if resolved, err := fio.ResolvePath(path); err == nil && resolved != "" {
-			return resolved
-		}
+// ResolveSavePath resolves a relative path to a validated absolute path via
+// FileIO.ResolvePath. It returns an error if no FileIO provider is registered
+// or if the path fails validation (e.g. traversal, symlink escape).
+func (ctx *RuntimeContext) ResolveSavePath(path string) (string, error) {
+	fio := ctx.FileIO()
+	if fio == nil {
+		return "", fmt.Errorf("no file I/O provider registered")
 	}
-	return path
+	resolved, err := fio.ResolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve save path: %w", err)
+	}
+	if resolved == "" {
+		return "", fmt.Errorf("resolve save path: empty result for %q", path)
+	}
+	return resolved, nil
 }
 
-// ValidatePath checks that path is a valid relative path within the working
-// directory (via FileIO.Stat). Returns nil if the path is valid or does not
-// exist yet; returns an error only for illegal paths (absolute, traversal,
-// symlink escape, control chars).
+// ValidatePath checks that path is a valid relative input path within the
+// working directory by delegating to FileIO.Stat. Returns nil if the path is
+// valid or does not exist yet; returns an error only for illegal paths
+// (absolute, traversal, symlink escape, control chars).
+//
+// NOTE: This validates input (read) paths via SafeInputPath semantics inside
+// the FileIO implementation. For output (write) path validation, use
+// ResolveSavePath instead.
 func (ctx *RuntimeContext) ValidatePath(path string) error {
 	fio := ctx.FileIO()
 	if fio == nil {

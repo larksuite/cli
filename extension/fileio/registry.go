@@ -11,7 +11,10 @@ var (
 )
 
 // Register registers a FileIO Provider.
-// Later registrations override earlier ones.
+// Later registrations override earlier ones (last-write-wins).
+// Unlike credential.Register which appends to a chain (multiple credential
+// sources are tried in order), FileIO uses a single active provider because
+// only one file I/O backend is active at a time (local vs server mode).
 // Typically called from init() via blank import.
 func Register(p Provider) {
 	mu.Lock()

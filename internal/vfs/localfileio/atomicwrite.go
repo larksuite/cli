@@ -42,10 +42,13 @@ func atomicWrite(path string, perm os.FileMode, writeFn func(tmp *os.File) error
 	}
 	tmpName := tmp.Name()
 
+	closed := false
 	success := false
 	defer func() {
 		if !success {
-			tmp.Close()
+			if !closed {
+				tmp.Close()
+			}
 			vfs.Remove(tmpName)
 		}
 	}()
@@ -62,6 +65,7 @@ func atomicWrite(path string, perm os.FileMode, writeFn func(tmp *os.File) error
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+	closed = true
 	if err := vfs.Rename(tmpName, path); err != nil {
 		return err
 	}
