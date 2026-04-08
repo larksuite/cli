@@ -10,37 +10,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
-	ctx        context.Context // from cmd.Context(), propagated through the call chain
-	Config     *core.CliConfig
-	Cmd        *cobra.Command
-	Format     string
-	JqExpr     string            // --jq expression; empty = no filter
-	outputErr  error             // deferred error from Out()/OutFormat() jq filtering
-	botOnly    bool              // set by framework for bot-only shortcuts
-	resolvedAs core.Identity     // effective identity resolved by framework
-	Factory    *cmdutil.Factory  // injected by framework
-	apiClient  *client.APIClient // lazily initialized, cached
-	larkSDK    *lark.Client      // eagerly initialized in mountDeclarative
+	ctx           context.Context // from cmd.Context(), propagated through the call chain
+	Config        *core.CliConfig
+	Cmd           *cobra.Command
+	Format        string
+	JqExpr        string                            // --jq expression; empty = no filter
+	outputErrOnce sync.Once                         // guards first-error capture in Out()/OutFormat()
+	outputErr     error                             // deferred error from jq filtering; written at most once
+	botOnly       bool                              // set by framework for bot-only shortcuts
+	resolvedAs    core.Identity                     // effective identity resolved by framework
+	Factory       *cmdutil.Factory                  // injected by framework
+	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
 }
 
 // ── Identity ──
@@ -73,18 +75,13 @@ func (ctx *RuntimeContext) UserOpenId() string { return ctx.Config.UserOpenId }
 func (ctx *RuntimeContext) Ctx() context.Context { return ctx.ctx }
 
 // getAPIClient returns the cached APIClient, creating it on first use.
+// Thread-safe via sync.OnceValues (initialized in newRuntimeContext).
+// Falls back to direct construction for test contexts that bypass newRuntimeContext.
 func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
-	if ctx.apiClient != nil {
-		return ctx.apiClient, nil
+	if ctx.apiClientFunc != nil {
+		return ctx.apiClientFunc()
 	}
-	ac, err := ctx.Factory.NewAPIClient()
-	if err != nil {
-		return nil, err
-	}
-	// Override config with the one resolved for this context (may differ from Factory's)
-	ac.Config = ctx.Config
-	ctx.apiClient = ac
-	return ac, nil
+	return ctx.Factory.NewAPIClientWithConfig(ctx.Config)
 }
 
 // AccessToken returns a valid access token for the current identity.
@@ -296,6 +293,95 @@ func (ctx *RuntimeContext) IO() *cmdutil.IOStreams {
 	return ctx.Factory.IOStreams
 }
 
+// FileIO resolves the FileIO using the current execution context.
+// Falls back to the globally registered provider when Factory or its
+// FileIOProvider is nil (e.g. in lightweight test helpers).
+func (ctx *RuntimeContext) FileIO() fileio.FileIO {
+	if ctx != nil && ctx.Factory != nil {
+		if fio := ctx.Factory.ResolveFileIO(ctx.ctx); fio != nil {
+			return fio
+		}
+	}
+	if p := fileio.GetProvider(); p != nil {
+		c := context.Background()
+		if ctx != nil {
+			c = ctx.ctx
+		}
+		return p.ResolveFileIO(c)
+	}
+	return nil
+}
+
+// ResolveSavePath resolves a relative path to a validated absolute path via
+// FileIO.ResolvePath. It returns an error if no FileIO provider is registered
+// or if the path fails validation (e.g. traversal, symlink escape).
+func (ctx *RuntimeContext) ResolveSavePath(path string) (string, error) {
+	fio := ctx.FileIO()
+	if fio == nil {
+		return "", fmt.Errorf("no file I/O provider registered")
+	}
+	resolved, err := fio.ResolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve save path: %w", err)
+	}
+	if resolved == "" {
+		return "", fmt.Errorf("resolve save path: empty result for %q", path)
+	}
+	return resolved, nil
+}
+
+// WrapSaveError matches a FileIO.Save error against known categories and wraps
+// it with the caller-provided message prefix, preserving backward-compatible
+// error text per shortcut.
+func WrapSaveError(err error, pathMsg, mkdirMsg, writeMsg string) error {
+	if err == nil {
+		return nil
+	}
+	var me *fileio.MkdirError
+	var we *fileio.WriteError
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return fmt.Errorf("%s: %w", pathMsg, err)
+	case errors.As(err, &me):
+		return fmt.Errorf("%s: %w", mkdirMsg, err)
+	case errors.As(err, &we):
+		return fmt.Errorf("%s: %w", writeMsg, err)
+	default:
+		return fmt.Errorf("%s: %w", writeMsg, err)
+	}
+}
+
+// WrapOpenError matches a FileIO.Open/Stat error and wraps it with the
+// caller-provided message prefix.
+func WrapOpenError(err error, pathMsg, readMsg string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return fmt.Errorf("%s: %w", pathMsg, err)
+	}
+	return fmt.Errorf("%s: %w", readMsg, err)
+}
+
+// ValidatePath checks that path is a valid relative input path within the
+// working directory by delegating to FileIO.Stat. Returns nil if the path is
+// valid or does not exist yet; returns an error only for illegal paths
+// (absolute, traversal, symlink escape, control chars).
+//
+// NOTE: This validates input (read) paths via SafeInputPath semantics inside
+// the FileIO implementation. For output (write) path validation, use
+// ResolveSavePath instead.
+func (ctx *RuntimeContext) ValidatePath(path string) error {
+	fio := ctx.FileIO()
+	if fio == nil {
+		return fmt.Errorf("no file I/O provider registered")
+	}
+	if _, err := fio.Stat(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // ── Output helpers ──
 
 // Out prints a success JSON envelope to stdout.
@@ -304,9 +390,7 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	if ctx.JqExpr != "" {
 		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
-			if ctx.outputErr == nil {
-				ctx.outputErr = err
-			}
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
 		}
 		return
 	}
@@ -412,6 +496,7 @@ func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
 	cmd := &cobra.Command{
 		Use:   shortcut.Command,
 		Short: shortcut.Description,
+		Args:  rejectPositionalArgs(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
@@ -513,6 +598,9 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
 	rctx := &RuntimeContext{ctx: ctx, Config: config, Cmd: cmd, botOnly: botOnly, resolvedAs: as, Factory: f}
+	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
+		return f.NewAPIClientWithConfig(config)
+	})
 
 	sdk, err := f.LarkClient()
 	if err != nil {
@@ -575,11 +663,15 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if path == "" {
 				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
 			}
-			safePath, err := validate.SafeInputPath(path)
+			f, err := rctx.FileIO().Open(path)
 			if err != nil {
-				return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+				if errors.Is(err, fileio.ErrPathValidation) {
+					return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+				}
+				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}
-			data, err := vfs.ReadFile(safePath)
+			data, err := io.ReadAll(f)
+			f.Close()
 			if err != nil {
 				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
 			}
@@ -625,6 +717,19 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		output.PrintJson(f.IOStreams.Out, dryResult)
 	}
 	return nil
+}
+
+// rejectPositionalArgs returns a cobra.PositionalArgs that rejects any
+// positional arguments. The error is intentionally a plain error (not
+// ExitError) so that cobra prints usage and the root handler prints a
+// simple "Error:" line instead of a JSON envelope.
+func rejectPositionalArgs() cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return nil
+		}
+		return fmt.Errorf("positional arguments are not supported (got %q); pass values via flags", args)
+	}
 }
 
 func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {

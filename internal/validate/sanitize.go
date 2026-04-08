@@ -6,6 +6,8 @@ package validate
 import (
 	"regexp"
 	"strings"
+
+	"github.com/larksuite/cli/internal/charcheck"
 )
 
 // ansiEscape matches ANSI CSI sequences (ESC[ ... letter) and OSC sequences (ESC] ... BEL).
@@ -34,7 +36,7 @@ func SanitizeForTerminal(text string) string {
 			b.WriteRune(r)
 		case r < 0x20 || r == 0x7f:
 			continue
-		case isDangerousUnicode(r):
+		case charcheck.IsDangerousUnicode(r):
 			continue
 		default:
 			b.WriteRune(r)

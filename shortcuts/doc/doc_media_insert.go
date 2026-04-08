@@ -5,22 +5,14 @@ package doc
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"path/filepath"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-const maxFileSize = 20 * 1024 * 1024 // 20MB
 
 var alignMap = map[string]int{
 	"left":   1,
@@ -36,7 +28,7 @@ var DocMediaInsert = common.Shortcut{
 	Scopes:      []string{"docs:document.media:upload", "docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (max 20MB)", Required: true},
+		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: "image", Desc: "type: image | file"},
 		{Name: "align", Desc: "alignment: left | center | right"},
@@ -86,16 +78,9 @@ var DocMediaInsert = common.Shortcut{
 			Desc(fmt.Sprintf("[%d] Get document root block", stepBase)).
 			POST("/open-apis/docx/v1/documents/:document_id/blocks/:document_id/children").
 			Desc(fmt.Sprintf("[%d] Create empty block at document end", stepBase+1)).
-			Body(createBlockData).
-			POST("/open-apis/drive/v1/medias/upload_all").
-			Desc(fmt.Sprintf("[%d] Upload local file (multipart/form-data)", stepBase+2)).
-			Body(map[string]interface{}{
-				"file_name":   filepath.Base(filePath),
-				"parent_type": parentType,
-				"parent_node": "<new_block_id>",
-				"file":        "@" + filePath,
-			}).
-			PATCH("/open-apis/docx/v1/documents/:document_id/blocks/batch_update").
+			Body(createBlockData)
+		appendDocMediaInsertUploadDryRun(d, filePath, parentType, stepBase+2)
+		d.PATCH("/open-apis/docx/v1/documents/:document_id/blocks/batch_update").
 			Desc(fmt.Sprintf("[%d] Bind uploaded file token to the new block", stepBase+3)).
 			Body(batchUpdateData)
 
@@ -112,7 +97,6 @@ var DocMediaInsert = common.Shortcut{
 		if pathErr != nil {
 			return output.ErrValidation("unsafe file path: %s", pathErr)
 		}
-		filePath = safeFilePath
 
 		documentID, err := resolveDocxDocumentID(runtime, docInput)
 		if err != nil {
@@ -120,16 +104,19 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Validate file
-		stat, err := vfs.Stat(filePath)
+		stat, err := vfs.Stat(safeFilePath)
 		if err != nil {
 			return output.ErrValidation("file not found: %s", filePath)
 		}
-		if stat.Size() > maxFileSize {
-			return output.ErrValidation("file %.1fMB exceeds 20MB limit", float64(stat.Size())/1024/1024)
+		if !stat.Mode().IsRegular() {
+			return output.ErrValidation("file must be a regular file: %s", filePath)
 		}
 
 		fileName := filepath.Base(filePath)
 		fmt.Fprintf(runtime.IO().ErrOut, "Inserting: %s -> document %s\n", fileName, common.MaskToken(documentID))
+		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
+			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
+		}
 
 		// Step 1: Get document root block to find where to insert
 		rootData, err := runtime.CallAPI("GET",
@@ -166,7 +153,8 @@ var DocMediaInsert = common.Shortcut{
 			fmt.Fprintf(runtime.IO().ErrOut, "Resolved file block targets: upload=%s replace=%s\n", uploadParentNode, replaceBlockID)
 		}
 
-		// Rollback helper
+		// The placeholder block is created before any upload starts, so failures in
+		// later steps should try to remove it instead of leaving an empty artifact.
 		rollback := func() error {
 			fmt.Fprintf(runtime.IO().ErrOut, "Rolling back: deleting block %s\n", blockId)
 			_, err := runtime.CallAPI("DELETE",
@@ -185,7 +173,7 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Step 3: Upload media file
-		fileToken, err := uploadMediaFile(ctx, runtime, filePath, fileName, mediaType, uploadParentNode, documentID)
+		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentTypeForMediaType(mediaType), uploadParentNode, documentID)
 		if err != nil {
 			return withRollbackWarning(err)
 		}
@@ -346,6 +334,8 @@ func extractCreatedBlockTargets(createData map[string]interface{}, mediaType str
 		return blockID, uploadParentNode, replaceBlockID
 	}
 
+	// File blocks are wrapped: the created top-level block owns a nested child
+	// that is both the upload target and the replace_file target.
 	nestedChildren, _ := child["children"].([]interface{})
 	if len(nestedChildren) == 0 {
 		return blockID, uploadParentNode, replaceBlockID
@@ -357,66 +347,44 @@ func extractCreatedBlockTargets(createData map[string]interface{}, mediaType str
 	return blockID, uploadParentNode, replaceBlockID
 }
 
-// uploadMediaFile uploads a file to Feishu drive as media.
-func uploadMediaFile(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, mediaType, parentNode, docId string) (string, error) {
-	f, err := vfs.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	stat, err := f.Stat()
-	if err != nil {
-		return "", output.Errorf(output.ExitInternal, "internal_error", "failed to stat file: %v", err)
-	}
-	fileSize := stat.Size()
-
-	parentType := parentTypeForMediaType(mediaType)
-
-	// Build SDK Formdata
-	fd := larkcore.NewFormdata()
-	fd.AddField("file_name", fileName)
-	fd.AddField("parent_type", parentType)
-	fd.AddField("parent_node", parentNode)
-	fd.AddField("size", fmt.Sprintf("%d", fileSize))
-	if docId != "" {
-		extra, err := buildDriveRouteExtra(docId)
-		if err != nil {
-			return "", err
-		}
-		fd.AddField("extra", extra)
-	}
-	fd.AddFile("file", f)
-
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod: http.MethodPost,
-		ApiPath:    "/open-apis/drive/v1/medias/upload_all",
-		Body:       fd,
-	}, larkcore.WithFileUpload())
-	if err != nil {
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) {
-			return "", err
-		}
-		return "", output.ErrNetwork("file upload failed: %v", err)
+func appendDocMediaInsertUploadDryRun(d *common.DryRunAPI, filePath, parentType string, step int) {
+	// The upload step runs only after the empty placeholder block is created, so
+	// dry-run can refer to that future block ID only symbolically. For large
+	// files, keep multipart internals as substeps of the single user-facing
+	// "upload file" step.
+	if docMediaShouldUseMultipart(filePath) {
+		d.POST("/open-apis/drive/v1/medias/upload_prepare").
+			Desc(fmt.Sprintf("[%da] Initialize multipart upload", step)).
+			Body(map[string]interface{}{
+				"file_name":   filepath.Base(filePath),
+				"parent_type": parentType,
+				"parent_node": "<new_block_id>",
+				"size":        "<file_size>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_part").
+			Desc(fmt.Sprintf("[%db] Upload file parts (repeated)", step)).
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"seq":       "<chunk_index>",
+				"size":      "<chunk_size>",
+				"file":      "<chunk_binary>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_finish").
+			Desc(fmt.Sprintf("[%dc] Finalize multipart upload and get file_token", step)).
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"block_num": "<block_num>",
+			})
+		return
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", output.Errorf(output.ExitAPI, "api_error", "file upload failed: invalid response JSON: %v", err)
-	}
-
-	code, _ := util.ToFloat64(result["code"])
-	if code != 0 {
-		msg, _ := result["msg"].(string)
-		return "", output.ErrAPI(int(code), fmt.Sprintf("file upload failed: [%d] %s", int(code), msg), result["error"])
-	}
-
-	data, _ := result["data"].(map[string]interface{})
-	fileToken, _ := data["file_token"].(string)
-	if fileToken == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "file upload failed: no file_token returned")
-	}
-
-	return fileToken, nil
+	d.POST("/open-apis/drive/v1/medias/upload_all").
+		Desc(fmt.Sprintf("[%d] Upload local file (multipart/form-data)", step)).
+		Body(map[string]interface{}{
+			"file_name":   filepath.Base(filePath),
+			"parent_type": parentType,
+			"parent_node": "<new_block_id>",
+			"size":        "<file_size>",
+			"file":        "@" + filePath,
+		})
 }

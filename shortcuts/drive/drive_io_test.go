@@ -18,9 +18,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// registerDriveBotTokenStub is a no-op. TAT is now managed by CredentialProvider, not SDK.
-func registerDriveBotTokenStub(_ *httpmock.Registry) {}
-
 func driveTestConfig() *core.CliConfig {
 	return &core.CliConfig{
 		AppID: "drive-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -62,7 +59,6 @@ func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 		AppID: "drive-upload-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	// Step 1: upload_prepare
 	reg.Register(&httpmock.Stub{
@@ -72,7 +68,7 @@ func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"upload_id":  "test-upload-id",
-				"block_size": float64(maxDriveUploadFileSize),
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize),
 				"block_num":  float64(2),
 			},
 		},
@@ -116,7 +112,7 @@ func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
-	if err := fh.Truncate(maxDriveUploadFileSize + 1); err != nil {
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
 		t.Fatalf("Truncate() error: %v", err)
 	}
 	if err := fh.Close(); err != nil {
@@ -141,7 +137,6 @@ func TestDriveUploadSmallFile(t *testing.T) {
 		AppID: "drive-upload-small-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -181,7 +176,6 @@ func TestDriveUploadSmallFileAPIError(t *testing.T) {
 		AppID: "drive-upload-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -218,7 +212,6 @@ func TestDriveUploadSmallFileNoToken(t *testing.T) {
 		AppID: "drive-upload-small-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -256,7 +249,6 @@ func TestDriveUploadSmallFileInvalidJSON(t *testing.T) {
 		AppID: "drive-upload-small-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method:  "POST",
@@ -291,7 +283,6 @@ func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
 		AppID: "drive-upload-prepare-bad", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -317,7 +308,7 @@ func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
-	if err := fh.Truncate(maxDriveUploadFileSize + 1); err != nil {
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
 		t.Fatalf("Truncate() error: %v", err)
 	}
 	fh.Close()
@@ -338,7 +329,6 @@ func TestDriveUploadPartAPIError(t *testing.T) {
 		AppID: "drive-upload-part-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -347,7 +337,7 @@ func TestDriveUploadPartAPIError(t *testing.T) {
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"upload_id":  "test-upload-id",
-				"block_size": float64(maxDriveUploadFileSize),
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize),
 				"block_num":  float64(2),
 			},
 		},
@@ -380,7 +370,7 @@ func TestDriveUploadPartAPIError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
-	if err := fh.Truncate(maxDriveUploadFileSize + 1); err != nil {
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
 		t.Fatalf("Truncate() error: %v", err)
 	}
 	fh.Close()
@@ -401,7 +391,6 @@ func TestDriveUploadPartInvalidJSON(t *testing.T) {
 		AppID: "drive-upload-part-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -410,7 +399,7 @@ func TestDriveUploadPartInvalidJSON(t *testing.T) {
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"upload_id":  "test-upload-id",
-				"block_size": float64(maxDriveUploadFileSize + 1),
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize + 1),
 				"block_num":  float64(1),
 			},
 		},
@@ -433,7 +422,7 @@ func TestDriveUploadPartInvalidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
-	if err := fh.Truncate(maxDriveUploadFileSize + 1); err != nil {
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
 		t.Fatalf("Truncate() error: %v", err)
 	}
 	fh.Close()
@@ -454,7 +443,6 @@ func TestDriveUploadFinishNoToken(t *testing.T) {
 		AppID: "drive-upload-finish-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -463,7 +451,7 @@ func TestDriveUploadFinishNoToken(t *testing.T) {
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"upload_id":  "test-upload-id",
-				"block_size": float64(maxDriveUploadFileSize + 1),
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize + 1),
 				"block_num":  float64(1),
 			},
 		},
@@ -495,7 +483,7 @@ func TestDriveUploadFinishNoToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
-	if err := fh.Truncate(maxDriveUploadFileSize + 1); err != nil {
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
 		t.Fatalf("Truncate() error: %v", err)
 	}
 	fh.Close()
@@ -516,7 +504,6 @@ func TestDriveUploadWithCustomName(t *testing.T) {
 		AppID: "drive-upload-name-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
-	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",

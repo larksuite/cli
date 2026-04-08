@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -40,6 +41,17 @@ type Factory struct {
 	ResolvedIdentity     core.Identity           // identity resolved by the last ResolveAs call
 
 	Credential *credential.CredentialProvider
+
+	FileIOProvider fileio.Provider // file transfer provider (default: local filesystem)
+}
+
+// ResolveFileIO resolves a FileIO instance using the current execution context.
+// The provider controls whether the returned instance is fresh or cached.
+func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
+	if f == nil || f.FileIOProvider == nil {
+		return nil
+	}
+	return f.FileIOProvider.ResolveFileIO(ctx)
 }
 
 // ResolveAs returns the effective identity type.

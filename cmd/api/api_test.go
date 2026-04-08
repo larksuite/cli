@@ -446,6 +446,43 @@ func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
 	}
 }
 
+func TestApiCmd_InvalidJSONResponse_ShowsDiagnostic(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-invalidjson", AppSecret: "test-secret-invalidjson", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL:         "/open-apis/test/invalidjson",
+		RawBody:     []byte{},
+		ContentType: "application/json",
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test/invalidjson", "--as", "bot"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI, got %d", exitErr.Code)
+	}
+	if exitErr.Detail == nil {
+		t.Fatal("expected detail on exit error")
+	}
+	if !strings.Contains(exitErr.Detail.Message, "invalid JSON response") &&
+		!strings.Contains(exitErr.Detail.Message, "empty JSON response body") {
+		t.Fatalf("expected JSON diagnostic, got %q", exitErr.Detail.Message)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "--output") {
+		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)
+	}
+}
+
 func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-rawpage", AppSecret: "test-secret-rawpage", Brand: core.BrandFeishu,

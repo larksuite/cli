@@ -132,7 +132,7 @@ func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
-	if err := fh.Truncate(int64(maxDriveUploadFileSize) + 1); err != nil {
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
 		t.Fatalf("Truncate() error: %v", err)
 	}
 	if err := fh.Close(); err != nil {

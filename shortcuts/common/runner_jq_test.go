@@ -13,6 +13,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -102,6 +103,48 @@ func TestRuntimeContext_Out_WithJq_InvalidExpr_WritesStderr(t *testing.T) {
 	}
 }
 
+type testResolvedFileIO struct{}
+
+func (testResolvedFileIO) Open(string) (fileio.File, error)        { return nil, nil }
+func (testResolvedFileIO) Stat(string) (fileio.FileInfo, error)    { return nil, nil }
+func (testResolvedFileIO) ResolvePath(path string) (string, error) { return path, nil }
+func (testResolvedFileIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
+	return nil, nil
+}
+
+type capturingFileIOProvider struct {
+	gotCtx context.Context
+	fileIO fileio.FileIO
+}
+
+func (p *capturingFileIOProvider) Name() string { return "capture" }
+
+func (p *capturingFileIOProvider) ResolveFileIO(ctx context.Context) fileio.FileIO {
+	p.gotCtx = ctx
+	return p.fileIO
+}
+
+func TestRuntimeContext_FileIO_UsesExecutionContext(t *testing.T) {
+	execCtx := context.WithValue(context.Background(), "key", "value")
+	resolved := testResolvedFileIO{}
+	provider := &capturingFileIOProvider{fileIO: resolved}
+
+	rctx := &RuntimeContext{
+		ctx: execCtx,
+		Factory: &cmdutil.Factory{
+			FileIOProvider: provider,
+		},
+	}
+
+	got := rctx.FileIO()
+	if got != resolved {
+		t.Fatalf("FileIO() returned %T, want %T", got, resolved)
+	}
+	if provider.gotCtx != execCtx {
+		t.Fatal("ResolveFileIO() did not receive the runtime execution context")
+	}
+}
+
 func newTestShortcutCmd(s *Shortcut) *cobra.Command {
 	cmd := &cobra.Command{Use: "test-shortcut"}
 	cmd.SetContext(context.Background())
@@ -119,7 +162,8 @@ func newTestFactory() *cmdutil.Factory {
 		LarkClient: func() (*lark.Client, error) {
 			return lark.NewClient("test", "test"), nil
 		},
-		IOStreams: &cmdutil.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}},
+		IOStreams:      &cmdutil.IOStreams{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}},
+		FileIOProvider: fileio.GetProvider(),
 	}
 }
 
