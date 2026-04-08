@@ -1,0 +1,6 @@
+需求：文档创建自动授权流程优化
+创建skill：skills/lark-doc/references/lark-doc-create.md
+创建shortcut：shortcuts/doc/docs_create.go
+开发指南：https://bytedance.larkoffice.com/wiki/VyfWw6K1ViwBelkjJrIcur6Onue
+
+要求：现在如果是用引用身份创建文档，会在skill引导默认给用户授权，但存在部分agent，尤其是openclaw不会阅读skill，导致应用创建了文档，用户没有权限。看是否可以在代码里面自动帮用户做了，即如果当前是应用身份创建的，查询当前的用户身份给用户授权
