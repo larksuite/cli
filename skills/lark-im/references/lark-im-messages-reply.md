@@ -18,7 +18,7 @@ Replies sent by this tool are visible to other people. Before calling it, you **
 
 When using `--as bot`, the reply is sent in the app's name, so make sure the app has already been added to the target chat.
 
-When using `--as user`, the reply is sent as the authorized end user and requires the `im:message.send_as_user` scope.
+When using `--as user`, the reply is sent as the authorized end user and requires the `im:message.send_as_user` and `im:message` scopes.
 
 ## Choose The Right Content Flag
 
@@ -218,5 +218,5 @@ The reply appears in the target message's thread and does not show up in the mai
 - When using `--video`, `--video-cover` is required as the video cover
 - `--dry-run` uses placeholder image keys for remote Markdown images and placeholder media keys for local uploads
 - Failures return error codes and messages
-- `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` scope; the reply is sent as the authorized end user
+- `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the reply is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT), and requires the `im:message:send_as_bot` scope

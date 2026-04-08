@@ -6,6 +6,8 @@ package drive
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -66,7 +68,12 @@ func TestImportTargetFileName(t *testing.T) {
 }
 
 func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
-	t.Parallel()
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	if err := os.WriteFile("base-import.xlsx", []byte("fake-xlsx"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
 
 	cmd := &cobra.Command{Use: "drive +import"}
 	cmd.Flags().String("file", "", "")
@@ -83,7 +90,7 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 		t.Fatalf("set --folder-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContext(cmd, nil)
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
 	dry := DriveImport.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -114,6 +121,207 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	importName, _ := got.API[1].Body["file_name"].(string)
 	if importName != "base-import" {
 		t.Fatalf("import task file_name = %q, want %q", importName, "base-import")
+	}
+}
+
+func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	fh, err := os.Create("large.xlsx")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(int64(maxDriveUploadFileSize) + 1); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "drive +import"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "./large.xlsx"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("type", "sheet"); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveImport.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API []struct {
+			Method string `json:"method"`
+			URL    string `json:"url"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if len(got.API) != 5 {
+		t.Fatalf("expected 5 API calls, got %d", len(got.API))
+	}
+	if got.API[0].URL != "/open-apis/drive/v1/medias/upload_prepare" {
+		t.Fatalf("dry-run first URL = %q, want upload_prepare", got.API[0].URL)
+	}
+	if got.API[1].URL != "/open-apis/drive/v1/medias/upload_part" {
+		t.Fatalf("dry-run second URL = %q, want upload_part", got.API[1].URL)
+	}
+	if got.API[2].URL != "/open-apis/drive/v1/medias/upload_finish" {
+		t.Fatalf("dry-run third URL = %q, want upload_finish", got.API[2].URL)
+	}
+}
+
+func TestDriveImportDryRunReturnsErrorForUnsafePath(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +import"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "../outside.md"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("type", "docx"); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContext(cmd, nil)
+	dry := DriveImport.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API   []struct{} `json:"api"`
+		Error string     `json:"error"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if got.Error == "" || !strings.Contains(got.Error, "unsafe file path") {
+		t.Fatalf("dry-run error = %q, want unsafe file path error", got.Error)
+	}
+	if len(got.API) != 0 {
+		t.Fatalf("expected no API calls when preflight fails, got %d", len(got.API))
+	}
+}
+
+func TestDriveImportDryRunReturnsErrorForOversizedMarkdown(t *testing.T) {
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	fh, err := os.Create("large.md")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(driveImport20MBFileSizeLimit + 5*1024*1024); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "drive +import"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "./large.md"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("type", "docx"); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveImport.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API   []struct{} `json:"api"`
+		Error string     `json:"error"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if got.Error == "" || !strings.Contains(got.Error, "exceeds 20.0 MB import limit for .md") {
+		t.Fatalf("dry-run error = %q, want oversized markdown error", got.Error)
+	}
+	if len(got.API) != 0 {
+		t.Fatalf("expected no API calls when size preflight fails, got %d", len(got.API))
+	}
+}
+
+func TestDriveImportDryRunReturnsErrorForDirectoryInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	if err := os.Mkdir("folder-input", 0755); err != nil {
+		t.Fatalf("Mkdir() error: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "drive +import"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "./folder-input"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("type", "docx"); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveImport.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API   []struct{} `json:"api"`
+		Error string     `json:"error"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if got.Error == "" || !strings.Contains(got.Error, "file must be a regular file") {
+		t.Fatalf("dry-run error = %q, want regular file error", got.Error)
+	}
+	if len(got.API) != 0 {
+		t.Fatalf("expected no API calls when file type preflight fails, got %d", len(got.API))
 	}
 }
 

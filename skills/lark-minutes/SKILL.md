@@ -1,7 +1,7 @@
 ---
 name: lark-minutes
 version: 1.0.0
-description: "飞书妙记：获取妙记基础信息（标题、封面、时长）和相关的 AI 产物（总结、待办、章节）。飞书妙记的 URL 格式为: http(s)://<host>/minutes/<minute-token>"
+description: "飞书妙记：获取妙记基础信息（标题、封面、时长）和相关的 AI 产物（总结、待办、章节），下载妙记音视频文件。飞书妙记的 URL 格式为: http(s)://<host>/minutes/<minute-token>"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -10,7 +10,7 @@ metadata:
 
 # minutes (v1)
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
 ## 核心概念
 
@@ -48,6 +48,29 @@ lark-cli vc +notes --minute-tokens obcnhijv43vq6bcsl5xasfb2
 - 用户未指定需要查询妙记的哪些内容时，默认查询基础元信息和相关联的纪要产物信息。
 - 用户未明确指定查看纪要产物（逐字稿、总结、待办、章节）时，向用户展示对应产物的链接即可，不需要直接读取产物内容。
 
+## Shortcuts（推荐优先使用）
+
+Shortcut 是对常用操作的高级封装（`lark-cli minutes +<verb> [flags]`）。有 Shortcut 的操作优先使用。
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+download`](references/lark-minutes-download.md) | Download audio/video media file of a minute |
+
+### 妙记音视频下载
+
+下载妙记音视频文件到本地，或获取有效期 1 天的下载链接。详见 [minutes +download](references/lark-minutes-download.md)。
+
+```bash
+# 下载音视频文件到本地
+lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --output ./meeting.mp4
+
+# 仅获取下载链接
+lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --url-only
+
+# 批量下载
+lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c,obcnexa7814k4t41c446fzwj
+```
+
 <!-- AUTO-GENERATED-START — gen-skills.py 管理，勿手动编辑 -->
 ## API Resources
 
@@ -67,6 +90,7 @@ lark-cli minutes <resource> <method> [flags] # 调用 API
 | 方法 | 所需 scope |
 |------|-----------|
 | `minutes.get` | `minutes:minutes:readonly` |
+| `+download` | `minutes:minutes.media:export` |
 
 
 <!-- AUTO-GENERATED-END -->

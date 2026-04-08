@@ -22,3 +22,8 @@ func TestNewRuntimeContext(cmd *cobra.Command, cfg *core.CliConfig) *RuntimeCont
 func TestNewRuntimeContextWithCtx(ctx context.Context, cmd *cobra.Command, cfg *core.CliConfig) *RuntimeContext {
 	return &RuntimeContext{ctx: ctx, Cmd: cmd, Config: cfg}
 }
+
+// TestNewRuntimeContextWithIdentity creates a RuntimeContext with a specific identity for testing.
+func TestNewRuntimeContextWithIdentity(cmd *cobra.Command, cfg *core.CliConfig, as core.Identity) *RuntimeContext {
+	return &RuntimeContext{Cmd: cmd, Config: cfg, resolvedAs: as}
+}

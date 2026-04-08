@@ -47,7 +47,7 @@ func RequestAppRegistration(httpClient *http.Client, brand core.LarkBrand, errOu
 
 	ep := core.ResolveEndpoints(brand)
 	regEp := core.ResolveEndpoints(core.BrandFeishu) // registration begin always uses feishu
-	endpoint := regEp.Accounts + "/oauth/v1/app/registration"
+	endpoint := regEp.Accounts + PathAppRegistration
 
 	form := url.Values{}
 	form.Set("action", "begin")
@@ -66,6 +66,7 @@ func RequestAppRegistration(httpClient *http.Client, brand core.LarkBrand, errOu
 		return nil, err
 	}
 	defer resp.Body.Close()
+	logHTTPResponse(resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -129,7 +130,7 @@ func PollAppRegistration(ctx context.Context, httpClient *http.Client, brand cor
 	const maxPollAttempts = 200
 
 	ep := core.ResolveEndpoints(brand)
-	endpoint := ep.Accounts + "/oauth/v1/app/registration"
+	endpoint := ep.Accounts + PathAppRegistration
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	currentInterval := interval
 	attempts := 0
@@ -162,6 +163,7 @@ func PollAppRegistration(ctx context.Context, httpClient *http.Client, brand cor
 			currentInterval = minInt(currentInterval+1, maxPollInterval)
 			continue
 		}
+		logHTTPResponse(resp)
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()

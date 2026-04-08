@@ -25,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
@@ -179,7 +180,7 @@ var MailWatch = common.Shortcut{
 		outputDir := runtime.Str("output-dir")
 		if outputDir != "" {
 			if outputDir == "~" || strings.HasPrefix(outputDir, "~/") {
-				home, err := os.UserHomeDir()
+				home, err := vfs.UserHomeDir()
 				if err != nil {
 					return fmt.Errorf("cannot expand ~: %w", err)
 				}
@@ -200,7 +201,7 @@ var MailWatch = common.Shortcut{
 			// Resolve symlinks on the output directory so all writes use the real
 			// filesystem path. This prevents a symlink from redirecting writes to
 			// an unintended location (TOCTOU mitigation).
-			if err := os.MkdirAll(outputDir, 0700); err != nil {
+			if err := vfs.MkdirAll(outputDir, 0700); err != nil {
 				return fmt.Errorf("cannot create output directory %q: %w", outputDir, err)
 			}
 			resolved, err := filepath.EvalSymlinks(outputDir)

@@ -4,7 +4,6 @@
 package im
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -471,17 +469,11 @@ func TestNormalizeDownloadOutputPath(t *testing.T) {
 }
 
 func TestDownloadIMResourceToPathHTTPClientError(t *testing.T) {
-	runtime := &common.RuntimeContext{
-		Factory: &cmdutil.Factory{
-			HttpClient: func() (*http.Client, error) {
-				return nil, errors.New("http client unavailable")
-			},
-			IOStreams: &cmdutil.IOStreams{
-				Out:    &bytes.Buffer{},
-				ErrOut: &bytes.Buffer{},
-			},
-		},
-	}
+	// DoAPIStream now goes through APIClient, which requires a fully constructed Factory.
+	// When HttpClient returns an error, NewAPIClient fails, and getAPIClient propagates it.
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("http client unavailable")
+	}))
 
 	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "img_123", "image", "out.bin")
 	if err == nil || !strings.Contains(err.Error(), "http client unavailable") {

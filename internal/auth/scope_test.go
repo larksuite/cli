@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestMissingScopes tests the calculation of missing scopes.
 func TestMissingScopes(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -62,6 +63,7 @@ func TestMissingScopes(t *testing.T) {
 	}
 }
 
+// sliceEqual compares two string slices for equality.
 func sliceEqual(a, b []string) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true

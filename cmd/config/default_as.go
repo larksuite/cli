@@ -25,8 +25,13 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 				return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
 			}
 
+			app := multi.CurrentAppConfig(f.Invocation.Profile)
+			if app == nil {
+				return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+			}
+
 			if len(args) == 0 {
-				current := multi.Apps[0].DefaultAs
+				current := app.DefaultAs
 				if current == "" {
 					current = "auto"
 				}
@@ -39,9 +44,9 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 				return output.ErrValidation("invalid identity type %q, valid values: user | bot | auto", value)
 			}
 
-			multi.Apps[0].DefaultAs = value
+			app.DefaultAs = core.Identity(value)
 			if err := core.SaveMultiAppConfig(multi); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
+				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 			}
 			fmt.Fprintf(f.IOStreams.ErrOut, "Default identity set to: %s\n", value)
 			return nil

@@ -6,15 +6,15 @@ package im
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -150,21 +150,13 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 			"file_key":   fileKey,
 		},
 		QueryParams: query,
-	}, defaultIMResourceDownloadTimeout)
+	}, client.WithTimeout(defaultIMResourceDownloadTimeout))
 	if err != nil {
 		return "", 0, err
 	}
 	defer downloadResp.Body.Close()
 
-	if downloadResp.StatusCode >= 400 {
-		body, _ := io.ReadAll(io.LimitReader(downloadResp.Body, 4096))
-		if len(body) > 0 {
-			return "", 0, output.ErrNetwork("download failed: HTTP %d: %s", downloadResp.StatusCode, strings.TrimSpace(string(body)))
-		}
-		return "", 0, output.ErrNetwork("download failed: HTTP %d", downloadResp.StatusCode)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
 		return "", 0, output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
 	}
 

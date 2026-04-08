@@ -5,6 +5,10 @@ If the user query only specifies a task name (e.g., "Complete task Lobster No. 1
 > **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 > 
 > **⚠️ Note:** This API must be called with a user identity. **Do NOT use an app identity, otherwise the call will fail.**
+>
+> **Output rendering note:**
+> 1. If you need to present user fields (assignee, creator, etc.), do not only output the raw `id` (e.g. open_id). Also try to resolve and display the user's real name (e.g. via the contact skill) for readability.
+> 2. When rendering timestamps (e.g. created time, due time), use the local timezone. Format is 2006-01-02 15:04:05
 
 List tasks assigned to the current user, with support for filtering by completion status, creation time, and due date.
 By default, the command will automatically paginate up to 20 times. Use `--page-all` to fetch more (up to 40 pages).
@@ -15,10 +19,13 @@ By default, the command will automatically paginate up to 20 times. Use `--page-
 # Search for a specific task by name
 lark-cli task +get-my-tasks --query "Lobster No. 1"
 
-# Get my incomplete tasks (fetches up to 20 pages by default)
+# Get all my tasks (fetches up to 20 pages by default)
 lark-cli task +get-my-tasks
 
-# Fetch all tasks (up to 40 pages)
+# Get my incomplete tasks (fetches up to 20 pages by default)
+lark-cli task +get-my-tasks --complete=false
+
+# Fetch all my tasks (up to 40 pages)
 lark-cli task +get-my-tasks --page-all
 
 # Fetch up to 10 pages

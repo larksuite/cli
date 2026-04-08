@@ -115,7 +115,6 @@ GET /open-apis/base/v3/bases/:base_token/workflows/:workflow_id
         "id": "trigger_1",
         "type": "AddRecordTrigger",
         "title": "监控新订单",
-        "children": { "links": [] },
         "next": "action_1",
         "data": { "table_name": "订单表", "watched_field_name": "订单号" }
       },
@@ -123,7 +122,6 @@ GET /open-apis/base/v3/bases/:base_token/workflows/:workflow_id
         "id": "action_1",
         "type": "LarkMessageAction",
         "title": "发送通知",
-        "children": { "links": [] },
         "next": null,
         "data": { "..." : "..." }
       }

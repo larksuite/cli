@@ -4,8 +4,12 @@
 package cmdutil
 
 import (
+	"context"
 	"net/http"
 	"time"
+
+	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/util"
 )
 
 // RetryTransport is an http.RoundTripper that retries on 5xx responses
@@ -20,7 +24,7 @@ func (t *RetryTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return util.FallbackTransport()
 }
 
 func (t *RetryTransport) delay() time.Duration {
@@ -65,7 +69,7 @@ func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if t.Base != nil {
 		return t.Base.RoundTrip(req)
 	}
-	return http.DefaultTransport.RoundTrip(req)
+	return util.FallbackTransport().RoundTrip(req)
 }
 
 // SecurityHeaderTransport is an http.RoundTripper that injects CLI security
@@ -78,7 +82,7 @@ func (t *SecurityHeaderTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return util.FallbackTransport()
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -97,4 +101,41 @@ func (t *SecurityHeaderTransport) RoundTrip(req *http.Request) (*http.Response, 
 		req.Header.Set(HeaderExecutionId, eid)
 	}
 	return t.base().RoundTrip(req)
+}
+
+// extensionMiddleware wraps the built-in transport chain with pre/post hooks.
+// The built-in chain always executes and cannot be skipped or overridden.
+// The original request context is restored after PreRoundTrip to prevent
+// extensions from tampering with cancellation, deadlines, or built-in values.
+type extensionMiddleware struct {
+	Base http.RoundTripper
+	Ext  exttransport.Interceptor
+}
+
+// RoundTrip calls PreRoundTrip, restores the original context, executes
+// the built-in chain, then calls the post hook if non-nil.
+func (m *extensionMiddleware) RoundTrip(req *http.Request) (*http.Response, error) {
+	origCtx := req.Context()
+	req = req.Clone(origCtx) // isolate caller's request before extension mutations
+	post := m.Ext.PreRoundTrip(req)
+	req = req.WithContext(origCtx) // restore original context
+	resp, err := m.Base.RoundTrip(req)
+	if post != nil {
+		post(resp, err)
+	}
+	return resp, err
+}
+
+// wrapWithExtension wraps transport with the registered extension middleware.
+// If no extension is registered, returns transport unchanged.
+func wrapWithExtension(transport http.RoundTripper) http.RoundTripper {
+	p := exttransport.GetProvider()
+	if p == nil {
+		return transport
+	}
+	tr := p.ResolveInterceptor(context.Background())
+	if tr == nil {
+		return transport
+	}
+	return &extensionMiddleware{Base: transport, Ext: tr}
 }

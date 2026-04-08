@@ -13,7 +13,6 @@ import (
 func TestBaseFormExecuteList(t *testing.T) {
 	t.Run("single page", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms",
@@ -39,7 +38,6 @@ func TestBaseFormExecuteList(t *testing.T) {
 
 	t.Run("auto pagination", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		// First page: has_more=true
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
@@ -86,7 +84,6 @@ func TestBaseFormExecuteList(t *testing.T) {
 
 func TestBaseFormExecuteGet(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
@@ -110,7 +107,6 @@ func TestBaseFormExecuteGet(t *testing.T) {
 func TestBaseFormExecuteCreate(t *testing.T) {
 	t.Run("name only", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms",
@@ -133,7 +129,6 @@ func TestBaseFormExecuteCreate(t *testing.T) {
 
 	t.Run("with description", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms",
@@ -158,7 +153,6 @@ func TestBaseFormExecuteCreate(t *testing.T) {
 
 	t.Run("with description link", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms",
@@ -185,7 +179,6 @@ func TestBaseFormExecuteCreate(t *testing.T) {
 func TestBaseFormExecuteUpdate(t *testing.T) {
 	t.Run("update name", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PATCH",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
@@ -208,7 +201,6 @@ func TestBaseFormExecuteUpdate(t *testing.T) {
 
 	t.Run("update with description", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PATCH",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
@@ -234,7 +226,6 @@ func TestBaseFormExecuteUpdate(t *testing.T) {
 
 func TestBaseFormExecuteDelete(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
@@ -250,7 +241,6 @@ func TestBaseFormExecuteDelete(t *testing.T) {
 
 func TestBaseFormQuestionsExecuteList(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
@@ -276,7 +266,6 @@ func TestBaseFormQuestionsExecuteList(t *testing.T) {
 func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 	t.Run("create questions", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
@@ -311,7 +300,6 @@ func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 
 func TestBaseFormQuestionsExecuteUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
@@ -337,7 +325,6 @@ func TestBaseFormQuestionsExecuteUpdate(t *testing.T) {
 func TestBaseFormQuestionsExecuteDelete(t *testing.T) {
 	t.Run("delete questions", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "DELETE",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",

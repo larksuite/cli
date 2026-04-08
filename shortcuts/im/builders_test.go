@@ -531,14 +531,18 @@ func TestMessagesSearchPaginationConfig(t *testing.T) {
 
 func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatCreate dry run includes params and body", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
-			"type":  "public",
-			"name":  "Team Room",
-			"users": "ou_1,ou_2",
-			"owner": "ou_owner",
-		}, map[string]bool{
-			"set-bot-manager": true,
-		})
+		cmd := &cobra.Command{Use: "test"}
+		for _, name := range []string{"type", "name", "users", "owner"} {
+			cmd.Flags().String(name, "", "")
+		}
+		cmd.Flags().Bool("set-bot-manager", false, "")
+		_ = cmd.ParseFlags(nil)
+		_ = cmd.Flags().Set("type", "public")
+		_ = cmd.Flags().Set("name", "Team Room")
+		_ = cmd.Flags().Set("users", "ou_1,ou_2")
+		_ = cmd.Flags().Set("owner", "ou_owner")
+		_ = cmd.Flags().Set("set-bot-manager", "true")
+		runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, "bot")
 		got := mustMarshalDryRun(t, ImChatCreate.DryRun(context.Background(), runtime))
 		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) || !strings.Contains(got, `"set_bot_manager":true`) || !strings.Contains(got, `"chat_type":"public"`) {
 			t.Fatalf("ImChatCreate.DryRun() = %s", got)

@@ -22,8 +22,15 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+type staticShortcutTokenResolver struct{}
+
+func (s *staticShortcutTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{Token: "tenant-token"}, nil
+}
 
 type shortcutRoundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -68,6 +75,7 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 	sdk := lark.NewClient(
 		"test-app",
 		"test-secret",
+		lark.WithEnableTokenCache(false),
 		lark.WithLogLevel(larkcore.LogLevelError),
 		lark.WithHttpClient(httpClient),
 	)
@@ -76,13 +84,14 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 		AppSecret: "test-secret",
 		Brand:     core.BrandFeishu,
 	}
+	testCred := credential.NewCredentialProvider(nil, nil, &staticShortcutTokenResolver{}, nil)
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{
 			Config:     func() (*core.CliConfig, error) { return cfg, nil },
-			AuthConfig: func() (*core.CliConfig, error) { return cfg, nil },
 			HttpClient: func() (*http.Client, error) { return httpClient, nil },
 			LarkClient: func() (*lark.Client, error) { return sdk, nil },
+			Credential: testCred,
 			IOStreams: &cmdutil.IOStreams{
 				Out:    &bytes.Buffer{},
 				ErrOut: &bytes.Buffer{},
@@ -99,12 +108,6 @@ func TestResolveP2PChatID(t *testing.T) {
 	var gotAuth string
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
 			gotAuth = req.Header.Get("Authorization")
 			return shortcutJSONResponse(200, map[string]interface{}{
@@ -135,12 +138,6 @@ func TestResolveP2PChatID(t *testing.T) {
 func TestResolveP2PChatIDNotFound(t *testing.T) {
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
 			return shortcutJSONResponse(200, map[string]interface{}{
 				"code": 0,
@@ -184,12 +181,6 @@ func TestResolveThreadID(t *testing.T) {
 	t.Run("message lookup success", func(t *testing.T) {
 		runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case strings.Contains(req.URL.Path, "tenant_access_token"):
-				return shortcutJSONResponse(200, map[string]interface{}{
-					"code":                0,
-					"tenant_access_token": "tenant-token",
-					"expire":              7200,
-				}), nil
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_123"):
 				return shortcutJSONResponse(200, map[string]interface{}{
 					"code": 0,
@@ -216,12 +207,6 @@ func TestResolveThreadID(t *testing.T) {
 	t.Run("message lookup not found", func(t *testing.T) {
 		runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case strings.Contains(req.URL.Path, "tenant_access_token"):
-				return shortcutJSONResponse(200, map[string]interface{}{
-					"code":                0,
-					"tenant_access_token": "tenant-token",
-					"expire":              7200,
-				}), nil
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_404"):
 				return shortcutJSONResponse(200, map[string]interface{}{
 					"code": 0,
@@ -248,12 +233,6 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 	payload := []byte("hello download")
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_123/resources/file_123"):
 			gotHeaders = req.Header.Clone()
 			return shortcutRawResponse(200, payload, http.Header{"Content-Type": []string{"application/octet-stream"}}), nil
@@ -294,12 +273,6 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 func TestDownloadIMResourceToPathHTTPErrorBody(t *testing.T) {
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_403/resources/file_403"):
 			return shortcutRawResponse(403, []byte("denied"), http.Header{"Content-Type": []string{"text/plain"}}), nil
 		default:
@@ -317,12 +290,6 @@ func TestUploadImageToIMSuccess(t *testing.T) {
 	var gotBody string
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/images"):
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -355,7 +322,11 @@ func TestUploadImageToIMSuccess(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	got, err := uploadImageToIM(context.Background(), runtime, "./"+path, "message")
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("Abs() error = %v", err)
+	}
+	got, err := uploadImageToIM(context.Background(), runtime, absPath, "message")
 	if err != nil {
 		t.Fatalf("uploadImageToIM() error = %v", err)
 	}
@@ -371,12 +342,6 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 	var gotBody string
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/files"):
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -409,7 +374,11 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	got, err := uploadFileToIM(context.Background(), runtime, "./"+path, "stream", "1200")
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("Abs() error = %v", err)
+	}
+	got, err := uploadFileToIM(context.Background(), runtime, absPath, "stream", "1200")
 	if err != nil {
 		t.Fatalf("uploadFileToIM() error = %v", err)
 	}
@@ -425,19 +394,7 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 }
 
 func TestUploadImageToIMSizeLimit(t *testing.T) {
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	tmpDir := t.TempDir()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(wd)
-	})
-
-	path := "too-large.png"
+	path := filepath.Join(t.TempDir(), "too-large.png")
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -445,30 +402,16 @@ func TestUploadImageToIMSizeLimit(t *testing.T) {
 	if err := f.Truncate(maxImageUploadSize + 1); err != nil {
 		t.Fatalf("Truncate() error = %v", err)
 	}
-	if err := f.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
+	f.Close()
 
-	_, err = uploadImageToIM(context.Background(), nil, "./"+path, "message")
+	_, err = uploadImageToIM(context.Background(), nil, path, "message")
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("uploadImageToIM() error = %v", err)
 	}
 }
 
 func TestUploadFileToIMSizeLimit(t *testing.T) {
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	tmpDir := t.TempDir()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(wd)
-	})
-
-	path := "too-large.bin"
+	path := filepath.Join(t.TempDir(), "too-large.bin")
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -476,11 +419,9 @@ func TestUploadFileToIMSizeLimit(t *testing.T) {
 	if err := f.Truncate(maxFileUploadSize + 1); err != nil {
 		t.Fatalf("Truncate() error = %v", err)
 	}
-	if err := f.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
+	f.Close()
 
-	_, err = uploadFileToIM(context.Background(), nil, "./"+path, "stream", "")
+	_, err = uploadFileToIM(context.Background(), nil, path, "stream", "")
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("uploadFileToIM() error = %v", err)
 	}
@@ -500,5 +441,83 @@ func TestResolveMediaContentWrapsUploadError(t *testing.T) {
 	_, _, err := resolveMediaContent(context.Background(), runtime, "", missing, "", "", "", "")
 	if err == nil || !strings.Contains(err.Error(), "image upload failed") {
 		t.Fatalf("resolveMediaContent() error = %v", err)
+	}
+}
+
+// TestResolveLocalMediaImage verifies that resolveLocalMedia can upload an image
+// via uploadImageToIM without double path validation.
+func TestResolveLocalMediaImage(t *testing.T) {
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Path, "/open-apis/im/v1/images") {
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"image_key": "img_via_resolve"},
+			}), nil
+		}
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	if err := os.WriteFile("test.png", []byte("png-data"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	got, err := resolveLocalMedia(context.Background(), runtime, mediaSpec{
+		value: "./test.png", flagName: "--image", mediaType: "image",
+		kind: mediaKindImage, maxSize: maxImageUploadSize, resultKey: "image_key",
+	})
+	if err != nil {
+		t.Fatalf("resolveLocalMedia(image) error = %v", err)
+	}
+	if got != "img_via_resolve" {
+		t.Fatalf("resolveLocalMedia(image) = %q, want %q", got, "img_via_resolve")
+	}
+}
+
+// TestResolveLocalMediaFile verifies that resolveLocalMedia can upload a file
+// via uploadFileToIM without double path validation.
+func TestResolveLocalMediaFile(t *testing.T) {
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Path, "/open-apis/im/v1/files") {
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"file_key": "file_via_resolve"},
+			}), nil
+		}
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	if err := os.WriteFile("test.txt", []byte("file-data"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	got, err := resolveLocalMedia(context.Background(), runtime, mediaSpec{
+		value: "./test.txt", flagName: "--file", mediaType: "file",
+		kind: mediaKindFile, maxSize: maxFileUploadSize, resultKey: "file_key",
+	})
+	if err != nil {
+		t.Fatalf("resolveLocalMedia(file) error = %v", err)
+	}
+	if got != "file_via_resolve" {
+		t.Fatalf("resolveLocalMedia(file) = %q, want %q", got, "file_via_resolve")
 	}
 }

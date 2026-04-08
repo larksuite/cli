@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// CompleteTask marks a task as complete and skips the PATCH call if already completed.
 var CompleteTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+complete",
@@ -34,35 +35,69 @@ var CompleteTask = common.Shortcut{
 		body := buildCompleteBody()
 		taskId := url.PathEscape(runtime.Str("task-id"))
 		return common.NewDryRunAPI().
+			GET("/open-apis/task/v2/tasks/" + taskId).
+			Desc("get current task status").
+			Params(map[string]interface{}{"user_id_type": "open_id"}).
 			PATCH("/open-apis/task/v2/tasks/" + taskId).
+			Desc("complete task if not completed").
 			Params(map[string]interface{}{"user_id_type": "open_id"}).
 			Body(body)
 	},
 
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		taskId := url.PathEscape(runtime.Str("task-id"))
-		body := buildCompleteBody()
 
 		queryParams := make(larkcore.QueryParams)
 		queryParams.Set("user_id_type", "open_id")
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodPatch,
+		var data map[string]interface{}
+
+		// 1. Get current task status
+		getResp, getErr := runtime.DoAPI(&larkcore.ApiReq{
+			HttpMethod:  http.MethodGet,
 			ApiPath:     "/open-apis/task/v2/tasks/" + taskId,
 			QueryParams: queryParams,
-			Body:        body,
 		})
 
-		var result map[string]interface{}
-		if err == nil {
-			if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse complete response")
+		var getResult map[string]interface{}
+		if getErr == nil {
+			if parseErr := json.Unmarshal(getResp.RawBody, &getResult); parseErr != nil {
+				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse get response: %v", parseErr), "parse get response")
 			}
 		}
 
-		data, err := HandleTaskApiResult(result, err, "complete task")
-		if err != nil {
-			return err
+		getData, getErr := HandleTaskApiResult(getResult, getErr, "get task")
+		if getErr != nil {
+			return getErr
+		}
+
+		taskData, _ := getData["task"].(map[string]interface{})
+		completedAtStr, _ := taskData["completed_at"].(string)
+
+		// 2. If already completed, directly return success
+		if completedAtStr != "" && completedAtStr != "0" {
+			data = getData
+		} else {
+			// 3. Complete the task
+			body := buildCompleteBody()
+			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+				HttpMethod:  http.MethodPatch,
+				ApiPath:     "/open-apis/task/v2/tasks/" + taskId,
+				QueryParams: queryParams,
+				Body:        body,
+			})
+
+			var result map[string]interface{}
+			if err == nil {
+				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
+					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse complete response")
+				}
+			}
+
+			data, err = HandleTaskApiResult(result, err, "complete task")
+			if err != nil {
+				return err
+			}
 		}
 
 		task, _ := data["task"].(map[string]interface{})

@@ -1,8 +1,8 @@
 # base +dashboard-block-list
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [lark-base-dashboard.md](lark-base-dashboard.md) 了解整体工作流。
 
-分页列出仪表盘中的所有 Block（图表组件）。
+分页列出仪表盘中的所有组件（Block）。常用于：1) 查看仪表盘有哪些组件；2) 获取组件 ID 和类型用于后续编辑/删除。
 
 ## 推荐命令
 
@@ -23,22 +23,26 @@ lark-cli base +dashboard-block-list \
 | `--format <fmt>` | 否 | 输出格式：json / pretty / table / csv / ndjson |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
-## API 入参详情
+## 返回示例
 
-**HTTP 方法和路径：**
-
-```
-GET /open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks
+```json
+{
+  "items": [
+    {"block_id": "chtxxxxxxxx", "name": "图表", "type": "column"},
+    {"block_id": "chtxxxxxxxx", "name": "总利润", "type": "statistics"}
+  ],
+  "total": 4,
+  "has_more": false
+}
 ```
 
 ## 返回重点
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `items` | []Block | Block 列表 |
-| `total` | int | Block 总数 |
-| `has_more` | bool | 是否还有更多 |
-| `page_token` | string | 下一页分页标记（has_more=true 时返回） |
+| 字段 | 说明 |
+|------|------|
+| `items` | 组件列表，每项包含 `block_id`（ID）、`name`（名称）、`type`（类型）|
+| `total` | 组件总数 |
+| `has_more` | 是否有更多组件（为 `true` 时需用 `page_token` 继续获取）|
 
 ## 坑点
 
@@ -46,4 +50,4 @@ GET /open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks
 
 ## 参考
 
-- [lark-base-dashboard-block.md](lark-base-dashboard-block.md) — block 索引页
+- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块指引

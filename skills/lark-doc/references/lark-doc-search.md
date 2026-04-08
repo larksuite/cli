@@ -16,6 +16,11 @@
 
 ## 命令
 
+> **关键约束：搜索关键词必须通过 `--query` 传递。**
+> 正确：`lark-cli docs +search --query "方案"`
+> 错误：`lark-cli docs +search 方案`
+> `+search` 不接受“搜索词位置参数”这种写法；如果把关键词直接跟在命令后面，不会进入 `query`，会变成空搜或返回不符合预期的结果。
+
 ```bash
 # 关键词搜索
 lark-cli docs +search --query "季度总结"
@@ -46,7 +51,7 @@ lark-cli docs +search --query "方案" --format json --page-token '<PAGE_TOKEN>'
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--query <text>` | 否 | 搜索关键词。默认是关键词检索，不是精确标题匹配；不传/空字符串表示空搜 |
+| `--query <text>` | 否 | 搜索关键词。默认是关键词检索，不是精确标题匹配；不传/空字符串表示空搜。**凡是有关键词，都要显式通过 `--query` 传递，不要写成位置参数。** |
 | `--filter <json>` | 否 | JSON 对象，会同时应用到 `doc_filter` 与 `wiki_filter` |
 | `--page-size <n>` | 否 | 每页数量（默认 15，最大 20） |
 | `--page-token <token>` | 否 | 翻页标记（配合 `has_more` 使用） |
@@ -59,6 +64,7 @@ lark-cli docs +search --query "方案" --format json --page-token '<PAGE_TOKEN>'
 
 ## 决策规则
 
+- 参数传递：只要用户给了搜索关键词，就必须显式使用 `--query "<关键词>"`。不要生成 `lark-cli docs +search 方案`、`lark-cli docs +search xxx（搜索关键词）` 这种位置参数写法。
 - 查询语义：默认按关键词搜索理解。用户说“标题为 `X`”“标题里有 `X`”“搜索 `X` 文档”时，先直接返回命中的 OpenAPI 结果；只有用户明确要求“标题精确等于 `X`”时，才做客户端二次筛选。做精确匹配前，先去掉 `title_highlighted` 里的高亮标签。
 - 入口选择：用户说“找表格标题”“找名为 `X` 的电子表格”“搜某个报表”时，也默认走 `docs +search`。不要误用 `sheets +find` 做跨文件搜索。
 - 分页策略：默认只返回**第一页**，并说明 `has_more` / `page_token`。只有当用户明确要求“全部结果”“继续翻页”“全量扫描”“所有结果”“完整列表”时，才继续翻页。

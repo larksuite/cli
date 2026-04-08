@@ -9,6 +9,14 @@ import (
 	"testing"
 )
 
+func ensureFreshRegistry(t *testing.T) {
+	t.Helper()
+	resetInit()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_REMOTE_META", "off")
+	Init()
+}
+
 func TestLoadScopePriorities(t *testing.T) {
 	priorities := LoadScopePriorities()
 	if len(priorities) == 0 {
@@ -123,6 +131,7 @@ func TestComputeMinimumScopeSet(t *testing.T) {
 }
 
 func TestComputeMinimumScopeSet_Tenant(t *testing.T) {
+	ensureFreshRegistry(t)
 	minSet := ComputeMinimumScopeSet("tenant")
 	if len(minSet) == 0 {
 		if len(ListFromMetaProjects()) == 0 {

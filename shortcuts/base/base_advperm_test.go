@@ -129,7 +129,6 @@ func TestBaseAdvpermMetadata(t *testing.T) {
 
 func TestBaseAdvpermEnableExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/advperm/enable",
@@ -150,7 +149,6 @@ func TestBaseAdvpermEnableExecute(t *testing.T) {
 
 func TestBaseAdvpermDisableExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/advperm/enable",
@@ -175,7 +173,6 @@ func TestBaseAdvpermDisableExecute(t *testing.T) {
 
 func TestBaseAdvpermEnableExecuteTransportError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/advperm/enable",
@@ -190,7 +187,6 @@ func TestBaseAdvpermEnableExecuteTransportError(t *testing.T) {
 
 func TestBaseAdvpermEnableExecuteAPIError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/advperm/enable",
@@ -207,7 +203,6 @@ func TestBaseAdvpermEnableExecuteAPIError(t *testing.T) {
 
 func TestBaseAdvpermDisableExecuteTransportError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/advperm/enable",
@@ -222,7 +217,6 @@ func TestBaseAdvpermDisableExecuteTransportError(t *testing.T) {
 
 func TestBaseAdvpermDisableExecuteAPIError(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/advperm/enable",

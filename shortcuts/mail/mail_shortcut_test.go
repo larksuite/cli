@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zalando/go-keyring"
 
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -32,6 +33,7 @@ func mailTestConfig() *core.CliConfig {
 
 func mailShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
+	keyring.MockInit() // use in-memory keyring to avoid macOS keychain popups
 	t.Setenv("HOME", t.TempDir())
 
 	cfg := mailTestConfig()

@@ -6,10 +6,10 @@ package base
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -33,7 +33,7 @@ func loadJSONInput(raw string, flagName string) (string, error) {
 	if err != nil {
 		return "", common.FlagErrorf("--%s invalid JSON file path %q: %v", flagName, path, err)
 	}
-	data, err := os.ReadFile(safePath)
+	data, err := vfs.ReadFile(safePath)
 	if err != nil {
 		return "", common.FlagErrorf("--%s cannot read JSON file %q: %v", flagName, path, err)
 	}

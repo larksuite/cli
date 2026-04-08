@@ -58,16 +58,6 @@ func withDocsWorkingDir(t *testing.T, dir string) {
 	})
 }
 
-func registerDocsBotTokenStub(reg *httpmock.Registry) {
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token", "expire": 7200,
-		},
-	})
-}
-
 func TestDocMediaInsertRejectsOldDocURL(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfig())
 
@@ -111,7 +101,6 @@ func TestDocMediaInsertDryRunWikiAddsResolveStep(t *testing.T) {
 
 func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	f, _, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-insert-exec-app"))
-	registerDocsBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/wiki/v2/spaces/get_node",
@@ -148,7 +137,6 @@ func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 
 func TestDocMediaDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-overwrite-app"))
-	registerDocsBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/medias/tok_123/download",
@@ -179,7 +167,6 @@ func TestDocMediaDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 
 func TestDocMediaDownloadRejectsHTTPErrorBeforeWrite(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-app"))
-	registerDocsBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/medias/tok_123/download",

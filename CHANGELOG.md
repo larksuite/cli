@@ -2,6 +2,89 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.5] - 2026-04-07
+
+### Features
+
+- **drive**: Support multipart upload for files larger than 20MB (#43)
+- Add darwin file master key fallback for keychain writes (#285)
+- Add strict mode identity filter, profile management and credential extension (#252)
+
+### Bug Fixes
+
+- **mail**: Restore CID validation and stale PartID lookup lost in revert (#230)
+- **base**: Clarify table-id `tbl` prefix requirement (#270)
+- Fix parameter constraints for LarkMessageTrigger (#213)
+
+### Documentation
+
+- Fix root calendar example (#299)
+- Fix README auth scope and api data flag (#298)
+- Clarify task guid for applinks (#287)
+- Clarify lark task guid usage (#282)
+- **lark-base**: Add `has_more` guidance for record-list pagination (#183)
+
+### Tests
+
+- Isolate registry package state in tests (#280)
+
+### CI
+
+- Add scheduled issue labeler for type/domain triage (#251)
+- **issue-labels**: Reduce mislabeling and handle missing labels (#288)
+- Map wiki paths in pr labels (#249)
+
+## [v1.0.4] - 2026-04-03
+
+### Features
+
+- Support user identity for im `+chat-create` (#242)
+- Implement authentication response logging (#235)
+- Support im chat member delete and add scope notes (#229)
+
+### Bug Fixes
+
+- **security**: Replace `http.DefaultTransport` with proxy-aware base transport to mitigate MITM risk (#247)
+- **calendar**: Block auto bot fallback without user login (#245)
+
+### Documentation
+
+- **mail**: Add identity guidance to prefer user over bot (#157)
+
+### Refactor
+
+- **dashboard**: Restructure docs for AI-friendly navigation (#191)
+
+### CI
+
+- Add a CLI E2E testing framework for lark-cli, task domain testcase and ci action (#236)
+
+## [v1.0.3] - 2026-04-02
+
+### Features
+
+- Add `--jq` flag for filtering JSON output (#211)
+- Add `+download` shortcut for minutes media download (#101)
+- Add drive import, export, move, and task result shortcuts (#194)
+- Support im message send/reply with uat (#180)
+- Add approve domain (#217)
+
+### Bug Fixes
+
+- **mail**: Use in-memory keyring in mail scope tests to avoid macOS keychain popups (#212)
+- **mail**: On-demand scope checks and watch event filtering (#198)
+- Use curl for binary download to support proxy and add npmmirror fallback (#226)
+- Normalize escaped sheet range separators (#207)
+
+### Documentation
+
+- **mail**: Clarify JSON output is directly usable without extra encoding (#228)
+- Clarify docs search query usage (#221)
+
+### CI
+
+- Add gitleaks scanning workflow and custom rules (#142)
+
 ## [v1.0.2] - 2026-04-01
 
 ### Features
@@ -110,6 +193,9 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.5]: https://github.com/larksuite/cli/releases/tag/v1.0.5
+[v1.0.4]: https://github.com/larksuite/cli/releases/tag/v1.0.4
+[v1.0.3]: https://github.com/larksuite/cli/releases/tag/v1.0.3
 [v1.0.2]: https://github.com/larksuite/cli/releases/tag/v1.0.2
 [v1.0.1]: https://github.com/larksuite/cli/releases/tag/v1.0.1
 [v1.0.0]: https://github.com/larksuite/cli/releases/tag/v1.0.0

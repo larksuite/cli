@@ -4,16 +4,14 @@
 package common
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	"slices"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -23,7 +21,10 @@ import (
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,8 @@ type RuntimeContext struct {
 	Config     *core.CliConfig
 	Cmd        *cobra.Command
 	Format     string
+	JqExpr     string            // --jq expression; empty = no filter
+	outputErr  error             // deferred error from Out()/OutFormat() jq filtering
 	botOnly    bool              // set by framework for bot-only shortcuts
 	resolvedAs core.Identity     // effective identity resolved by framework
 	Factory    *cmdutil.Factory  // injected by framework
@@ -88,29 +91,14 @@ func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
 // For user: returns user access token (with auto-refresh).
 // For bot: returns tenant access token.
 func (ctx *RuntimeContext) AccessToken() (string, error) {
-	if ctx.IsBot() {
-		ac, err := ctx.getAPIClient()
-		if err != nil {
-			return "", output.ErrAuth("failed to get SDK: %s", err)
-		}
-		tatResp, err := ac.SDK.GetTenantAccessTokenBySelfBuiltApp(ctx.ctx, &larkcore.SelfBuiltTenantAccessTokenReq{
-			AppID:     ctx.Config.AppID,
-			AppSecret: ctx.Config.AppSecret,
-		})
-		if err != nil {
-			return "", output.ErrAuth("failed to get tenant access token: %s", err)
-		}
-		return tatResp.TenantAccessToken, nil
-	}
-	httpClient, err := ctx.Factory.HttpClient()
-	if err != nil {
-		return "", output.ErrAuth("failed to get HTTP client: %s", err)
-	}
-	token, err := auth.GetValidAccessToken(httpClient, auth.NewUATCallOptions(ctx.Config, ctx.IO().ErrOut))
+	result, err := ctx.Factory.Credential.ResolveToken(ctx.ctx, credential.NewTokenSpec(ctx.As(), ctx.Config.AppID))
 	if err != nil {
 		return "", output.ErrAuth("failed to get access token: %s", err)
 	}
-	return token, nil
+	if result == nil || result.Token == "" {
+		return "", output.ErrAuth("no access token available for %s", ctx.As())
+	}
+	return result.Token, nil
 }
 
 // LarkSDK returns the eagerly-initialized Lark SDK client.
@@ -239,142 +227,22 @@ func (ctx *RuntimeContext) DoAPIAsBot(req *larkcore.ApiReq, opts ...larkcore.Req
 	return ac.DoSDKRequest(ctx.ctx, req, core.AsBot, opts...)
 }
 
-type cancelOnCloseReadCloser struct {
-	io.ReadCloser
-	cancel context.CancelFunc
-}
-
-func (r *cancelOnCloseReadCloser) Close() error {
-	err := r.ReadCloser.Close()
-	if r.cancel != nil {
-		r.cancel()
-	}
-	return err
-}
-
-// DoAPIStream executes a streaming HTTP request against the Lark OpenAPI endpoint
-// while preserving the framework's auth resolution, shortcut headers, and security headers.
-func (ctx *RuntimeContext) DoAPIStream(callCtx context.Context, req *larkcore.ApiReq, timeout time.Duration, opts ...larkcore.RequestOptionFunc) (*http.Response, error) {
-	httpClient, err := ctx.Factory.HttpClient()
+// DoAPIStream executes a streaming HTTP request via APIClient.DoStream.
+// Unlike DoAPI (which buffers the full body via the SDK), DoAPIStream returns
+// a live *http.Response whose Body is an io.Reader for streaming consumption.
+// HTTP errors (status >= 400) are handled internally by DoStream.
+func (ctx *RuntimeContext) DoAPIStream(callCtx context.Context, req *larkcore.ApiReq, opts ...client.Option) (*http.Response, error) {
+	ac, err := ctx.getAPIClient()
 	if err != nil {
-		return nil, output.ErrNetwork("stream request failed: %s", err)
-	}
-
-	streamingClient := *httpClient
-	if timeout > 0 {
-		streamingClient.Timeout = timeout
-	}
-
-	requestCtx := callCtx
-	cancel := func() {}
-	if timeout > 0 {
-		if _, hasDeadline := callCtx.Deadline(); !hasDeadline {
-			requestCtx, cancel = context.WithTimeout(callCtx, timeout)
-		}
-	}
-
-	var option larkcore.RequestOption
-	for _, opt := range opts {
-		opt(&option)
-	}
-	if option.Header == nil {
-		option.Header = make(http.Header)
-	}
-	if shortcutHeaders := cmdutil.ShortcutHeaderOpts(ctx.ctx); shortcutHeaders != nil {
-		shortcutHeaders(&option)
-	}
-
-	accessToken, err := ctx.AccessToken()
-	if err != nil {
-		cancel()
 		return nil, err
 	}
-
-	requestURL, err := buildStreamRequestURL(ctx.Config.Brand, req)
-	if err != nil {
-		cancel()
-		return nil, err
+	base := []client.Option{
+		client.WithHeaders(cmdutil.BaseSecurityHeaders()),
 	}
-	bodyReader, contentType, err := buildStreamRequestBody(req.Body)
-	if err != nil {
-		cancel()
-		return nil, err
+	if h := cmdutil.ShortcutHeaders(ctx.ctx); h != nil {
+		base = append(base, client.WithHeaders(h))
 	}
-
-	httpReq, err := http.NewRequestWithContext(requestCtx, req.HttpMethod, requestURL, bodyReader)
-	if err != nil {
-		cancel()
-		return nil, output.ErrNetwork("stream request failed: %s", err)
-	}
-	for key, values := range cmdutil.BaseSecurityHeaders() {
-		for _, value := range values {
-			httpReq.Header.Add(key, value)
-		}
-	}
-	for key, values := range option.Header {
-		for _, value := range values {
-			httpReq.Header.Add(key, value)
-		}
-	}
-	if contentType != "" {
-		httpReq.Header.Set("Content-Type", contentType)
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := streamingClient.Do(httpReq)
-	if err != nil {
-		cancel()
-		return nil, output.ErrNetwork("stream request failed: %s", err)
-	}
-	resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: cancel}
-	return resp, nil
-}
-
-func buildStreamRequestURL(brand core.LarkBrand, req *larkcore.ApiReq) (string, error) {
-	requestURL := req.ApiPath
-	if !strings.HasPrefix(requestURL, "http://") && !strings.HasPrefix(requestURL, "https://") {
-		var pathSegs []string
-		for _, segment := range strings.Split(req.ApiPath, "/") {
-			if !strings.HasPrefix(segment, ":") {
-				pathSegs = append(pathSegs, segment)
-				continue
-			}
-			pathKey := strings.TrimPrefix(segment, ":")
-			pathValue, ok := req.PathParams[pathKey]
-			if !ok {
-				return "", output.ErrValidation("missing path param %q for %s", pathKey, req.ApiPath)
-			}
-			if pathValue == "" {
-				return "", output.ErrValidation("empty path param %q for %s", pathKey, req.ApiPath)
-			}
-			pathSegs = append(pathSegs, url.PathEscape(pathValue))
-		}
-		endpoints := core.ResolveEndpoints(brand)
-		requestURL = strings.TrimRight(endpoints.Open, "/") + strings.Join(pathSegs, "/")
-	}
-	if query := req.QueryParams.Encode(); query != "" {
-		requestURL += "?" + query
-	}
-	return requestURL, nil
-}
-
-func buildStreamRequestBody(body interface{}) (io.Reader, string, error) {
-	switch typed := body.(type) {
-	case nil:
-		return nil, "", nil
-	case io.Reader:
-		return typed, "", nil
-	case []byte:
-		return bytes.NewReader(typed), "", nil
-	case string:
-		return strings.NewReader(typed), "text/plain; charset=utf-8", nil
-	default:
-		payload, err := json.Marshal(typed)
-		if err != nil {
-			return nil, "", output.Errorf(output.ExitInternal, "api_error", "failed to encode request body: %s", err)
-		}
-		return bytes.NewReader(payload), "application/json", nil
-	}
+	return ac.DoStream(callCtx, req, ctx.As(), append(base, opts...)...)
 }
 
 // DoAPIJSON calls the Lark API via DoAPI, parses the JSON response envelope,
@@ -433,13 +301,27 @@ func (ctx *RuntimeContext) IO() *cmdutil.IOStreams {
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	env := output.Envelope{OK: true, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
+	if ctx.JqExpr != "" {
+		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
+			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
+			if ctx.outputErr == nil {
+				ctx.outputErr = err
+			}
+		}
+		return
+	}
 	b, _ := json.MarshalIndent(env, "", "  ")
 	fmt.Fprintln(ctx.IO().Out, string(b))
 }
 
 // OutFormat prints output based on --format flag.
 // "json" (default) outputs JSON envelope; "pretty" calls prettyFn; others delegate to FormatValue.
+// When JqExpr is set, routes through Out() regardless of format.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
+	if ctx.JqExpr != "" {
+		ctx.Out(data, meta)
+		return
+	}
 	switch ctx.Format {
 	case "pretty":
 		if prettyFn != nil {
@@ -462,15 +344,21 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 
 // ── Scope pre-check ──
 
-// checkScopePrereqs performs a fast local check: does the stored token
-// contain all scopes declared by the shortcut?  Returns the missing ones.
-// If no token is stored, returns nil (let the normal auth flow handle it).
-func checkScopePrereqs(appID, userOpenId string, required []string) []string {
-	stored := auth.GetStoredToken(appID, userOpenId)
-	if stored == nil {
-		return nil // no token yet — auth flow will catch this later
+// checkScopePrereqs performs a fast local check: does the token
+// contain all scopes declared by the shortcut? Returns the missing ones.
+// If scope data is unavailable, returns nil (let the API call handle it).
+func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, identity core.Identity, required []string) ([]string, error) {
+	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(identity, appID))
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, nil
 	}
-	return auth.MissingScopes(stored.Scope, required)
+	if result == nil || result.Scopes == "" {
+		return nil, nil
+	}
+	return auth.MissingScopes(result.Scopes, required), nil
 }
 
 // enhancePermissionError enriches a permission / auth error with the
@@ -528,6 +416,7 @@ func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
+	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlags(cmd, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	parent.AddCommand(cmd)
@@ -541,14 +430,14 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		return err
 	}
 
-	config, err := f.ResolveConfig(as)
+	config, err := f.Config()
 	if err != nil {
 		return err
 	}
 	// Identity info is now included in the JSON envelope; skip stderr printing.
 	// cmdutil.PrintIdentity(f.IOStreams.ErrOut, as, config, false)
 
-	if err := checkShortcutScopes(as, config, s.ScopesForIdentity(string(as))); err != nil {
+	if err := checkShortcutScopes(f, cmd.Context(), as, config, s.ScopesForIdentity(string(as))); err != nil {
 		return err
 	}
 
@@ -558,6 +447,12 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 
 	if err := validateEnumFlags(rctx, s.Flags); err != nil {
+		return err
+	}
+	if err := resolveInputFlags(rctx, s.Flags); err != nil {
+		return err
+	}
+	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
 		return err
 	}
 	if s.Validate != nil {
@@ -576,13 +471,20 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		}
 	}
 
-	return s.Execute(rctx.ctx, rctx)
+	if err := s.Execute(rctx.ctx, rctx); err != nil {
+		return err
+	}
+	return rctx.outputErr
 }
 
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
 	asFlag, _ := cmd.Flags().GetString("as")
-	as := f.ResolveAs(cmd, core.Identity(asFlag))
+	as := f.ResolveAs(cmd.Context(), cmd, core.Identity(asFlag))
+
+	if err := f.CheckStrictMode(cmd.Context(), as); err != nil {
+		return "", err
+	}
 
 	// Step 2: check if this shortcut supports the resolved identity.
 	if err := f.CheckIdentity(as, s.AuthTypes); err != nil {
@@ -591,11 +493,14 @@ func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	return as, nil
 }
 
-func checkShortcutScopes(as core.Identity, config *core.CliConfig, scopes []string) error {
-	if as != core.AsUser || len(scopes) == 0 || config.UserOpenId == "" {
+func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identity, config *core.CliConfig, scopes []string) error {
+	if len(scopes) == 0 {
 		return nil
 	}
-	missing := checkScopePrereqs(config.AppID, config.UserOpenId, scopes)
+	missing, err := checkScopePrereqs(f, ctx, config.AppID, as, scopes)
+	if err != nil {
+		return err
+	}
 	if len(missing) == 0 {
 		return nil
 	}
@@ -618,7 +523,71 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	if s.HasFormat {
 		rctx.Format = rctx.Str("format")
 	}
+	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
+}
+
+// resolveInputFlags resolves @file and - (stdin) for flags with Input sources.
+// Must be called before Validate/DryRun/Execute so that runtime.Str() returns resolved content.
+func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
+	stdinUsed := false
+	for _, fl := range flags {
+		if len(fl.Input) == 0 {
+			continue
+		}
+		raw, err := rctx.Cmd.Flags().GetString(fl.Name)
+		if err != nil {
+			return FlagErrorf("--%s: Input is only supported for string flags", fl.Name)
+		}
+		if raw == "" {
+			continue
+		}
+
+		// stdin: -
+		if raw == "-" {
+			if !slices.Contains(fl.Input, Stdin) {
+				return FlagErrorf("--%s does not support stdin (-)", fl.Name)
+			}
+			if stdinUsed {
+				return FlagErrorf("--%s: stdin (-) can only be used by one flag", fl.Name)
+			}
+			stdinUsed = true
+			data, err := io.ReadAll(rctx.IO().In)
+			if err != nil {
+				return FlagErrorf("--%s: failed to read from stdin: %v", fl.Name, err)
+			}
+			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			continue
+		}
+
+		// escape: @@ → literal @
+		if strings.HasPrefix(raw, "@@") {
+			rctx.Cmd.Flags().Set(fl.Name, raw[1:]) // strip first @
+			continue
+		}
+
+		// file: @path
+		if strings.HasPrefix(raw, "@") {
+			if !slices.Contains(fl.Input, File) {
+				return FlagErrorf("--%s does not support file input (@path)", fl.Name)
+			}
+			path := strings.TrimSpace(raw[1:])
+			if path == "" {
+				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
+			}
+			safePath, err := validate.SafeInputPath(path)
+			if err != nil {
+				return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
+			}
+			data, err := vfs.ReadFile(safePath)
+			if err != nil {
+				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
+			}
+			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			continue
+		}
+	}
+	return nil
 }
 
 func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
@@ -664,6 +633,16 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 		if len(fl.Enum) > 0 {
 			desc += " (" + strings.Join(fl.Enum, "|") + ")"
 		}
+		if len(fl.Input) > 0 {
+			hints := make([]string, 0, 2)
+			if slices.Contains(fl.Input, File) {
+				hints = append(hints, "@file")
+			}
+			if slices.Contains(fl.Input, Stdin) {
+				hints = append(hints, "- for stdin")
+			}
+			desc += " (supports " + strings.Join(hints, ", ") + ")"
+		}
 		switch fl.Type {
 		case "bool":
 			def := fl.Default == "true"
@@ -698,6 +677,7 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
+	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().String("as", s.AuthTypes[0], "identity type: user | bot")
 
 	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {

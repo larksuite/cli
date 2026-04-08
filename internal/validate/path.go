@@ -5,9 +5,10 @@ package validate
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // SafeOutputPath validates a download/export target path for --output flags.
@@ -29,6 +30,27 @@ func SafeOutputPath(path string) (string, error) {
 // from being tricked into reading sensitive files like /etc/passwd.
 func SafeInputPath(path string) (string, error) {
 	return safePath(path, "--file")
+}
+
+// SafeEnvDirPath validates an environment-provided application directory path.
+// It requires an absolute path, rejects control characters, normalizes the
+// input, and resolves symlinks through the nearest existing ancestor so callers
+// receive a canonical path for subsequent filesystem operations.
+func SafeEnvDirPath(path, envName string) (string, error) {
+	if err := RejectControlChars(path, envName); err != nil {
+		return "", err
+	}
+
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("%s must be an absolute path, got %q", envName, path)
+	}
+
+	resolved, err := resolveNearestAncestor(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve symlinks: %w", err)
+	}
+	return resolved, nil
 }
 
 // SafeLocalFlagPath validates a flag value as a local file path.
@@ -59,7 +81,7 @@ func safePath(raw, flagName string) (string, error) {
 		return "", fmt.Errorf("%s must be a relative path within the current directory, got %q (hint: cd to the target directory first, or use a relative path like ./filename)", flagName, raw)
 	}
 
-	cwd, err := os.Getwd()
+	cwd, err := vfs.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine working directory: %w", err)
 	}
@@ -70,7 +92,7 @@ func safePath(raw, flagName string) (string, error) {
 	// resolve its symlinks, and re-attach the remaining tail segments.
 	// This prevents TOCTOU attacks where a non-existent intermediate
 	// directory is replaced with a symlink between check and use.
-	if _, err := os.Lstat(resolved); err == nil {
+	if _, err := vfs.Lstat(resolved); err == nil {
 		resolved, err = filepath.EvalSymlinks(resolved)
 		if err != nil {
 			return "", fmt.Errorf("cannot resolve symlinks: %w", err)
@@ -98,7 +120,7 @@ func resolveNearestAncestor(path string) (string, error) {
 	var tail []string
 	cur := path
 	for {
-		if _, err := os.Lstat(cur); err == nil {
+		if _, err := vfs.Lstat(cur); err == nil {
 			real, err := filepath.EvalSymlinks(cur)
 			if err != nil {
 				return "", err
