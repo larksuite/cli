@@ -6,6 +6,7 @@ package mail
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -1871,7 +1872,10 @@ func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes 
 	for _, p := range filePaths {
 		info, err := fio.Stat(p)
 		if err != nil {
-			return fmt.Errorf("unsafe attachment path %s: %w", p, err)
+			if errors.Is(err, fileio.ErrPathValidation) {
+				return fmt.Errorf("unsafe attachment path %s: %w", p, err)
+			}
+			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
 		}
 		totalBytes += info.Size()
 	}

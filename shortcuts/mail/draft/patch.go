@@ -4,6 +4,7 @@
 package draft
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
@@ -484,7 +486,10 @@ func addAttachment(snapshot *DraftSnapshot, path string) error {
 	}
 	info, err := snapshot.FIO.Stat(path)
 	if err != nil {
-		return fmt.Errorf("attachment %q: %w", path, err)
+		if errors.Is(err, fileio.ErrPathValidation) {
+			return fmt.Errorf("attachment %q: %w", path, err)
+		}
+		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
@@ -603,7 +608,10 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	}
 	info, err := snapshot.FIO.Stat(path)
 	if err != nil {
-		return fmt.Errorf("inline image %q: %w", path, err)
+		if errors.Is(err, fileio.ErrPathValidation) {
+			return fmt.Errorf("inline image %q: %w", path, err)
+		}
+		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), part); err != nil {
 		return err
