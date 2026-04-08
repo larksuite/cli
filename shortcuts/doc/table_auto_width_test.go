@@ -361,6 +361,26 @@ func TestSameColumnWidths(t *testing.T) {
 	}
 }
 
+func TestShouldSkipTableWidthUpdate(t *testing.T) {
+	t.Run("skip when widths already match", func(t *testing.T) {
+		if !shouldSkipTableWidthUpdate([]int{120, 200}, []int{120, 200}, 2) {
+			t.Fatal("expected matching widths to skip update")
+		}
+	})
+
+	t.Run("skip initial equal distribution without stored widths", func(t *testing.T) {
+		if !shouldSkipTableWidthUpdate(nil, []int{350, 350}, 2) {
+			t.Fatal("expected nil current widths with equal target to skip update")
+		}
+	})
+
+	t.Run("do not skip resetting custom widths back to equal", func(t *testing.T) {
+		if shouldSkipTableWidthUpdate([]int{200, 500}, []int{350, 350}, 2) {
+			t.Fatal("expected custom widths to be reset to equal distribution")
+		}
+	})
+}
+
 func TestFirstNonEmpty(t *testing.T) {
 	if got := firstNonEmpty("a", "b", "c"); got != "a" {
 		t.Errorf("want a, got %s", got)

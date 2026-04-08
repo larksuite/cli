@@ -4,6 +4,7 @@ package doc
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -121,9 +122,27 @@ func TestShouldAutoResizeAfterUpdate(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "two column borderless markdown table",
+			mode:     "append",
+			markdown: "A | B\n--|--\n1 | 2",
+			want:     true,
+		},
+		{
 			name:     "pipe command still not mistaken for table",
 			mode:     "append",
 			markdown: "run cmd1 | grep foo | wc -l",
+			want:     false,
+		},
+		{
+			name:     "table inside fenced code block",
+			mode:     "append",
+			markdown: "```md\nA | B\n--|--\n1 | 2\n```",
+			want:     false,
+		},
+		{
+			name:     "html table inside fenced code block",
+			mode:     "append",
+			markdown: "~~~html\n<table><tr><td>A</td></tr></table>\n~~~",
 			want:     false,
 		},
 	}
@@ -134,5 +153,24 @@ func TestShouldAutoResizeAfterUpdate(t *testing.T) {
 				t.Fatalf("shouldAutoResizeAfterUpdate(%q, %q) = %v, want %v", tt.mode, tt.markdown, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStripFencedCodeBlocks(t *testing.T) {
+	markdown := strings.Join([]string{
+		"before",
+		"```md",
+		"A | B",
+		"--|--",
+		"```",
+		"after",
+		"~~~html",
+		"<table><tr><td>x</td></tr></table>",
+		"~~~",
+	}, "\n")
+
+	got := stripFencedCodeBlocks(markdown)
+	if got != "before\nafter" {
+		t.Fatalf("stripFencedCodeBlocks() = %q, want %q", got, "before\nafter")
 	}
 }

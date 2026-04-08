@@ -97,18 +97,15 @@ func fetchAllBlocks(runtime *common.RuntimeContext, documentID string) ([]interf
 		allItems = append(allItems, items...)
 
 		if !common.GetBool(data, "has_more") {
-			break
+			return allItems, nil
 		}
 		nextToken := common.GetString(data, "page_token")
 		if nextToken == "" {
-			break
+			return allItems, nil
 		}
 		pageToken = nextToken
 	}
-	if pageToken != "" {
-		return nil, fmt.Errorf("block pagination exceeded %d pages", maxBlockPageFetches)
-	}
-	return allItems, nil
+	return nil, fmt.Errorf("block pagination exceeded %d pages", maxBlockPageFetches)
 }
 
 // resizeOneTable calculates and applies optimal column widths for a single table.
@@ -151,20 +148,7 @@ func resizeOneTable(runtime *common.RuntimeContext, documentID, blockID string, 
 	// Convert character widths to pixel widths with constraints
 	columnWidths := computePixelWidths(colMaxWidths, colSize)
 	currentWidths := tableColumnWidths(prop)
-
-	// Check if widths actually differ from equal distribution
-	equalWidth := docContainerWidth / colSize
-	allEqual := true
-	for _, w := range columnWidths {
-		if w != equalWidth {
-			allEqual = false
-			break
-		}
-	}
-	if allEqual {
-		return ""
-	}
-	if sameColumnWidths(currentWidths, columnWidths) {
+	if shouldSkipTableWidthUpdate(currentWidths, columnWidths, colSize) {
 		return ""
 	}
 
@@ -197,6 +181,20 @@ func resizeOneTable(runtime *common.RuntimeContext, documentID, blockID string, 
 		return fmt.Sprintf("failed to update table %s (%s)", blockID, updateErrors)
 	}
 	return ""
+}
+
+func shouldSkipTableWidthUpdate(currentWidths, columnWidths []int, colSize int) bool {
+	if sameColumnWidths(currentWidths, columnWidths) {
+		return true
+	}
+
+	equalWidth := docContainerWidth / colSize
+	for _, width := range columnWidths {
+		if width != equalWidth {
+			return false
+		}
+	}
+	return currentWidths == nil
 }
 
 // cellContentWidth returns the max text width (in character units) of a cell's content.

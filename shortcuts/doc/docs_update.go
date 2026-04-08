@@ -184,18 +184,57 @@ func shouldAutoResizeAfterUpdate(mode, markdown string) bool {
 }
 
 func markdownLikelyContainsTable(markdown string) bool {
-	lower := strings.ToLower(markdown)
+	filtered := stripFencedCodeBlocks(markdown)
+	lower := strings.ToLower(filtered)
 	if strings.Contains(lower, "<table") {
 		return true
 	}
 
-	lines := strings.Split(markdown, "\n")
+	lines := strings.Split(filtered, "\n")
 	for i := 0; i < len(lines)-1; i++ {
 		if isMarkdownTableRow(lines[i]) && isMarkdownTableSeparator(lines[i+1]) {
 			return true
 		}
 	}
 	return false
+}
+
+func stripFencedCodeBlocks(markdown string) string {
+	lines := strings.Split(markdown, "\n")
+	kept := make([]string, 0, len(lines))
+	inFence := false
+	fenceMarker := ""
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if marker, ok := fencedCodeMarker(trimmed); ok {
+			if !inFence {
+				inFence = true
+				fenceMarker = marker
+				continue
+			}
+			if marker == fenceMarker {
+				inFence = false
+				fenceMarker = ""
+				continue
+			}
+		}
+		if !inFence {
+			kept = append(kept, line)
+		}
+	}
+
+	return strings.Join(kept, "\n")
+}
+
+func fencedCodeMarker(trimmed string) (string, bool) {
+	if strings.HasPrefix(trimmed, "```") {
+		return "```", true
+	}
+	if strings.HasPrefix(trimmed, "~~~") {
+		return "~~~", true
+	}
+	return "", false
 }
 
 func isMarkdownTableRow(line string) bool {
@@ -208,7 +247,7 @@ func isMarkdownTableRow(line string) bool {
 
 func isMarkdownTableSeparator(line string) bool {
 	trimmed := strings.TrimSpace(line)
-	if strings.Count(trimmed, "|") < 2 || !strings.Contains(trimmed, "-") {
+	if !strings.Contains(trimmed, "|") || !strings.Contains(trimmed, "-") {
 		return false
 	}
 	for _, r := range trimmed {
