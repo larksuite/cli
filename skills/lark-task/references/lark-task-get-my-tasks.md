@@ -34,7 +34,7 @@ lark-cli task +get-my-tasks --page-limit 10
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `--query <string>` | No | Search for tasks by summary. Returns exact matches if any; otherwise returns partial matches. |
-| `--complete=<bool>` | No | Optional. If not provided, it fetches all tasks (both incomplete and completed). Set to `true` to fetch only completed tasks, or `false` for incomplete tasks. |
+| `--complete=<bool>` | No | Optional. If omitted, it defaults to incomplete tasks (`false`). Set to `true` to fetch only completed tasks, or `false` for incomplete tasks. |
 | `--created_at <string>` | No | Query tasks created after this time. Supports date: `YYYY-MM-DD`, relative: `-2d`, or ms timestamp. |
 | `--due-start <string>` | No | Query tasks with a due date after this time. Supports date: `YYYY-MM-DD`, relative: `-2d`, or ms timestamp. |
 | `--due-end <string>` | No | Query tasks with a due date before this time. Supports date: `YYYY-MM-DD`, relative: `-2d`, or ms timestamp. |

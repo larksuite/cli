@@ -29,7 +29,7 @@ var GetMyTasks = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search for tasks by summary (exact match first, then partial match)"},
-		{Name: "complete", Type: "bool", Desc: "if true, query completed tasks; default is false"},
+		{Name: "complete", Type: "bool", Desc: "if true, query completed tasks; if false or omitted, query incomplete tasks"},
 		{Name: "created_at", Desc: "query tasks created after this time (date/relative/ms)"},
 		{Name: "due-start", Desc: "query tasks with due date after this time (date/relative/ms)"},
 		{Name: "due-end", Desc: "query tasks with due date before this time (date/relative/ms)"},
@@ -44,9 +44,7 @@ var GetMyTasks = common.Shortcut{
 			"type":         "my_tasks",
 			"user_id_type": "open_id",
 			"page_size":    50,
-		}
-		if runtime.Cmd.Flags().Changed("complete") {
-			params["completed"] = runtime.Bool("complete")
+			"completed":    runtime.Bool("complete"),
 		}
 
 		return d.GET("/open-apis/task/v2/tasks").Params(params)
@@ -59,13 +57,7 @@ var GetMyTasks = common.Shortcut{
 		queryParams.Set("type", "my_tasks")
 		queryParams.Set("user_id_type", "open_id")
 		queryParams.Set("page_size", "50")
-		if runtime.Cmd.Flags().Changed("complete") {
-			if runtime.Bool("complete") {
-				queryParams.Set("completed", "true")
-			} else {
-				queryParams.Set("completed", "false")
-			}
-		}
+		queryParams.Set("completed", strconv.FormatBool(runtime.Bool("complete")))
 
 		// parse time flags to ms timestamp if provided
 		var createdAfterMs, dueStartMs, dueEndMs int64

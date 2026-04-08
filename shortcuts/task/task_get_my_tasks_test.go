@@ -89,3 +89,54 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 		})
 	}
 }
+
+func TestGetMyTasks_CompletionFilterDefaultsToIncomplete(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		wantQueryURL string
+	}{
+		{
+			name:         "omitted flag defaults to incomplete",
+			args:         []string{"+get-my-tasks", "--format", "json", "--as", "bot"},
+			wantQueryURL: "completed=false",
+		},
+		{
+			name:         "explicit false remains incomplete",
+			args:         []string{"+get-my-tasks", "--complete=false", "--format", "json", "--as", "bot"},
+			wantQueryURL: "completed=false",
+		},
+		{
+			name:         "explicit true requests completed tasks",
+			args:         []string{"+get-my-tasks", "--complete=true", "--format", "json", "--as", "bot"},
+			wantQueryURL: "completed=true",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := taskShortcutTestFactory(t)
+			warmTenantToken(t, f, reg)
+
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    tt.wantQueryURL,
+				Body: map[string]interface{}{
+					"code": 0, "msg": "success",
+					"data": map[string]interface{}{
+						"items":      []interface{}{},
+						"has_more":   false,
+						"page_token": "",
+					},
+				},
+			})
+
+			s := GetMyTasks
+			s.AuthTypes = []string{"bot", "user"}
+
+			if err := runMountedTaskShortcut(t, s, tt.args, f, stdout); err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+		})
+	}
+}
