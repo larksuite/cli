@@ -75,7 +75,7 @@ func (l *LocalFileIO) Save(path string, _ fileio.SaveOptions, body io.Reader) (f
 	}
 	n, err := AtomicWriteFromReader(safePath, body, 0600)
 	if err != nil {
-		return nil, err
+		return nil, &fileio.WriteError{Err: err}
 	}
 	return &saveResult{size: n}, nil
 }

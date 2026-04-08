@@ -126,13 +126,17 @@ func SaveResponse(fio fileio.FileIO, resp *larkcore.ApiResp, outputPath string) 
 		ContentLength: int64(len(resp.RawBody)),
 	}, bytes.NewReader(resp.RawBody))
 	if err != nil {
+		var me *fileio.MkdirError
+		var we *fileio.WriteError
 		switch {
 		case errors.Is(err, fileio.ErrPathValidation):
-			return nil, fmt.Errorf("unsafe output path: %w", err)
-		case errors.Is(err, fileio.ErrMkdir):
-			return nil, fmt.Errorf("create directory: %w", err)
+			return nil, fmt.Errorf("unsafe output path: %s", err)
+		case errors.As(err, &me):
+			return nil, fmt.Errorf("create directory: %s", err)
+		case errors.As(err, &we):
+			return nil, fmt.Errorf("cannot write file: %s", err)
 		default:
-			return nil, fmt.Errorf("cannot write file: %w", err)
+			return nil, fmt.Errorf("cannot write file: %s", err)
 		}
 	}
 

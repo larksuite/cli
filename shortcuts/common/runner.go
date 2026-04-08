@@ -340,11 +340,15 @@ func WrapSaveError(err error, pathMsg, mkdirMsg, writeMsg string) error {
 	if err == nil {
 		return nil
 	}
+	var me *fileio.MkdirError
+	var we *fileio.WriteError
 	switch {
 	case errors.Is(err, fileio.ErrPathValidation):
 		return fmt.Errorf("%s: %w", pathMsg, err)
-	case errors.Is(err, fileio.ErrMkdir):
+	case errors.As(err, &me):
 		return fmt.Errorf("%s: %w", mkdirMsg, err)
+	case errors.As(err, &we):
+		return fmt.Errorf("%s: %w", writeMsg, err)
 	default:
 		return fmt.Errorf("%s: %w", writeMsg, err)
 	}
