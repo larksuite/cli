@@ -14,6 +14,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Test coverage preview:
+//
+//	| Workflow | Commands |
+//	| --- | --- |
+//	| tasklist lifecycle | task +tasklist-create, task tasklists get, task tasklists tasks, task tasks get |
 func TestTask_TasklistWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

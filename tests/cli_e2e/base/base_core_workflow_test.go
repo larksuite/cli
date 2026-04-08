@@ -14,11 +14,16 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Test coverage preview:
+//
+//	| Workflow | Commands |
+//	| --- | --- |
+//	| core | base +base-create, base +base-get, base +base-copy |
 func TestBase_CoreWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
 
-	baseToken := createBase(t, ctx, uniqueName("lark-cli-e2e-base"))
+	baseToken := createBase(t, ctx, "lark-cli-e2e-base-"+testSuffix())
 
 	t.Run("get base", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -35,7 +40,7 @@ func TestBase_CoreWorkflow(t *testing.T) {
 	})
 
 	t.Run("copy base", func(t *testing.T) {
-		copiedToken := copyBase(t, ctx, baseToken, uniqueName("lark-cli-e2e-base-copy"))
+		copiedToken := copyBase(t, ctx, baseToken, "lark-cli-e2e-base-copy-"+testSuffix())
 		assert.NotEqual(t, baseToken, copiedToken)
 	})
 }

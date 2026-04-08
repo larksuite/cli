@@ -42,10 +42,68 @@ func skipIfBaseUnavailable(t *testing.T, result *clie2e.Result, reason string) {
 
 	payload := baseJSONPayload(t, result)
 	errType := gjson.Get(payload, "error.type").String()
-	switch errType {
-	case "config", "missing_scope", "permission", "auth", "auth_error", "security_policy":
+	if errType == "config" && !runningInCI() {
 		t.Skipf("%s: %s", reason, gjson.Get(payload, "error.message").String())
 	}
+}
+
+func runningInCI() bool {
+	return os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != ""
+}
+
+func reportCleanupFailure(parentT *testing.T, prefix string, result *clie2e.Result, err error) {
+	parentT.Helper()
+
+	if err != nil {
+		parentT.Errorf("%s: %v", prefix, err)
+		return
+	}
+	if result == nil {
+		parentT.Errorf("%s: nil result", prefix)
+		return
+	}
+	if isNotFoundResult(result) {
+		return
+	}
+
+	parentT.Errorf("%s failed: exit=%d stdout=%s stderr=%s", prefix, result.ExitCode, result.Stdout, result.Stderr)
+}
+
+func isNotFoundResult(result *clie2e.Result) bool {
+	if result == nil {
+		return false
+	}
+
+	raw := strings.TrimSpace(result.Stdout)
+	if raw == "" {
+		raw = strings.TrimSpace(result.Stderr)
+	}
+	if raw == "" {
+		return false
+	}
+
+	start := strings.LastIndex(raw, "\n{")
+	if start >= 0 {
+		start++
+	} else {
+		start = strings.Index(raw, "{")
+	}
+	if start < 0 {
+		return false
+	}
+
+	payload := raw[start:]
+	if !gjson.Valid(payload) {
+		return false
+	}
+
+	return gjson.Get(payload, "error.type").String() == "api_error" &&
+		(gjson.Get(payload, "error.detail.type").String() == "not_found" ||
+			strings.Contains(strings.ToLower(gjson.Get(payload, "error.message").String()), "not found"))
+}
+
+func testSuffix() string {
+	return time.Now().UTC().Format("20060102-150405")
 }
 
 func createBase(t *testing.T, ctx context.Context, name string) string {
@@ -136,7 +194,7 @@ func createTable(t *testing.T, parentT *testing.T, ctx context.Context, baseToke
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort table cleanup skipped: table=%s err=%v stdout=%s stderr=%s", tableID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete table "+tableID, deleteResult, deleteErr)
 		}
 	})
 
@@ -169,7 +227,7 @@ func createField(t *testing.T, parentT *testing.T, ctx context.Context, baseToke
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort field cleanup skipped: field=%s err=%v stdout=%s stderr=%s", fieldID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete field "+fieldID, deleteResult, deleteErr)
 		}
 	})
 
@@ -191,6 +249,9 @@ func createRecord(t *testing.T, parentT *testing.T, ctx context.Context, baseTok
 	result.AssertStdoutStatus(t, true)
 
 	recordID := gjson.Get(result.Stdout, "data.record.record_id").String()
+	if recordID == "" {
+		recordID = gjson.Get(result.Stdout, "data.record.record_id_list.0").String()
+	}
 	require.NotEmpty(t, recordID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
@@ -199,7 +260,7 @@ func createRecord(t *testing.T, parentT *testing.T, ctx context.Context, baseTok
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort record cleanup skipped: record=%s err=%v stdout=%s stderr=%s", recordID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete record "+recordID, deleteResult, deleteErr)
 		}
 	})
 
@@ -232,7 +293,7 @@ func createView(t *testing.T, parentT *testing.T, ctx context.Context, baseToken
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort view cleanup skipped: view=%s err=%v stdout=%s stderr=%s", viewID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete view "+viewID, deleteResult, deleteErr)
 		}
 	})
 
@@ -262,7 +323,7 @@ func createDashboard(t *testing.T, parentT *testing.T, ctx context.Context, base
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort dashboard cleanup skipped: dashboard=%s err=%v stdout=%s stderr=%s", dashboardID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete dashboard "+dashboardID, deleteResult, deleteErr)
 		}
 	})
 
@@ -292,7 +353,7 @@ func createBlock(t *testing.T, parentT *testing.T, ctx context.Context, baseToke
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort block cleanup skipped: block=%s err=%v stdout=%s stderr=%s", blockID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete dashboard block "+blockID, deleteResult, deleteErr)
 		}
 	})
 
@@ -322,7 +383,7 @@ func createForm(t *testing.T, parentT *testing.T, ctx context.Context, baseToken
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort form cleanup skipped: form=%s err=%v stdout=%s stderr=%s", formID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete form "+formID, deleteResult, deleteErr)
 		}
 	})
 
@@ -344,6 +405,36 @@ func createRole(t *testing.T, parentT *testing.T, ctx context.Context, baseToken
 	result.AssertStdoutStatus(t, true)
 
 	roleID := gjson.Get(result.Stdout, "data.role_id").String()
+	if roleID == "" {
+		roleName := gjson.Get(body, "role_name").String()
+		require.NotEmpty(t, roleName, "role_name is required to resolve role id from list")
+
+		listResult, listErr := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"base", "+role-list", "--base-token", baseToken},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, listErr)
+		if listResult.ExitCode != 0 {
+			skipIfBaseUnavailable(t, listResult, "requires bot role list capability")
+		}
+		listResult.AssertExitCode(t, 0)
+		listResult.AssertStdoutStatus(t, true)
+
+		roleListPayload := gjson.Get(listResult.Stdout, "data.data").String()
+		require.NotEmpty(t, roleListPayload, "stdout:\n%s", listResult.Stdout)
+		require.True(t, gjson.Valid(roleListPayload), "stdout:\n%s", listResult.Stdout)
+
+		for _, item := range gjson.Get(roleListPayload, "base_roles").Array() {
+			rolePayload := item.String()
+			if !gjson.Valid(rolePayload) {
+				continue
+			}
+			if gjson.Get(rolePayload, "role_name").String() == roleName {
+				roleID = gjson.Get(rolePayload, "role_id").String()
+				break
+			}
+		}
+	}
 	require.NotEmpty(t, roleID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
@@ -352,7 +443,7 @@ func createRole(t *testing.T, parentT *testing.T, ctx context.Context, baseToken
 			DefaultAs: "bot",
 		})
 		if deleteErr != nil || deleteResult.ExitCode != 0 {
-			parentT.Logf("best-effort role cleanup skipped: role=%s err=%v stdout=%s stderr=%s", roleID, deleteErr, deleteResult.Stdout, deleteResult.Stderr)
+			reportCleanupFailure(parentT, "delete role "+roleID, deleteResult, deleteErr)
 		}
 	})
 
@@ -381,12 +472,14 @@ func createWorkflow(t *testing.T, ctx context.Context, baseToken string, body st
 func writeTempAttachment(t *testing.T, content string) string {
 	t.Helper()
 
-	path := filepath.Join(t.TempDir(), "attachment.txt")
-	err := os.WriteFile(path, []byte(content), 0o644)
+	wd, err := os.Getwd()
 	require.NoError(t, err)
-	return path
-}
 
-func uniqueName(prefix string) string {
-	return prefix + "-" + time.Now().UTC().Format("20060102-150405")
+	path := filepath.Join(wd, "attachment-"+testSuffix()+".txt")
+	err = os.WriteFile(path, []byte(content), 0o644)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Remove(path)
+	})
+	return "./" + filepath.Base(path)
 }

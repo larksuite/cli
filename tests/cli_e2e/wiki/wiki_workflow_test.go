@@ -14,11 +14,16 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestWiki_Workflow_Bot(t *testing.T) {
+// Test coverage preview:
+//
+//	| Workflow | Commands |
+//	| --- | --- |
+//	| node workflow | wiki nodes create, wiki spaces get_node, wiki spaces get, wiki spaces list, wiki nodes list, wiki nodes copy |
+func TestWiki_NodeWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := testSuffix()
 	createdTitle := "lark-cli-e2e-wiki-create-" + suffix
 	copiedTitle := "lark-cli-e2e-wiki-copy-" + suffix
 
@@ -52,6 +57,10 @@ func TestWiki_Workflow_Bot(t *testing.T) {
 		assert.Equal(t, "docx", node.Get("obj_type").String())
 	})
 
+	if createdNodeToken == "" || spaceID == "" {
+		t.Skip("requires bot wiki create capability")
+	}
+
 	t.Run("get created node", func(t *testing.T) {
 		require.NotEmpty(t, createdNodeToken, "node token should be created before get_node")
 
@@ -64,6 +73,9 @@ func TestWiki_Workflow_Bot(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		if result.ExitCode != 0 {
+			skipIfWikiUnavailable(t, result, "requires bot wiki node read capability")
+		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 
@@ -84,6 +96,9 @@ func TestWiki_Workflow_Bot(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		if result.ExitCode != 0 {
+			skipIfWikiUnavailable(t, result, "requires bot wiki space get capability")
+		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 
@@ -100,6 +115,9 @@ func TestWiki_Workflow_Bot(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		if result.ExitCode != 0 {
+			skipIfWikiUnavailable(t, result, "requires bot wiki space list capability")
+		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 
@@ -120,6 +138,9 @@ func TestWiki_Workflow_Bot(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		if result.ExitCode != 0 {
+			skipIfWikiUnavailable(t, result, "requires bot wiki node list capability")
+		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 
@@ -166,6 +187,9 @@ func TestWiki_Workflow_Bot(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		if result.ExitCode != 0 {
+			skipIfWikiUnavailable(t, result, "requires bot wiki node list capability")
+		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 

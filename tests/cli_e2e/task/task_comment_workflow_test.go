@@ -14,6 +14,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Test coverage preview:
+//
+//	| Workflow | Commands |
+//	| --- | --- |
+//	| comment lifecycle | task +create, task +comment |
 func TestTask_CommentWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

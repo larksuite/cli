@@ -14,15 +14,22 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Test coverage preview:
+//
+//	| Workflow | Commands |
+//	| --- | --- |
+//	| dashboard lifecycle | base +base-create, base +table-create, base +dashboard-create, base +dashboard-list, base +dashboard-get, base +dashboard-update, base +dashboard-delete, base +dashboard-block-create, base +dashboard-block-list, base +dashboard-block-get, base +dashboard-block-update, base +dashboard-block-delete |
+//	| form lifecycle | base +base-create, base +table-create, base +form-create, base +form-get, base +form-list, base +form-update, base +form-delete, base +form-questions-create, base +form-questions-list, base +form-questions-update, base +form-questions-delete |
 func TestBase_DashboardWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
 
-	baseToken := createBase(t, ctx, uniqueName("lark-cli-e2e-base-dashboard"))
-	tableID, _, _ := createTable(t, parentT, ctx, baseToken, uniqueName("DashboardTable"), `[{"name":"Amount","type":"number"}]`, "")
-	dashboardID := createDashboard(t, parentT, ctx, baseToken, uniqueName("Sales Dashboard"))
-	blockID := createBlock(t, parentT, ctx, baseToken, dashboardID, "Amount Stats", "statistics", `{"table_name":"DashboardTable","series":[{"field_name":"Amount","rollup":"sum"}],"count_all":true}`)
+	baseToken := createBase(t, ctx, "lark-cli-e2e-base-dashboard-"+testSuffix())
+	tableName := "lark-cli-e2e-dashboard-table-" + testSuffix()
+	tableID, _, _ := createTable(t, parentT, ctx, baseToken, tableName, `[{"name":"Amount","type":"number"}]`, "")
+	dashboardID := createDashboard(t, parentT, ctx, baseToken, "lark-cli-e2e-sales-dashboard-"+testSuffix())
+	blockID := createBlock(t, parentT, ctx, baseToken, dashboardID, "Amount Stats", "statistics", `{"table_name":"`+tableName+`","series":[{"field_name":"Amount","rollup":"sum"}]}`)
 
 	t.Run("dashboard list", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -96,7 +103,7 @@ func TestBase_DashboardWorkflow(t *testing.T) {
 
 	t.Run("dashboard block update", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+dashboard-block-update", "--base-token", baseToken, "--dashboard-id", dashboardID, "--block-id", blockID, "--name", "Amount Stats Updated", "--data-config", `{"table_name":"DashboardTable","series":[{"field_name":"Amount","rollup":"SUM"}],"count_all":true}`},
+			Args:      []string{"base", "+dashboard-block-update", "--base-token", baseToken, "--dashboard-id", dashboardID, "--block-id", blockID, "--name", "Amount Stats Updated", "--data-config", `{"table_name":"` + tableName + `","series":[{"field_name":"Amount","rollup":"SUM"}]}`},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
@@ -144,9 +151,9 @@ func TestBase_FormWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
 
-	baseToken := createBase(t, ctx, uniqueName("lark-cli-e2e-base-form"))
-	tableID, _, _ := createTable(t, parentT, ctx, baseToken, uniqueName("FormTable"), `[{"name":"Name","type":"text"}]`, "")
-	formID := createForm(t, parentT, ctx, baseToken, tableID, uniqueName("Survey"))
+	baseToken := createBase(t, ctx, "lark-cli-e2e-base-form-"+testSuffix())
+	tableID, _, _ := createTable(t, parentT, ctx, baseToken, "lark-cli-e2e-form-table-"+testSuffix(), `[{"name":"Name","type":"text"}]`, "")
+	formID := createForm(t, parentT, ctx, baseToken, tableID, "lark-cli-e2e-survey-"+testSuffix())
 
 	var questionID string
 
@@ -237,7 +244,7 @@ func TestBase_FormWorkflow(t *testing.T) {
 
 	t.Run("form questions delete", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+form-questions-delete", "--base-token", baseToken, "--table-id", tableID, "--form-id", formID, "--question-ids", `["` + questionID + `"]`},
+			Args:      []string{"base", "+form-questions-delete", "--base-token", baseToken, "--table-id", tableID, "--form-id", formID, "--question-ids", `["` + questionID + `"]`, "--yes"},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)

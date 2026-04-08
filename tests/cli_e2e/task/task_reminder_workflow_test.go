@@ -14,6 +14,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Test coverage preview:
+//
+//	| Workflow | Commands |
+//	| --- | --- |
+//	| reminder lifecycle | task +create, task +reminder, task tasks get, task +reminder, task tasks get |
 func TestTask_ReminderWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
