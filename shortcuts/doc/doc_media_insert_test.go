@@ -4,8 +4,17 @@
 package doc
 
 import (
+	"context"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestBuildCreateBlockDataUsesConcreteAppendIndex(t *testing.T) {
@@ -124,359 +133,280 @@ func TestExtractAppendTargetUsesRootChildrenCount(t *testing.T) {
 	}
 }
 
-func TestExtractBlockPlainTextParagraph(t *testing.T) {
-	t.Parallel()
-
-	block := map[string]interface{}{
-		"block_type": 2,
-		"text": map[string]interface{}{
-			"elements": []interface{}{
-				map[string]interface{}{"text_run": map[string]interface{}{"content": "Hello "}},
-				map[string]interface{}{"text_run": map[string]interface{}{"content": "World"}},
-			},
-		},
-	}
-	got := extractBlockPlainText(block)
-	if got != "Hello World" {
-		t.Fatalf("extractBlockPlainText() = %q, want %q", got, "Hello World")
-	}
-}
-
-func TestExtractBlockPlainTextHeading(t *testing.T) {
-	t.Parallel()
-
-	block := map[string]interface{}{
-		"block_type": 3,
-		"heading1": map[string]interface{}{
-			"elements": []interface{}{
-				map[string]interface{}{"text_run": map[string]interface{}{"content": "My Section"}},
-			},
-		},
-	}
-	got := extractBlockPlainText(block)
-	if got != "My Section" {
-		t.Fatalf("extractBlockPlainText() = %q, want %q", got, "My Section")
-	}
-}
-
-func TestExtractBlockPlainTextBulletOrderedTodo(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		key     string
-		content string
-	}{
-		{"bullet", "太空山"},
-		{"ordered", "第一步操作"},
-		{"todo", "完成任务"},
-	}
-	for _, tc := range cases {
-		block := map[string]interface{}{
-			"block_type": 0,
-			tc.key: map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": tc.content}},
-				},
-			},
-		}
-		got := extractBlockPlainText(block)
-		if got != tc.content {
-			t.Errorf("extractBlockPlainText(%q) = %q, want %q", tc.key, got, tc.content)
-		}
-	}
-}
-
-func TestExtractBlockPlainTextEmpty(t *testing.T) {
-	t.Parallel()
-
-	block := map[string]interface{}{"block_type": 27, "image": map[string]interface{}{}}
-	if got := extractBlockPlainText(block); got != "" {
-		t.Fatalf("extractBlockPlainText(image) = %q, want empty", got)
-	}
-}
-
-func TestFindInsertIndexByKeywordFindsAfterBlock(t *testing.T) {
-	t.Parallel()
-
-	blocks := []map[string]interface{}{
-		{
-			"block_id":  "root",
-			"parent_id": "",
-		},
-		{
-			"block_id":  "blk_a",
-			"parent_id": "root",
-			"heading1": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "Introduction"}},
-				},
-			},
-		},
-		{
-			"block_id":  "blk_b",
-			"parent_id": "root",
-			"heading1": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "Architecture"}},
+// buildLocateDocMCPResponse builds a JSON-RPC 2.0 response for a locate-doc MCP call.
+func buildLocateDocMCPResponse(matches []map[string]interface{}) map[string]interface{} {
+	resultJSON, _ := json.Marshal(map[string]interface{}{"matches": matches})
+	return map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "test-id",
+		"result": map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": string(resultJSON),
 				},
 			},
 		},
 	}
-	rootChildren := []interface{}{"blk_a", "blk_b"}
+}
 
-	idx, err := findInsertIndexByKeyword(blocks, rootChildren, "Introduction", false)
+func registerInsertWithSelectionStubs(reg interface {
+	Register(*httpmock.Stub)
+}, docID, anchorBlockID, parentBlockID string) {
+	// Root block
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": docID,
+					"children": []interface{}{"blk_a", "blk_b"},
+				},
+			},
+		},
+	})
+	// MCP locate-doc
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "mcp.feishu.cn/mcp",
+		Body: buildLocateDocMCPResponse([]map[string]interface{}{
+			{"anchor_block_id": anchorBlockID, "parent_block_id": parentBlockID},
+		}),
+	})
+	// Create block
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID + "/children",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"children": []interface{}{
+					map[string]interface{}{"block_id": "blk_new", "block_type": 27, "image": map[string]interface{}{}},
+				},
+			},
+		},
+	})
+	// Upload
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "ftok_test"},
+		},
+	})
+	// Batch update
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/batch_update",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	})
+}
+
+// TestLocateInsertIndexAfterModeViaExecute verifies that --selection-with-ellipsis
+// inserts after the matched root-level block (index = root index + 1).
+func TestLocateInsertIndexAfterModeViaExecute(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-after-app"))
+	registerInsertWithSelectionStubs(reg, "doxcnSEL", "blk_a", "doxcnSEL")
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "doxcnSEL",
+		"--file", "img.png",
+		"--selection-with-ellipsis", "Introduction",
+		"--as", "bot",
+	}, f, nil)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if idx != 1 {
-		t.Fatalf("findInsertIndexByKeyword() = %d, want 1", idx)
+		t.Fatalf("Execute() error: %v", err)
 	}
 }
 
-func TestFindInsertIndexByKeywordCaseInsensitive(t *testing.T) {
-	t.Parallel()
+// TestLocateInsertIndexBeforeModeViaExecute verifies that --before inserts before
+// the matched root-level block.
+func TestLocateInsertIndexBeforeModeViaExecute(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-before-app"))
+	registerInsertWithSelectionStubs(reg, "doxcnSEL2", "blk_b", "doxcnSEL2")
 
-	blocks := []map[string]interface{}{
-		{
-			"block_id":  "blk_a",
-			"parent_id": "root",
-			"heading2": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "Core Architecture"}},
-				},
-			},
-		},
-	}
-	rootChildren := []interface{}{"blk_a"}
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
 
-	idx, err := findInsertIndexByKeyword(blocks, rootChildren, "core architecture", false)
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "doxcnSEL2",
+		"--file", "img.png",
+		"--selection-with-ellipsis", "Architecture",
+		"--before",
+		"--as", "bot",
+	}, f, nil)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if idx != 1 {
-		t.Fatalf("findInsertIndexByKeyword() = %d, want 1", idx)
+		t.Fatalf("Execute() error: %v", err)
 	}
 }
 
-func TestFindInsertIndexByKeywordNestedBlock(t *testing.T) {
-	t.Parallel()
+// TestLocateInsertIndexNestedBlockViaExecute verifies that a nested block's
+// parent_block_id hint is used to walk to the root-level ancestor.
+func TestLocateInsertIndexNestedBlockViaExecute(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-nested-app"))
 
-	// Nested block: blk_child is inside blk_section (root child)
-	blocks := []map[string]interface{}{
-		{
-			"block_id":  "blk_section",
-			"parent_id": "root",
-			"heading1": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "Section"}},
+	docID := "doxcnNESTED"
+	// Root block with blk_section and blk_other as children
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": docID,
+					"children": []interface{}{"blk_section", "blk_other"},
 				},
 			},
 		},
-		{
-			"block_id":  "blk_child",
-			"parent_id": "blk_section",
-			"text": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "nested content here"}},
+	})
+	// MCP locate-doc returns blk_child nested under blk_section
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "mcp.feishu.cn/mcp",
+		Body: buildLocateDocMCPResponse([]map[string]interface{}{
+			{"anchor_block_id": "blk_child", "parent_block_id": "blk_section"},
+		}),
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID + "/children",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"children": []interface{}{
+					map[string]interface{}{"block_id": "blk_new", "block_type": 27, "image": map[string]interface{}{}},
 				},
 			},
 		},
-	}
-	rootChildren := []interface{}{"blk_section"}
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "ftok_nested"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/batch_update",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	})
 
-	// Matching a nested block should insert after its root-level ancestor.
-	idx, err := findInsertIndexByKeyword(blocks, rootChildren, "nested content", false)
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", docID,
+		"--file", "img.png",
+		"--selection-with-ellipsis", "nested content",
+		"--as", "bot",
+	}, f, nil)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if idx != 1 {
-		t.Fatalf("findInsertIndexByKeyword() nested = %d, want 1", idx)
+		t.Fatalf("Execute() error: %v", err)
 	}
 }
 
-// TestFindInsertIndexByKeywordDuplicateUsesFirst verifies that when the same
-// keyword appears in multiple blocks, the function always anchors to the
-// first matching block in document order (the slice iteration order of blocks).
-func TestFindInsertIndexByKeywordDuplicateUsesFirst(t *testing.T) {
-	t.Parallel()
+// TestLocateInsertIndexNoMatchReturnsError verifies that when locate-doc returns
+// no matches, Execute returns a descriptive error.
+func TestLocateInsertIndexNoMatchReturnsError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-nomatch-app"))
 
-	// Three root-level blocks, all containing "overview".
-	// Document order: blk_a (index 0) → blk_b (index 1) → blk_c (index 2).
-	blocks := []map[string]interface{}{
-		{
-			"block_id":  "blk_a",
-			"parent_id": "root",
-			"text": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "overview: section one"}},
+	docID := "doxcnNOMATCH"
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": docID,
+					"children": []interface{}{"blk_a"},
 				},
 			},
 		},
-		{
-			"block_id":  "blk_b",
-			"parent_id": "root",
-			"text": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "overview: section two"}},
-				},
-			},
-		},
-		{
-			"block_id":  "blk_c",
-			"parent_id": "root",
-			"text": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "overview: section three"}},
-				},
-			},
-		},
-	}
-	rootChildren := []interface{}{"blk_a", "blk_b", "blk_c"}
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "mcp.feishu.cn/mcp",
+		Body:   buildLocateDocMCPResponse([]map[string]interface{}{}),
+	})
 
-	// --after-keyword: should insert after blk_a (index 0 → return 1), not blk_b or blk_c.
-	afterIdx, err := findInsertIndexByKeyword(blocks, rootChildren, "overview", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if afterIdx != 1 {
-		t.Fatalf("after: got index %d, want 1 (after first match blk_a)", afterIdx)
-	}
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
 
-	// --before-keyword: should insert before blk_a (index 0 → return 0).
-	beforeIdx, err := findInsertIndexByKeyword(blocks, rootChildren, "overview", true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if beforeIdx != 0 {
-		t.Fatalf("before: got index %d, want 0 (before first match blk_a)", beforeIdx)
-	}
-}
-
-// TestFindInsertIndexByKeywordDuplicateNestedAndTopLevel verifies that when the
-// keyword appears in both a nested block (inside blk_a) and a later top-level
-// block (blk_b), the function uses the earlier document-order match — which
-// resolves upward to blk_a.
-func TestFindInsertIndexByKeywordDuplicateNestedAndTopLevel(t *testing.T) {
-	t.Parallel()
-
-	blocks := []map[string]interface{}{
-		// blk_a is a top-level section
-		{
-			"block_id":  "blk_a",
-			"parent_id": "root",
-			"heading1": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "Section A"}},
-				},
-			},
-		},
-		// blk_child is nested inside blk_a and contains the keyword first
-		{
-			"block_id":  "blk_child",
-			"parent_id": "blk_a",
-			"text": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "architecture diagram"}},
-				},
-			},
-		},
-		// blk_b is a second top-level block that also contains the keyword
-		{
-			"block_id":  "blk_b",
-			"parent_id": "root",
-			"text": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "architecture diagram"}},
-				},
-			},
-		},
-	}
-	rootChildren := []interface{}{"blk_a", "blk_b"}
-
-	// blk_child appears before blk_b in blocks slice → first match is blk_child,
-	// which walks up to blk_a (rootChildren index 0).
-	// after → insert at index 1 (after blk_a)
-	afterIdx, err := findInsertIndexByKeyword(blocks, rootChildren, "architecture diagram", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if afterIdx != 1 {
-		t.Fatalf("after: got %d, want 1 (after blk_a, ancestor of first-matched blk_child)", afterIdx)
-	}
-
-	// before → insert at index 0 (before blk_a)
-	beforeIdx, err := findInsertIndexByKeyword(blocks, rootChildren, "architecture diagram", true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if beforeIdx != 0 {
-		t.Fatalf("before: got %d, want 0 (before blk_a, ancestor of first-matched blk_child)", beforeIdx)
-	}
-}
-
-func TestFindInsertIndexByKeywordNotFound(t *testing.T) {
-	t.Parallel()
-
-	blocks := []map[string]interface{}{
-		{
-			"block_id":  "blk_a",
-			"parent_id": "root",
-			"text": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "hello world"}},
-				},
-			},
-		},
-	}
-	rootChildren := []interface{}{"blk_a"}
-
-	_, err := findInsertIndexByKeyword(blocks, rootChildren, "nonexistent keyword", false)
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", docID,
+		"--file", "img.png",
+		"--selection-with-ellipsis", "nonexistent text",
+		"--as", "bot",
+	}, f, nil)
 	if err == nil {
-		t.Fatal("expected error for missing keyword, got nil")
+		t.Fatal("expected no-match error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no_match") && !strings.Contains(err.Error(), "did not find") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestFindInsertIndexByKeywordBeforeMode(t *testing.T) {
+// TestLocateInsertIndexDryRunIncludesMCPStep verifies that the dry-run output
+// includes a locate-doc MCP step when --selection-with-ellipsis is provided.
+func TestLocateInsertIndexDryRunIncludesMCPStep(t *testing.T) {
 	t.Parallel()
 
-	blocks := []map[string]interface{}{
-		{
-			"block_id":  "blk_a",
-			"parent_id": "root",
-			"heading1": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "Introduction"}},
-				},
-			},
-		},
-		{
-			"block_id":  "blk_b",
-			"parent_id": "root",
-			"heading1": map[string]interface{}{
-				"elements": []interface{}{
-					map[string]interface{}{"text_run": map[string]interface{}{"content": "Architecture"}},
-				},
-			},
-		},
-	}
-	rootChildren := []interface{}{"blk_a", "blk_b"}
+	cmd := &cobra.Command{Use: "docs +media-insert"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("doc", "", "")
+	cmd.Flags().String("type", "image", "")
+	cmd.Flags().String("align", "", "")
+	cmd.Flags().String("caption", "", "")
+	cmd.Flags().String("selection-with-ellipsis", "", "")
+	cmd.Flags().Bool("before", false, "")
+	_ = cmd.Flags().Set("file", "img.png")
+	_ = cmd.Flags().Set("doc", "doxcnABCDEF")
+	_ = cmd.Flags().Set("selection-with-ellipsis", "Introduction")
 
-	// before=true: should return index 1 (before blk_b, which is rootChildren[1])
-	idx, err := findInsertIndexByKeyword(blocks, rootChildren, "Architecture", true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	rt := common.TestNewRuntimeContext(cmd, docsTestConfigWithAppID("dry-run-app"))
+	dryAPI := DocMediaInsert.DryRun(context.Background(), rt)
+	raw, _ := json.Marshal(dryAPI)
+
+	var dry struct {
+		Description string `json:"description"`
+		API         []struct {
+			Desc string `json:"desc"`
+			URL  string `json:"url"`
+		} `json:"api"`
 	}
-	if idx != 1 {
-		t.Fatalf("findInsertIndexByKeyword(before) = %d, want 1", idx)
+	if err := json.Unmarshal(raw, &dry); err != nil {
+		t.Fatalf("decode dry-run: %v", err)
 	}
 
-	// before=false: should return index 2 (after blk_b)
-	idx, err = findInsertIndexByKeyword(blocks, rootChildren, "Architecture", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	foundMCP := false
+	for _, step := range dry.API {
+		if strings.Contains(step.Desc, "locate-doc") {
+			foundMCP = true
+		}
 	}
-	if idx != 2 {
-		t.Fatalf("findInsertIndexByKeyword(after) = %d, want 2", idx)
+	if !foundMCP {
+		t.Fatalf("dry-run should include a locate-doc step, got: %+v", dry.API)
+	}
+	if !strings.Contains(dry.Description, "locate-doc") {
+		t.Fatalf("dry-run description should mention 'locate-doc', got: %s", dry.Description)
 	}
 }
 
