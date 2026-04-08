@@ -214,7 +214,8 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 }
 
 // deduplicateDocTokens removes tokens from meeting_notes / ai_meeting_notes
-// that already appear in note detail fields (note_doc_token, verbatim_doc_token, shared_doc_tokens).
+// that already appear in note detail fields (note_doc_token, verbatim_doc_token, shared_doc_tokens),
+// and also cross-deduplicates between meeting_notes and ai_meeting_notes.
 func deduplicateDocTokens(result map[string]any) {
 	seen := map[string]bool{}
 	if v, _ := result["note_doc_token"].(string); v != "" {
@@ -227,7 +228,14 @@ func deduplicateDocTokens(result map[string]any) {
 		seen[tok] = true
 	}
 
-	result["meeting_notes"] = filterUnseen(toStringSlice(result["meeting_notes"]), seen)
+	// filter meeting_notes first, then mark its tokens as seen
+	filtered := filterUnseen(toStringSlice(result["meeting_notes"]), seen)
+	result["meeting_notes"] = filtered
+	for _, tok := range filtered {
+		seen[tok] = true
+	}
+
+	// filter ai_meeting_notes against note detail fields + meeting_notes
 	result["ai_meeting_notes"] = filterUnseen(toStringSlice(result["ai_meeting_notes"]), seen)
 
 	if len(toStringSlice(result["meeting_notes"])) == 0 {
@@ -666,6 +674,9 @@ var VCNotes = common.Shortcut{
 				if id == "" {
 					id, _ = m["minute_token"].(string)
 				}
+				if id == "" {
+					id, _ = m["calendar_event_id"].(string)
+				}
 				row := map[string]interface{}{"id": id}
 				if errMsg, _ := m["error"].(string); errMsg != "" {
 					row["status"] = "FAIL"
@@ -680,6 +691,12 @@ var VCNotes = common.Shortcut{
 					}
 					if v, _ := m["shared_doc_tokens"].([]string); len(v) > 0 {
 						row["shared_docs"] = strings.Join(v, ", ")
+					}
+					if v := toStringSlice(m["meeting_notes"]); len(v) > 0 {
+						row["meeting_notes"] = strings.Join(v, ", ")
+					}
+					if v := toStringSlice(m["ai_meeting_notes"]); len(v) > 0 {
+						row["ai_meeting_notes"] = strings.Join(v, ", ")
 					}
 					if v, _ := m["source"].(string); v != "" {
 						row["source"] = v

@@ -466,6 +466,22 @@ func TestDeduplicateDocTokens(t *testing.T) {
 	if _, exists := result3["meeting_notes"]; exists {
 		t.Errorf("should not have meeting_notes key")
 	}
+
+	// case 4: cross-dedup between meeting_notes and ai_meeting_notes
+	result4 := map[string]any{
+		"note_doc_token":   "doc_a",
+		"meeting_notes":    []string{"shared_tok", "only_mn"},
+		"ai_meeting_notes": []string{"shared_tok", "only_ai"},
+	}
+	deduplicateDocTokens(result4)
+	mn4 := toStringSlice(result4["meeting_notes"])
+	if len(mn4) != 2 || mn4[0] != "shared_tok" || mn4[1] != "only_mn" {
+		t.Errorf("case4 meeting_notes: got %v, want [shared_tok only_mn]", mn4)
+	}
+	ai4 := toStringSlice(result4["ai_meeting_notes"])
+	if len(ai4) != 1 || ai4[0] != "only_ai" {
+		t.Errorf("case4 ai_meeting_notes: got %v, want [only_ai] (shared_tok deduped)", ai4)
+	}
 }
 
 // ---------------------------------------------------------------------------
