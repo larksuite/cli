@@ -55,7 +55,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	if IsJSONContentType(ct) || ct == "" {
 		result, err := ParseJSONResponse(resp)
 		if err != nil {
-			return output.ErrNetwork("API call failed: %v", err)
+			return WrapJSONResponseParseError(err, resp.RawBody)
 		}
 		if apiErr := check(result); apiErr != nil {
 			return apiErr
@@ -111,7 +111,7 @@ func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(resp.RawBody))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
-		return nil, fmt.Errorf("response parse error: %v (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
+		return nil, fmt.Errorf("response parse error: %w (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
 	}
 	return result, nil
 }

@@ -6,6 +6,7 @@ package client
 import (
 	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,6 +73,17 @@ func TestParseJSONResponse_Invalid(t *testing.T) {
 	_, err := ParseJSONResponse(resp)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestParseJSONResponse_EmptyBody_WrapsEOF(t *testing.T) {
+	resp := newApiResp([]byte{}, map[string]string{"Content-Type": "application/json"})
+	_, err := ParseJSONResponse(resp)
+	if err == nil {
+		t.Fatal("expected error for empty body")
+	}
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expected wrapped io.EOF, got %v", err)
 	}
 }
 
@@ -216,6 +228,37 @@ func TestHandleResponse_JSONWithError(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for non-zero code")
+	}
+}
+
+func TestHandleResponse_EmptyJSONBody_ShowsDiagnostic(t *testing.T) {
+	resp := newApiResp([]byte{}, map[string]string{"Content-Type": "application/json"})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{
+		Out:    &out,
+		ErrOut: &errOut,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty JSON body")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected ExitError, got %T", err)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI, got %d", exitErr.Code)
+	}
+	if exitErr.Detail == nil {
+		t.Fatal("expected detail on exit error")
+	}
+	if exitErr.Detail.Message != "API returned an empty JSON response body" {
+		t.Fatalf("unexpected message: %q", exitErr.Detail.Message)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "--output") {
+		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)
 	}
 }
 
