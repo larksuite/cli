@@ -91,11 +91,15 @@ var MailTriage = common.Shortcut{
 			if pageSize > searchPageMax {
 				pageSize = searchPageMax
 			}
+			searchDesc := "search messages (auto-paginates up to --max)"
+			if parsed.RawToken != "" {
+				searchDesc = "search messages (continues from --page-token, up to --max)"
+			}
 			searchParams, searchBody, _ := buildSearchParams(runtime, mailbox, query, resolvedFilter, pageSize, parsed.RawToken, true)
 			d = d.POST(mailboxPath(mailbox, "search")).
 				Params(searchParams).
 				Body(searchBody).
-				Desc("search messages (auto-paginates up to --max)")
+				Desc(searchDesc)
 			if showLabels {
 				d = d.POST(mailboxPath(mailbox, "messages", "batch_get")).
 					Body(map[string]interface{}{"format": "metadata", "message_ids": []string{"<message_id>"}}).
@@ -111,12 +115,16 @@ var MailTriage = common.Shortcut{
 		if pageSize > listPageMax {
 			pageSize = listPageMax
 		}
+		listDesc := "list message IDs (auto-paginates up to --max); batch_get with format=metadata"
+		if parsed.RawToken != "" {
+			listDesc = "list message IDs (continues from --page-token, up to --max); batch_get with format=metadata"
+		}
 		listParams, _ := buildListParams(runtime, mailbox, resolvedFilter, pageSize, parsed.RawToken, true)
 		return d.GET(mailboxPath(mailbox, "messages")).
 			Params(listParams).
 			POST(mailboxPath(mailbox, "messages", "batch_get")).
 			Body(map[string]interface{}{"format": "metadata", "message_ids": []string{"<message_id>"}}).
-			Desc("list message IDs (auto-paginates up to --max); batch_get with format=metadata").
+			Desc(listDesc).
 			Set("resolve_note", "name→ID resolution for filter.folder/filter.label runs during execution; dry-run does not call folders/labels list APIs")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
