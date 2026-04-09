@@ -138,30 +138,50 @@ func updateRun(opts *UpdateOptions) error {
 		return nil
 	}
 
-	// 4. --check: report availability without installing
-	if opts.Check {
-		if opts.JSON {
-			output.PrintJson(io.Out, map[string]interface{}{
-				"ok":               true,
-				"previous_version": cur,
-				"current_version":  cur,
-				"latest_version":   latest,
-				"action":           "update_available",
-				"message":          fmt.Sprintf("lark-cli %s → %s available", cur, latest),
-				"url":              releaseURL(latest),
-				"changelog":        changelogURL(latest),
-			})
-			return nil
+	// 4. Detect installation method (used by both --check and actual update)
+	method, resolvedPath := detectMethod()
+
+	// If detected as npm install but npm is not available, fall back to manual.
+	if method == installNpm {
+		if _, err := lookPath("npm"); err != nil {
+			method = installManual
 		}
-		fmt.Fprintf(io.ErrOut, "Update available: %s → %s\n", cur, latest)
-		fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
-		fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL(latest))
-		fmt.Fprintf(io.ErrOut, "\nRun `lark-cli update` to install.\n")
-		return nil
 	}
 
-	// 5. Detect installation method and update
-	return doUpdate(opts, cur, latest)
+	// 5. --check: report availability without installing
+	if opts.Check {
+		return reportCheckResult(opts, io, cur, latest, method)
+	}
+
+	// 6. Execute update
+	return doUpdateWithMethod(opts, cur, latest, method, resolvedPath)
+}
+
+func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, method installMethod) error {
+	canAutoUpdate := method == installNpm
+	if opts.JSON {
+		output.PrintJson(io.Out, map[string]interface{}{
+			"ok":               true,
+			"previous_version": cur,
+			"current_version":  cur,
+			"latest_version":   latest,
+			"action":           "update_available",
+			"auto_update":      canAutoUpdate,
+			"message":          fmt.Sprintf("lark-cli %s → %s available", cur, latest),
+			"url":              releaseURL(latest),
+			"changelog":        changelogURL(latest),
+		})
+		return nil
+	}
+	fmt.Fprintf(io.ErrOut, "Update available: %s → %s\n", cur, latest)
+	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL(latest))
+	if canAutoUpdate {
+		fmt.Fprintf(io.ErrOut, "\nRun `lark-cli update` to install.\n")
+	} else {
+		fmt.Fprintf(io.ErrOut, "\nDownload the release above to update manually.\n")
+	}
+	return nil
 }
 
 // --- Installation detection ---
@@ -211,16 +231,7 @@ func truncate(s string, maxLen int) string {
 
 // --- Update dispatch ---
 
-func doUpdate(opts *UpdateOptions, cur, latest string) error {
-	method, resolvedPath := detectMethod()
-
-	// If detected as npm install but npm is not available, fall back to manual.
-	if method == installNpm {
-		if _, err := lookPath("npm"); err != nil {
-			method = installManual
-		}
-	}
-
+func doUpdateWithMethod(opts *UpdateOptions, cur, latest string, method installMethod, resolvedPath string) error {
 	if method == installManual {
 		if opts.JSON {
 			return doManualUpdateJSON(opts, cur, latest, resolvedPath)

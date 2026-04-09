@@ -391,7 +391,7 @@ func TestUpdateNpmFail_Human(t *testing.T) {
 	}
 }
 
-func TestUpdateCheck_JSON(t *testing.T) {
+func TestUpdateCheck_JSON_Npm(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json", "--check"})
@@ -402,6 +402,9 @@ func TestUpdateCheck_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
 
 	err := cmd.Execute()
 	if err != nil {
@@ -411,6 +414,9 @@ func TestUpdateCheck_JSON(t *testing.T) {
 	if !strings.Contains(out, `"action": "update_available"`) {
 		t.Errorf("expected update_available action, got: %s", out)
 	}
+	if !strings.Contains(out, `"auto_update": true`) {
+		t.Errorf("expected auto_update:true for npm, got: %s", out)
+	}
 	if !strings.Contains(out, "releases/tag/v2.0.0") {
 		t.Errorf("expected version-pinned release URL, got: %s", out)
 	}
@@ -419,7 +425,7 @@ func TestUpdateCheck_JSON(t *testing.T) {
 	}
 }
 
-func TestUpdateCheck_Human(t *testing.T) {
+func TestUpdateCheck_Human_Npm(t *testing.T) {
 	f, _, stderr := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--check"})
@@ -430,6 +436,9 @@ func TestUpdateCheck_Human(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
 
 	err := cmd.Execute()
 	if err != nil {
@@ -440,7 +449,38 @@ func TestUpdateCheck_Human(t *testing.T) {
 		t.Errorf("expected 'Update available' in stderr, got: %s", out)
 	}
 	if !strings.Contains(out, "lark-cli update") {
-		t.Errorf("expected install instruction in stderr, got: %s", out)
+		t.Errorf("expected 'lark-cli update' instruction for npm, got: %s", out)
+	}
+}
+
+func TestUpdateCheck_Human_Manual(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--check"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installManual, "/usr/local/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Update available") {
+		t.Errorf("expected 'Update available' in stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "manually") {
+		t.Errorf("expected manual download instruction for non-npm, got: %s", out)
+	}
+	if strings.Contains(out, "lark-cli update` to install") {
+		t.Errorf("should NOT suggest 'lark-cli update' for manual install, got: %s", out)
 	}
 }
 
