@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newMinutesSearchTestCommand builds a command with the flags used by minutes search tests.
 func newMinutesSearchTestCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("query", "", "")
@@ -28,12 +29,14 @@ func newMinutesSearchTestCommand() *cobra.Command {
 	return cmd
 }
 
+// configWithoutUserOpenID returns a test config without a resolvable user open_id.
 func configWithoutUserOpenID() *core.CliConfig {
 	cfg := defaultConfig()
 	cfg.UserOpenId = ""
 	return cfg
 }
 
+// TestMinutesSearchParseTimeRange verifies valid time inputs are normalized.
 func TestMinutesSearchParseTimeRange(t *testing.T) {
 	t.Parallel()
 
@@ -51,6 +54,7 @@ func TestMinutesSearchParseTimeRange(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchParseTimeRangeErrors verifies invalid time inputs return validation errors.
 func TestMinutesSearchParseTimeRangeErrors(t *testing.T) {
 	t.Parallel()
 
@@ -88,6 +92,7 @@ func TestMinutesSearchParseTimeRangeErrors(t *testing.T) {
 	}
 }
 
+// TestBuildMinutesSearchParams verifies request params and body fields are assembled correctly.
 func TestBuildMinutesSearchParams(t *testing.T) {
 	t.Parallel()
 
@@ -138,6 +143,7 @@ func TestBuildMinutesSearchParams(t *testing.T) {
 	}
 }
 
+// TestBuildMinutesSearchParamsDefaultPageSize verifies the default page size is applied.
 func TestBuildMinutesSearchParamsDefaultPageSize(t *testing.T) {
 	t.Parallel()
 
@@ -149,6 +155,7 @@ func TestBuildMinutesSearchParamsDefaultPageSize(t *testing.T) {
 	}
 }
 
+// TestResolveUserIDs verifies me expansion, deduplication, and nil handling.
 func TestResolveUserIDs(t *testing.T) {
 	t.Parallel()
 
@@ -180,6 +187,7 @@ func TestResolveUserIDs(t *testing.T) {
 	}
 }
 
+// TestBuildTimeFilter verifies time filters are only populated for provided bounds.
 func TestBuildTimeFilter(t *testing.T) {
 	t.Parallel()
 
@@ -194,6 +202,7 @@ func TestBuildTimeFilter(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationMeOwnerID verifies owner-ids accepts me when open_id is available.
 func TestMinutesSearchValidationMeOwnerID(t *testing.T) {
 	cmd := newMinutesSearchTestCommand()
 	_ = cmd.Flags().Set("owner-ids", "me")
@@ -205,6 +214,7 @@ func TestMinutesSearchValidationMeOwnerID(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationMeRequiresResolvableUser verifies me fails without a resolvable open_id.
 func TestMinutesSearchValidationMeRequiresResolvableUser(t *testing.T) {
 	t.Parallel()
 
@@ -235,6 +245,7 @@ func TestMinutesSearchValidationMeRequiresResolvableUser(t *testing.T) {
 	}
 }
 
+// TestBuildMinutesSearchFilterMeExpansion verifies me is expanded inside the request filter.
 func TestBuildMinutesSearchFilterMeExpansion(t *testing.T) {
 	t.Parallel()
 
@@ -262,6 +273,7 @@ func TestBuildMinutesSearchFilterMeExpansion(t *testing.T) {
 	}
 }
 
+// TestMinuteSearchItems verifies items extraction from the search response payload.
 func TestMinuteSearchItems(t *testing.T) {
 	t.Parallel()
 
@@ -277,6 +289,7 @@ func TestMinuteSearchItems(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationNoFilter verifies at least one filter is required.
 func TestMinutesSearchValidationNoFilter(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, MinutesSearch, []string{"+search", "--as", "user"}, f, nil)
@@ -288,6 +301,7 @@ func TestMinutesSearchValidationNoFilter(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationInvalidParticipantID verifies participant IDs must be valid open_ids.
 func TestMinutesSearchValidationInvalidParticipantID(t *testing.T) {
 	cmd := newMinutesSearchTestCommand()
 	_ = cmd.Flags().Set("participant-ids", "user_123")
@@ -299,6 +313,7 @@ func TestMinutesSearchValidationInvalidParticipantID(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationInvalidOwnerID verifies owner IDs must be valid open_ids.
 func TestMinutesSearchValidationInvalidOwnerID(t *testing.T) {
 	cmd := newMinutesSearchTestCommand()
 	_ = cmd.Flags().Set("owner-ids", "user_123")
@@ -310,6 +325,7 @@ func TestMinutesSearchValidationInvalidOwnerID(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationQueryTooLong verifies overly long queries are rejected.
 func TestMinutesSearchValidationQueryTooLong(t *testing.T) {
 	cmd := newMinutesSearchTestCommand()
 	_ = cmd.Flags().Set("query", strings.Repeat("a", 51))
@@ -324,6 +340,7 @@ func TestMinutesSearchValidationQueryTooLong(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationMaxPageSize200 verifies the maximum allowed page size passes validation.
 func TestMinutesSearchValidationMaxPageSize200(t *testing.T) {
 	cmd := newMinutesSearchTestCommand()
 	_ = cmd.Flags().Set("query", "budget")
@@ -336,6 +353,7 @@ func TestMinutesSearchValidationMaxPageSize200(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationPageSizeAboveMax verifies page sizes above the limit are rejected.
 func TestMinutesSearchValidationPageSizeAboveMax(t *testing.T) {
 	cmd := newMinutesSearchTestCommand()
 	_ = cmd.Flags().Set("query", "budget")
@@ -351,6 +369,7 @@ func TestMinutesSearchValidationPageSizeAboveMax(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchValidationTimeErrors verifies time parsing failures surface through validation.
 func TestMinutesSearchValidationTimeErrors(t *testing.T) {
 	t.Parallel()
 
@@ -389,6 +408,7 @@ func TestMinutesSearchValidationTimeErrors(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchDryRun verifies dry-run output includes the expected API request details.
 func TestMinutesSearchDryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, MinutesSearch, []string{"+search", "--query", "budget", "--owner-ids", "ou_owner,ou_owner_2", "--dry-run", "--as", "user"}, f, stdout)
@@ -409,6 +429,7 @@ func TestMinutesSearchDryRun(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchExecuteRendersRowsAndMoreHint verifies pretty output renders rows and pagination hints.
 func TestMinutesSearchExecuteRendersRowsAndMoreHint(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	searchStub := &httpmock.Stub{
@@ -467,6 +488,7 @@ func TestMinutesSearchExecuteRendersRowsAndMoreHint(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchExecuteNoMinutes verifies empty results render the no-data message.
 func TestMinutesSearchExecuteNoMinutes(t *testing.T) {
 	t.Parallel()
 
@@ -496,6 +518,7 @@ func TestMinutesSearchExecuteNoMinutes(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchExecuteShowsPaginationHintForTableFormat verifies table output includes pagination hints.
 func TestMinutesSearchExecuteShowsPaginationHintForTableFormat(t *testing.T) {
 	t.Parallel()
 
@@ -537,6 +560,7 @@ func TestMinutesSearchExecuteShowsPaginationHintForTableFormat(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchExecuteJSONCountUsesRenderedRows verifies JSON metadata counts rendered rows only.
 func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	t.Parallel()
 
@@ -584,6 +608,7 @@ func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	}
 }
 
+// TestMinuteSearchFieldExtractors verifies field extractors read populated metadata correctly.
 func TestMinuteSearchFieldExtractors(t *testing.T) {
 	t.Parallel()
 
@@ -614,6 +639,7 @@ func TestMinuteSearchFieldExtractors(t *testing.T) {
 	}
 }
 
+// TestMinuteSearchFieldExtractorsFallbacks verifies extractors keep working for alternate sample data.
 func TestMinuteSearchFieldExtractorsFallbacks(t *testing.T) {
 	t.Parallel()
 
@@ -641,6 +667,7 @@ func TestMinuteSearchFieldExtractorsFallbacks(t *testing.T) {
 	}
 }
 
+// TestMinuteSearchFieldExtractorsMissingMetaData verifies extractors fall back to empty values without metadata.
 func TestMinuteSearchFieldExtractorsMissingMetaData(t *testing.T) {
 	t.Parallel()
 
