@@ -31,17 +31,8 @@ const (
 	npmPackage   = "@larksuite/cli"
 	repoURL      = "https://github.com/larksuite/cli"
 	maxNpmOutput = 2000
+	osWindows    = "windows"
 )
-
-// releaseURL returns a version-pinned GitHub Releases URL.
-func releaseURL(version string) string {
-	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
-}
-
-// changelogURL returns the project CHANGELOG URL.
-func changelogURL() string {
-	return repoURL + "/blob/main/CHANGELOG.md"
-}
 
 // Overridable function vars for testing.
 var (
@@ -53,6 +44,51 @@ var (
 	lookPath        = exec.LookPath
 	currentOS       = runtime.GOOS
 )
+
+func isWindows() bool { return currentOS == osWindows }
+
+// releaseURL returns a version-pinned GitHub Releases URL.
+func releaseURL(version string) string {
+	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
+}
+
+// changelogURL returns the project CHANGELOG URL.
+func changelogURL() string {
+	return repoURL + "/blob/main/CHANGELOG.md"
+}
+
+// --- Terminal symbols ---
+// Use ASCII fallbacks on Windows to avoid mojibake in legacy CMD/PowerShell 5.
+
+func symOK() string {
+	if isWindows() {
+		return "[OK]"
+	}
+	return "✓"
+}
+
+func symFail() string {
+	if isWindows() {
+		return "[FAIL]"
+	}
+	return "✗"
+}
+
+func symWarn() string {
+	if isWindows() {
+		return "[WARN]"
+	}
+	return "⚠"
+}
+
+func symArrow() string {
+	if isWindows() {
+		return "->"
+	}
+	return "→"
+}
+
+// --- Command ---
 
 // UpdateOptions holds inputs for the update command.
 type UpdateOptions struct {
@@ -123,8 +159,7 @@ func updateRun(opts *UpdateOptions) error {
 	}
 
 	// 3. Compare versions
-	hasUpdate := update.IsNewer(latest, cur)
-	if !opts.Force && !hasUpdate {
+	if !opts.Force && !update.IsNewer(latest, cur) {
 		if opts.JSON {
 			output.PrintJson(io.Out, map[string]interface{}{
 				"ok":               true,
@@ -140,10 +175,9 @@ func updateRun(opts *UpdateOptions) error {
 		return nil
 	}
 
-	// 4. Detect installation method (used by both --check and actual update)
+	// 4. Detect installation method
 	method, resolvedPath := detectMethod()
 
-	// Check if auto-update is possible.
 	npmAvailable := true
 	if method == installNpm {
 		if _, err := lookPath("npm"); err != nil {
@@ -151,9 +185,8 @@ func updateRun(opts *UpdateOptions) error {
 		}
 	}
 	// On Windows, the running .exe is locked by the OS and cannot be
-	// overwritten by npm's postinstall script (EBUSY). Instruct the user
-	// to run the update command in a separate terminal instead.
-	windowsLocked := method == installNpm && currentOS == "windows"
+	// overwritten by npm's postinstall script (EBUSY).
+	windowsLocked := method == installNpm && isWindows()
 	canAutoUpdate := method == installNpm && npmAvailable && !windowsLocked
 
 	// 5. --check: report availability without installing
@@ -171,8 +204,10 @@ func updateRun(opts *UpdateOptions) error {
 	return doNpmUpdateHuman(opts, cur, latest)
 }
 
+// --- Check result ---
+
 func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, method installMethod, canAutoUpdate bool) error {
-	windowsNpm := method == installNpm && currentOS == "windows"
+	winNpm := method == installNpm && isWindows()
 	if opts.JSON {
 		result := map[string]interface{}{
 			"ok":               true,
@@ -185,8 +220,8 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 			"url":              releaseURL(latest),
 			"changelog":        changelogURL(),
 		}
-		if windowsNpm {
-			result["hint"] = windowsUpdateCmd(latest)
+		if winNpm {
+			result["hint"] = windowsHintSteps(latest)
 		}
 		output.PrintJson(io.Out, result)
 		return nil
@@ -196,9 +231,8 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	if canAutoUpdate {
 		fmt.Fprintf(io.ErrOut, "\nRun `lark-cli update` to install.\n")
-	} else if windowsNpm {
-		fmt.Fprintf(io.ErrOut, "\nRun the following in a new terminal:\n")
-		fmt.Fprintf(io.ErrOut, "  %s\n", windowsUpdateCmd(latest))
+	} else if winNpm {
+		printWindowsHint(io, latest)
 	} else {
 		fmt.Fprintf(io.ErrOut, "\nDownload the release above to update manually.\n")
 	}
@@ -207,7 +241,6 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 
 // --- Installation detection ---
 
-// detectInstallMethod checks if the resolved executable path indicates npm installation.
 func detectInstallMethod(resolvedPath string) installMethod {
 	if strings.Contains(resolvedPath, "node_modules") {
 		return installNpm
@@ -215,7 +248,6 @@ func detectInstallMethod(resolvedPath string) installMethod {
 	return installManual
 }
 
-// detectInstallMethodAuto detects the install method from the running executable.
 func detectInstallMethodAuto() (installMethod, string) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -230,7 +262,6 @@ func detectInstallMethodAuto() (installMethod, string) {
 
 // --- npm execution ---
 
-// runNpmInstallReal executes npm install -g @larksuite/cli@<version>.
 func runNpmInstallReal(version string, stdout, stderr *bytes.Buffer) error {
 	npmPath, err := lookPath("npm")
 	if err != nil {
@@ -242,7 +273,6 @@ func runNpmInstallReal(version string, stdout, stderr *bytes.Buffer) error {
 	return cmd.Run()
 }
 
-// runSkillsUpdateReal executes npx skills add larksuite/cli -g -y to update AI agent skills.
 func runSkillsUpdateReal(stdout, stderr *bytes.Buffer) error {
 	npxPath, err := lookPath("npx")
 	if err != nil {
@@ -254,7 +284,6 @@ func runSkillsUpdateReal(stdout, stderr *bytes.Buffer) error {
 	return cmd.Run()
 }
 
-// truncate returns the last maxLen bytes of s.
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
@@ -262,17 +291,24 @@ func truncate(s string, maxLen int) string {
 	return s[len(s)-maxLen:]
 }
 
-// --- Update dispatch ---
+// --- Windows helpers ---
 
-// windowsUpdateCmd returns the command string for Windows users to run in a new terminal.
-// Uses ";" instead of "&&" because PowerShell 5 does not support "&&".
-func windowsUpdateCmd(latest string) string {
-	return fmt.Sprintf("npm install -g %s@%s; npx skills add larksuite/cli -g -y", npmPackage, latest)
+// windowsHintSteps returns instructions for Windows users (separate commands,
+// not chained with && or ; to preserve correct failure semantics across CMD/PowerShell).
+func windowsHintSteps(latest string) string {
+	return fmt.Sprintf("Run in a new terminal:\n  1. npm install -g %s@%s\n  2. npx skills add larksuite/cli -g -y", npmPackage, latest)
 }
 
-// manualReason returns a human-readable explanation of why auto-update is unavailable.
+func printWindowsHint(io *cmdutil.IOStreams, latest string) {
+	fmt.Fprintf(io.ErrOut, "\nRun the following in a new terminal:\n")
+	fmt.Fprintf(io.ErrOut, "  1. npm install -g %s@%s\n", npmPackage, latest)
+	fmt.Fprintf(io.ErrOut, "  2. npx skills add larksuite/cli -g -y\n")
+}
+
+// --- Update dispatch ---
+
 func manualReason(method installMethod, npmAvailable bool) string {
-	if method == installNpm && currentOS == "windows" {
+	if method == installNpm && isWindows() {
 		return "on Windows the running binary cannot be replaced in-place"
 	}
 	if method == installNpm && !npmAvailable {
@@ -284,7 +320,7 @@ func manualReason(method installMethod, npmAvailable bool) string {
 func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMethod, resolvedPath string, npmAvailable bool) error {
 	io := opts.Factory.IOStreams
 	reason := manualReason(method, npmAvailable)
-	windowsNpm := method == installNpm && currentOS == "windows"
+	winNpm := method == installNpm && isWindows()
 	if opts.JSON {
 		result := map[string]interface{}{
 			"ok":               true,
@@ -295,17 +331,15 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMetho
 			"url":              releaseURL(latest),
 			"changelog":        changelogURL(),
 		}
-		if windowsNpm {
-			result["hint"] = windowsUpdateCmd(latest)
+		if winNpm {
+			result["hint"] = windowsHintSteps(latest)
 		}
 		output.PrintJson(io.Out, result)
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, resolvedPath)
-	if method == installNpm && currentOS == "windows" {
-		// Windows: binary is locked, guide user to run in a new terminal.
-		fmt.Fprintf(io.ErrOut, "Run the following in a new terminal:\n")
-		fmt.Fprintf(io.ErrOut, "  %s\n", windowsUpdateCmd(latest))
+	if winNpm {
+		printWindowsHint(io, latest)
 	} else {
 		fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 		fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
@@ -334,14 +368,11 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 		return output.ErrBare(output.ExitAPI)
 	}
 
-	// Suppress the update-available notice entirely. Simply clearing
-	// update.SetPending(nil) is racy — the background goroutine in
-	// setupUpdateNotice() may re-set it between our clear and PrintJson's
-	// read. Niling the function pointer is safe: PendingNotice is only read
-	// from this goroutine (inside PrintJson → injectNotice).
+	// Suppress stale update-available notice. Niling PendingNotice is safe:
+	// it's only read from this goroutine (inside PrintJson -> injectNotice).
 	output.PendingNotice = nil
 
-	// Update skills (best-effort, don't fail the whole update if skills fail).
+	// Update skills (best-effort).
 	var skillsStdout, skillsStderr bytes.Buffer
 	skillsErr := runSkillsUpdate(&skillsStdout, &skillsStderr)
 
@@ -405,40 +436,8 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	return nil
 }
 
-// --- Terminal symbols ---
-// Use ASCII fallbacks on Windows to avoid mojibake in legacy CMD/PowerShell 5.
-
-func symOK() string {
-	if currentOS == "windows" {
-		return "[OK]"
-	}
-	return "✓"
-}
-
-func symFail() string {
-	if currentOS == "windows" {
-		return "[FAIL]"
-	}
-	return "✗"
-}
-
-func symWarn() string {
-	if currentOS == "windows" {
-		return "[WARN]"
-	}
-	return "⚠"
-}
-
-func symArrow() string {
-	if currentOS == "windows" {
-		return "->"
-	}
-	return "→"
-}
-
-// permissionHint returns a neutral permission hint when EACCES is detected.
 func permissionHint(npmOutput string) string {
-	if strings.Contains(npmOutput, "EACCES") && currentOS != "windows" {
+	if strings.Contains(npmOutput, "EACCES") && !isWindows() {
 		return "Permission denied. Try: sudo lark-cli update, or adjust your npm global prefix: https://docs.npmjs.com/resolving-eacces-permissions-errors"
 	}
 	return ""

@@ -632,9 +632,12 @@ func TestUpdateWindows_BinaryLocked_Human(t *testing.T) {
 	if !strings.Contains(out, "npm install -g") {
 		t.Errorf("expected npm install command in output, got: %s", out)
 	}
-	// Must use ";" not "&&" for PowerShell 5 compatibility
-	if strings.Contains(out, "&&") {
-		t.Errorf("should use ';' not '&&' for PowerShell 5 compat, got: %s", out)
+	// Must use numbered steps, not && or ; (shell-agnostic)
+	if strings.Contains(out, "&&") || strings.Contains(out, "; npx") {
+		t.Errorf("should use numbered steps not chained commands, got: %s", out)
+	}
+	if !strings.Contains(out, "1.") || !strings.Contains(out, "2.") {
+		t.Errorf("expected numbered steps, got: %s", out)
 	}
 }
 
