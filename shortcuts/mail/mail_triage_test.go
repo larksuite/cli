@@ -970,7 +970,7 @@ func TestBuildSearchParamsPageToken(t *testing.T) {
 // --- resolveTriagePageSize ---
 
 func TestResolveTriagePageSizeDefaultMax(t *testing.T) {
-	rt := runtimeForMailTriageTest(t, nil) // max defaults to "20"
+	rt := runtimeForMailTriageTest(t, nil) // max=0 (unset) → normalizeTriageMax returns 20
 	got := resolveTriagePageSize(rt)
 	if got != 20 {
 		t.Fatalf("expected 20, got %d", got)
@@ -1373,6 +1373,17 @@ func TestParseTriagePageTokenBareRejected(t *testing.T) {
 	_, err := parseTriagePageToken("baretoken")
 	if err == nil {
 		t.Fatal("expected error for bare token")
+	}
+}
+
+func TestParseTriagePageTokenEmptyRawTokenRejected(t *testing.T) {
+	_, err := parseTriagePageToken("search:")
+	if err == nil {
+		t.Fatal("expected error for empty raw token after prefix")
+	}
+	_, err = parseTriagePageToken("list:")
+	if err == nil {
+		t.Fatal("expected error for empty raw token after prefix")
 	}
 }
 

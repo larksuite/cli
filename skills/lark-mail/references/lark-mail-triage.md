@@ -31,7 +31,7 @@ lark-cli mail +triage --filter '{"folder":"flagged"}'
 lark-cli mail +triage --filter '{"label":"important"}'
 lark-cli mail +triage --filter '{"label":"重要邮件"}'
 
-# data 格式方便 jq 处理
+# json/data 格式可配合 jq 处理
 lark-cli mail +triage --format json | jq '.messages[].subject'
 
 # 分页：先取 10 条，再用 page_token 翻页
@@ -106,7 +106,7 @@ lark-cli mail +triage --page-size 10
 ### `table` 格式
 
 `page_token` 信息输出在 stderr，自动携带 `--query`/`--filter` 参数方便续页：
-```
+```text
 15 message(s)
 next page: mail +triage --query '合同审批' --page-token 'search:abc123...'
 tip: use mail +message --message-id <id> to read full content

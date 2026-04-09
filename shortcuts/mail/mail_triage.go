@@ -287,12 +287,12 @@ var MailTriage = common.Shortcut{
 				var hint strings.Builder
 				hint.WriteString("next page: mail +triage")
 				if query != "" {
-					hint.WriteString(fmt.Sprintf(" --query '%s'", query))
+					hint.WriteString(" --query " + shellQuote(query))
 				}
 				if filterStr := runtime.Str("filter"); filterStr != "" {
-					hint.WriteString(fmt.Sprintf(" --filter '%s'", filterStr))
+					hint.WriteString(" --filter " + shellQuote(filterStr))
 				}
-				hint.WriteString(fmt.Sprintf(" --page-token '%s'", nextPageToken))
+				hint.WriteString(" --page-token " + shellQuote(nextPageToken))
 				fmt.Fprintln(runtime.IO().ErrOut, hint.String())
 			}
 			fmt.Fprintln(runtime.IO().ErrOut, "tip: use mail +message --message-id <id> to read full content")
@@ -892,6 +892,11 @@ func buildSearchCreateTime(rng *triageTimeRange) map[string]interface{} {
 	return createTime
 }
 
+// shellQuote wraps a string in single quotes, escaping any embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // resolveTriagePath determines whether to use the search API path,
 // validating that --page-token prefix is consistent with query/filter params.
 //
@@ -950,6 +955,9 @@ func parseTriagePageToken(token string) (triagePageToken, error) {
 	raw := token[idx+1:]
 	if path != "search" && path != "list" {
 		return triagePageToken{}, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix, got %q", path)
+	}
+	if raw == "" {
+		return triagePageToken{}, fmt.Errorf("invalid --page-token: token value is empty after '%s:' prefix", path)
 	}
 	return triagePageToken{Path: path, RawToken: raw}, nil
 }
