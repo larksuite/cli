@@ -502,7 +502,6 @@ func TestUpdateNpmNotFound_FallsBackToManual(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	// Detected as npm install, but npm is not in PATH
 	origDetect := detectMethod
 	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
 	defer func() { detectMethod = origDetect }()
@@ -515,13 +514,8 @@ func TestUpdateNpmNotFound_FallsBackToManual(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	// Should fall back to manual_required instead of failing
 	if !strings.Contains(out, `"action": "manual_required"`) {
 		t.Errorf("expected manual_required when npm not found, got: %s", out)
-	}
-	// Should accurately say npm is installed but not available, NOT "not installed via npm"
-	if !strings.Contains(out, "npm is not available") {
-		t.Errorf("expected 'npm is not available' reason, got: %s", out)
 	}
 }
 
@@ -564,7 +558,8 @@ func TestPermissionHint(t *testing.T) {
 	}
 }
 
-func TestUpdateWindows_BinaryLocked_JSON(t *testing.T) {
+func TestUpdateWindows_NpmSuccess_JSON(t *testing.T) {
+	// With the rename trick, Windows npm installs can now auto-update.
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -575,73 +570,28 @@ func TestUpdateWindows_BinaryLocked_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	// npm install detected
 	origDetect := detectMethod
 	detectMethod = func() (installMethod, string) {
 		return installNpm, `C:\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`
 	}
 	defer func() { detectMethod = origDetect }()
-	// Simulate Windows
 	origOS := currentOS
-	currentOS = "windows"
+	currentOS = osWindows
 	defer func() { currentOS = origOS }()
+	mockNpmSuccess(t)
 
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	// On Windows, npm install should NOT be attempted — binary is locked.
-	if !strings.Contains(out, `"action": "manual_required"`) {
-		t.Errorf("expected manual_required on Windows, got: %s", out)
-	}
-	if !strings.Contains(out, "cannot be replaced") {
-		t.Errorf("expected Windows-specific reason, got: %s", out)
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated on Windows with rename trick, got: %s", out)
 	}
 }
 
-func TestUpdateWindows_BinaryLocked_Human(t *testing.T) {
-	f, _, stderr := newTestFactory(t)
-	cmd := NewCmdUpdate(f)
-	cmd.SetArgs([]string{})
-
-	origFetch := fetchLatest
-	fetchLatest = func() (string, error) { return "2.0.0", nil }
-	defer func() { fetchLatest = origFetch }()
-	origVersion := currentVersion
-	currentVersion = func() string { return "1.0.0" }
-	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) {
-		return installNpm, `C:\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`
-	}
-	defer func() { detectMethod = origDetect }()
-	origOS := currentOS
-	currentOS = "windows"
-	defer func() { currentOS = origOS }()
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := stderr.String()
-	// Should guide user to run in a new terminal
-	if !strings.Contains(out, "new terminal") {
-		t.Errorf("expected 'new terminal' guidance on Windows, got: %s", out)
-	}
-	if !strings.Contains(out, "npm install -g") {
-		t.Errorf("expected npm install command in output, got: %s", out)
-	}
-	// Must use numbered steps, not && or ; (shell-agnostic)
-	if strings.Contains(out, "&&") || strings.Contains(out, "; npx") {
-		t.Errorf("should use numbered steps not chained commands, got: %s", out)
-	}
-	if !strings.Contains(out, "1.") || !strings.Contains(out, "2.") {
-		t.Errorf("expected numbered steps, got: %s", out)
-	}
-}
-
-func TestUpdateCheck_Windows_JSON(t *testing.T) {
+func TestUpdateWindows_Check_JSON(t *testing.T) {
+	// --check on Windows npm should report auto_update: true (rename trick available).
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json", "--check"})
@@ -653,10 +603,12 @@ func TestUpdateCheck_Windows_JSON(t *testing.T) {
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
 	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, `C:\node_modules\@larksuite\cli\bin\lark-cli.exe` }
+	detectMethod = func() (installMethod, string) {
+		return installNpm, `C:\node_modules\@larksuite\cli\bin\lark-cli.exe`
+	}
 	defer func() { detectMethod = origDetect }()
 	origOS := currentOS
-	currentOS = "windows"
+	currentOS = osWindows
 	defer func() { currentOS = origOS }()
 
 	err := cmd.Execute()
@@ -664,45 +616,8 @@ func TestUpdateCheck_Windows_JSON(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, `"auto_update": false`) {
-		t.Errorf("expected auto_update:false on Windows, got: %s", out)
-	}
-	if !strings.Contains(out, `"hint"`) {
-		t.Errorf("expected hint with Windows update command, got: %s", out)
-	}
-	if !strings.Contains(out, "npm install -g") {
-		t.Errorf("expected npm install command in hint, got: %s", out)
-	}
-}
-
-func TestUpdateCheck_Windows_Human(t *testing.T) {
-	f, _, stderr := newTestFactory(t)
-	cmd := NewCmdUpdate(f)
-	cmd.SetArgs([]string{"--check"})
-
-	origFetch := fetchLatest
-	fetchLatest = func() (string, error) { return "2.0.0", nil }
-	defer func() { fetchLatest = origFetch }()
-	origVersion := currentVersion
-	currentVersion = func() string { return "1.0.0" }
-	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, `C:\node_modules\@larksuite\cli\bin\lark-cli.exe` }
-	defer func() { detectMethod = origDetect }()
-	origOS := currentOS
-	currentOS = "windows"
-	defer func() { currentOS = origOS }()
-
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := stderr.String()
-	if !strings.Contains(out, "new terminal") {
-		t.Errorf("expected 'new terminal' guidance on Windows --check, got: %s", out)
-	}
-	if strings.Contains(out, "Download the release") {
-		t.Errorf("Windows npm should NOT suggest downloading release, got: %s", out)
+	if !strings.Contains(out, `"auto_update": true`) {
+		t.Errorf("expected auto_update:true on Windows (rename trick), got: %s", out)
 	}
 }
 

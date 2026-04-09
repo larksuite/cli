@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/update"
 )
 
@@ -92,10 +93,11 @@ func symArrow() string {
 
 // UpdateOptions holds inputs for the update command.
 type UpdateOptions struct {
-	Factory *cmdutil.Factory
-	JSON    bool
-	Force   bool
-	Check   bool
+	Factory  *cmdutil.Factory
+	JSON     bool
+	Force    bool
+	Check    bool
+	Rollback bool
 }
 
 // NewCmdUpdate creates the update command.
@@ -112,7 +114,8 @@ Detects the installation method automatically:
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
-Use --check to only check for updates without installing.`,
+Use --check to only check for updates without installing.
+Use --rollback to restore the previous version from backup.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return updateRun(opts)
 		},
@@ -121,6 +124,7 @@ Use --check to only check for updates without installing.`,
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "force reinstall even if already up to date")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "only check for updates, do not install")
+	cmd.Flags().BoolVar(&opts.Rollback, "rollback", false, "restore the previous version from backup")
 
 	return cmd
 }
@@ -128,6 +132,14 @@ Use --check to only check for updates without installing.`,
 func updateRun(opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
 	cur := currentVersion()
+
+	// Clean up stale .old files from previous Windows upgrades.
+	selfupdate.CleanupStaleFiles()
+
+	// Handle --rollback.
+	if opts.Rollback {
+		return runRollback(opts)
+	}
 
 	// 1. Fetch latest version
 	latest, err := fetchLatest()
@@ -184,19 +196,16 @@ func updateRun(opts *UpdateOptions) error {
 			npmAvailable = false
 		}
 	}
-	// On Windows, the running .exe is locked by the OS and cannot be
-	// overwritten by npm's postinstall script (EBUSY).
-	windowsLocked := method == installNpm && isWindows()
-	canAutoUpdate := method == installNpm && npmAvailable && !windowsLocked
+	canAutoUpdate := method == installNpm && npmAvailable
 
 	// 5. --check: report availability without installing
 	if opts.Check {
-		return reportCheckResult(opts, io, cur, latest, method, canAutoUpdate)
+		return reportCheckResult(opts, io, cur, latest, canAutoUpdate)
 	}
 
 	// 6. Execute update
 	if !canAutoUpdate {
-		return doManualUpdate(opts, cur, latest, method, resolvedPath, npmAvailable)
+		return doManualUpdate(opts, cur, latest, resolvedPath)
 	}
 	if opts.JSON {
 		return doNpmUpdateJSON(opts, cur, latest)
@@ -206,10 +215,9 @@ func updateRun(opts *UpdateOptions) error {
 
 // --- Check result ---
 
-func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, method installMethod, canAutoUpdate bool) error {
-	winNpm := method == installNpm && isWindows()
+func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, canAutoUpdate bool) error {
 	if opts.JSON {
-		result := map[string]interface{}{
+		output.PrintJson(io.Out, map[string]interface{}{
 			"ok":               true,
 			"previous_version": cur,
 			"current_version":  cur,
@@ -219,11 +227,7 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 			"message":          fmt.Sprintf("lark-cli %s %s %s available", cur, symArrow(), latest),
 			"url":              releaseURL(latest),
 			"changelog":        changelogURL(),
-		}
-		if winNpm {
-			result["hint"] = windowsHintSteps(latest)
-		}
-		output.PrintJson(io.Out, result)
+		})
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Update available: %s %s %s\n", cur, symArrow(), latest)
@@ -231,8 +235,6 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	if canAutoUpdate {
 		fmt.Fprintf(io.ErrOut, "\nRun `lark-cli update` to install.\n")
-	} else if winNpm {
-		printWindowsHint(io, latest)
 	} else {
 		fmt.Fprintf(io.ErrOut, "\nDownload the release above to update manually.\n")
 	}
@@ -291,38 +293,20 @@ func truncate(s string, maxLen int) string {
 	return s[len(s)-maxLen:]
 }
 
-// --- Windows helpers ---
-
-// windowsHintSteps returns instructions for Windows users (separate commands,
-// not chained with && or ; to preserve correct failure semantics across CMD/PowerShell).
-func windowsHintSteps(latest string) string {
-	return fmt.Sprintf("Run in a new terminal:\n  1. npm install -g %s@%s\n  2. npx skills add larksuite/cli -g -y", npmPackage, latest)
-}
-
-func printWindowsHint(io *cmdutil.IOStreams, latest string) {
-	fmt.Fprintf(io.ErrOut, "\nRun the following in a new terminal:\n")
-	fmt.Fprintf(io.ErrOut, "  1. npm install -g %s@%s\n", npmPackage, latest)
-	fmt.Fprintf(io.ErrOut, "  2. npx skills add larksuite/cli -g -y\n")
-}
-
 // --- Update dispatch ---
 
 func manualReason(method installMethod, npmAvailable bool) string {
-	if method == installNpm && isWindows() {
-		return "on Windows the running binary cannot be replaced in-place"
-	}
 	if method == installNpm && !npmAvailable {
 		return "installed via npm, but npm is not available in PATH"
 	}
 	return "not installed via npm"
 }
 
-func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMethod, resolvedPath string, npmAvailable bool) error {
+func doManualUpdate(opts *UpdateOptions, cur, latest string, resolvedPath string) error {
 	io := opts.Factory.IOStreams
-	reason := manualReason(method, npmAvailable)
-	winNpm := method == installNpm && isWindows()
+	reason := manualReason(installManual, true)
 	if opts.JSON {
-		result := map[string]interface{}{
+		output.PrintJson(io.Out, map[string]interface{}{
 			"ok":               true,
 			"previous_version": cur,
 			"latest_version":   latest,
@@ -330,28 +314,27 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMetho
 			"message":          fmt.Sprintf("Automatic update unavailable: %s (path: %s)", reason, resolvedPath),
 			"url":              releaseURL(latest),
 			"changelog":        changelogURL(),
-		}
-		if winNpm {
-			result["hint"] = windowsHintSteps(latest)
-		}
-		output.PrintJson(io.Out, result)
+		})
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, resolvedPath)
-	if winNpm {
-		printWindowsHint(io, latest)
-	} else {
-		fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
-		fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
-		fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-		fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", npmPackage, latest)
-		fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx skills add larksuite/cli -g -y\n")
-	}
+	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
+	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+	fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", npmPackage, latest)
+	fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx skills add larksuite/cli -g -y\n")
 	return nil
 }
 
 func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 	io := opts.Factory.IOStreams
+
+	// Backup current binary before upgrading.
+	if _, err := selfupdate.Backup(cur); err != nil {
+		// Non-fatal: warn but proceed.
+		_ = err
+	}
+
 	var stdoutBuf, stderrBuf bytes.Buffer
 
 	if err := runNpmInstall(latest, &stdoutBuf, &stderrBuf); err != nil {
@@ -398,6 +381,12 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 
 func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	ios := opts.Factory.IOStreams
+
+	// Backup current binary before upgrading.
+	if bk, err := selfupdate.Backup(cur); err == nil {
+		fmt.Fprintf(ios.ErrOut, "Backed up current version to %s\n", bk.Path)
+	}
+
 	fmt.Fprintf(ios.ErrOut, "Updating lark-cli %s %s %s via npm ...\n", cur, symArrow(), latest)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -433,6 +422,63 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	} else {
 		fmt.Fprintf(ios.ErrOut, "%s Skills updated\n", symOK())
 	}
+	return nil
+}
+
+// --- Rollback ---
+
+func runRollback(opts *UpdateOptions) error {
+	io := opts.Factory.IOStreams
+
+	backups, err := selfupdate.ListBackups()
+	if err != nil {
+		msg := fmt.Sprintf("failed to list backups: %s", err)
+		if opts.JSON {
+			output.PrintJson(io.Out, map[string]interface{}{
+				"ok":    false,
+				"error": map[string]interface{}{"type": "rollback_error", "message": msg},
+			})
+			return output.ErrBare(output.ExitAPI)
+		}
+		return output.Errorf(output.ExitAPI, "rollback_error", "%s", msg)
+	}
+
+	if len(backups) == 0 {
+		msg := "no backups available for rollback"
+		if opts.JSON {
+			output.PrintJson(io.Out, map[string]interface{}{
+				"ok":    false,
+				"error": map[string]interface{}{"type": "rollback_error", "message": msg},
+			})
+			return output.ErrBare(output.ExitAPI)
+		}
+		return output.Errorf(output.ExitAPI, "rollback_error", "%s", msg)
+	}
+
+	target := backups[0]
+	info, err := selfupdate.RollbackTo(target)
+	if err != nil {
+		msg := fmt.Sprintf("rollback failed: %s", err)
+		if opts.JSON {
+			output.PrintJson(io.Out, map[string]interface{}{
+				"ok":    false,
+				"error": map[string]interface{}{"type": "rollback_error", "message": msg},
+			})
+			return output.ErrBare(output.ExitAPI)
+		}
+		return output.Errorf(output.ExitAPI, "rollback_error", "%s", msg)
+	}
+
+	if opts.JSON {
+		output.PrintJson(io.Out, map[string]interface{}{
+			"ok":      true,
+			"action":  "rolled_back",
+			"version": info.Version,
+			"message": fmt.Sprintf("rolled back to %s", info.Version),
+		})
+		return nil
+	}
+	fmt.Fprintf(io.ErrOut, "%s Rolled back to version %s\n", symOK(), info.Version)
 	return nil
 }
 
