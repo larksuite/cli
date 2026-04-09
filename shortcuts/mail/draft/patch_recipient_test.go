@@ -21,7 +21,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "to",
@@ -49,7 +49,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "to",
@@ -74,7 +74,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "cc",
@@ -99,7 +99,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "bcc",
@@ -124,7 +124,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "add_recipient",
 			Field:   "to",
@@ -150,7 +150,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "to",
@@ -177,7 +177,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "to",
@@ -201,7 +201,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "to",
@@ -222,7 +222,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "cc",
@@ -244,7 +244,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:      "remove_recipient",
 			Field:   "cc",
@@ -276,7 +276,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:        "set_recipients",
 			Field:     "cc",

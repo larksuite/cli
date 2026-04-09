@@ -100,8 +100,13 @@ func (p *Part) FileName() string {
 	return ""
 }
 
+// DraftCtx carries runtime dependencies for draft operations.
+// It is separate from DraftSnapshot to keep the snapshot a pure data model.
+type DraftCtx struct {
+	FIO fileio.FileIO
+}
+
 type DraftSnapshot struct {
-	FIO     fileio.FileIO `json:"-"` // injected file I/O; must be set before calling Apply
 	DraftID string
 	Headers []Header
 	Body    *Part

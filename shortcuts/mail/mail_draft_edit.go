@@ -91,8 +91,8 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("parse draft raw EML failed: %v", err)
 		}
-		snapshot.FIO = runtime.FileIO()
-		if err := draftpkg.Apply(snapshot, patch); err != nil {
+		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
+		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
 			return output.ErrValidation("apply draft patch failed: %v", err)
 		}
 		serialized, err := draftpkg.Serialize(snapshot)
