@@ -22,11 +22,14 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 	tests := []struct {
 		name           string
 		formatFlag     string
+		pageToken      string
+		stubURL        string
 		expectedOutput []string
 	}{
 		{
 			name:       "pretty format",
 			formatFlag: "pretty",
+			stubURL:    "/open-apis/task/v2/tasks",
 			expectedOutput: []string{
 				"Due: " + expectedDueTimeStr,
 				"Created: " + expectedCreatedDateStr,
@@ -35,9 +38,19 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 		{
 			name:       "json format",
 			formatFlag: "json",
+			stubURL:    "/open-apis/task/v2/tasks",
 			expectedOutput: []string{
 				`"due_at": "` + expectedRFC3339 + `"`,
 				`"created_at": "` + expectedRFC3339 + `"`,
+			},
+		},
+		{
+			name:       "start from page token",
+			formatFlag: "json",
+			pageToken:  "pt_001",
+			stubURL:    "page_token=pt_001",
+			expectedOutput: []string{
+				`"guid": "task-123"`,
 			},
 		},
 	}
@@ -49,7 +62,7 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 
 			reg.Register(&httpmock.Stub{
 				Method: "GET",
-				URL:    "/open-apis/task/v2/tasks",
+				URL:    tt.stubURL,
 				Body: map[string]interface{}{
 					"code": 0, "msg": "success",
 					"data": map[string]interface{}{
@@ -73,7 +86,11 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 			s := GetMyTasks
 			s.AuthTypes = []string{"bot", "user"}
 
-			err := runMountedTaskShortcut(t, s, []string{"+get-my-tasks", "--format", tt.formatFlag, "--as", "bot"}, f, stdout)
+			args := []string{"+get-my-tasks", "--format", tt.formatFlag, "--as", "bot"}
+			if tt.pageToken != "" {
+				args = append(args, "--page-token", tt.pageToken)
+			}
+			err := runMountedTaskShortcut(t, s, args, f, stdout)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
