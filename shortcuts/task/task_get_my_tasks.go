@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// GetMyTasks lists tasks assigned to the current user.
 var GetMyTasks = common.Shortcut{
 	Service:     "task",
 	Command:     "+get-my-tasks",
@@ -28,12 +29,13 @@ var GetMyTasks = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search for tasks by summary (exact match first, then partial match)"},
-		{Name: "complete", Type: "bool", Desc: "if true, query completed tasks; default is false"},
+		{Name: "complete", Type: "bool", Desc: "if true, query completed tasks;if false, query incompleted tasks; if not provided, both completed and incompleted tasks are queried."},
 		{Name: "created_at", Desc: "query tasks created after this time (date/relative/ms)"},
 		{Name: "due-start", Desc: "query tasks with due date after this time (date/relative/ms)"},
 		{Name: "due-end", Desc: "query tasks with due date before this time (date/relative/ms)"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (max 40)"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max page limit (default 20, max 40 with --page-all)"},
+		{Name: "page-token", Desc: "start from the specified page token"},
 	},
 
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -46,6 +48,9 @@ var GetMyTasks = common.Shortcut{
 		}
 		if runtime.Cmd.Flags().Changed("complete") {
 			params["completed"] = runtime.Bool("complete")
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			params["page_token"] = pageToken
 		}
 
 		return d.GET("/open-apis/task/v2/tasks").Params(params)
@@ -64,6 +69,9 @@ var GetMyTasks = common.Shortcut{
 			} else {
 				queryParams.Set("completed", "false")
 			}
+		}
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
+			queryParams.Set("page_token", pageToken)
 		}
 
 		// parse time flags to ms timestamp if provided
@@ -214,13 +222,13 @@ var GetMyTasks = common.Shortcut{
 			}
 			if createdAtStr, ok := item["created_at"].(string); ok {
 				if ts, err := strconv.ParseInt(createdAtStr, 10, 64); err == nil {
-					outputItem["created_at"] = time.UnixMilli(ts).UTC().Format(time.RFC3339)
+					outputItem["created_at"] = time.UnixMilli(ts).Local().Format(time.RFC3339)
 				}
 			}
 			if dueObj, ok := item["due"].(map[string]interface{}); ok {
 				if tsStr, ok := dueObj["timestamp"].(string); ok {
 					if ts, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
-						outputItem["due_at"] = time.UnixMilli(ts).UTC().Format(time.RFC3339)
+						outputItem["due_at"] = time.UnixMilli(ts).Local().Format(time.RFC3339)
 					}
 				}
 			}
@@ -249,7 +257,7 @@ var GetMyTasks = common.Shortcut{
 				if dueObj, ok := item["due"].(map[string]interface{}); ok {
 					if tsStr, ok := dueObj["timestamp"].(string); ok {
 						if ts, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
-							dueTimeStr = time.UnixMilli(ts).Format("2006-01-02 15:04")
+							dueTimeStr = time.UnixMilli(ts).Local().Format("2006-01-02 15:04")
 						}
 					}
 				}
@@ -257,7 +265,7 @@ var GetMyTasks = common.Shortcut{
 				var createdDateStr string
 				if createdStr, ok := item["created_at"].(string); ok {
 					if ts, err := strconv.ParseInt(createdStr, 10, 64); err == nil {
-						createdDateStr = time.UnixMilli(ts).Format("2006-01-02")
+						createdDateStr = time.UnixMilli(ts).Local().Format("2006-01-02")
 					}
 				}
 

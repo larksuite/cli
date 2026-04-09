@@ -5,6 +5,12 @@ package common
 
 import "context"
 
+// Flag.Input source constants.
+const (
+	File  = "file"  // support @path to read value from a file
+	Stdin = "stdin" // support - to read value from stdin
+)
+
 // Flag describes a CLI flag for a shortcut.
 type Flag struct {
 	Name     string // flag name (e.g. "calendar-id")
@@ -14,6 +20,7 @@ type Flag struct {
 	Hidden   bool   // hidden from --help, still readable at runtime
 	Required bool
 	Enum     []string // allowed values (e.g. ["asc", "desc"]); empty means no constraint
+	Input    []string // extra input sources: File (@path), Stdin (-); empty = flag value only
 }
 
 // Shortcut represents a high-level CLI command.

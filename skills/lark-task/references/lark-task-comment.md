@@ -8,14 +8,14 @@ Add a comment to an existing task.
 
 ```bash
 # Add a comment
-lark-cli task +comment --task-id "t_xxx" --content "Looks good!"
+lark-cli task +comment --task-id "<task_guid>" --content "Looks good!"
 ```
 
 ## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--task-id <id>` | Yes | The ID of the task to comment on. |
+| `--task-id <guid>` | Yes | The task GUID to comment on. For Feishu task applinks, use the `guid` query parameter, not the `suite_entity_num` / display task ID like `t104121`. |
 | `--content <text>` | Yes | The text content of the comment. |
 
 ## Workflow

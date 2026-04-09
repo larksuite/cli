@@ -91,29 +91,13 @@ var ImMessagesReply = common.Shortcut{
 		videoCoverKey := runtime.Str("video-cover")
 		audioKey := runtime.Str("audio")
 
-		if !isMediaKey(imageKey) {
-			if _, err := validate.SafeLocalFlagPath("--image", imageKey); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(fileKey) {
-			if _, err := validate.SafeLocalFlagPath("--file", fileKey); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(videoKey) {
-			if _, err := validate.SafeLocalFlagPath("--video", videoKey); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(videoCoverKey) {
-			if _, err := validate.SafeLocalFlagPath("--video-cover", videoCoverKey); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(audioKey) {
-			if _, err := validate.SafeLocalFlagPath("--audio", audioKey); err != nil {
-				return output.ErrValidation("%v", err)
+		fio := runtime.FileIO()
+		for _, mf := range []struct{ flag, val string }{
+			{"--image", imageKey}, {"--file", fileKey}, {"--video", videoKey},
+			{"--video-cover", videoCoverKey}, {"--audio", audioKey},
+		} {
+			if err := validateMediaFlagPath(fio, mf.flag, mf.val); err != nil {
+				return err
 			}
 		}
 
@@ -149,29 +133,13 @@ var ImMessagesReply = common.Shortcut{
 		audioVal := runtime.Str("audio")
 		replyInThread := runtime.Bool("reply-in-thread")
 		idempotencyKey := runtime.Str("idempotency-key")
-		if !isMediaKey(imageVal) {
-			if _, err := validate.SafeLocalFlagPath("--image", imageVal); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(fileVal) {
-			if _, err := validate.SafeLocalFlagPath("--file", fileVal); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(videoVal) {
-			if _, err := validate.SafeLocalFlagPath("--video", videoVal); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(videoCoverVal) {
-			if _, err := validate.SafeLocalFlagPath("--video-cover", videoCoverVal); err != nil {
-				return output.ErrValidation("%v", err)
-			}
-		}
-		if !isMediaKey(audioVal) {
-			if _, err := validate.SafeLocalFlagPath("--audio", audioVal); err != nil {
-				return output.ErrValidation("%v", err)
+		fio := runtime.FileIO()
+		for _, mf := range []struct{ flag, val string }{
+			{"--image", imageVal}, {"--file", fileVal}, {"--video", videoVal},
+			{"--video-cover", videoCoverVal}, {"--audio", audioVal},
+		} {
+			if err := validateMediaFlagPath(fio, mf.flag, mf.val); err != nil {
+				return err
 			}
 		}
 

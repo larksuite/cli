@@ -6,9 +6,10 @@ package drive
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/larksuite/cli/internal/vfs"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -145,9 +146,8 @@ func preflightDriveImportFile(spec *driveImportSpec) (int64, error) {
 	if err != nil {
 		return 0, output.ErrValidation("unsafe file path: %s", err)
 	}
-	spec.FilePath = safeFilePath
 
-	info, err := os.Stat(spec.FilePath)
+	info, err := vfs.Stat(safeFilePath)
 	if err != nil {
 		return 0, output.ErrValidation("cannot read file: %s", err)
 	}
@@ -166,7 +166,7 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 		extra = fmt.Sprintf(`{"obj_type":"%s","file_extension":"%s"}`, spec.DocType, spec.FileExtension())
 	}
 
-	if fileSize > maxDriveUploadFileSize {
+	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 		dry.POST("/open-apis/drive/v1/medias/upload_prepare").
 			Desc("[1a] Initialize multipart upload").
 			Body(map[string]interface{}{

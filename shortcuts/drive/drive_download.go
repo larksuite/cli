@@ -7,14 +7,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-	// validate import used below
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -62,27 +61,27 @@ var DriveDownload = common.Shortcut{
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Downloading: %s\n", common.MaskToken(fileToken))
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 			HttpMethod: http.MethodGet,
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
-		}, larkcore.WithFileDownload())
+		})
 		if err != nil {
 			return output.ErrNetwork("download failed: %s", err)
 		}
+		defer resp.Body.Close()
 
-		if apiResp.StatusCode >= 400 {
-			return output.ErrNetwork("download failed: HTTP %d: %s", apiResp.StatusCode, string(apiResp.RawBody))
+		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+			return output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
 		}
 
-		os.MkdirAll(filepath.Dir(safePath), 0755)
-
-		if err := validate.AtomicWrite(safePath, apiResp.RawBody, 0644); err != nil {
+		sizeBytes, err := validate.AtomicWriteFromReader(safePath, resp.Body, 0600)
+		if err != nil {
 			return output.Errorf(output.ExitInternal, "api_error", "cannot create file: %s", err)
 		}
 
 		runtime.Out(map[string]interface{}{
 			"saved_path": safePath,
-			"size_bytes": len(apiResp.RawBody),
+			"size_bytes": sizeBytes,
 		}, nil)
 		return nil
 	},

@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -82,22 +82,20 @@ var DocMediaDownload = common.Shortcut{
 			apiPath = fmt.Sprintf("/open-apis/drive/v1/medias/%s/download", encodedToken)
 		}
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 			HttpMethod: http.MethodGet,
 			ApiPath:    apiPath,
-		}, larkcore.WithFileDownload())
+		})
 		if err != nil {
 			return output.ErrNetwork("download failed: %v", err)
 		}
-		if apiResp.StatusCode >= 400 {
-			return output.ErrNetwork("download failed: HTTP %d: %s", apiResp.StatusCode, strings.TrimSpace(string(apiResp.RawBody)))
-		}
+		defer resp.Body.Close()
 
 		// Auto-detect extension from Content-Type
 		finalPath := outputPath
 		currentExt := filepath.Ext(outputPath)
 		if currentExt == "" {
-			contentType := apiResp.Header.Get("Content-Type")
+			contentType := resp.Header.Get("Content-Type")
 			mimeType := strings.Split(contentType, ";")[0]
 			mimeType = strings.TrimSpace(mimeType)
 			if ext, ok := mimeToExt[mimeType]; ok {
@@ -115,15 +113,19 @@ var DocMediaDownload = common.Shortcut{
 			return err
 		}
 
-		os.MkdirAll(filepath.Dir(safePath), 0755)
-		if err := validate.AtomicWrite(safePath, apiResp.RawBody, 0644); err != nil {
+		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+			return output.Errorf(output.ExitInternal, "io", "cannot create parent directory: %v", err)
+		}
+
+		sizeBytes, err := validate.AtomicWriteFromReader(safePath, resp.Body, 0600)
+		if err != nil {
 			return output.Errorf(output.ExitInternal, "io", "cannot create file: %v", err)
 		}
 
 		runtime.Out(map[string]interface{}{
 			"saved_path":   safePath,
-			"size_bytes":   len(apiResp.RawBody),
-			"content_type": apiResp.Header.Get("Content-Type"),
+			"size_bytes":   sizeBytes,
+			"content_type": resp.Header.Get("Content-Type"),
 		}, nil)
 		return nil
 	},

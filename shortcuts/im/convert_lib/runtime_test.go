@@ -15,10 +15,17 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/shortcuts/common"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
+
+type staticConvertlibTokenResolver struct{}
+
+func (s *staticConvertlibTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{Token: "test-token"}, nil
+}
 
 type convertlibRoundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -52,6 +59,7 @@ func newBotConvertlibRuntime(t *testing.T, rt http.RoundTripper) *common.Runtime
 	sdk := lark.NewClient(
 		"test-app",
 		"test-secret",
+		lark.WithEnableTokenCache(false),
 		lark.WithLogLevel(larkcore.LogLevelError),
 		lark.WithHttpClient(httpClient),
 	)
@@ -60,13 +68,14 @@ func newBotConvertlibRuntime(t *testing.T, rt http.RoundTripper) *common.Runtime
 		AppSecret: "test-secret",
 		Brand:     core.BrandFeishu,
 	}
+	testCred := credential.NewCredentialProvider(nil, nil, &staticConvertlibTokenResolver{}, nil)
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{
 			Config:     func() (*core.CliConfig, error) { return cfg, nil },
-			AuthConfig: func() (*core.CliConfig, error) { return cfg, nil },
 			HttpClient: func() (*http.Client, error) { return httpClient, nil },
 			LarkClient: func() (*lark.Client, error) { return sdk, nil },
+			Credential: testCred,
 			IOStreams: &cmdutil.IOStreams{
 				Out:    &bytes.Buffer{},
 				ErrOut: &bytes.Buffer{},

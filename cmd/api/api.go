@@ -152,7 +152,11 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 
 func apiRun(opts *APIOptions) error {
 	f := opts.Factory
-	opts.As = f.ResolveAs(opts.Cmd, opts.As)
+	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
+
+	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
+		return err
+	}
 
 	if opts.PageAll && opts.Output != "" {
 		return output.ErrValidation("--output and --page-all are mutually exclusive")
@@ -166,7 +170,7 @@ func apiRun(opts *APIOptions) error {
 		return err
 	}
 
-	config, err := f.ResolveConfig(opts.As)
+	config, err := f.Config()
 	if err != nil {
 		return err
 	}
@@ -195,7 +199,7 @@ func apiRun(opts *APIOptions) error {
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
-		return output.MarkRaw(output.ErrNetwork("API call failed: %v", err))
+		return output.MarkRaw(client.WrapDoAPIError(err))
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath: opts.Output,
@@ -203,6 +207,7 @@ func apiRun(opts *APIOptions) error {
 		JqExpr:     opts.JqExpr,
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
+		FileIO:     f.ResolveFileIO(opts.Ctx),
 	})
 	// MarkRaw tells root error handler to skip enrichPermissionError,
 	// preserving the original API error detail (log_id, troubleshooter, etc.).

@@ -8,14 +8,14 @@ Mark a task as completed.
 
 ```bash
 # Complete a task
-lark-cli task +complete --task-id "t_xxx"
+lark-cli task +complete --task-id "<task_guid>"
 ```
 
 ## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--task-id <id>` | Yes | The ID of the task to complete. |
+| `--task-id <guid>` | Yes | The task GUID to complete. For Feishu task applinks, use the `guid` query parameter, not the `suite_entity_num` / display task ID like `t104121`. |
 
 ## Workflow
 

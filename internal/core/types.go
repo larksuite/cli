@@ -13,6 +13,15 @@ const (
 	BrandLark   LarkBrand = "lark"
 )
 
+// ParseBrand normalizes a brand string to a LarkBrand constant.
+// Unrecognized values default to BrandFeishu.
+func ParseBrand(value string) LarkBrand {
+	if value == "lark" {
+		return BrandLark
+	}
+	return BrandFeishu
+}
+
 // Endpoints holds resolved endpoint URLs for different Lark services.
 type Endpoints struct {
 	Open     string // e.g. "https://open.feishu.cn"

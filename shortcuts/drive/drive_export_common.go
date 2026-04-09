@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -270,7 +270,7 @@ func saveContentToOutputDir(outputDir, fileName string, payload []byte, overwrit
 		return "", err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		return "", output.Errorf(output.ExitInternal, "io", "cannot create output directory: %s", err)
 	}
 	if err := validate.AtomicWrite(safePath, payload, 0644); err != nil {

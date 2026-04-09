@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -54,7 +54,7 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("%s", err)
 		}
-		if _, err := validate.SafeOutputPath(relPath); err != nil {
+		if _, err := runtime.ResolveSavePath(relPath); err != nil {
 			return output.ErrValidation("unsafe output path: %s", err)
 		}
 		return nil
@@ -67,12 +67,8 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("invalid output path: %s", err)
 		}
-		safePath, err := validate.SafeOutputPath(relPath)
-		if err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
-		}
 
-		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, safePath)
+		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, relPath)
 		if err != nil {
 			return err
 		}
@@ -109,33 +105,33 @@ func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 const defaultIMResourceDownloadTimeout = 120 * time.Second
 
 var imMimeToExt = map[string]string{
-	"image/png":                   ".png",
-	"image/jpeg":                  ".jpg",
-	"image/gif":                   ".gif",
-	"image/webp":                  ".webp",
-	"image/svg+xml":               ".svg",
-	"application/pdf":             ".pdf",
-	"video/mp4":                   ".mp4",
-	"video/3gpp":                  ".3gp",
-	"video/x-msvideo":             ".avi",
-	"audio/mpeg":                  ".mp3",
-	"audio/ogg":                   ".ogg",
-	"audio/wav":                   ".wav",
-	"text/plain":                  ".txt",
-	"text/html":                   ".html",
-	"text/css":                    ".css",
-	"text/csv":                    ".csv",
-	"application/zip":             ".zip",
+	"image/png":                    ".png",
+	"image/jpeg":                   ".jpg",
+	"image/gif":                    ".gif",
+	"image/webp":                   ".webp",
+	"image/svg+xml":                ".svg",
+	"application/pdf":              ".pdf",
+	"video/mp4":                    ".mp4",
+	"video/3gpp":                   ".3gp",
+	"video/x-msvideo":              ".avi",
+	"audio/mpeg":                   ".mp3",
+	"audio/ogg":                    ".ogg",
+	"audio/wav":                    ".wav",
+	"text/plain":                   ".txt",
+	"text/html":                    ".html",
+	"text/css":                     ".css",
+	"text/csv":                     ".csv",
+	"application/zip":              ".zip",
 	"application/x-zip-compressed": ".zip",
 	"application/x-rar-compressed": ".rar",
-	"application/json":            ".json",
-	"application/xml":             ".xml",
-	"application/octet-stream":    ".bin",
-	"application/msword":          ".doc",
+	"application/json":             ".json",
+	"application/xml":              ".xml",
+	"application/octet-stream":     ".bin",
+	"application/msword":           ".doc",
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-	"application/vnd.ms-excel":    ".xls",
-	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
-	"application/vnd.ms-powerpoint": ".ppt",
+	"application/vnd.ms-excel": ".xls",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         ".xlsx",
+	"application/vnd.ms-powerpoint":                                             ".ppt",
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
 }
 
@@ -150,7 +146,7 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 			"file_key":   fileKey,
 		},
 		QueryParams: query,
-	}, defaultIMResourceDownloadTimeout)
+	}, client.WithTimeout(defaultIMResourceDownloadTimeout))
 	if err != nil {
 		return "", 0, err
 	}
@@ -164,10 +160,6 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		return "", 0, output.ErrNetwork("download failed: HTTP %d", downloadResp.StatusCode)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-		return "", 0, output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
-	}
-
 	// Auto-detect extension from Content-Type if missing
 	finalPath := safePath
 	if filepath.Ext(safePath) == "" {
@@ -179,9 +171,19 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		}
 	}
 
-	sizeBytes, err := validate.AtomicWriteFromReader(finalPath, downloadResp.Body, 0600)
+	result, err := runtime.FileIO().Save(finalPath, fileio.SaveOptions{
+		ContentType:   downloadResp.Header.Get("Content-Type"),
+		ContentLength: downloadResp.ContentLength,
+	}, downloadResp.Body)
 	if err != nil {
-		return "", 0, output.Errorf(output.ExitInternal, "api_error", "cannot create file: %s", err)
+		return "", 0, output.Errorf(output.ExitInternal, "api_error", "%s",
+			common.WrapSaveError(err, "unsafe output path", "cannot create parent directory", "cannot create file"))
 	}
-	return finalPath, sizeBytes, nil
+	savedPath, resolveErr := runtime.ResolveSavePath(finalPath)
+	if resolveErr != nil {
+		// Save succeeded — file is on disk. Fall back to the relative path
+		// rather than returning an error for a successfully written file.
+		savedPath = finalPath
+	}
+	return savedPath, result.Size(), nil
 }

@@ -44,16 +44,6 @@ func driveMethod(httpMethod string, params map[string]interface{}) map[string]in
 	return m
 }
 
-func tokenStub() *httpmock.Stub {
-	return &httpmock.Stub{
-		URL: "tenant_access_token",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test", "expire": 7200,
-		},
-	}
-}
-
 // ── registerService ──
 
 func TestRegisterService(t *testing.T) {
@@ -364,7 +354,6 @@ func TestServiceMethod_OutputAndPageAllConflict(t *testing.T) {
 func TestServiceMethod_BotMode_Success(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, testConfig)
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{
@@ -391,7 +380,6 @@ func TestServiceMethod_BotMode_APIError(t *testing.T) {
 		AppID: "test-app-err", AppSecret: "test-secret-err", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL:  "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{"code": 40003, "msg": "invalid token"},
@@ -425,7 +413,6 @@ func TestServiceMethod_BotMode_PageAll_JSON(t *testing.T) {
 		AppID: "test-app-page", AppSecret: "test-secret-page", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{
@@ -455,7 +442,6 @@ func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
 		AppID: "test-app-fmt", AppSecret: "test-secret-fmt", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL:  "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
@@ -540,7 +526,6 @@ func TestServiceMethod_JqFilter_AppliesExpression(t *testing.T) {
 		AppID: "test-app-jq", AppSecret: "test-secret-jq", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{
@@ -612,7 +597,6 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 		AppID: "test-app-spjq", AppSecret: "test-secret-spjq", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(tokenStub())
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/svc/v1/items",
 		Body: map[string]interface{}{

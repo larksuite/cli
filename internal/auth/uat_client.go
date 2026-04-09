@@ -19,10 +19,12 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 
+// sanitizeID replaces empty IDs with "default" to prevent file path issues.
 func sanitizeID(id string) string {
 	return safeIDChars.ReplaceAllString(id, "_")
 }
@@ -98,6 +100,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 	return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
 }
 
+// refreshWithLock acquires a file lock before attempting to refresh the token.
 func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	key := fmt.Sprintf("%s:%s", opts.AppId, opts.UserOpenId)
 
@@ -126,7 +129,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	configDir := core.GetConfigDir()
 
 	lockDir := filepath.Join(configDir, "locks")
-	if err := os.MkdirAll(lockDir, 0700); err != nil {
+	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
 	}
 
@@ -165,6 +168,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	return doRefreshToken(httpClient, opts, stored)
 }
 
+// doRefreshToken performs the actual HTTP request to refresh the token.
 func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	errOut := opts.ErrOut
 	if errOut == nil {
@@ -200,6 +204,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			return nil, err
 		}
 		defer resp.Body.Close()
+		logHTTPResponse(resp)
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {

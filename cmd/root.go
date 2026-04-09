@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/larksuite/cli/cmd/completion"
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/doctor"
+	"github.com/larksuite/cli/cmd/profile"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/cmd/service"
 	internalauth "github.com/larksuite/cli/internal/auth"
@@ -43,7 +45,7 @@ EXAMPLES:
     lark-cli calendar +agenda
 
     # List calendar events
-    lark-cli calendar events list --params '{"calendar_id":"primary"}'
+    lark-cli calendar events instance_view --params '{"calendar_id":"primary","start_time":"1700000000","end_time":"1700086400"}'
 
     # Search users
     lark-cli contact +search-user --query "John"
@@ -76,7 +78,7 @@ AI AGENT SKILLS:
         npx skills add larksuite/cli -s lark-calendar -y
         npx skills add larksuite/cli -s lark-im -y
 
-    Learn more: https://github.com/larksuite/cli#install-ai-agent-skills
+    Learn more: https://github.com/larksuite/cli#agent-skills
 
 COMMUNITY:
     GitHub:     https://github.com/larksuite/cli
@@ -87,8 +89,14 @@ More help: lark-cli <command> --help`
 
 // Execute runs the root command and returns the process exit code.
 func Execute() int {
-	f := cmdutil.NewDefault()
+	inv, err := BootstrapInvocationContext(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		return 1
+	}
+	f := cmdutil.NewDefault(inv)
 
+	globals := &GlobalOptions{Profile: inv.Profile}
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
 		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
@@ -97,18 +105,26 @@ func Execute() int {
 	}
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
+
+	RegisterGlobalFlags(rootCmd.PersistentFlags(), globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
 	}
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
+	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
+
+	// Prune commands incompatible with strict mode.
+	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
+		pruneForStrictMode(rootCmd, mode)
+	}
 
 	// --- Update check (non-blocking) ---
 	if !isCompletionCommand(os.Args) {

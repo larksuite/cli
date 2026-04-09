@@ -5,12 +5,34 @@ package config
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/output"
 )
+
+type noopConfigKeychain struct{}
+
+func (n *noopConfigKeychain) Get(service, account string) (string, error) { return "", nil }
+func (n *noopConfigKeychain) Set(service, account, value string) error    { return nil }
+func (n *noopConfigKeychain) Remove(service, account string) error        { return nil }
+
+type recordingConfigKeychain struct {
+	removed []string
+}
+
+func (r *recordingConfigKeychain) Get(service, account string) (string, error) { return "", nil }
+func (r *recordingConfigKeychain) Set(service, account, value string) error    { return nil }
+func (r *recordingConfigKeychain) Remove(service, account string) error {
+	r.removed = append(r.removed, service+":"+account)
+	return nil
+}
 
 func TestConfigInitCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
@@ -53,6 +75,60 @@ func TestConfigShowCmd_FlagParsing(t *testing.T) {
 	}
 	if gotOpts == nil {
 		t.Error("expected opts to be set")
+	}
+}
+
+func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configShowRun(&ConfigShowOptions{Factory: f})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("error type = %T, want *output.ExitError", err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "not configured" {
+		t.Fatalf("detail = %#v, want config/not configured", exitErr.Detail)
+	}
+}
+
+func TestConfigShowRun_NoActiveProfileReturnsStructuredError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	multi := &core.MultiAppConfig{
+		CurrentApp: "missing",
+		Apps: []core.AppConfig{{
+			Name:      "default",
+			AppId:     "app-default",
+			AppSecret: core.PlainSecret("secret-default"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configShowRun(&ConfigShowOptions{Factory: f})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("error type = %T, want *output.ExitError", err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "no active profile" {
+		t.Fatalf("detail = %#v, want config/no active profile", exitErr.Detail)
 	}
 }
 
@@ -155,5 +231,112 @@ func TestConfigRemoveCmd_FlagParsing(t *testing.T) {
 	}
 	if gotOpts.Factory != f {
 		t.Fatal("expected factory to be preserved in options")
+	}
+}
+
+func TestConfigRemoveRun_SaveFailurePreservesExistingConfigAndSecrets(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	multi := &core.MultiAppConfig{
+		Apps: []core.AppConfig{{
+			AppId: "app-test",
+			AppSecret: core.SecretInput{
+				Ref: &core.SecretRef{Source: "keychain", ID: "appsecret:app-test"},
+			},
+			Brand: core.BrandFeishu,
+			Users: []core.AppUser{{UserOpenId: "ou_1", UserName: "Tester"}},
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	kc := &recordingConfigKeychain{}
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Keychain = kc
+
+	// Make subsequent config saves fail while keeping the existing config readable.
+	if err := os.Chmod(configDir, 0500); err != nil {
+		t.Fatalf("Chmod(%s) error = %v", configDir, err)
+	}
+	defer os.Chmod(configDir, 0700)
+
+	err := configRemoveRun(&ConfigRemoveOptions{Factory: f})
+	if err == nil {
+		t.Fatal("expected save failure")
+	}
+	if !strings.Contains(err.Error(), "failed to save config") {
+		t.Fatalf("error = %v, want failed to save config", err)
+	}
+	if len(kc.removed) != 0 {
+		t.Fatalf("expected no keychain cleanup before successful save, got removals: %v", kc.removed)
+	}
+
+	// Restore permissions and confirm the original config is still intact.
+	if err := os.Chmod(configDir, 0700); err != nil {
+		t.Fatalf("restore Chmod(%s) error = %v", configDir, err)
+	}
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if saved == nil || len(saved.Apps) != 1 || saved.Apps[0].AppId != "app-test" {
+		t.Fatalf("saved config = %#v, want original single app preserved", saved)
+	}
+	if got := saved.Apps[0].AppSecret.Ref; got == nil || got.ID != "appsecret:app-test" {
+		t.Fatalf("saved app secret ref = %#v, want preserved keychain ref", got)
+	}
+
+	configPath := filepath.Join(configDir, "config.json")
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("expected existing config file to remain, stat error = %v", err)
+	}
+}
+
+func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	existing := &core.MultiAppConfig{
+		Apps: []core.AppConfig{
+			{
+				Name:      "prod",
+				AppId:     "cli_prod",
+				AppSecret: core.PlainSecret("secret"),
+				Brand:     core.BrandFeishu,
+			},
+		},
+	}
+
+	err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "cli_prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en")
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	if !strings.Contains(err.Error(), "conflicts with existing appId") {
+		t.Fatalf("error = %v, want conflict with existing appId", err)
+	}
+}
+
+func TestUpdateExistingProfileWithoutSecret_RejectsAppIDChange(t *testing.T) {
+	multi := &core.MultiAppConfig{
+		CurrentApp: "prod",
+		Apps: []core.AppConfig{
+			{
+				Name:      "prod",
+				AppId:     "app-old",
+				AppSecret: core.SecretInput{Ref: &core.SecretRef{Source: "keychain", ID: "appsecret:app-old"}},
+				Brand:     core.BrandFeishu,
+				Lang:      "zh",
+				Users:     []core.AppUser{{UserOpenId: "ou_1", UserName: "User"}},
+			},
+		},
+	}
+
+	err := updateExistingProfileWithoutSecret(multi, "", "app-new", core.BrandLark, "en")
+	if err == nil {
+		t.Fatal("expected error when changing app ID without a new secret")
+	}
+	if !strings.Contains(err.Error(), "App Secret") {
+		t.Fatalf("error = %v, want mention of App Secret", err)
 	}
 }

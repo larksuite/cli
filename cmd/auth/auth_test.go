@@ -4,12 +4,16 @@
 package auth
 
 import (
+	"context"
+	"net/http"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -229,5 +233,73 @@ func TestAuthScopesCmd_FlagParsing(t *testing.T) {
 	}
 	if gotOpts.Format != "json" {
 		t.Errorf("expected format json, got %s", gotOpts.Format)
+	}
+}
+
+func TestAuthScopesRun_UsesTenantAccessTokenFromCredentialProvider(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "", Brand: core.BrandFeishu,
+	})
+	tokenResolver := &authScopesTokenResolver{}
+	f.Credential = credential.NewCredentialProvider(nil, nil, tokenResolver, nil)
+
+	appInfoStub := &httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/application/v6/applications/test-app",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"creator_id": "ou_creator",
+					"scopes": []map[string]interface{}{
+						{
+							"scope":       "im:message",
+							"token_types": []string{"tenant"},
+						},
+						{
+							"scope":       "im:message:send_as_user",
+							"token_types": []string{"user"},
+						},
+					},
+				},
+			},
+		},
+	}
+	reg.Register(appInfoStub)
+
+	err := authScopesRun(&ScopesOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Format:  "json",
+	})
+	if err != nil {
+		t.Fatalf("authScopesRun() error = %v", err)
+	}
+
+	if len(tokenResolver.requests) != 1 {
+		t.Fatalf("resolved token requests = %v, want exactly one request", tokenResolver.requests)
+	}
+	if got := tokenResolver.requests[0].Type; got != credential.TokenTypeTAT {
+		t.Fatalf("resolved token type = %q, want %q", got, credential.TokenTypeTAT)
+	}
+	if got := appInfoStub.CapturedHeaders.Get("Authorization"); got != "Bearer tenant-token" {
+		t.Fatalf("Authorization header = %q, want %q", got, "Bearer tenant-token")
+	}
+}
+
+type authScopesTokenResolver struct {
+	requests []credential.TokenSpec
+}
+
+func (r *authScopesTokenResolver) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.TokenResult, error) {
+	r.requests = append(r.requests, req)
+	switch req.Type {
+	case credential.TokenTypeTAT:
+		return &credential.TokenResult{Token: "tenant-token"}, nil
+	case credential.TokenTypeUAT:
+		return &credential.TokenResult{Token: "user-token"}, nil
+	default:
+		return &credential.TokenResult{Token: "unexpected-token"}, nil
 	}
 }

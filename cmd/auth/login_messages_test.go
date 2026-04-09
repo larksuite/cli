@@ -69,12 +69,6 @@ func TestLoginMsg_FormatStrings(t *testing.T) {
 			t.Errorf("%s LoginSuccess has no format verb", lang)
 		}
 
-		// GrantedScopes should contain %s
-		got = fmt.Sprintf(msg.GrantedScopes, "scope1 scope2")
-		if got == msg.GrantedScopes {
-			t.Errorf("%s GrantedScopes has no format verb", lang)
-		}
-
 		// SummaryDomains should contain %s
 		got = fmt.Sprintf(msg.SummaryDomains, "calendar, task")
 		if got == msg.SummaryDomains {

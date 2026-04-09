@@ -10,6 +10,7 @@ import (
 	"regexp"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // safeIDChars strips everything except alphanumerics, underscores, hyphens, and dots
@@ -39,7 +40,7 @@ func ForSubscribe(appID string) (*LockFile, error) {
 		return nil, fmt.Errorf("app ID must not be empty")
 	}
 	dir := filepath.Join(core.GetConfigDir(), "locks")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("create lock dir: %w", err)
 	}
 	safe := safeIDChars.ReplaceAllString(appID, "_")
@@ -56,7 +57,7 @@ func (l *LockFile) TryLock() error {
 	if l.file != nil {
 		return fmt.Errorf("lock already held: %s", l.path)
 	}
-	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_RDWR, 0600)
+	f, err := vfs.OpenFile(l.path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("open lock file: %w", err)
 	}

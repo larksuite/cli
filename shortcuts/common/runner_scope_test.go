@@ -4,13 +4,26 @@
 package common
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 )
+
+type scopeCheckTokenResolver struct {
+	result *credential.TokenResult
+	err    error
+}
+
+func (r *scopeCheckTokenResolver) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.TokenResult, error) {
+	return r.result, r.err
+}
 
 func TestEnhancePermissionError_MissingScopeType(t *testing.T) {
 	scopes := []string{"calendar:calendar:read"}
@@ -162,5 +175,27 @@ func TestEnhancePermissionError(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCheckShortcutScopes_PropagatesContextCancellation(t *testing.T) {
+	f := &cmdutil.Factory{
+		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{err: context.Canceled}, nil),
+	}
+
+	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("checkShortcutScopes() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestCheckShortcutScopes_IgnoresNonContextTokenErrors(t *testing.T) {
+	f := &cmdutil.Factory{
+		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{err: errors.New("token cache unavailable")}, nil),
+	}
+
+	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
+	if err != nil {
+		t.Fatalf("checkShortcutScopes() error = %v, want nil", err)
 	}
 }

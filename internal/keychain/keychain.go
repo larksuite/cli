@@ -12,7 +12,13 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-var errNotInitialized = errors.New("keychain not initialized")
+var (
+	// ErrNotFound is returned when the requested credential is not found.
+	ErrNotFound = errors.New("keychain: item not found")
+
+	// errNotInitialized is an internal error indicating the master key is missing or invalid.
+	errNotInitialized = errors.New("keychain not initialized")
+)
 
 const (
 	// LarkCliService is the unified keychain service name for all secrets
@@ -25,15 +31,21 @@ const (
 // wrapError is a helper to wrap underlying errors into output.ExitError.
 // It formats the error message and provides a hint for troubleshooting keychain access issues.
 func wrapError(op string, err error) error {
-	if err == nil {
-		return nil
+	if err == nil || errors.Is(err, ErrNotFound) {
+		return err
 	}
+
 	msg := fmt.Sprintf("keychain %s failed: %v", op, err)
 	hint := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain."
 
 	if errors.Is(err, errNotInitialized) {
 		hint = "The keychain master key may have been cleaned up or deleted. Please reconfigure the CLI by running `lark-cli config init`."
 	}
+
+	func() {
+		defer func() { recover() }()
+		LogAuthError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
+	}()
 
 	return output.ErrWithHint(output.ExitAPI, "config", msg, hint)
 }

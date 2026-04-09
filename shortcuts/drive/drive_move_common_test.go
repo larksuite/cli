@@ -104,7 +104,6 @@ func TestDriveMoveDryRunFolderIncludesTaskCheckParams(t *testing.T) {
 
 func TestDriveMoveFolderSuccessUsesTaskCheckHelper(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/files/fld_src/move",
@@ -148,7 +147,6 @@ func TestDriveMoveFolderSuccessUsesTaskCheckHelper(t *testing.T) {
 
 func TestDriveMoveFolderTimeoutReturnsFollowUpCommand(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	registerDriveBotTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/files/fld_src/move",

@@ -46,6 +46,9 @@ var CalendarRsvp = common.Shortcut{
 			Set("event_id", eventId)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
+			return err
+		}
 		for _, flag := range []string{"calendar-id", "event-id", "rsvp-status"} {
 			if val := strings.TrimSpace(runtime.Str(flag)); val != "" {
 				if err := common.RejectDangerousChars("--"+flag, val); err != nil {

@@ -56,7 +56,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat with bot identity; bot-only; creates private/public chats, invites users/bots, optionally sets bot manager |
+| [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat; user/bot; creates private/public chats, invites users/bots, optionally sets bot manager |
 | [`+chat-messages-list`](references/lark-im-chat-messages-list.md) | List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range/sort/pagination |
 | [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by keyword and/or member open_ids (e.g. look up chat_id by group name); user/bot; supports member/type filters, sorting, and pagination |
 | [`+chat-update`](references/lark-im-chat-update.md) | Update group chat name or description; user/bot; updates a chat's name or description |

@@ -30,18 +30,6 @@ func newExecuteFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *httpmock
 	return factory, stdout, reg
 }
 
-func registerTokenStub(reg *httpmock.Registry) {
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code":                0,
-			"tenant_access_token": "t-test-token",
-			"expire":              7200,
-		},
-	})
-}
-
 func withBaseWorkingDir(t *testing.T, dir string) {
 	t.Helper()
 	cwd, err := os.Getwd()
@@ -72,7 +60,6 @@ func runShortcut(t *testing.T, shortcut common.Shortcut, args []string, factory 
 
 func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases",
@@ -92,7 +79,6 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x",
@@ -111,7 +97,6 @@ func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 
 	t.Run("copy", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_src/copy",
@@ -132,7 +117,6 @@ func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 
 func TestBaseHistoryExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/record_history",
@@ -151,7 +135,6 @@ func TestBaseHistoryExecute(t *testing.T) {
 
 func TestBaseFieldExecuteUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
@@ -170,7 +153,6 @@ func TestBaseFieldExecuteUpdate(t *testing.T) {
 
 func TestBaseTableExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases/app_x/tables",
@@ -214,7 +196,6 @@ func TestBaseTableExecuteCreate(t *testing.T) {
 
 func TestBaseTableExecuteUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x",
@@ -233,7 +214,6 @@ func TestBaseTableExecuteUpdate(t *testing.T) {
 
 func TestBaseRecordExecuteUpsertUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
@@ -252,7 +232,6 @@ func TestBaseRecordExecuteUpsertUpdate(t *testing.T) {
 
 func TestBaseViewExecuteRename(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_x",
@@ -272,7 +251,6 @@ func TestBaseViewExecuteRename(t *testing.T) {
 func TestBaseViewExecutePropertyActions(t *testing.T) {
 	t.Run("set-group", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PUT",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_x/group",
@@ -291,7 +269,6 @@ func TestBaseViewExecutePropertyActions(t *testing.T) {
 
 	t.Run("set-sort", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PUT",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_x/sort",
@@ -313,7 +290,6 @@ func TestBaseViewExecutePropertyActions(t *testing.T) {
 func TestBaseFieldExecuteCRUD(t *testing.T) {
 	t.Run("list", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "limit=1&offset=0",
@@ -334,7 +310,6 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
@@ -353,7 +328,6 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 
 	t.Run("create", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
@@ -372,7 +346,6 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "DELETE",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
@@ -390,7 +363,6 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 	t.Run("list", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "limit=1&offset=0",
@@ -411,7 +383,6 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 
 	t.Run("list-http-404", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables",
@@ -429,7 +400,6 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x",
@@ -464,7 +434,6 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "DELETE",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x",
@@ -482,7 +451,6 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 	t.Run("list", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "limit=1&offset=0",
@@ -505,7 +473,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("list new shape", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "limit=1&offset=0",
@@ -529,7 +496,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_1",
@@ -552,7 +518,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get passthrough fallback", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_2",
@@ -571,7 +536,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("create", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records",
@@ -590,7 +554,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "DELETE",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_1",
@@ -606,7 +569,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("upload attachment", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 
 		tmpFile, err := os.CreateTemp(t.TempDir(), "base-attachment-*.txt")
 		if err != nil {
@@ -724,7 +686,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("upload attachment rejects non-attachment field", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 
 		tmpFile, err := os.CreateTemp(t.TempDir(), "base-not-attachment-*.txt")
 		if err != nil {
@@ -767,7 +728,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 	t.Run("list", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "limit=1&offset=0",
@@ -786,7 +746,6 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_1",
@@ -805,7 +764,6 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 
 	t.Run("create", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views",
@@ -824,7 +782,6 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "DELETE",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_1",
@@ -840,7 +797,6 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 
 	t.Run("set-filter", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "PUT",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_1/filter",
@@ -861,7 +817,6 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 func TestBaseTableExecuteListFallbackShapes(t *testing.T) {
 	t.Run("items-payload", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables",
@@ -880,7 +835,6 @@ func TestBaseTableExecuteListFallbackShapes(t *testing.T) {
 
 	t.Run("single-object-payload", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables",
@@ -900,7 +854,6 @@ func TestBaseTableExecuteListFallbackShapes(t *testing.T) {
 
 func TestBaseRecordExecuteListWithViewPagination(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "view_id=vew_x",
@@ -923,7 +876,6 @@ func TestBaseRecordExecuteListWithViewPagination(t *testing.T) {
 
 func TestBaseHistoryExecuteWithLinkFieldLimit(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "max_version=2",
@@ -942,7 +894,6 @@ func TestBaseHistoryExecuteWithLinkFieldLimit(t *testing.T) {
 
 func TestBaseFieldExecuteSearchOptions(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	registerTokenStub(reg)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_amount/options",
@@ -962,7 +913,6 @@ func TestBaseFieldExecuteSearchOptions(t *testing.T) {
 func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 	t.Run("get-group", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_x/group", Body: map[string]interface{}{"code": 0, "data": []interface{}{map[string]interface{}{"field": "fld_status", "desc": false}}}})
 		if err := runShortcut(t, BaseViewGetGroup, []string{"+view-get-group", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_x"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -974,7 +924,6 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 
 	t.Run("get-filter", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_x/filter", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"conditions": []interface{}{map[string]interface{}{"field_name": "Status"}}}}})
 		if err := runShortcut(t, BaseViewGetFilter, []string{"+view-get-filter", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_x"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -986,7 +935,6 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 
 	t.Run("get-sort", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_x/sort", Body: map[string]interface{}{"code": 0, "data": []interface{}{map[string]interface{}{"field": "fld_priority", "desc": true}}}})
 		if err := runShortcut(t, BaseViewGetSort, []string{"+view-get-sort", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_x"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -998,7 +946,6 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 
 	t.Run("get-timebar", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_time/timebar", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"start_time": "fld_start", "end_time": "fld_end", "title": "fld_title"}}})
 		if err := runShortcut(t, BaseViewGetTimebar, []string{"+view-get-timebar", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_time"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -1010,7 +957,6 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 
 	t.Run("set-timebar", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{Method: "PUT", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_time/timebar", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"start_time": "fld_start", "end_time": "fld_end", "title": "fld_title"}}})
 		args := []string{"+view-set-timebar", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_time", "--json", `{"start_time":"fld_start","end_time":"fld_end","title":"fld_title"}`}
 		if err := runShortcut(t, BaseViewSetTimebar, args, factory, stdout); err != nil {
@@ -1023,7 +969,6 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 
 	t.Run("get-card", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_card/card", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"cover_field": "fld_cover"}}})
 		if err := runShortcut(t, BaseViewGetCard, []string{"+view-get-card", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_card"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -1035,7 +980,6 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 
 	t.Run("set-card", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		registerTokenStub(reg)
 		reg.Register(&httpmock.Stub{Method: "PUT", URL: "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_card/card", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"cover_field": "fld_cover"}}})
 		if err := runShortcut(t, BaseViewSetCard, []string{"+view-set-card", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_card", "--json", `{"cover_field":"fld_cover"}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)

@@ -67,6 +67,19 @@ func TestRegisterShortcutsMountsBaseCommands(t *testing.T) {
 	}
 }
 
+func TestRegisterShortcutsMountsDocsMediaPreview(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, &cmdutil.Factory{})
+
+	previewCmd, _, err := program.Find([]string{"docs", "+media-preview"})
+	if err != nil {
+		t.Fatalf("find docs media preview shortcut: %v", err)
+	}
+	if previewCmd == nil || previewCmd.Name() != "+media-preview" {
+		t.Fatalf("docs media preview shortcut not mounted: %#v", previewCmd)
+	}
+}
+
 func TestRegisterShortcutsReusesExistingServiceCommand(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	existingBase := &cobra.Command{Use: "base", Short: "existing base service"}

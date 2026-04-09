@@ -17,6 +17,7 @@ import (
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 )
 
@@ -61,13 +62,13 @@ func NewEventPipeline(
 // EnsureDirs creates all configured output directories once at startup.
 func (p *EventPipeline) EnsureDirs() error {
 	if p.config.OutputDir != "" {
-		if err := os.MkdirAll(p.config.OutputDir, 0700); err != nil {
+		if err := vfs.MkdirAll(p.config.OutputDir, 0700); err != nil {
 			return fmt.Errorf("create output dir: %w", err)
 		}
 	}
 	if p.config.Router != nil {
 		for _, route := range p.config.Router.routes {
-			if err := os.MkdirAll(route.dir, 0700); err != nil {
+			if err := vfs.MkdirAll(route.dir, 0700); err != nil {
 				return fmt.Errorf("create route dir %s: %w", route.dir, err)
 			}
 		}

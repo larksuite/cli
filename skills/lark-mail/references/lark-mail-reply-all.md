@@ -42,8 +42,8 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '<p>同步更新</p>' --
 # 从回复名单中排除某些地址（草稿）
 lark-cli mail +reply-all --message-id <邮件ID> --body '<p>见上</p>' --remove bot@example.com,noreply@example.com
 
-# 回复全部时插入内嵌图片（CID 为唯一标识符，可用随机字符串）
-lark-cli mail +reply-all --message-id <邮件ID> --body '<img src="cid:a1b2c3d4e5f6a7b8c9d0"> 详见图示。' --inline '[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'
+# 回复全部时插入内嵌图片（推荐：直接用相对路径，自动解析）
+lark-cli mail +reply-all --message-id <邮件ID> --body '<p>详见图示：<img src="./logo.png" /></p>'
 
 # 纯文本回复全部（仅在内容极简时使用）
 lark-cli mail +reply-all --message-id <邮件ID> --body '收到，已处理。'
@@ -60,7 +60,7 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--message-id <id>` | 是 | 被回复的邮件 ID |
-| `--body <text>` | 是 | 回复正文。推荐使用 HTML 获得富文本排版；也支持纯文本。根据回复正文和原邮件正文自动检测 HTML。使用 `--plain-text` 可强制纯文本模式 |
+| `--body <text>` | 是 | 回复正文。推荐使用 HTML 获得富文本排版；也支持纯文本。根据回复正文和原邮件正文自动检测 HTML。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径） |
 | `--from <email>` | 否 | 发件人邮箱地址（默认读取 user_mailboxes.profile.primary_email_address） |
 | `--to <emails>` | 否 | 额外收件人，多个用逗号分隔（追加到自动聚合结果） |
 | `--cc <emails>` | 否 | 额外抄送，多个用逗号分隔 |
@@ -68,7 +68,7 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 | `--remove <emails>` | 否 | 从自动聚合结果中排除的邮箱，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用 |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径 |
-| `--inline <json>` | 否 | 内嵌图片 JSON 数组，每项包含 `cid`（唯一标识符，可用随机十六进制字符串，如 `a1b2c3d4e5f6a7b8c9d0`）和 `file_path`（相对路径）。格式：`'[{"cid":"a1b2c3d4e5f6a7b8c9d0","file_path":"./logo.png"}]'`。不可与 `--plain-text` 同时使用，在 body 中用 `<img src="cid:...">` 引用 |
+| `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
 | `--confirm-send` | 否 | 确认发送回复（默认只保存草稿）。仅在用户明确确认后使用 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 

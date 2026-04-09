@@ -1,0 +1,135 @@
+name: CLI E2E Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.go"
+      - go.mod
+      - go.sum
+      - Makefile
+      - scripts/fetch_meta.py
+      - tests/cli_e2e/**
+      - .github/workflows/cli-e2e.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.go"
+      - go.mod
+      - go.sum
+      - Makefile
+      - scripts/fetch_meta.py
+      - tests/cli_e2e/**
+      - .github/workflows/cli-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cli-e2e:
+    # Forked pull_request runs do not receive repository/org secrets except GITHUB_TOKEN.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    env:
+      TEST_BOT1_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
+      TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+
+      - name: Build lark-cli
+        run: make build
+
+      - name: Configure bot credentials
+        run: |
+          if [ -z "$TEST_BOT1_APP_ID" ] || [ -z "$TEST_BOT1_APP_SECRET" ]; then
+            echo "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET"
+            exit 1
+          fi
+          printf '%s\n' "$TEST_BOT1_APP_SECRET" | ./lark-cli config init --app-id "$TEST_BOT1_APP_ID" --app-secret-stdin
+
+      - name: Run CLI E2E tests
+        env:
+          LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
+        run: |
+          packages=$(go list ./tests/cli_e2e/... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '/demo$')
+          if [ -z "$packages" ]; then
+            echo "No CLI E2E packages to test after exclusions."
+            exit 1
+          fi
+          go run gotest.tools/gotestsum@v1.12.3 --format testname --junitfile cli-e2e-report.xml -- -count=1 -v $packages
+
+      - name: Summarize CLI E2E test report
+        if: ${{ !cancelled() }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          report_path = "cli-e2e-report.xml"
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+
+          root = ET.parse(report_path).getroot()
+          suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+
+          tests = failures = errors = skipped = 0
+          failed_cases = []
+          skipped_cases = []
+
+          for suite in suites:
+            tests += int(suite.attrib.get("tests", 0))
+            failures += int(suite.attrib.get("failures", 0))
+            errors += int(suite.attrib.get("errors", 0))
+            skipped += int(suite.attrib.get("skipped", 0))
+
+            for case in suite.findall("testcase"):
+              classname = case.attrib.get("classname", "")
+              name = case.attrib.get("name", "")
+              label = f"{classname}.{name}" if classname else name
+
+              failure = case.find("failure")
+              error = case.find("error")
+              skipped_node = case.find("skipped")
+
+              if failure is not None or error is not None:
+                message = ""
+                node = failure if failure is not None else error
+                if node is not None:
+                  message = node.attrib.get("message", "") or (node.text or "").strip()
+                failed_cases.append((label, message))
+              elif skipped_node is not None:
+                message = skipped_node.attrib.get("message", "") or (skipped_node.text or "").strip()
+                skipped_cases.append((label, message))
+
+          passed = tests - failures - errors - skipped
+
+          with open(summary_path, "a", encoding="utf-8") as f:
+            f.write("## CLI E2E Test Report\n\n")
+            f.write(f"- Total: {tests}\n")
+            f.write(f"- Passed: {passed}\n")
+            f.write(f"- Failed: {failures}\n")
+            f.write(f"- Errors: {errors}\n")
+            f.write(f"- Skipped: {skipped}\n\n")
+
+            if failed_cases:
+              f.write("### Failed Tests\n\n")
+              for label, message in failed_cases:
+                detail = f" - {message}" if message else ""
+                f.write(f"- `{label}`{detail}\n")
+              f.write("\n")
+
+            if skipped_cases:
+              f.write("### Skipped Tests\n\n")
+              for label, message in skipped_cases:
+                detail = f" - {message}" if message else ""
+                f.write(f"- `{label}`{detail}\n")
+              f.write("\n")
+          PY

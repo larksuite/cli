@@ -18,17 +18,34 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/zalando/go-keyring"
 )
 
+// keychainTimeout bounds system keychain access to avoid hanging on blocked prompts.
 const keychainTimeout = 5 * time.Second
+
+// masterKeyBytes is the AES-256 key size used to encrypt stored secrets.
 const masterKeyBytes = 32
+
+// ivBytes is the nonce size used by AES-GCM.
 const ivBytes = 12
+
+// tagBytes is the authentication tag size produced by AES-GCM.
 const tagBytes = 16
+
+// fileMasterKeyName is the local fallback master key file name.
+const fileMasterKeyName = "master.key.file"
+
+// keyringGet is overridden in tests to simulate system keychain reads.
+var keyringGet = keyring.Get
+
+// keyringSet is overridden in tests to simulate system keychain writes.
+var keyringSet = keyring.Set
 
 // StorageDir returns the storage directory for a given service name on macOS.
 func StorageDir(service string) string {
-	home, err := os.UserHomeDir()
+	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {
 		return filepath.Join(".lark-cli", "keychain", service)
 	}
@@ -56,7 +73,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	go func() {
 		defer func() { recover() }()
 
-		encodedKey, err := keyring.Get(service, "master.key")
+		encodedKey, err := keyringGet(service, "master.key")
 		if err == nil {
 			key, decodeErr := base64.StdEncoding.DecodeString(encodedKey)
 			if decodeErr == nil && len(key) == masterKeyBytes {
@@ -87,7 +104,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		}
 
 		encodedKeyStr := base64.StdEncoding.EncodeToString(key)
-		setErr := keyring.Set(service, "master.key", encodedKeyStr)
+		setErr := keyringSet(service, "master.key", encodedKeyStr)
 		if setErr != nil {
 			resCh <- result{key: nil, err: setErr}
 			return
@@ -102,6 +119,85 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		// Timeout is usually caused by ignored/blocked permission prompts
 		return nil, errors.New("keychain access blocked")
 	}
+}
+
+// getFileMasterKey retrieves the fallback master key from local storage.
+// If allowCreate is true, it generates and stores a new fallback master key when missing.
+func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
+	dir := StorageDir(service)
+	keyPath := filepath.Join(dir, fileMasterKeyName)
+
+	key, err := vfs.ReadFile(keyPath)
+	if err == nil && len(key) == masterKeyBytes {
+		return key, nil
+	}
+	if err == nil && len(key) != masterKeyBytes {
+		return nil, errors.New("keychain is corrupted")
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if !allowCreate {
+		return nil, errNotInitialized
+	}
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	key = make([]byte, masterKeyBytes)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+
+	file, err := vfs.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			for i := 0; i < 3; i++ {
+				existingKey, readErr := vfs.ReadFile(keyPath)
+				if readErr == nil && len(existingKey) == masterKeyBytes {
+					return existingKey, nil
+				}
+				if readErr != nil {
+					return nil, readErr
+				}
+				if i < 2 {
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
+			return nil, errors.New("keychain is corrupted")
+		}
+		return nil, err
+	}
+
+	writeFailed := true
+	defer func() {
+		if writeFailed {
+			_ = vfs.Remove(keyPath)
+		}
+	}()
+	if _, err := file.Write(key); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if err := file.Close(); err != nil {
+		return nil, err
+	}
+	writeFailed = false
+
+	canonicalKey, err := vfs.ReadFile(keyPath)
+	if err != nil {
+		existingKey, readErr := vfs.ReadFile(keyPath)
+		if readErr == nil && len(existingKey) == masterKeyBytes {
+			return existingKey, nil
+		}
+		if readErr == nil && len(existingKey) != masterKeyBytes {
+			return nil, errors.New("keychain is corrupted")
+		}
+		return nil, err
+	}
+	if len(canonicalKey) != masterKeyBytes {
+		return nil, errors.New("keychain is corrupted")
+	}
+	return canonicalKey, nil
 }
 
 // encryptData encrypts data using AES-GCM.
@@ -153,12 +249,17 @@ func decryptData(data []byte, key []byte) (string, error) {
 // platformGet retrieves a value from the macOS keychain.
 func platformGet(service, account string) (string, error) {
 	path := filepath.Join(StorageDir(service), safeFileName(account))
-	data, err := os.ReadFile(path)
+	data, err := vfs.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
 	if err != nil {
 		return "", err
+	}
+	if key, ferr := getFileMasterKey(service, false); ferr == nil {
+		if plaintext, derr := decryptData(data, key); derr == nil {
+			return plaintext, nil
+		}
 	}
 	key, err := getMasterKey(service, false)
 	if err != nil {
@@ -173,12 +274,18 @@ func platformGet(service, account string) (string, error) {
 
 // platformSet stores a value in the macOS keychain.
 func platformSet(service, account, data string) error {
-	key, err := getMasterKey(service, true)
+	key, err := getFileMasterKey(service, false)
 	if err != nil {
-		return err
+		key, err = getMasterKey(service, true)
+		if err != nil {
+			key, err = getFileMasterKey(service, true)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	encrypted, err := encryptData(data, key)
@@ -188,14 +295,14 @@ func platformSet(service, account, data string) error {
 
 	targetPath := filepath.Join(dir, safeFileName(account))
 	tmpPath := filepath.Join(dir, safeFileName(account)+"."+uuid.New().String()+".tmp")
-	defer os.Remove(tmpPath)
+	defer vfs.Remove(tmpPath)
 
-	if err := os.WriteFile(tmpPath, encrypted, 0600); err != nil {
+	if err := vfs.WriteFile(tmpPath, encrypted, 0600); err != nil {
 		return err
 	}
 
 	// Atomic rename to prevent file corruption during multi-process writes
-	if err := os.Rename(tmpPath, targetPath); err != nil {
+	if err := vfs.Rename(tmpPath, targetPath); err != nil {
 		return err
 	}
 	return nil
@@ -203,7 +310,7 @@ func platformSet(service, account, data string) error {
 
 // platformRemove deletes a value from the macOS keychain.
 func platformRemove(service, account string) error {
-	err := os.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
+	err := vfs.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}

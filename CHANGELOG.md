@@ -2,6 +2,92 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.6] - 2026-04-08
+
+### Features
+
+- Improve login scope validation and success output (#317)
+- **task**: Support starting pagination from page token (#332)
+- Support multipart doc media uploads (#294)
+- **mail**: Auto-resolve local image paths in all draft entry points (#205)
+- **vc**: Add `+recording` shortcut for `meeting_id` to `minute_token` conversion (#246)
+
+### Bug Fixes
+
+- Resolve concurrency races in RuntimeContext (#330)
+- **config**: Save empty config before clearing keychain entries (#291)
+- Reject positional arguments in shortcuts (#227)
+- Improve raw API diagnostics for invalid or empty JSON responses (#257)
+- **docs**: Normalize `board_tokens` in `+create` response for mermaid/whiteboard content (#10)
+- **task**: Clarify `--complete` flag help for `get-my-tasks` (#310)
+- **help**: Point root help Agent Skills link to README section (#289)
+
+### Documentation
+
+- Clarify `--complete` flag behavior in `get-my-tasks` reference (#308)
+
+### Refactor
+
+- Migrate VC/minutes shortcuts to FileIO (#336)
+- Migrate common/client/IM to FileIO and add localfileio tests (#322)
+
+## [v1.0.5] - 2026-04-07
+
+### Features
+
+- **drive**: Support multipart upload for files larger than 20MB (#43)
+- Add darwin file master key fallback for keychain writes (#285)
+- Add strict mode identity filter, profile management and credential extension (#252)
+
+### Bug Fixes
+
+- **mail**: Restore CID validation and stale PartID lookup lost in revert (#230)
+- **base**: Clarify table-id `tbl` prefix requirement (#270)
+- Fix parameter constraints for LarkMessageTrigger (#213)
+
+### Documentation
+
+- Fix root calendar example (#299)
+- Fix README auth scope and api data flag (#298)
+- Clarify task guid for applinks (#287)
+- Clarify lark task guid usage (#282)
+- **lark-base**: Add `has_more` guidance for record-list pagination (#183)
+
+### Tests
+
+- Isolate registry package state in tests (#280)
+
+### CI
+
+- Add scheduled issue labeler for type/domain triage (#251)
+- **issue-labels**: Reduce mislabeling and handle missing labels (#288)
+- Map wiki paths in pr labels (#249)
+
+## [v1.0.4] - 2026-04-03
+
+### Features
+
+- Support user identity for im `+chat-create` (#242)
+- Implement authentication response logging (#235)
+- Support im chat member delete and add scope notes (#229)
+
+### Bug Fixes
+
+- **security**: Replace `http.DefaultTransport` with proxy-aware base transport to mitigate MITM risk (#247)
+- **calendar**: Block auto bot fallback without user login (#245)
+
+### Documentation
+
+- **mail**: Add identity guidance to prefer user over bot (#157)
+
+### Refactor
+
+- **dashboard**: Restructure docs for AI-friendly navigation (#191)
+
+### CI
+
+- Add a CLI E2E testing framework for lark-cli, task domain testcase and ci action (#236)
+
 ## [v1.0.3] - 2026-04-02
 
 ### Features
@@ -136,6 +222,9 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.6]: https://github.com/larksuite/cli/releases/tag/v1.0.6
+[v1.0.5]: https://github.com/larksuite/cli/releases/tag/v1.0.5
+[v1.0.4]: https://github.com/larksuite/cli/releases/tag/v1.0.4
 [v1.0.3]: https://github.com/larksuite/cli/releases/tag/v1.0.3
 [v1.0.2]: https://github.com/larksuite/cli/releases/tag/v1.0.2
 [v1.0.1]: https://github.com/larksuite/cli/releases/tag/v1.0.1
