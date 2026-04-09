@@ -4,7 +4,6 @@
 package draft
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -13,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
@@ -481,14 +479,11 @@ func newMultipartContainer(mediaType string) *Part {
 }
 
 func addAttachment(dctx *DraftCtx, snapshot *DraftSnapshot, path string) error {
-	info, err := dctx.FIO.Stat(path)
-	if err != nil {
-		if errors.Is(err, fileio.ErrPathValidation) {
-			return fmt.Errorf("attachment %q: %w", path, err)
-		}
+	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
 		return err
 	}
-	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
+	info, err := dctx.FIO.Stat(path)
+	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
@@ -608,9 +603,6 @@ func replaceInline(dctx *DraftCtx, snapshot *DraftSnapshot, partID, path, cid, f
 	}
 	info, err := dctx.FIO.Stat(path)
 	if err != nil {
-		if errors.Is(err, fileio.ErrPathValidation) {
-			return fmt.Errorf("inline image %q: %w", path, err)
-		}
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), part); err != nil {
