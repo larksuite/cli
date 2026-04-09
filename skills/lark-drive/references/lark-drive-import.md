@@ -60,6 +60,22 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 > - `.xls` 文件**只能**导入为 `sheet`
 > - 例如：`.csv` 文件不能导入为 `docx`，`.md` 文件不能导入为 `sheet`
 
+> [!IMPORTANT]
+> 如果在线文档是**以应用身份（bot）导入创建**的，如 `lark-cli drive +import --as bot`，当某次结果**已经返回最终在线文档目标**后，CLI 会**尝试为当前 CLI 用户自动授予该资源的 `full_access`（可管理权限）**。
+>
+> 这个自动授权有两种触发时机：
+> - `drive +import` 的内置轮询窗口内已经完成，直接在 `+import` 中进行自动授权
+> - `drive +import` 先返回 `ready=false` / `timed_out=true`，之后你再执行 `lark-cli drive +task_result --scenario import --ticket <TICKET>`，当该查询第一次拿到最终在线文档目标时会自动授权
+>
+> 只有在已经拿到最终在线文档目标的那次结果里，才会返回 `permission_grant` 字段，明确说明授权结果：
+> - `status = granted`：当前 CLI 用户已获得该导入结果的可管理权限
+> - `status = skipped`：本地没有可用的当前用户 `open_id`，或当前结果还没有可授权目标，因此不会自动授权；可提示用户先完成 `lark-cli auth login`，再让 AI / agent 继续使用应用身份（bot）授予当前用户权限
+> - `status = failed`：导入已成功返回最终在线文档，但自动授权用户失败；会带上失败原因，并提示稍后重试或继续使用 bot 身份处理该文档
+>
+> `permission_grant.perm = full_access` 表示该资源已授予“可管理权限”。
+>
+> **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
+
 ### 文件大小限制
 
 除扩展名与目标类型匹配外，`drive +import` 还会在本地上传前校验格式级大小限制：
@@ -83,6 +99,8 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
   - `ready=false`
   - `timed_out=true`
   - `next_command`：可直接复制执行的后续查询命令，例如 `lark-cli drive +task_result --scenario import --ticket <TICKET>`
+- 若使用 `--as bot` 且内置轮询窗口内已经拿到最终在线文档，输出还会额外带上 `permission_grant`，用于说明是否已自动为当前 CLI 用户授予可管理权限。
+- 若使用 `--as bot` 但当前只返回 `ready=false`，此时还不会返回 `permission_grant`；应继续执行返回值里的 `next_command`，等 `drive +task_result --scenario import` 拿到最终文档后再触发自动授权。
 - 如果文件扩展名不被支持，执行时将抛出验证错误。
 
 ### 超时后的继续查询
@@ -92,6 +110,8 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 ```bash
 lark-cli drive +task_result --scenario import --ticket <TICKET>
 ```
+
+如果这里最终返回 `ready=true` 且使用的是 `--as bot`，结果还会额外带上 `permission_grant`，用于说明是否已自动为当前 CLI 用户授予可管理权限。
 
 > [!CAUTION]
 > `drive +import` 是**写入操作** —— 执行前必须确认用户意图。
