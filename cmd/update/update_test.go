@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package upgrade
+package cmdupdate
 
 import (
 	"bytes"
@@ -22,10 +22,10 @@ func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffe
 	return f, stdout, stderr
 }
 
-func TestUpgradeAlreadyUpToDate_JSON(t *testing.T) {
+func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
 
 	origFetch := fetchLatest
@@ -50,10 +50,10 @@ func TestUpgradeAlreadyUpToDate_JSON(t *testing.T) {
 	}
 }
 
-func TestUpgradeAlreadyUpToDate_Human(t *testing.T) {
+func TestUpdateAlreadyUpToDate_Human(t *testing.T) {
 	f, _, stderr := newTestFactory(t)
 
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
 
 	origFetch := fetchLatest
@@ -96,9 +96,9 @@ func TestDetectInstallMethod_Windows(t *testing.T) {
 	}
 }
 
-func TestUpgradeManual_JSON(t *testing.T) {
+func TestUpdateManual_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
 
 	origFetch := fetchLatest
@@ -124,9 +124,9 @@ func TestUpgradeManual_JSON(t *testing.T) {
 	}
 }
 
-func TestUpgradeManual_Human(t *testing.T) {
+func TestUpdateManual_Human(t *testing.T) {
 	f, _, stderr := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
 
 	origFetch := fetchLatest
@@ -152,9 +152,9 @@ func TestUpgradeManual_Human(t *testing.T) {
 	}
 }
 
-func TestUpgradeNpm_JSON(t *testing.T) {
+func TestUpdateNpm_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
 
 	origFetch := fetchLatest
@@ -175,14 +175,14 @@ func TestUpgradeNpm_JSON(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, `"action": "upgraded"`) {
-		t.Errorf("expected upgraded in output, got: %s", out)
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated in output, got: %s", out)
 	}
 }
 
-func TestUpgradeNpm_Human(t *testing.T) {
+func TestUpdateNpm_Human(t *testing.T) {
 	f, _, stderr := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
 
 	origFetch := fetchLatest
@@ -203,14 +203,14 @@ func TestUpgradeNpm_Human(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stderr.String()
-	if !strings.Contains(out, "Successfully upgraded") {
+	if !strings.Contains(out, "Successfully updated") {
 		t.Errorf("expected success message in stderr, got: %s", out)
 	}
 }
 
-func TestUpgradeForce_JSON(t *testing.T) {
+func TestUpdateForce_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--force", "--json"})
 
 	origFetch := fetchLatest
@@ -231,14 +231,14 @@ func TestUpgradeForce_JSON(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, `"action": "upgraded"`) {
-		t.Errorf("expected upgraded in JSON output, got: %s", out)
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated in JSON output, got: %s", out)
 	}
 }
 
-func TestUpgradeFetchError_JSON(t *testing.T) {
+func TestUpdateFetchError_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
 
 	origFetch := fetchLatest
@@ -257,9 +257,9 @@ func TestUpgradeFetchError_JSON(t *testing.T) {
 	}
 }
 
-func TestUpgradeFetchError_Human(t *testing.T) {
+func TestUpdateFetchError_Human(t *testing.T) {
 	f, _, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
 
 	origFetch := fetchLatest
@@ -283,9 +283,9 @@ func TestUpgradeFetchError_Human(t *testing.T) {
 	}
 }
 
-func TestUpgradeInvalidVersion_JSON(t *testing.T) {
+func TestUpdateInvalidVersion_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
 
 	origFetch := fetchLatest
@@ -299,9 +299,9 @@ func TestUpgradeInvalidVersion_JSON(t *testing.T) {
 	}
 }
 
-func TestUpgradeDevVersion_JSON(t *testing.T) {
+func TestUpdateDevVersion_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
 
 	origFetch := fetchLatest
@@ -322,14 +322,14 @@ func TestUpgradeDevVersion_JSON(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, `"action": "upgraded"`) {
-		t.Errorf("expected upgraded in JSON output, got: %s", out)
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated in JSON output, got: %s", out)
 	}
 }
 
-func TestUpgradeNpmFail_JSON(t *testing.T) {
+func TestUpdateNpmFail_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
 
 	origFetch := fetchLatest
@@ -358,9 +358,9 @@ func TestUpgradeNpmFail_JSON(t *testing.T) {
 	}
 }
 
-func TestUpgradeNpmFail_Human(t *testing.T) {
+func TestUpdateNpmFail_Human(t *testing.T) {
 	f, _, stderr := newTestFactory(t)
-	cmd := NewCmdUpgrade(f)
+	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
 
 	origFetch := fetchLatest
@@ -383,8 +383,8 @@ func TestUpgradeNpmFail_Human(t *testing.T) {
 	cmd.SilenceUsage = true
 	_ = cmd.Execute()
 	out := stderr.String()
-	if !strings.Contains(out, "Upgrade failed") {
-		t.Errorf("expected 'Upgrade failed' in stderr, got: %s", out)
+	if !strings.Contains(out, "Update failed") {
+		t.Errorf("expected 'Update failed' in stderr, got: %s", out)
 	}
 	if !strings.Contains(out, "sudo") {
 		t.Errorf("expected 'sudo' hint in stderr, got: %s", out)

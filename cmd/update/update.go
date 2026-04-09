@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package upgrade
+package cmdupdate
 
 import (
 	"bytes"
@@ -41,21 +41,21 @@ var (
 	runNpmInstall  = runNpmInstallReal
 )
 
-// UpgradeOptions holds inputs for the upgrade command.
-type UpgradeOptions struct {
+// UpdateOptions holds inputs for the update command.
+type UpdateOptions struct {
 	Factory *cmdutil.Factory
 	JSON    bool
 	Force   bool
 }
 
-// NewCmdUpgrade creates the upgrade command.
-func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
-	opts := &UpgradeOptions{Factory: f}
+// NewCmdUpdate creates the update command.
+func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
+	opts := &UpdateOptions{Factory: f}
 
 	cmd := &cobra.Command{
-		Use:   "upgrade",
-		Short: "Upgrade lark-cli to the latest version",
-		Long: `Upgrade lark-cli to the latest version.
+		Use:   "update",
+		Short: "Update lark-cli to the latest version",
+		Long: `Update lark-cli to the latest version.
 
 Detects the installation method automatically:
   - npm install: runs npm install -g @larksuite/cli@<version>
@@ -63,7 +63,7 @@ Detects the installation method automatically:
 
 Use --json for structured output (for AI agents and scripts).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return upgradeRun(opts)
+			return updateRun(opts)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
@@ -73,7 +73,7 @@ Use --json for structured output (for AI agents and scripts).`,
 	return cmd
 }
 
-func upgradeRun(opts *UpgradeOptions) error {
+func updateRun(opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
 	cur := currentVersion()
 
@@ -124,7 +124,7 @@ func upgradeRun(opts *UpgradeOptions) error {
 	}
 
 	// 4. Detect installation method and upgrade
-	return doUpgrade(opts, cur, latest)
+	return doUpdate(opts, cur, latest)
 }
 
 // detectInstallMethod checks if the resolved executable path indicates npm installation.
@@ -168,24 +168,24 @@ func truncate(s string, maxLen int) string {
 	return s[len(s)-maxLen:]
 }
 
-// doUpgrade detects installation method and dispatches to the appropriate upgrade path.
-func doUpgrade(opts *UpgradeOptions, cur, latest string) error {
+// doUpdate detects installation method and dispatches to the appropriate upgrade path.
+func doUpdate(opts *UpdateOptions, cur, latest string) error {
 	method, resolvedPath := detectMethod()
 
 	if method == installManual {
 		if opts.JSON {
-			return doManualUpgradeJSON(opts, cur, latest, resolvedPath)
+			return doManualUpdateJSON(opts, cur, latest, resolvedPath)
 		}
-		return doManualUpgradeHuman(opts, cur, latest, resolvedPath)
+		return doManualUpdateHuman(opts, cur, latest, resolvedPath)
 	}
 
 	if opts.JSON {
-		return doNpmUpgradeJSON(opts, cur, latest)
+		return doNpmUpdateJSON(opts, cur, latest)
 	}
-	return doNpmUpgradeHuman(opts, cur, latest)
+	return doNpmUpdateHuman(opts, cur, latest)
 }
 
-func doManualUpgradeJSON(opts *UpgradeOptions, cur, latest, resolvedPath string) error {
+func doManualUpdateJSON(opts *UpdateOptions, cur, latest, resolvedPath string) error {
 	io := opts.Factory.IOStreams
 	output.PrintJson(io.Out, map[string]interface{}{
 		"ok":               true,
@@ -198,16 +198,16 @@ func doManualUpgradeJSON(opts *UpgradeOptions, cur, latest, resolvedPath string)
 	return nil
 }
 
-func doManualUpgradeHuman(opts *UpgradeOptions, cur, latest, resolvedPath string) error {
+func doManualUpdateHuman(opts *UpdateOptions, cur, latest, resolvedPath string) error {
 	io := opts.Factory.IOStreams
 	fmt.Fprintf(io.ErrOut, "lark-cli was not installed via npm (path: %s).\n", resolvedPath)
-	fmt.Fprintf(io.ErrOut, "Automatic upgrade is only supported for npm installations.\n\n")
+	fmt.Fprintf(io.ErrOut, "Automatic update is only supported for npm installations.\n\n")
 	fmt.Fprintf(io.ErrOut, "To upgrade manually, download the latest release:\n")
 	fmt.Fprintf(io.ErrOut, "  %s\n", releasesURL)
 	return nil
 }
 
-func doNpmUpgradeJSON(opts *UpgradeOptions, cur, latest string) error {
+func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 	io := opts.Factory.IOStreams
 	var stdoutBuf, stderrBuf bytes.Buffer
 
@@ -237,15 +237,15 @@ func doNpmUpgradeJSON(opts *UpgradeOptions, cur, latest string) error {
 		"previous_version": cur,
 		"current_version":  latest,
 		"latest_version":   latest,
-		"action":           "upgraded",
-		"message":          fmt.Sprintf("lark-cli upgraded from %s to %s", cur, latest),
+		"action":           "updated",
+		"message":          fmt.Sprintf("lark-cli updated from %s to %s", cur, latest),
 	})
 	return nil
 }
 
-func doNpmUpgradeHuman(opts *UpgradeOptions, cur, latest string) error {
+func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	ios := opts.Factory.IOStreams
-	fmt.Fprintf(ios.ErrOut, "Upgrading lark-cli %s → %s via npm ...\n", cur, latest)
+	fmt.Fprintf(ios.ErrOut, "Updating lark-cli %s → %s via npm ...\n", cur, latest)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 
@@ -258,7 +258,7 @@ func doNpmUpgradeHuman(opts *UpgradeOptions, cur, latest string) error {
 		if stderrBuf.Len() > 0 {
 			fmt.Fprint(ios.ErrOut, stderrBuf.String())
 		}
-		fmt.Fprintf(ios.ErrOut, "\n✗ Upgrade failed: %s\n", err)
+		fmt.Fprintf(ios.ErrOut, "\n✗ Update failed: %s\n", err)
 		if hint := suggestSudo(combined); hint != "" {
 			fmt.Fprintf(ios.ErrOut, "  %s\n", hint)
 		}
@@ -266,7 +266,7 @@ func doNpmUpgradeHuman(opts *UpgradeOptions, cur, latest string) error {
 	}
 
 	output.PendingNotice = nil
-	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully upgraded lark-cli from %s to %s\n", cur, latest)
+	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully updated lark-cli from %s to %s\n", cur, latest)
 	return nil
 }
 
