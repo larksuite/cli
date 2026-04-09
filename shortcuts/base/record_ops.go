@@ -42,7 +42,8 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 }
 
 func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, _ := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/search").
 		Body(body).
@@ -51,7 +52,8 @@ func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *comm
 }
 
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, _ := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
 	if recordID := runtime.Str("record-id"); recordID != "" {
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
@@ -148,7 +150,8 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordSearch(runtime *common.RuntimeContext) error {
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}
@@ -161,7 +164,8 @@ func executeRecordSearch(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordUpsert(runtime *common.RuntimeContext) error {
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}

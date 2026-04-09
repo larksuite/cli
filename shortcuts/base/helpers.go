@@ -29,8 +29,8 @@ type fieldTypeSpec struct {
 	Extra map[string]interface{}
 }
 
-func parseJSONObject(raw string, flagName string) (map[string]interface{}, error) {
-	resolved, err := loadJSONInput(raw, flagName)
+func parseJSONObject(pc *parseCtx, raw string, flagName string) (map[string]interface{}, error) {
+	resolved, err := loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +41,8 @@ func parseJSONObject(raw string, flagName string) (map[string]interface{}, error
 	return result, nil
 }
 
-func parseJSONArray(raw string, flagName string) ([]interface{}, error) {
-	resolved, err := loadJSONInput(raw, flagName)
+func parseJSONArray(pc *parseCtx, raw string, flagName string) ([]interface{}, error) {
+	resolved, err := loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
@@ -53,12 +53,12 @@ func parseJSONArray(raw string, flagName string) ([]interface{}, error) {
 	return result, nil
 }
 
-func parseStringListFlexible(raw string, flagName string) ([]string, error) {
+func parseStringListFlexible(pc *parseCtx, raw string, flagName string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
-	resolved, err := loadJSONInput(raw, flagName)
+	resolved, err := loadJSONInput(pc, raw, flagName)
 	if err != nil {
 		return nil, err
 	}
@@ -82,8 +82,19 @@ func parseStringListFlexible(raw string, flagName string) ([]string, error) {
 }
 
 func parseStringList(raw string) []string {
-	items, _ := parseStringListFlexible(raw, "fields")
-	return items
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func deepMergeMaps(dst, src map[string]interface{}) map[string]interface{} {

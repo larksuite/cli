@@ -4,6 +4,7 @@
 package drive
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -14,10 +15,10 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -252,8 +253,8 @@ func fetchDriveMetaTitle(runtime *common.RuntimeContext, token, docType string) 
 }
 
 // saveContentToOutputDir validates the target path, enforces overwrite policy,
-// and writes the payload atomically to disk.
-func saveContentToOutputDir(outputDir, fileName string, payload []byte, overwrite bool) (string, error) {
+// and writes the payload atomically via FileIO.Save.
+func saveContentToOutputDir(fio fileio.FileIO, outputDir, fileName string, payload []byte, overwrite bool) (string, error) {
 	if outputDir == "" {
 		outputDir = "."
 	}
@@ -262,21 +263,22 @@ func saveContentToOutputDir(outputDir, fileName string, payload []byte, overwrit
 	// names cannot escape the requested output directory.
 	safeName := sanitizeExportFileName(fileName, "export.bin")
 	target := filepath.Join(outputDir, safeName)
-	safePath, err := validate.SafeOutputPath(target)
-	if err != nil {
-		return "", output.ErrValidation("unsafe output path: %s", err)
-	}
-	if err := common.EnsureWritableFile(safePath, overwrite); err != nil {
-		return "", err
+
+	// Overwrite check via FileIO.Stat
+	if !overwrite {
+		if _, statErr := fio.Stat(target); statErr == nil {
+			return "", output.ErrValidation("output file already exists: %s (use --overwrite to replace)", target)
+		}
 	}
 
-	if err := vfs.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
-		return "", output.Errorf(output.ExitInternal, "io", "cannot create output directory: %s", err)
+	if _, err := fio.Save(target, fileio.SaveOptions{}, bytes.NewReader(payload)); err != nil {
+		return "", common.WrapSaveErrorByCategory(err, "io")
 	}
-	if err := validate.AtomicWrite(safePath, payload, 0644); err != nil {
-		return "", output.Errorf(output.ExitInternal, "io", "cannot write file: %s", err)
+	resolvedPath, _ := fio.ResolvePath(target)
+	if resolvedPath == "" {
+		resolvedPath = target
 	}
-	return safePath, nil
+	return resolvedPath, nil
 }
 
 // downloadDriveExportFile downloads the exported artifact, derives a safe local
@@ -303,7 +305,7 @@ func downloadDriveExportFile(ctx context.Context, runtime *common.RuntimeContext
 		// request an explicit local file name.
 		fileName = client.ResolveFilename(apiResp)
 	}
-	savedPath, err := saveContentToOutputDir(outputDir, fileName, apiResp.RawBody, overwrite)
+	savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, apiResp.RawBody, overwrite)
 	if err != nil {
 		return nil, err
 	}

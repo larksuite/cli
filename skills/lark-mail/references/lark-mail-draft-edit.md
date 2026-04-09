@@ -64,6 +64,7 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
+| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。优先于 `--from`。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--draft-id <id>` | 是 | 目标草稿 ID。仅当单独使用 `--print-patch-template` 时可省略 |
 | `--set-subject <text>` | 否 | 用此值替换主题 |
 | `--set-to <emails>` | 否 | 用此处提供的地址替换整个 To 收件人列表 |

@@ -13,6 +13,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -30,17 +31,18 @@ import (
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
-	ctx        context.Context // from cmd.Context(), propagated through the call chain
-	Config     *core.CliConfig
-	Cmd        *cobra.Command
-	Format     string
-	JqExpr     string            // --jq expression; empty = no filter
-	outputErr  error             // deferred error from Out()/OutFormat() jq filtering
-	botOnly    bool              // set by framework for bot-only shortcuts
-	resolvedAs core.Identity     // effective identity resolved by framework
-	Factory    *cmdutil.Factory  // injected by framework
-	apiClient  *client.APIClient // lazily initialized, cached
-	larkSDK    *lark.Client      // eagerly initialized in mountDeclarative
+	ctx           context.Context // from cmd.Context(), propagated through the call chain
+	Config        *core.CliConfig
+	Cmd           *cobra.Command
+	Format        string
+	JqExpr        string                            // --jq expression; empty = no filter
+	outputErrOnce sync.Once                         // guards first-error capture in Out()/OutFormat()
+	outputErr     error                             // deferred error from jq filtering; written at most once
+	botOnly       bool                              // set by framework for bot-only shortcuts
+	resolvedAs    core.Identity                     // effective identity resolved by framework
+	Factory       *cmdutil.Factory                  // injected by framework
+	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
 }
 
 // ── Identity ──
@@ -73,18 +75,13 @@ func (ctx *RuntimeContext) UserOpenId() string { return ctx.Config.UserOpenId }
 func (ctx *RuntimeContext) Ctx() context.Context { return ctx.ctx }
 
 // getAPIClient returns the cached APIClient, creating it on first use.
+// Thread-safe via sync.OnceValues (initialized in newRuntimeContext).
+// Falls back to direct construction for test contexts that bypass newRuntimeContext.
 func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
-	if ctx.apiClient != nil {
-		return ctx.apiClient, nil
+	if ctx.apiClientFunc != nil {
+		return ctx.apiClientFunc()
 	}
-	ac, err := ctx.Factory.NewAPIClient()
-	if err != nil {
-		return nil, err
-	}
-	// Override config with the one resolved for this context (may differ from Factory's)
-	ac.Config = ctx.Config
-	ctx.apiClient = ac
-	return ac, nil
+	return ctx.Factory.NewAPIClientWithConfig(ctx.Config)
 }
 
 // AccessToken returns a valid access token for the current identity.
@@ -366,6 +363,44 @@ func WrapOpenError(err error, pathMsg, readMsg string) error {
 	return fmt.Errorf("%s: %w", readMsg, err)
 }
 
+// WrapInputStatError wraps a FileIO.Stat/Open error for input file validation,
+// returning output.ErrValidation with the appropriate message:
+//   - Path validation failures → "unsafe file path: ..."
+//   - Other errors → readMsg prefix (default "cannot read file")
+//
+// Pass an optional readMsg to override the non-path-validation message prefix.
+func WrapInputStatError(err error, readMsg ...string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return output.ErrValidation("unsafe file path: %s", err)
+	}
+	msg := "cannot read file"
+	if len(readMsg) > 0 && readMsg[0] != "" {
+		msg = readMsg[0]
+	}
+	return output.ErrValidation("%s: %s", msg, err)
+}
+
+// WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
+// using standardized messages and the given error category (e.g. "api_error", "io").
+// Path validation errors always use ErrValidation (exit code 2).
+func WrapSaveErrorByCategory(err error, category string) error {
+	if err == nil {
+		return nil
+	}
+	var me *fileio.MkdirError
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return output.ErrValidation("unsafe output path: %s", err)
+	case errors.As(err, &me):
+		return output.Errorf(output.ExitInternal, category, "cannot create parent directory: %s", err)
+	default:
+		return output.Errorf(output.ExitInternal, category, "cannot create file: %s", err)
+	}
+}
+
 // ValidatePath checks that path is a valid relative input path within the
 // working directory by delegating to FileIO.Stat. Returns nil if the path is
 // valid or does not exist yet; returns an error only for illegal paths
@@ -393,9 +428,7 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	if ctx.JqExpr != "" {
 		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
-			if ctx.outputErr == nil {
-				ctx.outputErr = err
-			}
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
 		}
 		return
 	}
@@ -603,6 +636,9 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
 	rctx := &RuntimeContext{ctx: ctx, Config: config, Cmd: cmd, botOnly: botOnly, resolvedAs: as, Factory: f}
+	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
+		return f.NewAPIClientWithConfig(config)
+	})
 
 	sdk, err := f.LarkClient()
 	if err != nil {

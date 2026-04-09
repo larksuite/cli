@@ -372,3 +372,270 @@ func TestParseArtifactType_AllBranches(t *testing.T) {
 		t.Errorf("nil: got %d, want 0", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Unit tests for new calendar-to-notes functions
+// ---------------------------------------------------------------------------
+
+func TestExtractStringSlice(t *testing.T) {
+	m := map[string]any{
+		"tokens":  []any{"a", "b", "", "c"},
+		"empty":   []any{},
+		"missing": nil,
+		"mixed":   []any{"x", float64(123), nil, "y"},
+	}
+	if got := extractStringSlice(m, "tokens"); len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
+		t.Errorf("tokens: got %v, want [a b c]", got)
+	}
+	if got := extractStringSlice(m, "empty"); got != nil {
+		t.Errorf("empty: got %v, want nil", got)
+	}
+	if got := extractStringSlice(m, "missing"); got != nil {
+		t.Errorf("missing: got %v, want nil", got)
+	}
+	if got := extractStringSlice(m, "nonexistent"); got != nil {
+		t.Errorf("nonexistent: got %v, want nil", got)
+	}
+	if got := extractStringSlice(m, "mixed"); len(got) != 2 || got[0] != "x" || got[1] != "y" {
+		t.Errorf("mixed: got %v, want [x y]", got)
+	}
+}
+
+func TestAsStringSlice(t *testing.T) {
+	if got := asStringSlice(nil); got != nil {
+		t.Errorf("nil: got %v, want nil", got)
+	}
+	if got := asStringSlice([]string{"a", "b"}); len(got) != 2 || got[0] != "a" {
+		t.Errorf("[]string: got %v", got)
+	}
+	if got := asStringSlice("not a slice"); got != nil {
+		t.Errorf("string: got %v, want nil", got)
+	}
+}
+
+func TestDeduplicateDocTokens(t *testing.T) {
+	// case 1: meeting_notes overlap with note_doc_token
+	result := map[string]any{
+		"note_doc_token":     "doc_main",
+		"verbatim_doc_token": "doc_verb",
+		"shared_doc_tokens":  []string{"doc_shared"},
+		"meeting_notes":      []string{"doc_main", "unique_note"},
+	}
+	deduplicateDocTokens(result)
+	mn := asStringSlice(result["meeting_notes"])
+	if len(mn) != 1 || mn[0] != "unique_note" {
+		t.Errorf("meeting_notes: got %v, want [unique_note]", mn)
+	}
+
+	// case 2: no overlap
+	result2 := map[string]any{
+		"note_doc_token": "doc_a",
+		"meeting_notes":  []string{"doc_b"},
+	}
+	deduplicateDocTokens(result2)
+	mn2 := asStringSlice(result2["meeting_notes"])
+	if len(mn2) != 1 || mn2[0] != "doc_b" {
+		t.Errorf("no overlap: got %v, want [doc_b]", mn2)
+	}
+
+	// case 3: empty meeting_notes
+	result3 := map[string]any{
+		"note_doc_token": "doc_a",
+	}
+	deduplicateDocTokens(result3)
+	if _, exists := result3["meeting_notes"]; exists {
+		t.Errorf("should not have meeting_notes key")
+	}
+
+	// case 4: all meeting_notes are duplicates
+	result4 := map[string]any{
+		"note_doc_token":    "doc_a",
+		"shared_doc_tokens": []string{"doc_b"},
+		"meeting_notes":     []string{"doc_a", "doc_b"},
+	}
+	deduplicateDocTokens(result4)
+	if _, exists := result4["meeting_notes"]; exists {
+		t.Errorf("case4: meeting_notes should be removed (all duplicates), got %v", result4["meeting_notes"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Integration: calendar-event-ids path with meeting_notes + dedup
+// ---------------------------------------------------------------------------
+
+func calendarRelationStub(calendarID, instanceID string, meetingIDs []string, meetingNotes []string) *httpmock.Stub {
+	infos := map[string]interface{}{
+		"instance_id": instanceID,
+	}
+	mIDs := make([]interface{}, len(meetingIDs))
+	for i, id := range meetingIDs {
+		mIDs[i] = id
+	}
+	infos["meeting_instance_ids"] = mIDs
+	if len(meetingNotes) > 0 {
+		notes := make([]interface{}, len(meetingNotes))
+		for i, n := range meetingNotes {
+			notes[i] = n
+		}
+		infos["meeting_notes"] = notes
+	}
+	return &httpmock.Stub{
+		Method: "POST",
+		URL:    fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/mget_instance_relation_info", calendarID),
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"instance_relation_infos": []interface{}{infos},
+			},
+		},
+	}
+}
+
+func primaryCalendarStub(calendarID string) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/primary",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"calendars": []interface{}{
+					map[string]interface{}{
+						"calendar": map[string]interface{}{
+							"calendar_id": calendarID,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestNotes_CalendarPath_MeetingNotesDedup(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	calID := "cal_test"
+	reg.Register(primaryCalendarStub(calID))
+	// mget returns meeting_notes=["doc_main","unique_note"], doc_main overlaps with note_doc_token
+	reg.Register(calendarRelationStub(calID, "evt_001", []string{"m001"}, []string{"doc_main", "unique_note"}))
+	reg.Register(meetingGetStub("m001", "note_001"))
+	reg.Register(noteDetailStub("note_001"))
+
+	err := mountAndRun(t, VCNotes, []string{"+notes", "--calendar-event-ids", "evt_001", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+	data, _ := resp["data"].(map[string]any)
+	notes, _ := data["notes"].([]any)
+	if len(notes) != 1 {
+		t.Fatalf("expected 1 note, got %d", len(notes))
+	}
+	note, _ := notes[0].(map[string]any)
+
+	// doc_main should be deduplicated (exists in note_doc_token)
+	// only "unique_note" should remain in meeting_notes
+	mn, _ := note["meeting_notes"].([]any)
+	if len(mn) != 1 {
+		t.Fatalf("meeting_notes: expected 1 after dedup, got %d: %v", len(mn), mn)
+	}
+	if mn[0] != "unique_note" {
+		t.Errorf("meeting_notes[0] = %v, want unique_note", mn[0])
+	}
+}
+
+func TestNotes_CalendarPath_FallbackWhenMeetingChainFails(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	calID := "cal_test"
+	reg.Register(primaryCalendarStub(calID))
+	// mget returns note tokens but meeting chain will fail
+	reg.Register(calendarRelationStub(calID, "evt_002", []string{"m_bad"}, []string{"fallback_note"}))
+	// meeting.get returns error
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m_bad",
+		Body:   map[string]interface{}{"code": 121004, "msg": "data not found"},
+	})
+
+	err := mountAndRun(t, VCNotes, []string{"+notes", "--calendar-event-ids", "evt_002", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+	data, _ := resp["data"].(map[string]any)
+	notes, _ := data["notes"].([]any)
+	if len(notes) != 1 {
+		t.Fatalf("expected 1 note, got %d", len(notes))
+	}
+	note, _ := notes[0].(map[string]any)
+
+	// should succeed via fallback (meeting chain failed but mget had tokens)
+	if _, hasErr := note["error"]; hasErr {
+		t.Errorf("expected no error (fallback), got error: %v", note["error"])
+	}
+	mn, _ := note["meeting_notes"].([]any)
+	if len(mn) != 1 || mn[0] != "fallback_note" {
+		t.Errorf("meeting_notes: got %v, want [fallback_note]", mn)
+	}
+}
+
+func TestNotes_CalendarPath_NeedNotes_RequestBody(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_001/events/mget_instance_relation_info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"instance_relation_infos": []interface{}{
+					map[string]interface{}{
+						"meeting_instance_ids": []interface{}{"m001"},
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	s := common.Shortcut{
+		Service:   "test",
+		Command:   "+need-notes-test",
+		AuthTypes: []string{"bot"},
+		Execute: func(_ context.Context, rctx *common.RuntimeContext) error {
+			_, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_001", "cal_001", true)
+			return err
+		},
+	}
+	parent := &cobra.Command{Use: "vc"}
+	s.Mount(parent, f)
+	parent.SetArgs([]string{"+need-notes-test"})
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	if err := parent.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(stub.CapturedBody) == 0 {
+		t.Fatal("request body was not captured")
+	}
+	var body map[string]any
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	if v, ok := body["need_meeting_notes"]; !ok || v != true {
+		t.Errorf("need_meeting_notes: got %v, want true", v)
+	}
+	if _, ok := body["need_ai_meeting_notes"]; ok {
+		t.Errorf("need_ai_meeting_notes should not be requested")
+	}
+}

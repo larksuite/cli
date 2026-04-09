@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");

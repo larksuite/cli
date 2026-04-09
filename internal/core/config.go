@@ -240,6 +240,12 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		}
 	}
 
+	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
+		return nil, &ConfigError{Code: 2, Type: "config",
+			Message: "appId and appSecret keychain key are out of sync",
+			Hint:    err.Error()}
+	}
+
 	secret, err := ResolveSecretInput(app.AppSecret, kc)
 	if err != nil {
 		// If the error comes from the keychain, it will already be wrapped as an ExitError.

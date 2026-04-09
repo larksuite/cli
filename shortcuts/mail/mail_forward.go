@@ -26,7 +26,8 @@ var MailForward = common.Shortcut{
 		{Name: "message-id", Desc: "Required. Message ID to forward", Required: true},
 		{Name: "to", Desc: "Recipient email address(es), comma-separated"},
 		{Name: "body", Desc: "Body prepended before the forwarded message. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the forward body and the original message. Use --plain-text to force plain-text mode."},
-		{Name: "from", Desc: "Sender address; also selects the mailbox to send from (defaults to the authenticated user's primary mailbox)"},
+		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "CC email address(es), comma-separated"},
 		{Name: "bcc", Desc: "BCC email address(es), comma-separated"},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring all HTML auto-detection. Cannot be used with --inline."},
@@ -39,9 +40,9 @@ var MailForward = common.Shortcut{
 		to := runtime.Str("to")
 		confirmSend := runtime.Bool("confirm-send")
 		mailboxID := resolveComposeMailboxID(runtime)
-		desc := "Forward: fetch original message → fetch mailbox profile (default From) → save as draft"
+		desc := "Forward: fetch original message → resolve sender address → save as draft"
 		if confirmSend {
-			desc = "Forward (--confirm-send): fetch original message → fetch mailbox profile (default From) → create draft → send draft"
+			desc = "Forward (--confirm-send): fetch original message → resolve sender address → create draft → send draft"
 		}
 		api := common.NewDryRunAPI().
 			Desc(desc).
@@ -63,13 +64,12 @@ var MailForward = common.Shortcut{
 				return err
 			}
 		}
-		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
+		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
 		to := runtime.Str("to")
 		body := runtime.Str("body")
-		fromFlag := runtime.Str("from")
 		ccFlag := runtime.Str("cc")
 		bccFlag := runtime.Str("bcc")
 		plainText := runtime.Bool("plain-text")
@@ -87,19 +87,16 @@ var MailForward = common.Shortcut{
 		}
 		orig := sourceMsg.Original
 
-		senderEmail := fromFlag
+		senderEmail := resolveComposeSenderEmail(runtime)
 		if senderEmail == "" {
-			senderEmail = fetchCurrentUserEmail(runtime)
-			if senderEmail == "" {
-				senderEmail = orig.headTo
-			}
+			senderEmail = orig.headTo
 		}
 
 		if err := validateRecipientCount(to, ccFlag, bccFlag); err != nil {
 			return err
 		}
 
-		bld := emlbuilder.New().
+		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(buildForwardSubject(orig.subject)).
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
@@ -195,7 +192,7 @@ var MailForward = common.Shortcut{
 			bld = bld.Header("X-Lms-Large-Attachment-Ids", base64.StdEncoding.EncodeToString(idsJSON))
 		}
 		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(allFilePaths, origAttBytes, len(origAtts)); err != nil {
+		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, origAttBytes, len(origAtts)); err != nil {
 			return err
 		}
 		for _, att := range origAtts {

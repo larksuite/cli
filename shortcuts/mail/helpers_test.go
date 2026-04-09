@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -568,13 +569,13 @@ func TestToOriginalMessageForCompose_EmptyReferences(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCheckAttachmentSizeLimit_NoFiles(t *testing.T) {
-	if err := checkAttachmentSizeLimit(nil, 0); err != nil {
+	if err := checkAttachmentSizeLimit(nil, nil, 0); err != nil { //nolint:staticcheck // fio nil ok: no files
 		t.Fatalf("unexpected error for empty: %v", err)
 	}
 }
 
 func TestCheckAttachmentSizeLimit_CountExceeded(t *testing.T) {
-	err := checkAttachmentSizeLimit(nil, 0, MaxAttachmentCount+1)
+	err := checkAttachmentSizeLimit(nil, nil, 0, MaxAttachmentCount+1)
 	if err == nil {
 		t.Fatal("expected error for count exceeded")
 	}
@@ -585,7 +586,7 @@ func TestCheckAttachmentSizeLimit_CountExceeded(t *testing.T) {
 
 func TestCheckAttachmentSizeLimit_SizeExceeded(t *testing.T) {
 	// extraBytes alone exceeds the limit
-	err := checkAttachmentSizeLimit(nil, MaxAttachmentBytes+1)
+	err := checkAttachmentSizeLimit(nil, nil, MaxAttachmentBytes+1)
 	if err == nil {
 		t.Fatal("expected error for size exceeded")
 	}
@@ -608,7 +609,8 @@ func TestCheckAttachmentSizeLimit_WithFiles(t *testing.T) {
 	}
 	defer os.Chdir(oldWd)
 
-	err := checkAttachmentSizeLimit([]string{"./small.txt"}, 0)
+	fio := &localfileio.LocalFileIO{}
+	err := checkAttachmentSizeLimit(fio, []string{"./small.txt"}, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -799,23 +801,67 @@ func TestNormalizeInlineCID(t *testing.T) {
 
 func TestResolveComposeMailboxID(t *testing.T) {
 	tests := []struct {
-		name string
-		from string
-		want string
+		name    string
+		mailbox string
+		from    string
+		want    string
 	}{
-		{"default", "", "me"},
-		{"explicit from", "shared@example.com", "shared@example.com"},
+		{"default", "", "", "me"},
+		{"explicit from", "", "shared@example.com", "shared@example.com"},
+		{"explicit mailbox", "owner@example.com", "", "owner@example.com"},
+		{"mailbox takes priority over from", "owner@example.com", "alias@example.com", "owner@example.com"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "test"}
 			cmd.Flags().String("from", "", "")
+			cmd.Flags().String("mailbox", "", "")
 			if tt.from != "" {
 				_ = cmd.Flags().Set("from", tt.from)
+			}
+			if tt.mailbox != "" {
+				_ = cmd.Flags().Set("mailbox", tt.mailbox)
 			}
 			rt := &common.RuntimeContext{Cmd: cmd}
 			if got := resolveComposeMailboxID(rt); got != tt.want {
 				t.Errorf("resolveComposeMailboxID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveComposeSenderEmail(t *testing.T) {
+	// Note: the "no flags" case falls through to fetchMailboxPrimaryEmail which
+	// requires an API client. That path is covered by integration/shortcut tests.
+	// Here we test the flag-based short-circuit paths only.
+	// Note: "mailbox=me without from" falls through to fetchMailboxPrimaryEmail
+	// (same as "no flags"), which requires an API client — covered by
+	// integration/shortcut tests.
+	tests := []struct {
+		name    string
+		mailbox string
+		from    string
+		want    string
+	}{
+		{"from only", "", "alias@example.com", "alias@example.com"},
+		{"mailbox only", "shared@example.com", "", "shared@example.com"},
+		{"from takes priority over mailbox", "shared@example.com", "alias@example.com", "alias@example.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "test"}
+			cmd.Flags().String("from", "", "")
+			cmd.Flags().String("mailbox", "", "")
+			if tt.from != "" {
+				_ = cmd.Flags().Set("from", tt.from)
+			}
+			if tt.mailbox != "" {
+				_ = cmd.Flags().Set("mailbox", tt.mailbox)
+			}
+			rt := &common.RuntimeContext{Cmd: cmd}
+			got := resolveComposeSenderEmail(rt)
+			if got != tt.want {
+				t.Errorf("resolveComposeSenderEmail() = %q, want %q", got, tt.want)
 			}
 		})
 	}

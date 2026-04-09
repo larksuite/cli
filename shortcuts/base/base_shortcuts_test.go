@@ -82,22 +82,22 @@ func TestBaseAction(t *testing.T) {
 }
 
 func TestParseObjectList(t *testing.T) {
-	items, err := parseObjectList("", "view")
+	items, err := parseObjectList(testPC, "", "view")
 	if err != nil || items != nil {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	items, err = parseObjectList(`{"name":"grid"}`, "view")
+	items, err = parseObjectList(testPC, `{"name":"grid"}`, "view")
 	if err != nil || len(items) != 1 || items[0]["name"] != "grid" {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	items, err = parseObjectList(`[{"name":"grid"}]`, "view")
+	items, err = parseObjectList(testPC, `[{"name":"grid"}]`, "view")
 	if err != nil || len(items) != 1 || items[0]["name"] != "grid" {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	_, err = parseObjectList(`[1]`, "view")
+	_, err = parseObjectList(testPC, `[1]`, "view")
 	if err == nil || !strings.Contains(err.Error(), "must be an object") {
 		t.Fatalf("err=%v", err)
 	}

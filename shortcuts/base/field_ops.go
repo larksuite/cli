@@ -32,7 +32,8 @@ func dryRunFieldGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 }
 
 func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, _ := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
 		Body(body).
@@ -41,7 +42,8 @@ func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *commo
 }
 
 func dryRunFieldUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, _ := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
 	return common.NewDryRunAPI().
 		PUT("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
 		Body(body).
@@ -78,7 +80,8 @@ func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext)
 }
 
 func validateFieldJSON(runtime *common.RuntimeContext) (map[string]interface{}, error) {
-	raw, _ := loadJSONInput(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	raw, _ := loadJSONInput(pc, runtime.Str("json"), "json")
 	if raw == "" {
 		return nil, nil
 	}
@@ -148,7 +151,8 @@ func executeFieldGet(runtime *common.RuntimeContext) error {
 }
 
 func executeFieldCreate(runtime *common.RuntimeContext) error {
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}
@@ -161,9 +165,10 @@ func executeFieldCreate(runtime *common.RuntimeContext) error {
 }
 
 func executeFieldUpdate(runtime *common.RuntimeContext) error {
+	pc := newParseCtx(runtime)
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}

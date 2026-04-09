@@ -285,12 +285,99 @@ func TestDocMediaDownloadRejectsHTTPErrorBeforeWrite(t *testing.T) {
 	}
 }
 
+func TestDocMediaPreviewDryRunUsesMediaEndpoint(t *testing.T) {
+	cmd := &cobra.Command{Use: "docs +media-preview"}
+	cmd.Flags().String("token", "", "")
+	cmd.Flags().String("output", "", "")
+	if err := cmd.Flags().Set("token", "tok_preview"); err != nil {
+		t.Fatalf("set --token: %v", err)
+	}
+	if err := cmd.Flags().Set("output", "./asset"); err != nil {
+		t.Fatalf("set --output: %v", err)
+	}
+
+	dry := decodeDocDryRun(t, DocMediaPreview.DryRun(context.Background(), common.TestNewRuntimeContext(cmd, nil)))
+	if len(dry.API) != 1 {
+		t.Fatalf("expected 1 API call, got %d", len(dry.API))
+	}
+	if dry.API[0].Desc != "Preview document media file" {
+		t.Fatalf("dry-run api desc = %q", dry.API[0].Desc)
+	}
+	if dry.API[0].URL != "/open-apis/drive/v1/medias/tok_preview/preview_download" {
+		t.Fatalf("URL = %q, want media preview endpoint", dry.API[0].URL)
+	}
+	if got, _ := dry.API[0].Params["preview_type"].(string); got != PreviewType_SOURCE_FILE {
+		t.Fatalf("preview_type = %q, want %q", got, PreviewType_SOURCE_FILE)
+	}
+}
+
+func TestDocMediaPreviewRejectsOverwriteWithoutFlag(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-overwrite-app"))
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
+		Status:  200,
+		Body:    []byte("new"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	if err := os.WriteFile("preview.bin", []byte("old"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDocs(t, DocMediaPreview, []string{
+		"+media-preview",
+		"--token", "tok_123",
+		"--output", "preview.bin",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected overwrite protection error, got nil")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDocMediaPreviewRejectsHTTPErrorBeforeWrite(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-app"))
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
+		Status:  404,
+		Body:    "not found",
+		Headers: http.Header{"Content-Type": []string{"text/plain"}},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocMediaPreview, []string{
+		"+media-preview",
+		"--token", "tok_123",
+		"--output", "preview.bin",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected HTTP error, got nil")
+	}
+	if !strings.Contains(err.Error(), "HTTP 404") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "preview.bin")); !os.IsNotExist(statErr) {
+		t.Fatalf("preview target should not be created, statErr=%v", statErr)
+	}
+}
+
 type docDryRunOutput struct {
 	Description string `json:"description"`
 	API         []struct {
-		Desc string                 `json:"desc"`
-		URL  string                 `json:"url"`
-		Body map[string]interface{} `json:"body"`
+		Desc   string                 `json:"desc"`
+		URL    string                 `json:"url"`
+		Params map[string]interface{} `json:"params"`
+		Body   map[string]interface{} `json:"body"`
 	} `json:"api"`
 }
 

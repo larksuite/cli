@@ -29,6 +29,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		pc := newParseCtx(runtime)
 		if runtime.Bool("no-validate") {
 			return nil
 		}
@@ -36,7 +37,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		if strings.TrimSpace(raw) == "" {
 			return nil // 允许无 data_config 的创建（某些类型可先创建后配置）
 		}
-		cfg, err := parseJSONObject(raw, "data-config")
+		cfg, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return err
 		}
@@ -50,6 +51,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		pc := newParseCtx(runtime)
 		body := map[string]interface{}{}
 		if name := runtime.Str("name"); name != "" {
 			body["name"] = name
@@ -58,7 +60,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 			body["type"] = t
 		}
 		if raw := runtime.Str("data-config"); raw != "" {
-			if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+			if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
 				body["data_config"] = parsed
 			}
 		}

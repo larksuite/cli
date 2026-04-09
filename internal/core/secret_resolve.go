@@ -52,6 +52,25 @@ func ForStorage(appId string, input SecretInput, kc keychain.KeychainAccess) (Se
 	return SecretInput{Ref: &SecretRef{Source: "keychain", ID: key}}, nil
 }
 
+// ValidateSecretKeyMatch checks that the appSecret keychain key references the
+// expected appId. This prevents silent mismatches when config.json is edited by
+// hand (e.g. appId changed but appSecret.id still points to the old app).
+// Only applicable when appSecret is a keychain SecretRef; other forms are skipped.
+func ValidateSecretKeyMatch(appId string, secret SecretInput) error {
+	if secret.Ref == nil || secret.Ref.Source != "keychain" {
+		return nil
+	}
+	expected := secretAccountKey(appId)
+	if secret.Ref.ID != expected {
+		return fmt.Errorf(
+			"appSecret keychain key %q does not match appId %q (expected %q); "+
+				"please run `lark-cli config init` to reconfigure",
+			secret.Ref.ID, appId, expected,
+		)
+	}
+	return nil
+}
+
 // RemoveSecretStore cleans up keychain entries when an app is removed.
 // Errors are intentionally ignored — cleanup is best-effort.
 func RemoveSecretStore(input SecretInput, kc keychain.KeychainAccess) {
