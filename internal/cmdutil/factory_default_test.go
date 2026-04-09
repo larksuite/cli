@@ -63,7 +63,7 @@ func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	f := NewDefault(InvocationContext{Profile: "target"})
+	f := NewDefault(nil, InvocationContext{Profile: "target"})
 	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeBot {
 		t.Fatalf("ResolveStrictMode() = %q, want %q", got, core.StrictModeBot)
 	}
@@ -103,7 +103,7 @@ func TestNewDefault_InvocationProfileMissingSticksAcrossEarlyStrictMode(t *testi
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	f := NewDefault(InvocationContext{Profile: "missing"})
+	f := NewDefault(nil, InvocationContext{Profile: "missing"})
 	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeOff {
 		t.Fatalf("ResolveStrictMode() = %q, want %q", got, core.StrictModeOff)
 	}
@@ -144,7 +144,7 @@ func TestNewDefault_ResolveAs_UsesDefaultAsFromEnvAccount(t *testing.T) {
 	t.Setenv(envvars.CliTenantAccessToken, "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f := NewDefault(InvocationContext{})
+	f := NewDefault(nil, InvocationContext{})
 	cmd := newCmdWithAsFlag("auto", false)
 
 	got := f.ResolveAs(context.Background(), cmd, "auto")
@@ -164,7 +164,7 @@ func TestNewDefault_ConfigReturnsCliConfigCopyOfCredentialAccount(t *testing.T) 
 	t.Setenv(envvars.CliTenantAccessToken, "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f := NewDefault(InvocationContext{})
+	f := NewDefault(nil, InvocationContext{})
 
 	acct, err := f.Credential.ResolveAccount(context.Background())
 	if err != nil {
@@ -189,7 +189,7 @@ func TestNewDefault_ConfigUsesRuntimePlaceholderForTokenOnlyEnvAccount(t *testin
 	t.Setenv(envvars.CliTenantAccessToken, "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f := NewDefault(InvocationContext{})
+	f := NewDefault(nil, InvocationContext{})
 
 	acct, err := f.Credential.ResolveAccount(context.Background())
 	if err != nil {
@@ -217,7 +217,7 @@ func TestNewDefault_FileIOProviderDoesNotResolveDuringInitialization(t *testing.
 	fileio.Register(provider)
 	t.Cleanup(func() { fileio.Register(prev) })
 
-	f := NewDefault(InvocationContext{})
+	f := NewDefault(nil, InvocationContext{})
 	if f.FileIOProvider != provider {
 		t.Fatalf("NewDefault() provider = %T, want %T", f.FileIOProvider, provider)
 	}
