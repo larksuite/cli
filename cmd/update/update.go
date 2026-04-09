@@ -93,11 +93,10 @@ func symArrow() string {
 
 // UpdateOptions holds inputs for the update command.
 type UpdateOptions struct {
-	Factory  *cmdutil.Factory
-	JSON     bool
-	Force    bool
-	Check    bool
-	Rollback bool
+	Factory *cmdutil.Factory
+	JSON    bool
+	Force   bool
+	Check   bool
 }
 
 // NewCmdUpdate creates the update command.
@@ -114,8 +113,7 @@ Detects the installation method automatically:
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
-Use --check to only check for updates without installing.
-Use --rollback to restore the previous version from backup.`,
+Use --check to only check for updates without installing.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return updateRun(opts)
 		},
@@ -124,7 +122,6 @@ Use --rollback to restore the previous version from backup.`,
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "force reinstall even if already up to date")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "only check for updates, do not install")
-	cmd.Flags().BoolVar(&opts.Rollback, "rollback", false, "restore the previous version from backup")
 
 	return cmd
 }
@@ -135,11 +132,6 @@ func updateRun(opts *UpdateOptions) error {
 
 	// Clean up stale .old files from previous Windows upgrades.
 	selfupdate.CleanupStaleFiles()
-
-	// Handle --rollback.
-	if opts.Rollback {
-		return runRollback(opts)
-	}
 
 	// 1. Fetch latest version
 	latest, err := fetchLatest()
@@ -329,15 +321,23 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, resolvedPath string
 func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 	io := opts.Factory.IOStreams
 
-	// Backup current binary before upgrading.
-	if _, err := selfupdate.Backup(cur); err != nil {
-		// Non-fatal: warn but proceed.
-		_ = err
+	// On Windows, rename the running .exe out of the way so npm postinstall can write.
+	restore, err := selfupdate.PrepareSelfReplace()
+	if err != nil {
+		output.PrintJson(io.Out, map[string]interface{}{
+			"ok": false,
+			"error": map[string]interface{}{
+				"type":    "update_error",
+				"message": fmt.Sprintf("failed to prepare update: %s", err),
+			},
+		})
+		return output.ErrBare(output.ExitAPI)
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 
 	if err := runNpmInstall(latest, &stdoutBuf, &stderrBuf); err != nil {
+		restore() // put original binary back
 		combined := stdoutBuf.String() + stderrBuf.String()
 		output.PrintJson(io.Out, map[string]interface{}{
 			"ok": false,
@@ -382,9 +382,11 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	ios := opts.Factory.IOStreams
 
-	// Backup current binary before upgrading.
-	if bk, err := selfupdate.Backup(cur); err == nil {
-		fmt.Fprintf(ios.ErrOut, "Backed up current version to %s\n", bk.Path)
+	// On Windows, rename the running .exe out of the way so npm postinstall can write.
+	restore, err := selfupdate.PrepareSelfReplace()
+	if err != nil {
+		fmt.Fprintf(ios.ErrOut, "%s Failed to prepare update: %s\n", symFail(), err)
+		return output.ErrBare(1)
 	}
 
 	fmt.Fprintf(ios.ErrOut, "Updating lark-cli %s %s %s via npm ...\n", cur, symArrow(), latest)
@@ -392,6 +394,7 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	var stdoutBuf, stderrBuf bytes.Buffer
 
 	if err := runNpmInstall(latest, &stdoutBuf, &stderrBuf); err != nil {
+		restore() // put original binary back
 		combined := stdoutBuf.String() + stderrBuf.String()
 		if stdoutBuf.Len() > 0 {
 			fmt.Fprint(ios.ErrOut, stdoutBuf.String())
@@ -422,63 +425,6 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	} else {
 		fmt.Fprintf(ios.ErrOut, "%s Skills updated\n", symOK())
 	}
-	return nil
-}
-
-// --- Rollback ---
-
-func runRollback(opts *UpdateOptions) error {
-	io := opts.Factory.IOStreams
-
-	backups, err := selfupdate.ListBackups()
-	if err != nil {
-		msg := fmt.Sprintf("failed to list backups: %s", err)
-		if opts.JSON {
-			output.PrintJson(io.Out, map[string]interface{}{
-				"ok":    false,
-				"error": map[string]interface{}{"type": "rollback_error", "message": msg},
-			})
-			return output.ErrBare(output.ExitAPI)
-		}
-		return output.Errorf(output.ExitAPI, "rollback_error", "%s", msg)
-	}
-
-	if len(backups) == 0 {
-		msg := "no backups available for rollback"
-		if opts.JSON {
-			output.PrintJson(io.Out, map[string]interface{}{
-				"ok":    false,
-				"error": map[string]interface{}{"type": "rollback_error", "message": msg},
-			})
-			return output.ErrBare(output.ExitAPI)
-		}
-		return output.Errorf(output.ExitAPI, "rollback_error", "%s", msg)
-	}
-
-	target := backups[0]
-	info, err := selfupdate.RollbackTo(target)
-	if err != nil {
-		msg := fmt.Sprintf("rollback failed: %s", err)
-		if opts.JSON {
-			output.PrintJson(io.Out, map[string]interface{}{
-				"ok":    false,
-				"error": map[string]interface{}{"type": "rollback_error", "message": msg},
-			})
-			return output.ErrBare(output.ExitAPI)
-		}
-		return output.Errorf(output.ExitAPI, "rollback_error", "%s", msg)
-	}
-
-	if opts.JSON {
-		output.PrintJson(io.Out, map[string]interface{}{
-			"ok":      true,
-			"action":  "rolled_back",
-			"version": info.Version,
-			"message": fmt.Sprintf("rolled back to %s", info.Version),
-		})
-		return nil
-	}
-	fmt.Fprintf(io.ErrOut, "%s Rolled back to version %s\n", symOK(), info.Version)
 	return nil
 }
 

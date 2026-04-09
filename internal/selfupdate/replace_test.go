@@ -4,69 +4,22 @@
 package selfupdate
 
 import (
-	"os"
-	"path/filepath"
+	"runtime"
 	"testing"
 )
 
-func TestCopyFile(t *testing.T) {
-	dir := t.TempDir()
-	src := filepath.Join(dir, "src")
-	dst := filepath.Join(dir, "dst")
-
-	os.WriteFile(src, []byte("hello"), 0644)
-
-	if err := copyFile(src, dst); err != nil {
-		t.Fatalf("copyFile failed: %v", err)
+func TestPrepareSelfReplace_NonWindows(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("this test verifies non-Windows no-op behavior")
 	}
-
-	data, err := os.ReadFile(dst)
+	cleanup, err := PrepareSelfReplace()
 	if err != nil {
-		t.Fatalf("read dst failed: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if string(data) != "hello" {
-		t.Errorf("expected 'hello', got %q", string(data))
-	}
+	cleanup() // should be a no-op
 }
 
-func TestReplaceUnix(t *testing.T) {
-	dir := t.TempDir()
-	current := filepath.Join(dir, "lark-cli")
-	newBin := filepath.Join(dir, "lark-cli-new")
-
-	os.WriteFile(current, []byte("old"), 0755)
-	os.WriteFile(newBin, []byte("new"), 0755)
-
-	if err := replaceUnix(current, newBin); err != nil {
-		t.Fatalf("replaceUnix failed: %v", err)
-	}
-
-	data, _ := os.ReadFile(current)
-	if string(data) != "new" {
-		t.Errorf("expected 'new', got %q", data)
-	}
-}
-
-func TestReplaceWindows(t *testing.T) {
-	// Test the Windows path logic on any platform (files aren't actually locked).
-	dir := t.TempDir()
-	current := filepath.Join(dir, "lark-cli.exe")
-	newBin := filepath.Join(dir, "lark-cli-new.exe")
-
-	os.WriteFile(current, []byte("old"), 0755)
-	os.WriteFile(newBin, []byte("new"), 0755)
-
-	if err := replaceWindows(current, newBin); err != nil {
-		t.Fatalf("replaceWindows failed: %v", err)
-	}
-
-	data, _ := os.ReadFile(current)
-	if string(data) != "new" {
-		t.Errorf("expected 'new', got %q", data)
-	}
-
-	// .old should be cleaned up (not locked in test env).
-	if _, err := os.Stat(current + ".old"); !os.IsNotExist(err) {
-		t.Error("expected .old to be cleaned up")
-	}
+func TestCleanupStaleFiles_NoError(t *testing.T) {
+	// Should not panic on any platform.
+	CleanupStaleFiles()
 }

@@ -5,92 +5,67 @@ package selfupdate
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 )
 
-// ReplaceSelf replaces the currently running binary with newBinary.
+// PrepareSelfReplace renames the running binary out of the way on Windows
+// so that npm's postinstall script can write the new binary to the original
+// path without hitting EBUSY. On non-Windows platforms this is a no-op
+// (Unix allows overwriting a running executable via inode semantics).
 //
-// On Unix: atomic os.Rename (same filesystem) or copy fallback.
-// On Windows: the running .exe is locked, so we:
-//  1. Rename running.exe → running.exe.old (Windows allows rename of locked files)
-//  2. Copy new binary → running.exe
-//  3. Best-effort delete .old (may fail if still locked; cleaned up on next run)
-func ReplaceSelf(newBinary string) error {
-	current, err := os.Executable()
+// Returns a cleanup function that restores the original if the update fails.
+// Caller MUST call cleanup on error to avoid leaving the installation broken.
+//
+// Usage:
+//
+//	cleanup, err := selfupdate.PrepareSelfReplace()
+//	if err != nil { ... }
+//	if err := runNpmInstall(...); err != nil {
+//	    cleanup() // restore original
+//	    return err
+//	}
+func PrepareSelfReplace() (cleanup func(), err error) {
+	noop := func() {}
+
+	if runtime.GOOS != "windows" {
+		return noop, nil
+	}
+
+	exe, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("cannot determine current binary path: %w", err)
+		return noop, nil // best-effort; don't block update
 	}
-	current, err = filepath.EvalSymlinks(current)
+	exe, err = filepath.EvalSymlinks(exe)
 	if err != nil {
-		return fmt.Errorf("cannot resolve symlinks: %w", err)
+		return noop, nil
 	}
 
-	if err := os.Chmod(newBinary, 0755); err != nil {
-		return fmt.Errorf("cannot set permissions on new binary: %w", err)
-	}
+	oldPath := exe + ".old"
 
-	if runtime.GOOS == "windows" {
-		return replaceWindows(current, newBinary)
-	}
-	return replaceUnix(current, newBinary)
-}
-
-func replaceUnix(current, newBinary string) error {
-	// Try atomic rename first (works on same filesystem).
-	if err := os.Rename(newBinary, current); err == nil {
-		return nil
-	}
-	// Cross-device fallback: copy.
-	return copyFile(newBinary, current)
-}
-
-func replaceWindows(current, newBinary string) error {
-	oldPath := current + ".old"
-
-	// Clean up stale .old from previous upgrades.
+	// Clean up stale .old from a previous upgrade.
 	os.Remove(oldPath)
 
-	// Step 1: Rename running exe to .old (Windows allows this).
-	if err := os.Rename(current, oldPath); err != nil {
-		return fmt.Errorf("cannot rename current binary: %w", err)
+	// Rename running.exe → running.exe.old (Windows allows this).
+	if err := os.Rename(exe, oldPath); err != nil {
+		return noop, fmt.Errorf("cannot rename binary for update: %w", err)
 	}
 
-	// Step 2: Copy new binary into place.
-	if err := copyFile(newBinary, current); err != nil {
-		// Rollback: restore the old binary.
-		os.Rename(oldPath, current)
-		return fmt.Errorf("cannot install new binary: %w", err)
+	// Cleanup: restore the original if npm install fails.
+	restore := func() {
+		os.Rename(oldPath, exe)
 	}
 
-	// Step 3: Best-effort cleanup.
-	os.Remove(oldPath)
-	return nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Close()
+	return restore, nil
 }
 
 // CleanupStaleFiles removes leftover .old files from previous Windows upgrades.
+// Safe to call on any platform (no-op if no .old file exists).
 func CleanupStaleFiles() {
+	if runtime.GOOS != "windows" {
+		return
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return
