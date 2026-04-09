@@ -63,8 +63,8 @@ metadata:
 用于管理 Base 本体，或从用户给出的链接进入后续 Base 操作。  
 模块索引：[`references/lark-base-workspace.md`](references/lark-base-workspace.md)
 
-| 命令 / 输入 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
-|-------------|------------------|----------------|----------|
+| 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
+|------|------------------|----------------|----------|
 | `+base-create` | 创建新的 Base | [`lark-base-base-create.md`](references/lark-base-base-create.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference |
 | `+base-get` | 获取 Base 信息 | [`lark-base-base-get.md`](references/lark-base-base-get.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 适合确认 Base 本体信息，不替代表/字段结构读取 |
 | `+base-copy` | 复制已有 Base | [`lark-base-base-copy.md`](references/lark-base-base-copy.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference |
@@ -80,11 +80,8 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+table-list` | 列出当前 Base 内的数据表 | [`lark-base-table-list.md`](references/lark-base-table-list.md) | `+xxx-list` 只能串行执行 |
-| `+table-get` | 获取单个表的详情 | [`lark-base-table-get.md`](references/lark-base-table-get.md) | 适合删除/修改前确认目标 |
-| `+table-create` | 创建数据表 | [`lark-base-table-create.md`](references/lark-base-table-create.md) | 一次性建表场景可用 |
-| `+table-update` | 更新表信息 | [`lark-base-table-update.md`](references/lark-base-table-update.md) | 修改前先确认目标表 |
-| `+table-delete` | 删除数据表 | [`lark-base-table-delete.md`](references/lark-base-table-delete.md) | 用户已明确目标时可直接执行并带 `--yes` |
+| `+table-list / +table-get` | 列出数据表，或获取单个表详情 | [`lark-base-table-list.md`](references/lark-base-table-list.md)、[`lark-base-table-get.md`](references/lark-base-table-get.md) | `+table-list` 只能串行执行；`+table-get` 适合删除/修改前确认目标 |
+| `+table-create / +table-update / +table-delete` | 创建、更新或删除数据表 | [`lark-base-table-create.md`](references/lark-base-table-create.md)、[`lark-base-table-update.md`](references/lark-base-table-update.md)、[`lark-base-table-delete.md`](references/lark-base-table-delete.md) | 创建适合一次性建表；更新前先确认目标表；删除时用户已明确目标可直接执行并带 `--yes` |
 
 #### 2.3.2 Field 子模块
 
@@ -93,11 +90,8 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+field-list` | 列出字段结构 | [`lark-base-field-list.md`](references/lark-base-field-list.md) | 写记录、写字段、做分析前常先读它；只能串行执行 |
-| `+field-get` | 获取单个字段详情 | [`lark-base-field-get.md`](references/lark-base-field-get.md) | 适合删除/更新前确认目标 |
-| `+field-create` | 创建普通字段 | [`lark-base-field-create.md`](references/lark-base-field-create.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 写字段前先看字段属性规范；如果类型是 `formula / lookup`，先转去读对应 guide |
-| `+field-update` | 更新普通字段属性 | [`lark-base-field-update.md`](references/lark-base-field-update.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 写字段前先看字段属性规范；如果类型是 `formula / lookup`，先转去读对应 guide |
-| `+field-delete` | 删除字段 | [`lark-base-field-delete.md`](references/lark-base-field-delete.md) | 用户已明确目标时可直接执行并带 `--yes` |
+| `+field-list / +field-get` | 列出字段结构，或获取单个字段详情 | [`lark-base-field-list.md`](references/lark-base-field-list.md)、[`lark-base-field-get.md`](references/lark-base-field-get.md) | 写记录、写字段、做分析前常先读 `+field-list`；`+field-list` 只能串行执行；`+field-get` 适合删除/更新前确认目标 |
+| `+field-create / +field-update / +field-delete` | 创建、更新或删除普通字段 | [`lark-base-field-create.md`](references/lark-base-field-create.md)、[`lark-base-field-update.md`](references/lark-base-field-update.md)、[`lark-base-field-delete.md`](references/lark-base-field-delete.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 写字段前先看字段属性规范；如果类型是 `formula / lookup`，先转去读对应 guide；删除时用户已明确目标可直接执行并带 `--yes` |
 | `+field-search-options` | 查询字段可选项 | [`lark-base-field-search-options.md`](references/lark-base-field-search-options.md) | 适合单选/多选等选项型字段 |
 
 #### 2.3.3 Record 子模块
@@ -106,12 +100,10 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+record-list` | 读取记录明细、样例、分页导出 | [`lark-base-record-list.md`](references/lark-base-record-list.md) | 不用于聚合分析；`--limit` 最大 `200`；仅在用户明确需要时继续翻页；只能串行执行 |
-| `+record-get` | 获取单条记录详情 | [`lark-base-record-get.md`](references/lark-base-record-get.md) | 适合目标记录已明确时使用 |
+| `+record-list / +record-get` | 读取记录明细、样例、分页导出，或获取单条记录详情 | [`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | `+record-list` 不用于聚合分析；`--limit` 最大 `200`；仅在用户明确需要时继续翻页；只能串行执行；`+record-get` 适合目标记录已明确时使用 |
 | `+record-upsert` | 创建或更新记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；附件不要走这里 |
 | `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` 伪造附件值 |
-| `+record-delete` | 删除记录 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md) | 用户已明确目标时可直接执行并带 `--yes` |
-| `+record-history-list` | 查询某条记录的变更历史 | [`lark-base-record-history-list.md`](references/lark-base-record-history-list.md) | 按 `table-id + record-id` 查询，不支持整表历史扫描；只能串行执行 |
+| `+record-delete / +record-history-list` | 删除记录，或查询某条记录的变更历史 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md)、[`lark-base-record-history-list.md`](references/lark-base-record-history-list.md) | 删除时用户已明确目标可直接执行并带 `--yes`；历史查询按 `table-id + record-id`，不支持整表扫描；`+record-history-list` 只能串行执行 |
 
 #### 2.3.4 View 子模块
 
@@ -119,21 +111,13 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+view-list` | 列出视图 | [`lark-base-view-list.md`](references/lark-base-view-list.md) | 只能串行执行 |
-| `+view-get` | 获取视图详情 | [`lark-base-view-get.md`](references/lark-base-view-get.md) | 适合查看已有视图配置 |
-| `+view-create` | 创建视图 | [`lark-base-view-create.md`](references/lark-base-view-create.md) | 先确认表和视图类型 |
-| `+view-delete` | 删除视图 | [`lark-base-view-delete.md`](references/lark-base-view-delete.md) | 删除前先确认目标 |
-| `+view-get-filter` | 读取筛选配置 | [`lark-base-view-get-filter.md`](references/lark-base-view-get-filter.md) | 适合先看配置再修改 |
-| `+view-set-filter` | 配置筛选条件 | [`lark-base-view-set-filter.md`](references/lark-base-view-set-filter.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md) | 常与 `+record-list` 组合，用于按视图筛选读取 |
-| `+view-get-sort` | 读取排序配置 | [`lark-base-view-get-sort.md`](references/lark-base-view-get-sort.md) | 适合先看配置再修改 |
-| `+view-set-sort` | 配置排序 | [`lark-base-view-set-sort.md`](references/lark-base-view-set-sort.md) | 字段名必须来自真实结构 |
-| `+view-get-group` | 读取分组配置 | [`lark-base-view-get-group.md`](references/lark-base-view-get-group.md) | 适合先看配置再修改 |
-| `+view-set-group` | 配置分组 | [`lark-base-view-set-group.md`](references/lark-base-view-set-group.md) | 字段名必须来自真实结构 |
-| `+view-get-card` | 读取卡片视图配置 | [`lark-base-view-get-card.md`](references/lark-base-view-get-card.md) | 适合先看配置再修改 |
-| `+view-set-card` | 配置卡片视图 | [`lark-base-view-set-card.md`](references/lark-base-view-set-card.md) | 适合卡片展示场景 |
-| `+view-get-timebar` | 读取时间轴配置 | [`lark-base-view-get-timebar.md`](references/lark-base-view-get-timebar.md) | 适合先看配置再修改 |
-| `+view-set-timebar` | 配置时间轴视图 | [`lark-base-view-set-timebar.md`](references/lark-base-view-set-timebar.md) | 适合时间线展示场景 |
-| `+view-rename` | 重命名视图 | [`lark-base-view-rename.md`](references/lark-base-view-rename.md) | 用户已明确新名字时可直接执行 |
+| `+view-list / +view-get` | 列出视图，或获取视图详情 | [`lark-base-view-list.md`](references/lark-base-view-list.md)、[`lark-base-view-get.md`](references/lark-base-view-get.md) | `+view-list` 只能串行执行；`+view-get` 适合查看已有视图配置 |
+| `+view-create / +view-delete / +view-rename` | 创建、删除或重命名视图 | [`lark-base-view-create.md`](references/lark-base-view-create.md)、[`lark-base-view-delete.md`](references/lark-base-view-delete.md)、[`lark-base-view-rename.md`](references/lark-base-view-rename.md) | 创建前先确认表和视图类型；删除前先确认目标；用户已明确新名字时可直接重命名 |
+| `+view-get-filter / +view-set-filter` | 读取或配置筛选条件 | [`lark-base-view-get-filter.md`](references/lark-base-view-get-filter.md)、[`lark-base-view-set-filter.md`](references/lark-base-view-set-filter.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md) | 常与 `+record-list` 组合，用于按视图筛选读取 |
+| `+view-get-sort / +view-set-sort` | 读取或配置排序 | [`lark-base-view-get-sort.md`](references/lark-base-view-get-sort.md)、[`lark-base-view-set-sort.md`](references/lark-base-view-set-sort.md) | 字段名必须来自真实结构 |
+| `+view-get-group / +view-set-group` | 读取或配置分组 | [`lark-base-view-get-group.md`](references/lark-base-view-get-group.md)、[`lark-base-view-set-group.md`](references/lark-base-view-set-group.md) | 字段名必须来自真实结构 |
+| `+view-get-card / +view-set-card` | 读取或配置卡片视图 | [`lark-base-view-get-card.md`](references/lark-base-view-get-card.md)、[`lark-base-view-set-card.md`](references/lark-base-view-set-card.md) | 适合卡片展示场景 |
+| `+view-get-timebar / +view-set-timebar` | 读取或配置时间轴视图 | [`lark-base-view-get-timebar.md`](references/lark-base-view-get-timebar.md)、[`lark-base-view-set-timebar.md`](references/lark-base-view-set-timebar.md) | 适合时间线展示场景 |
 
 ### 2.4 公式 / Lookup 模块
 
@@ -142,8 +126,8 @@ metadata:
 默认优先考虑 `formula`：适合常规计算、条件判断、文本处理、日期差、跨表聚合，以及需要长期显示在表里的派生结果。  
 只有当用户明确要求 `lookup`，或场景天然符合 `from / select / where / aggregate` 这种固定查找建模时，再使用 `lookup`。
 
-| 命令 / 能力 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
-|-------------|------------------|----------------|----------|
+| 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
+|------|------------------|----------------|----------|
 | `+field-create`（`type=formula`） | 创建公式字段 | [`formula-field-guide.md`](references/formula-field-guide.md)、[`lark-base-field-create.md`](references/lark-base-field-create.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 没读 guide 前不要直接创建 |
 | `+field-update`（`type=formula`） | 更新公式字段 | [`formula-field-guide.md`](references/formula-field-guide.md)、[`lark-base-field-update.md`](references/lark-base-field-update.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 先拿当前表结构 |
 | `+field-create`（`type=lookup`） | 创建 lookup 字段 | [`lookup-field-guide.md`](references/lookup-field-guide.md)、[`lark-base-field-create.md`](references/lark-base-field-create.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 没读 guide 前不要直接创建 |
@@ -164,12 +148,9 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+workflow-list` | 列出 workflow | [`lark-base-workflow-list.md`](references/lark-base-workflow-list.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 只返回摘要，不是完整树结构；只能串行执行 |
-| `+workflow-get` | 获取完整 workflow 结构 | [`lark-base-workflow-get.md`](references/lark-base-workflow-get.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 需要完整结构时用它，不要只看 `+workflow-list` |
-| `+workflow-create` | 创建 workflow | [`lark-base-workflow-create.md`](references/lark-base-workflow-create.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 先读 schema；禁止凭自然语言猜 `type`；先确认真实表名和字段名 |
-| `+workflow-update` | 更新 workflow | [`lark-base-workflow-update.md`](references/lark-base-workflow-update.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 先读 schema；禁止凭自然语言猜 `type`；先确认真实表名和字段名 |
-| `+workflow-enable` | 启用 workflow | [`lark-base-workflow-enable.md`](references/lark-base-workflow-enable.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 启用前先确认目标 workflow |
-| `+workflow-disable` | 停用 workflow | [`lark-base-workflow-disable.md`](references/lark-base-workflow-disable.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 停用前先确认目标 workflow |
+| `+workflow-list / +workflow-get` | 列出 workflow，或获取完整 workflow 结构 | [`lark-base-workflow-list.md`](references/lark-base-workflow-list.md)、[`lark-base-workflow-get.md`](references/lark-base-workflow-get.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | `+workflow-list` 只返回摘要且只能串行执行；需要完整结构时用 `+workflow-get` |
+| `+workflow-create / +workflow-update` | 创建或更新 workflow | [`lark-base-workflow-create.md`](references/lark-base-workflow-create.md)、[`lark-base-workflow-update.md`](references/lark-base-workflow-update.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 先读 schema；禁止凭自然语言猜 `type`；先确认真实表名和字段名 |
+| `+workflow-enable / +workflow-disable` | 启用或停用 workflow | [`lark-base-workflow-enable.md`](references/lark-base-workflow-enable.md)、[`lark-base-workflow-disable.md`](references/lark-base-workflow-disable.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 启用或停用前先确认目标 workflow |
 
 ### 2.7 Dashboard 模块
 
@@ -177,16 +158,10 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+dashboard-list` | 列出仪表盘 | [`lark-base-dashboard-list.md`](references/lark-base-dashboard-list.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 进入仪表盘语义后先读 guide；只能串行执行 |
-| `+dashboard-get` | 获取仪表盘详情 | [`lark-base-dashboard-get.md`](references/lark-base-dashboard-get.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 适合查看已有看板配置 |
-| `+dashboard-create` | 创建仪表盘 | [`lark-base-dashboard-create.md`](references/lark-base-dashboard-create.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 先明确看板目标和展示场景 |
-| `+dashboard-update` | 更新仪表盘 | [`lark-base-dashboard-update.md`](references/lark-base-dashboard-update.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 更新前先读取当前配置 |
-| `+dashboard-delete` | 删除仪表盘 | [`lark-base-dashboard-delete.md`](references/lark-base-dashboard-delete.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 删除前先确认目标 |
-| `+dashboard-block-list` | 列出图表组件 | [`lark-base-dashboard-block-list.md`](references/lark-base-dashboard-block-list.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 只能串行执行 |
-| `+dashboard-block-get` | 获取单个 block 详情 | [`lark-base-dashboard-block-get.md`](references/lark-base-dashboard-block-get.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | 适合查看图表配置细节 |
-| `+dashboard-block-create` | 创建图表组件 | [`lark-base-dashboard-block-create.md`](references/lark-base-dashboard-block-create.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | 涉及 `data_config`、图表类型、filter 时要读 block config 文档 |
-| `+dashboard-block-update` | 更新图表组件 | [`lark-base-dashboard-block-update.md`](references/lark-base-dashboard-block-update.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | 涉及 `data_config`、图表类型、filter 时要读 block config 文档 |
-| `+dashboard-block-delete` | 删除图表组件 | [`lark-base-dashboard-block-delete.md`](references/lark-base-dashboard-block-delete.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 删除前先确认目标 |
+| `+dashboard-list / +dashboard-get` | 列出仪表盘，或获取仪表盘详情 | [`lark-base-dashboard-list.md`](references/lark-base-dashboard-list.md)、[`lark-base-dashboard-get.md`](references/lark-base-dashboard-get.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 进入仪表盘语义后先读 guide；`+dashboard-list` 只能串行执行 |
+| `+dashboard-create / +dashboard-update / +dashboard-delete` | 创建、更新或删除仪表盘 | [`lark-base-dashboard-create.md`](references/lark-base-dashboard-create.md)、[`lark-base-dashboard-update.md`](references/lark-base-dashboard-update.md)、[`lark-base-dashboard-delete.md`](references/lark-base-dashboard-delete.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 创建前先明确看板目标和展示场景；更新前先读取当前配置；删除前先确认目标 |
+| `+dashboard-block-list / +dashboard-block-get` | 列出图表组件，或获取单个 block 详情 | [`lark-base-dashboard-block-list.md`](references/lark-base-dashboard-block-list.md)、[`lark-base-dashboard-block-get.md`](references/lark-base-dashboard-block-get.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | `+dashboard-block-list` 只能串行执行；查看配置细节时读 block config 文档 |
+| `+dashboard-block-create / +dashboard-block-update / +dashboard-block-delete` | 创建、更新或删除图表组件 | [`lark-base-dashboard-block-create.md`](references/lark-base-dashboard-block-create.md)、[`lark-base-dashboard-block-update.md`](references/lark-base-dashboard-block-update.md)、[`lark-base-dashboard-block-delete.md`](references/lark-base-dashboard-block-delete.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | 涉及 `data_config`、图表类型、filter 时要读 block config 文档；删除前先确认目标 |
 
 ### 2.8 表单模块
 
@@ -195,15 +170,10 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+form-list` | 列出表单 | [`lark-base-form-list.md`](references/lark-base-form-list.md) | 可用来获取 `form-id` |
-| `+form-get` | 获取单个表单 | [`lark-base-form-get.md`](references/lark-base-form-get.md) | 适合查看已有表单配置 |
-| `+form-create` | 创建表单 | [`lark-base-form-create.md`](references/lark-base-form-create.md) | 创建后可继续进入表单问题相关操作 |
-| `+form-update` | 更新表单 | [`lark-base-form-update.md`](references/lark-base-form-update.md) | 更新前先确认目标表单 |
-| `+form-delete` | 删除表单 | [`lark-base-form-delete.md`](references/lark-base-form-delete.md) | 删除前先确认目标 |
+| `+form-list / +form-get` | 列出表单，或获取单个表单 | [`lark-base-form-list.md`](references/lark-base-form-list.md)、[`lark-base-form-get.md`](references/lark-base-form-get.md) | `+form-list` 可用来获取 `form-id`；`+form-get` 适合查看已有表单配置 |
+| `+form-create / +form-update / +form-delete` | 创建、更新或删除表单 | [`lark-base-form-create.md`](references/lark-base-form-create.md)、[`lark-base-form-update.md`](references/lark-base-form-update.md)、[`lark-base-form-delete.md`](references/lark-base-form-delete.md) | 创建后可继续进入表单问题相关操作；更新或删除前先确认目标表单 |
 | `+form-questions-list` | 列出表单题目 | [`lark-base-form-questions-list.md`](references/lark-base-form-questions-list.md) | 适合查看已有题目结构 |
-| `+form-questions-create` | 创建题目 | [`lark-base-form-questions-create.md`](references/lark-base-form-questions-create.md) | 先确认 `form-id` |
-| `+form-questions-update` | 更新题目 | [`lark-base-form-questions-update.md`](references/lark-base-form-questions-update.md) | 先确认 `form-id` 和题目目标 |
-| `+form-questions-delete` | 删除题目 | [`lark-base-form-questions-delete.md`](references/lark-base-form-questions-delete.md) | 删除前先确认题目目标 |
+| `+form-questions-create / +form-questions-update / +form-questions-delete` | 创建、更新或删除题目 | [`lark-base-form-questions-create.md`](references/lark-base-form-questions-create.md)、[`lark-base-form-questions-update.md`](references/lark-base-form-questions-update.md)、[`lark-base-form-questions-delete.md`](references/lark-base-form-questions-delete.md) | 先确认 `form-id`；更新或删除前先确认题目目标 |
 
 ### 2.9 权限与角色模块
 
@@ -212,13 +182,9 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+advperm-enable` | 启用高级权限 | [`lark-base-advperm-enable.md`](references/lark-base-advperm-enable.md) | 管理角色前必须先启用 |
-| `+advperm-disable` | 停用高级权限 | [`lark-base-advperm-disable.md`](references/lark-base-advperm-disable.md) | 高风险操作；停用后已有自定义角色全部失效 |
-| `+role-list` | 列出角色 | [`lark-base-role-list.md`](references/lark-base-role-list.md)、[`role-config.md`](references/role-config.md) | 只能串行执行 |
-| `+role-get` | 获取角色详情 | [`lark-base-role-get.md`](references/lark-base-role-get.md)、[`role-config.md`](references/role-config.md) | 适合查看完整权限配置 |
-| `+role-create` | 创建自定义角色 | [`lark-base-role-create.md`](references/lark-base-role-create.md)、[`role-config.md`](references/role-config.md) | 仅支持 `custom_role`；写角色前先读 `role-config.md` |
-| `+role-update` | 更新角色 | [`lark-base-role-update.md`](references/lark-base-role-update.md)、[`role-config.md`](references/role-config.md) | 采用 Delta Merge；`role_name` 和 `role_type` 即使不改也必须传当前值 |
-| `+role-delete` | 删除角色 | [`lark-base-role-delete.md`](references/lark-base-role-delete.md)、[`role-config.md`](references/role-config.md) | 不可逆，且仅支持自定义角色 |
+| `+advperm-enable / +advperm-disable` | 启用或停用高级权限 | [`lark-base-advperm-enable.md`](references/lark-base-advperm-enable.md)、[`lark-base-advperm-disable.md`](references/lark-base-advperm-disable.md) | 管理角色前必须先启用；停用是高风险操作，会使已有自定义角色失效 |
+| `+role-list / +role-get` | 列出角色，或获取角色详情 | [`lark-base-role-list.md`](references/lark-base-role-list.md)、[`lark-base-role-get.md`](references/lark-base-role-get.md)、[`role-config.md`](references/role-config.md) | `+role-list` 只能串行执行；`+role-get` 适合查看完整权限配置 |
+| `+role-create / +role-update / +role-delete` | 创建、更新或删除角色 | [`lark-base-role-create.md`](references/lark-base-role-create.md)、[`lark-base-role-update.md`](references/lark-base-role-update.md)、[`lark-base-role-delete.md`](references/lark-base-role-delete.md)、[`role-config.md`](references/role-config.md) | `+role-create` 仅支持 `custom_role`；`+role-update` 采用 Delta Merge，`role_name` 和 `role_type` 即使不改也必须传当前值；`+role-delete` 不可逆 |
 
 ## 3. 多维表格通用知识
 
