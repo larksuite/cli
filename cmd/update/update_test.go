@@ -632,6 +632,75 @@ func TestUpdateWindows_BinaryLocked_Human(t *testing.T) {
 	if !strings.Contains(out, "npm install -g") {
 		t.Errorf("expected npm install command in output, got: %s", out)
 	}
+	// Must use ";" not "&&" for PowerShell 5 compatibility
+	if strings.Contains(out, "&&") {
+		t.Errorf("should use ';' not '&&' for PowerShell 5 compat, got: %s", out)
+	}
+}
+
+func TestUpdateCheck_Windows_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json", "--check"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, `C:\node_modules\@larksuite\cli\bin\lark-cli.exe` }
+	defer func() { detectMethod = origDetect }()
+	origOS := currentOS
+	currentOS = "windows"
+	defer func() { currentOS = origOS }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"auto_update": false`) {
+		t.Errorf("expected auto_update:false on Windows, got: %s", out)
+	}
+	if !strings.Contains(out, `"hint"`) {
+		t.Errorf("expected hint with Windows update command, got: %s", out)
+	}
+	if !strings.Contains(out, "npm install -g") {
+		t.Errorf("expected npm install command in hint, got: %s", out)
+	}
+}
+
+func TestUpdateCheck_Windows_Human(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--check"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, `C:\node_modules\@larksuite\cli\bin\lark-cli.exe` }
+	defer func() { detectMethod = origDetect }()
+	origOS := currentOS
+	currentOS = "windows"
+	defer func() { currentOS = origOS }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "new terminal") {
+		t.Errorf("expected 'new terminal' guidance on Windows --check, got: %s", out)
+	}
+	if strings.Contains(out, "Download the release") {
+		t.Errorf("Windows npm should NOT suggest downloading release, got: %s", out)
+	}
 }
 
 func TestUpdateWindows_Symbols(t *testing.T) {

@@ -172,8 +172,9 @@ func updateRun(opts *UpdateOptions) error {
 }
 
 func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, method installMethod, canAutoUpdate bool) error {
+	windowsNpm := method == installNpm && currentOS == "windows"
 	if opts.JSON {
-		output.PrintJson(io.Out, map[string]interface{}{
+		result := map[string]interface{}{
 			"ok":               true,
 			"previous_version": cur,
 			"current_version":  cur,
@@ -183,7 +184,11 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 			"message":          fmt.Sprintf("lark-cli %s %s %s available", cur, symArrow(), latest),
 			"url":              releaseURL(latest),
 			"changelog":        changelogURL(),
-		})
+		}
+		if windowsNpm {
+			result["hint"] = windowsUpdateCmd(latest)
+		}
+		output.PrintJson(io.Out, result)
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Update available: %s %s %s\n", cur, symArrow(), latest)
@@ -191,6 +196,9 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	if canAutoUpdate {
 		fmt.Fprintf(io.ErrOut, "\nRun `lark-cli update` to install.\n")
+	} else if windowsNpm {
+		fmt.Fprintf(io.ErrOut, "\nRun the following in a new terminal:\n")
+		fmt.Fprintf(io.ErrOut, "  %s\n", windowsUpdateCmd(latest))
 	} else {
 		fmt.Fprintf(io.ErrOut, "\nDownload the release above to update manually.\n")
 	}
@@ -256,6 +264,12 @@ func truncate(s string, maxLen int) string {
 
 // --- Update dispatch ---
 
+// windowsUpdateCmd returns the command string for Windows users to run in a new terminal.
+// Uses ";" instead of "&&" because PowerShell 5 does not support "&&".
+func windowsUpdateCmd(latest string) string {
+	return fmt.Sprintf("npm install -g %s@%s; npx skills add larksuite/cli -g -y", npmPackage, latest)
+}
+
 // manualReason returns a human-readable explanation of why auto-update is unavailable.
 func manualReason(method installMethod, npmAvailable bool) string {
 	if method == installNpm && currentOS == "windows" {
@@ -270,8 +284,9 @@ func manualReason(method installMethod, npmAvailable bool) string {
 func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMethod, resolvedPath string, npmAvailable bool) error {
 	io := opts.Factory.IOStreams
 	reason := manualReason(method, npmAvailable)
+	windowsNpm := method == installNpm && currentOS == "windows"
 	if opts.JSON {
-		output.PrintJson(io.Out, map[string]interface{}{
+		result := map[string]interface{}{
 			"ok":               true,
 			"previous_version": cur,
 			"latest_version":   latest,
@@ -279,14 +294,18 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMetho
 			"message":          fmt.Sprintf("Automatic update unavailable: %s (path: %s)", reason, resolvedPath),
 			"url":              releaseURL(latest),
 			"changelog":        changelogURL(),
-		})
+		}
+		if windowsNpm {
+			result["hint"] = windowsUpdateCmd(latest)
+		}
+		output.PrintJson(io.Out, result)
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, resolvedPath)
 	if method == installNpm && currentOS == "windows" {
 		// Windows: binary is locked, guide user to run in a new terminal.
 		fmt.Fprintf(io.ErrOut, "Run the following in a new terminal:\n")
-		fmt.Fprintf(io.ErrOut, "  npm install -g %s@%s && npx skills add larksuite/cli -g -y\n", npmPackage, latest)
+		fmt.Fprintf(io.ErrOut, "  %s\n", windowsUpdateCmd(latest))
 	} else {
 		fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 		fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
