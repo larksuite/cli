@@ -49,7 +49,7 @@ lark-cli mail +triage --page-size 10
 |------|------|------|
 | `--filter <json>` | — | 筛选条件（见下方字段说明） |
 | `--query <text>` | — | 全文搜索关键词 |
-| `--format <mode>` | `table` | `table` / `json`（含分页信息的对象）/ `data`（纯 messages 数组，向后兼容） |
+| `--format <mode>` | `table` | `table` / `json` / `data`（`json` 和 `data` 均输出含分页信息的对象） |
 | `--max <n>` | `20` | 最大返回条数（1-400），内部自动分页拉取 |
 | `--page-size <n>` | — | `--max` 的别名，两者含义相同；同时指定时 `--page-size` 优先 |
 | `--page-token <token>` | — | 上一次响应返回的分页令牌，传入后从该位置继续拉取。令牌带 `search:` 或 `list:` 前缀，标识来源路径，不可混用 |
@@ -78,7 +78,9 @@ lark-cli mail +triage --page-size 10
 
 ## 输出
 
-### `--format json`（含分页信息）
+### `--format json` / `--format data`
+
+两者输出格式相同，均为含分页信息的对象：
 
 ```json
 {
@@ -100,16 +102,6 @@ lark-cli mail +triage --page-size 10
 - `has_more`：是否还有下一页
 - `page_token`：传入 `--page-token` 可获取下一页；为空字符串表示已到末尾
 - token 前缀 `search:` / `list:` 标识来源 API 路径，不可混用
-
-### `--format data`（纯数组，向后兼容）
-
-```json
-[
-  { "message_id": "SEU2...", "date": "...", "from": "...", "subject": "..." }
-]
-```
-
-> `--format data` 不包含分页信息，适合管道处理。需要分页时请用 `--format json`。
 
 ### `table` 格式
 
