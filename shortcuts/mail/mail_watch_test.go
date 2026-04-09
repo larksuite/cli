@@ -584,6 +584,7 @@ func TestSetKeysSorted(t *testing.T) {
 
 // --- handleMailWatchSignal ---
 
+// TestHandleMailWatchSignalUnsubscribesAndCancels verifies that all callbacks are invoked and the shutdown message is printed.
 func TestHandleMailWatchSignalUnsubscribesAndCancels(t *testing.T) {
 	var buf bytes.Buffer
 	unsubscribed := false
@@ -613,6 +614,7 @@ func TestHandleMailWatchSignalUnsubscribesAndCancels(t *testing.T) {
 	}
 }
 
+// TestHandleMailWatchSignalReportsUnsubscribeFailure verifies that unsubscribe errors are written to errOut.
 func TestHandleMailWatchSignalReportsUnsubscribeFailure(t *testing.T) {
 	var buf bytes.Buffer
 
@@ -625,6 +627,7 @@ func TestHandleMailWatchSignalReportsUnsubscribeFailure(t *testing.T) {
 	}
 }
 
+// TestHandleMailWatchSignalCallOrder verifies callbacks execute in order: stop signals → unsubscribe → cancel.
 func TestHandleMailWatchSignalCallOrder(t *testing.T) {
 	var order []string
 
