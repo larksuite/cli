@@ -63,7 +63,7 @@ var SheetExport = common.Shortcut{
 
 		// Early path validation before any API call
 		if outputPath != "" {
-			if err := runtime.ValidatePath(outputPath); err != nil {
+			if _, err := runtime.ResolveSavePath(outputPath); err != nil {
 				return output.ErrValidation("unsafe output path: %s", err)
 			}
 		}
@@ -133,7 +133,7 @@ var SheetExport = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorByCategory(err, "api_error")
+			return common.WrapSaveErrorByCategory(err, "io")
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(outputPath)

@@ -66,7 +66,7 @@ var DocMediaDownload = common.Shortcut{
 		if err := validate.ResourceName(token, "--token"); err != nil {
 			return output.ErrValidation("%s", err)
 		}
-		if err := runtime.ValidatePath(outputPath); err != nil {
+		if _, err := runtime.ResolveSavePath(outputPath); err != nil {
 			return output.ErrValidation("unsafe output path: %s", err)
 		}
 
@@ -101,6 +101,13 @@ var DocMediaDownload = common.Shortcut{
 				finalPath = outputPath + ext
 			} else if mediaType == "whiteboard" {
 				finalPath = outputPath + ".png"
+			}
+		}
+
+		// Validate final path after extension append
+		if finalPath != outputPath {
+			if _, err := runtime.ResolveSavePath(finalPath); err != nil {
+				return output.ErrValidation("unsafe output path: %s", err)
 			}
 		}
 

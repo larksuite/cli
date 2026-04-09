@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -52,10 +51,12 @@ var DriveDownload = common.Shortcut{
 			outputPath = fileToken
 		}
 
-		// Early path validation + overwrite check via FileIO.Stat
-		if _, statErr := runtime.FileIO().Stat(outputPath); statErr != nil && !os.IsNotExist(statErr) {
-			return output.ErrValidation("unsafe output path: %s", statErr)
-		} else if statErr == nil && !overwrite {
+		// Early path validation + overwrite check
+		resolvedOutput, resolveErr := runtime.ResolveSavePath(outputPath)
+		if resolveErr != nil {
+			return output.ErrValidation("unsafe output path: %s", resolveErr)
+		}
+		if _, statErr := runtime.FileIO().Stat(resolvedOutput); statErr == nil && !overwrite {
 			return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
 		}
 
@@ -75,7 +76,7 @@ var DriveDownload = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorByCategory(err, "api_error")
+			return common.WrapSaveErrorByCategory(err, "io")
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(outputPath)
