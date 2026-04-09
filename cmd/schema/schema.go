@@ -4,12 +4,14 @@
 package schema
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/util"
@@ -19,6 +21,7 @@ import (
 // SchemaOptions holds all inputs for the schema command.
 type SchemaOptions struct {
 	Factory *cmdutil.Factory
+	Ctx     context.Context
 
 	// Positional args
 	Path string
@@ -41,7 +44,7 @@ func printServices(w io.Writer) {
 	fmt.Fprintf(w, "\n%sUsage: lark-cli schema <service>.<resource>.<method>%s\n", output.Dim, output.Reset)
 }
 
-func printResourceList(w io.Writer, spec map[string]interface{}) {
+func printResourceList(w io.Writer, spec map[string]interface{}, mode core.StrictMode) {
 	name := registry.GetStrFromMap(spec, "name")
 	version := registry.GetStrFromMap(spec, "version")
 	title := registry.GetStrFromMap(spec, "title")
@@ -55,9 +58,13 @@ func printResourceList(w io.Writer, spec map[string]interface{}) {
 
 	resources, _ := spec["resources"].(map[string]interface{})
 	for _, resName := range sortedKeys(resources) {
-		fmt.Fprintf(w, "  %s%s%s\n", output.Cyan, resName, output.Reset)
 		resMap, _ := resources[resName].(map[string]interface{})
 		methods, _ := resMap["methods"].(map[string]interface{})
+		methods = filterMethodsByStrictMode(methods, mode)
+		if len(methods) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "  %s%s%s\n", output.Cyan, resName, output.Reset)
 		for _, methodName := range sortedKeys(methods) {
 			m, _ := methods[methodName].(map[string]interface{})
 			httpMethod := registry.GetStrFromMap(m, "httpMethod")
@@ -359,6 +366,7 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 			if len(args) > 0 {
 				opts.Path = args[0]
 			}
+			opts.Ctx = cmd.Context()
 			if runF != nil {
 				return runF(opts)
 			}
@@ -451,6 +459,7 @@ func completeSchemaPath(_ *cobra.Command, args []string, toComplete string) ([]s
 
 func schemaRun(opts *SchemaOptions) error {
 	out := opts.Factory.IOStreams.Out
+	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
 
 	if opts.Path == "" {
 		printServices(out)
@@ -469,9 +478,9 @@ func schemaRun(opts *SchemaOptions) error {
 
 	if len(parts) == 1 {
 		if opts.Format == "pretty" {
-			printResourceList(out, spec)
+			printResourceList(out, spec, mode)
 		} else {
-			output.PrintJson(out, spec)
+			output.PrintJson(out, filterSpecByStrictMode(spec, mode))
 		}
 		return nil
 	}
@@ -492,6 +501,7 @@ func schemaRun(opts *SchemaOptions) error {
 		if opts.Format == "pretty" {
 			fmt.Fprintf(out, "%s%s.%s%s\n\n", output.Bold, serviceName, resName, output.Reset)
 			methods, _ := resource["methods"].(map[string]interface{})
+			methods = filterMethodsByStrictMode(methods, mode)
 			for _, mName := range sortedKeys(methods) {
 				m, _ := methods[mName].(map[string]interface{})
 				httpMethod := registry.GetStrFromMap(m, "httpMethod")
@@ -500,13 +510,26 @@ func schemaRun(opts *SchemaOptions) error {
 			}
 			fmt.Fprintf(out, "\n%sUsage: lark-cli schema %s.%s.<method>%s\n", output.Dim, serviceName, resName, output.Reset)
 		} else {
-			output.PrintJson(out, resource)
+			// For JSON output, filter methods in a copy to avoid mutating the registry.
+			if mode.IsActive() {
+				filtered := make(map[string]interface{})
+				for k, v := range resource {
+					filtered[k] = v
+				}
+				if methods, ok := resource["methods"].(map[string]interface{}); ok {
+					filtered["methods"] = filterMethodsByStrictMode(methods, mode)
+				}
+				output.PrintJson(out, filtered)
+			} else {
+				output.PrintJson(out, resource)
+			}
 		}
 		return nil
 	}
 
 	methodName := remaining[0]
 	methods, _ := resource["methods"].(map[string]interface{})
+	methods = filterMethodsByStrictMode(methods, mode)
 	method, ok := methods[methodName].(map[string]interface{})
 	if !ok {
 		var mNames []string
@@ -524,4 +547,68 @@ func schemaRun(opts *SchemaOptions) error {
 		output.PrintJson(out, method)
 	}
 	return nil
+}
+
+// filterSpecByStrictMode returns a shallow copy of spec with each resource's methods
+// filtered by strict mode. Returns the original spec when strict mode is off.
+func filterSpecByStrictMode(spec map[string]interface{}, mode core.StrictMode) map[string]interface{} {
+	if !mode.IsActive() {
+		return spec
+	}
+	result := make(map[string]interface{}, len(spec))
+	for k, v := range spec {
+		result[k] = v
+	}
+	resources, _ := spec["resources"].(map[string]interface{})
+	if resources == nil {
+		return result
+	}
+	filteredRes := make(map[string]interface{}, len(resources))
+	for resName, resVal := range resources {
+		resMap, ok := resVal.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		methods, _ := resMap["methods"].(map[string]interface{})
+		filtered := filterMethodsByStrictMode(methods, mode)
+		if len(filtered) == 0 {
+			continue
+		}
+		resCopy := make(map[string]interface{}, len(resMap))
+		for k, v := range resMap {
+			resCopy[k] = v
+		}
+		resCopy["methods"] = filtered
+		filteredRes[resName] = resCopy
+	}
+	result["resources"] = filteredRes
+	return result
+}
+
+// filterMethodsByStrictMode removes methods incompatible with the active strict mode.
+// Returns the original map unmodified when strict mode is off.
+func filterMethodsByStrictMode(methods map[string]interface{}, mode core.StrictMode) map[string]interface{} {
+	if !mode.IsActive() || methods == nil {
+		return methods
+	}
+	token := registry.IdentityToAccessToken(string(mode.ForcedIdentity()))
+	filtered := make(map[string]interface{}, len(methods))
+	for name, val := range methods {
+		m, ok := val.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tokens, _ := m["accessTokens"].([]interface{})
+		if tokens == nil {
+			filtered[name] = val
+			continue
+		}
+		for _, t := range tokens {
+			if ts, ok := t.(string); ok && ts == token {
+				filtered[name] = val
+				break
+			}
+		}
+	}
+	return filtered
 }
