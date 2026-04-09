@@ -22,20 +22,20 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 
 ## Features
 
-| Category      | Capabilities                                                                                                                      |
-| ------------- |-----------------------------------------------------------------------------------------------------------------------------------|
-| 📅 Calendar   | View agenda, create events, invite attendees, check free/busy status, time suggestions                                            |
-| 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media                  |
-| 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards                                                        |
-| 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
-| 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
-| 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                                                                    |
+| Category     | Capabilities                                                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 📅 Calendar  | View agenda, create events, invite attendees, check free/busy status, time suggestions                                            |
+| 💬 Messenger | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media                  |
+| 📄 Docs      | Create, read, update, and search documents, read/write media & whiteboards                                                        |
+| 📁 Drive     | Upload and download files, search docs & wiki, manage comments                                                                    |
+| 📊 Base      | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
+| 📈 Sheets    | Create, read, write, append, find, and export spreadsheet data                                                                    |
 | ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders                                      |
-| 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
-| 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
-| 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
-| 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                                                                        |
-| ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
+| 📚 Wiki      | Create and manage knowledge spaces, nodes, and documents                                                                          |
+| 👤 Contact   | Search users by name/email/phone, get user profiles                                                                               |
+| 📧 Mail      | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
+| 🎥 Meetings  | Search meeting records, query meeting minutes & recordings                                                                        |
+| ✍️ Approval  | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 
 ## Installation & Quick Start
 
@@ -129,7 +129,7 @@ lark-cli auth status
 ## Agent Skills
 
 | Skill                           | Description                                                                                                    |
-| ------------------------------- |----------------------------------------------------------------------------------------------------------------|
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `lark-shared`                   | App config, auth login, identity switching, scope management, security rules (auto-loaded by all other skills) |
 | `lark-calendar`                 | Calendar events, agenda view, free/busy queries, time suggestions                                              |
 | `lark-im`                       | Send/reply messages, group chat management, message search, upload/download images & files, reactions          |
@@ -158,7 +158,7 @@ lark-cli auth status
 | `auth login`  | OAuth login with interactive selection or CLI flags for scopes |
 | `auth logout` | Sign out and remove stored credentials                         |
 | `auth status` | Show current login status and granted scopes                   |
-| `auth check`  | Verify a specific scope (exit 0 = ok, 1 = missing)            |
+| `auth check`  | Verify a specific scope (exit 0 = ok, 1 = missing)             |
 | `auth scopes` | List all available scopes for the app                          |
 | `auth list`   | List all authenticated users                                   |
 
@@ -184,6 +184,38 @@ lark-cli auth login --device-code <DEVICE_CODE>
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+### Credential File
+
+If you already have app credentials, you can skip the interactive `config init` by injecting them from a JSON file via environment variable:
+
+```bash
+export LARKSUITE_CLI_CREDENTIAL_FILE=/path/to/credentials.json
+```
+
+The JSON file format:
+
+```json
+{
+  "app_id": "cli_xxxx",
+  "app_secret": "your_app_secret",
+  "brand": "feishu",
+  "user_access_token": "u-xxxx",
+  "tenant_access_token": "t-xxxx",
+  "refresh_token": "r-xxxx"
+}
+```
+
+| Field                 | Required | Description                                                   |
+| --------------------- | -------- | ------------------------------------------------------------- |
+| `app_id`              | Yes      | Feishu/Lark App ID                                            |
+| `app_secret`          | No       | App Secret (not needed if tokens are provided)                |
+| `brand`               | No       | `feishu` (default) or `lark`                                  |
+| `user_access_token`   | No       | Pre-obtained User Access Token                                |
+| `tenant_access_token` | No       | Pre-obtained Tenant Access Token                              |
+| `refresh_token`       | No       | Refresh Token for auto-refreshing UAT (requires `app_secret`) |
+
+> **Note:** The file path must be an absolute path. When a credential file is set, it takes priority over the default config (`config init`) but lower than environment variables (`LARKSUITE_CLI_APP_ID`, etc.).
 
 ## Three-Layer Command System
 
@@ -269,7 +301,7 @@ Please fully understand all usage risks. By using this tool, you are deemed to v
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli\&type=Date)](https://star-history.com/#larksuite/cli\&Date)
 
 ## Contributing
 
@@ -287,3 +319,4 @@ When running, it calls Lark/Feishu Open Platform APIs. To use these APIs, you mu
 - [Feishu Open Platform App Service Provider Security Management Specifications](https://open.feishu.cn/document/uAjLw4CM/uMzNwEjLzcDMx4yM3ATM/management-practice/app-service-provider-security-management-specifications)
 - [Lark User Terms of Service](https://www.larksuite.com/user-terms-of-service)
 - [Lark Privacy Policy](https://www.larksuite.com/privacy-policy)
+
