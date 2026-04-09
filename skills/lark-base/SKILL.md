@@ -13,10 +13,12 @@ metadata:
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 > **执行前必做：** 执行任何 `base` 命令前，必须先阅读对应命令的 reference 文档，再调用命令。
 > **命名约定：** 仅使用 `lark-cli base +...` 形式的命令。
+> **分流规则：** 如果用户要“把本地文件导入成 Base / 多维表格 / bitable”，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`。只有导入完成后，才回到 `lark-cli base +...` 做表内操作。
 
 ## Agent 快速执行顺序
 
 1. **先判断任务类型**
+   - 本地文件导入成 Base / 多维表格 / bitable → 先切 `lark-cli drive +import --type bitable`
    - 临时统计 / 聚合分析 → `+data-query`
    - 要把结果长期显示在表里 → formula 字段
    - 用户明确要 lookup，或确实更适合 `from/select/where/aggregate` → lookup 字段
@@ -37,6 +39,7 @@ metadata:
 - 不要没读 guide 就直接创建 formula / lookup 字段
 - 不要凭自然语言猜表名、字段名、公式表达式里的字段引用
 - 不要把系统字段、formula 字段、lookup 字段当成 `+record-upsert` 的写入目标
+- 不要把“本地 Excel / CSV 导入成 Base”误判成 `+base-create`、`+table-create` 或 `+record-upsert`；这一步必须先走 `lark-cli drive +import --type bitable`
 - 不要在 Base 场景改走 `lark-cli api GET /open-apis/bitable/v1/...`
 - 不要因为 wiki 解析结果里的 `obj_type=bitable` 就去找 `bitable.*`；在本 CLI 里应继续使用 `lark-cli base +...`
 
@@ -138,6 +141,7 @@ metadata:
 | 配置 / 查询视图 | `lark-cli base +view-*` | `list/get/create/delete/get-*/set-*/rename` |
 | 查看记录历史 | `lark-cli base +record-history-list` | 按表和记录查询变更历史 |
 | 按视图筛选查询 | `lark-cli base +view-set-filter` + `lark-cli base +record-list` | 组合调用 |
+| 把本地文件导入为 Base / 多维表格 | `lark-cli drive +import --type bitable` | 导入阶段属于 `drive`，不是 `base` |
 | 创建 / 获取 / 复制 Base | `lark-cli base +base-create` / `+base-get` / `+base-copy` | 原子命令 |
 | 列表 / 获取工作流 | `lark-cli base +workflow-list` / `+workflow-get` | 原子命令 |
 | 创建 / 更新工作流 | `lark-cli base +workflow-create` / `+workflow-update` | 使用 `--json`，必须阅读 schema |
@@ -283,7 +287,7 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 - [lark-base-workflow.md](references/lark-base-workflow.md) — workflow 命令索引
 - [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) — `+workflow-create/+workflow-update` JSON body 数据结构详解，包含触发器及各类节点的配置规则（强烈推荐）
 - [lark-base-data-query.md](references/lark-base-data-query.md) — `+data-query` 聚合分析（DSL 结构、支持字段类型、聚合函数）
-- [examples.md](references/examples.md) — 完整操作示例（建表、导入、筛选、更新）
+- [examples.md](references/examples.md) — 完整操作示例（建表、筛选、更新）
 
 ## 命令分组
 
