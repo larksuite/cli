@@ -12,7 +12,9 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -624,6 +626,38 @@ func TestHandleMailWatchSignalReportsUnsubscribeFailure(t *testing.T) {
 
 	if got := buf.String(); !strings.Contains(got, "Warning: unsubscribe failed: boom") {
 		t.Fatalf("expected unsubscribe warning, got: %q", got)
+	}
+}
+
+// TestHandleMailWatchSignalPanicUnblocksShutdown verifies that a panic in unsubscribeWithLog still triggers shutdown.
+func TestHandleMailWatchSignalPanicUnblocksShutdown(t *testing.T) {
+	shutdownBySignal := make(chan struct{})
+	var shutdownOnce sync.Once
+	_, cancelWatch := context.WithCancel(context.Background())
+	triggerShutdown := func() {
+		shutdownOnce.Do(func() { close(shutdownBySignal) })
+		cancelWatch()
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				triggerShutdown()
+			}
+		}()
+		<-sigCh
+		// Simulate panic inside handleMailWatchSignal (e.g. unsubscribeWithLog panics)
+		panic("unsubscribe exploded")
+	}()
+
+	sigCh <- os.Interrupt
+
+	select {
+	case <-shutdownBySignal:
+		// Success: shutdown channel was closed despite the panic
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdownBySignal was not closed after panic — process would hang")
 	}
 }
 

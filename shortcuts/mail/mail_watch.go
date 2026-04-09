@@ -457,17 +457,22 @@ var MailWatch = common.Shortcut{
 		defer stopSignals()
 
 		shutdownBySignal := make(chan struct{})
+		var shutdownOnce sync.Once
+		triggerShutdown := func() {
+			shutdownOnce.Do(func() { close(shutdownBySignal) })
+			cancelWatch()
+		}
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Fprintf(errOut, "panic in signal handler: %v\n", r)
-					cancelWatch() // unblock the main select via startErrCh
+					triggerShutdown()
 				}
 			}()
 			select {
 			case sig := <-sigCh:
 				handleMailWatchSignal(errOut, sig, eventCount.Load(), unsubscribeWithLog, stopSignals, cancelWatch)
-				close(shutdownBySignal)
+				triggerShutdown()
 			case <-watchCtx.Done():
 				return
 			}
