@@ -156,6 +156,18 @@ func TestUpdateManual_Human(t *testing.T) {
 	}
 }
 
+// mockNpmSuccess mocks both npm install and skills update to succeed.
+func mockNpmSuccess(t *testing.T) {
+	t.Helper()
+	origRunNpm := runNpmInstall
+	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
+	t.Cleanup(func() { runNpmInstall = origRunNpm })
+
+	origSkills := runSkillsUpdate
+	runSkillsUpdate = func(stdout, stderr *bytes.Buffer) error { return nil }
+	t.Cleanup(func() { runSkillsUpdate = origSkills })
+}
+
 func TestUpdateNpm_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
@@ -170,9 +182,7 @@ func TestUpdateNpm_JSON(t *testing.T) {
 	origDetect := detectMethod
 	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
 	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
-	defer func() { runNpmInstall = origRunNpm }()
+	mockNpmSuccess(t)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -198,9 +208,7 @@ func TestUpdateNpm_Human(t *testing.T) {
 	origDetect := detectMethod
 	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
 	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
-	defer func() { runNpmInstall = origRunNpm }()
+	mockNpmSuccess(t)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -226,9 +234,7 @@ func TestUpdateForce_JSON(t *testing.T) {
 	origDetect := detectMethod
 	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
 	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
-	defer func() { runNpmInstall = origRunNpm }()
+	mockNpmSuccess(t)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -317,9 +323,7 @@ func TestUpdateDevVersion_JSON(t *testing.T) {
 	origDetect := detectMethod
 	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
 	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
-	defer func() { runNpmInstall = origRunNpm }()
+	mockNpmSuccess(t)
 
 	err := cmd.Execute()
 	if err != nil {

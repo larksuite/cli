@@ -45,11 +45,12 @@ func changelogURL() string {
 
 // Overridable function vars for testing.
 var (
-	fetchLatest    = func() (string, error) { return update.FetchLatest() }
-	currentVersion = func() string { return build.Version }
-	detectMethod   = detectInstallMethodAuto
-	runNpmInstall  = runNpmInstallReal
-	lookPath       = exec.LookPath
+	fetchLatest     = func() (string, error) { return update.FetchLatest() }
+	currentVersion  = func() string { return build.Version }
+	detectMethod    = detectInstallMethodAuto
+	runNpmInstall   = runNpmInstallReal
+	runSkillsUpdate = runSkillsUpdateReal
+	lookPath        = exec.LookPath
 )
 
 // UpdateOptions holds inputs for the update command.
@@ -228,6 +229,18 @@ func runNpmInstallReal(version string, stdout, stderr *bytes.Buffer) error {
 	return cmd.Run()
 }
 
+// runSkillsUpdateReal executes npx skills add larksuite/cli -g -y to update AI agent skills.
+func runSkillsUpdateReal(stdout, stderr *bytes.Buffer) error {
+	npxPath, err := lookPath("npx")
+	if err != nil {
+		return fmt.Errorf("npx not found in PATH: %w", err)
+	}
+	cmd := exec.Command(npxPath, "skills", "add", "larksuite/cli", "-g", "-y")
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
 // truncate returns the last maxLen bytes of s.
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -266,6 +279,7 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMetho
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", npmPackage, latest)
+	fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx skills add larksuite/cli -g -y\n")
 	return nil
 }
 
@@ -294,7 +308,14 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 	// from this goroutine (inside PrintJson → injectNotice).
 	output.PendingNotice = nil
 
-	output.PrintJson(io.Out, map[string]interface{}{
+	// Update skills (best-effort, don't fail the whole update if skills fail).
+	var skillsErr string
+	var skillsStdout, skillsStderr bytes.Buffer
+	if err := runSkillsUpdate(&skillsStdout, &skillsStderr); err != nil {
+		skillsErr = fmt.Sprintf("skills update failed: %s", err)
+	}
+
+	result := map[string]interface{}{
 		"ok":               true,
 		"previous_version": cur,
 		"current_version":  latest,
@@ -303,7 +324,11 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 		"message":          fmt.Sprintf("lark-cli updated from %s to %s", cur, latest),
 		"url":              releaseURL(latest),
 		"changelog":        changelogURL(),
-	})
+	}
+	if skillsErr != "" {
+		result["skills_warning"] = skillsErr
+	}
+	output.PrintJson(io.Out, result)
 	return nil
 }
 
@@ -331,6 +356,16 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	output.PendingNotice = nil
 	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully updated lark-cli from %s to %s\n", cur, latest)
 	fmt.Fprintf(ios.ErrOut, "  Changelog: %s\n", changelogURL())
+
+	// Update skills (best-effort).
+	fmt.Fprintf(ios.ErrOut, "\nUpdating skills ...\n")
+	var skillsStdout, skillsStderr bytes.Buffer
+	if err := runSkillsUpdate(&skillsStdout, &skillsStderr); err != nil {
+		fmt.Fprintf(ios.ErrOut, "⚠ Skills update failed: %s\n", err)
+		fmt.Fprintf(ios.ErrOut, "  Run manually: npx skills add larksuite/cli -g -y\n")
+	} else {
+		fmt.Fprintf(ios.ErrOut, "✓ Skills updated\n")
+	}
 	return nil
 }
 
