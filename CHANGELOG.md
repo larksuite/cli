@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.7] - 2026-04-09
+
+### Features
+
+- Auto-grant current user access for bot-created docs, sheets, imports, and uploads (#360)
+- **mail**: Add `send_as` alias support, mailbox/sender discovery APIs, and mail rules API
+- **vc**: Extract note doc tokens from calendar event relation API (#333)
+- **wiki**: Add wiki node create shortcut (#320)
+- **sheets**: Add `+write-image` shortcut (#343)
+- **docs**: Add media-preview shortcut (#334)
+- **docs**: Add support for additional search filters (#353)
+
+### Bug Fixes
+
+- **api**: Support stdin and quoted JSON inputs on Windows (#367)
+- **doc**: Post-process `docs +fetch` output to improve round-trip fidelity (#214)
+- **run**: Add missing binary check for lark-cli execution (#362)
+- **config**: Validate appId and appSecret keychain key consistency (#295)
+
+### Refactor
+
+- Route base import guidance to drive `+import` (#368)
+- Migrate mail shortcuts to FileIO (#356)
+- Migrate drive/doc/sheets shortcuts to FileIO (#339)
+- Migrate base shortcuts to FileIO (#347)
+
+### Documentation
+
+- **lark-doc**: Document advanced boolean and intitle search syntax for AI agents (#210)
+
+### Chore
+
+- Add depguard and forbidigo rules to guide FileIO adoption (#342)
+
 ## [v1.0.6] - 2026-04-08
 
 ### Features
@@ -222,6 +256,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.7]: https://github.com/larksuite/cli/releases/tag/v1.0.7
 [v1.0.6]: https://github.com/larksuite/cli/releases/tag/v1.0.6
 [v1.0.5]: https://github.com/larksuite/cli/releases/tag/v1.0.5
 [v1.0.4]: https://github.com/larksuite/cli/releases/tag/v1.0.4
