@@ -15,31 +15,17 @@ import (
 // path without hitting EBUSY. On non-Windows platforms this is a no-op
 // (Unix allows overwriting a running executable via inode semantics).
 //
-// Returns a cleanup function that restores the original if the update fails.
-// Caller MUST call cleanup on error to avoid leaving the installation broken.
-//
-// Usage:
-//
-//	cleanup, err := selfupdate.PrepareSelfReplace()
-//	if err != nil { ... }
-//	if err := runNpmInstall(...); err != nil {
-//	    cleanup() // restore original
-//	    return err
-//	}
-func PrepareSelfReplace() (cleanup func(), err error) {
+// Returns a restore function. Caller MUST call it on npm install failure.
+func PrepareSelfReplace() (restore func(), err error) {
 	noop := func() {}
 
 	if runtime.GOOS != "windows" {
 		return noop, nil
 	}
 
-	exe, err := os.Executable()
+	exe, err := currentExePath()
 	if err != nil {
 		return noop, nil // best-effort; don't block update
-	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
-		return noop, nil
 	}
 
 	oldPath := exe + ".old"
@@ -47,29 +33,51 @@ func PrepareSelfReplace() (cleanup func(), err error) {
 	// Clean up stale .old from a previous upgrade.
 	os.Remove(oldPath)
 
-	// Rename running.exe → running.exe.old (Windows allows this).
+	// Rename running.exe → running.exe.old (Windows allows rename of locked files).
 	if err := os.Rename(exe, oldPath); err != nil {
 		return noop, fmt.Errorf("cannot rename binary for update: %w", err)
 	}
 
-	// Cleanup: restore the original if npm install fails.
-	restore := func() {
-		os.Rename(oldPath, exe)
+	// Restore: remove any partial file npm may have left, then move .old back.
+	restore = func() {
+		os.Remove(exe)              // remove partial/corrupt file if any
+		os.Rename(oldPath, exe)     // restore original
 	}
 
 	return restore, nil
 }
 
 // CleanupStaleFiles removes leftover .old files from previous Windows upgrades.
-// Safe to call on any platform (no-op if no .old file exists).
+// If the original binary is missing but .old exists (e.g. crash mid-update),
+// it restores the .old to recover the installation.
 func CleanupStaleFiles() {
 	if runtime.GOOS != "windows" {
 		return
 	}
-	exe, err := os.Executable()
+	exe, err := currentExePath()
 	if err != nil {
 		return
 	}
-	exe, _ = filepath.EvalSymlinks(exe)
-	os.Remove(exe + ".old")
+	oldPath := exe + ".old"
+
+	if _, err := os.Stat(oldPath); err != nil {
+		return // no .old file, nothing to do
+	}
+
+	if _, err := os.Stat(exe); err != nil {
+		// Original is missing but .old exists — restore to recover.
+		os.Rename(oldPath, exe)
+		return
+	}
+
+	// Both exist — normal case, .old is stale.
+	os.Remove(oldPath)
+}
+
+func currentExePath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
 }
