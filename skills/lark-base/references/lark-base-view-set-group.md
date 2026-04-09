@@ -56,7 +56,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/group
 ## JSON Schema（原文）
 
 ```json
-{"type":"array","items":{"type":"object","properties":{"field":{"type":"string","minLength":1,"maxLength":100,"description":"Field id or name"},"desc":{"type":"boolean","default":false,"description":"define how to sort group headers"}},"required":["field"],"additionalProperties":false},"minItems":0,"maxItems":3,"$schema":"http://json-schema.org/draft-07/schema#"}
+{"type":"object","properties":{"group_config":{"type":"array","items":{"type":"object","properties":{"field":{"type":"string","minLength":1,"maxLength":100,"description":"Field id or name"},"desc":{"type":"boolean","default":false,"description":"define how to sort group headers"}},"required":["field"],"additionalProperties":false},"minItems":0,"maxItems":3}},"required":["group_config"],"additionalProperties":false,"$schema":"http://json-schema.org/draft-07/schema#"}
 
 ```
 
