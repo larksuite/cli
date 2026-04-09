@@ -52,11 +52,10 @@ var DriveDownload = common.Shortcut{
 		}
 
 		// Early path validation + overwrite check
-		resolvedOutput, resolveErr := runtime.ResolveSavePath(outputPath)
-		if resolveErr != nil {
+		if _, resolveErr := runtime.ResolveSavePath(outputPath); resolveErr != nil {
 			return output.ErrValidation("unsafe output path: %s", resolveErr)
 		}
-		if _, statErr := runtime.FileIO().Stat(resolvedOutput); statErr == nil && !overwrite {
+		if _, statErr := runtime.FileIO().Stat(outputPath); statErr == nil && !overwrite {
 			return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
 		}
 
