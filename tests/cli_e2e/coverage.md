@@ -11,8 +11,8 @@ Business domains are sourced from `lark-cli -h` available commands.
 | `approval` | - | - | N/A | Not covered |  |
 | `base` | 68 | 63 | 92.6% | `tests/cli_e2e/base/coverage.md` |  |
 | `calendar` | 22 | 11 | 50.0% | `tests/cli_e2e/calendar/coverage.md` |  |
-| `contact` | - | - | N/A | Not covered |  |
-| `docs` | - | - | N/A | Not covered |  |
+| `contact` | 2 | 1 | 50.0% | `tests/cli_e2e/contact/coverage.md` |  |
+| `docs` | 7 | 5 | 71.4% | `tests/cli_e2e/docs/coverage.md` |  |
 | `drive` | 28 | 26 | 92.9% | `tests/cli_e2e/drive/coverage.md` |  |
 | `event` | - | - | N/A | Not covered |  |
 | `im` | 29 | 15 | 51.7% | `tests/cli_e2e/im/coverage.md` |  |
