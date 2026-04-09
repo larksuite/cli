@@ -49,7 +49,7 @@ lark-cli mail +triage --page-size 10
 |------|------|------|
 | `--filter <json>` | — | 筛选条件（见下方字段说明） |
 | `--query <text>` | — | 全文搜索关键词 |
-| `--format <mode>` | `table` | `table` / `json` / `data` |
+| `--format <mode>` | `table` | `table` / `json`（含分页信息的对象）/ `data`（纯 messages 数组，向后兼容） |
 | `--max <n>` | `20` | 最大返回条数（1-400），内部自动分页拉取 |
 | `--page-size <n>` | — | `--max` 的别名，两者含义相同；同时指定时 `--page-size` 优先 |
 | `--page-token <token>` | — | 上一次响应返回的分页令牌，传入后从该位置继续拉取。令牌带 `search:` 或 `list:` 前缀，标识来源路径，不可混用 |

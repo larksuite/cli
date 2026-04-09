@@ -54,7 +54,7 @@ var MailTriage = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "format", Default: "table", Desc: "output format: table | json | data"},
+		{Name: "format", Default: "table", Desc: "output format: table | json (object with pagination) | data (messages array only)"},
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
 		{Name: "page-size", Type: "int", Desc: "alias for --max"},
 		{Name: "page-token", Desc: "pagination token from a previous response to fetch the next page"},
@@ -251,7 +251,7 @@ var MailTriage = common.Shortcut{
 		}
 
 		switch outFormat {
-		case "json", "data":
+		case "json":
 			outData := map[string]interface{}{
 				"messages":   messages,
 				"total":      len(messages),
@@ -259,6 +259,8 @@ var MailTriage = common.Shortcut{
 				"page_token": nextPageToken,
 			}
 			output.PrintJson(runtime.IO().Out, outData)
+		case "data":
+			output.PrintJson(runtime.IO().Out, messages)
 		default: // "table"
 			if len(messages) == 0 {
 				fmt.Fprintln(runtime.IO().ErrOut, "No messages found.")
@@ -894,7 +896,7 @@ func resolveTriagePath(pageToken, query string, filter triageFilter) (useSearch 
 	paramWantsSearch := usesTriageSearchPath(query, filter)
 	switch {
 	case strings.HasPrefix(pageToken, "search:"):
-		if !paramWantsSearch && (query != "" || len(triageQueryFilterFields(filter)) > 0) {
+		if !paramWantsSearch && (strings.TrimSpace(query) != "" || len(triageQueryFilterFields(filter)) > 0) {
 			// This shouldn't normally happen (query/search fields → paramWantsSearch=true),
 			// but guard against future changes.
 			return false, fmt.Errorf("--page-token has search: prefix but current --query/--filter parameters indicate list path; remove conflicting parameters or use the correct token")
