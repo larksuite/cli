@@ -196,6 +196,9 @@ func TestDriveImportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli drive +task_result --scenario import --ticket tk_import"`)) {
 		t.Fatalf("stdout missing follow-up command: %s", stdout.String())
 	}
+	if bytes.Contains(stdout.Bytes(), []byte(`"permission_grant"`)) {
+		t.Fatalf("stdout should not include permission_grant before import is ready: %s", stdout.String())
+	}
 }
 
 func TestDriveImportRejectsOversizedFileByImportLimit(t *testing.T) {

@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -285,6 +286,77 @@ func TestDocMediaDownloadRejectsHTTPErrorBeforeWrite(t *testing.T) {
 	}
 }
 
+func TestDocMediaDownloadAppendsExtensionFromContentDispositionFilename(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-disposition-app"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/medias/tok_123/download",
+		Status: 200,
+		Body:   []byte("a,b,c\n1,2,3\n"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/octet-stream"},
+			"Content-Disposition": []string{`attachment; filename="drive_registry_config_addition.csv"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocMediaDownload, []string{
+		"+media-download",
+		"--token", "tok_123",
+		"--output", "download",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := decodeDocCommandOutput(t, stdout)
+	wantPath := mustDocSafeOutputPath(t, "download.csv")
+	if got.Data.SavedPath != wantPath {
+		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected downloaded file at %q: %v", wantPath, err)
+	}
+}
+
+func TestDocMediaDownloadAppendsExtensionForTrailingDotOutput(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-trailing-dot-app"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/medias/tok_123/download",
+		Status: 200,
+		Body:   []byte("a,b,c\n1,2,3\n"),
+		Headers: http.Header{
+			"Content-Type": []string{"text/csv; charset=utf-8"},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocMediaDownload, []string{
+		"+media-download",
+		"--token", "tok_123",
+		"--output", "typed.",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := decodeDocCommandOutput(t, stdout)
+	wantPath := mustDocSafeOutputPath(t, "typed.csv")
+	if got.Data.SavedPath != wantPath {
+		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected downloaded file at %q: %v", wantPath, err)
+	}
+}
+
 func TestDocMediaPreviewDryRunUsesMediaEndpoint(t *testing.T) {
 	cmd := &cobra.Command{Use: "docs +media-preview"}
 	cmd.Flags().String("token", "", "")
@@ -371,6 +443,113 @@ func TestDocMediaPreviewRejectsHTTPErrorBeforeWrite(t *testing.T) {
 	}
 }
 
+func TestDocMediaPreviewAppendsExtensionFromRFC5987Filename(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-disposition-app"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
+		Status: 200,
+		Body:   []byte("a,b,c\n1,2,3\n"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/octet-stream"},
+			"Content-Disposition": []string{`attachment; filename*=UTF-8''drive_registry_config_addition.csv`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocMediaPreview, []string{
+		"+media-preview",
+		"--token", "tok_123",
+		"--output", "preview",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := decodeDocCommandOutput(t, stdout)
+	wantPath := mustDocSafeOutputPath(t, "preview.csv")
+	if got.Data.SavedPath != wantPath {
+		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected preview file at %q: %v", wantPath, err)
+	}
+}
+
+func TestDocMediaPreviewAppendsExtensionForTrailingDotOutput(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-trailing-dot-app"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
+		Status: 200,
+		Body:   []byte("a,b,c\n1,2,3\n"),
+		Headers: http.Header{
+			"Content-Disposition": []string{`attachment; filename*=UTF-8''drive_registry_config_addition.csv`},
+			"Content-Type":        []string{"application/octet-stream"},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocMediaPreview, []string{
+		"+media-preview",
+		"--token", "tok_123",
+		"--output", "preview.",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := decodeDocCommandOutput(t, stdout)
+	wantPath := mustDocSafeOutputPath(t, "preview.csv")
+	if got.Data.SavedPath != wantPath {
+		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected preview file at %q: %v", wantPath, err)
+	}
+}
+
+func TestDocMediaDownloadAppendsExtensionFromContentTypeMapping(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-content-type-app"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/medias/tok_123/download",
+		Status: 200,
+		Body:   []byte("a,b,c\n1,2,3\n"),
+		Headers: http.Header{
+			"Content-Type": []string{"text/csv; charset=utf-8"},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocMediaDownload, []string{
+		"+media-download",
+		"--token", "tok_123",
+		"--output", "typed",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := decodeDocCommandOutput(t, stdout)
+	wantPath := mustDocSafeOutputPath(t, "typed.csv")
+	if got.Data.SavedPath != wantPath {
+		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected downloaded file at %q: %v", wantPath, err)
+	}
+}
+
 type docDryRunOutput struct {
 	Description string `json:"description"`
 	API         []struct {
@@ -379,6 +558,15 @@ type docDryRunOutput struct {
 		Params map[string]interface{} `json:"params"`
 		Body   map[string]interface{} `json:"body"`
 	} `json:"api"`
+}
+
+type docCommandOutput struct {
+	OK   bool `json:"ok"`
+	Data struct {
+		SavedPath   string `json:"saved_path"`
+		SizeBytes   int64  `json:"size_bytes"`
+		ContentType string `json:"content_type"`
+	} `json:"data"`
 }
 
 func writeSizedDocTestFile(t *testing.T, name string, size int64) {
@@ -409,4 +597,24 @@ func decodeDocDryRun(t *testing.T, dryAPI *common.DryRunAPI) docDryRunOutput {
 		t.Fatalf("decode dry-run output: %v", err)
 	}
 	return dry
+}
+
+func decodeDocCommandOutput(t *testing.T, stdout *bytes.Buffer) docCommandOutput {
+	t.Helper()
+
+	var out docCommandOutput
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("decode command output: %v; output=%s", err, stdout.String())
+	}
+	return out
+}
+
+func mustDocSafeOutputPath(t *testing.T, output string) string {
+	t.Helper()
+
+	path, err := validate.SafeOutputPath(output)
+	if err != nil {
+		t.Fatalf("SafeOutputPath(%q) error: %v", output, err)
+	}
+	return path
 }

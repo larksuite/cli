@@ -363,6 +363,26 @@ func WrapOpenError(err error, pathMsg, readMsg string) error {
 	return fmt.Errorf("%s: %w", readMsg, err)
 }
 
+// WrapInputStatError wraps a FileIO.Stat/Open error for input file validation,
+// returning output.ErrValidation with the appropriate message:
+//   - Path validation failures → "unsafe file path: ..."
+//   - Other errors → readMsg prefix (default "cannot read file")
+//
+// Pass an optional readMsg to override the non-path-validation message prefix.
+func WrapInputStatError(err error, readMsg ...string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return output.ErrValidation("unsafe file path: %s", err)
+	}
+	msg := "cannot read file"
+	if len(readMsg) > 0 && readMsg[0] != "" {
+		msg = readMsg[0]
+	}
+	return output.ErrValidation("%s: %s", msg, err)
+}
+
 // WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
 // using standardized messages and the given error category (e.g. "api_error", "io").
 // Path validation errors always use ErrValidation (exit code 2).

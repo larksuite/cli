@@ -1,6 +1,8 @@
 
 ## 核心概念
 
+> **导入分流规则：** 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
+
 ### 文档类型与 Token
 
 飞书开放平台中，不同类型的文档有不同的 URL 格式和 Token 处理方式。在进行文档操作（如添加评论、下载文件等）时，必须先获取正确的 `file_token`。

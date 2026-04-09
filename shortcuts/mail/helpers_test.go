@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -568,13 +569,13 @@ func TestToOriginalMessageForCompose_EmptyReferences(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCheckAttachmentSizeLimit_NoFiles(t *testing.T) {
-	if err := checkAttachmentSizeLimit(nil, 0); err != nil {
+	if err := checkAttachmentSizeLimit(nil, nil, 0); err != nil { //nolint:staticcheck // fio nil ok: no files
 		t.Fatalf("unexpected error for empty: %v", err)
 	}
 }
 
 func TestCheckAttachmentSizeLimit_CountExceeded(t *testing.T) {
-	err := checkAttachmentSizeLimit(nil, 0, MaxAttachmentCount+1)
+	err := checkAttachmentSizeLimit(nil, nil, 0, MaxAttachmentCount+1)
 	if err == nil {
 		t.Fatal("expected error for count exceeded")
 	}
@@ -585,7 +586,7 @@ func TestCheckAttachmentSizeLimit_CountExceeded(t *testing.T) {
 
 func TestCheckAttachmentSizeLimit_SizeExceeded(t *testing.T) {
 	// extraBytes alone exceeds the limit
-	err := checkAttachmentSizeLimit(nil, MaxAttachmentBytes+1)
+	err := checkAttachmentSizeLimit(nil, nil, MaxAttachmentBytes+1)
 	if err == nil {
 		t.Fatal("expected error for size exceeded")
 	}
@@ -608,7 +609,8 @@ func TestCheckAttachmentSizeLimit_WithFiles(t *testing.T) {
 	}
 	defer os.Chdir(oldWd)
 
-	err := checkAttachmentSizeLimit([]string{"./small.txt"}, 0)
+	fio := &localfileio.LocalFileIO{}
+	err := checkAttachmentSizeLimit(fio, []string{"./small.txt"}, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

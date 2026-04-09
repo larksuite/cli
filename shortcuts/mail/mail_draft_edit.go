@@ -11,8 +11,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
@@ -94,7 +92,8 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("parse draft raw EML failed: %v", err)
 		}
-		if err := draftpkg.Apply(snapshot, patch); err != nil {
+		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
+		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
 			return output.ErrValidation("apply draft patch failed: %v", err)
 		}
 		serialized, err := draftpkg.Serialize(snapshot)
@@ -217,7 +216,7 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 
 	patchFile := strings.TrimSpace(runtime.Str("patch-file"))
 	if patchFile != "" {
-		filePatch, err := loadPatchFile(patchFile)
+		filePatch, err := loadPatchFile(runtime, patchFile)
 		if err != nil {
 			return patch, err
 		}
@@ -265,13 +264,14 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 	return patch, patch.Validate()
 }
 
-func loadPatchFile(path string) (draftpkg.Patch, error) {
+func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch, error) {
 	var patch draftpkg.Patch
-	safePath, err := validate.SafeInputPath(path)
+	f, err := runtime.FileIO().Open(path)
 	if err != nil {
 		return patch, fmt.Errorf("--patch-file %q: %w", path, err)
 	}
-	data, err := vfs.ReadFile(safePath)
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return patch, err
 	}

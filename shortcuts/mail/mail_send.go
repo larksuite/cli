@@ -62,7 +62,7 @@ var MailSend = common.Shortcut{
 		if err := validateComposeHasAtLeastOneRecipient(runtime.Str("to"), runtime.Str("cc"), runtime.Str("bcc")); err != nil {
 			return err
 		}
-		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
+		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		to := runtime.Str("to")
@@ -77,7 +77,7 @@ var MailSend = common.Shortcut{
 
 		senderEmail := resolveComposeSenderEmail(runtime)
 
-		bld := emlbuilder.New().
+		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(subject).
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
@@ -119,7 +119,7 @@ var MailSend = common.Shortcut{
 			bld = bld.TextBody([]byte(body))
 		}
 		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
+		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
 			return err
 		}
 

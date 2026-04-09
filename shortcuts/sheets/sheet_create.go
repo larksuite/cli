@@ -41,9 +41,13 @@ var SheetCreate = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().
+		d := common.NewDryRunAPI().
 			POST("/open-apis/sheets/v3/spreadsheets").
 			Body(map[string]interface{}{"title": runtime.Str("title")})
+		if runtime.IsBot() {
+			d.Desc("After spreadsheet creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new spreadsheet.")
+		}
+		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		title := runtime.Str("title")
@@ -101,11 +105,16 @@ var SheetCreate = common.Shortcut{
 			}
 		}
 
-		runtime.Out(map[string]interface{}{
+		out := map[string]interface{}{
 			"spreadsheet_token": token,
 			"title":             title,
 			"url":               spreadsheet["url"],
-		}, nil)
+		}
+		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, token, "sheet"); grant != nil {
+			out["permission_grant"] = grant
+		}
+
+		runtime.Out(out, nil)
 		return nil
 	},
 }

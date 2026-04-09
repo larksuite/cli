@@ -5,6 +5,7 @@ package draft
 
 import (
 	"fmt"
+	"io"
 	"mime"
 	"path/filepath"
 	"regexp"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
@@ -39,26 +39,26 @@ var bodyChangingOps = map[string]bool{
 	"append_body":    true,
 }
 
-func Apply(snapshot *DraftSnapshot, patch Patch) error {
+func Apply(dctx *DraftCtx, snapshot *DraftSnapshot, patch Patch) error {
 	if err := patch.Validate(); err != nil {
 		return err
 	}
 	hasBodyChange := false
 	for _, op := range patch.Ops {
-		if err := applyOp(snapshot, op, patch.Options); err != nil {
+		if err := applyOp(dctx, snapshot, op, patch.Options); err != nil {
 			return err
 		}
 		if bodyChangingOps[op.Op] {
 			hasBodyChange = true
 		}
 	}
-	if err := postProcessInlineImages(snapshot, hasBodyChange); err != nil {
+	if err := postProcessInlineImages(dctx, snapshot, hasBodyChange); err != nil {
 		return err
 	}
 	return refreshSnapshot(snapshot)
 }
 
-func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
+func applyOp(dctx *DraftCtx, snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 	switch op.Op {
 	case "set_subject":
 		if strings.ContainsAny(op.Value, "\r\n") {
@@ -100,7 +100,7 @@ func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 		}
 		removeHeader(&snapshot.Headers, op.Name)
 	case "add_attachment":
-		return addAttachment(snapshot, op.Path)
+		return addAttachment(dctx, snapshot, op.Path)
 	case "remove_attachment":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
@@ -108,13 +108,13 @@ func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 		}
 		return removeAttachment(snapshot, partID)
 	case "add_inline":
-		return addInline(snapshot, op.Path, op.CID, op.FileName, op.ContentType)
+		return addInline(dctx, snapshot, op.Path, op.CID, op.FileName, op.ContentType)
 	case "replace_inline":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
 			return fmt.Errorf("replace_inline: %w", err)
 		}
-		return replaceInline(snapshot, partID, op.Path, op.CID, op.FileName, op.ContentType)
+		return replaceInline(dctx, snapshot, partID, op.Path, op.CID, op.FileName, op.ContentType)
 	case "remove_inline":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
@@ -478,22 +478,23 @@ func newMultipartContainer(mediaType string) *Part {
 	}
 }
 
-func addAttachment(snapshot *DraftSnapshot, path string) error {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return fmt.Errorf("attachment %q: %w", path, err)
-	}
+func addAttachment(dctx *DraftCtx, snapshot *DraftSnapshot, path string) error {
 	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
 		return err
 	}
-	info, err := vfs.Stat(safePath)
+	info, err := dctx.FIO.Stat(path)
 	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := dctx.FIO.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -543,19 +544,20 @@ func addAttachment(snapshot *DraftSnapshot, path string) error {
 // creates a MIME inline part, and attaches it to the snapshot's
 // multipart/related container. If container is non-nil it is reused;
 // otherwise the container is resolved from the snapshot.
-func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, container *Part) (*Part, error) {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return nil, fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
+func loadAndAttachInline(dctx *DraftCtx, snapshot *DraftSnapshot, path, cid, fileName string, container *Part) (*Part, error) {
+	info, err := dctx.FIO.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return nil, err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := dctx.FIO.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("inline image %q: %w", path, err)
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
@@ -567,7 +569,7 @@ func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, co
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
-	inline, err := newInlinePart(safePath, content, cid, name, detectedCT)
+	inline, err := newInlinePart(path, content, cid, name, detectedCT)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
@@ -586,12 +588,12 @@ func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, co
 	return container, nil
 }
 
-func addInline(snapshot *DraftSnapshot, path, cid, fileName, contentType string) error {
-	_, err := loadAndAttachInline(snapshot, path, cid, fileName, nil)
+func addInline(dctx *DraftCtx, snapshot *DraftSnapshot, path, cid, fileName, contentType string) error {
+	_, err := loadAndAttachInline(dctx, snapshot, path, cid, fileName, nil)
 	return err
 }
 
-func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, contentType string) error {
+func replaceInline(dctx *DraftCtx, snapshot *DraftSnapshot, partID, path, cid, fileName, contentType string) error {
 	part := findPart(snapshot.Body, partID)
 	if part == nil {
 		return fmt.Errorf("inline part %q not found", partID)
@@ -599,18 +601,19 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	if !isInlinePart(part) {
 		return fmt.Errorf("part %q is not an inline MIME part", partID)
 	}
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
+	info, err := dctx.FIO.Stat(path)
 	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), part); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := dctx.FIO.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -990,7 +993,7 @@ func ResolveLocalImagePaths(html string) (string, []LocalImageRef, error) {
 // resolveLocalImgSrc scans HTML for <img src="local/path"> references,
 // creates MIME inline parts for each local file, and returns the HTML
 // with those src attributes replaced by cid: URIs.
-func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
+func resolveLocalImgSrc(dctx *DraftCtx, snapshot *DraftSnapshot, html string) (string, error) {
 	resolved, refs, err := ResolveLocalImagePaths(html)
 	if err != nil {
 		return "", err
@@ -999,7 +1002,7 @@ func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
 	var container *Part
 	for _, ref := range refs {
 		fileName := filepath.Base(ref.FilePath)
-		container, err = loadAndAttachInline(snapshot, ref.FilePath, ref.CID, fileName, container)
+		container, err = loadAndAttachInline(dctx, snapshot, ref.FilePath, ref.CID, fileName, container)
 		if err != nil {
 			return "", err
 		}
@@ -1092,7 +1095,7 @@ func FindOrphanedCIDs(html string, addedCIDs []string) []string {
 // NOTE: The EML builder path has an equivalent function processInlineImagesForEML
 // in shortcuts/mail/helpers.go. When adding new validation or processing logic here,
 // update processInlineImagesForEML as well (or extract a shared function).
-func postProcessInlineImages(snapshot *DraftSnapshot, resolveLocal bool) error {
+func postProcessInlineImages(dctx *DraftCtx, snapshot *DraftSnapshot, resolveLocal bool) error {
 	htmlPart := findPrimaryBodyPart(snapshot.Body, "text/html")
 	if htmlPart == nil {
 		return nil
@@ -1102,7 +1105,7 @@ func postProcessInlineImages(snapshot *DraftSnapshot, resolveLocal bool) error {
 	html := origHTML
 	if resolveLocal {
 		var err error
-		html, err = resolveLocalImgSrc(snapshot, origHTML)
+		html, err = resolveLocalImgSrc(dctx, snapshot, origHTML)
 		if err != nil {
 			return err
 		}

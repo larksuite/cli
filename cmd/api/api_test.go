@@ -199,6 +199,22 @@ func TestApiCmd_PageLimitDefault(t *testing.T) {
 	}
 }
 
+func TestApiCmd_ParamsAndDataBothStdinConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--params", "-", "--data", "-"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when both --params and --data use stdin")
+	}
+	if !strings.Contains(err.Error(), "cannot both read from stdin") {
+		t.Errorf("expected stdin conflict error, got: %v", err)
+	}
+}
+
 func TestApiCmd_OutputAndPageAllConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,

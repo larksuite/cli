@@ -12,7 +12,7 @@ metadata:
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 > **执行前必做：** 执行任何 `base` 命令前，必须先阅读对应命令的 reference 文档，再调用命令。
-> **命名约定：** 仅使用 `lark-cli base +...` 形式的命令。
+> **命名约定：** Base 业务命令仅使用 `lark-cli base +...` 形式；如需先解析 Wiki 链接，可先调用 `lark-cli wiki ...`。
 
 ## 1. 何时使用本 Skill
 
@@ -37,9 +37,10 @@ metadata:
 ### 1.2 前置约束
 
 1. 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
-2. 仅使用 `lark-cli base +...` 形式的 shortcut 命令。
+2. Base 业务命令仅使用 `lark-cli base +...` 形式的 shortcut 命令；如果输入是 Wiki 链接，可先调用 `lark-cli wiki spaces get_node` 解析真实 token。
 3. 定位到命令后，先读该命令对应的 reference，再执行命令。
-4. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
+4. 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
+5. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
 
 ## 2. 模块与命令导航
 
