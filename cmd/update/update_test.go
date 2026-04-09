@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -538,24 +537,127 @@ func TestReleaseURL(t *testing.T) {
 }
 
 func TestPermissionHint(t *testing.T) {
+	origOS := currentOS
+	defer func() { currentOS = origOS }()
+
+	// Linux: EACCES should produce a hint with npm prefix guidance.
+	currentOS = "linux"
 	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'")
-	if runtime.GOOS == "windows" {
-		// On Windows, EACCES hint is suppressed.
-		if hint != "" {
-			t.Errorf("expected empty hint on Windows, got: %s", hint)
-		}
-	} else {
-		if !strings.Contains(hint, "npm global prefix") {
-			t.Errorf("expected neutral npm prefix hint, got: %s", hint)
-		}
-		if strings.Contains(hint, "sudo npm install -g") {
-			t.Errorf("hint should not suggest raw sudo npm install, got: %s", hint)
-		}
+	if !strings.Contains(hint, "npm global prefix") {
+		t.Errorf("expected npm prefix hint on linux, got: %s", hint)
+	}
+	if strings.Contains(hint, "sudo npm install -g") {
+		t.Errorf("should not suggest raw sudo npm install, got: %s", hint)
 	}
 
-	empty := permissionHint("some other error")
-	if empty != "" {
-		t.Errorf("expected empty hint for non-EACCES error, got: %s", empty)
+	// Windows: EACCES hint is suppressed (no EACCES on Windows).
+	currentOS = "windows"
+	hint = permissionHint("EACCES: permission denied")
+	if hint != "" {
+		t.Errorf("expected empty hint on Windows, got: %s", hint)
+	}
+
+	// Non-EACCES error: always empty.
+	currentOS = "linux"
+	if got := permissionHint("some other error"); got != "" {
+		t.Errorf("expected empty hint for non-EACCES, got: %s", got)
+	}
+}
+
+func TestUpdateWindows_BinaryLocked_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	// npm install detected
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) {
+		return installNpm, `C:\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`
+	}
+	defer func() { detectMethod = origDetect }()
+	// Simulate Windows
+	origOS := currentOS
+	currentOS = "windows"
+	defer func() { currentOS = origOS }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// On Windows, npm install should NOT be attempted — binary is locked.
+	if !strings.Contains(out, `"action": "manual_required"`) {
+		t.Errorf("expected manual_required on Windows, got: %s", out)
+	}
+	if !strings.Contains(out, "cannot be replaced") {
+		t.Errorf("expected Windows-specific reason, got: %s", out)
+	}
+}
+
+func TestUpdateWindows_BinaryLocked_Human(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) {
+		return installNpm, `C:\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`
+	}
+	defer func() { detectMethod = origDetect }()
+	origOS := currentOS
+	currentOS = "windows"
+	defer func() { currentOS = origOS }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	// Should guide user to run in a new terminal
+	if !strings.Contains(out, "new terminal") {
+		t.Errorf("expected 'new terminal' guidance on Windows, got: %s", out)
+	}
+	if !strings.Contains(out, "npm install -g") {
+		t.Errorf("expected npm install command in output, got: %s", out)
+	}
+}
+
+func TestUpdateWindows_Symbols(t *testing.T) {
+	origOS := currentOS
+	defer func() { currentOS = origOS }()
+
+	currentOS = "windows"
+	if symOK() != "[OK]" {
+		t.Errorf("expected [OK] on Windows, got: %s", symOK())
+	}
+	if symFail() != "[FAIL]" {
+		t.Errorf("expected [FAIL] on Windows, got: %s", symFail())
+	}
+	if symWarn() != "[WARN]" {
+		t.Errorf("expected [WARN] on Windows, got: %s", symWarn())
+	}
+	if symArrow() != "->" {
+		t.Errorf("expected -> on Windows, got: %s", symArrow())
+	}
+
+	currentOS = "darwin"
+	if symOK() != "✓" {
+		t.Errorf("expected ✓ on darwin, got: %s", symOK())
+	}
+	if symArrow() != "→" {
+		t.Errorf("expected → on darwin, got: %s", symArrow())
 	}
 }
 

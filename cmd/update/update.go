@@ -51,6 +51,7 @@ var (
 	runNpmInstall   = runNpmInstallReal
 	runSkillsUpdate = runSkillsUpdateReal
 	lookPath        = exec.LookPath
+	currentOS       = runtime.GOOS
 )
 
 // UpdateOptions holds inputs for the update command.
@@ -152,7 +153,7 @@ func updateRun(opts *UpdateOptions) error {
 	// On Windows, the running .exe is locked by the OS and cannot be
 	// overwritten by npm's postinstall script (EBUSY). Instruct the user
 	// to run the update command in a separate terminal instead.
-	windowsLocked := method == installNpm && runtime.GOOS == "windows"
+	windowsLocked := method == installNpm && currentOS == "windows"
 	canAutoUpdate := method == installNpm && npmAvailable && !windowsLocked
 
 	// 5. --check: report availability without installing
@@ -257,7 +258,7 @@ func truncate(s string, maxLen int) string {
 
 // manualReason returns a human-readable explanation of why auto-update is unavailable.
 func manualReason(method installMethod, npmAvailable bool) string {
-	if method == installNpm && runtime.GOOS == "windows" {
+	if method == installNpm && currentOS == "windows" {
 		return "on Windows the running binary cannot be replaced in-place"
 	}
 	if method == installNpm && !npmAvailable {
@@ -282,7 +283,7 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMetho
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, resolvedPath)
-	if method == installNpm && runtime.GOOS == "windows" {
+	if method == installNpm && currentOS == "windows" {
 		// Windows: binary is locked, guide user to run in a new terminal.
 		fmt.Fprintf(io.ErrOut, "Run the following in a new terminal:\n")
 		fmt.Fprintf(io.ErrOut, "  npm install -g %s@%s && npx skills add larksuite/cli -g -y\n", npmPackage, latest)
@@ -389,28 +390,28 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 // Use ASCII fallbacks on Windows to avoid mojibake in legacy CMD/PowerShell 5.
 
 func symOK() string {
-	if runtime.GOOS == "windows" {
+	if currentOS == "windows" {
 		return "[OK]"
 	}
 	return "✓"
 }
 
 func symFail() string {
-	if runtime.GOOS == "windows" {
+	if currentOS == "windows" {
 		return "[FAIL]"
 	}
 	return "✗"
 }
 
 func symWarn() string {
-	if runtime.GOOS == "windows" {
+	if currentOS == "windows" {
 		return "[WARN]"
 	}
 	return "⚠"
 }
 
 func symArrow() string {
-	if runtime.GOOS == "windows" {
+	if currentOS == "windows" {
 		return "->"
 	}
 	return "→"
@@ -418,7 +419,7 @@ func symArrow() string {
 
 // permissionHint returns a neutral permission hint when EACCES is detected.
 func permissionHint(npmOutput string) string {
-	if strings.Contains(npmOutput, "EACCES") && runtime.GOOS != "windows" {
+	if strings.Contains(npmOutput, "EACCES") && currentOS != "windows" {
 		return "Permission denied. Try: sudo lark-cli update, or adjust your npm global prefix: https://docs.npmjs.com/resolving-eacces-permissions-errors"
 	}
 	return ""
