@@ -23,7 +23,7 @@ import (
 type installMethod int
 
 const (
-	installNpm    installMethod = iota
+	installNpm installMethod = iota
 	installManual
 )
 
