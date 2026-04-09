@@ -517,6 +517,10 @@ func TestUpdateNpmNotFound_FallsBackToManual(t *testing.T) {
 	if !strings.Contains(out, `"action": "manual_required"`) {
 		t.Errorf("expected manual_required when npm not found, got: %s", out)
 	}
+	// Must say "npm is not available", not generic "not installed via npm"
+	if !strings.Contains(out, "npm is not available") {
+		t.Errorf("expected 'npm is not available' reason when npm detected but missing, got: %s", out)
+	}
 }
 
 func TestReleaseURL(t *testing.T) {
