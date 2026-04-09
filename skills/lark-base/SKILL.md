@@ -96,11 +96,11 @@ metadata:
 
 #### 2.3.3 Record 子模块
 
-子模块索引：[`references/lark-base-record.md`](references/lark-base-record.md)
+子模块索引：[`references/lark-base-record.md`](references/lark-base-record.md)、[`references/lark-base-history.md`](references/lark-base-history.md)
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+record-list / +record-get` | 读取记录明细、样例、分页导出，或获取单条记录详情 | [`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | `+record-list` 不用于聚合分析；`--limit` 最大 `200`；仅在用户明确需要时继续翻页；只能串行执行；`+record-get` 适合目标记录已明确时使用 |
+| `+record-list / +record-get` | 读取记录明细、样例、分页导出，或获取单条记录详情 | [`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | `+record-list` 不用于聚合分析；如果要统计而不是列出原始记录，请使用 `+data-query`；`--limit` 最大 `200`；仅在用户明确需要时继续翻页；只能串行执行；`+record-get` 适合目标记录已明确时使用 |
 | `+record-upsert` | 创建或更新记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；附件不要走这里 |
 | `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` 伪造附件值 |
 | `+record-delete / +record-history-list` | 删除记录，或查询某条记录的变更历史 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md)、[`lark-base-record-history-list.md`](references/lark-base-record-history-list.md) | 删除时用户已明确目标可直接执行并带 `--yes`；历史查询按 `table-id + record-id`，不支持整表扫描；`+record-history-list` 只能串行执行 |
@@ -137,9 +137,15 @@ metadata:
 
 用于一次性分析和临时聚合查询。用户要的是“这次算出来的结果”，而不是把结果沉淀成字段时，优先进入本模块。
 
+进入本模块前先确认几件事：
+
+- `+data-query` 只做聚合查询（分组、过滤、排序、聚合计算），不用于列出原始记录或逐条明细。
+- 调用者必须是目标多维表格的管理员，拥有目标多维表格的 FA（Full Access / 完全访问权限），否则会返回权限错误。
+- `+data-query` 只支持白名单字段类型；`formula`、`lookup`、附件、系统字段、关联等字段不能用于 `dimensions / measures / filters / sort`。
+
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+data-query` | 做分组统计、SUM / AVG / COUNT / MAX / MIN、条件筛选后的聚合分析 | [`lark-base-data-query.md`](references/lark-base-data-query.md) | 字段名必须精确匹配真实字段名；不要用 `+record-list` 拉全量再手算；`+data-query` 不返回原始记录 |
+| `+data-query` | 做分组统计、SUM / AVG / COUNT / MAX / MIN、条件筛选后的聚合分析 | [`lark-base-data-query.md`](references/lark-base-data-query.md) | 字段名必须精确匹配真实字段名；不要用 `+record-list` 拉全量再手算；`+data-query` 不返回原始记录；使用前先确认权限和字段类型是否受支持 |
 
 ### 2.6 Workflow 模块
 
@@ -166,6 +172,7 @@ metadata:
 ### 2.8 表单模块
 
 用于管理表单本体和表单题目。  
+模块索引：[`references/lark-base-form.md`](references/lark-base-form.md)、[`references/lark-base-form-questions.md`](references/lark-base-form-questions.md)  
 表单问题相关操作依赖 `form-id`；具体获取方式见 `form-list` 和 `form-create` 的 reference。
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
@@ -197,8 +204,8 @@ metadata:
 | 存储字段 | 真实存用户输入的数据 | 可以 | 常见如文本、数字、日期、单选、多选、人员、关联 |
 | 附件字段 | 存储文件附件 | 不能直接按普通字段写 | 上传附件必须走 `+record-upload-attachment` |
 | 系统字段 | 平台自动维护 | 不可以 | 常见如创建时间、更新时间、创建人、修改人、自动编号 |
-| `formula` 字段 | 通过表达式计算 | 不可以 | 只读输出字段 |
-| `lookup` 字段 | 通过跨表规则查找引用 | 不可以 | 只读输出字段 |
+| `formula` 字段 | 通过表达式计算 | 不可以 | 只读字段 |
+| `lookup` 字段 | 通过跨表规则查找引用 | 不可以 | 只读字段 |
 
 ### 3.2 任务选路心智模型
 
@@ -258,19 +265,18 @@ metadata:
 
 ### 4.2 不可违反规则
 
-1. 仅使用 `lark-cli base +...` shortcut 命令，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`。
-2. 先拿结构，再写命令；至少先拿当前表结构，跨表时还要拿目标表结构。
-3. 不要猜表名、字段名、表达式引用，一律以真实返回为准。
-4. 写记录前先读字段结构；先 `+field-list`，再按字段类型构造写入值。
-5. 写字段前先看字段属性规范；先读 `lark-base-shortcut-field-properties.md`，再构造 `+field-create / +field-update` 的 JSON。
-6. 只写可写字段；系统字段、`formula`、`lookup` 默认只读。
-7. 聚合分析与取数分流；统计走 `+data-query`，明细走 `+record-list / +record-get`。
-8. 筛选查询按视图能力执行；先用 `+view-set-filter` 配置筛选，再结合 `+record-list` 读取。
-9. Base 场景不要改走裸 API，不要切去 `lark-cli api /open-apis/bitable/v1/...`。
-10. 统一使用 `--base-token`，不使用旧 `--app-token`。
-11. workflow 场景先读 schema，不要凭自然语言猜 `type`。
-12. dashboard 场景先读 guide；提到图表、看板、block 就先进入 dashboard 模块。
-13. formula / lookup 场景先读 guide；没读 guide 前不要直接创建或更新。
+1. 先拿结构，再写命令；至少先拿当前表结构，跨表时还要拿目标表结构。
+2. 不要猜表名、字段名、表达式引用，一律以真实返回为准。
+3. 写记录前先读字段结构；先 `+field-list`，再按字段类型构造写入值。
+4. 写字段前先看字段属性规范；先读 `lark-base-shortcut-field-properties.md`，再构造 `+field-create / +field-update` 的 JSON。
+5. 只写可写字段；系统字段、`formula`、`lookup` 默认只读。
+6. 聚合分析与取数分流；统计走 `+data-query`，明细走 `+record-list / +record-get`。
+7. 筛选查询按视图能力执行；先用 `+view-set-filter` 配置筛选，再结合 `+record-list` 读取。
+8. Base 场景不要改走裸 API，不要切去 `lark-cli api /open-apis/bitable/v1/...`。
+9. 统一使用 `--base-token`，不使用旧 `--app-token`。
+10. workflow 场景先读 schema，不要凭自然语言猜 `type`。
+11. dashboard 场景先读 guide；提到图表、看板、block 就先进入 dashboard 模块。
+12. formula / lookup 场景先读 guide；没读 guide 前不要直接创建或更新。
 
 ### 4.3 并发、分页与批量限制
 
