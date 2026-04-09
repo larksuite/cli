@@ -30,11 +30,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 			return common.FlagErrorf("--workflow-id must not be blank")
 		}
 		pc := newParseCtx(runtime)
-		raw, err := loadJSONInput(pc, runtime.Str("json"), "json")
-		if err != nil {
-			return err
-		}
-		if _, err := parseJSONObject(pc, raw, "json"); err != nil {
+		if _, err := parseJSONObject(pc, runtime.Str("json"), "json"); err != nil {
 			return err
 		}
 		return nil
@@ -42,9 +38,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		pc := newParseCtx(runtime)
 		var body map[string]interface{}
-		if raw, err := loadJSONInput(pc, runtime.Str("json"), "json"); err == nil {
-			body, _ = parseJSONObject(pc, raw, "json")
-		}
+		body, _ = parseJSONObject(pc, runtime.Str("json"), "json")
 		return common.NewDryRunAPI().
 			PUT("/open-apis/base/v3/bases/:base_token/workflows/:workflow_id").
 			Body(body).
@@ -53,11 +47,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)
-		raw, err := loadJSONInput(pc, runtime.Str("json"), "json")
-		if err != nil {
-			return err
-		}
-		body, err := parseJSONObject(pc, raw, "json")
+		body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 		if err != nil {
 			return err
 		}

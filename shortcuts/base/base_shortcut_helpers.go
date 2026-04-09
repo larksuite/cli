@@ -5,6 +5,7 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -40,7 +41,11 @@ func loadJSONInput(pc *parseCtx, raw string, flagName string) (string, error) {
 	}
 	f, err := pc.fio.Open(path)
 	if err != nil {
-		return "", common.FlagErrorf("--%s invalid JSON file path %q: %v", flagName, path, err)
+		var pathErr *fileio.PathValidationError
+		if errors.As(err, &pathErr) {
+			return "", common.FlagErrorf("--%s invalid JSON file path %q: %v", flagName, path, pathErr.Err)
+		}
+		return "", common.FlagErrorf("--%s cannot open JSON file %q: %v", flagName, path, err)
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)

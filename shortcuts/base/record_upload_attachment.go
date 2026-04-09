@@ -95,7 +95,7 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 		if errors.Is(err, fileio.ErrPathValidation) {
 			return output.ErrValidation("unsafe file path: %s", err)
 		}
-		return output.ErrValidation("file not found: %s", filePath)
+		return output.ErrValidation("file not accessible: %s: %v", filePath, err)
 	}
 	if fileInfo.Size() > baseAttachmentUploadMaxFileSize {
 		return output.ErrValidation("file %.1fMB exceeds 20MB limit", float64(fileInfo.Size())/1024/1024)
