@@ -6,7 +6,6 @@ package upgrade
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,7 +123,7 @@ func upgradeRun(opts *UpgradeOptions) error {
 		return nil
 	}
 
-	// 4. Detect installation method and upgrade (placeholder for Task 2)
+	// 4. Detect installation method and upgrade
 	return doUpgrade(opts, cur, latest)
 }
 
@@ -167,17 +166,6 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[len(s)-maxLen:]
-}
-
-// teeWriter writes to both an io.Writer and a bytes.Buffer simultaneously.
-type teeWriter struct {
-	w   io.Writer
-	buf *bytes.Buffer
-}
-
-func (tw *teeWriter) Write(p []byte) (int, error) {
-	tw.buf.Write(p)
-	return tw.w.Write(p)
 }
 
 // doUpgrade detects installation method and dispatches to the appropriate upgrade path.
@@ -267,7 +255,7 @@ func doNpmUpgradeHuman(opts *UpgradeOptions, cur, latest string) error {
 		if hint := suggestSudo(combined); hint != "" {
 			fmt.Fprintf(ios.ErrOut, "  %s\n", hint)
 		}
-		return output.Errorf(output.ExitInternal, "upgrade_error", "npm install failed: %s", err)
+		return output.ErrBare(1)
 	}
 
 	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully upgraded lark-cli from %s to %s\n", cur, latest)
