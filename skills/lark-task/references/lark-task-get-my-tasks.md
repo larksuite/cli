@@ -30,6 +30,9 @@ lark-cli task +get-my-tasks --page-all
 
 # Fetch up to 10 pages
 lark-cli task +get-my-tasks --page-limit 10
+
+# Resume from a known page token
+lark-cli task +get-my-tasks --page-token "pt_xxx"
 ```
 
 ## Parameters
@@ -43,6 +46,7 @@ lark-cli task +get-my-tasks --page-limit 10
 | `--due-end <string>` | No | Query tasks with a due date before this time. Supports date: `YYYY-MM-DD`, relative: `-2d`, or ms timestamp. |
 | `--page-all` | No | Automatically paginate through all pages (max 40). |
 | `--page-limit <int>` | No | Max page limit (default 20). |
+| `--page-token <string>` | No | Start from the specified page token (useful for resuming a previous query). |
 
 ## Workflow
 

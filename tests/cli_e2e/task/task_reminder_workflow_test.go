@@ -14,6 +14,15 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Workflow Coverage:
+//
+//	| t.Run | Command |
+//	| --- | --- |
+//	| `Setup` | `task +create` |
+//	| `set reminder` | `task +reminder` |
+//	| `get task with reminder` | `task tasks get` |
+//	| `remove reminder` | `task +reminder` |
+//	| `get task without reminder` | `task tasks get` |
 func TestTask_ReminderWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

@@ -34,3 +34,4 @@ tests/mail/reports/
 # Generated / test artifacts
 internal/registry/meta_data.json
 cmd/api/download.bin
+app.log

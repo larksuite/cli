@@ -11,8 +11,10 @@
 package vc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,11 +24,11 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -262,23 +264,14 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		base = outDir
 	}
 	dirName := filepath.Join(base, sanitizeDirName(title, minuteToken))
+	transcriptPath := filepath.Join(dirName, "transcript.txt")
+
+	// Overwrite check via FileIO.Stat
 	if !runtime.Bool("overwrite") {
-		transcriptPath := filepath.Join(dirName, "transcript.txt")
-		if _, statErr := vfs.Stat(transcriptPath); statErr == nil {
+		if _, statErr := runtime.FileIO().Stat(transcriptPath); statErr == nil {
 			fmt.Fprintf(errOut, "%s transcript already exists: %s (use --overwrite to replace)\n", logPrefix, transcriptPath)
 			return transcriptPath
 		}
-	}
-
-	transcriptPath := filepath.Join(dirName, "transcript.txt")
-	safePath, err := validate.SafeOutputPath(transcriptPath)
-	if err != nil {
-		fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
-		return ""
-	}
-	if err := vfs.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
-		fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
-		return ""
 	}
 
 	fmt.Fprintf(errOut, "%s downloading transcript: %s\n", logPrefix, transcriptPath)
@@ -303,8 +296,16 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		fmt.Fprintf(errOut, "%s transcript is empty (not available for this minute)\n", logPrefix)
 		return ""
 	}
-	if err := validate.AtomicWrite(safePath, apiResp.RawBody, 0644); err != nil {
-		fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
+	if _, err := runtime.FileIO().Save(transcriptPath, fileio.SaveOptions{}, bytes.NewReader(apiResp.RawBody)); err != nil {
+		var me *fileio.MkdirError
+		switch {
+		case errors.Is(err, fileio.ErrPathValidation):
+			fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
+		case errors.As(err, &me):
+			fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
+		default:
+			fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
+		}
 		return ""
 	}
 	return transcriptPath
