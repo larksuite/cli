@@ -3,7 +3,12 @@
 
 package cmdutil
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/internal/vfs"
+)
 
 func TestParseOptionalBody(t *testing.T) {
 	tests := []struct {
@@ -23,7 +28,7 @@ func TestParseOptionalBody(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseOptionalBody(tt.method, tt.data)
+			got, err := ParseOptionalBody(tt.method, tt.data, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseOptionalBody() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -53,7 +58,7 @@ func TestParseJSONMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseJSONMap(tt.input, tt.label)
+			got, err := ParseJSONMap(tt.input, tt.label, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseJSONMap() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -62,5 +67,55 @@ func TestParseJSONMap(t *testing.T) {
 				t.Errorf("ParseJSONMap() returned map with %d keys, want %d", len(got), tt.wantLen)
 			}
 		})
+	}
+}
+
+func TestParseJSONMap_FromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	TestChdir(t, tmpDir)
+	if err := vfs.WriteFile("params.json", []byte(`{"a":"1","b":"2"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := ParseJSONMap("@params.json", "--params", nil)
+	if err != nil {
+		t.Fatalf("ParseJSONMap(@file) error = %v", err)
+	}
+	if len(got) != 2 || got["a"] != "1" || got["b"] != "2" {
+		t.Fatalf("ParseJSONMap(@file) = %#v, want parsed map", got)
+	}
+}
+
+func TestParseJSONMap_FromStdin(t *testing.T) {
+	got, err := ParseJSONMap("-", "--params", strings.NewReader(`{"a":"1"}`))
+	if err != nil {
+		t.Fatalf("ParseJSONMap(-) error = %v", err)
+	}
+	if got["a"] != "1" {
+		t.Fatalf("ParseJSONMap(-) = %#v, want a=1", got)
+	}
+}
+
+func TestParseOptionalBody_FromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	TestChdir(t, tmpDir)
+	if err := vfs.WriteFile("data.json", []byte(`{"id":"1"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := ParseOptionalBody("POST", "@data.json", nil)
+	if err != nil {
+		t.Fatalf("ParseOptionalBody(@file) error = %v", err)
+	}
+	body, ok := got.(map[string]any)
+	if !ok || body["id"] != "1" {
+		t.Fatalf("ParseOptionalBody(@file) = %#v, want parsed object", got)
+	}
+}
+
+func TestResolveStructuredInput_EmptyFilePath(t *testing.T) {
+	_, err := ResolveStructuredInput("@", "--params", nil)
+	if err == nil {
+		t.Fatal("expected error for empty @file path")
 	}
 }

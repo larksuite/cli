@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -308,7 +309,7 @@ func TestServiceMethod_InvalidParamsJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "--params invalid JSON format") {
+	if !strings.Contains(err.Error(), "--params invalid format, expected JSON object") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -328,6 +329,42 @@ func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--data invalid JSON format") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestServiceMethod_ParamsFromFile(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	tmpDir := t.TempDir()
+	cmdutil.TestChdir(t, tmpDir)
+	if err := vfs.WriteFile("params.json", []byte(`{"file_token":"boxcn123abc"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := vfs.WriteFile("data.json", []byte(`{"name":"test.txt"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("POST", nil), "copy", "files", nil)
+	cmd.SetArgs([]string{"--params", "@params.json", "--data", "@data.json", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "/open-apis/drive/v1/files/boxcn123abc/copy") || !strings.Contains(out, `"name": "test.txt"`) {
+		t.Fatalf("expected params/data from file in dry-run output, got:\n%s", out)
+	}
+}
+
+func TestServiceMethod_ParamsFromStdin(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	f.IOStreams.In = strings.NewReader(`{"file_token":"boxcn123abc"}`)
+
+	cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "copy", "files", nil)
+	cmd.SetArgs([]string{"--params", "-", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "/open-apis/drive/v1/files/boxcn123abc/copy") {
+		t.Fatalf("expected params from stdin in dry-run output, got:\n%s", stdout.String())
 	}
 }
 
