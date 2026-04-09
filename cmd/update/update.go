@@ -323,10 +323,9 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 		"changelog":        changelogURL(),
 	}
 	if skillsErr != nil {
-		detail := truncate(skillsStderr.String()+skillsStdout.String(), maxNpmOutput)
 		result["skills_warning"] = fmt.Sprintf("skills update failed: %s", skillsErr)
-		if detail != "" {
-			result["skills_detail"] = detail
+		if detail := strings.TrimSpace(skillsStderr.String()); detail != "" {
+			result["skills_detail"] = truncate(detail, maxNpmOutput)
 		}
 	}
 	output.PrintJson(io.Out, result)
