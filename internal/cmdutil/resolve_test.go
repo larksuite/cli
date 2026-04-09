@@ -169,7 +169,7 @@ func TestParseJSONMap_WindowsShellScenarios(t *testing.T) {
 	}{
 		{"bash: normal JSON", `{"a":"1","b":"2"}`, 2, false},
 		{"cmd.exe: single-quoted", `'{"a":"1","b":"2"}'`, 2, false}, // strip ' fix
-		{"PS 5.x: mangled", `{a:1,b:2}`, 0, true},                  // unrecoverable
+		{"PS 5.x: mangled", `{a:1,b:2}`, 0, true},                   // unrecoverable
 		{"PS 5.x: empty JSON OK", `{}`, 0, false},                   // no inner "
 		{"PS 7.3+: normal JSON", `{"a":"1"}`, 1, false},             // already fixed
 		{"PS escaped: correct", `{"a":"1"}`, 1, false},              // after CommandLineToArgvW
