@@ -93,7 +93,7 @@ lark-cli mail +triage --page-size 10
       "labels": "INBOX,UNREAD"
     }
   ],
-  "total": 20,
+  "count": 20,
   "has_more": true,
   "page_token": "list:FfccvoqPd_loLhtcRx8cx..."
 }

@@ -258,7 +258,7 @@ var MailTriage = common.Shortcut{
 		case "json", "data":
 			outData := map[string]interface{}{
 				"messages":   messages,
-				"total":      len(messages),
+				"count":      len(messages),
 				"has_more":   hasMore,
 				"page_token": nextPageToken,
 			}
