@@ -48,18 +48,15 @@ var (
 
 func isWindows() bool { return currentOS == osWindows }
 
-// releaseURL returns a version-pinned GitHub Releases URL.
 func releaseURL(version string) string {
 	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
 }
 
-// changelogURL returns the project CHANGELOG URL.
 func changelogURL() string {
 	return repoURL + "/blob/main/CHANGELOG.md"
 }
 
 // --- Terminal symbols ---
-// Use ASCII fallbacks on Windows to avoid mojibake in legacy CMD/PowerShell 5.
 
 func symOK() string {
 	if isWindows() {
@@ -130,36 +127,17 @@ func updateRun(opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
 	cur := currentVersion()
 
-	// Clean up stale .old files from previous Windows upgrades.
 	selfupdate.CleanupStaleFiles()
 
 	// 1. Fetch latest version
 	latest, err := fetchLatest()
 	if err != nil {
-		if opts.JSON {
-			output.PrintJson(io.Out, map[string]interface{}{
-				"ok": false,
-				"error": map[string]interface{}{
-					"type":    "network",
-					"message": fmt.Sprintf("failed to check latest version: %s", err),
-				},
-			})
-			return output.ErrBare(output.ExitNetwork)
-		}
-		return output.ErrNetwork("failed to check latest version: %s", err)
+		return reportError(opts, io, output.ExitNetwork, "network", "failed to check latest version: %s", err)
 	}
 
-	// 2. Validate version format (guard against tampered registry responses)
+	// 2. Validate version format
 	if update.ParseVersion(latest) == nil {
-		msg := fmt.Sprintf("invalid version from registry: %s", latest)
-		if opts.JSON {
-			output.PrintJson(io.Out, map[string]interface{}{
-				"ok":    false,
-				"error": map[string]interface{}{"type": "update_error", "message": msg},
-			})
-			return output.ErrBare(output.ExitInternal)
-		}
-		return output.Errorf(output.ExitInternal, "update_error", "%s", msg)
+		return reportError(opts, io, output.ExitInternal, "update_error", "invalid version from registry: %s", latest)
 	}
 
 	// 3. Compare versions
@@ -179,33 +157,41 @@ func updateRun(opts *UpdateOptions) error {
 		return nil
 	}
 
-	// 4. Detect installation method
+	// 4. Detect installation method and resolve npm path
 	method, resolvedPath := detectMethod()
-
-	npmAvailable := true
+	var npmPath string
 	if method == installNpm {
-		if _, err := lookPath("npm"); err != nil {
-			npmAvailable = false
-		}
+		npmPath, _ = lookPath("npm")
 	}
-	canAutoUpdate := method == installNpm && npmAvailable
+	canAutoUpdate := method == installNpm && npmPath != ""
 
-	// 5. --check: report availability without installing
+	// 5. --check
 	if opts.Check {
 		return reportCheckResult(opts, io, cur, latest, canAutoUpdate)
 	}
 
 	// 6. Execute update
 	if !canAutoUpdate {
-		return doManualUpdate(opts, cur, latest, resolvedPath)
+		reason := manualReason(method, npmPath != "")
+		return doManualUpdate(opts, io, cur, latest, resolvedPath, reason)
 	}
-	if opts.JSON {
-		return doNpmUpdateJSON(opts, cur, latest)
-	}
-	return doNpmUpdateHuman(opts, cur, latest)
+	return doNpmUpdate(opts, io, cur, latest, npmPath)
 }
 
-// --- Check result ---
+// --- Shared helpers ---
+
+// reportError handles JSON vs human error output to avoid repeating the pattern.
+func reportError(opts *UpdateOptions, io *cmdutil.IOStreams, exitCode int, errType, format string, args ...interface{}) error {
+	msg := fmt.Sprintf(format, args...)
+	if opts.JSON {
+		output.PrintJson(io.Out, map[string]interface{}{
+			"ok":    false,
+			"error": map[string]interface{}{"type": errType, "message": msg},
+		})
+		return output.ErrBare(exitCode)
+	}
+	return output.Errorf(exitCode, errType, "%s", msg)
+}
 
 func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, canAutoUpdate bool) error {
 	if opts.JSON {
@@ -294,9 +280,7 @@ func manualReason(method installMethod, npmAvailable bool) string {
 	return "not installed via npm"
 }
 
-func doManualUpdate(opts *UpdateOptions, cur, latest string, resolvedPath string) error {
-	io := opts.Factory.IOStreams
-	reason := manualReason(installManual, true)
+func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest, resolvedPath, reason string) error {
 	if opts.JSON {
 		output.PrintJson(io.Out, map[string]interface{}{
 			"ok":               true,
@@ -318,112 +302,85 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, resolvedPath string
 	return nil
 }
 
-func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
-	io := opts.Factory.IOStreams
-
+// doNpmUpdate runs the npm install + skills update, formatting output based on opts.JSON.
+func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest, npmPath string) error {
 	// On Windows, rename the running .exe out of the way so npm postinstall can write.
 	restore, err := selfupdate.PrepareSelfReplace()
 	if err != nil {
-		output.PrintJson(io.Out, map[string]interface{}{
-			"ok": false,
-			"error": map[string]interface{}{
-				"type":    "update_error",
-				"message": fmt.Sprintf("failed to prepare update: %s", err),
-			},
-		})
-		return output.ErrBare(output.ExitAPI)
+		return reportError(opts, io, output.ExitAPI, "update_error", "failed to prepare update: %s", err)
+	}
+
+	if !opts.JSON {
+		fmt.Fprintf(io.ErrOut, "Updating lark-cli %s %s %s via npm ...\n", cur, symArrow(), latest)
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
-
 	if err := runNpmInstall(latest, &stdoutBuf, &stderrBuf); err != nil {
-		restore() // put original binary back
+		restore()
 		combined := stdoutBuf.String() + stderrBuf.String()
-		output.PrintJson(io.Out, map[string]interface{}{
-			"ok": false,
-			"error": map[string]interface{}{
-				"type":    "update_error",
-				"message": fmt.Sprintf("npm install failed: %s", err),
-				"detail":  truncate(combined, maxNpmOutput),
-				"hint":    permissionHint(combined),
-			},
-		})
-		return output.ErrBare(output.ExitAPI)
+		if opts.JSON {
+			output.PrintJson(io.Out, map[string]interface{}{
+				"ok": false,
+				"error": map[string]interface{}{
+					"type":    "update_error",
+					"message": fmt.Sprintf("npm install failed: %s", err),
+					"detail":  truncate(combined, maxNpmOutput),
+					"hint":    permissionHint(combined),
+				},
+			})
+			return output.ErrBare(output.ExitAPI)
+		}
+		if stdoutBuf.Len() > 0 {
+			fmt.Fprint(io.ErrOut, stdoutBuf.String())
+		}
+		if stderrBuf.Len() > 0 {
+			fmt.Fprint(io.ErrOut, stderrBuf.String())
+		}
+		fmt.Fprintf(io.ErrOut, "\n%s Update failed: %s\n", symFail(), err)
+		if hint := permissionHint(combined); hint != "" {
+			fmt.Fprintf(io.ErrOut, "  %s\n", hint)
+		}
+		return output.ErrBare(1)
 	}
 
-	// Suppress stale update-available notice. Niling PendingNotice is safe:
-	// it's only read from this goroutine (inside PrintJson -> injectNotice).
 	output.PendingNotice = nil
 
-	// Update skills (best-effort).
+	// Skills update (best-effort).
 	var skillsStdout, skillsStderr bytes.Buffer
 	skillsErr := runSkillsUpdate(&skillsStdout, &skillsStderr)
 
-	result := map[string]interface{}{
-		"ok":               true,
-		"previous_version": cur,
-		"current_version":  latest,
-		"latest_version":   latest,
-		"action":           "updated",
-		"message":          fmt.Sprintf("lark-cli updated from %s to %s", cur, latest),
-		"url":              releaseURL(latest),
-		"changelog":        changelogURL(),
+	if opts.JSON {
+		result := map[string]interface{}{
+			"ok":               true,
+			"previous_version": cur,
+			"current_version":  latest,
+			"latest_version":   latest,
+			"action":           "updated",
+			"message":          fmt.Sprintf("lark-cli updated from %s to %s", cur, latest),
+			"url":              releaseURL(latest),
+			"changelog":        changelogURL(),
+		}
+		if skillsErr != nil {
+			result["skills_warning"] = fmt.Sprintf("skills update failed: %s", skillsErr)
+			if detail := strings.TrimSpace(skillsStderr.String()); detail != "" {
+				result["skills_detail"] = truncate(detail, maxNpmOutput)
+			}
+		}
+		output.PrintJson(io.Out, result)
+		return nil
 	}
+
+	fmt.Fprintf(io.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+	fmt.Fprintf(io.ErrOut, "\nUpdating skills ...\n")
 	if skillsErr != nil {
-		result["skills_warning"] = fmt.Sprintf("skills update failed: %s", skillsErr)
+		fmt.Fprintf(io.ErrOut, "%s Skills update failed: %s\n", symWarn(), skillsErr)
 		if detail := strings.TrimSpace(skillsStderr.String()); detail != "" {
-			result["skills_detail"] = truncate(detail, maxNpmOutput)
+			fmt.Fprintf(io.ErrOut, "  %s\n", truncate(detail, 500))
 		}
-	}
-	output.PrintJson(io.Out, result)
-	return nil
-}
-
-func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
-	ios := opts.Factory.IOStreams
-
-	// On Windows, rename the running .exe out of the way so npm postinstall can write.
-	restore, err := selfupdate.PrepareSelfReplace()
-	if err != nil {
-		fmt.Fprintf(ios.ErrOut, "%s Failed to prepare update: %s\n", symFail(), err)
-		return output.ErrBare(1)
-	}
-
-	fmt.Fprintf(ios.ErrOut, "Updating lark-cli %s %s %s via npm ...\n", cur, symArrow(), latest)
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-
-	if err := runNpmInstall(latest, &stdoutBuf, &stderrBuf); err != nil {
-		restore() // put original binary back
-		combined := stdoutBuf.String() + stderrBuf.String()
-		if stdoutBuf.Len() > 0 {
-			fmt.Fprint(ios.ErrOut, stdoutBuf.String())
-		}
-		if stderrBuf.Len() > 0 {
-			fmt.Fprint(ios.ErrOut, stderrBuf.String())
-		}
-		fmt.Fprintf(ios.ErrOut, "\n%s Update failed: %s\n", symFail(), err)
-		if hint := permissionHint(combined); hint != "" {
-			fmt.Fprintf(ios.ErrOut, "  %s\n", hint)
-		}
-		return output.ErrBare(1)
-	}
-
-	output.PendingNotice = nil
-	fmt.Fprintf(ios.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
-	fmt.Fprintf(ios.ErrOut, "  Changelog: %s\n", changelogURL())
-
-	// Update skills (best-effort).
-	fmt.Fprintf(ios.ErrOut, "\nUpdating skills ...\n")
-	var skillsStdout, skillsStderr bytes.Buffer
-	if err := runSkillsUpdate(&skillsStdout, &skillsStderr); err != nil {
-		fmt.Fprintf(ios.ErrOut, "%s Skills update failed: %s\n", symWarn(), err)
-		if detail := strings.TrimSpace(skillsStderr.String()); detail != "" {
-			fmt.Fprintf(ios.ErrOut, "  %s\n", truncate(detail, 500))
-		}
-		fmt.Fprintf(ios.ErrOut, "  Run manually: npx skills add larksuite/cli -g -y\n")
+		fmt.Fprintf(io.ErrOut, "  Run manually: npx skills add larksuite/cli -g -y\n")
 	} else {
-		fmt.Fprintf(ios.ErrOut, "%s Skills updated\n", symOK())
+		fmt.Fprintf(io.ErrOut, "%s Skills updated\n", symOK())
 	}
 	return nil
 }
