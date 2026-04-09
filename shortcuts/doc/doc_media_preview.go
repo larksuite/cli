@@ -12,9 +12,9 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -61,7 +61,7 @@ var DocMediaPreview = common.Shortcut{
 			return output.ErrValidation("%s", err)
 		}
 		// Early path validation before API call (final validation after auto-extension below)
-		if _, err := validate.SafeOutputPath(outputPath); err != nil {
+		if _, err := runtime.ResolveSavePath(outputPath); err != nil {
 			return output.ErrValidation("unsafe output path: %s", err)
 		}
 
@@ -93,26 +93,32 @@ var DocMediaPreview = common.Shortcut{
 			}
 		}
 
-		safePath, err := validate.SafeOutputPath(finalPath)
+		// Validate final path after extension append
+		if finalPath != outputPath {
+			if _, err := runtime.ResolveSavePath(finalPath); err != nil {
+				return output.ErrValidation("unsafe output path: %s", err)
+			}
+		}
+
+		// Overwrite check on final path (after extension detection)
+		if !overwrite {
+			if _, statErr := runtime.FileIO().Stat(finalPath); statErr == nil {
+				return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", finalPath)
+			}
+		}
+
+		result, err := runtime.FileIO().Save(finalPath, fileio.SaveOptions{
+			ContentType:   resp.Header.Get("Content-Type"),
+			ContentLength: resp.ContentLength,
+		}, resp.Body)
 		if err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
-		}
-		if err := common.EnsureWritableFile(safePath, overwrite); err != nil {
-			return err
+			return common.WrapSaveErrorByCategory(err, "io")
 		}
 
-		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-			return output.Errorf(output.ExitInternal, "io", "cannot create parent directory: %v", err)
-		}
-
-		sizeBytes, err := validate.AtomicWriteFromReader(safePath, resp.Body, 0600)
-		if err != nil {
-			return output.Errorf(output.ExitInternal, "io", "cannot create file: %v", err)
-		}
-
+		savedPath, _ := runtime.ResolveSavePath(finalPath)
 		runtime.Out(map[string]interface{}{
-			"saved_path":   safePath,
-			"size_bytes":   sizeBytes,
+			"saved_path":   savedPath,
+			"size_bytes":   result.Size(),
 			"content_type": resp.Header.Get("Content-Type"),
 		}, nil)
 		return nil
