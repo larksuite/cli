@@ -90,12 +90,7 @@ func ParseIntBounded(rt *RuntimeContext, name string, min, max int) int {
 // cwd-boundary checks, symlink resolution, and control-character rejection.
 func ValidateSafeOutputDir(fio fileio.FileIO, outputDir string) error {
 	_, err := fio.ResolvePath(outputDir)
-	if err != nil {
-		// ResolvePath reports errors with "--output" prefix; rewrite to
-		// "--output-dir" so the message matches the actual flag name.
-		return fmt.Errorf("%s", strings.ReplaceAll(err.Error(), "--output ", "--output-dir "))
-	}
-	return nil
+	return err
 }
 
 // RejectDangerousChars returns an error if value contains ASCII control
