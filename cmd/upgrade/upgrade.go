@@ -225,8 +225,12 @@ func doNpmUpgradeJSON(opts *UpgradeOptions, cur, latest string) error {
 		return output.ErrBare(1)
 	}
 
-	// Clear stale "update available" notice — we just upgraded.
-	update.SetPending(nil)
+	// Suppress the update-available notice entirely. Simply clearing
+	// update.SetPending(nil) is racy — the background goroutine in
+	// setupUpdateNotice() may re-set it between our clear and PrintJson's
+	// read. Niling the function pointer is safe: PendingNotice is only read
+	// from this goroutine (inside PrintJson → injectNotice).
+	output.PendingNotice = nil
 
 	output.PrintJson(io.Out, map[string]interface{}{
 		"ok":               true,
@@ -261,7 +265,7 @@ func doNpmUpgradeHuman(opts *UpgradeOptions, cur, latest string) error {
 		return output.ErrBare(1)
 	}
 
-	update.SetPending(nil)
+	output.PendingNotice = nil
 	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully upgraded lark-cli from %s to %s\n", cur, latest)
 	return nil
 }
