@@ -39,6 +39,9 @@ func loadJSONInput(pc *parseCtx, raw string, flagName string) (string, error) {
 	if path == "" {
 		return "", common.FlagErrorf("--%s file path cannot be empty after @", flagName)
 	}
+	if pc.fio == nil {
+		return "", common.FlagErrorf("--%s @file inputs require a FileIO provider", flagName)
+	}
 	f, err := pc.fio.Open(path)
 	if err != nil {
 		var pathErr *fileio.PathValidationError

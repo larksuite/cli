@@ -90,7 +90,11 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 
 func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 	filePath := runtime.Str("file")
-	fileInfo, err := runtime.FileIO().Stat(filePath)
+	fio := runtime.FileIO()
+	if fio == nil {
+		return output.ErrValidation("file operations require a FileIO provider")
+	}
+	fileInfo, err := fio.Stat(filePath)
 	if err != nil {
 		if errors.Is(err, fileio.ErrPathValidation) {
 			return output.ErrValidation("unsafe file path: %s", err)
