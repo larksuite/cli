@@ -20,7 +20,7 @@ var BaseViewSetGroup = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "group JSON object/array", Required: true},
+		{Name: "json", Desc: "group JSON object", Required: true},
 	},
 	Tips: []string{
 		`Example: --json '{"group_config":[{"field":"fldStatus","desc":false}]}'`,
