@@ -386,8 +386,117 @@ func TestUpdateNpmFail_Human(t *testing.T) {
 	if !strings.Contains(out, "Update failed") {
 		t.Errorf("expected 'Update failed' in stderr, got: %s", out)
 	}
-	if !strings.Contains(out, "sudo") {
-		t.Errorf("expected 'sudo' hint in stderr, got: %s", out)
+	if !strings.Contains(out, "Permission denied") {
+		t.Errorf("expected permission hint in stderr, got: %s", out)
+	}
+}
+
+func TestUpdateCheck_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json", "--check"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "update_available"`) {
+		t.Errorf("expected update_available action, got: %s", out)
+	}
+	if !strings.Contains(out, "releases/tag/v2.0.0") {
+		t.Errorf("expected version-pinned release URL, got: %s", out)
+	}
+	if !strings.Contains(out, "CHANGELOG") {
+		t.Errorf("expected changelog URL, got: %s", out)
+	}
+}
+
+func TestUpdateCheck_Human(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--check"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Update available") {
+		t.Errorf("expected 'Update available' in stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "lark-cli update") {
+		t.Errorf("expected install instruction in stderr, got: %s", out)
+	}
+}
+
+func TestUpdateNpmNotFound_FallsBackToManual(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	// Detected as npm install, but npm is not in PATH
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+	origLookPath := lookPath
+	lookPath = func(file string) (string, error) { return "", fmt.Errorf("not found") }
+	defer func() { lookPath = origLookPath }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// Should fall back to manual_required instead of failing
+	if !strings.Contains(out, `"action": "manual_required"`) {
+		t.Errorf("expected manual_required when npm not found, got: %s", out)
+	}
+}
+
+func TestReleaseURL(t *testing.T) {
+	got := releaseURL("2.0.0")
+	if got != "https://github.com/larksuite/cli/releases/tag/v2.0.0" {
+		t.Errorf("expected version-pinned URL, got: %s", got)
+	}
+	got2 := releaseURL("v1.5.0")
+	if got2 != "https://github.com/larksuite/cli/releases/tag/v1.5.0" {
+		t.Errorf("expected no double v prefix, got: %s", got2)
+	}
+}
+
+func TestPermissionHint(t *testing.T) {
+	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'")
+	if !strings.Contains(hint, "npm global prefix") {
+		t.Errorf("expected neutral npm prefix hint, got: %s", hint)
+	}
+	if strings.Contains(hint, "sudo npm install") {
+		t.Errorf("hint should not suggest raw sudo npm install, got: %s", hint)
+	}
+
+	empty := permissionHint("some other error")
+	if empty != "" {
+		t.Errorf("expected empty hint for non-EACCES error, got: %s", empty)
 	}
 }
 
