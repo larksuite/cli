@@ -1013,7 +1013,7 @@ func TestResolveTriagePageSizeClamped(t *testing.T) {
 
 func TestResolveTriagePathSearchTokenContinuation(t *testing.T) {
 	// search: token without --query is valid (continuation)
-	useSearch, err := resolveTriagePath("search:abc123", "", triageFilter{})
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "search:abc123"), "", triageFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1024,7 +1024,7 @@ func TestResolveTriagePathSearchTokenContinuation(t *testing.T) {
 
 func TestResolveTriagePathListTokenConflictsWithQuery(t *testing.T) {
 	// list: token + --query → error (query would be silently ignored)
-	_, err := resolveTriagePath("list:abc123", "hello", triageFilter{})
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "hello", triageFilter{})
 	if err == nil {
 		t.Fatal("expected error for list: token with --query")
 	}
@@ -1032,7 +1032,7 @@ func TestResolveTriagePathListTokenConflictsWithQuery(t *testing.T) {
 
 func TestResolveTriagePathListTokenConflictsWithSearchFilter(t *testing.T) {
 	// list: token + search-only filter field → error
-	_, err := resolveTriagePath("list:abc123", "", triageFilter{From: []string{"a@b.com"}})
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "", triageFilter{From: []string{"a@b.com"}})
 	if err == nil {
 		t.Fatal("expected error for list: token with search-only filter")
 	}
@@ -1040,7 +1040,7 @@ func TestResolveTriagePathListTokenConflictsWithSearchFilter(t *testing.T) {
 
 func TestResolveTriagePathListTokenWithListFilter(t *testing.T) {
 	// list: token + list-compatible filter → OK
-	useSearch, err := resolveTriagePath("list:abc123", "", triageFilter{Folder: "inbox"})
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "", triageFilter{Folder: "inbox"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1050,7 +1050,8 @@ func TestResolveTriagePathListTokenWithListFilter(t *testing.T) {
 }
 
 func TestResolveTriagePathBareTokenRejected(t *testing.T) {
-	_, err := resolveTriagePath("baretoken123", "", triageFilter{})
+	// Bare tokens are rejected at parse time, not at resolveTriagePath time
+	_, err := parseTriagePageToken("baretoken123")
 	if err == nil {
 		t.Fatal("expected error for bare token without prefix")
 	}
@@ -1061,7 +1062,7 @@ func TestResolveTriagePathBareTokenRejected(t *testing.T) {
 
 func TestResolveTriagePathEmptyToken(t *testing.T) {
 	// No token → falls back to usesTriageSearchPath
-	useSearch, err := resolveTriagePath("", "hello", triageFilter{})
+	useSearch, err := resolveTriagePath(triagePageToken{}, "hello", triageFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1069,7 +1070,7 @@ func TestResolveTriagePathEmptyToken(t *testing.T) {
 		t.Fatal("query present → should use search path")
 	}
 
-	useSearch, err = resolveTriagePath("", "", triageFilter{})
+	useSearch, err = resolveTriagePath(triagePageToken{}, "", triageFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1095,7 +1096,7 @@ func TestPageTokenListPrefixStripped(t *testing.T) {
 }
 
 func TestPageTokenBareTokenRejected(t *testing.T) {
-	_, err := resolveTriagePath("FfccvoqPd_loLhtcRx8cx", "", triageFilter{})
+	_, err := parseTriagePageToken("FfccvoqPd_loLhtcRx8cx")
 	if err == nil {
 		t.Fatal("expected error for bare token without prefix")
 	}
@@ -1197,7 +1198,7 @@ func TestMailTriageDryRunBarePageTokenErrors(t *testing.T) {
 // --- resolveTriagePath ---
 
 func TestResolveTriagePathSearchPrefixWithoutQuery(t *testing.T) {
-	useSearch, err := resolveTriagePath("search:abc", "", triageFilter{})
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "search:abc"), "", triageFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1207,7 +1208,7 @@ func TestResolveTriagePathSearchPrefixWithoutQuery(t *testing.T) {
 }
 
 func TestResolveTriagePathListPrefixWithoutConflict(t *testing.T) {
-	useSearch, err := resolveTriagePath("list:abc", "", triageFilter{})
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc"), "", triageFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1217,28 +1218,28 @@ func TestResolveTriagePathListPrefixWithoutConflict(t *testing.T) {
 }
 
 func TestResolveTriagePathListPrefixWithQueryErrors(t *testing.T) {
-	_, err := resolveTriagePath("list:abc", "hello", triageFilter{})
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc"), "hello", triageFilter{})
 	if err == nil {
 		t.Fatal("expected error for list: token with --query")
 	}
 }
 
 func TestResolveTriagePathListPrefixWithSearchFilterErrors(t *testing.T) {
-	_, err := resolveTriagePath("list:abc", "", triageFilter{Subject: "test"})
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc"), "", triageFilter{Subject: "test"})
 	if err == nil {
 		t.Fatal("expected error for list: token with search-only filter field")
 	}
 }
 
 func TestResolveTriagePathBareTokenErrors(t *testing.T) {
-	_, err := resolveTriagePath("baretoken", "", triageFilter{})
+	_, err := parseTriagePageToken("baretoken")
 	if err == nil {
 		t.Fatal("expected error for bare token")
 	}
 }
 
 func TestResolveTriagePathEmptyTokenFallsBack(t *testing.T) {
-	useSearch, err := resolveTriagePath("", "", triageFilter{})
+	useSearch, err := resolveTriagePath(triagePageToken{}, "", triageFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1246,7 +1247,7 @@ func TestResolveTriagePathEmptyTokenFallsBack(t *testing.T) {
 		t.Fatal("no query → should use list path")
 	}
 
-	useSearch, err = resolveTriagePath("", "keyword", triageFilter{})
+	useSearch, err = resolveTriagePath(triagePageToken{}, "keyword", triageFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1309,6 +1310,86 @@ func TestMailTriageFlagsIncludePageTokenAndPageSize(t *testing.T) {
 		if !flagNames[name] {
 			t.Fatalf("expected flag --%s to be defined", name)
 		}
+	}
+}
+
+func mustParseTriagePageToken(t *testing.T, token string) triagePageToken {
+	t.Helper()
+	parsed, err := parseTriagePageToken(token)
+	if err != nil {
+		t.Fatalf("parseTriagePageToken(%q) failed: %v", token, err)
+	}
+	return parsed
+}
+
+// --- parseTriagePageToken / encodeTriagePageToken ---
+
+func TestEncodeTriagePageToken(t *testing.T) {
+	got := encodeTriagePageToken("search", "abc123")
+	if got != "search:abc123" {
+		t.Fatalf("expected search:abc123, got %q", got)
+	}
+}
+
+func TestEncodeTriagePageTokenEmpty(t *testing.T) {
+	got := encodeTriagePageToken("search", "")
+	if got != "" {
+		t.Fatalf("expected empty for empty raw token, got %q", got)
+	}
+}
+
+func TestParseTriagePageTokenSearch(t *testing.T) {
+	parsed, err := parseTriagePageToken("search:abc123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.Path != "search" || parsed.RawToken != "abc123" {
+		t.Fatalf("unexpected parsed: %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenList(t *testing.T) {
+	parsed, err := parseTriagePageToken("list:longtoken123xyz")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.Path != "list" || parsed.RawToken != "longtoken123xyz" {
+		t.Fatalf("unexpected parsed: %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenWithColonsInRawToken(t *testing.T) {
+	// Raw token may contain colons
+	parsed, err := parseTriagePageToken("search:abc:def:ghi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.Path != "search" || parsed.RawToken != "abc:def:ghi" {
+		t.Fatalf("unexpected parsed: %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenBareRejected(t *testing.T) {
+	_, err := parseTriagePageToken("baretoken")
+	if err == nil {
+		t.Fatal("expected error for bare token")
+	}
+}
+
+func TestParseTriagePageTokenEmpty(t *testing.T) {
+	parsed, err := parseTriagePageToken("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.RawToken != "" {
+		t.Fatalf("expected empty parsed, got %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenInvalidPrefix(t *testing.T) {
+	_, err := parseTriagePageToken("unknown:abc123")
+	if err == nil {
+		t.Fatal("expected error for unknown prefix")
 	}
 }
 

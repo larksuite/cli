@@ -69,13 +69,16 @@ var MailTriage = common.Shortcut{
 		query := runtime.Str("query")
 		showLabels := runtime.Bool("labels")
 		maxCount := resolveTriagePageSize(runtime)
-		inputPageToken := runtime.Str("page-token")
+		parsed, parseErr := parseTriagePageToken(runtime.Str("page-token"))
 		filter, err := parseTriageFilter(runtime.Str("filter"))
 		d := common.NewDryRunAPI().Set("input_filter", runtime.Str("filter"))
+		if parseErr != nil {
+			return d.Set("filter_error", parseErr.Error())
+		}
 		if err != nil {
 			return d.Set("filter_error", err.Error())
 		}
-		useSearch, pathErr := resolveTriagePath(inputPageToken, query, filter)
+		useSearch, pathErr := resolveTriagePath(parsed, query, filter)
 		if pathErr != nil {
 			return d.Set("filter_error", pathErr.Error())
 		}
@@ -88,8 +91,7 @@ var MailTriage = common.Shortcut{
 			if pageSize > searchPageMax {
 				pageSize = searchPageMax
 			}
-			initialToken := strings.TrimPrefix(inputPageToken, "search:")
-			searchParams, searchBody, _ := buildSearchParams(runtime, mailbox, query, resolvedFilter, pageSize, initialToken, true)
+			searchParams, searchBody, _ := buildSearchParams(runtime, mailbox, query, resolvedFilter, pageSize, parsed.RawToken, true)
 			d = d.POST(mailboxPath(mailbox, "search")).
 				Params(searchParams).
 				Body(searchBody).
@@ -109,8 +111,7 @@ var MailTriage = common.Shortcut{
 		if pageSize > listPageMax {
 			pageSize = listPageMax
 		}
-		initialToken := strings.TrimPrefix(inputPageToken, "list:")
-		listParams, _ := buildListParams(runtime, mailbox, resolvedFilter, pageSize, initialToken, true)
+		listParams, _ := buildListParams(runtime, mailbox, resolvedFilter, pageSize, parsed.RawToken, true)
 		return d.GET(mailboxPath(mailbox, "messages")).
 			Params(listParams).
 			POST(mailboxPath(mailbox, "messages", "batch_get")).
@@ -138,13 +139,16 @@ var MailTriage = common.Shortcut{
 			return err
 		}
 		maxCount := resolveTriagePageSize(runtime)
-		inputPageToken := runtime.Str("page-token")
+		parsed, err := parseTriagePageToken(runtime.Str("page-token"))
+		if err != nil {
+			return err
+		}
 
 		var messages []map[string]interface{}
 		var hasMore bool
 		var nextPageToken string
 
-		useSearch, err := resolveTriagePath(inputPageToken, query, filter)
+		useSearch, err := resolveTriagePath(parsed, query, filter)
 		if err != nil {
 			return err
 		}
@@ -154,7 +158,7 @@ var MailTriage = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			pageToken := strings.TrimPrefix(inputPageToken, "search:")
+			pageToken := parsed.RawToken
 			for len(messages) < maxCount {
 				pageSize := maxCount - len(messages)
 				if pageSize > searchPageMax {
@@ -183,7 +187,7 @@ var MailTriage = common.Shortcut{
 					break
 				}
 				hasMore = pageHasMore
-				nextPageToken = "search:" + pageToken
+				nextPageToken = encodeTriagePageToken("search", pageToken)
 			}
 			if len(messages) > maxCount {
 				messages = messages[:maxCount]
@@ -206,7 +210,7 @@ var MailTriage = common.Shortcut{
 			}
 			var (
 				messageIDs []string
-				pageToken  = strings.TrimPrefix(inputPageToken, "list:")
+				pageToken  = parsed.RawToken
 			)
 			for len(messageIDs) < maxCount {
 				pageSize := maxCount - len(messageIDs)
@@ -235,7 +239,7 @@ var MailTriage = common.Shortcut{
 					break
 				}
 				hasMore = pageHasMore
-				nextPageToken = "list:" + pageToken
+				nextPageToken = encodeTriagePageToken("list", pageToken)
 			}
 			if len(messageIDs) > maxCount {
 				messageIDs = messageIDs[:maxCount]
@@ -282,7 +286,16 @@ var MailTriage = common.Shortcut{
 			output.PrintTable(runtime.IO().Out, rows)
 			fmt.Fprintf(runtime.IO().ErrOut, "\n%d message(s)\n", len(messages))
 			if hasMore && nextPageToken != "" {
-				fmt.Fprintf(runtime.IO().ErrOut, "next page: mail +triage --page-token '%s' ...\n", nextPageToken)
+				var hint strings.Builder
+				hint.WriteString("next page: mail +triage")
+				if query != "" {
+					hint.WriteString(fmt.Sprintf(" --query '%s'", query))
+				}
+				if filterStr := runtime.Str("filter"); filterStr != "" {
+					hint.WriteString(fmt.Sprintf(" --filter '%s'", filterStr))
+				}
+				hint.WriteString(fmt.Sprintf(" --page-token '%s'", nextPageToken))
+				fmt.Fprintln(runtime.IO().ErrOut, hint.String())
 			}
 			fmt.Fprintln(runtime.IO().ErrOut, "tip: use mail +message --message-id <id> to read full content")
 		}
@@ -889,20 +902,18 @@ func buildSearchCreateTime(rng *triageTimeRange) map[string]interface{} {
 //   - "search:" prefix: must not have list-only params (no query/search filter fields is OK for continuation).
 //   - "list:" prefix: must not have query or search-only filter fields that would be silently ignored.
 //   - Bare token (no prefix): rejected — all tokens emitted by triage carry a prefix.
-func resolveTriagePath(pageToken, query string, filter triageFilter) (useSearch bool, err error) {
-	if pageToken == "" {
+func resolveTriagePath(parsed triagePageToken, query string, filter triageFilter) (useSearch bool, err error) {
+	if parsed.RawToken == "" {
 		return usesTriageSearchPath(query, filter), nil
 	}
 	paramWantsSearch := usesTriageSearchPath(query, filter)
-	switch {
-	case strings.HasPrefix(pageToken, "search:"):
+	switch parsed.Path {
+	case "search":
 		if !paramWantsSearch && (strings.TrimSpace(query) != "" || len(triageQueryFilterFields(filter)) > 0) {
-			// This shouldn't normally happen (query/search fields → paramWantsSearch=true),
-			// but guard against future changes.
 			return false, fmt.Errorf("--page-token has search: prefix but current --query/--filter parameters indicate list path; remove conflicting parameters or use the correct token")
 		}
 		return true, nil
-	case strings.HasPrefix(pageToken, "list:"):
+	case "list":
 		if paramWantsSearch {
 			return false, fmt.Errorf("--page-token has list: prefix but --query or --filter contains search-only fields (e.g. from/to/subject); these parameters would be silently ignored — remove them or use a search: token")
 		}
@@ -910,6 +921,39 @@ func resolveTriagePath(pageToken, query string, filter triageFilter) (useSearch 
 	default:
 		return false, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix (token was obtained from a previous mail +triage response)")
 	}
+}
+
+// triagePageToken represents a parsed pagination token.
+type triagePageToken struct {
+	Path     string // "search" or "list"
+	RawToken string // the actual API token
+}
+
+// encodeTriagePageToken encodes a pagination token with path prefix.
+// Format: "search:abc123" or "list:abc123".
+func encodeTriagePageToken(path string, rawToken string) string {
+	if rawToken == "" {
+		return ""
+	}
+	return path + ":" + rawToken
+}
+
+// parseTriagePageToken parses a token encoded by encodeTriagePageToken.
+// Returns an error for bare tokens or malformed tokens.
+func parseTriagePageToken(token string) (triagePageToken, error) {
+	if token == "" {
+		return triagePageToken{}, nil
+	}
+	idx := strings.IndexByte(token, ':')
+	if idx < 0 {
+		return triagePageToken{}, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix (token was obtained from a previous mail +triage response)")
+	}
+	path := token[:idx]
+	raw := token[idx+1:]
+	if path != "search" && path != "list" {
+		return triagePageToken{}, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix, got %q", path)
+	}
+	return triagePageToken{Path: path, RawToken: raw}, nil
 }
 
 // resolveTriagePageSize returns the effective max count from --page-size or --max.
