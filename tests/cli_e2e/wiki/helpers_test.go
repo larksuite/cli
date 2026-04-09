@@ -65,8 +65,9 @@ func createWikiNode(t *testing.T, ctx context.Context, req clie2e.Request) gjson
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, 0)
 
-	node := gjson.Get(result.Stdout, "data.node")
-	require.True(t, node.Exists(), "stdout:\n%s", result.Stdout)
+	payload := wikiJSONPayload(t, result)
+	node := gjson.Get(payload, "data.node")
+	require.True(t, node.Exists(), "payload:\n%s", payload)
 
 	return node
 }

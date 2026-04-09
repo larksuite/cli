@@ -16,6 +16,7 @@
 - Gap pattern: `base +table-delete`, `base +field-delete`, `base +record-delete`, `base +view-delete`, and `base +role-delete` only run in `parentT.Cleanup(...)`; they are not counted as covered because no testcase makes deletion the primary proof surface.
 
 ## Command Table
+
 | Status | Cmd | Type | Testcase | Key Parameter Shapes | Notes / Uncovered Reason |
 | --- | --- | --- | --- | --- | --- |
 | ✓ | base +advperm-disable | shortcut | base_advperm_workflow_test.go::TestBase_AdvpermWorkflow/disable | `--base-token --yes` | |

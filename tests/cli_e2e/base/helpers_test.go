@@ -16,6 +16,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const cleanupTimeout = 30 * time.Second
+
 func baseJSONPayload(t *testing.T, result *clie2e.Result) string {
 	t.Helper()
 
@@ -62,14 +64,18 @@ func reportCleanupFailure(parentT *testing.T, prefix string, result *clie2e.Resu
 		parentT.Errorf("%s: nil result", prefix)
 		return
 	}
-	if isNotFoundResult(result) {
+	if isCleanupSuppressedResult(result) {
 		return
 	}
 
 	parentT.Errorf("%s failed: exit=%d stdout=%s stderr=%s", prefix, result.ExitCode, result.Stdout, result.Stderr)
 }
 
-func isNotFoundResult(result *clie2e.Result) bool {
+func cleanupContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), cleanupTimeout)
+}
+
+func isCleanupSuppressedResult(result *clie2e.Result) bool {
 	if result == nil {
 		return false
 	}
@@ -97,9 +103,17 @@ func isNotFoundResult(result *clie2e.Result) bool {
 		return false
 	}
 
-	return gjson.Get(payload, "error.type").String() == "api_error" &&
-		(gjson.Get(payload, "error.detail.type").String() == "not_found" ||
-			strings.Contains(strings.ToLower(gjson.Get(payload, "error.message").String()), "not found"))
+	if gjson.Get(payload, "error.type").String() != "api_error" {
+		return false
+	}
+
+	if gjson.Get(payload, "error.detail.type").String() == "not_found" ||
+		strings.Contains(strings.ToLower(gjson.Get(payload, "error.message").String()), "not found") {
+		return true
+	}
+
+	return gjson.Get(payload, "error.code").Int() == 800004135 ||
+		strings.Contains(strings.ToLower(gjson.Get(payload, "error.message").String()), " limited")
 }
 
 func testSuffix() string {
@@ -189,7 +203,10 @@ func createTable(t *testing.T, parentT *testing.T, ctx context.Context, baseToke
 	}
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+table-delete", "--base-token", baseToken, "--table-id", tableID, "--yes"},
 			DefaultAs: "bot",
 		})
@@ -222,7 +239,10 @@ func createField(t *testing.T, parentT *testing.T, ctx context.Context, baseToke
 	require.NotEmpty(t, fieldID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+field-delete", "--base-token", baseToken, "--table-id", tableID, "--field-id", fieldID, "--yes"},
 			DefaultAs: "bot",
 		})
@@ -255,7 +275,10 @@ func createRecord(t *testing.T, parentT *testing.T, ctx context.Context, baseTok
 	require.NotEmpty(t, recordID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+record-delete", "--base-token", baseToken, "--table-id", tableID, "--record-id", recordID, "--yes"},
 			DefaultAs: "bot",
 		})
@@ -288,7 +311,10 @@ func createView(t *testing.T, parentT *testing.T, ctx context.Context, baseToken
 	require.NotEmpty(t, viewID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+view-delete", "--base-token", baseToken, "--table-id", tableID, "--view-id", viewID, "--yes"},
 			DefaultAs: "bot",
 		})
@@ -318,7 +344,10 @@ func createDashboard(t *testing.T, parentT *testing.T, ctx context.Context, base
 	require.NotEmpty(t, dashboardID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+dashboard-delete", "--base-token", baseToken, "--dashboard-id", dashboardID, "--yes"},
 			DefaultAs: "bot",
 		})
@@ -348,7 +377,10 @@ func createBlock(t *testing.T, parentT *testing.T, ctx context.Context, baseToke
 	require.NotEmpty(t, blockID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+dashboard-block-delete", "--base-token", baseToken, "--dashboard-id", dashboardID, "--block-id", blockID, "--yes"},
 			DefaultAs: "bot",
 		})
@@ -378,7 +410,10 @@ func createForm(t *testing.T, parentT *testing.T, ctx context.Context, baseToken
 	require.NotEmpty(t, formID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+form-delete", "--base-token", baseToken, "--table-id", tableID, "--form-id", formID, "--yes"},
 			DefaultAs: "bot",
 		})
@@ -438,7 +473,10 @@ func createRole(t *testing.T, parentT *testing.T, ctx context.Context, baseToken
 	require.NotEmpty(t, roleID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"base", "+role-delete", "--base-token", baseToken, "--role-id", roleID, "--yes"},
 			DefaultAs: "bot",
 		})

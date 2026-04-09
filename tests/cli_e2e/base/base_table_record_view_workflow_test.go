@@ -221,7 +221,8 @@ func TestBase_TableFieldRecordViewWorkflow(t *testing.T) {
 		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		assert.True(t, gjson.Get(result.Stdout, "data.items.#").Int() >= 0, "stdout:\n%s", result.Stdout)
+		assert.True(t, gjson.Get(result.Stdout, "data.items").Exists(), "stdout:\n%s", result.Stdout)
+		assert.True(t, gjson.Get(result.Stdout, "data.has_more").Exists(), "stdout:\n%s", result.Stdout)
 	})
 
 	t.Run("record upload attachment", func(t *testing.T) {
@@ -250,6 +251,10 @@ func TestBase_TableFieldRecordViewWorkflow(t *testing.T) {
 		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
+		assert.True(t, gjson.Get(result.Stdout, "data").Exists(), "stdout:\n%s", result.Stdout)
+		assert.GreaterOrEqual(t, len(gjson.Get(result.Stdout, "data.main_data").Array()), 1, "stdout:\n%s", result.Stdout)
+		assert.True(t, gjson.Get(result.Stdout, "data.main_data.0.status_count.value").Exists(), "stdout:\n%s", result.Stdout)
+		assert.Equal(t, "Closed", gjson.Get(result.Stdout, "data.main_data.0.dim_status.value").String(), "stdout:\n%s", result.Stdout)
 	})
 
 	t.Run("view list", func(t *testing.T) {
@@ -341,6 +346,8 @@ func TestBase_TableFieldRecordViewWorkflow(t *testing.T) {
 		}
 		getResult.AssertExitCode(t, 0)
 		getResult.AssertStdoutStatus(t, true)
+		assert.Equal(t, "Status", gjson.Get(getResult.Stdout, "data.group.0.field").String(), "stdout:\n%s", getResult.Stdout)
+		assert.False(t, gjson.Get(getResult.Stdout, "data.group.0.desc").Bool(), "stdout:\n%s", getResult.Stdout)
 	})
 
 	t.Run("view set and get sort", func(t *testing.T) {
@@ -365,6 +372,8 @@ func TestBase_TableFieldRecordViewWorkflow(t *testing.T) {
 		}
 		getResult.AssertExitCode(t, 0)
 		getResult.AssertStdoutStatus(t, true)
+		assert.Equal(t, "Status", gjson.Get(getResult.Stdout, "data.sort.0.field").String(), "stdout:\n%s", getResult.Stdout)
+		assert.True(t, gjson.Get(getResult.Stdout, "data.sort.0.desc").Bool(), "stdout:\n%s", getResult.Stdout)
 	})
 
 	t.Run("view set and get timebar", func(t *testing.T) {
@@ -389,6 +398,9 @@ func TestBase_TableFieldRecordViewWorkflow(t *testing.T) {
 		}
 		getResult.AssertExitCode(t, 0)
 		getResult.AssertStdoutStatus(t, true)
+		assert.Equal(t, dueFieldID, gjson.Get(getResult.Stdout, "data.timebar.start_time").String(), "stdout:\n%s", getResult.Stdout)
+		assert.Equal(t, dueEndFieldID, gjson.Get(getResult.Stdout, "data.timebar.end_time").String(), "stdout:\n%s", getResult.Stdout)
+		assert.Equal(t, primaryFieldID, gjson.Get(getResult.Stdout, "data.timebar.title").String(), "stdout:\n%s", getResult.Stdout)
 	})
 
 	t.Run("view set and get card", func(t *testing.T) {
@@ -413,6 +425,7 @@ func TestBase_TableFieldRecordViewWorkflow(t *testing.T) {
 		}
 		getResult.AssertExitCode(t, 0)
 		getResult.AssertStdoutStatus(t, true)
+		assert.Equal(t, attachmentFieldID, gjson.Get(getResult.Stdout, "data.card.cover_field").String(), "stdout:\n%s", getResult.Stdout)
 	})
 
 	t.Run("record delete", func(t *testing.T) {

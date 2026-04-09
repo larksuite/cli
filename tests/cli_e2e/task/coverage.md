@@ -17,6 +17,7 @@
 - Gap pattern: direct `tasks create/delete/list/patch`, `tasklists create/delete/list/patch`, `members *`, and `subtasks *` APIs still lack deterministic direct-call workflows, so shortcut coverage does not count for those leaf commands.
 
 ## Command Table
+
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
 | ✕ | task +assign | shortcut |  | none | requires real assignee open_id fixtures; shortcut defaults to `--as user` |
@@ -39,12 +40,12 @@
 | ✕ | task tasklists create | api |  | none | only covered indirectly through `task +tasklist-create`; no direct API invocation yet |
 | ✕ | task tasklists delete | api |  | none | only exercised in parent cleanup; no testcase asserts delete behavior or post-delete state as the primary proof |
 | ✓ | task tasklists get | api | tasklist_workflow_test.go::TestTask_TasklistWorkflow/get tasklist | `tasklist_guid` in `--params` | |
-| ✕ | task tasklists list | api |  | none | needs isolated list or filter assertions against ambient tasklist data |
+| ✕ | task tasklists list | api |  | none | needs a dedicated direct-list workflow with assertions isolated from ambient tasklist data |
 | ✕ | task tasklists patch | api |  | none | no dedicated direct tasklist-update workflow yet |
 | ✕ | task tasklists remove_members | api |  | none | requires real member open_id fixtures and direct API coverage |
 | ✓ | task tasklists tasks | api | tasklist_workflow_test.go::TestTask_TasklistWorkflow/list tasklist tasks; tasklist_add_task_workflow_test.go::TestTask_TasklistAddTaskWorkflow/list tasklist tasks | `tasklist_guid`; `page_size` | |
 | ✕ | task tasks create | api |  | none | only covered indirectly through `task +create`; no direct API invocation yet |
 | ✕ | task tasks delete | api |  | none | only exercised in parent cleanup; no testcase asserts delete behavior or post-delete state as the primary proof |
 | ✓ | task tasks get | api | task_status_workflow_test.go::TestTask_StatusWorkflow/get completed task; task_status_workflow_test.go::TestTask_StatusWorkflow/get reopened task; task_reminder_workflow_test.go::TestTask_ReminderWorkflow/get task with reminder; task_reminder_workflow_test.go::TestTask_ReminderWorkflow/get task without reminder; tasklist_workflow_test.go::TestTask_TasklistWorkflow/get task; tasklist_add_task_workflow_test.go::TestTask_TasklistAddTaskWorkflow/get task with tasklist link | `task_guid` in `--params`; assert status, reminders, summary, description, and tasklist link | |
-| ✕ | task tasks list | api |  | none | needs isolated list or filter assertions against ambient task data |
+| ✕ | task tasks list | api |  | none | needs a dedicated direct-list workflow with assertions isolated from ambient task data |
 | ✕ | task tasks patch | api |  | none | no dedicated direct task-update workflow yet |
