@@ -14,16 +14,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Workflow Coverage:
-//
-//	| t.Run | Command |
-//	| --- | --- |
-//	| `Setup` | `base +base-create`, `base +table-create`, `base +workflow-create` |
-//	| `list` | `base +workflow-list` |
-//	| `get` | `base +workflow-get` |
-//	| `update` | `base +workflow-update` |
-//	| `enable` | `base +workflow-enable` |
-//	| `disable` | `base +workflow-disable` |
 func TestBase_WorkflowLifecycle(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)

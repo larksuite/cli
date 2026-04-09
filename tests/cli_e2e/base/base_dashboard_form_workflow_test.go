@@ -14,19 +14,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Workflow Coverage:
-//
-//	| t.Run | Command |
-//	| --- | --- |
-//	| `Setup` | `base +base-create`, `base +table-create`, `base +dashboard-create`, `base +dashboard-block-create` |
-//	| `dashboard list` | `base +dashboard-list` |
-//	| `dashboard get` | `base +dashboard-get` |
-//	| `dashboard update` | `base +dashboard-update` |
-//	| `dashboard block list` | `base +dashboard-block-list` |
-//	| `dashboard block get` | `base +dashboard-block-get` |
-//	| `dashboard block update` | `base +dashboard-block-update` |
-//	| `dashboard block delete` | `base +dashboard-block-delete` |
-//	| `dashboard delete` | `base +dashboard-delete` |
 func TestBase_DashboardWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
@@ -153,19 +140,6 @@ func TestBase_DashboardWorkflow(t *testing.T) {
 	_ = tableID
 }
 
-// Workflow Coverage:
-//
-//	| t.Run | Command |
-//	| --- | --- |
-//	| `Setup` | `base +base-create`, `base +table-create`, `base +form-create` |
-//	| `form get` | `base +form-get` |
-//	| `form list` | `base +form-list` |
-//	| `form update` | `base +form-update` |
-//	| `form questions create` | `base +form-questions-create` |
-//	| `form questions list` | `base +form-questions-list` |
-//	| `form questions update` | `base +form-questions-update` |
-//	| `form questions delete` | `base +form-questions-delete` |
-//	| `form delete` | `base +form-delete` |
 func TestBase_FormWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)

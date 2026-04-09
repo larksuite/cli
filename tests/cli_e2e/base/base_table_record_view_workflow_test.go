@@ -14,38 +14,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// Workflow Coverage:
-//
-//	| t.Run | Command |
-//	| --- | --- |
-//	| `Setup` | `base +base-create`, `base +table-create`, `base +field-create`, `base +record-upsert`, `base +view-create` |
-//	| `table list` | `base +table-list` |
-//	| `table get` | `base +table-get` |
-//	| `table update` | `base +table-update` |
-//	| `field list` | `base +field-list` |
-//	| `field get` | `base +field-get` |
-//	| `field update` | `base +field-update` |
-//	| `field search options` | `base +field-search-options` |
-//	| `record list` | `base +record-list` |
-//	| `record get` | `base +record-get` |
-//	| `record update` | `base +record-upsert` |
-//	| `record history list` | `base +record-history-list` |
-//	| `record upload attachment` | `base +record-upload-attachment` |
-//	| `view list` | `base +view-list` |
-//	| `view get` | `base +view-get` |
-//	| `view rename` | `base +view-rename` |
-//	| `view set filter` | `base +view-set-filter` |
-//	| `view get filter` | `base +view-get-filter` |
-//	| `view set group` | `base +view-set-group` |
-//	| `view get group` | `base +view-get-group` |
-//	| `view set sort` | `base +view-set-sort` |
-//	| `view get sort` | `base +view-get-sort` |
-//	| `view set timebar` | `base +view-set-timebar` |
-//	| `view get timebar` | `base +view-get-timebar` |
-//	| `view set card` | `base +view-set-card` |
-//	| `view get card` | `base +view-get-card` |
-//	| `data query` | `base +data-query` |
-//	| `Cleanup` | `base +view-delete`, `base +record-delete`, `base +field-delete`, `base +table-delete` |
 func TestBase_TableFieldRecordViewWorkflow(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
