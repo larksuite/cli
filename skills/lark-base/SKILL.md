@@ -18,28 +18,28 @@ metadata:
 
 ### 1.1 触发条件
 
-| 场景 | 是否应使用本 Skill | 说明 |
-|------|-------------------|------|
-| 用户明确要操作飞书多维表格 / Base | 是 | 本 skill 的主场景 |
-| 用户要建表、改表、查表、删表 | 是 | 进入表与数据模块 |
-| 用户要管理字段、记录、视图 | 是 | 进入表与数据模块 |
-| 用户要做公式字段、lookup 字段、派生指标、跨表计算 | 是 | 进入公式 / Lookup 模块 |
-| 用户要做临时统计、聚合分析、比较排序、求最值 | 是 | 进入数据分析模块 |
-| 用户要管理 workflow、dashboard、表单、角色权限 | 是 | 进入对应模块 |
-| 用户给出 `/base/{token}` 链接 | 是 | 先解析链接，再进入对应模块 |
-| 用户给出 `/wiki/{token}` 链接，且最终解析为 `bitable` | 是 | 先解析 wiki，再继续走 `lark-cli base +...` |
-| 用户要把旧的 Base 聚合式写法改成当前原子命令写法 | 是 | 例如把旧 `+table / +field / +record / +view / +history / +workspace` 改写成当前命令 |
-| 用户只是做认证、初始化配置、切换 `--as user/bot`、处理 scope | 否 | 先读 `../lark-shared/SKILL.md` |
-| 用户只是泛化地讨论“数据分析 / 字段设计”，但并不在 Base 场景中 | 否 | 不要因为提到“统计 / 公式 / lookup”就误触发 |
+以下场景应使用本 skill：
+
+- 用户明确要操作飞书多维表格 / Base。
+- 用户要建表、改表、查表、删表，或管理字段、记录、视图。
+- 用户要做公式字段、lookup 字段、派生指标、跨表计算。
+- 用户要做临时统计、聚合分析、比较排序、求最值。
+- 用户要管理 workflow、dashboard、表单、角色权限。
+- 用户给出 `/base/{token}` 链接。
+- 用户给出 `/wiki/{token}` 链接，且最终解析为 `bitable`。
+- 用户要把旧的 Base 聚合式写法改成当前原子命令写法，例如把旧 `+table / +field / +record / +view / +history / +workspace` 改写成当前命令。
+
+以下场景不应使用本 skill：
+
+- 用户只是做认证、初始化配置、切换 `--as user/bot`、处理 scope。此时先读 `../lark-shared/SKILL.md`。
+- 用户只是泛化地讨论“数据分析 / 字段设计”，但并不在 Base 场景中。不要因为提到“统计 / 公式 / lookup”就误触发。
 
 ### 1.2 前置约束
 
-| 项目 | 规则 |
-|------|------|
-| 共享前置 | 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) |
-| 命令形态 | 仅使用 `lark-cli base +...` 形式的 shortcut 命令 |
-| reference 使用方式 | 定位到命令后，先读该命令对应的 reference，再执行命令 |
-| 禁止路线 | 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...` |
+1. 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
+2. 仅使用 `lark-cli base +...` 形式的 shortcut 命令。
+3. 定位到命令后，先读该命令对应的 reference，再执行命令。
+4. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
 
 ## 2. 模块与命令导航
 
@@ -213,12 +213,10 @@ metadata:
 
 ### 3.3 表名、字段名与表达式引用
 
-| 规则 | 说明 |
-|------|------|
-| 表名、字段名必须精确匹配真实返回 | 必须来自 `+table-list / +table-get / +field-list` 的结果 |
-| 不要凭自然语言猜名称 | 不要自行改写用户口述中的表名、字段名 |
-| `formula / lookup / data-query / workflow` 中的名称同样必须精确匹配 | 表达式引用、where 条件、DSL 字段名、workflow 配置都遵守同一规则 |
-| 跨表场景必须额外读取目标表结构 | 不能只看当前表 |
+1. 表名、字段名必须精确匹配真实返回，来源应是 `+table-list / +table-get / +field-list`。
+2. 不要凭自然语言猜名称，不要自行改写用户口述中的表名、字段名。
+3. `formula / lookup / data-query / workflow` 中出现的名称同样必须精确匹配；表达式引用、where 条件、DSL 字段名、workflow 配置都遵守同一规则。
+4. 跨表场景必须额外读取目标表结构，不能只看当前表。
 
 ### 3.4 Token 与链接
 
@@ -228,7 +226,7 @@ metadata:
 |---------|--------------|------|
 | 直接 Base 链接 `/base/{token}` | 直接提取 token 作为 `--base-token` | 不要把完整 URL 直接作为 `--base-token` |
 | Wiki 链接 `/wiki/{token}` | 先 `wiki.spaces.get_node`，再取 `node.obj_token` | 不要把 `wiki_token` 直接当 `--base-token` |
-| URL 中的 `?table={id}` | 先按前缀判断对象类型 | `tbl` 开头表示数据表 ID，可作为 `--table-id`；`blk` 开头表示仪表盘 block ID；`wkf` 开头表示 workflow ID；`ldx` 开头表示内嵌文档 ID，不要一律当成 `--table-id` |
+| URL 中的 `?table={id}` | 先按前缀判断对象类型 | `tbl` 开头表示数据表 `table-id`，可作为 `--table-id`；`blk` 开头表示仪表盘 `dashboard-ID`；`wkf` 开头表示 `workflow-ID`；`ldx` 开头表示内嵌文档，不要一律当成 `--table-id` |
 | URL 中的 `?view={id}` | 提取为 `--view-id` | 适合直接定位视图 |
 
 | `wiki.spaces.get_node` 返回的 `obj_type` | 后续路线 | 说明 |
@@ -243,11 +241,9 @@ metadata:
 
 ### 3.5 执行身份与人员字段
 
-| 场景 | 提醒 |
-|------|------|
-| 人员字段 / 用户字段 | 注意 `user_id_type` 与执行身份（user / bot）差异 |
-| bot 身份 | bot 看不到用户私有资源；行为以应用身份执行 |
-| user 身份 | 依赖用户授权和 scope；更适合操作用户资源 |
+- 人员字段 / 用户字段：注意 `user_id_type` 与执行身份（user / bot）差异。
+- bot 身份：bot 看不到用户私有资源；行为以应用身份执行。
+- user 身份：依赖用户授权和 scope；更适合操作用户资源。
 
 ## 4. 执行规则
 
