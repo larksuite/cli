@@ -5,7 +5,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -148,10 +147,10 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON (supports - for stdin)")
 	switch httpMethod {
 	case "POST", "PUT", "PATCH", "DELETE":
-		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON")
+		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
 	}
 	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
@@ -310,13 +309,15 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 	schemaPath := opts.SchemaPath
 	httpMethod := registry.GetStrFromMap(method, "httpMethod")
 
-	var params map[string]interface{}
-	if opts.Params != "" {
-		if err := json.Unmarshal([]byte(opts.Params), &params); err != nil {
-			return client.RawApiRequest{}, output.ErrValidation("--params invalid JSON format")
-		}
-	} else {
-		params = map[string]interface{}{}
+	// stdin is an io.Reader consumed at most once. Only one of --params/--data
+	// may use "-" (stdin); the conflict check below prevents silent data loss.
+	stdin := opts.Factory.IOStreams.In
+	if opts.Params == "-" && opts.Data == "-" {
+		return client.RawApiRequest{}, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+	}
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+	if err != nil {
+		return client.RawApiRequest{}, err
 	}
 
 	url := registry.GetStrFromMap(spec, "servicePath") + "/" + registry.GetStrFromMap(method, "path")
@@ -365,7 +366,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		}
 	}
 
-	data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data)
+	data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
 	if err != nil {
 		return client.RawApiRequest{}, err
 	}
