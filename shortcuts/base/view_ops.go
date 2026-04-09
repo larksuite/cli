@@ -258,10 +258,11 @@ func executeViewSetWrapped(runtime *common.RuntimeContext, segment string, wrapp
 }
 
 func executeViewSetVisibleFields(runtime *common.RuntimeContext) error {
+	pc := newParseCtx(runtime)
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}
