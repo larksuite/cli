@@ -36,6 +36,9 @@ type Request struct {
 	Params any
 	// Data is optional and becomes --data '<json>' when non-nil.
 	Data any
+	// Stdin is optional and becomes the child process stdin when non-nil.
+	// Use an empty slice to exercise empty-stdin behavior explicitly.
+	Stdin []byte
 	// BinaryPath is optional. Empty means: LARK_CLI_BIN, project-root ./lark-cli, then PATH.
 	BinaryPath string
 	// DefaultAs is optional and becomes --as <value> when non-empty.
@@ -77,6 +80,9 @@ func RunCmd(ctx context.Context, req Request) (*Result, error) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	if req.Stdin != nil {
+		cmd.Stdin = bytes.NewReader(req.Stdin)
+	}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 

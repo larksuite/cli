@@ -38,20 +38,16 @@ lark-cli schema drive.files.upload_prepare
 ```
 
 > [!IMPORTANT]
-> 如果文件是**以应用身份（bot）上传**的，agent 在上传成功后应**默认继续使用 bot 身份**，为当前可用的 user 身份添加该文件的 `full_access`（管理员）权限。推荐流程：
-> 1. 先用 `lark-cli contact +get-user` 获取当前用户信息，并从返回结果中读取该用户的 `open_id`
-> 2. 再切回 bot 身份，使用这个 `open_id` 给该用户授权该文件的 `full_access`（管理员）权限
+> 如果文件是**以应用身份（bot）上传**的，如 `lark-cli drive +upload --as bot` 在上传成功后，CLI 会**尝试为当前 CLI 用户自动授予该文件的 `full_access`（可管理权限）**。
 >
-> 如果 `lark-cli contact +get-user` 无法执行，或者本地没有可用的 user 身份、拿不到当前用户的 `open_id`，则应视为“本地没有可用的 user 身份”，明确说明因此未完成授权。
+> 以应用身份上传时，结果里会额外返回 `permission_grant` 字段，明确说明授权结果：
+> - `status = granted`：当前 CLI 用户已获得该文件的可管理权限
+> - `status = skipped`：本地没有可用的当前用户 `open_id`，因此不会自动授权；可提示用户先完成 `lark-cli auth login`，再让 AI / agent 继续使用应用身份（bot）授予当前用户权限
+> - `status = failed`：文件已上传成功，但自动授权用户失败；会带上失败原因，并提示稍后重试或继续使用 bot 身份处理该文件
 >
-> 回复上传结果时，除 `file_token` 外，还必须明确告知用户授权结果：
-> - 如果授权成功：直接说明当前 user 已获得该文件的管理员权限
-> - 如果本地没有可用的 user 身份：明确说明因此未完成授权
-> - 如果授权失败：明确说明文件已上传成功，但授权失败，并透出失败原因；同时提示用户可以稍后重试授权，或继续使用应用身份（bot）处理该文件
+> `permission_grant.perm = full_access` 表示该资源已授予“可管理权限”。
 >
-> 如果授权未完成，应继续给出后续引导：用户可以稍后重试授权，也可以继续使用应用身份（bot）处理该文件；如果希望后续改由自己管理，也可将文件 owner 转移给该用户。
->
-> **仍然不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
+> **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
 
 参数（预上传 `--data` JSON body）：
 

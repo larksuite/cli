@@ -215,6 +215,19 @@ func TestRunCmd(t *testing.T) {
 		assert.ErrorIs(t, result.RunErr, context.DeadlineExceeded)
 		assert.Equal(t, 0, fake.ReadSetCount(t))
 	})
+
+	t.Run("passes stdin to process", func(t *testing.T) {
+		resetDefaultAsInitForTest()
+		fake := newFakeCLI(t, "auto")
+		result, err := RunCmd(context.Background(), Request{
+			BinaryPath: fake.BinaryPath,
+			Args:       []string{"emit-stdin"},
+			Stdin:      []byte("hello from stdin\n"),
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, "hello from stdin\n", result.Stdout)
+	})
 }
 
 type fakeCLI struct {
@@ -275,6 +288,11 @@ if [ "$1" = "emit-arg" ]; then
     shift
   done
   exit 1
+fi
+
+if [ "$1" = "emit-stdin" ]; then
+  cat
+  exit 0
 fi
 
 exit_code=0

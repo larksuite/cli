@@ -308,7 +308,7 @@ func TestServiceMethod_InvalidParamsJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "--params invalid JSON format") {
+	if !strings.Contains(err.Error(), "--params invalid format") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -328,6 +328,24 @@ func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--data invalid JSON format") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestServiceMethod_ParamsAndDataBothStdinConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := map[string]interface{}{
+		"name": "svc", "servicePath": "/open-apis/svc/v1",
+	}
+	method := map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}}
+	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
+	cmd.SetArgs([]string{"--params", "-", "--data", "-", "--dry-run"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when both --params and --data use stdin")
+	}
+	if !strings.Contains(err.Error(), "cannot both read from stdin") {
+		t.Errorf("expected stdin conflict error, got: %v", err)
 	}
 }
 
