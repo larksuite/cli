@@ -207,6 +207,7 @@ func apiRun(opts *APIOptions) error {
 		JqExpr:     opts.JqExpr,
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
+		FileIO:     f.ResolveFileIO(opts.Ctx),
 	})
 	// MarkRaw tells root error handler to skip enrichPermissionError,
 	// preserving the original API error detail (log_id, troubleshooter, etc.).

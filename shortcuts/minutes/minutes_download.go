@@ -14,8 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/vfs"
-
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -79,7 +78,7 @@ var MinutesDownload = common.Shortcut{
 
 		// Batch mode: --output must be a directory, not an existing file.
 		if !single && outputPath != "" {
-			if fi, err := vfs.Stat(outputPath); err == nil && !fi.IsDir() {
+			if fi, err := runtime.FileIO().Stat(outputPath); err == nil && !fi.IsDir() {
 				return output.ErrValidation("--output %q is a file; batch mode expects a directory path", outputPath)
 			}
 		}
@@ -162,7 +161,7 @@ var MinutesDownload = common.Shortcut{
 			fmt.Fprintf(errOut, "Downloading media: %s\n", common.MaskToken(token))
 
 			// single token: --output is a file path; batch: --output is a directory
-			opts := downloadOpts{overwrite: overwrite, usedNames: usedNames}
+			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite, usedNames: usedNames}
 			if single {
 				opts.outputPath = outputPath
 			} else {
@@ -229,8 +228,9 @@ type downloadResult struct {
 }
 
 type downloadOpts struct {
-	outputPath string // explicit output file path (single mode only)
-	outputDir  string // output directory (batch mode)
+	fio        fileio.FileIO // file I/O abstraction
+	outputPath string        // explicit output file path (single mode only)
+	outputDir  string        // output directory (batch mode)
 	overwrite  bool
 	usedNames  map[string]bool // tracks used filenames to deduplicate in batch mode
 }
@@ -275,22 +275,24 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 		outputPath = filepath.Join(opts.outputDir, filename)
 	}
 
-	safePath, err := validate.SafeOutputPath(outputPath)
-	if err != nil {
-		return nil, output.ErrValidation("unsafe output path: %s", err)
-	}
-	if err := common.EnsureWritableFile(safePath, opts.overwrite); err != nil {
-		return nil, err
-	}
-	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-		return nil, output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
+	if !opts.overwrite {
+		if _, statErr := opts.fio.Stat(outputPath); statErr == nil {
+			return nil, output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
+		}
 	}
 
-	sizeBytes, err := validate.AtomicWriteFromReader(safePath, resp.Body, 0600)
+	result, err := opts.fio.Save(outputPath, fileio.SaveOptions{
+		ContentType:   resp.Header.Get("Content-Type"),
+		ContentLength: resp.ContentLength,
+	}, resp.Body)
 	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "api_error", "cannot create file: %s", err)
+		return nil, common.WrapSaveErrorByCategory(err, "io")
 	}
-	return &downloadResult{savedPath: safePath, sizeBytes: sizeBytes}, nil
+	resolvedPath, err := opts.fio.ResolvePath(outputPath)
+	if err != nil || resolvedPath == "" {
+		resolvedPath = outputPath
+	}
+	return &downloadResult{savedPath: resolvedPath, sizeBytes: result.Size()}, nil
 }
 
 // resolveFilenameFromResponse derives the filename from HTTP response headers.
