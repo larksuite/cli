@@ -4,7 +4,14 @@
 package upgrade
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -14,10 +21,25 @@ import (
 	"github.com/larksuite/cli/internal/update"
 )
 
+type installMethod int
+
+const (
+	installNpm    installMethod = iota
+	installManual
+)
+
+const (
+	npmPackage   = "@larksuite/cli"
+	releasesURL  = "https://github.com/larksuite/cli/releases/latest"
+	maxNpmOutput = 2000
+)
+
 // Overridable function vars for testing.
 var (
 	fetchLatest    = func() (string, error) { return update.FetchLatest() }
 	currentVersion = func() string { return build.Version }
+	detectMethod   = detectInstallMethodAuto
+	runNpmInstall  = runNpmInstallReal
 )
 
 // UpgradeOptions holds inputs for the upgrade command.
@@ -106,7 +128,155 @@ func upgradeRun(opts *UpgradeOptions) error {
 	return doUpgrade(opts, cur, latest)
 }
 
-// doUpgrade performs the actual upgrade. Placeholder until Task 2.
+// detectInstallMethod checks if the resolved executable path indicates npm installation.
+func detectInstallMethod(resolvedPath string) installMethod {
+	if strings.Contains(resolvedPath, "node_modules") {
+		return installNpm
+	}
+	return installManual
+}
+
+// detectInstallMethodAuto detects the install method from the running executable.
+func detectInstallMethodAuto() (installMethod, string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return installManual, ""
+	}
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		return installManual, exe
+	}
+	return detectInstallMethod(resolved), resolved
+}
+
+// runNpmInstallReal executes npm install -g @larksuite/cli@<version>.
+func runNpmInstallReal(version string, stdout, stderr *bytes.Buffer) error {
+	npmPath, err := exec.LookPath("npm")
+	if err != nil {
+		return fmt.Errorf("npm not found in PATH: %w", err)
+	}
+	cmd := exec.Command(npmPath, "install", "-g", npmPackage+"@"+version)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+// truncate returns the last maxLen bytes of s.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[len(s)-maxLen:]
+}
+
+// teeWriter writes to both an io.Writer and a bytes.Buffer simultaneously.
+type teeWriter struct {
+	w   io.Writer
+	buf *bytes.Buffer
+}
+
+func (tw *teeWriter) Write(p []byte) (int, error) {
+	tw.buf.Write(p)
+	return tw.w.Write(p)
+}
+
+// doUpgrade detects installation method and dispatches to the appropriate upgrade path.
 func doUpgrade(opts *UpgradeOptions, cur, latest string) error {
-	return output.Errorf(output.ExitInternal, "upgrade_error", "upgrade not implemented yet")
+	method, resolvedPath := detectMethod()
+
+	if method == installManual {
+		if opts.JSON {
+			return doManualUpgradeJSON(opts, cur, latest, resolvedPath)
+		}
+		return doManualUpgradeHuman(opts, cur, latest, resolvedPath)
+	}
+
+	if opts.JSON {
+		return doNpmUpgradeJSON(opts, cur, latest)
+	}
+	return doNpmUpgradeHuman(opts, cur, latest)
+}
+
+func doManualUpgradeJSON(opts *UpgradeOptions, cur, latest, resolvedPath string) error {
+	io := opts.Factory.IOStreams
+	output.PrintJson(io.Out, map[string]interface{}{
+		"ok":               true,
+		"previous_version": cur,
+		"latest_version":   latest,
+		"action":           "manual_required",
+		"message":          fmt.Sprintf("lark-cli was not installed via npm (path: %s). Download the latest release from GitHub.", resolvedPath),
+		"url":              releasesURL,
+	})
+	return nil
+}
+
+func doManualUpgradeHuman(opts *UpgradeOptions, cur, latest, resolvedPath string) error {
+	io := opts.Factory.IOStreams
+	fmt.Fprintf(io.ErrOut, "lark-cli was not installed via npm (path: %s).\n", resolvedPath)
+	fmt.Fprintf(io.ErrOut, "Automatic upgrade is only supported for npm installations.\n\n")
+	fmt.Fprintf(io.ErrOut, "To upgrade manually, download the latest release:\n")
+	fmt.Fprintf(io.ErrOut, "  %s\n", releasesURL)
+	return nil
+}
+
+func doNpmUpgradeJSON(opts *UpgradeOptions, cur, latest string) error {
+	io := opts.Factory.IOStreams
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	if err := runNpmInstall(latest, &stdoutBuf, &stderrBuf); err != nil {
+		combined := stdoutBuf.String() + stderrBuf.String()
+		output.PrintJson(io.Out, map[string]interface{}{
+			"ok": false,
+			"error": map[string]interface{}{
+				"type":    "upgrade_error",
+				"message": fmt.Sprintf("npm install failed: %s", err),
+				"detail":  truncate(combined, maxNpmOutput),
+				"hint":    suggestSudo(combined),
+			},
+		})
+		return output.ErrBare(1)
+	}
+
+	output.PrintJson(io.Out, map[string]interface{}{
+		"ok":               true,
+		"previous_version": cur,
+		"current_version":  latest,
+		"latest_version":   latest,
+		"action":           "upgraded",
+		"message":          fmt.Sprintf("lark-cli upgraded from %s to %s", cur, latest),
+	})
+	return nil
+}
+
+func doNpmUpgradeHuman(opts *UpgradeOptions, cur, latest string) error {
+	ios := opts.Factory.IOStreams
+	fmt.Fprintf(ios.ErrOut, "Upgrading lark-cli %s → %s via npm ...\n", cur, latest)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	if err := runNpmInstall(latest, &stdoutBuf, &stderrBuf); err != nil {
+		combined := stdoutBuf.String() + stderrBuf.String()
+		// Write captured output to terminal for diagnosis.
+		if stdoutBuf.Len() > 0 {
+			fmt.Fprint(ios.ErrOut, stdoutBuf.String())
+		}
+		if stderrBuf.Len() > 0 {
+			fmt.Fprint(ios.ErrOut, stderrBuf.String())
+		}
+		fmt.Fprintf(ios.ErrOut, "\n✗ Upgrade failed: %s\n", err)
+		if hint := suggestSudo(combined); hint != "" {
+			fmt.Fprintf(ios.ErrOut, "  %s\n", hint)
+		}
+		return output.Errorf(output.ExitInternal, "upgrade_error", "npm install failed: %s", err)
+	}
+
+	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully upgraded lark-cli from %s to %s\n", cur, latest)
+	return nil
+}
+
+func suggestSudo(output string) string {
+	if strings.Contains(output, "EACCES") && runtime.GOOS != "windows" {
+		return "Hint: try running with sudo, e.g. sudo npm install -g " + npmPackage
+	}
+	return ""
 }

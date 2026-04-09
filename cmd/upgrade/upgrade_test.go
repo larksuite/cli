@@ -71,3 +71,136 @@ func TestUpgradeAlreadyUpToDate_Human(t *testing.T) {
 		t.Errorf("expected 'already up to date' in stderr, got: %s", out)
 	}
 }
+
+func TestDetectInstallMethod_Npm(t *testing.T) {
+	got := detectInstallMethod("/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli")
+	if got != installNpm {
+		t.Errorf("expected installNpm, got %v", got)
+	}
+}
+
+func TestDetectInstallMethod_Manual(t *testing.T) {
+	got := detectInstallMethod("/usr/local/bin/lark-cli")
+	if got != installManual {
+		t.Errorf("expected installManual, got %v", got)
+	}
+}
+
+func TestDetectInstallMethod_Windows(t *testing.T) {
+	got := detectInstallMethod(`C:\Users\user\AppData\Roaming\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`)
+	if got != installNpm {
+		t.Errorf("expected installNpm for Windows path, got %v", got)
+	}
+}
+
+func TestUpgradeManual_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpgrade(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installManual, "/usr/local/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "manual_required"`) {
+		t.Errorf("expected manual_required in output, got: %s", out)
+	}
+	if !strings.Contains(out, "github.com") {
+		t.Errorf("expected github URL in output, got: %s", out)
+	}
+}
+
+func TestUpgradeManual_Human(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpgrade(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installManual, "/usr/local/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "not installed via npm") {
+		t.Errorf("expected 'not installed via npm' in stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "github.com") {
+		t.Errorf("expected github URL in stderr, got: %s", out)
+	}
+}
+
+func TestUpgradeNpm_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpgrade(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+	origRunNpm := runNpmInstall
+	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
+	defer func() { runNpmInstall = origRunNpm }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "upgraded"`) {
+		t.Errorf("expected upgraded in output, got: %s", out)
+	}
+}
+
+func TestUpgradeNpm_Human(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpgrade(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+	origRunNpm := runNpmInstall
+	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
+	defer func() { runNpmInstall = origRunNpm }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Successfully upgraded") {
+		t.Errorf("expected success message in stderr, got: %s", out)
+	}
+}
