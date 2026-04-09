@@ -309,11 +309,8 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 	output.PendingNotice = nil
 
 	// Update skills (best-effort, don't fail the whole update if skills fail).
-	var skillsErr string
 	var skillsStdout, skillsStderr bytes.Buffer
-	if err := runSkillsUpdate(&skillsStdout, &skillsStderr); err != nil {
-		skillsErr = fmt.Sprintf("skills update failed: %s", err)
-	}
+	skillsErr := runSkillsUpdate(&skillsStdout, &skillsStderr)
 
 	result := map[string]interface{}{
 		"ok":               true,
@@ -325,8 +322,12 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 		"url":              releaseURL(latest),
 		"changelog":        changelogURL(),
 	}
-	if skillsErr != "" {
-		result["skills_warning"] = skillsErr
+	if skillsErr != nil {
+		detail := truncate(skillsStderr.String()+skillsStdout.String(), maxNpmOutput)
+		result["skills_warning"] = fmt.Sprintf("skills update failed: %s", skillsErr)
+		if detail != "" {
+			result["skills_detail"] = detail
+		}
 	}
 	output.PrintJson(io.Out, result)
 	return nil
@@ -362,6 +363,9 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	var skillsStdout, skillsStderr bytes.Buffer
 	if err := runSkillsUpdate(&skillsStdout, &skillsStderr); err != nil {
 		fmt.Fprintf(ios.ErrOut, "⚠ Skills update failed: %s\n", err)
+		if detail := strings.TrimSpace(skillsStderr.String()); detail != "" {
+			fmt.Fprintf(ios.ErrOut, "  %s\n", truncate(detail, 500))
+		}
 		fmt.Fprintf(ios.ErrOut, "  Run manually: npx skills add larksuite/cli -g -y\n")
 	} else {
 		fmt.Fprintf(ios.ErrOut, "✓ Skills updated\n")

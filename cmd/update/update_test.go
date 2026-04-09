@@ -559,6 +559,121 @@ func TestPermissionHint(t *testing.T) {
 	}
 }
 
+func TestUpdateNpm_SkillsSuccess_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+	mockNpmSuccess(t)
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// Should NOT have skills_warning when skills succeed
+	if strings.Contains(out, "skills_warning") {
+		t.Errorf("expected no skills_warning on success, got: %s", out)
+	}
+}
+
+func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+	origRunNpm := runNpmInstall
+	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
+	defer func() { runNpmInstall = origRunNpm }()
+	// Skills update fails
+	origSkills := runSkillsUpdate
+	runSkillsUpdate = func(stdout, stderr *bytes.Buffer) error {
+		stderr.WriteString("npx: command not found")
+		return fmt.Errorf("exit status 127")
+	}
+	defer func() { runSkillsUpdate = origSkills }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// CLI update should still succeed (ok:true)
+	if !strings.Contains(out, `"ok": true`) {
+		t.Errorf("expected ok:true despite skills failure, got: %s", out)
+	}
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected action:updated despite skills failure, got: %s", out)
+	}
+	// Should have skills_warning with detail
+	if !strings.Contains(out, "skills_warning") {
+		t.Errorf("expected skills_warning in output, got: %s", out)
+	}
+	if !strings.Contains(out, "skills_detail") {
+		t.Errorf("expected skills_detail in output, got: %s", out)
+	}
+}
+
+func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origDetect := detectMethod
+	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
+	defer func() { detectMethod = origDetect }()
+	origRunNpm := runNpmInstall
+	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
+	defer func() { runNpmInstall = origRunNpm }()
+	origSkills := runSkillsUpdate
+	runSkillsUpdate = func(stdout, stderr *bytes.Buffer) error {
+		stderr.WriteString("npx: command not found")
+		return fmt.Errorf("exit status 127")
+	}
+	defer func() { runSkillsUpdate = origSkills }()
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	// CLI update should still show success
+	if !strings.Contains(out, "Successfully updated") {
+		t.Errorf("expected CLI success message, got: %s", out)
+	}
+	// Skills warning should be shown
+	if !strings.Contains(out, "Skills update failed") {
+		t.Errorf("expected skills failure warning, got: %s", out)
+	}
+	if !strings.Contains(out, "npx skills add") {
+		t.Errorf("expected manual skills command hint, got: %s", out)
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	long := strings.Repeat("x", 3000)
 	got := truncate(long, 2000)
