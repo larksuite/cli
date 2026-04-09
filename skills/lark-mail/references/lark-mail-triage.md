@@ -76,7 +76,9 @@ lark-cli mail +triage --page-size 10
 > **⚠️ 注意**：查询未读请用 `"is_unread":true`。
 可运行 `mail +triage --print-filter-schema` 查看完整字段说明。
 
-## 输出（`--format json` / `--format data`）
+## 输出
+
+### `--format json`（含分页信息）
 
 ```json
 {
@@ -97,14 +99,30 @@ lark-cli mail +triage --page-size 10
 
 - `has_more`：是否还有下一页
 - `page_token`：传入 `--page-token` 可获取下一页；为空字符串表示已到末尾
-- token 前缀 `search:` / `list:` 标识来源 API 路径，翻页时需保持参数一致（不能把 search token 用于 list 路径，反之亦然）
+- token 前缀 `search:` / `list:` 标识来源 API 路径，不可混用
 
-**table 格式**下，`page_token` 信息输出在 stderr：
+### `--format data`（纯数组，向后兼容）
+
+```json
+[
+  { "message_id": "SEU2...", "date": "...", "from": "...", "subject": "..." }
+]
+```
+
+> `--format data` 不包含分页信息，适合管道处理。需要分页时请用 `--format json`。
+
+### `table` 格式
+
+`page_token` 信息输出在 stderr，自动携带 `--query`/`--filter` 参数方便续页：
 ```
 15 message(s)
-next page: mail +triage --page-token 'list:FfccvoqPd...' ...
+next page: mail +triage --query '合同审批' --page-token 'search:abc123...'
 tip: use mail +message --message-id <id> to read full content
 ```
+
+### 搜索分页注意事项
+
+搜索路径（使用 `--query` 或 `from`/`to`/`subject` 等 filter）的分页结果在**同一翻页链内**保持一致（无重复、无丢失）。但不同 `--max` 值发起的独立搜索可能返回不同排序，这是搜索 API 的固有行为。列表路径（仅 `folder`/`label` 筛选）无此限制。
 
 ## 参考
 
