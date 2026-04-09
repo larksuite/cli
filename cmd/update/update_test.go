@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -119,8 +120,11 @@ func TestUpdateManual_JSON(t *testing.T) {
 	if !strings.Contains(out, `"action": "manual_required"`) {
 		t.Errorf("expected manual_required in output, got: %s", out)
 	}
-	if !strings.Contains(out, "github.com") {
-		t.Errorf("expected github URL in output, got: %s", out)
+	if !strings.Contains(out, "not installed via npm") {
+		t.Errorf("expected accurate reason in output, got: %s", out)
+	}
+	if !strings.Contains(out, "releases/tag/v2.0.0") {
+		t.Errorf("expected version-pinned URL in output, got: %s", out)
 	}
 }
 
@@ -147,8 +151,8 @@ func TestUpdateManual_Human(t *testing.T) {
 	if !strings.Contains(out, "not installed via npm") {
 		t.Errorf("expected 'not installed via npm' in stderr, got: %s", out)
 	}
-	if !strings.Contains(out, "github.com") {
-		t.Errorf("expected github URL in stderr, got: %s", out)
+	if !strings.Contains(out, "releases/tag/v2.0.0") {
+		t.Errorf("expected version-pinned URL in stderr, got: %s", out)
 	}
 }
 
@@ -512,6 +516,10 @@ func TestUpdateNpmNotFound_FallsBackToManual(t *testing.T) {
 	if !strings.Contains(out, `"action": "manual_required"`) {
 		t.Errorf("expected manual_required when npm not found, got: %s", out)
 	}
+	// Should accurately say npm is installed but not available, NOT "not installed via npm"
+	if !strings.Contains(out, "npm is not available") {
+		t.Errorf("expected 'npm is not available' reason, got: %s", out)
+	}
 }
 
 func TestReleaseURL(t *testing.T) {
@@ -527,11 +535,18 @@ func TestReleaseURL(t *testing.T) {
 
 func TestPermissionHint(t *testing.T) {
 	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'")
-	if !strings.Contains(hint, "npm global prefix") {
-		t.Errorf("expected neutral npm prefix hint, got: %s", hint)
-	}
-	if strings.Contains(hint, "sudo npm install") {
-		t.Errorf("hint should not suggest raw sudo npm install, got: %s", hint)
+	if runtime.GOOS == "windows" {
+		// On Windows, EACCES hint is suppressed.
+		if hint != "" {
+			t.Errorf("expected empty hint on Windows, got: %s", hint)
+		}
+	} else {
+		if !strings.Contains(hint, "npm global prefix") {
+			t.Errorf("expected neutral npm prefix hint, got: %s", hint)
+		}
+		if strings.Contains(hint, "sudo npm install -g") {
+			t.Errorf("hint should not suggest raw sudo npm install, got: %s", hint)
+		}
 	}
 
 	empty := permissionHint("some other error")

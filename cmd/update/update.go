@@ -38,8 +38,8 @@ func releaseURL(version string) string {
 	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
 }
 
-// changelogURL returns the CHANGELOG anchor for a version.
-func changelogURL(version string) string {
+// changelogURL returns the project CHANGELOG URL.
+func changelogURL() string {
 	return repoURL + "/blob/main/CHANGELOG.md"
 }
 
@@ -141,24 +141,31 @@ func updateRun(opts *UpdateOptions) error {
 	// 4. Detect installation method (used by both --check and actual update)
 	method, resolvedPath := detectMethod()
 
-	// If detected as npm install but npm is not available, fall back to manual.
+	// Check if npm is actually available for npm installs.
+	npmAvailable := true
 	if method == installNpm {
 		if _, err := lookPath("npm"); err != nil {
-			method = installManual
+			npmAvailable = false
 		}
 	}
+	canAutoUpdate := method == installNpm && npmAvailable
 
 	// 5. --check: report availability without installing
 	if opts.Check {
-		return reportCheckResult(opts, io, cur, latest, method)
+		return reportCheckResult(opts, io, cur, latest, method, canAutoUpdate)
 	}
 
 	// 6. Execute update
-	return doUpdateWithMethod(opts, cur, latest, method, resolvedPath)
+	if !canAutoUpdate {
+		return doManualUpdate(opts, cur, latest, method, resolvedPath, npmAvailable)
+	}
+	if opts.JSON {
+		return doNpmUpdateJSON(opts, cur, latest)
+	}
+	return doNpmUpdateHuman(opts, cur, latest)
 }
 
-func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, method installMethod) error {
-	canAutoUpdate := method == installNpm
+func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, method installMethod, canAutoUpdate bool) error {
 	if opts.JSON {
 		output.PrintJson(io.Out, map[string]interface{}{
 			"ok":               true,
@@ -169,13 +176,13 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 			"auto_update":      canAutoUpdate,
 			"message":          fmt.Sprintf("lark-cli %s → %s available", cur, latest),
 			"url":              releaseURL(latest),
-			"changelog":        changelogURL(latest),
+			"changelog":        changelogURL(),
 		})
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Update available: %s → %s\n", cur, latest)
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
-	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL(latest))
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	if canAutoUpdate {
 		fmt.Fprintf(io.ErrOut, "\nRun `lark-cli update` to install.\n")
 	} else {
@@ -231,41 +238,33 @@ func truncate(s string, maxLen int) string {
 
 // --- Update dispatch ---
 
-func doUpdateWithMethod(opts *UpdateOptions, cur, latest string, method installMethod, resolvedPath string) error {
-	if method == installManual {
-		if opts.JSON {
-			return doManualUpdateJSON(opts, cur, latest, resolvedPath)
-		}
-		return doManualUpdateHuman(opts, cur, latest, resolvedPath)
+// manualReason returns a human-readable explanation of why auto-update is unavailable.
+func manualReason(method installMethod, npmAvailable bool) string {
+	if method == installNpm && !npmAvailable {
+		return "installed via npm, but npm is not available in PATH"
 	}
+	return "not installed via npm"
+}
 
+func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMethod, resolvedPath string, npmAvailable bool) error {
+	io := opts.Factory.IOStreams
+	reason := manualReason(method, npmAvailable)
 	if opts.JSON {
-		return doNpmUpdateJSON(opts, cur, latest)
+		output.PrintJson(io.Out, map[string]interface{}{
+			"ok":               true,
+			"previous_version": cur,
+			"latest_version":   latest,
+			"action":           "manual_required",
+			"message":          fmt.Sprintf("Automatic update unavailable: %s (path: %s)", reason, resolvedPath),
+			"url":              releaseURL(latest),
+			"changelog":        changelogURL(),
+		})
+		return nil
 	}
-	return doNpmUpdateHuman(opts, cur, latest)
-}
-
-func doManualUpdateJSON(opts *UpdateOptions, cur, latest, resolvedPath string) error {
-	io := opts.Factory.IOStreams
-	output.PrintJson(io.Out, map[string]interface{}{
-		"ok":               true,
-		"previous_version": cur,
-		"latest_version":   latest,
-		"action":           "manual_required",
-		"message":          fmt.Sprintf("lark-cli was not installed via npm (path: %s). Download the latest release from GitHub.", resolvedPath),
-		"url":              releaseURL(latest),
-		"changelog":        changelogURL(latest),
-	})
-	return nil
-}
-
-func doManualUpdateHuman(opts *UpdateOptions, cur, latest, resolvedPath string) error {
-	io := opts.Factory.IOStreams
-	fmt.Fprintf(io.ErrOut, "lark-cli was not installed via npm (path: %s).\n", resolvedPath)
-	fmt.Fprintf(io.ErrOut, "Automatic update is only supported for npm installations.\n\n")
+	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, resolvedPath)
 	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
-	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL(latest))
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", npmPackage, latest)
 	return nil
 }
@@ -303,7 +302,7 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 		"action":           "updated",
 		"message":          fmt.Sprintf("lark-cli updated from %s to %s", cur, latest),
 		"url":              releaseURL(latest),
-		"changelog":        changelogURL(latest),
+		"changelog":        changelogURL(),
 	})
 	return nil
 }
@@ -331,7 +330,7 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 
 	output.PendingNotice = nil
 	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully updated lark-cli from %s to %s\n", cur, latest)
-	fmt.Fprintf(ios.ErrOut, "  Changelog: %s\n", changelogURL(latest))
+	fmt.Fprintf(ios.ErrOut, "  Changelog: %s\n", changelogURL())
 	return nil
 }
 
