@@ -21,11 +21,14 @@ import (
 
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
-	keychain keychain.KeychainAccess
+	keychain func() keychain.KeychainAccess
 	profile  string
 }
 
-func NewDefaultAccountProvider(kc keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+	if kc == nil {
+		kc = keychain.Default
+	}
 	return &DefaultAccountProvider{keychain: kc, profile: profile}
 }
 
@@ -36,7 +39,7 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 		return nil, &core.ConfigError{Code: 2, Type: "config", Message: "not configured", Hint: "run `lark-cli config init --new` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete setup."}
 	}
 
-	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain, p.profile)
+	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile)
 	if err != nil {
 		return nil, err
 	}
