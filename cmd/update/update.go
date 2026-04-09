@@ -135,21 +135,25 @@ func updateRun(opts *UpdateOptions) error {
 			})
 			return nil
 		}
-		fmt.Fprintf(io.ErrOut, "✓ lark-cli %s is already up to date\n", cur)
+		fmt.Fprintf(io.ErrOut, "%s lark-cli %s is already up to date\n", symOK(), cur)
 		return nil
 	}
 
 	// 4. Detect installation method (used by both --check and actual update)
 	method, resolvedPath := detectMethod()
 
-	// Check if npm is actually available for npm installs.
+	// Check if auto-update is possible.
 	npmAvailable := true
 	if method == installNpm {
 		if _, err := lookPath("npm"); err != nil {
 			npmAvailable = false
 		}
 	}
-	canAutoUpdate := method == installNpm && npmAvailable
+	// On Windows, the running .exe is locked by the OS and cannot be
+	// overwritten by npm's postinstall script (EBUSY). Instruct the user
+	// to run the update command in a separate terminal instead.
+	windowsLocked := method == installNpm && runtime.GOOS == "windows"
+	canAutoUpdate := method == installNpm && npmAvailable && !windowsLocked
 
 	// 5. --check: report availability without installing
 	if opts.Check {
@@ -175,13 +179,13 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 			"latest_version":   latest,
 			"action":           "update_available",
 			"auto_update":      canAutoUpdate,
-			"message":          fmt.Sprintf("lark-cli %s → %s available", cur, latest),
+			"message":          fmt.Sprintf("lark-cli %s %s %s available", cur, symArrow(), latest),
 			"url":              releaseURL(latest),
 			"changelog":        changelogURL(),
 		})
 		return nil
 	}
-	fmt.Fprintf(io.ErrOut, "Update available: %s → %s\n", cur, latest)
+	fmt.Fprintf(io.ErrOut, "Update available: %s %s %s\n", cur, symArrow(), latest)
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	if canAutoUpdate {
@@ -253,6 +257,9 @@ func truncate(s string, maxLen int) string {
 
 // manualReason returns a human-readable explanation of why auto-update is unavailable.
 func manualReason(method installMethod, npmAvailable bool) string {
+	if method == installNpm && runtime.GOOS == "windows" {
+		return "on Windows the running binary cannot be replaced in-place"
+	}
 	if method == installNpm && !npmAvailable {
 		return "installed via npm, but npm is not available in PATH"
 	}
@@ -275,11 +282,17 @@ func doManualUpdate(opts *UpdateOptions, cur, latest string, method installMetho
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, resolvedPath)
-	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
-	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
-	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", npmPackage, latest)
-	fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx skills add larksuite/cli -g -y\n")
+	if method == installNpm && runtime.GOOS == "windows" {
+		// Windows: binary is locked, guide user to run in a new terminal.
+		fmt.Fprintf(io.ErrOut, "Run the following in a new terminal:\n")
+		fmt.Fprintf(io.ErrOut, "  npm install -g %s@%s && npx skills add larksuite/cli -g -y\n", npmPackage, latest)
+	} else {
+		fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
+		fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
+		fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+		fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", npmPackage, latest)
+		fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx skills add larksuite/cli -g -y\n")
+	}
 	return nil
 }
 
@@ -334,7 +347,7 @@ func doNpmUpdateJSON(opts *UpdateOptions, cur, latest string) error {
 
 func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	ios := opts.Factory.IOStreams
-	fmt.Fprintf(ios.ErrOut, "Updating lark-cli %s → %s via npm ...\n", cur, latest)
+	fmt.Fprintf(ios.ErrOut, "Updating lark-cli %s %s %s via npm ...\n", cur, symArrow(), latest)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 
@@ -346,7 +359,7 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 		if stderrBuf.Len() > 0 {
 			fmt.Fprint(ios.ErrOut, stderrBuf.String())
 		}
-		fmt.Fprintf(ios.ErrOut, "\n✗ Update failed: %s\n", err)
+		fmt.Fprintf(ios.ErrOut, "\n%s Update failed: %s\n", symFail(), err)
 		if hint := permissionHint(combined); hint != "" {
 			fmt.Fprintf(ios.ErrOut, "  %s\n", hint)
 		}
@@ -354,22 +367,53 @@ func doNpmUpdateHuman(opts *UpdateOptions, cur, latest string) error {
 	}
 
 	output.PendingNotice = nil
-	fmt.Fprintf(ios.ErrOut, "\n✓ Successfully updated lark-cli from %s to %s\n", cur, latest)
+	fmt.Fprintf(ios.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
 	fmt.Fprintf(ios.ErrOut, "  Changelog: %s\n", changelogURL())
 
 	// Update skills (best-effort).
 	fmt.Fprintf(ios.ErrOut, "\nUpdating skills ...\n")
 	var skillsStdout, skillsStderr bytes.Buffer
 	if err := runSkillsUpdate(&skillsStdout, &skillsStderr); err != nil {
-		fmt.Fprintf(ios.ErrOut, "⚠ Skills update failed: %s\n", err)
+		fmt.Fprintf(ios.ErrOut, "%s Skills update failed: %s\n", symWarn(), err)
 		if detail := strings.TrimSpace(skillsStderr.String()); detail != "" {
 			fmt.Fprintf(ios.ErrOut, "  %s\n", truncate(detail, 500))
 		}
 		fmt.Fprintf(ios.ErrOut, "  Run manually: npx skills add larksuite/cli -g -y\n")
 	} else {
-		fmt.Fprintf(ios.ErrOut, "✓ Skills updated\n")
+		fmt.Fprintf(ios.ErrOut, "%s Skills updated\n", symOK())
 	}
 	return nil
+}
+
+// --- Terminal symbols ---
+// Use ASCII fallbacks on Windows to avoid mojibake in legacy CMD/PowerShell 5.
+
+func symOK() string {
+	if runtime.GOOS == "windows" {
+		return "[OK]"
+	}
+	return "✓"
+}
+
+func symFail() string {
+	if runtime.GOOS == "windows" {
+		return "[FAIL]"
+	}
+	return "✗"
+}
+
+func symWarn() string {
+	if runtime.GOOS == "windows" {
+		return "[WARN]"
+	}
+	return "⚠"
+}
+
+func symArrow() string {
+	if runtime.GOOS == "windows" {
+		return "->"
+	}
+	return "→"
 }
 
 // permissionHint returns a neutral permission hint when EACCES is detected.
