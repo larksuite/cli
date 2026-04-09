@@ -516,7 +516,7 @@ var VCNotes = common.Shortcut{
 		}
 		// output-dir 路径安全校验
 		if outDir := runtime.Str("output-dir"); outDir != "" {
-			if err := common.ValidateSafeOutputDir(outDir); err != nil {
+			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
 				return err
 			}
 		}
