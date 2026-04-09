@@ -461,6 +461,7 @@ var MailWatch = common.Shortcut{
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Fprintf(errOut, "panic in signal handler: %v\n", r)
+					cancelWatch() // unblock the main select via startErrCh
 				}
 			}()
 			select {
