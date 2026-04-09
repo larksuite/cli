@@ -43,6 +43,10 @@
     "en": { "title": "Sheets", "description": "Spreadsheet operations" },
     "zh": { "title": "电子表格", "description": "电子表格操作" }
   },
+  "slides": {
+    "en": { "title": "Slides", "description": "Create and manage presentations in XML format" },
+    "zh": { "title": "幻灯片", "description": "以XML格式创建和管理PPT" }
+  },
   "task": {
     "en": { "title": "Task", "description": "Task, task list, and subtask management" },
     "zh": { "title": "任务", "description": "任务、清单、子任务管理" }
