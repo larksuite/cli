@@ -67,6 +67,34 @@ func handleMailWatchSignal(errOut io.Writer, sig os.Signal, eventCount int, unsu
 	}
 }
 
+func newMailWatchUnsubscribeOnce(unsubscribe func() error) func() error {
+	var once sync.Once
+	var unsubscribeErr error
+	return func() error {
+		once.Do(func() {
+			if unsubscribe != nil {
+				unsubscribeErr = unsubscribe()
+			}
+		})
+		return unsubscribeErr
+	}
+}
+
+func waitForMailWatchStart(startErrCh <-chan error, shutdownRequested <-chan struct{}, shutdownComplete <-chan struct{}) error {
+	select {
+	case <-shutdownComplete:
+		return nil
+	case err := <-startErrCh:
+		select {
+		case <-shutdownRequested:
+			<-shutdownComplete
+			return nil
+		default:
+			return err
+		}
+	}
+}
+
 const mailEventType = "mail.user_mailbox.event.message_received_v1"
 
 // promptInjectionPatterns lists known prompt injection trigger phrases.
@@ -442,8 +470,11 @@ var MailWatch = common.Shortcut{
 			larkws.WithLogger(sdkLogger),
 		)
 
+		unsubscribeOnce := newMailWatchUnsubscribeOnce(unsubscribe)
+
 		watchCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
+		defer unsubscribeOnce() //nolint:errcheck // best-effort cleanup on all exit paths
 
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -455,7 +486,8 @@ var MailWatch = common.Shortcut{
 			startErrCh <- cli.Start(watchCtx)
 		}()
 
-		shutdownBySignal := make(chan struct{}, 1)
+		shutdownRequested := make(chan struct{})
+		shutdownComplete := make(chan struct{})
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -466,29 +498,16 @@ var MailWatch = common.Shortcut{
 			if !ok {
 				return
 			}
-			handleMailWatchSignal(errOut, sig, int(eventCount.Load()), unsubscribe, stopSignals, cancel)
-			select {
-			case shutdownBySignal <- struct{}{}:
-			default:
-			}
+			close(shutdownRequested)
+			handleMailWatchSignal(errOut, sig, int(eventCount.Load()), unsubscribeOnce, stopSignals, cancel)
+			close(shutdownComplete)
 		}()
 
 		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
-		select {
-		case <-shutdownBySignal:
-			return nil
-		case err := <-startErrCh:
-			select {
-			case <-shutdownBySignal:
-				return nil
-			default:
-			}
-			if err != nil {
-				unsubscribe() //nolint:errcheck // best-effort cleanup
-				return output.ErrNetwork("WebSocket connection failed: %v", err)
-			}
-			return nil
+		if err := waitForMailWatchStart(startErrCh, shutdownRequested, shutdownComplete); err != nil {
+			return output.ErrNetwork("WebSocket connection failed: %v", err)
 		}
+		return nil
 	},
 }
 

@@ -311,6 +311,62 @@ func TestHandleMailWatchSignal_ReportsUnsubscribeFailure(t *testing.T) {
 	}
 }
 
+func TestNewMailWatchUnsubscribeOnce_OnlyRunsOnce(t *testing.T) {
+	calls := 0
+	unsubscribeOnce := newMailWatchUnsubscribeOnce(func() error {
+		calls++
+		return errors.New("boom")
+	})
+
+	if err := unsubscribeOnce(); err == nil || err.Error() != "boom" {
+		t.Fatalf("expected first unsubscribe error, got %v", err)
+	}
+	if err := unsubscribeOnce(); err == nil || err.Error() != "boom" {
+		t.Fatalf("expected cached unsubscribe error, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected unsubscribe to run once, got %d", calls)
+	}
+}
+
+func TestWaitForMailWatchStart_ReturnsNilWhenSignalShutdownWinsRace(t *testing.T) {
+	startErrCh := make(chan error, 1)
+	shutdownRequested := make(chan struct{})
+	shutdownComplete := make(chan struct{})
+
+	close(shutdownRequested)
+	startErrCh <- context.Canceled
+
+	done := make(chan error, 1)
+	go func() {
+		done <- waitForMailWatchStart(startErrCh, shutdownRequested, shutdownComplete)
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("expected waitForMailWatchStart to block until shutdown completes, got %v", err)
+	default:
+	}
+
+	close(shutdownComplete)
+
+	if err := <-done; err != nil {
+		t.Fatalf("expected nil after shutdown completion, got %v", err)
+	}
+}
+
+func TestWaitForMailWatchStart_ReturnsStartErrorWithoutSignal(t *testing.T) {
+	startErrCh := make(chan error, 1)
+	shutdownRequested := make(chan struct{})
+	shutdownComplete := make(chan struct{})
+
+	startErrCh <- context.Canceled
+
+	if err := waitForMailWatchStart(startErrCh, shutdownRequested, shutdownComplete); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
 func TestDecodeBodyFieldsForFileDecodesMessageWrapper(t *testing.T) {
 	htmlEncoded := base64.URLEncoding.EncodeToString([]byte("<h1>Hello</h1>"))
 	plainEncoded := base64.URLEncoding.EncodeToString([]byte("Hello plain"))
