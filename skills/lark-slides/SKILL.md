@@ -12,23 +12,52 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+**CRITICAL — 生成任何 XML 之前，MUST 先用 Read 工具读取 [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md)，禁止凭记忆猜测 XML 结构。**
+
+## 快速开始
+
+两条命令创建一个包含一页的 PPT：
+
+```bash
+# 第 1 步：创建空白 PPT
+lark-cli slides xml_presentations create --data '{
+  "xml_presentation": {
+    "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" width=\"960\" height=\"540\"><title>演示文稿标题</title></presentation>"
+  }
+}'
+# 返回 xml_presentation_id，后续步骤需要用到
+
+# 第 2 步：添加一页 slide（将 YOUR_ID 替换为上一步返回的 xml_presentation_id）
+lark-cli slides xml_presentation.silde create \
+  --params '{"xml_presentation_id":"YOUR_ID"}' \
+  --data '{
+    "slide": {
+      "content": "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><style><fill><fillColor color=\"rgb(245,245,245)\"/></fill></style><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"100\"><content textType=\"title\"><p>页面标题</p></content></shape><shape type=\"text\" topLeftX=\"80\" topLeftY=\"200\" width=\"800\" height=\"200\"><content textType=\"body\"><p>正文内容</p><ul><li><p>要点一</p></li><li><p>要点二</p></li></ul></content></shape></data></slide>"
+    }
+  }'
+```
+
+> 以上是最小可用示例。更丰富的页面效果（渐变背景、卡片、图表、表格等），参考下方 Workflow 和 XML 模板。
+
 ## 执行前必做
 
 > **重要**：`references/slides_xml_schema_definition.xml` 是此 skill 唯一正确的 XML 协议来源；其他 md 仅是对它和 CLI schema 的摘要。
 
-| 命令 | 必须先阅读的文档 |
-|------|-----------------|
-| `xml_presentations.create` | [lark-slides-xml-presentations-create.md](references/lark-slides-xml-presentations-create.md) |
-| `xml_presentations.get` | [lark-slides-xml-presentations-get.md](references/lark-slides-xml-presentations-get.md) |
-| `xml_presentation.silde.create` | [lark-slides-xml-presentation-slides-create.md](references/lark-slides-xml-presentation-slides-create.md) |
-| `xml_presentation.silde.delete` | [lark-slides-xml-presentation-slides-delete.md](references/lark-slides-xml-presentation-slides-delete.md) |
+### 必读（每次创建前）
 
-**涉及 XML 格式时，阅读顺序：**
-1. [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) — **首选：Schema 精简速查**
-2. [xml-format-guide.md](references/xml-format-guide.md) — 详细结构、属性与示例
-3. [examples.md](references/examples.md) — CLI 调用示例
-4. [slides_demo.xml](references/slides_demo.xml) — 真实 XML 示例
-5. [slides_xml_schema_definition.xml](references/slides_xml_schema_definition.xml) — 完整 Schema
+| 文档 | 说明 |
+|------|------|
+| [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) | **XML 元素和属性速查，必读** |
+
+### 选读（需要时查阅）
+
+| 场景 | 文档 |
+|------|------|
+| 需要了解详细 XML 结构 | [xml-format-guide.md](references/xml-format-guide.md) |
+| 需要 CLI 调用示例 | [examples.md](references/examples.md) |
+| 需要参考真实 PPT 的 XML | [slides_demo.xml](references/slides_demo.xml) |
+| 需要用 table/chart 等复杂元素 | [slides_xml_schema_definition.xml](references/slides_xml_schema_definition.xml)（完整 Schema） |
+| 需要了解某个命令的详细参数 | 对应命令的 reference 文档（见下方参考文档章节） |
 
 ## Workflow
 
@@ -57,6 +86,21 @@ Step 3: 审查 & 交付
     · 配色是否统一？字号层级是否合理？
   - 有问题 → 用 xml_presentation.silde.delete 删除问题页，重新创建
   - 没问题 → 交付：告知用户演示文稿 ID 和访问方式
+```
+
+### jq 命令模板（推荐）
+
+使用 `jq` 包装 XML 可以避免手动转义双引号，推荐所有 slide 创建都用此方式：
+
+```bash
+lark-cli slides xml_presentation.silde create \
+  --params '{"xml_presentation_id":"YOUR_ID"}' \
+  --data "$(jq -n --arg content '<slide xmlns="http://www.larkoffice.com/sml/2.0">
+  <style><fill><fillColor color="BACKGROUND_COLOR"/></fill></style>
+  <data>
+    在这里放置 shape、line、table、chart 等元素
+  </data>
+</slide>' '{slide:{content:$content}}')"
 ```
 
 ### 风格快速判断表
@@ -97,6 +141,10 @@ N. 结尾页：[结尾文案]
 
 风格：[配色方案]，[排版风格]
 ```
+
+### 常用 Slide XML 模板
+
+可直接复制使用的模板（封面页、内容页、数据卡片页、结尾页）：[slide-templates.md](references/slide-templates.md)
 
 ---
 
@@ -185,22 +233,14 @@ lark-cli slides <resource> <method> [flags]  # 调用 API
   - `create` — 在指定 xml 演示文稿下创建页面
   - `delete` — 删除指定 xml 演示文稿下的页面
 
-## 意图 → 命令索引
-
-| 意图 | 推荐命令 | 备注 |
-|------|---------|------|
-| 创建空白 PPT | `lark-cli slides xml_presentations create` | 当前仅用于创建空白 PPT，建议传 `<presentation ...><title>...</title></presentation>` |
-| 读取 PPT 内容 | `lark-cli slides xml_presentations get` | `--params` 传入 `{"xml_presentation_id":"..."}` |
-| 添加幻灯片页面 | `lark-cli slides xml_presentation.silde create` | 创建空白 PPT 后，用它逐页添加 slide |
-| 删除幻灯片页面 | `lark-cli slides xml_presentation.silde delete` | `--params` 传入 `xml_presentation_id` 和 `slide_id` |
-
 ## 核心规则
 
-1. **先查 schema**：调用前先运行 `lark-cli schema slides.<resource>.<method>`
-2. **命名空间建议**：协议标准写法应带 `xmlns`，例如 `<presentation xmlns="http://www.larkoffice.com/sml/2.0" ...>`；当前服务端实现可能兼容不带 `xmlns` 的输入，但不作为协议保证
-3. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
-4. **删除谨慎**：删除操作不可逆，且至少保留一页幻灯片
-5. **先出大纲再动手**：创建 PPT 前先生成大纲交给用户确认，避免返工
+1. **先出大纲再动手**：创建 PPT 前先生成大纲交给用户确认，避免返工
+2. **创建流程必须分两步**：`xml_presentations.create` 只建空白 PPT，页面内容用 `xml_presentation.silde.create` 逐页添加
+3. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`**：文本和图形必须放在 `<data>` 内
+4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内
+5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
+6. **删除谨慎**：删除操作不可逆，且至少保留一页幻灯片
 
 ## 权限表
 
@@ -250,34 +290,19 @@ lark-cli slides <resource> <method> [flags]  # 调用 API
 | API 返回 400 | 检查 XML 语法：标签闭合、属性引号、特殊字符转义 |
 | API 返回 3350001 | `xml_presentation_id` 不是通过 `xml_presentations.create` 创建的，或 token 不正确 |
 
-## 关键约束速查
-
-> 最高频出错的规则，即使不读参考文档也必须遵守。
-
-1. **`<presentation>` 直接子元素只有 `<title>`、`<theme>`、`<slide>`** — 不能在 presentation 下直接放 shape 等元素
-2. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`** — 文本和图形必须放在 `<data>` 内
-3. **文本通过 `<content>` 表达** — 不能把文字直接写在 shape 标签内，必须用 `<content><p>...</p></content>`
-4. **创建流程必须分两步** — `xml_presentations.create` 只建空白 PPT，页面内容用 `xml_presentation.silde.create` 逐页添加
-5. **XML 特殊字符必须转义** — `&` → `&amp;`，`<` → `&lt;`，`>` → `&gt;`，在 `--data` JSON 中还需转义双引号
-
 ## 参考文档
 
-### 快速参考
-- [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) — **XML Schema 精简速查**
-- [xml-format-guide.md](references/xml-format-guide.md) — XML 结构、内容模型、常用元素
-- [examples.md](references/examples.md) — 常见 CLI 调用示例
-- [slides_demo.xml](references/slides_demo.xml) — 真实 XML 示例
-
-### 命令参考
-
-- [lark-slides-xml-presentations-create.md](references/lark-slides-xml-presentations-create.md) — 创建空白 PPT
-- [lark-slides-xml-presentations-get.md](references/lark-slides-xml-presentations-get.md) — 读取 PPT
-- [lark-slides-xml-presentation-slides-create.md](references/lark-slides-xml-presentation-slides-create.md) — 添加幻灯片
-- [lark-slides-xml-presentation-slides-delete.md](references/lark-slides-xml-presentation-slides-delete.md) — 删除幻灯片
-
-### Schema 定义
-
-- [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) — Schema 精简参考
-- [slides_xml_schema_definition.xml](references/slides_xml_schema_definition.xml) — **完整 Schema 定义**（唯一协议依据）
+| 文档 | 说明 |
+|------|------|
+| [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) | **XML Schema 精简速查（必读）** |
+| [slide-templates.md](references/slide-templates.md) | 可复制的 Slide XML 模板 |
+| [xml-format-guide.md](references/xml-format-guide.md) | XML 详细结构与示例 |
+| [examples.md](references/examples.md) | CLI 调用示例 |
+| [slides_demo.xml](references/slides_demo.xml) | 真实 PPT 的完整 XML |
+| [slides_xml_schema_definition.xml](references/slides_xml_schema_definition.xml) | **完整 Schema 定义**（唯一协议依据） |
+| [lark-slides-xml-presentations-create.md](references/lark-slides-xml-presentations-create.md) | 创建空白 PPT 命令详情 |
+| [lark-slides-xml-presentations-get.md](references/lark-slides-xml-presentations-get.md) | 读取 PPT 命令详情 |
+| [lark-slides-xml-presentation-slides-create.md](references/lark-slides-xml-presentation-slides-create.md) | 添加幻灯片命令详情 |
+| [lark-slides-xml-presentation-slides-delete.md](references/lark-slides-xml-presentation-slides-delete.md) | 删除幻灯片命令详情 |
 
 > **注意**：如果 md 内容与 `slides_xml_schema_definition.xml` 或 `lark-cli schema slides.<resource>.<method>` 输出不一致，以后两者为准。
