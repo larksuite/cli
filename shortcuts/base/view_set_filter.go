@@ -20,7 +20,7 @@ var BaseViewSetFilter = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "filter JSON object", Required: true},
+		{Name: "json", Desc: `filter JSON object, e.g. {"logic":"and","conditions":[["fldStatus","==","Todo"]]}; read skills/lark-base/references/lark-base-view-set-filter.md`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

@@ -20,7 +20,7 @@ var BaseViewSetSort = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "sort JSON object/array", Required: true},
+		{Name: "json", Desc: `sort JSON object/array, e.g. [{"field":"fldPriority","desc":true}]; read skills/lark-base/references/lark-base-view-set-sort.md`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONValue(runtime)

@@ -20,7 +20,7 @@ var BaseFieldUpdate = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		fieldRefFlag(true),
-		{Name: "json", Desc: "field property JSON object", Required: true},
+		{Name: "json", Desc: `field property JSON object, e.g. {"name":"Status","type":"text"}; read skills/lark-base/references/lark-base-field-update.md`, Required: true},
 		{Name: "i-have-read-guide", Type: "bool", Desc: "acknowledge reading formula/lookup guide before creating or updating those field types", Hidden: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

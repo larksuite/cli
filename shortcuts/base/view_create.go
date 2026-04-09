@@ -19,7 +19,7 @@ var BaseViewCreate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "json", Desc: "view JSON object/array", Required: true},
+		{Name: "json", Desc: `view JSON object/array, e.g. {"name":"Main","type":"grid"}; read skills/lark-base/references/lark-base-view-create.md`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewCreate(runtime)

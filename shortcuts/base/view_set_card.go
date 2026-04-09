@@ -20,7 +20,7 @@ var BaseViewSetCard = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "card JSON object", Required: true},
+		{Name: "json", Desc: `card JSON object, e.g. {"cover_field":"fldCover"}; read skills/lark-base/references/lark-base-view-set-card.md`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

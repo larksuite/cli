@@ -20,7 +20,7 @@ var BaseViewSetTimebar = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "timebar JSON object", Required: true},
+		{Name: "json", Desc: `timebar JSON object, e.g. {"start_time":"fldStart","end_time":"fldEnd","title":"fldTitle"}; read skills/lark-base/references/lark-base-view-set-timebar.md`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

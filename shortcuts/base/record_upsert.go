@@ -20,7 +20,7 @@ var BaseRecordUpsert = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordRefFlag(false),
-		{Name: "json", Desc: "record JSON object", Required: true},
+		{Name: "json", Desc: `record JSON object, e.g. {"Name":"Alice"}; read skills/lark-base/references/lark-base-record-upsert.md`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordJSON(runtime)

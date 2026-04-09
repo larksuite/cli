@@ -20,7 +20,7 @@ var BaseViewSetGroup = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "group JSON object/array", Required: true},
+		{Name: "json", Desc: `group JSON object/array, e.g. {"group_config":[{"field":"fldStatus","desc":false}]}; read skills/lark-base/references/lark-base-view-set-group.md`, Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONValue(runtime)
