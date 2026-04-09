@@ -129,6 +129,11 @@ func updateRun(opts *UpdateOptions) error {
 
 	selfupdate.CleanupStaleFiles()
 
+	// Suppress the global update-available notice for the update command itself.
+	// Without this, non-success JSON envelopes (already_up_to_date, manual_required, etc.)
+	// would include a contradictory "_notice.update" field.
+	output.PendingNotice = nil
+
 	// 1. Fetch latest version
 	latest, err := fetchLatest()
 	if err != nil {
@@ -175,7 +180,7 @@ func updateRun(opts *UpdateOptions) error {
 		reason := manualReason(method, npmPath != "")
 		return doManualUpdate(opts, io, cur, latest, resolvedPath, reason)
 	}
-	return doNpmUpdate(opts, io, cur, latest, npmPath)
+	return doNpmUpdate(opts, io, cur, latest)
 }
 
 // --- Shared helpers ---
@@ -303,7 +308,7 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest, res
 }
 
 // doNpmUpdate runs the npm install + skills update, formatting output based on opts.JSON.
-func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest, npmPath string) error {
+func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string) error {
 	// On Windows, rename the running .exe out of the way so npm postinstall can write.
 	restore, err := selfupdate.PrepareSelfReplace()
 	if err != nil {
@@ -342,8 +347,6 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest, npmPat
 		}
 		return output.ErrBare(1)
 	}
-
-	output.PendingNotice = nil
 
 	// Skills update (best-effort).
 	var skillsStdout, skillsStderr bytes.Buffer
