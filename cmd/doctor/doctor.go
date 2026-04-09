@@ -238,7 +238,7 @@ func checkCLIUpdate() []checkResult {
 	if update.IsNewer(latest, current) {
 		return []checkResult{warn("cli_update",
 			fmt.Sprintf("%s → %s available", current, latest),
-			"run: npm update -g @larksuite/cli")}
+			"run: lark-cli upgrade")}
 	}
 	return []checkResult{pass("cli_update", latest+" (up to date)")}
 }
