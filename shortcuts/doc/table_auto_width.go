@@ -336,6 +336,9 @@ func isWideChar(r rune) bool {
 func computePixelWidths(charWidths []int, colSize int) []int {
 	pixelWidths := make([]int, colSize)
 	for i, cw := range charWidths {
+		if i >= colSize {
+			break
+		}
 		pw := cw*charUnitWidth + cellPadding
 		if pw < minColumnWidth {
 			pw = minColumnWidth

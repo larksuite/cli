@@ -91,6 +91,16 @@ func TestComputePixelWidths(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("ignores widths beyond column size", func(t *testing.T) {
+		widths := computePixelWidths([]int{1, 2, 3}, 2)
+		if len(widths) != 2 {
+			t.Fatalf("len(widths) = %d, want 2", len(widths))
+		}
+		if widths[0] != minColumnWidth || widths[1] != minColumnWidth {
+			t.Fatalf("unexpected widths = %v, want [%d %d]", widths, minColumnWidth, minColumnWidth)
+		}
+	})
 }
 
 func colPaddingTolerance(cols int) int {
