@@ -39,10 +39,12 @@ lark-cli task +get-related-tasks --created-by-me
 | `--page-all` | No | Automatically paginate through all pages (max 40). |
 | `--page-limit <int>` | No | Max page limit (default 20). |
 | `--page-token <string>` | No | Start from the specified page token. This token is the task's last update time cursor in microseconds. |
-| `--created-by-me` | No | Keep only tasks whose creator is the current user. |
-| `--followed-by-me` | No | Keep only tasks followed by the current user. |
+| `--created-by-me` | No | Keep only tasks whose creator is the current user. This is a client-side filter applied after fetching related-task pages. |
+| `--followed-by-me` | No | Keep only tasks followed by the current user. This is a client-side filter applied after fetching related-task pages. |
 
 > **Page Token Note:** In `+get-related-tasks`, the `page_token` is a microsecond-level cursor representing the task's last update time. For example, `1752730590582902` should be treated as an updated-at cursor, not a task ID.
+>
+> **Pagination Note for Client-side Filters:** When `--created-by-me` or `--followed-by-me` is used, filtering happens locally after each upstream related-task page is fetched. The returned `has_more` and `page_token` still describe the upstream cursor, so later pages may contain more matching tasks, or may contain none.
 
 ## Workflow
 

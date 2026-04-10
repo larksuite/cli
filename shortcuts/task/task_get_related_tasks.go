@@ -36,8 +36,8 @@ var GetRelatedTasks = common.Shortcut{
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (max 40)"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max page limit (default 20, max 40)"},
 		{Name: "page-token", Desc: "page token / updated_at cursor in microseconds"},
-		{Name: "created-by-me", Type: "bool", Desc: "filter to tasks created by me"},
-		{Name: "followed-by-me", Type: "bool", Desc: "filter to tasks followed by me"},
+		{Name: "created-by-me", Type: "bool", Desc: "client-side filter to tasks created by me; pagination still follows upstream related-task pages"},
+		{Name: "followed-by-me", Type: "bool", Desc: "client-side filter to tasks followed by me; pagination still follows upstream related-task pages"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params := map[string]interface{}{
