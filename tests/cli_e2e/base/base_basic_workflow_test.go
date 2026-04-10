@@ -78,7 +78,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		assert.True(t, gjson.Get(result.Stdout, `data.items.#(table_id=="`+tableID+`")`).Exists(), "stdout:\n%s", result.Stdout)
+		assert.True(t, gjson.Get(result.Stdout, `data.tables.#(id=="`+tableID+`")`).Exists(), "stdout:\n%s", result.Stdout)
 	})
 
 	require.NotEmpty(t, primaryFieldID)
