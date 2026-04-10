@@ -1,4 +1,4 @@
-# task +subscribe_event
+# task +subscribe-event
 
 > **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 >
@@ -7,7 +7,7 @@
 Subscribe the current user to task update events for tasks they can access.
 
 This shortcut is different from `event +subscribe`:
-- `task +subscribe_event` uses a **user identity**
+- `task +subscribe-event` uses a **user identity**
 - it subscribes the **current user** to task events for tasks they created, are responsible for, or follow
 - it is scoped to the user's task access, not a bot-level global event stream
 
@@ -26,13 +26,13 @@ lark-cli event +subscribe --event-types task.task.update_user_access_v2 --compac
 ```
 
 The full flow is:
-1. Register the user-facing subscription with `lark-cli task +subscribe_event`
+1. Register the user-facing subscription with `lark-cli task +subscribe-event`
 2. Receive those events with `lark-cli event +subscribe --event-types task.task.update_user_access_v2 ...`
 
 ## Recommended Commands
 
 ```bash
-lark-cli task +subscribe_event
+lark-cli task +subscribe-event
 ```
 
 ## Parameters
@@ -42,7 +42,7 @@ This shortcut has no additional parameters.
 ## Workflow
 
 1. Confirm the user wants to subscribe their own account to task update events.
-2. Execute `lark-cli task +subscribe_event`
+2. Execute `lark-cli task +subscribe-event`
 3. Report whether the subscription succeeded, and clarify that this applies to the user's own accessible tasks.
 
 > [!CAUTION]

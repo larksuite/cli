@@ -49,7 +49,7 @@ func TestSubscribeTaskEvent(t *testing.T) {
 
 				s := SubscribeTaskEvent
 				s.AuthTypes = []string{"bot", "user"}
-				err := runMountedTaskShortcut(t, s, []string{"+subscribe_event", "--as", "bot", "--format", "json"}, f, stdout)
+				err := runMountedTaskShortcut(t, s, []string{"+subscribe-event", "--as", "bot", "--format", "json"}, f, stdout)
 				if err != nil {
 					t.Fatalf("runMountedTaskShortcut() error = %v", err)
 				}

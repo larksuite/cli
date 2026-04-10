@@ -42,7 +42,7 @@ metadata:
 - [`+get-my-tasks`](./references/lark-task-get-my-tasks.md) — List tasks assigned to me
 - [`+get-related-tasks`](./references/lark-task-get-related-tasks.md) — List tasks related to me
 - [`+search`](./references/lark-task-search.md) — Search tasks
-- [`+subscribe_event`](./references/lark-task-subscribe-event.md) — Subscribe to task events
+- [`+subscribe-event`](./references/lark-task-subscribe-event.md) — Subscribe to task events
 - [`+set-ancestor`](./references/lark-task-set-ancestor.md) — Set or clear a task ancestor
 - [`+tasklist-create`](./references/lark-task-tasklist-create.md) — Create a tasklist and batch add tasks
 - [`+tasklist-search`](./references/lark-task-tasklist-search.md) — Search tasklists

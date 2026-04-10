@@ -16,7 +16,7 @@ import (
 
 var SubscribeTaskEvent = common.Shortcut{
 	Service:     "task",
-	Command:     "+subscribe_event",
+	Command:     "+subscribe-event",
 	Description: "subscribe to task events",
 	Risk:        "write",
 	Scopes:      []string{"task:task:read"},
