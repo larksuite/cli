@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/selfupdate"
 )
 
 // newTestFactory creates a test factory with minimal config.
@@ -20,6 +21,50 @@ func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffe
 	t.Helper()
 	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	return f, stdout, stderr
+}
+
+// mockNpmSuccess mocks both npm install and skills update to succeed
+// via the newUpdater override.
+func mockNpmSuccess(t *testing.T) {
+	t.Helper()
+	origNew := newUpdater
+	prev := newUpdater // capture what newUpdater currently returns (may already have DetectOverride)
+	newUpdater = func() *selfupdate.Updater {
+		u := prev()
+		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		u.SkillsUpdateOverride = func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
+}
+
+// mockDetect sets up newUpdater to return an Updater with the given DetectResult.
+// It preserves any existing NpmInstallOverride/SkillsUpdateOverride that may be set later.
+func mockDetect(t *testing.T, result selfupdate.DetectResult) {
+	t.Helper()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult { return result }
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
+}
+
+// mockDetectAndNpm sets up newUpdater with detect, npm install, and skills overrides all at once.
+func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult,
+	npmFn func(string) *selfupdate.NpmResult,
+	skillsFn func() *selfupdate.NpmResult) {
+	t.Helper()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult { return result }
+		u.NpmInstallOverride = npmFn
+		u.SkillsUpdateOverride = skillsFn
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
 }
 
 func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
@@ -75,27 +120,6 @@ func TestUpdateAlreadyUpToDate_Human(t *testing.T) {
 	}
 }
 
-func TestDetectInstallMethod_Npm(t *testing.T) {
-	got := detectInstallMethod("/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli")
-	if got != installNpm {
-		t.Errorf("expected installNpm, got %v", got)
-	}
-}
-
-func TestDetectInstallMethod_Manual(t *testing.T) {
-	got := detectInstallMethod("/usr/local/bin/lark-cli")
-	if got != installManual {
-		t.Errorf("expected installManual, got %v", got)
-	}
-}
-
-func TestDetectInstallMethod_Windows(t *testing.T) {
-	got := detectInstallMethod(`C:\Users\user\AppData\Roaming\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`)
-	if got != installNpm {
-		t.Errorf("expected installNpm for Windows path, got %v", got)
-	}
-}
-
 func TestUpdateManual_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
@@ -107,9 +131,7 @@ func TestUpdateManual_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installManual, "/usr/local/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallManual, ResolvedPath: "/usr/local/bin/lark-cli"})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -138,9 +160,7 @@ func TestUpdateManual_Human(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installManual, "/usr/local/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallManual, ResolvedPath: "/usr/local/bin/lark-cli"})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -155,18 +175,6 @@ func TestUpdateManual_Human(t *testing.T) {
 	}
 }
 
-// mockNpmSuccess mocks both npm install and skills update to succeed.
-func mockNpmSuccess(t *testing.T) {
-	t.Helper()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
-	t.Cleanup(func() { runNpmInstall = origRunNpm })
-
-	origSkills := runSkillsUpdate
-	runSkillsUpdate = func(stdout, stderr *bytes.Buffer) error { return nil }
-	t.Cleanup(func() { runSkillsUpdate = origSkills })
-}
-
 func TestUpdateNpm_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
@@ -178,10 +186,11 @@ func TestUpdateNpm_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	mockNpmSuccess(t)
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -204,10 +213,11 @@ func TestUpdateNpm_Human(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	mockNpmSuccess(t)
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -230,10 +240,11 @@ func TestUpdateForce_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	mockNpmSuccess(t)
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -319,10 +330,11 @@ func TestUpdateDevVersion_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "DEV" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	mockNpmSuccess(t)
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -345,15 +357,22 @@ func TestUpdateNpmFail_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, outBuf, errBuf *bytes.Buffer) error {
-		fmt.Fprint(errBuf, "EACCES: permission denied")
-		return errors.New("npm install failed")
+
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
+		}
+		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			fmt.Fprint(&r.Stderr, "EACCES: permission denied")
+			r.Err = errors.New("npm install failed")
+			return r
+		}
+		return u
 	}
-	defer func() { runNpmInstall = origRunNpm }()
+	defer func() { newUpdater = origNew }()
 
 	_ = cmd.Execute()
 	out := stdout.String()
@@ -376,15 +395,22 @@ func TestUpdateNpmFail_Human(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, outBuf, errBuf *bytes.Buffer) error {
-		fmt.Fprint(errBuf, "EACCES: permission denied")
-		return errors.New("npm install failed")
+
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
+		}
+		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			fmt.Fprint(&r.Stderr, "EACCES: permission denied")
+			r.Err = errors.New("npm install failed")
+			return r
+		}
+		return u
 	}
-	defer func() { runNpmInstall = origRunNpm }()
+	defer func() { newUpdater = origNew }()
 
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
@@ -409,9 +435,7 @@ func TestUpdateCheck_JSON_Npm(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -443,9 +467,7 @@ func TestUpdateCheck_Human_Npm(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -471,9 +493,7 @@ func TestUpdateCheck_Human_Manual(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installManual, "/usr/local/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallManual, ResolvedPath: "/usr/local/bin/lark-cli"})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -502,12 +522,12 @@ func TestUpdateNpmNotFound_FallsBackToManual(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	origLookPath := lookPath
-	lookPath = func(file string) (string, error) { return "", fmt.Errorf("not found") }
-	defer func() { lookPath = origLookPath }()
+	// npm detected (node_modules in path) but npm binary not available
+	mockDetect(t, selfupdate.DetectResult{
+		Method:       selfupdate.InstallNpm,
+		ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli",
+		NpmAvailable: false,
+	})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -574,15 +594,14 @@ func TestUpdateWindows_NpmSuccess_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) {
-		return installNpm, `C:\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`
-	}
-	defer func() { detectMethod = origDetect }()
 	origOS := currentOS
 	currentOS = osWindows
 	defer func() { currentOS = origOS }()
-	mockNpmSuccess(t)
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: `C:\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`, NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -606,14 +625,10 @@ func TestUpdateWindows_Check_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) {
-		return installNpm, `C:\node_modules\@larksuite\cli\bin\lark-cli.exe`
-	}
-	defer func() { detectMethod = origDetect }()
 	origOS := currentOS
 	currentOS = osWindows
 	defer func() { currentOS = origOS }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: `C:\node_modules\@larksuite\cli\bin\lark-cli.exe`, NpmAvailable: true})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -644,11 +659,11 @@ func TestUpdateWindows_Symbols(t *testing.T) {
 	}
 
 	currentOS = "darwin"
-	if symOK() != "✓" {
-		t.Errorf("expected ✓ on darwin, got: %s", symOK())
+	if symOK() != "\u2713" {
+		t.Errorf("expected \u2713 on darwin, got: %s", symOK())
 	}
-	if symArrow() != "→" {
-		t.Errorf("expected → on darwin, got: %s", symArrow())
+	if symArrow() != "\u2192" {
+		t.Errorf("expected \u2192 on darwin, got: %s", symArrow())
 	}
 }
 
@@ -663,10 +678,11 @@ func TestUpdateNpm_SkillsSuccess_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	mockNpmSuccess(t)
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
 
 	err := cmd.Execute()
 	if err != nil {
@@ -690,19 +706,24 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
-	defer func() { runNpmInstall = origRunNpm }()
-	// Skills update fails
-	origSkills := runSkillsUpdate
-	runSkillsUpdate = func(stdout, stderr *bytes.Buffer) error {
-		stderr.WriteString("npx: command not found")
-		return fmt.Errorf("exit status 127")
+
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
+		}
+		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		// Skills update fails
+		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Stderr.WriteString("npx: command not found")
+			r.Err = fmt.Errorf("exit status 127")
+			return r
+		}
+		return u
 	}
-	defer func() { runSkillsUpdate = origSkills }()
+	defer func() { newUpdater = origNew }()
 
 	err := cmd.Execute()
 	if err != nil {
@@ -736,18 +757,23 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 	origVersion := currentVersion
 	currentVersion = func() string { return "1.0.0" }
 	defer func() { currentVersion = origVersion }()
-	origDetect := detectMethod
-	detectMethod = func() (installMethod, string) { return installNpm, "/node_modules/@larksuite/cli/bin/lark-cli" }
-	defer func() { detectMethod = origDetect }()
-	origRunNpm := runNpmInstall
-	runNpmInstall = func(version string, stdout, stderr *bytes.Buffer) error { return nil }
-	defer func() { runNpmInstall = origRunNpm }()
-	origSkills := runSkillsUpdate
-	runSkillsUpdate = func(stdout, stderr *bytes.Buffer) error {
-		stderr.WriteString("npx: command not found")
-		return fmt.Errorf("exit status 127")
+
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
+		}
+		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Stderr.WriteString("npx: command not found")
+			r.Err = fmt.Errorf("exit status 127")
+			return r
+		}
+		return u
 	}
-	defer func() { runSkillsUpdate = origSkills }()
+	defer func() { newUpdater = origNew }()
 
 	err := cmd.Execute()
 	if err != nil {
@@ -769,13 +795,13 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 
 func TestTruncate(t *testing.T) {
 	long := strings.Repeat("x", 3000)
-	got := truncate(long, 2000)
+	got := selfupdate.Truncate(long, 2000)
 	if len(got) != 2000 {
 		t.Errorf("expected truncated length 2000, got %d", len(got))
 	}
 
 	short := "hello"
-	got2 := truncate(short, 2000)
+	got2 := selfupdate.Truncate(short, 2000)
 	if got2 != "hello" {
 		t.Errorf("expected 'hello', got %q", got2)
 	}
