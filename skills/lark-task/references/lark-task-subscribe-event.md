@@ -2,14 +2,14 @@
 
 > **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 >
-> **⚠️ Note:** This API supports both `user` and `bot` identities. Use `user` to subscribe the current user's accessible tasks; use `bot` to subscribe with the current application identity.
+> **⚠️ Note:** This API supports both `user` and `bot` identities. Use `user` to subscribe the current user's accessible tasks; use `bot` to subscribe tasks the **application is responsible for**.
 
 Subscribe task update events with the current identity.
 
 This shortcut is different from `event +subscribe`:
 - `task +subscribe-event` registers task-event access for the **current identity**
 - with `--as user`, it subscribes the **current user** to task events for tasks they created, are responsible for, or follow
-- with `--as bot`, it subscribes using the **current application identity**
+- with `--as bot`, it subscribes using the **application identity** for tasks the application is responsible for
 
 The task event type is:
 
@@ -51,7 +51,7 @@ Event payload shape (example):
 
 In practice, this means:
 - with `--as user`, the subscribed user can receive updates for tasks visible to them through authorship, assignment, or following
-- with `--as bot`, the subscription is created with the current app identity
+- with `--as bot`, the subscription covers tasks the application is responsible for
 
 To actually receive the subscribed events, use the standard event WebSocket receiver:
 
