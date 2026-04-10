@@ -238,5 +238,49 @@ func TestRenderRelatedTasksPretty(t *testing.T) {
 				}
 			}
 		})
+
+		t.Run("parseTimeRangeRFC3339", func(t *testing.T) {
+			timeTests := []struct {
+				name      string
+				input     string
+				wantErr   bool
+				wantStart string
+				wantEnd   string
+			}{
+				{name: "empty input", input: "", wantStart: "", wantEnd: ""},
+				{name: "invalid input", input: "bad-time", wantErr: true},
+				{name: "range input", input: "-1d,+1d", wantStart: "rfc3339", wantEnd: "rfc3339"},
+				{name: "reversed range fails fast", input: "+1d,-1d", wantErr: true},
+			}
+
+			for _, tt := range timeTests {
+				t.Run(tt.name, func(t *testing.T) {
+					start, end, err := parseTimeRangeRFC3339(tt.input)
+					if tt.wantErr {
+						if err == nil {
+							t.Fatal("expected error, got nil")
+						}
+						return
+					}
+					if err != nil {
+						t.Fatalf("parseTimeRangeRFC3339() error = %v", err)
+					}
+					if tt.wantStart == "rfc3339" {
+						if !strings.Contains(start, "T") || !strings.Contains(start, ":") {
+							t.Fatalf("expected RFC3339 start, got %q", start)
+						}
+					} else if start != tt.wantStart {
+						t.Fatalf("unexpected start: %q", start)
+					}
+					if tt.wantEnd == "rfc3339" {
+						if !strings.Contains(end, "T") || !strings.Contains(end, ":") {
+							t.Fatalf("expected RFC3339 end, got %q", end)
+						}
+					} else if end != tt.wantEnd {
+						t.Fatalf("unexpected end: %q", end)
+					}
+				})
+			}
+		})
 	}
 }

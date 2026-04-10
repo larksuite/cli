@@ -67,6 +67,51 @@ func parseTimeRangeMillis(input string) (string, string, error) {
 	return startMillis, endMillis, nil
 }
 
+func parseTimeRangeRFC3339(input string) (string, string, error) {
+	if strings.TrimSpace(input) == "" {
+		return "", "", nil
+	}
+
+	parts := strings.SplitN(input, ",", 2)
+	startInput := strings.TrimSpace(parts[0])
+	endInput := ""
+	if len(parts) == 2 {
+		endInput = strings.TrimSpace(parts[1])
+	}
+
+	var startTime, endTime string
+	var startSecInt, endSecInt int64
+	var hasStart, hasEnd bool
+	if startInput != "" {
+		startSec, err := parseTimeFlagSec(startInput, "start")
+		if err != nil {
+			return "", "", err
+		}
+		startSecInt, err = strconv.ParseInt(startSec, 10, 64)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid start timestamp: %w", err)
+		}
+		hasStart = true
+		startTime = time.Unix(startSecInt, 0).Local().Format(time.RFC3339)
+	}
+	if endInput != "" {
+		endSec, err := parseTimeFlagSec(endInput, "end")
+		if err != nil {
+			return "", "", err
+		}
+		endSecInt, err = strconv.ParseInt(endSec, 10, 64)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid end timestamp: %w", err)
+		}
+		hasEnd = true
+		endTime = time.Unix(endSecInt, 0).Local().Format(time.RFC3339)
+	}
+	if hasStart && hasEnd && startSecInt > endSecInt {
+		return "", "", fmt.Errorf("start time must be earlier than or equal to end time")
+	}
+	return startTime, endTime, nil
+}
+
 func formatTaskDateTimeMillis(msStr string) string {
 	if msStr == "" || msStr == "0" {
 		return ""

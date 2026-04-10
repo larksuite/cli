@@ -36,7 +36,9 @@ func TestBuildTasklistSearchBody(t *testing.T) {
 				if filter["user_id"].([]string)[0] != "ou_creator" {
 					t.Fatalf("unexpected filter: %#v", filter)
 				}
-				if createTime["start_time"] == "" || createTime["end_time"] == "" {
+				startTime, _ := createTime["start_time"].(string)
+				endTime, _ := createTime["end_time"].(string)
+				if startTime == "" || endTime == "" || !strings.Contains(startTime, "T") || !strings.Contains(endTime, "T") {
 					t.Fatalf("unexpected create_time: %#v", createTime)
 				}
 			},

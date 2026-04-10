@@ -158,7 +158,7 @@ func buildTasklistSearchBody(runtime *common.RuntimeContext) (map[string]interfa
 		filter["user_id"] = ids
 	}
 	if createTime := runtime.Str("create-time"); createTime != "" {
-		start, end, err := parseTimeRangeMillis(createTime)
+		start, end, err := parseTimeRangeRFC3339(createTime)
 		if err != nil {
 			return nil, WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("invalid create-time: %v", err), "build tasklist search")
 		}

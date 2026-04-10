@@ -171,7 +171,7 @@ func buildTaskSearchBody(runtime *common.RuntimeContext) (map[string]interface{}
 		filter["is_completed"] = runtime.Bool("completed")
 	}
 	if dueRange := runtime.Str("due"); dueRange != "" {
-		start, end, err := parseTimeRangeMillis(dueRange)
+		start, end, err := parseTimeRangeRFC3339(dueRange)
 		if err != nil {
 			return nil, WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("invalid due: %v", err), "build task search")
 		}

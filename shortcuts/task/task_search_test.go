@@ -38,7 +38,9 @@ func TestBuildTaskSearchBody(t *testing.T) {
 				if len(filter["creator_ids"].([]string)) != 2 || filter["is_completed"] != true {
 					t.Fatalf("unexpected filter: %#v", filter)
 				}
-				if dueTime["start_time"] == "" || dueTime["end_time"] == "" {
+				startTime, _ := dueTime["start_time"].(string)
+				endTime, _ := dueTime["end_time"].(string)
+				if startTime == "" || endTime == "" || !strings.Contains(startTime, "T") || !strings.Contains(endTime, "T") {
 					t.Fatalf("unexpected due_time: %#v", dueTime)
 				}
 			},
