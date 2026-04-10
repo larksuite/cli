@@ -14,57 +14,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 )
 
-func TestContact_SearchAndGetUser_UserWorkflow(t *testing.T) {
-	t.Skip("requires user identity and real user fixtures (cannot search or get self as bot)")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-
-	var openID string
-
-	t.Run("search-user", func(t *testing.T) {
-		// Search for a user. In a real scenario, this would be a known keyword.
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"contact", "+search-user", "--query", "test"},
-			DefaultAs: "user",
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		openID = gjson.Get(result.Stdout, "data.users.0.open_id").String()
-		require.NotEmpty(t, openID, "expected to find at least one user")
-	})
-
-	t.Run("get-user-by-id", func(t *testing.T) {
-		require.NotEmpty(t, openID, "openID should be populated from search-user")
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"contact", "+get-user", "--user-id", openID},
-			DefaultAs: "user",
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		returnedID := gjson.Get(result.Stdout, "data.user.open_id").String()
-		require.Equal(t, openID, returnedID)
-	})
-
-	t.Run("get-user-self", func(t *testing.T) {
-		// omitting user_id gets the current user
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"contact", "+get-user"},
-			DefaultAs: "user",
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		selfOpenID := gjson.Get(result.Stdout, "data.user.open_id").String()
-		require.NotEmpty(t, selfOpenID, "expected self open_id")
-	})
-}
-
 func TestContact_GetUser_BotWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

@@ -46,8 +46,4 @@ func TestCalendar_FindMeetingTime(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
-
-	t.Run("find meeting times with attendees", func(t *testing.T) {
-		t.Skip("requires valid attendee open_id (ou_xxx) - using placeholder will cause API error")
-	})
 }

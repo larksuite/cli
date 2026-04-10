@@ -30,8 +30,8 @@ func TestDrive_PermissionMembersAuthWorkflow(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"drive", "permission.members", "auth"},
 			Params: map[string]any{
-				"token": docToken,
-				"type":  "docx",
+				"token":  docToken,
+				"type":   "docx",
 				"action": "view",
 			},
 		})
@@ -46,8 +46,8 @@ func TestDrive_PermissionMembersAuthWorkflow(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"drive", "permission.members", "auth"},
 			Params: map[string]any{
-				"token": docToken,
-				"type":  "docx",
+				"token":  docToken,
+				"type":   "docx",
 				"action": "edit",
 			},
 		})
@@ -108,11 +108,4 @@ func TestDrive_UserSubscriptionWorkflow(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0) // Returns code: 0, not ok: true
 	})
-}
-
-// TestDrive_PermissionMembersTransferOwnerWorkflow tests permission.members.transfer_owner.
-// Note: This requires a real user open_id to transfer ownership to.
-// This test is skipped as it requires user identity and a valid target user.
-func TestDrive_PermissionMembersTransferOwnerWorkflow(t *testing.T) {
-	t.Skip("requires a real user open_id and user-capable test environment; permission.members.transfer_owner needs a valid target user ID")
 }

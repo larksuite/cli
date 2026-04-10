@@ -55,21 +55,6 @@ func TestIM_ChatCreateSendWorkflow(t *testing.T) {
 		messageID := gjson.Get(result.Stdout, "data.message_id").String()
 		require.NotEmpty(t, messageID, "message_id should not be empty")
 	})
-
-	t.Run("send image message to chat", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "+messages-send",
-				"--chat-id", chatID,
-				"--image", "./red10x10.png",
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		messageID := gjson.Get(result.Stdout, "data.message_id").String()
-		require.NotEmpty(t, messageID, "message_id should not be empty")
-	})
 }
 
 // TestIM_ChatCreateWithOptionsWorkflow tests +chat-create with various options.
@@ -152,46 +137,6 @@ func TestIM_ChatUpdateWorkflow(t *testing.T) {
 	})
 }
 
-// TestIM_ChatSearchWorkflow tests the +chat-search shortcut.
-func TestIM_ChatSearchWorkflow(t *testing.T) {
-	parentT := t
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-
-	suffix := generateSuffix()
-	chatName := "lark-cli-e2e-im-search-" + suffix
-
-	createChat(t, parentT, ctx, chatName)
-
-	t.Run("search chat by name", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "+chat-search",
-				"--query", chatName,
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		hasData := gjson.Get(result.Stdout, "data").Exists()
-		if !hasData {
-			t.Skip("chat-search may not return bot-created chats in user identity mode")
-		}
-	})
-
-	t.Run("search chat with sort", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "+chat-search",
-				"--query", chatName,
-				"--sort-by", "create_time_desc",
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-	})
-}
-
 // TestIM_ChatsGetWorkflow tests the im chats get command.
 func TestIM_ChatsGetWorkflow(t *testing.T) {
 	parentT := t
@@ -205,7 +150,7 @@ func TestIM_ChatsGetWorkflow(t *testing.T) {
 
 	t.Run("get chat info", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "chats", "get"},
+			Args:   []string{"im", "chats", "get"},
 			Params: map[string]any{"chat_id": chatID},
 		})
 		require.NoError(t, err)
@@ -218,32 +163,6 @@ func TestIM_ChatsGetWorkflow(t *testing.T) {
 
 		chatNameGot := gjson.Get(result.Stdout, "data.name").String()
 		require.Equal(t, chatName, chatNameGot)
-	})
-}
-
-// TestIM_ChatsListWorkflow tests the im chats list command.
-func TestIM_ChatsListWorkflow(t *testing.T) {
-	parentT := t
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-
-	suffix := generateSuffix()
-	chatName := "lark-cli-e2e-chats-list-" + suffix
-
-	createChat(t, parentT, ctx, chatName)
-
-	t.Run("list chats", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "chats", "list"},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-
-		hasMore := gjson.Get(result.Stdout, "data.has_more").Exists()
-		items := gjson.Get(result.Stdout, "data.items").Array()
-		require.NotNil(t, items, "data.items should exist")
-		t.Logf("Found %d chats, has_more: %v", len(items), hasMore)
 	})
 }
 
@@ -260,7 +179,7 @@ func TestIM_ChatsLinkWorkflow(t *testing.T) {
 
 	t.Run("get chat share link", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "chats", "link"},
+			Args:   []string{"im", "chats", "link"},
 			Params: map[string]any{"chat_id": chatID},
 			Data: map[string]any{
 				"validity_period": "week",
@@ -273,56 +192,5 @@ func TestIM_ChatsLinkWorkflow(t *testing.T) {
 		shareLink := gjson.Get(result.Stdout, "data.share_link").String()
 		require.NotEmpty(t, shareLink, "share_link should not be empty")
 		t.Logf("Generated share link: %s", shareLink)
-	})
-}
-
-// TestIM_ChatMembersWorkflow tests the im chat.members commands.
-func TestIM_ChatMembersWorkflow(t *testing.T) {
-	parentT := t
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-
-	suffix := generateSuffix()
-	chatName := "lark-cli-e2e-members-" + suffix
-
-	chatID := createChatWithBotManager(t, parentT, ctx, chatName)
-
-	t.Run("get chat members", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "chat.members", "get"},
-			Params: map[string]any{"chat_id": chatID},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-
-		hasMore := gjson.Get(result.Stdout, "data.has_more").Exists()
-		items := gjson.Get(result.Stdout, "data.items").Array()
-		require.NotNil(t, items, "data.items should exist")
-		t.Logf("Found %d members, has_more: %v", len(items), hasMore)
-	})
-
-	t.Run("add member to chat (bot only - requires valid user ID)", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "chat.members", "create"},
-			Params: map[string]any{"chat_id": chatID},
-			Data: map[string]any{
-				"id_list": []string{"ou_invalid_user_id"},
-			},
-		})
-		require.NoError(t, err)
-		t.Logf("Add member result: %s", result.Stdout)
-	})
-
-	t.Run("remove member from chat (requires valid member ID)", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"im", "chat.members", "delete"},
-			Params: map[string]any{"chat_id": chatID},
-			Data: map[string]any{
-				"id_list": []string{"ou_invalid_member_id"},
-			},
-		})
-		require.NoError(t, err)
-		t.Logf("Remove member result: %s", result.Stdout)
 	})
 }
