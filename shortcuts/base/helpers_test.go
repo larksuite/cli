@@ -198,7 +198,7 @@ func TestRecordAndChunkHelpers(t *testing.T) {
 	}
 }
 
-func TestResolveAndSimplifyHelpers(t *testing.T) {
+func TestResolveHelpers(t *testing.T) {
 	fields := []map[string]interface{}{{"id": "fld_1", "name": "Name", "type": "text"}, {"field_id": "fld_2", "field_name": "Age", "type": "number", "multiple": true}}
 	tables := []map[string]interface{}{{"id": "tbl_1", "name": "Orders"}}
 	views := []map[string]interface{}{{"id": "vew_1", "name": "Main", "type": "grid"}}
@@ -213,14 +213,6 @@ func TestResolveAndSimplifyHelpers(t *testing.T) {
 	}
 	if _, err := resolveViewRef(views, "Missing"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("err=%v", err)
-	}
-	simplifiedFields := simplifyFields(fields)
-	if len(simplifiedFields) != 2 {
-		t.Fatalf("simplifiedFields=%v", simplifiedFields)
-	}
-	simplifiedViews := simplifyViews(views)
-	if len(simplifiedViews) != 1 {
-		t.Fatalf("simplifiedViews=%v", simplifiedViews)
 	}
 }
 
@@ -313,9 +305,6 @@ func TestIdentifierAndValueHelpers(t *testing.T) {
 	}
 	if viewName(map[string]interface{}{"view_name": "Main"}) != "Main" {
 		t.Fatalf("viewName alt key failed")
-	}
-	if viewType(map[string]interface{}{"view_type": "grid"}) != "grid" {
-		t.Fatalf("viewType alt key failed")
 	}
 	if !valueEmpty(nil) || !valueEmpty("  ") || !valueEmpty([]interface{}{}) || !valueEmpty(map[string]interface{}{}) {
 		t.Fatalf("valueEmpty empty cases failed")

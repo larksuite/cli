@@ -23,6 +23,7 @@ func buildEventData(runtime *common.RuntimeContext, startTs, endTs string) map[s
 		"end_time":         map[string]string{"timestamp": endTs},
 		"attendee_ability": "can_modify_event",
 		"free_busy_status": "busy",
+		"vchat":            map[string]string{"vc_type": "vc"},
 		"reminders": []map[string]int{
 			{"minutes": 5},
 		},

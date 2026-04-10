@@ -63,18 +63,49 @@ func TestDryRunFieldOps(t *testing.T) {
 func TestDryRunRecordOps(t *testing.T) {
 	ctx := context.Background()
 
-	listRT := newBaseTestRuntime(
+	listRT := newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1"},
+		map[string][]string{"field-id": {"Name", "Age"}},
 		nil,
 		map[string]int{"offset": -3, "limit": 500},
 	)
-	assertDryRunContains(t, dryRunRecordList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "offset=0", "limit=200", "view_id=viw_1")
+	assertDryRunContains(t, dryRunRecordList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "offset=0", "limit=200", "view_id=viw_1", "field_id=Name", "field_id=Age")
+
+	commaFieldRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+		map[string][]string{"field-id": {"A,B", "C"}},
+		nil,
+		map[string]int{"limit": 1},
+	)
+	assertDryRunContains(t, dryRunRecordList(ctx, commaFieldRT), "limit=1", "offset=0", "field_id=A%2CB", "field_id=C")
+
+	searchRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"json":       `{"view_id":"viw_1","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"offset":-1,"limit":500}`,
+		},
+		nil, nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordSearch(ctx, searchRT),
+		"POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/search",
+		`"view_id":"viw_1"`,
+		`"keyword":"Created"`,
+		`"search_fields":["Title","fld_owner"]`,
+		`"select_fields":["Title","fld_owner"]`,
+		`"offset":-1`,
+		`"limit":500`,
+	)
 
 	upsertCreateRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"Name":"A"}`},
 		nil, nil,
 	)
 	assertDryRunContains(t, dryRunRecordUpsert(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records")
+	assertDryRunContains(t, dryRunRecordBatchCreate(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_create")
+	assertDryRunContains(t, dryRunRecordBatchUpdate(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_update")
 
 	rt := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "record-id": "rec_1", "json": `{"Name":"B"}`},
@@ -211,6 +242,7 @@ func TestDryRunViewOps(t *testing.T) {
 	assertDryRunContains(t, dryRunViewSetWrapped(setWrappedInvalidRT, "group", "group_config"), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/group")
 
 	assertDryRunContains(t, dryRunViewGetFilter(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/filter")
+	assertDryRunContains(t, dryRunViewGetVisibleFields(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/visible_fields")
 	assertDryRunContains(t, dryRunViewGetGroup(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/group")
 	assertDryRunContains(t, dryRunViewGetSort(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/sort")
 	assertDryRunContains(t, dryRunViewGetTimebar(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/timebar")

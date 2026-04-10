@@ -1,7 +1,7 @@
 ---
 name: lark-base
 version: 1.2.0
-description: "当需要用 lark-cli 操作飞书多维表格（Base）时调用：适用于建表、字段管理、记录读写、视图配置、历史查询，以及角色/表单/仪表盘管理；也适用于把旧的 +table / +field / +record 写法改成当前命令写法。涉及字段设计、公式字段、查找引用、跨表计算、行级派生指标、数据分析需求时也必须使用本 skill。"
+description: "当需要用 lark-cli 操作飞书多维表格（Base）时调用：适用于建表、字段管理、记录读写、视图配置、历史查询，以及角色/表单/仪表盘管理/工作流；也适用于把旧的 +table / +field / +record 写法改成当前命令写法。涉及字段设计、公式字段、查找引用、跨表计算、行级派生指标、数据分析需求时也必须使用本 skill。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -13,6 +13,7 @@ metadata:
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 > **执行前必做：** 执行任何 `base` 命令前，必须先阅读对应命令的 reference 文档，再调用命令。
 > **命名约定：** Base 业务命令仅使用 `lark-cli base +...` 形式；如需先解析 Wiki 链接，可先调用 `lark-cli wiki ...`。
+> **分流规则：** 如果用户要“把本地文件导入成 Base / 多维表格 / bitable”，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 
 ## 1. 何时使用本 Skill
 
@@ -66,9 +67,9 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+base-create` | 创建新的 Base | [`lark-base-base-create.md`](references/lark-base-base-create.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference |
+| `+base-create` | 创建新的 Base | [`lark-base-base-create.md`](references/lark-base-base-create.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；`--folder-token`、`--time-zone` 都是可选项 |
 | `+base-get` | 获取 Base 信息 | [`lark-base-base-get.md`](references/lark-base-base-get.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 适合确认 Base 本体信息，不替代表/字段结构读取 |
-| `+base-copy` | 复制已有 Base | [`lark-base-base-copy.md`](references/lark-base-base-copy.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference |
+| `+base-copy` | 复制已有 Base | [`lark-base-base-copy.md`](references/lark-base-base-copy.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；复制成功后应主动返回新 Base 标识信息 |
 
 ### 2.3 表与数据模块
 
@@ -101,9 +102,9 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+record-list / +record-get` | 读取记录明细、样例、分页导出，或获取单条记录详情 | [`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | `+record-list` 不用于聚合分析；如果要统计而不是列出原始记录，请使用 `+data-query`；`--limit` 最大 `200`；仅在用户明确需要时继续翻页；只能串行执行；`+record-get` 适合目标记录已明确时使用 |
-| `+record-upsert` | 创建或更新记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；附件不要走这里 |
-| `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` 伪造附件值 |
+| `+record-search / +record-list / +record-get` | 按关键词检索记录、读取记录明细 / 分页导出，或获取单条记录详情 | [`lark-base-record-search.md`](references/lark-base-record-search.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | 默认优先 `+record-list`；仅当用户提供明确搜索关键词时使用 `+record-search`；取数不用来做聚合分析；`--limit` 最大 `200`；仅在用户明确需要时继续翻页；`+record-list` 只能串行执行 |
+| `+record-upsert / +record-batch-create / +record-batch-update` | 创建、更新或批量写入记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-record-batch-create.md`](references/lark-base-record-batch-create.md)、[`lark-base-record-batch-update.md`](references/lark-base-record-batch-update.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；批量单次建议不超过 `500` 条；附件不要走这里 |
+| `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | `+record-delete / +record-history-list` | 删除记录，或查询某条记录的变更历史 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md)、[`lark-base-record-history-list.md`](references/lark-base-record-history-list.md) | 删除时用户已明确目标可直接执行并带 `--yes`；历史查询按 `table-id + record-id`，不支持整表扫描；`+record-history-list` 只能串行执行 |
 
 #### 2.3.4 View 子模块
@@ -117,6 +118,7 @@ metadata:
 | `+view-get-filter / +view-set-filter` | 读取或配置筛选条件 | [`lark-base-view-get-filter.md`](references/lark-base-view-get-filter.md)、[`lark-base-view-set-filter.md`](references/lark-base-view-set-filter.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md) | 常与 `+record-list` 组合，用于按视图筛选读取 |
 | `+view-get-sort / +view-set-sort` | 读取或配置排序 | [`lark-base-view-get-sort.md`](references/lark-base-view-get-sort.md)、[`lark-base-view-set-sort.md`](references/lark-base-view-set-sort.md) | 字段名必须来自真实结构 |
 | `+view-get-group / +view-set-group` | 读取或配置分组 | [`lark-base-view-get-group.md`](references/lark-base-view-get-group.md)、[`lark-base-view-set-group.md`](references/lark-base-view-set-group.md) | 字段名必须来自真实结构 |
+| `+view-get-visible-fields / +view-set-visible-fields` | 读取或配置视图可见字段 | [`lark-base-view-get-visible-fields.md`](references/lark-base-view-get-visible-fields.md)、[`lark-base-view-set-visible-fields.md`](references/lark-base-view-set-visible-fields.md) | 用于控制视图中的字段顺序与可见性；字段名必须来自真实结构 |
 | `+view-get-card / +view-set-card` | 读取或配置卡片视图 | [`lark-base-view-get-card.md`](references/lark-base-view-get-card.md)、[`lark-base-view-set-card.md`](references/lark-base-view-set-card.md) | 适合卡片展示场景 |
 | `+view-get-timebar / +view-set-timebar` | 读取或配置时间轴视图 | [`lark-base-view-get-timebar.md`](references/lark-base-view-get-timebar.md)、[`lark-base-view-set-timebar.md`](references/lark-base-view-set-timebar.md) | 适合时间线展示场景 |
 
@@ -146,7 +148,7 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+data-query` | 做分组统计、SUM / AVG / COUNT / MAX / MIN、条件筛选后的聚合分析 | [`lark-base-data-query.md`](references/lark-base-data-query.md) | 字段名必须精确匹配真实字段名；不要用 `+record-list` 拉全量再手算；`+data-query` 不返回原始记录；使用前先确认权限和字段类型是否受支持 |
+| `+data-query` | 做分组统计、SUM / AVG / COUNT / MAX / MIN、条件筛选后的聚合分析 | [`lark-base-data-query.md`](references/lark-base-data-query.md) | 字段名必须精确匹配真实字段名；不要用 `+record-list` / `+record-search` 拉全量再手算；`+data-query` 不返回原始记录；使用前先确认权限和字段类型是否受支持 |
 
 ### 2.6 Workflow 模块
 
@@ -157,7 +159,7 @@ metadata:
 |------|------------------|----------------|----------|
 | `+workflow-list / +workflow-get` | 列出 workflow，或获取完整 workflow 结构 | [`lark-base-workflow-list.md`](references/lark-base-workflow-list.md)、[`lark-base-workflow-get.md`](references/lark-base-workflow-get.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | `+workflow-list` 只返回摘要且只能串行执行；需要完整结构时用 `+workflow-get` |
 | `+workflow-create / +workflow-update` | 创建或更新 workflow | [`lark-base-workflow-create.md`](references/lark-base-workflow-create.md)、[`lark-base-workflow-update.md`](references/lark-base-workflow-update.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 先读 schema；禁止凭自然语言猜 `type`；先确认真实表名和字段名 |
-| `+workflow-enable / +workflow-disable` | 启用或停用 workflow | [`lark-base-workflow-enable.md`](references/lark-base-workflow-enable.md)、[`lark-base-workflow-disable.md`](references/lark-base-workflow-disable.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 启用或停用前先确认目标 workflow |
+| `+workflow-enable / +workflow-disable` | 启用或停用 workflow | [`lark-base-workflow-enable.md`](references/lark-base-workflow-enable.md)、[`lark-base-workflow-disable.md`](references/lark-base-workflow-disable.md)、[`lark-base-workflow-schema.md`](references/lark-base-workflow-schema.md) | 启用或停用前先确认目标 workflow；`workflow_id` 与 `table_id` 需按前缀区分 |
 
 ### 2.7 Dashboard 模块
 
@@ -200,10 +202,10 @@ metadata:
 
 ### 3.1 字段分类与可写性
 
-| 字段类型 | 含义 | 能否直接作为 `+record-upsert` 写入目标 | 说明 |
-|----------|------|----------------------------------------|------|
+| 字段类型 | 含义 | 能否直接作为 `+record-upsert / +record-batch-create / +record-batch-update` 写入目标 | 说明 |
+|----------|------|-----------------------------------------------------------|------|
 | 存储字段 | 真实存用户输入的数据 | 可以 | 常见如文本、数字、日期、单选、多选、人员、关联 |
-| 附件字段 | 存储文件附件 | 不能直接按普通字段写 | 上传附件必须走 `+record-upload-attachment` |
+| 附件字段 | 存储文件附件 | 不应直接按普通字段写 | 上传附件必须走 `+record-upload-attachment` |
 | 系统字段 | 平台自动维护 | 不可以 | 常见如创建时间、更新时间、创建人、修改人、自动编号 |
 | `formula` 字段 | 通过表达式计算 | 不可以 | 只读字段 |
 | `lookup` 字段 | 通过跨表规则查找引用 | 不可以 | 只读字段 |
@@ -212,12 +214,13 @@ metadata:
 
 | 用户诉求 | 优先方案 | 不要误走 |
 |---------|----------|----------|
-| 一次性分析 / 临时统计 | `+data-query` | 不要用 `+record-list` 拉全量后手算 |
+| 一次性分析 / 临时统计 | `+data-query` | 不要用 `+record-list` / `+record-search` 拉全量后手算 |
 | 要把结果长期显示在表里 | `formula` 字段 | 不要只给一次性手工分析结果 |
 | 用户明确要求 lookup，或天然是固定查找配置 | `lookup` 字段 | 不要默认先上 lookup；先判断 formula 是否更合适 |
-| 读取原始记录明细 / 导出 | `+record-list / +record-get` | 不要拿 `+data-query` 当取数命令 |
-| 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` 伪造附件值 |
+| 读取原始记录明细 / 关键词检索 / 导出 | `+record-search / +record-list / +record-get` | 不要拿 `+data-query` 当取数命令 |
+| 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | 基于视图做筛选读取 | `+view-set-filter` + `+record-list` | 不要跳过视图筛选直接猜条件 |
+| 本地 Excel / CSV 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
 
 ### 3.3 表名、字段名与表达式引用
 
@@ -266,16 +269,17 @@ metadata:
 
 1. 先拿结构，再写命令；至少先拿当前表结构，跨表时还要拿目标表结构。
 2. 不要猜表名、字段名、表达式引用，一律以真实返回为准。
-3. 写记录前先读字段结构；先 `+field-list`，再按字段类型构造写入值。
-4. 写字段前先看字段属性规范；先读 `lark-base-shortcut-field-properties.md`，再构造 `+field-create / +field-update` 的 JSON。
-5. 只写可写字段；系统字段、`formula`、`lookup` 默认只读。
-6. 聚合分析与取数分流；统计走 `+data-query`，明细走 `+record-list / +record-get`。
-7. 筛选查询按视图能力执行；先用 `+view-set-filter` 配置筛选，再结合 `+record-list` 读取。
-8. Base 场景不要改走裸 API，不要切去 `lark-cli api /open-apis/bitable/v1/...`。
-9. 统一使用 `--base-token`，不使用旧 `--app-token`。
-10. workflow 场景先读 schema，不要凭自然语言猜 `type`。
-11. dashboard 场景先读 guide；提到图表、看板、block 就先进入 dashboard 模块。
-12. formula / lookup 场景先读 guide；没读 guide 前不要直接创建或更新。
+3. 只使用原子命令；不要回退到旧的聚合式 `+table / +field / +record / +view / +history / +workspace`。
+4. 写记录前先读字段结构；先 `+field-list`，再按字段类型构造写入值。
+5. 写字段前先看字段属性规范；先读 `lark-base-shortcut-field-properties.md`，再构造 `+field-create / +field-update` 的 JSON。
+6. 只写可写字段；系统字段、附件字段、`formula`、`lookup` 默认不作为普通记录写入目标。
+7. 聚合分析与取数分流；统计走 `+data-query`，关键词检索走 `+record-search`，明细走 `+record-list / +record-get`。
+8. 筛选查询按视图能力执行；先用 `+view-set-filter` 配置筛选，再结合 `+record-list` 读取。
+9. Base 场景不要改走裸 API，不要切去 `lark-cli api /open-apis/bitable/v1/...`。
+10. 统一使用 `--base-token`，不使用旧 `--app-token`。
+11. workflow 场景先读 schema，不要凭自然语言猜 `type`。
+12. dashboard 场景先读 guide；提到图表、看板、block 就先进入 dashboard 模块。
+13. formula / lookup 场景先读 guide；没读 guide 前不要直接创建或更新。
 
 ### 4.3 并发、分页与批量限制
 
@@ -289,6 +293,8 @@ metadata:
 - 视图重命名时，用户已明确“把哪个视图改成什么名字”时，`+view-rename` 直接执行即可。
 - 删除记录 / 字段 / 表时，如果用户已经明确说要删除，且目标明确，`+record-delete / +field-delete / +table-delete` 可直接执行，并带 `--yes`。
 - 删除目标仍有歧义时，先用 `+record-get / +field-get / +table-get` 或相应 list 命令确认。
+- `+base-create / +base-copy` 成功后，回复中必须主动返回新 Base 的标识信息；若结果带可访问链接，也应一并返回。
+- 若 Base 由 bot 身份创建且当前 CLI 存在可用 user 身份，优先继续补授当前 user 为 `full_access`；owner 转移必须单独确认，禁止擅自执行。
 
 ## 5. 常见错误与恢复
 
@@ -305,3 +311,49 @@ metadata:
 | 系统字段 / 公式字段写入失败 | 只读字段被当成可写字段 | 改为写存储字段，计算结果交给 formula / lookup / 系统字段自动产出 |
 | `1254104` | 批量超 500 条 | 分批调用 |
 | `1254291` | 并发写冲突 | 串行写入 + 批次间延迟 |
+
+## 6. 参考文档
+
+- [lark-base-shortcut-field-properties.md](references/lark-base-shortcut-field-properties.md) — `+field-create/+field-update` 调用前必看，各类型 field JSON 规范
+- [role-config.md](references/role-config.md) — 角色权限配置详解
+- [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) — record 写入（`+record-upsert / +record-batch-create / +record-batch-update`）调用前必看，各类型 record JSON 规范
+- [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) — `+record-batch-create` 用法与 `--json` 结构
+- [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) — `+record-batch-update` 用法与 `--json` 结构
+- [formula-field-guide.md](references/formula-field-guide.md) — formula 字段写法、函数约束、CurrentValue 规则、跨表计算模式
+- [lookup-field-guide.md](references/lookup-field-guide.md) — lookup 字段配置规则、where/aggregate 约束、与 formula 的取舍
+- [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) — 视图筛选配置
+- [lark-base-record-list.md](references/lark-base-record-list.md) — 记录列表读取与分页
+- [lark-base-record-search.md](references/lark-base-record-search.md) — 关键词搜索记录
+- [lark-base-advperm-enable.md](references/lark-base-advperm-enable.md) — `+advperm-enable` 启用高级权限
+- [lark-base-advperm-disable.md](references/lark-base-advperm-disable.md) — `+advperm-disable` 停用高级权限
+- [lark-base-role-list.md](references/lark-base-role-list.md) — `+role-list` 列出角色
+- [lark-base-role-get.md](references/lark-base-role-get.md) — `+role-get` 获取角色详情
+- [lark-base-role-create.md](references/lark-base-role-create.md) — `+role-create` 创建角色
+- [lark-base-role-update.md](references/lark-base-role-update.md) — `+role-update` 更新角色
+- [lark-base-role-delete.md](references/lark-base-role-delete.md) — `+role-delete` 删除角色
+- [lark-base-dashboard.md](references/lark-base-dashboard.md) — dashboard 模块工作流指引
+- [dashboard-block-data-config.md](references/dashboard-block-data-config.md) — Block `data_config` 结构、图表类型、filter 规则
+- [lark-base-workflow.md](references/lark-base-workflow.md) — workflow 命令索引
+- [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) — `+workflow-create/+workflow-update` JSON body 结构详解
+- [lark-base-data-query.md](references/lark-base-data-query.md) — `+data-query` 聚合分析，含 DSL 结构、支持字段类型、聚合函数
+- [examples.md](references/examples.md) — 完整操作示例
+
+## 7. 命令分组
+
+> **执行前必做：** 从下表定位到命令后，务必先阅读对应命令的 reference 文档，再调用命令。
+
+| 命令分组 | 说明 |
+|----------|------|
+| [`table commands`](references/lark-base-table.md) | `+table-list / +table-get / +table-create / +table-update / +table-delete` |
+| [`field commands`](references/lark-base-field.md) | `+field-list / +field-get / +field-create / +field-update / +field-delete / +field-search-options` |
+| [`record commands`](references/lark-base-record.md) | `+record-search / +record-list / +record-get / +record-upsert / +record-batch-create / +record-batch-update / +record-upload-attachment / +record-delete` |
+| [`view commands`](references/lark-base-view.md) | `+view-list / +view-get / +view-create / +view-delete / +view-get-* / +view-set-* / +view-rename` |
+| [`data-query commands`](references/lark-base-data-query.md) | `+data-query` |
+| [`history commands`](references/lark-base-history.md) | `+record-history-list` |
+| [`base / workspace commands`](references/lark-base-workspace.md) | `+base-create / +base-get / +base-copy` |
+| [`advperm commands`](references/lark-base-advperm-enable.md) | `+advperm-enable / +advperm-disable` |
+| [`role commands`](references/lark-base-role-list.md) | `+role-list / +role-get / +role-create / +role-update / +role-delete` |
+| [`form commands`](references/lark-base-form-create.md) | `+form-list / +form-get / +form-create / +form-update / +form-delete` |
+| [`form questions commands`](references/lark-base-form-questions-create.md) | `+form-questions-list / +form-questions-create / +form-questions-update / +form-questions-delete` |
+| [`workflow commands`](references/lark-base-workflow.md) | `+workflow-list / +workflow-get / +workflow-create / +workflow-update / +workflow-enable / +workflow-disable` |
+| [`dashboard / dashboard-block commands`](references/lark-base-dashboard.md) | `+dashboard-list / +dashboard-get / +dashboard-create / +dashboard-update / +dashboard-delete / +dashboard-block-list / +dashboard-block-get / +dashboard-block-create / +dashboard-block-update / +dashboard-block-delete` |

@@ -102,6 +102,9 @@ func TestResolveMarkdownAsPost(t *testing.T) {
 	if !strings.Contains(got, `"tag":"md"`) {
 		t.Fatalf("resolveMarkdownAsPost() = %q, want post payload", got)
 	}
+	if !strings.Contains(got, `"tag":"text"`) {
+		t.Fatalf("resolveMarkdownAsPost() = %q, want segmented blank-line text paragraph", got)
+	}
 	if !strings.Contains(got, `#### Title`) || !strings.Contains(got, `##### Subtitle`) {
 		t.Fatalf("resolveMarkdownAsPost() = %q, want optimized heading levels", got)
 	}
