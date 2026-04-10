@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -43,15 +42,12 @@ var WikiNodeList = common.Shortcut{
 			params["parent_node_token"] = pt
 		}
 		return common.NewDryRunAPI().
-			GET(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes", spaceID)).
+			GET(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes", validate.EncodePathSegment(spaceID))).
 			Params(params).
 			Set("space_id", spaceID)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spaceID := strings.TrimSpace(runtime.Str("space-id"))
-		if spaceID == "" {
-			return output.ErrValidation("--space-id is required")
-		}
 		parentNodeToken := strings.TrimSpace(runtime.Str("parent-node-token"))
 
 		var nodes []map[string]interface{}

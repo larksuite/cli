@@ -8,8 +8,7 @@ Copy a wiki node (including its content) to a target space or under a target par
 lark-cli wiki +node-copy \
   --space-id <source_space_id> \
   --node-token <source_node_token> \
-  --target-space-id <target_space_id> \
-  [--target-parent-node-token <token>] \
+  (--target-space-id <target_space_id> | --target-parent-node-token <token>) \
   [--title <new_title>] \
   [--as user|bot]
 ```

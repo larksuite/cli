@@ -33,6 +33,12 @@ var WikiNodeCopy = common.Shortcut{
 		"Omit --title to keep the original node title in the copy.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateOptionalResourceName(strings.TrimSpace(runtime.Str("space-id")), "--space-id"); err != nil {
+			return err
+		}
+		if err := validateOptionalResourceName(strings.TrimSpace(runtime.Str("node-token")), "--node-token"); err != nil {
+			return err
+		}
 		targetSpaceID := strings.TrimSpace(runtime.Str("target-space-id"))
 		targetParent := strings.TrimSpace(runtime.Str("target-parent-node-token"))
 		if targetSpaceID == "" && targetParent == "" {
@@ -47,7 +53,9 @@ var WikiNodeCopy = common.Shortcut{
 		spaceID := strings.TrimSpace(runtime.Str("space-id"))
 		nodeToken := strings.TrimSpace(runtime.Str("node-token"))
 		return common.NewDryRunAPI().
-			POST(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes/%s/copy", spaceID, nodeToken)).
+			POST(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes/%s/copy",
+				validate.EncodePathSegment(spaceID),
+				validate.EncodePathSegment(nodeToken))).
 			Body(buildNodeCopyBody(runtime)).
 			Set("space_id", spaceID).
 			Set("node_token", nodeToken)

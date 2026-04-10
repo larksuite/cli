@@ -34,7 +34,7 @@ lark-cli wiki +space-list [--as user|bot]
 
 ## Notes
 
-- Returns all spaces in a single call via auto-pagination.
+- Returns all spaces via automatic pagination; the command may issue multiple API requests under the hood.
 - Use `space_id` from the output as `--space-id` for `+node-list` or `+node-copy`.
 - `my_library` is the personal document library; its `space_id` is returned as a numeric ID in results.
 

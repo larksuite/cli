@@ -30,7 +30,7 @@ ERRORS=0
 #   - Values ending with EXAMPLE_TOKEN  (e.g. wikcn_EXAMPLE_TOKEN)
 #   - Values that are all uppercase X   (e.g. bascnXXXXXXXX)
 #   - Values containing only X/_/<>     (e.g. <your_token>)
-REALISTIC_TOKEN_RE='"(wikcn|doccn|shtcn|bascn|fldcn|vewcn|tbln|obcn|flec)[A-Za-z0-9]{6,}"'
+REALISTIC_TOKEN_RE='"(wikcn|doccn|docx[a-z]|shtcn|bascn|fldcn|vewcn|tbln|obcn|flec|ou_|cli_)[A-Za-z0-9]{6,}"|`(wikcn|doccn|docx[a-z]|shtcn|bascn|fldcn|vewcn|tbln|obcn|flec|ou_|cli_)[A-Za-z0-9]{6,}`'
 PLACEHOLDER_RE='(EXAMPLE|_TOKEN|XXXX|xxxx|<|>|your_|_here)'
 
 while IFS= read -r -d '' file; do

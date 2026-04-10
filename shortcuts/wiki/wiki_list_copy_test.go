@@ -172,7 +172,7 @@ func TestWikiNodeListPassesParentNodeToken(t *testing.T) {
 
 	stub := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes?page_size=50&parent_node_token=wik_parent",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
