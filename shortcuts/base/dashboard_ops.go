@@ -95,6 +95,7 @@ func dryRunDashboardBlockGet(_ context.Context, runtime *common.RuntimeContext) 
 }
 
 func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	pc := newParseCtx(runtime)
 	body := map[string]interface{}{}
 	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
 		body["name"] = name
@@ -103,7 +104,7 @@ func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContex
 		body["type"] = blockType
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+		if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
 			body["data_config"] = parsed
 		}
 	}
@@ -119,12 +120,13 @@ func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContex
 }
 
 func dryRunDashboardBlockUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	pc := newParseCtx(runtime)
 	body := map[string]interface{}{}
 	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
 		body["name"] = name
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+		if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
 			body["data_config"] = parsed
 		}
 	}
@@ -240,6 +242,7 @@ func executeDashboardBlockGet(runtime *common.RuntimeContext) error {
 }
 
 func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
+	pc := newParseCtx(runtime)
 	body := map[string]interface{}{}
 	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
 		body["name"] = name
@@ -248,7 +251,7 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 		body["type"] = blockType
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		parsed, err := parseJSONObject(raw, "data-config")
+		parsed, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return err
 		}
@@ -269,12 +272,13 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 }
 
 func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
+	pc := newParseCtx(runtime)
 	body := map[string]interface{}{}
 	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
 		body["name"] = name
 	}
 	if raw := runtime.Str("data-config"); raw != "" {
-		parsed, err := parseJSONObject(raw, "data-config")
+		parsed, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return err
 		}

@@ -5,6 +5,8 @@ package base
 
 import (
 	"context"
+	"net/url"
+	"strconv"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -15,13 +17,18 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	params := map[string]interface{}{"offset": offset, "limit": limit}
-	if viewID := runtime.Str("view-id"); viewID != "" {
-		params["view_id"] = viewID
+	params := url.Values{}
+	params.Set("offset", strconv.Itoa(offset))
+	params.Set("limit", strconv.Itoa(limit))
+	for _, field := range recordListFields(runtime) {
+		params.Add("field_id", field)
 	}
+	if viewID := runtime.Str("view-id"); viewID != "" {
+		params.Set("view_id", viewID)
+	}
+	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records?" + params.Encode()
 	return common.NewDryRunAPI().
-		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/records").
-		Params(params).
+		GET(path).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
 }
@@ -35,7 +42,8 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 }
 
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, _ := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
 	if recordID := runtime.Str("record-id"); recordID != "" {
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
@@ -78,6 +86,10 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func recordListFields(runtime *common.RuntimeContext) []string {
+	return runtime.StrArray("field-id")
+}
+
 func executeRecordList(runtime *common.RuntimeContext) error {
 	offset := runtime.Int("offset")
 	if offset < 0 {
@@ -85,6 +97,10 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
+	fields := recordListFields(runtime)
+	if len(fields) > 0 {
+		params["field_id"] = fields
+	}
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params["view_id"] = viewID
 	}
@@ -106,7 +122,8 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordUpsert(runtime *common.RuntimeContext) error {
-	body, err := parseJSONObject(runtime.Str("json"), "json")
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}

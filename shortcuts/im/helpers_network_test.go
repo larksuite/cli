@@ -20,6 +20,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -52,9 +53,10 @@ func shortcutRawResponse(status int, body []byte, headers http.Header) *http.Res
 		headers = make(http.Header)
 	}
 	return &http.Response{
-		StatusCode: status,
-		Header:     headers,
-		Body:       io.NopCloser(bytes.NewReader(body)),
+		StatusCode:    status,
+		Header:        headers,
+		Body:          io.NopCloser(bytes.NewReader(body)),
+		ContentLength: int64(len(body)),
 	}
 }
 
@@ -88,10 +90,11 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{
-			Config:     func() (*core.CliConfig, error) { return cfg, nil },
-			HttpClient: func() (*http.Client, error) { return httpClient, nil },
-			LarkClient: func() (*lark.Client, error) { return sdk, nil },
-			Credential: testCred,
+			Config:         func() (*core.CliConfig, error) { return cfg, nil },
+			HttpClient:     func() (*http.Client, error) { return httpClient, nil },
+			LarkClient:     func() (*lark.Client, error) { return sdk, nil },
+			Credential:     testCred,
+			FileIOProvider: fileio.GetProvider(),
 			IOStreams: &cmdutil.IOStreams{
 				Out:    &bytes.Buffer{},
 				ErrOut: &bytes.Buffer{},
@@ -241,7 +244,9 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 		}
 	}))
 
-	target := filepath.Join(t.TempDir(), "nested", "resource.bin")
+	cmdutil.TestChdir(t, t.TempDir())
+
+	target := filepath.Join("nested", "resource.bin")
 	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "file_123", "file", target)
 	if err != nil {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
@@ -280,7 +285,9 @@ func TestDownloadIMResourceToPathHTTPErrorBody(t *testing.T) {
 		}
 	}))
 
-	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_403", "file_403", "file", filepath.Join(t.TempDir(), "out.bin"))
+	cmdutil.TestChdir(t, t.TempDir())
+
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_403", "file_403", "file", "out.bin")
 	if err == nil || !strings.Contains(err.Error(), "HTTP 403: denied") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -305,28 +312,14 @@ func TestUploadImageToIMSuccess(t *testing.T) {
 		}
 	}))
 
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	tmpDir := t.TempDir()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(wd)
-	})
+	cmdutil.TestChdir(t, t.TempDir())
 
 	path := "demo.png"
 	if err := os.WriteFile(path, []byte("png"), 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		t.Fatalf("Abs() error = %v", err)
-	}
-	got, err := uploadImageToIM(context.Background(), runtime, absPath, "message")
+	got, err := uploadImageToIM(context.Background(), runtime, path, "message")
 	if err != nil {
 		t.Fatalf("uploadImageToIM() error = %v", err)
 	}
@@ -357,28 +350,14 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 		}
 	}))
 
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	tmpDir := t.TempDir()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(wd)
-	})
+	cmdutil.TestChdir(t, t.TempDir())
 
 	path := "demo.txt"
 	if err := os.WriteFile(path, []byte("demo"), 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		t.Fatalf("Abs() error = %v", err)
-	}
-	got, err := uploadFileToIM(context.Background(), runtime, absPath, "stream", "1200")
+	got, err := uploadFileToIM(context.Background(), runtime, path, "stream", "1200")
 	if err != nil {
 		t.Fatalf("uploadFileToIM() error = %v", err)
 	}
@@ -394,7 +373,8 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 }
 
 func TestUploadImageToIMSizeLimit(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "too-large.png")
+	cmdutil.TestChdir(t, t.TempDir())
+	path := "too-large.png"
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -404,14 +384,18 @@ func TestUploadImageToIMSizeLimit(t *testing.T) {
 	}
 	f.Close()
 
-	_, err = uploadImageToIM(context.Background(), nil, path, "message")
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected")
+	}))
+	_, err = uploadImageToIM(context.Background(), rt, path, "message")
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("uploadImageToIM() error = %v", err)
 	}
 }
 
 func TestUploadFileToIMSizeLimit(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "too-large.bin")
+	cmdutil.TestChdir(t, t.TempDir())
+	path := "too-large.bin"
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -421,7 +405,10 @@ func TestUploadFileToIMSizeLimit(t *testing.T) {
 	}
 	f.Close()
 
-	_, err = uploadFileToIM(context.Background(), nil, path, "stream", "")
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected")
+	}))
+	_, err = uploadFileToIM(context.Background(), rt, path, "stream", "")
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("uploadFileToIM() error = %v", err)
 	}
@@ -430,6 +417,7 @@ func TestUploadFileToIMSizeLimit(t *testing.T) {
 func TestResolveMediaContentWrapsUploadError(t *testing.T) {
 	runtime := &common.RuntimeContext{
 		Factory: &cmdutil.Factory{
+			FileIOProvider: fileio.GetProvider(),
 			IOStreams: &cmdutil.IOStreams{
 				Out:    &bytes.Buffer{},
 				ErrOut: &bytes.Buffer{},
@@ -437,7 +425,9 @@ func TestResolveMediaContentWrapsUploadError(t *testing.T) {
 		},
 	}
 
-	missing := filepath.Join(t.TempDir(), "missing.png")
+	cmdutil.TestChdir(t, t.TempDir())
+
+	missing := "missing.png"
 	_, _, err := resolveMediaContent(context.Background(), runtime, "", missing, "", "", "", "")
 	if err == nil || !strings.Contains(err.Error(), "image upload failed") {
 		t.Fatalf("resolveMediaContent() error = %v", err)
@@ -457,15 +447,7 @@ func TestResolveLocalMediaImage(t *testing.T) {
 		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
 	}))
 
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	tmpDir := t.TempDir()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(wd) })
+	cmdutil.TestChdir(t, t.TempDir())
 
 	if err := os.WriteFile("test.png", []byte("png-data"), 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -496,15 +478,7 @@ func TestResolveLocalMediaFile(t *testing.T) {
 		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
 	}))
 
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	tmpDir := t.TempDir()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(wd) })
+	cmdutil.TestChdir(t, t.TempDir())
 
 	if err := os.WriteFile("test.txt", []byte("file-data"), 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)

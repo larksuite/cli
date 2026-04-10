@@ -23,7 +23,8 @@ var MailReply = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "Required. Message ID to reply to", Required: true},
 		{Name: "body", Desc: "Required. Reply body. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the reply body and the original message. Use --plain-text to force plain-text mode.", Required: true},
-		{Name: "from", Desc: "Sender address; also selects the mailbox to send from (defaults to the authenticated user's primary mailbox)"},
+		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "to", Desc: "Additional To address(es), comma-separated (appended to original sender's address)"},
 		{Name: "cc", Desc: "Additional CC email address(es), comma-separated"},
 		{Name: "bcc", Desc: "BCC email address(es), comma-separated"},
@@ -36,9 +37,9 @@ var MailReply = common.Shortcut{
 		messageId := runtime.Str("message-id")
 		confirmSend := runtime.Bool("confirm-send")
 		mailboxID := resolveComposeMailboxID(runtime)
-		desc := "Reply: fetch original message → fetch mailbox profile (default From) → save as draft"
+		desc := "Reply: fetch original message → resolve sender address → save as draft"
 		if confirmSend {
-			desc = "Reply (--confirm-send): fetch original message → fetch mailbox profile (default From) → create draft → send draft"
+			desc = "Reply (--confirm-send): fetch original message → resolve sender address → create draft → send draft"
 		}
 		api := common.NewDryRunAPI().
 			Desc(desc).
@@ -55,12 +56,11 @@ var MailReply = common.Shortcut{
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
 		}
-		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
+		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
 		body := runtime.Str("body")
-		fromFlag := runtime.Str("from")
 		toFlag := runtime.Str("to")
 		ccFlag := runtime.Str("cc")
 		bccFlag := runtime.Str("bcc")
@@ -81,12 +81,9 @@ var MailReply = common.Shortcut{
 		}
 		orig := sourceMsg.Original
 
-		senderEmail := fromFlag
+		senderEmail := resolveComposeSenderEmail(runtime)
 		if senderEmail == "" {
-			senderEmail = fetchCurrentUserEmail(runtime)
-			if senderEmail == "" {
-				senderEmail = orig.headTo
-			}
+			senderEmail = orig.headTo
 		}
 
 		replyTo := orig.replyTo
@@ -110,7 +107,7 @@ var MailReply = common.Shortcut{
 		}
 
 		quoted := quoteForReply(&orig, useHTML)
-		bld := emlbuilder.New().
+		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(buildReplySubject(orig.subject)).
 			ToAddrs(parseNetAddrs(replyTo))
 		if senderEmail != "" {
@@ -161,7 +158,7 @@ var MailReply = common.Shortcut{
 			bld = bld.TextBody([]byte(bodyStr + quoted))
 		}
 		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
+		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
 			return err
 		}
 		for _, path := range splitByComma(attachFlag) {

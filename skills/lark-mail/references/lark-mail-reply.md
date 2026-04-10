@@ -65,7 +65,8 @@ lark-cli mail +reply --message-id <邮件ID> --body '<p>测试</p>' --dry-run
 |------|------|------|
 | `--message-id <id>` | 是 | 被回复的邮件 ID |
 | `--body <text>` | 是 | 回复正文。推荐使用 HTML 获得富文本排版；也支持纯文本。根据回复正文和原邮件正文自动检测 HTML。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径） |
-| `--from <email>` | 否 | 发件人邮箱地址（默认读取 user_mailboxes.profile.primary_email_address） |
+| `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。默认读取邮箱主地址 |
+| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--to <emails>` | 否 | 额外收件人，多个用逗号分隔（追加到原发件人） |
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |

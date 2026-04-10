@@ -8,9 +8,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -41,7 +40,7 @@ var MediaUpload = common.Shortcut{
 			body["extra"] = fmt.Sprintf(`{"drive_route_token":"%s"}`, docId)
 		}
 		dry := common.NewDryRunAPI()
-		if docMediaShouldUseMultipart(filePath) {
+		if docMediaShouldUseMultipart(runtime.FileIO(), filePath) {
 			prepareBody := map[string]interface{}{
 				"file_name":   filepath.Base(filePath),
 				"parent_type": parentType,
@@ -81,15 +80,10 @@ var MediaUpload = common.Shortcut{
 		parentNode := runtime.Str("parent-node")
 		docId := runtime.Str("doc-id")
 
-		safeFilePath, pathErr := validate.SafeInputPath(filePath)
-		if pathErr != nil {
-			return output.ErrValidation("unsafe file path: %s", pathErr)
-		}
-
 		// Validate file
-		stat, err := vfs.Stat(safeFilePath)
+		stat, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return output.ErrValidation("file not found: %s", filePath)
+			return common.WrapInputStatError(err, "file not found")
 		}
 		if !stat.Mode().IsRegular() {
 			return output.ErrValidation("file must be a regular file: %s", filePath)
@@ -147,14 +141,10 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, filePath, fileName strin
 	})
 }
 
-func docMediaShouldUseMultipart(filePath string) bool {
+func docMediaShouldUseMultipart(fio fileio.FileIO, filePath string) bool {
 	// Dry-run uses local stat as a best-effort planning hint. Execute re-validates
 	// the file before choosing the actual upload path.
-	safeFilePath, err := validate.SafeInputPath(filePath)
-	if err != nil {
-		return false
-	}
-	info, err := vfs.Stat(safeFilePath)
+	info, err := fio.Stat(filePath)
 	if err != nil {
 		return false
 	}

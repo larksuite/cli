@@ -156,6 +156,64 @@ func TestDriveTaskResultImportIncludesReadyFlags(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"job_status_label": "processing"`)) {
 		t.Fatalf("stdout missing job_status_label: %s", stdout.String())
 	}
+	if bytes.Contains(stdout.Bytes(), []byte(`"permission_grant"`)) {
+		t.Fatalf("stdout should not include permission_grant before import is ready: %s", stdout.String())
+	}
+}
+
+func TestDriveTaskResultImportBotAutoGrantSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, "ou_current_user"))
+	registerDriveBotTokenStub(reg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/import_tasks/tk_import_ready",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"type":       "sheet",
+					"job_status": 0,
+					"token":      "sheet_imported",
+					"url":        "https://example.feishu.cn/sheets/sheet_imported",
+				},
+			},
+		},
+	})
+
+	permStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/sheet_imported/members",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+		},
+	}
+	reg.Register(permStub)
+
+	err := mountAndRunDrive(t, DriveTaskResult, []string{
+		"+task_result",
+		"--scenario", "import",
+		"--ticket", "tk_import_ready",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantGranted {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantGranted)
+	}
+	if grant["user_open_id"] != "ou_current_user" {
+		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
+	}
+
+	body := decodeCapturedJSONBody(t, permStub)
+	if body["member_type"] != "openid" || body["member_id"] != "ou_current_user" || body["perm"] != "full_access" || body["type"] != "user" {
+		t.Fatalf("unexpected permission request body: %#v", body)
+	}
 }
 
 func TestDriveTaskResultTaskCheckIncludesReadyFlags(t *testing.T) {

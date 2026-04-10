@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.7] - 2026-04-09
+
+### Features
+
+- Auto-grant current user access for bot-created docs, sheets, imports, and uploads (#360)
+- **mail**: Add `send_as` alias support, mailbox/sender discovery APIs, and mail rules API
+- **vc**: Extract note doc tokens from calendar event relation API (#333)
+- **wiki**: Add wiki node create shortcut (#320)
+- **sheets**: Add `+write-image` shortcut (#343)
+- **docs**: Add media-preview shortcut (#334)
+- **docs**: Add support for additional search filters (#353)
+
+### Bug Fixes
+
+- **api**: Support stdin and quoted JSON inputs on Windows (#367)
+- **doc**: Post-process `docs +fetch` output to improve round-trip fidelity (#214)
+- **run**: Add missing binary check for lark-cli execution (#362)
+- **config**: Validate appId and appSecret keychain key consistency (#295)
+
+### Refactor
+
+- Route base import guidance to drive `+import` (#368)
+- Migrate mail shortcuts to FileIO (#356)
+- Migrate drive/doc/sheets shortcuts to FileIO (#339)
+- Migrate base shortcuts to FileIO (#347)
+
+### Documentation
+
+- **lark-doc**: Document advanced boolean and intitle search syntax for AI agents (#210)
+
+### Chore
+
+- Add depguard and forbidigo rules to guide FileIO adoption (#342)
+
+## [v1.0.6] - 2026-04-08
+
+### Features
+
+- Improve login scope validation and success output (#317)
+- **task**: Support starting pagination from page token (#332)
+- Support multipart doc media uploads (#294)
+- **mail**: Auto-resolve local image paths in all draft entry points (#205)
+- **vc**: Add `+recording` shortcut for `meeting_id` to `minute_token` conversion (#246)
+
+### Bug Fixes
+
+- Resolve concurrency races in RuntimeContext (#330)
+- **config**: Save empty config before clearing keychain entries (#291)
+- Reject positional arguments in shortcuts (#227)
+- Improve raw API diagnostics for invalid or empty JSON responses (#257)
+- **docs**: Normalize `board_tokens` in `+create` response for mermaid/whiteboard content (#10)
+- **task**: Clarify `--complete` flag help for `get-my-tasks` (#310)
+- **help**: Point root help Agent Skills link to README section (#289)
+
+### Documentation
+
+- Clarify `--complete` flag behavior in `get-my-tasks` reference (#308)
+
+### Refactor
+
+- Migrate VC/minutes shortcuts to FileIO (#336)
+- Migrate common/client/IM to FileIO and add localfileio tests (#322)
+
 ## [v1.0.5] - 2026-04-07
 
 ### Features
@@ -193,6 +256,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.7]: https://github.com/larksuite/cli/releases/tag/v1.0.7
+[v1.0.6]: https://github.com/larksuite/cli/releases/tag/v1.0.6
 [v1.0.5]: https://github.com/larksuite/cli/releases/tag/v1.0.5
 [v1.0.4]: https://github.com/larksuite/cli/releases/tag/v1.0.4
 [v1.0.3]: https://github.com/larksuite/cli/releases/tag/v1.0.3

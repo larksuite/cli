@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -49,6 +50,18 @@ func (l *mailWatchLogger) Error(_ context.Context, args ...interface{}) {
 }
 
 var _ larkcore.Logger = (*mailWatchLogger)(nil)
+
+// handleMailWatchSignal processes a shutdown signal: logs status, unsubscribes
+// mailbox events, restores default signal behavior for forced termination, and
+// cancels the watch context.
+func handleMailWatchSignal(errOut io.Writer, sig os.Signal, eventCount int64, unsubscribeWithLog func(), stopSignals func(), cancel context.CancelFunc) {
+	fmt.Fprintf(errOut, "\nShutting down (signal: %v)... (received %d events)\n", sig, eventCount)
+	// Restore default signal behavior so a second Ctrl+C can force terminate.
+	stopSignals()
+	signal.Reset(os.Interrupt, syscall.SIGTERM)
+	unsubscribeWithLog()
+	cancel()
+}
 
 const mailEventType = "mail.user_mailbox.event.message_received_v1"
 
@@ -260,19 +273,30 @@ var MailWatch = common.Shortcut{
 			})
 			return unsubErr
 		}
+		var unsubLogOnce sync.Once
+		unsubscribeWithLog := func() {
+			unsubLogOnce.Do(func() {
+				info("Unsubscribing mailbox events...")
+				if err := unsubscribe(); err != nil {
+					fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", err)
+				} else {
+					info("Mailbox unsubscribed.")
+				}
+			})
+		}
+		defer unsubscribeWithLog()
 
 		// Resolve "me" to the actual email address so we can filter events.
 		mailboxFilter := mailbox
 		if mailbox == "me" {
 			resolved, profileErr := fetchMailboxPrimaryEmail(runtime, "me")
 			if profileErr != nil {
-				unsubscribe() //nolint:errcheck // best-effort cleanup; primary error is profileErr
 				return enhanceProfileError(profileErr)
 			}
 			mailboxFilter = resolved
 		}
 
-		eventCount := 0
+		var eventCount atomic.Int64
 
 		handleEvent := func(data map[string]interface{}) {
 			// Extract event body
@@ -338,7 +362,7 @@ var MailWatch = common.Shortcut{
 				}
 			}
 
-			eventCount++
+			eventCount.Add(1)
 
 			// Prompt injection detection: warn when email body contains known injection patterns.
 			// Body fields may be base64url-encoded; decode before scanning.
@@ -425,32 +449,59 @@ var MailWatch = common.Shortcut{
 			larkws.WithLogger(sdkLogger),
 		)
 
+		watchCtx, cancelWatch := context.WithCancel(ctx)
+		defer cancelWatch()
+
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		stopSignals := func() { signal.Stop(sigCh) }
+		defer stopSignals()
+
+		shutdownBySignal := make(chan struct{})
+		var shutdownOnce sync.Once
+		triggerShutdown := func() {
+			shutdownOnce.Do(func() { close(shutdownBySignal) })
+			cancelWatch()
+		}
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Fprintf(errOut, "panic in signal handler: %v\n", r)
+					triggerShutdown()
 				}
 			}()
-			<-sigCh
-			info(fmt.Sprintf("\nShutting down... (received %d events)", eventCount))
-			info("Unsubscribing mailbox events...")
-			if unsubErr := unsubscribe(); unsubErr != nil {
-				fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", unsubErr)
-			} else {
-				info("Mailbox unsubscribed.")
+			select {
+			case sig := <-sigCh:
+				handleMailWatchSignal(errOut, sig, eventCount.Load(), unsubscribeWithLog, stopSignals, cancelWatch)
+				triggerShutdown()
+			case <-watchCtx.Done():
+				return
 			}
-			signal.Stop(sigCh)
-			os.Exit(0)
+		}()
+
+		startErrCh := make(chan error, 1)
+		go func() {
+			startErrCh <- cli.Start(watchCtx)
 		}()
 
 		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
-		if err := cli.Start(ctx); err != nil {
-			unsubscribe() //nolint:errcheck // best-effort cleanup
-			return output.ErrNetwork("WebSocket connection failed: %v", err)
+		select {
+		case <-shutdownBySignal:
+			return nil
+		case err := <-startErrCh:
+			if err != nil {
+				select {
+				case <-shutdownBySignal:
+					return nil
+				default:
+				}
+				if watchCtx.Err() != nil {
+					return nil
+				}
+				return output.ErrNetwork("WebSocket connection failed: %v", err)
+			}
+			return nil
 		}
-		return nil
 	},
 }
 

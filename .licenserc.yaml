@@ -1,0 +1,16 @@
+header:
+  license:
+    content: |
+      Copyright (c) [year] Lark Technologies Pte. Ltd.
+      SPDX-License-Identifier: MIT
+    copyright-year: "2026"
+
+  paths:
+    - '**/*.go'
+    - '**/*.js'
+    - '**/*.py'
+
+  paths-ignore:
+    - '**/testdata/**'
+
+  comment: on-failure

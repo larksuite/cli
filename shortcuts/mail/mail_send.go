@@ -24,7 +24,8 @@ var MailSend = common.Shortcut{
 		{Name: "to", Desc: "Recipient email address(es), comma-separated"},
 		{Name: "subject", Desc: "Required. Email subject", Required: true},
 		{Name: "body", Desc: "Required. Email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode.", Required: true},
-		{Name: "from", Desc: "Sender address; also selects the mailbox to send from (defaults to the authenticated user's primary mailbox)"},
+		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "CC email address(es), comma-separated"},
 		{Name: "bcc", Desc: "BCC email address(es), comma-separated"},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
@@ -61,13 +62,12 @@ var MailSend = common.Shortcut{
 		if err := validateComposeHasAtLeastOneRecipient(runtime.Str("to"), runtime.Str("cc"), runtime.Str("bcc")); err != nil {
 			return err
 		}
-		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
+		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
 		body := runtime.Str("body")
-		fromFlag := runtime.Str("from")
 		ccFlag := runtime.Str("cc")
 		bccFlag := runtime.Str("bcc")
 		plainText := runtime.Bool("plain-text")
@@ -75,12 +75,9 @@ var MailSend = common.Shortcut{
 		inlineFlag := runtime.Str("inline")
 		confirmSend := runtime.Bool("confirm-send")
 
-		senderEmail := fromFlag
-		if senderEmail == "" {
-			senderEmail = fetchCurrentUserEmail(runtime)
-		}
+		senderEmail := resolveComposeSenderEmail(runtime)
 
-		bld := emlbuilder.New().
+		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(subject).
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
@@ -122,7 +119,7 @@ var MailSend = common.Shortcut{
 			bld = bld.TextBody([]byte(body))
 		}
 		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
+		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
 			return err
 		}
 

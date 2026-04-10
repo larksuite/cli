@@ -179,13 +179,13 @@ var VCRecording = common.Shortcut{
 					time.Sleep(batchDelay)
 				}
 				fmt.Fprintf(errOut, "%s resolving calendar_event_id=%s ...\n", recordingLogPrefix, sanitizeLogValue(instanceID))
-				meetingIDs, resolveErr := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID)
+				relInfo, resolveErr := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID, false)
 				if resolveErr != nil {
 					results = append(results, map[string]any{"calendar_event_id": instanceID, "error": resolveErr.Error()})
 					continue
 				}
 				found := false
-				for _, meetingID := range meetingIDs {
+				for _, meetingID := range relInfo.MeetingIDs {
 					fmt.Fprintf(errOut, "%s event %s → meeting_id=%s\n", recordingLogPrefix, sanitizeLogValue(instanceID), sanitizeLogValue(meetingID))
 					result := fetchRecordingByMeetingID(ctx, runtime, meetingID)
 					if result["error"] == nil {

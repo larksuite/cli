@@ -5,6 +5,18 @@
 
 查询异步任务结果。该 shortcut 聚合了导入、导出、移动/删除文件夹等多种异步任务的结果查询，统一接口方便调用。
 
+> [!IMPORTANT]
+> 对于 `import` 场景，如果使用 `--as bot` 且这次查询**已经拿到最终在线文档目标**（`ready=true` 且返回了最终 `token` / `url`），CLI 会**再次尝试为当前 CLI 用户自动授予该资源的 `full_access`（可管理权限）**。
+>
+> 此时结果里会额外返回 `permission_grant` 字段，明确说明授权结果：
+> - `status = granted`：当前 CLI 用户已获得该导入结果的可管理权限
+> - `status = skipped`：本地没有可用的当前用户 `open_id`，或最终结果缺少可授权的在线文档目标，因此不会自动授权；可提示用户先完成 `lark-cli auth login`，再让 AI / agent 继续使用应用身份（bot）授予当前用户权限
+> - `status = failed`：导入结果已就绪，但自动授权用户失败；会带上失败原因，并提示稍后重试或继续使用 bot 身份处理该文档
+>
+> `permission_grant.perm = full_access` 表示该资源已授予“可管理权限”。
+>
+> **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
+
 ## 命令
 
 ```bash
@@ -58,7 +70,14 @@ lark-cli drive +task_result \
   "job_error_msg": "success",
   "token": "<IMPORTED_DOC_TOKEN>",
   "url": "https://example.feishu.cn/sheets/<IMPORTED_DOC_TOKEN>",
-  "extra": ["2000"]
+  "extra": ["2000"],
+  "permission_grant": {
+    "status": "granted",
+    "perm": "full_access",
+    "member_type": "openid",
+    "user_open_id": "<CURRENT_USER_OPEN_ID>",
+    "message": "Granted the current CLI user full_access (可管理权限) on the new spreadsheet."
+  }
 }
 ```
 
@@ -69,6 +88,7 @@ lark-cli drive +task_result \
 - `job_status_label`: 便于阅读的状态标签，例如 `success` / `processing`
 - `token`: 导入后的文档 token
 - `url`: 导入后的文档链接
+- `permission_grant`: 仅 `--as bot` 且这次查询已经拿到最终在线文档目标时返回，用于说明是否已自动为当前 CLI 用户授予可管理权限；如果当前仍是 `ready=false`，则不会返回这个字段
 
 ### Export 场景返回
 
@@ -127,6 +147,7 @@ lark-cli drive +import --file ./data.xlsx --type sheet
 
 # 2. 轮询导入结果
 lark-cli drive +task_result --scenario import --ticket <IMPORT_TICKET>
+# 如果这里返回 ready=true 且使用 --as bot，结果还会包含 permission_grant
 ```
 
 ### 配合 +move 使用
@@ -163,6 +184,9 @@ lark-cli drive +export-download --file-token <EXPORTED_FILE_TOKEN>
 | import | `drive:drive.metadata:readonly` |
 | export | `drive:drive.metadata:readonly` |
 | task_check | `drive:drive.metadata:readonly` |
+
+> [!NOTE]
+> `import` 场景在 `--as bot` 且任务最终就绪时，还可能额外尝试一次协作者授权；如果 `permission_grant.status = failed`，请根据失败信息检查应用是否具备相应的文档协作者授权能力。
 
 ## 参考
 

@@ -23,6 +23,10 @@ var BaseFieldUpdate = common.Shortcut{
 		{Name: "json", Desc: "field property JSON object", Required: true},
 		{Name: "i-have-read-guide", Type: "bool", Desc: "acknowledge reading formula/lookup guide before creating or updating those field types", Hidden: true},
 	},
+	Tips: []string{
+		`Example: --json '{"name":"Status","type":"text"}'`,
+		"Agent hint: use the lark-base skill's field-update guide for usage and limits.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateFieldUpdate(runtime)
 	},

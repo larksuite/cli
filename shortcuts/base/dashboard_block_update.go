@@ -29,6 +29,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		pc := newParseCtx(runtime)
 		if runtime.Bool("no-validate") {
 			return nil
 		}
@@ -36,7 +37,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		if strings.TrimSpace(raw) == "" {
 			return nil
 		}
-		cfg, err := parseJSONObject(raw, "data-config")
+		cfg, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return err
 		}
@@ -49,12 +50,13 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		pc := newParseCtx(runtime)
 		body := map[string]interface{}{}
 		if name := runtime.Str("name"); name != "" {
 			body["name"] = name
 		}
 		if raw := runtime.Str("data-config"); raw != "" {
-			if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+			if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
 				body["data_config"] = parsed
 			}
 		}

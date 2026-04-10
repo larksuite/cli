@@ -34,6 +34,8 @@ type LoginOptions struct {
 	DeviceCode string
 }
 
+var pollDeviceToken = larkauth.PollDeviceToken
+
 // NewCmdAuthLogin creates the auth login subcommand.
 func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.Command {
 	opts := &LoginOptions{Factory: f}
@@ -235,6 +237,9 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// --no-wait: return immediately with device code and URL
 	if opts.NoWait {
+		if err := saveLoginRequestedScope(authResp.DeviceCode, finalScope); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to cache requested scopes: %v\n", err)
+		}
 		data := map[string]interface{}{
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
@@ -244,7 +249,7 @@ func authLoginRun(opts *LoginOptions) error {
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(data); err != nil {
-			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+			return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
 		}
 		return nil
 	}
@@ -261,7 +266,7 @@ func authLoginRun(opts *LoginOptions) error {
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(data); err != nil {
-			fmt.Fprintf(f.IOStreams.ErrOut, "error: failed to write JSON output: %v\n", err)
+			return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
 		}
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
@@ -270,19 +275,25 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result := larkauth.PollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 
 	if !result.OK {
 		if opts.JSON {
-			b, _ := json.Marshal(map[string]interface{}{
+			encoder := json.NewEncoder(f.IOStreams.Out)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(map[string]interface{}{
 				"event": "authorization_failed",
 				"error": result.Message,
-			})
-			fmt.Fprintln(f.IOStreams.Out, string(b))
+			}); err != nil {
+				return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
+			}
 			return output.ErrBare(output.ExitAuth)
 		}
 		return output.ErrAuth("authorization failed: %s", result.Message)
+	}
+	if result.Token == nil {
+		return output.ErrAuth("authorization succeeded but no token returned")
 	}
 
 	// Step 6: Get user info
@@ -295,6 +306,8 @@ func authLoginRun(opts *LoginOptions) error {
 	if err != nil {
 		return output.ErrAuth("failed to get user info: %v", err)
 	}
+
+	scopeSummary := loadLoginScopeSummary(config.AppID, openId, finalScope, result.Token.Scope)
 
 	// Step 7: Store token
 	now := time.Now().UnixMilli()
@@ -318,21 +331,11 @@ func authLoginRun(opts *LoginOptions) error {
 		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
-	if opts.JSON {
-		b, _ := json.Marshal(map[string]interface{}{
-			"event":        "authorization_complete",
-			"user_open_id": openId,
-			"user_name":    userName,
-			"scope":        result.Token.Scope,
-		})
-		fmt.Fprintln(f.IOStreams.Out, string(b))
-	} else {
-		fmt.Fprintln(f.IOStreams.ErrOut)
-		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
-		if result.Token.Scope != "" {
-			fmt.Fprintf(f.IOStreams.ErrOut, msg.GrantedScopes, result.Token.Scope)
-		}
+	if issue := ensureRequestedScopesGranted(finalScope, result.Token.Scope, msg, scopeSummary); issue != nil {
+		return handleLoginScopeIssue(opts, msg, f, issue, openId, userName)
 	}
+
+	writeLoginSuccess(opts, msg, f, openId, userName, scopeSummary)
 	return nil
 }
 
@@ -345,13 +348,26 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return err
 	}
+	requestedScope, err := loadLoginRequestedScope(opts.DeviceCode)
+	if err != nil {
+		fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to load cached requested scopes: %v\n", err)
+	}
+	cleanupRequestedScope := func() {
+		if err := removeLoginRequestedScope(opts.DeviceCode); err != nil {
+			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to remove cached requested scopes: %v\n", err)
+		}
+	}
 	log(msg.WaitingAuth)
-	result := larkauth.PollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		opts.DeviceCode, 5, 180, f.IOStreams.ErrOut)
 
 	if !result.OK {
+		if shouldRemoveLoginRequestedScope(result) {
+			cleanupRequestedScope()
+		}
 		return output.ErrAuth("authorization failed: %s", result.Message)
 	}
+	defer cleanupRequestedScope()
 	if result.Token == nil {
 		return output.ErrAuth("authorization succeeded but no token returned")
 	}
@@ -366,6 +382,8 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return output.ErrAuth("failed to get user info: %v", err)
 	}
+
+	scopeSummary := loadLoginScopeSummary(config.AppID, openId, requestedScope, result.Token.Scope)
 
 	// Store token
 	now := time.Now().UnixMilli()
@@ -389,7 +407,11 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
 	}
 
-	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
+	if issue := ensureRequestedScopesGranted(requestedScope, result.Token.Scope, msg, scopeSummary); issue != nil {
+		return handleLoginScopeIssue(opts, msg, f, issue, openId, userName)
+	}
+
+	writeLoginSuccess(opts, msg, f, openId, userName, scopeSummary)
 	return nil
 }
 

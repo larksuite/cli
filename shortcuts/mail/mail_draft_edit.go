@@ -11,8 +11,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
@@ -26,7 +24,8 @@ var MailDraftEdit = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me)"},
+		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me). Prefer --mailbox for clarity; --from is kept for backward compatibility."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Takes priority over --from when both are set."},
 		{Name: "draft-id", Desc: "Target draft ID. Required for real edits. It can be omitted only when using the --print-patch-template flag by itself."},
 		{Name: "set-subject", Desc: "Replace the subject with this final value. Use this for full subject replacement, not for appending a fragment to the existing subject."},
 		{Name: "set-to", Desc: "Replace the entire To recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
@@ -93,7 +92,8 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("parse draft raw EML failed: %v", err)
 		}
-		if err := draftpkg.Apply(snapshot, patch); err != nil {
+		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
+		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
 			return output.ErrValidation("apply draft patch failed: %v", err)
 		}
 		serialized, err := draftpkg.Serialize(snapshot)
@@ -216,7 +216,7 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 
 	patchFile := strings.TrimSpace(runtime.Str("patch-file"))
 	if patchFile != "" {
-		filePatch, err := loadPatchFile(patchFile)
+		filePatch, err := loadPatchFile(runtime, patchFile)
 		if err != nil {
 			return patch, err
 		}
@@ -264,13 +264,14 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 	return patch, patch.Validate()
 }
 
-func loadPatchFile(path string) (draftpkg.Patch, error) {
+func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch, error) {
 	var patch draftpkg.Patch
-	safePath, err := validate.SafeInputPath(path)
+	f, err := runtime.FileIO().Open(path)
 	if err != nil {
 		return patch, fmt.Errorf("--patch-file %q: %w", path, err)
 	}
-	data, err := vfs.ReadFile(safePath)
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return patch, err
 	}

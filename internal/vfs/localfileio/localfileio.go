@@ -34,7 +34,7 @@ type LocalFileIO struct{}
 func (l *LocalFileIO) Open(name string) (fileio.File, error) {
 	safePath, err := SafeInputPath(name)
 	if err != nil {
-		return nil, err
+		return nil, &fileio.PathValidationError{Err: err}
 	}
 	return vfs.Open(safePath)
 }
@@ -43,7 +43,7 @@ func (l *LocalFileIO) Open(name string) (fileio.File, error) {
 func (l *LocalFileIO) Stat(name string) (fileio.FileInfo, error) {
 	safePath, err := SafeInputPath(name)
 	if err != nil {
-		return nil, err
+		return nil, &fileio.PathValidationError{Err: err}
 	}
 	return vfs.Stat(safePath)
 }
@@ -55,7 +55,11 @@ func (r *saveResult) Size() int64 { return r.size }
 
 // ResolvePath returns the validated absolute path for the given output path.
 func (l *LocalFileIO) ResolvePath(path string) (string, error) {
-	return SafeOutputPath(path)
+	resolved, err := SafeOutputPath(path)
+	if err != nil {
+		return "", &fileio.PathValidationError{Err: err}
+	}
+	return resolved, nil
 }
 
 // Save writes body to path atomically after validating the output path.
@@ -64,14 +68,14 @@ func (l *LocalFileIO) ResolvePath(path string) (string, error) {
 func (l *LocalFileIO) Save(path string, _ fileio.SaveOptions, body io.Reader) (fileio.SaveResult, error) {
 	safePath, err := SafeOutputPath(path)
 	if err != nil {
-		return nil, err
+		return nil, &fileio.PathValidationError{Err: err}
 	}
 	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-		return nil, err
+		return nil, &fileio.MkdirError{Err: err}
 	}
 	n, err := AtomicWriteFromReader(safePath, body, 0600)
 	if err != nil {
-		return nil, err
+		return nil, &fileio.WriteError{Err: err}
 	}
 	return &saveResult{size: n}, nil
 }
