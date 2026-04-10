@@ -40,12 +40,41 @@ func TestSubscribeTaskEvent(t *testing.T) {
 			wantParts: []string{`"ok": true`},
 		},
 		{
-			name:    "execute refuses bot identity",
-			mode:    "execute",
-			args:    []string{"+subscribe-event", "--as", "bot", "--format", "json"},
-			wantErr: true,
-			// This error is raised before network calls; it is ok to only assert a stable substring.
-			wantParts: []string{"--as bot is not supported"},
+			name: "execute json (bot identity)",
+			mode: "execute",
+			args: []string{"+subscribe-event", "--as", "bot", "--format", "json"},
+			register: func(reg *httpmock.Registry) {
+				reg.Register(&httpmock.Stub{
+					Method: "POST",
+					URL:    "/open-apis/task/v2/task_v2/task_subscription",
+					Body: map[string]interface{}{
+						"code": 0,
+						"msg":  "success",
+						"data": map[string]interface{}{},
+					},
+				})
+			},
+			wantParts: []string{`"ok": true`},
+		},
+		{
+			name: "execute api error",
+			mode: "execute",
+			args: []string{"+subscribe-event", "--as", "bot", "--format", "json"},
+			register: func(reg *httpmock.Registry) {
+				reg.Register(&httpmock.Stub{
+					Method: "POST",
+					URL:    "/open-apis/task/v2/task_v2/task_subscription",
+					Body: map[string]interface{}{
+						"code": 401,
+						"msg":  "Unauthorized",
+						"error": map[string]interface{}{
+							"log_id": "test-log-id",
+						},
+					},
+				})
+			},
+			wantErr:   true,
+			wantParts: []string{"Unauthorized"},
 		},
 		{
 			name:      "dry run",

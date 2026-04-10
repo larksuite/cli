@@ -21,7 +21,7 @@ var SubscribeTaskEvent = common.Shortcut{
 	Description: "subscribe to task events",
 	Risk:        "write",
 	Scopes:      []string{"task:task:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
