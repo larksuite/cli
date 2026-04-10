@@ -63,6 +63,7 @@ lark-cli slides xml_presentation.slide create \
 | 文档 | 说明 |
 |------|------|
 | [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) | **XML 元素和属性速查，必读** |
+| [template-catalog.md](references/template-catalog.md) | **模板目录索引，用于匹配最佳模板** |
 
 ### 选读（需要时查阅）
 
@@ -81,21 +82,31 @@ lark-cli slides xml_presentation.slide create \
 ```
 Step 1: 需求澄清 & 读取知识
   - 澄清用户需求：主题、受众、页数、风格偏好
-  - 如果用户没有明确风格，根据主题推荐（见下方风格判断表）
   - 读取 XML Schema 参考：
     · xml-schema-quick-ref.md — 元素和属性速查
     · xml-format-guide.md — 详细结构与示例
-    · slides_demo.xml — 真实 XML 示例
 
-Step 2: 生成大纲 → 用户确认 → 逐页创建
+Step 2: 匹配模板 & 读取样式参考
+  - 读取 template-catalog.md（模板目录索引）
+  - 根据 场景关键词、色调偏好、正式度 匹配 1-2 个最佳模板
+  - 用 Read 工具读取匹配到的模板 XML 全文
+  - 从模板中提取并复用：
+    · <theme> — 整体配色方案（背景色、文字色、强调色）
+    · 页面流 — slide 顺序（封面→目录→分节→内容→结尾）
+    · 布局模式 — 每种页面类型的 shape 排列方式
+    · 视觉元素 — 透明度、圆角、阴影、装饰线等参数
+  - 如果用户没有明确风格，根据场景推荐（见 catalog 快速匹配索引）
+
+Step 3: 生成大纲 → 用户确认 → 逐页创建
   - 生成结构化大纲（每页标题 + 要点 + 布局描述），交给用户确认
+  - 大纲应说明参考了哪个模板，以及采用的配色方案
   - 用户确认或调整后，开始创建：
     · slides +create 创建空白 PPT
     · xml_presentation.slide.create 逐页添加 slide
   - 每页 slide 需要完整的 XML：背景、文本、图形、配色
   - 复杂元素（table、chart）需参考 XSD 原文
 
-Step 3: 审查 & 交付
+Step 4: 审查 & 交付
   - 创建完成后，用 xml_presentations.get 读取全文 XML，确认：
     · 页数是否正确？每页内容是否完整？
     · 配色是否统一？字号层级是否合理？
@@ -121,14 +132,17 @@ lark-cli slides xml_presentation.slide create \
 
 ### 风格快速判断表
 
-| 场景/主题 | 推荐风格 | 背景 | 主色 | 文字色 |
-|----------|---------|------|------|-------|
-| 科技/AI/产品 | 深色科技风 | 深蓝渐变 `linear-gradient(135deg, rgb(15,23,42), rgb(56,97,140))` | 蓝色系 `rgb(59,130,246)` | 白色 |
-| 商务汇报/季度总结 | 浅色商务风 | 浅灰 `rgb(248,250,252)` | 深蓝 `rgb(30,60,114)` | 深灰 `rgb(30,41,59)` |
-| 教育/培训 | 清新明亮风 | 白色 `rgb(255,255,255)` | 绿色系 `rgb(34,197,94)` | 深灰 `rgb(51,65,85)` |
-| 创意/设计 | 渐变活力风 | 紫粉渐变 `linear-gradient(135deg, rgb(88,28,135), rgb(190,24,93))` | 粉紫色系 | 白色 |
-| 周报/日常汇报 | 简约专业风 | 浅灰 `rgb(248,250,252)` + 顶部彩色渐变条 | 蓝色 `rgb(59,130,246)` | 深色 `rgb(15,23,42)` |
-| 用户未指定 | 默认简约专业风 | 同上 | 同上 | 同上 |
+> **优先使用模板参考**：以下仅为无模板时的兜底配色。创建 PPT 时应先查 [template-catalog.md](references/template-catalog.md) 匹配模板，从模板 XML 中提取真实 theme 和配色。
+
+| 场景/主题 | 推荐模板 | 兜底背景 | 兜底主色 | 文字色 |
+|----------|---------|---------|---------|-------|
+| 科技/AI/产品 | `office--dark_general` `product--market_analysis` | 深蓝渐变 | 蓝色系 `#4e6efd` | 白色 |
+| 商务汇报/季度总结 | `office--work_report` `office--quarterly_review` | 浅灰 `#f4f5f6` | 深蓝 `#3a6cea` | 深灰 `#1f2329` |
+| 商业计划/路演 | `marketing--business_plan` `marketing--roadshow_business_plan` | 白底 | 蓝色 `#194cff` 或 绿色 `#20b14e` | 深灰 |
+| 教育/培训 | `hr--employee_training_workshop` `hr--onboarding` | 暖白 | 多彩 | 深灰 |
+| 创意/设计/年会 | `administration--annual_gala` `marketing--marketing_strategy` | 深色渐变 | 霓虹多彩 | 白色 |
+| 周报/日常汇报 | `office--work_summary` `office--light_general` | 浅灰 `#f4f5f6` | 蓝色 `#4e6efd` | 深灰 `#1f2329` |
+| 用户未指定 | `office--light_general`（浅色）或 `office--dark_general`（深色） | — | — | — |
 
 ### 页面布局建议
 
@@ -319,13 +333,15 @@ lark-cli slides <resource> <method> [flags]  # 调用 API
 
 | 文档 | 说明 |
 |------|------|
+| [template-catalog.md](references/template-catalog.md) | **模板目录索引（必读）**：匹配最佳模板 |
 | [lark-slides-create.md](references/lark-slides-create.md) | **+create Shortcut：创建空白 PPT** |
 | [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) | **XML Schema 精简速查（必读）** |
-| [slide-templates.md](references/slide-templates.md) | 可复制的 Slide XML 模板 |
+| [slide-templates.md](references/slide-templates.md) | 可复制的 Slide XML 模板片段 |
 | [xml-format-guide.md](references/xml-format-guide.md) | XML 详细结构与示例 |
 | [examples.md](references/examples.md) | CLI 调用示例 |
 | [slides_demo.xml](references/slides_demo.xml) | 真实 PPT 的完整 XML |
 | [slides_xml_schema_definition.xml](references/slides_xml_schema_definition.xml) | **完整 Schema 定义**（唯一协议依据） |
+| `references/templates/<category>--<name>.xml` | **42 个分类模板 XML**（按需读取，由 catalog 路由） |
 | [lark-slides-xml-presentations-create.md](references/lark-slides-xml-presentations-create.md) | 创建空白 PPT 命令详情 |
 | [lark-slides-xml-presentations-get.md](references/lark-slides-xml-presentations-get.md) | 读取 PPT 命令详情 |
 | [lark-slides-xml-presentation-slides-create.md](references/lark-slides-xml-presentation-slides-create.md) | 添加幻灯片命令详情 |
