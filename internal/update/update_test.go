@@ -81,12 +81,12 @@ func TestParseVersion(t *testing.T) {
 		{"1.0.0-0", []int{1, 0, 0}},
 		{"1.0.0+build.123", []int{1, 0, 0}},
 		{"1.0.0-beta.1+build", []int{1, 0, 0}},
-		{"1.0.0-", nil},          // empty pre-release
-		{"1.0.0-01", nil},        // leading zero in numeric pre-release
-		{"1.0.0-beta..1", nil},   // empty identifier between dots
-		{"01.0.0", nil},          // leading zero in major
-		{"1.00.0", nil},          // leading zero in minor
-		{"1.0.00", nil},          // leading zero in patch
+		{"1.0.0-", nil},        // empty pre-release
+		{"1.0.0-01", nil},      // leading zero in numeric pre-release
+		{"1.0.0-beta..1", nil}, // empty identifier between dots
+		{"01.0.0", nil},        // leading zero in major
+		{"1.00.0", nil},        // leading zero in minor
+		{"1.0.00", nil},        // leading zero in patch
 		{"DEV", nil},
 		{"", nil},
 		{"1.2", nil},
