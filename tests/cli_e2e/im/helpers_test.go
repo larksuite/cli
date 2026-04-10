@@ -5,6 +5,7 @@ package im
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -62,5 +63,6 @@ func sendMessage(t *testing.T, parentT *testing.T, ctx context.Context, chatID s
 
 // generateSuffix generates a unique suffix based on current timestamp.
 func generateSuffix() string {
-	return time.Now().UTC().Format("20060102-150405")
+	now := time.Now().UTC()
+	return fmt.Sprintf("%s-%09d", now.Format("20060102-150405"), now.Nanosecond())
 }

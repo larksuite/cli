@@ -25,11 +25,15 @@ func createTempFile(t *testing.T, suffix, content string) string {
 	// Create files in a relative path within the project directory
 	// since --file requires relative paths
 	testDir := filepath.Join("tests", "cli_e2e", "drive", "testfiles")
-	_ = os.MkdirAll(testDir, 0755)
+	err := os.MkdirAll(testDir, 0o755)
+	require.NoError(t, err)
 
-	fileName := suffix + "-" + time.Now().UTC().Format("20060102-150405") + ".txt"
-	filePath := filepath.Join(testDir, fileName)
-	err := os.WriteFile(filePath, []byte(content), 0644)
+	file, err := os.CreateTemp(testDir, suffix+"-*.txt")
+	require.NoError(t, err)
+	filePath := file.Name()
+	_, err = file.WriteString(content)
+	require.NoError(t, err)
+	err = file.Close()
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -58,7 +62,12 @@ func uploadTestFile(t *testing.T, parentT *testing.T, ctx context.Context, suffi
 	require.NotEmpty(t, fileToken, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// No drive delete shortcut/resource is currently available in lark-cli.
+		// Keep this cleanup bounded and best-effort so it does not hang teardown.
+		_, _ = clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:   []string{"drive", "files", "delete"},
 			Params: map[string]any{"file_token": fileToken, "type": "file"},
 		})
@@ -73,11 +82,15 @@ func importTestDoc(t *testing.T, parentT *testing.T, ctx context.Context, suffix
 	t.Helper()
 
 	testDir := filepath.Join("tests", "cli_e2e", "drive", "testfiles")
-	_ = os.MkdirAll(testDir, 0755)
+	err := os.MkdirAll(testDir, 0o755)
+	require.NoError(t, err)
 
-	fileName := "drive-e2e-" + suffix + "-" + time.Now().UTC().Format("20060102-150405") + ".md"
-	mdFile := filepath.Join(testDir, fileName)
-	err := os.WriteFile(mdFile, []byte(content), 0644)
+	file, err := os.CreateTemp(testDir, "drive-e2e-"+suffix+"-*.md")
+	require.NoError(t, err)
+	mdFile := file.Name()
+	_, err = file.WriteString(content)
+	require.NoError(t, err)
+	err = file.Close()
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -94,20 +107,34 @@ func importTestDoc(t *testing.T, parentT *testing.T, ctx context.Context, suffix
 	docToken := gjson.Get(result.Stdout, "data.token").String()
 
 	if ticket != "" {
-		// Poll for import completion
-		pollResult, pollErr := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"drive", "+task_result", "--ticket", ticket, "--scenario", "import"},
-		})
-		require.NoError(t, pollErr)
-		pollResult.AssertExitCode(t, 0)
-		pollResult.AssertStdoutStatus(t, true)
-		docToken = gjson.Get(pollResult.Stdout, "data.token").String()
+		deadline := time.Now().Add(45 * time.Second)
+		for {
+			pollResult, pollErr := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{"drive", "+task_result", "--ticket", ticket, "--scenario", "import"},
+			})
+			require.NoError(t, pollErr)
+			pollResult.AssertExitCode(t, 0)
+			pollResult.AssertStdoutStatus(t, true)
+			docToken = gjson.Get(pollResult.Stdout, "data.token").String()
+			if docToken != "" {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("import task did not return token before timeout, ticket=%s", ticket)
+			}
+			time.Sleep(2 * time.Second)
+		}
 	}
 
 	require.NotEmpty(t, docToken, "doc_token is required, stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		clie2e.RunCmd(context.Background(), clie2e.Request{
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// No drive delete shortcut/resource is currently available in lark-cli.
+		// Keep this cleanup bounded and best-effort so it does not hang teardown.
+		_, _ = clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:   []string{"drive", "files", "delete"},
 			Params: map[string]any{"file_token": docToken, "type": "docx"},
 		})
