@@ -44,6 +44,7 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 > 自动设置 `attendee_ability: "can_modify_event"`，参会人可查看彼此并编辑日程。
 > 自动设置 `free_busy_status: "busy"`，默认日程忙闲状态为忙碌。
 > 自动设置 `reminders: [{"minutes": 5}]`，默认日程开始前 5 分钟提醒。
+> 自动设置 `vchat: {"vc_type": "vc"}`，默认日程包含飞书视频会议。如需其他视频会议类型或不含视频会议，请使用完整 API 命令。
 > 失败保护：若添加参会人失败（如 open_id 错误），CLI 会自动删除刚创建的空日程（回滚，不通知参会人）。
 
 ## 高级用法（完整 API 命令）
