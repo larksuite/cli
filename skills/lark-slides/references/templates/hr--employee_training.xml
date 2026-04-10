@@ -1,0 +1,912 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>员工培训</title>
+  <theme>
+    <background>
+      <fillColor color="rgba(13, 20, 32, 1)"/>
+    </background>
+    <textStyles>
+      <title fontColor="#000000FF" fontSize="48"/>
+      <headline fontColor="#000000FF" fontSize="36"/>
+      <sub-headline fontColor="#000000FF"/>
+      <body fontColor="#000000FF"/>
+      <caption fontColor="#808080FF" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="AiubbdDtOosfbEx6K6Oc9jJPnhb" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="51" startY="457" endX="904" endY="456">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="300" height="74" topLeftX="51" topLeftY="351" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="18">主讲人：李天天 </span>
+          </p>
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="18">资深研究员，创业公司CEO</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="547" height="176" topLeftX="46" topLeftY="134" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="65" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="65">员工</span>
+            </strong>
+          </p>
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="65">培训指南</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="202" height="41" topLeftX="51" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" autoFit="shape-auto-fit">
+          <p>输入你的互联网公司</p>
+        </content>
+      </shape>
+      <shape width="16" height="15" topLeftX="78" topLeftY="60" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="36" height="16" topLeftX="48" topLeftY="50" rotation="90" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="16" height="15" topLeftX="78" topLeftY="39" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="202" height="41" topLeftX="712" topLeftY="28" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right" autoFit="shape-auto-fit">
+          <p list="none" textAlign="right">公司名字</p>
+        </content>
+      </shape>
+      <shape width="202" height="39" topLeftX="58" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="left" autoFit="shape-auto-fit">
+          <p>输入互联网公司</p>
+        </content>
+      </shape>
+      <shape width="202" height="38" topLeftX="702" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right">
+          <p>2026年第一季度</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(13, 20, 32, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="60" startY="152" endX="540" endY="152" alpha="0.5">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="531" height="104" topLeftX="47" topLeftY="38" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="60" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.4">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="60">目录</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="310" height="260" topLeftX="60" topLeftY="203" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:2.3">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p lineSpacing="multiple:3">
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="16">培训目的</span>
+                </strong>
+              </p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:3">
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="16">合同签订的注意事项</span>
+                </strong>
+              </p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:3">
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="16">劳动争议风险</span>
+                </strong>
+              </p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:3">
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="16">知识产权及商业机密风险</span>
+                </strong>
+              </p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:3">
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="16">商业道德方面</span>
+                </strong>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="NXFgbhXpSoDgJGxhkF4c8vC4n6e" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="51" startY="457" endX="904" endY="456">
+        <border color="linear-gradient(90deg,rgba(4, 58, 138, 1) 0%,rgba(104, 158, 239, 1) 16%,rgba(152, 222, 251, 1) 36%,rgba(255, 157, 11, 1) 66%,rgba(255, 92, 0, 1) 84%,rgba(62, 15, 197, 1) 100%)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="347" height="83" topLeftX="34" topLeftY="94" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="895" height="64" topLeftX="34" topLeftY="31" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">培训目的</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="422" height="224" topLeftX="512" topLeftY="190" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="200" fontFamily="黑体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1" textAlign="right">
+          <p>01</p>
+        </content>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="484" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="10" topLeftX="45" topLeftY="476" rotation="90" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="470" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="202" height="38" topLeftX="702" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right">
+          <p>2026年第一季度</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(13, 20, 32, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="413" height="326" topLeftX="492" topLeftY="150" presetHandlers="8" flipX="true" alpha="0.2" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="413" height="326" topLeftX="59" topLeftY="150" presetHandlers="8" alpha="0.2" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="59" startY="101" endX="905" endY="101" alpha="0.5">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <img src="JOdrbcqdUoQvVwxO3bpcScHynPJ" width="382" height="191" topLeftX="508" topLeftY="164">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <img src="PIvhbkqeaoY3O8xp9CEco4ZZnvg" width="382" height="191" topLeftX="75" topLeftY="164">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <shape width="468" height="53" topLeftX="53" topLeftY="48" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>培训目的</p>
+        </content>
+      </shape>
+      <shape width="382" height="56" topLeftX="507" topLeftY="411" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="382" height="56" topLeftX="75" topLeftY="411" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="382" height="44" topLeftX="508" topLeftY="374" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>提高自我防护意识和能力</p>
+        </content>
+      </shape>
+      <shape width="382" height="44" topLeftX="75" topLeftY="374" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>增强公司员工法律意识以及法律观念</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="NXFgbhXpSoDgJGxhkF4c8vC4n6e" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="51" startY="457" endX="904" endY="456">
+        <border color="linear-gradient(90deg,rgba(4, 58, 138, 1) 0%,rgba(104, 158, 239, 1) 16%,rgba(152, 222, 251, 1) 36%,rgba(255, 157, 11, 1) 66%,rgba(255, 92, 0, 1) 84%,rgba(62, 15, 197, 1) 100%)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="347" height="83" topLeftX="34" topLeftY="94" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="895" height="64" topLeftX="34" topLeftY="31" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">合同签订的注意事项</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="422" height="224" topLeftX="512" topLeftY="190" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="200" fontFamily="黑体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1" textAlign="right">
+          <p>02</p>
+        </content>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="484" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="10" topLeftX="45" topLeftY="476" rotation="90" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="470" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="202" height="38" topLeftX="702" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right">
+          <p>2026年第一季度</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(13, 20, 32, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="59" startY="101" endX="905" endY="101" alpha="0.5">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="63" height="68" topLeftX="59" topLeftY="180" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32" fontFamily="Arial Black">01</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="63" height="68" topLeftX="60" topLeftY="342" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32" fontFamily="Arial Black">02</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="468" height="53" topLeftX="53" topLeftY="48" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>合同签订的注意事项</p>
+        </content>
+      </shape>
+      <img src="A0G0btjSBoQYwwxHio7cjyTnnhh" width="344" height="300" topLeftX="561" topLeftY="164">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="22" bottomOffset="22" presetHandlers="12"/>
+      </img>
+      <shape width="341" height="74" topLeftX="59" topLeftY="396" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="341" height="74" topLeftX="59" topLeftY="234" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="411" height="44" topLeftX="115" topLeftY="358" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>签订合同过程中应注意的问题</p>
+        </content>
+      </shape>
+      <shape width="411" height="44" topLeftX="110" topLeftY="195" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>合同签订前的调查工作</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="NXFgbhXpSoDgJGxhkF4c8vC4n6e" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="51" startY="457" endX="904" endY="456">
+        <border color="linear-gradient(90deg,rgba(4, 58, 138, 1) 0%,rgba(104, 158, 239, 1) 16%,rgba(152, 222, 251, 1) 36%,rgba(255, 157, 11, 1) 66%,rgba(255, 92, 0, 1) 84%,rgba(62, 15, 197, 1) 100%)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="347" height="83" topLeftX="34" topLeftY="94" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="895" height="64" topLeftX="34" topLeftY="31" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">劳动争议风险</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="422" height="224" topLeftX="512" topLeftY="190" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="200" fontFamily="黑体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1" textAlign="right">
+          <p>03</p>
+        </content>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="484" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="10" topLeftX="45" topLeftY="476" rotation="90" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="470" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="202" height="38" topLeftX="702" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right">
+          <p>2026年第一季度</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(13, 20, 32, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="395" height="395" topLeftX="99" topLeftY="116" type="ellipse">
+        <border color="linear-gradient(140deg,rgba(0, 20, 51, 1) 0%,rgba(48, 171, 240, 1) 26%,rgba(255, 107, 0, 1) 62%,rgba(0, 16, 102, 1) 100%)" width="6" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="369" height="369" topLeftX="113" topLeftY="129" type="ellipse">
+        <border color="linear-gradient(140deg,rgba(0, 20, 51, 1) 0%,rgba(48, 171, 240, 1) 26%,rgba(255, 107, 0, 1) 62%,rgba(0, 16, 102, 1) 100%)" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="340" height="340" topLeftX="127" topLeftY="144" type="ellipse">
+        <border color="linear-gradient(140deg,rgba(0, 20, 51, 1) 0%,rgba(48, 171, 240, 1) 26%,rgba(255, 107, 0, 1) 62%,rgba(0, 16, 102, 1) 100%)" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="395" height="395" topLeftX="465" topLeftY="116" type="ellipse">
+        <fill>
+          <fillColor color="rgba(13, 20, 32, 1)"/>
+        </fill>
+        <border color="linear-gradient(90deg,rgba(4, 58, 138, 1) 0%,rgba(104, 158, 239, 1) 16%,rgba(152, 222, 251, 1) 36%,rgba(255, 157, 11, 1) 66%,rgba(255, 92, 0, 1) 84%,rgba(62, 15, 197, 1) 100%)" width="6" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="468" height="53" topLeftX="53" topLeftY="48" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>劳动争议风险</p>
+        </content>
+      </shape>
+      <shape width="236" height="74" topLeftX="545" topLeftY="306" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(212, 212, 212, 1)" bold="false" textAlign="center">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="236" height="74" topLeftX="179" topLeftY="305" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" textAlign="center">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="395" height="49" topLeftX="465" topLeftY="250" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="21" color="rgba(212, 212, 212, 1)" bold="true" lineSpacing="multiple:1.35" textAlign="center">
+          <p>合同内容与工资</p>
+        </content>
+      </shape>
+      <shape width="395" height="49" topLeftX="99" topLeftY="250" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="21" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35" textAlign="center">
+          <p>劳动合约签约的时间</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(13, 20, 32, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="59" startY="101" endX="905" endY="101" alpha="0.5">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="258" height="287" topLeftX="645" topLeftY="165" presetHandlers="8" alpha="0.2" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="258" height="287" topLeftX="351" topLeftY="165" presetHandlers="8" alpha="0.2" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="258" height="287" topLeftX="57" topLeftY="165" presetHandlers="8" alpha="0.2" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <img src="Qd97bGCM1oeyAQxRUmvcPUJjnyb" width="231" height="116" topLeftX="658" topLeftY="181">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0.02" bottomOffset="0.02" presetHandlers="8"/>
+      </img>
+      <img src="Z5ldbgltxoBN0XxyNxVcV2tWnWb" width="231" height="116" topLeftX="364" topLeftY="181">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0.02" bottomOffset="0.02" presetHandlers="8"/>
+      </img>
+      <img src="YXs0befYaoW0X5xtARpcuGT0nCb" width="231" height="116" topLeftX="71" topLeftY="181">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0.02" bottomOffset="0.02" presetHandlers="8"/>
+      </img>
+      <shape width="231" height="92" topLeftX="658" topLeftY="355" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" textAlign="center">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="231" height="92" topLeftX="364" topLeftY="355" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" textAlign="center">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="231" height="92" topLeftX="71" topLeftY="355" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" textAlign="center">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="258" height="44" topLeftX="645" topLeftY="313" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>解除劳动合同</p>
+        </content>
+      </shape>
+      <shape width="258" height="44" topLeftX="351" topLeftY="313" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>工伤</p>
+        </content>
+      </shape>
+      <shape width="258" height="44" topLeftX="57" topLeftY="313" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>合同约定内容</p>
+        </content>
+      </shape>
+      <shape width="468" height="53" topLeftX="53" topLeftY="48" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>劳动争议风险</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="NXFgbhXpSoDgJGxhkF4c8vC4n6e" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="51" startY="457" endX="904" endY="456">
+        <border color="linear-gradient(90deg,rgba(4, 58, 138, 1) 0%,rgba(104, 158, 239, 1) 16%,rgba(152, 222, 251, 1) 36%,rgba(255, 157, 11, 1) 66%,rgba(255, 92, 0, 1) 84%,rgba(62, 15, 197, 1) 100%)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="347" height="83" topLeftX="34" topLeftY="94" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="895" height="64" topLeftX="34" topLeftY="31" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">知识产权及商业机密风险</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="422" height="224" topLeftX="512" topLeftY="190" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="200" fontFamily="黑体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1" textAlign="right">
+          <p>04</p>
+        </content>
+      </shape>
+      <shape width="202" height="38" topLeftX="702" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right" autoFit="shape-auto-fit">
+          <p>2026年第一季度</p>
+        </content>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="484" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="10" topLeftX="45" topLeftY="476" rotation="90" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="470" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(13, 20, 32, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="59" startY="101" endX="905" endY="101" alpha="0.5">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="278" height="278" topLeftX="627" topLeftY="202" presetHandlers="8" alpha="0.5" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="649" startY="303" endX="883" endY="304" alpha="0.25">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="62" height="62" topLeftX="644" topLeftY="221" iconType="iconpark/Safe/protect.svg">
+        <border color="linear-gradient(140deg,rgba(0, 20, 51, 1) 0%,rgba(48, 171, 240, 1) 26%,rgba(255, 107, 0, 1) 62%,rgba(0, 16, 102, 1) 100%)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="278" height="278" topLeftX="59" topLeftY="202" presetHandlers="8" alpha="0.5" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="81" startY="303" endX="315" endY="304" alpha="0.25">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="62" height="62" topLeftX="76" topLeftY="221" iconType="iconpark/Clothes/bachelor-cap-one.svg">
+        <border color="linear-gradient(140deg,rgba(0, 20, 51, 1) 0%,rgba(48, 171, 240, 1) 26%,rgba(255, 107, 0, 1) 62%,rgba(0, 16, 102, 1) 100%)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="278" height="278" topLeftX="343" topLeftY="202" presetHandlers="8" alpha="0.5" type="round-rect">
+        <border color="rgba(170, 170, 170, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="365" startY="303" endX="599" endY="304" alpha="0.25">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="62" height="62" topLeftX="360" topLeftY="221" iconType="iconpark/Edit/bring-to-front-one.svg">
+        <border color="linear-gradient(140deg,rgba(0, 20, 51, 1) 0%,rgba(48, 171, 240, 1) 26%,rgba(255, 107, 0, 1) 62%,rgba(0, 16, 102, 1) 100%)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="230" height="38" topLeftX="713" topLeftY="222" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>Topic 03</p>
+        </content>
+      </shape>
+      <shape width="230" height="38" topLeftX="145" topLeftY="222" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>Topic 01</p>
+        </content>
+      </shape>
+      <shape width="468" height="53" topLeftX="53" topLeftY="48" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>知识产权及商业机密风险</p>
+        </content>
+      </shape>
+      <shape width="230" height="38" topLeftX="429" topLeftY="221" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>Topic 02</p>
+        </content>
+      </shape>
+      <shape width="228" height="44" topLeftX="145" topLeftY="245" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>什么是知识产权？</p>
+        </content>
+      </shape>
+      <shape width="237" height="92" topLeftX="649" topLeftY="324" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="237" height="92" topLeftX="361" topLeftY="324" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="237" height="92" topLeftX="78" topLeftY="324" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="228" height="44" topLeftX="713" topLeftY="245" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>风险防范</p>
+        </content>
+      </shape>
+      <shape width="228" height="44" topLeftX="429" topLeftY="245" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>专利的定义</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="NXFgbhXpSoDgJGxhkF4c8vC4n6e" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="51" startY="457" endX="904" endY="456">
+        <border color="linear-gradient(90deg,rgba(4, 58, 138, 1) 0%,rgba(104, 158, 239, 1) 16%,rgba(152, 222, 251, 1) 36%,rgba(255, 157, 11, 1) 66%,rgba(255, 92, 0, 1) 84%,rgba(62, 15, 197, 1) 100%)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="347" height="83" topLeftX="34" topLeftY="94" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="895" height="64" topLeftX="34" topLeftY="31" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">商业道德方面</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="422" height="224" topLeftX="512" topLeftY="190" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="200" fontFamily="黑体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1" textAlign="right">
+          <p>05</p>
+        </content>
+      </shape>
+      <shape width="202" height="38" topLeftX="702" topLeftY="462" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right" autoFit="shape-auto-fit">
+          <p>2026年第一季度</p>
+        </content>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="484" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="10" topLeftX="45" topLeftY="476" rotation="90" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="10" height="10" topLeftX="65" topLeftY="470" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(13, 20, 32, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="59" startY="101" endX="905" endY="101" alpha="0.5">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="64" startY="188" endX="185" endY="188">
+        <border color="linear-gradient(90deg,rgba(16, 0, 81, 1) 0%,rgba(62, 0, 239, 1) 100%)" width="6" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="242" startY="188" endX="363" endY="188">
+        <border color="linear-gradient(90deg,rgba(62, 0, 239, 1) 0%,rgba(48, 206, 196, 1) 100%)" width="6" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="414" startY="188" endX="535" endY="188">
+        <border color="linear-gradient(90deg,rgba(48, 206, 196, 1) 0%,rgba(255, 122, 0, 1) 100%)" width="6" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="591" startY="188" endX="712" endY="188">
+        <border color="linear-gradient(90deg,rgba(255, 122, 0, 1) 0%,rgba(152, 16, 174, 1) 100%)" width="6" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="770" startY="188" endX="891" endY="188">
+        <border color="linear-gradient(90deg,rgba(152, 16, 174, 1) 0%,rgba(5, 0, 36, 1) 100%)" width="6" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="230" height="41" topLeftX="685" topLeftY="64" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14">
+          <p>公司名字</p>
+        </content>
+      </shape>
+      <shape width="468" height="53" topLeftX="53" topLeftY="48" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>商业道德标准</p>
+        </content>
+      </shape>
+      <shape width="132" height="200" topLeftX="765" topLeftY="254" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="132" height="200" topLeftX="586" topLeftY="254" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="132" height="200" topLeftX="409" topLeftY="254" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="132" height="200" topLeftX="237" topLeftY="254" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="132" height="200" topLeftX="59" topLeftY="254" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)">
+          <p>请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字请在此处编辑文字</p>
+        </content>
+      </shape>
+      <shape width="131" height="53" topLeftX="765" topLeftY="192" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>05</p>
+        </content>
+      </shape>
+      <shape width="131" height="53" topLeftX="586" topLeftY="192" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>04</p>
+        </content>
+      </shape>
+      <shape width="131" height="53" topLeftX="409" topLeftY="192" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>03</p>
+        </content>
+      </shape>
+      <shape width="131" height="53" topLeftX="237" topLeftY="192" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>02</p>
+        </content>
+      </shape>
+      <shape width="131" height="53" topLeftX="59" topLeftY="192" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.35">
+          <p>01</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="YBLRbyEjxo8hiIxsQaFcYLSmnQc" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="51" startY="457" endX="904" endY="456">
+        <border color="rgba(143, 149, 158, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="230" height="41" topLeftX="684" topLeftY="28" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14">
+          <p>公司名字</p>
+        </content>
+      </shape>
+      <shape width="678" height="116" topLeftX="236" topLeftY="302" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="80" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="right">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="80">谢谢观看</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="16" height="15" topLeftX="78" topLeftY="60" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="36" height="16" topLeftX="48" topLeftY="50" rotation="90" flipX="true" type="round2diag-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="16" height="15" topLeftX="78" topLeftY="39" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="185" height="38" topLeftX="51" topLeftY="461" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="left" autoFit="shape-auto-fit">
+          <p list="none" textAlign="left">
+            <span color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="12" fontFamily="undefined" bold="false" italic="false" strikethrough="false" underline="false">A座32楼会议室</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="202" height="38" topLeftX="722" topLeftY="461" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right" autoFit="shape-auto-fit">
+          <p list="none" textAlign="right">
+            <span color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="12" fontFamily="undefined" bold="false" italic="false" strikethrough="false" underline="false">2026年第一季度</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="202" height="42" topLeftX="712" topLeftY="28" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="right" autoFit="shape-auto-fit">
+          <p list="none" textAlign="right">公司名字</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>

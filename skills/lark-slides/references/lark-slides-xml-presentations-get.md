@@ -90,6 +90,39 @@ lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id"
 2. 返回的 XML 在 `data.xml_presentation.content` 字段中
 3. 如果只需要部分信息，可以使用 `jq` 等工具过滤返回结果
 4. 建议将获取的 XML 保存为文件，便于后续编辑或备份
+5. 创建 PPT 后，应把 `xml_presentations get` 作为默认验收步骤，而不是可选步骤
+
+## 创建后验收建议
+
+最小验收顺序：
+
+1. 记录 `xml_presentation_id`
+2. 回读最新 XML
+3. 确认页数是否符合预期
+4. 确认标题、关键文本、关键布局元素是否存在
+5. 如果创建过程中报错，也要回读确认是否已经发生部分写入
+
+### 推荐验收命令
+
+```bash
+# 保存完整 JSON
+lark-cli slides xml_presentations get --as user \
+  --params '{"xml_presentation_id":"slides_example_presentation_id"}' \
+  > presentation_data.json
+
+# 只导出 XML 内容
+lark-cli slides xml_presentations get --as user \
+  --params '{"xml_presentation_id":"slides_example_presentation_id"}' \
+  | jq -r '.xml_presentation.content' \
+  > presentation.xml
+```
+
+### 建议检查项
+
+- [ ] 页数是否正确
+- [ ] 标题页是否存在
+- [ ] 关键文本是否完整，没有被截断
+- [ ] 关键 shape / img / table / chart 是否都在 XML 中出现
 
 ## 相关命令
 

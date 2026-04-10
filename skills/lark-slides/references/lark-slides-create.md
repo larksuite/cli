@@ -58,6 +58,20 @@ lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
 | `--title` | 否 | 演示文稿标题（不传则默认 "Untitled"） |
 | `--slides` | 否 | slide 内容 JSON 数组，每个元素是一个 `<slide>` XML 字符串（最多 10 个；超过 10 页请先用 `+create` 创建空白 PPT，再用 `xml_presentation.slide create` 逐页添加） |
 
+## 创建方式选择
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 简单 XML，且页数少、结构简单 | 直接用 `+create --slides` |
+| XML 含中文、大段文本、复杂布局、嵌套引号、特殊字符较多 | 优先用“两步创建法” |
+| 已有 PPT 继续加页 | 使用 `xml_presentation.slide create` |
+
+> [!WARNING]
+> `+create --slides` 的主要风险是 shell 传参，不是单纯的页数限制。即使只有 1 页，只要 XML 复杂，也可能出现内容丢失、空白区域或布局错乱。复杂页面不要强行一步创建。
+
+> [!IMPORTANT]
+> `+create --slides` 不是原子操作。CLI 会先创建空白演示文稿，再逐页创建 slide；如果第 N 页失败，前面已成功的页面和演示文稿会保留。失败后先记录 `xml_presentation_id`，回读确认当前状态，再决定是否在现有 PPT 上继续修复或追加。
+
 ## `--slides` 参数格式
 
 ```json
@@ -68,6 +82,16 @@ lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
 ```
 
 JSON string 数组，每个元素是一页 slide 的完整 XML。CLI 内部负责包装成 API 所需的 `{"slide": {"content": "..."}}` 格式并逐页调用。
+
+> [!WARNING]
+> 当 `--slides` 中的 XML 同时包含中文、复杂结构、很多属性、嵌套引号或特殊字符（如 `<`、`>`、`&`）时，shell 传参可能造成转义损坏或内容截断。出现这类风险时，改用下方“复杂 PPT 创建流程”。
+
+创建前至少做这几项自检：
+
+- [ ] 标题、正文中的 `&`、`<`、`>` 已按 XML 规则转义
+- [ ] 所有标签已闭合，且文本都包在 `<content><p>...</p></content>` 中
+- [ ] 属性引号、shell 引号、JSON 包装不会互相冲突
+- [ ] 如果内容复杂，改用两步创建法，不要强行塞进单条 `--slides`
 
 ### 本地图片：`@<path>` 占位符
 
@@ -123,6 +147,61 @@ lark-cli slides xml_presentation.slide create --as user \
     }
   }'
 ```
+
+## 复杂 PPT 创建流程
+
+当页面 XML 较复杂时，推荐使用“两步创建法”避免 shell 转义问题：
+
+```bash
+# Step 1: 创建空白 PPT
+PRES_ID=$(lark-cli slides +create --as user --title "项目汇报" | jq -r '.data.xml_presentation_id')
+
+# Step 2: 逐页添加，使用 jq -n 安全包装 XML
+lark-cli slides xml_presentation.slide create --as user \
+  --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
+  --data "$(jq -n --arg content '<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>第一页</p></content></shape></data></slide>' '{slide:{content:$content}}')"
+```
+
+如果页面较多，建议把每页 XML 放到独立文件，再逐页添加：
+
+```bash
+# 假设每个文件都只包含一页完整的 <slide>...</slide>
+for slide_xml in ./slides/01.xml ./slides/02.xml ./slides/03.xml; do
+  lark-cli slides xml_presentation.slide create --as user \
+    --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
+    --data "$(jq -n --arg content "$(cat "$slide_xml")" '{slide:{content:$content}}')"
+done
+```
+
+这种方式的优点：
+
+- 每次只传一页 XML，避免长 JSON 数组在 shell 中被错误解析
+- `jq -n` 负责字符串包装，减少手写转义
+- 出问题时更容易定位到具体页面并重试
+
+## 创建后验证
+
+无论是一步创建还是两步创建，完成后都应立即验证：
+
+```bash
+lark-cli slides xml_presentations get --as user \
+  --params "{\"xml_presentation_id\":\"$PRES_ID\"}"
+```
+
+至少检查：
+
+- [ ] 页数是否正确
+- [ ] 每页 XML 是否完整返回
+- [ ] 关键文本、卡片、白底内容区是否真实存在
+- [ ] 是否出现内容堆叠、空白区域或明显缺失
+
+如果验证发现问题，优先删除问题页并用两步创建法重新添加，而不是继续沿用有风险的 `--slides` 输入。
+
+如果命令中途失败，也要做一次验收：
+
+- 记录返回或日志里的 `xml_presentation_id`
+- 回读演示文稿，确认是否已经有部分页面写入
+- 若存在部分已写入页面，按实际情况在当前 PPT 上继续追加或逐页修复
 
 ## 常见错误
 

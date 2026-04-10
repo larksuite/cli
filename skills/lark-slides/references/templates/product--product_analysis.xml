@@ -1,0 +1,1537 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>产品分析报告</title>
+  <theme>
+    <fill alpha="1">
+      <fillImg src="CeKhbKPBboW8zMxwnIsckRXjnwh" alpha="1" rotateWithShape="false"/>
+    </fill>
+    <textStyles>
+      <title fontColor="#000000FF" fontSize="60"/>
+      <headline fontColor="#000000FF" fontSize="36"/>
+      <sub-headline fontColor="#000000FF" fontSize="20"/>
+      <body fontColor="#000000FF"/>
+      <caption fontColor="#808080FF"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="CeKhbKPBboW8zMxwnIsckRXjnwh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="557" height="557" topLeftX="470" topLeftY="132" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="514" height="514" topLeftX="646" topLeftY="-103" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="11" height="11" topLeftX="641" topLeftY="146" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="397" height="56" topLeftX="30" topLeftY="428" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(242, 243, 245, 1)">
+          <p>
+            <span color="rgba(242, 243, 245, 1)" fontSize="12">报告目的和背景：说明本次报告的目的，例如对特定产品进行详细分析，以评估其市场地位和潜在机会</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="640" height="110" topLeftX="30" topLeftY="320" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="90" color="rgba(242, 243, 245, 1)" bold="true" lineSpacing="multiple:1" letterSpacing="2">
+          <p>
+            <strong>
+              <span color="rgba(242, 243, 245, 1)" fontSize="90">产品分析报告</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="162" height="39" topLeftX="30" topLeftY="28" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="left" autoFit="shape-auto-fit">
+          <p list="none" textAlign="left">
+            <span color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="12" fontFamily="undefined" bold="false" italic="false" strikethrough="false" underline="false">你的团队</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="TWMbb5BUwoVGv2xyYwFcPJN0nfh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="449" height="449" topLeftX="532" topLeftY="88" alpha="0.15" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="514" height="514" topLeftX="626" topLeftY="-123" alpha="0.15" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="82" height="82" topLeftX="67" topLeftY="405" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="42" height="42" topLeftX="182" topLeftY="397" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="181" height="74" topLeftX="87" topLeftY="187" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="181" height="74" topLeftX="83" topLeftY="122" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span fontSize="45">目录</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="30" height="30" topLeftX="406" topLeftY="131" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(222, 235, 255, 1) 0%,rgba(255, 255, 255, 1) 0%,rgba(223, 236, 255, 1) 57%,rgba(215, 231, 255, 1) 100%,rgba(144, 188, 255, 1) 100%,rgba(182, 211, 255, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="219" height="40" topLeftX="415" topLeftY="131" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>产品概述</strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="222" height="74" topLeftX="412" topLeftY="169" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="30" height="30" topLeftX="663" topLeftY="131" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(222, 235, 255, 1) 0%,rgba(255, 255, 255, 1) 0%,rgba(223, 236, 255, 1) 57%,rgba(215, 231, 255, 1) 100%,rgba(144, 188, 255, 1) 100%,rgba(182, 211, 255, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="219" height="40" topLeftX="672" topLeftY="131" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>市场分析</strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="222" height="74" topLeftX="669" topLeftY="169" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="30" height="30" topLeftX="406" topLeftY="284" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(222, 235, 255, 1) 0%,rgba(255, 255, 255, 1) 0%,rgba(223, 236, 255, 1) 57%,rgba(215, 231, 255, 1) 100%,rgba(144, 188, 255, 1) 100%,rgba(182, 211, 255, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="219" height="40" topLeftX="415" topLeftY="284" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>竞争分析</strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="222" height="74" topLeftX="412" topLeftY="321" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="30" height="30" topLeftX="663" topLeftY="284" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(222, 235, 255, 1) 0%,rgba(255, 255, 255, 1) 0%,rgba(223, 236, 255, 1) 57%,rgba(215, 231, 255, 1) 100%,rgba(144, 188, 255, 1) 100%,rgba(182, 211, 255, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="219" height="40" topLeftX="672" topLeftY="284" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>建议与措施</strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="222" height="74" topLeftX="669" topLeftY="321" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="CeKhbKPBboW8zMxwnIsckRXjnwh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="271" height="271" topLeftX="831" topLeftY="100" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="619" height="619" topLeftX="411" topLeftY="247" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="11" height="11" topLeftX="832" topLeftY="265" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="200" height="74" topLeftX="70" topLeftY="150" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span color="rgba(242, 243, 245, 1)" fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="692" height="92" topLeftX="70" topLeftY="62" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span color="rgba(242, 243, 245, 1)" fontSize="60">产品概述</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="291" height="160" topLeftX="647" topLeftY="362" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="140" color="rgba(242, 243, 245, 1)" bold="true" lineSpacing="multiple:1" letterSpacing="2" textAlign="right">
+          <p>01</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="H63mb66AvoxSqoxsg77cGpftnWO" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="589" height="589" topLeftX="-40" topLeftY="316" rotation="90" alpha="0.15" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="277" height="277" topLeftX="-21" topLeftY="168" rotation="90" alpha="0.15" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="10" height="10" topLeftX="28" topLeftY="411" rotation="90" alpha="0.93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(226, 234, 249, 1)"/>
+        </fill>
+      </shape>
+      <shape width="43" height="49" topLeftX="490" topLeftY="315" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" lineSpacing="multiple:1.2" textAlign="left">
+          <p lineSpacing="multiple:1.2">
+            <strong>
+              <span color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" fontSize="24">↑</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="43" height="49" topLeftX="687" topLeftY="315" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" lineSpacing="multiple:1.2" textAlign="left">
+          <p lineSpacing="multiple:1.2">
+            <strong>
+              <span color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" fontSize="24">↑</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <img src="Tk6zbOJdRoVYW6xa5FvcVRnFneh" width="315" height="420" topLeftX="60" topLeftY="57">
+        <crop type="rect" leftOffset="0.68" rightOffset="0.68" topOffset="0" bottomOffset="0" presetHandlers="16"/>
+      </img>
+      <shape width="129" height="40" topLeftX="500" topLeftY="371" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span fontSize="16">增长</span>
+            </strong>
+            <strong>
+              <span fontSize="16">率</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="352" height="74" topLeftX="490" topLeftY="173" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span fontSize="12">描述你的产品定位、使用场景、特点、功能等。描述你的产品定位、使用场景、特点、功能等。描述你的产品定位、使用场景、特点、功能等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="432" height="64" topLeftX="490" topLeftY="113" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span fontSize="36">产品介绍</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="130" height="38" topLeftX="686" topLeftY="397" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span fontSize="12">相关细节信息描述</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="130" height="38" topLeftX="500" topLeftY="397" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span fontSize="12">相关细节信息描述</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="128" height="78" topLeftX="714" topLeftY="293" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" fontSize="48">120</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="128" height="78" topLeftX="517" topLeftY="293" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" fontSize="48">80%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="129" height="40" topLeftX="698" topLeftY="371" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2">
+          <p>增长量</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="GI0MbgUiqoP9hsxYaGjcMcrOnTf" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="212" height="212" topLeftX="374" topLeftY="168" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="182" height="182" topLeftX="389" topLeftY="184" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+      </shape>
+      <line startX="335" startY="128" endX="405" endY="198">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="555" startY="350" endX="625" endY="420">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="405" startY="350" endX="335" endY="420">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="625" startY="128" endX="555" endY="198">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="135" height="135" topLeftX="67" topLeftY="75" alpha="0.38" iconType="iconpark/Abstract/cycle-one.svg">
+        <border color="rgba(226, 234, 249, 1)" width="6" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="140" height="140" topLeftX="63" topLeftY="294" alpha="0.38" iconType="iconpark/Abstract/two-ellipses.svg">
+        <border color="rgba(226, 234, 249, 1)" width="6" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="136" height="136" topLeftX="785" topLeftY="299" alpha="0.38" iconType="iconpark/Charts/data-all.svg">
+        <border color="rgba(226, 234, 249, 1)" width="6" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="134" height="134" topLeftX="786" topLeftY="75" alpha="0.38" iconType="iconpark/Office/application-effect.svg">
+        <border color="rgba(226, 234, 249, 1)" width="6" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="241" height="56" topLeftX="76" topLeftY="142" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="right">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="212" height="40" topLeftX="110" topLeftY="110" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2" textAlign="right">
+          <p>二级观点 #1</p>
+        </content>
+      </shape>
+      <shape width="91" height="97" topLeftX="434" topLeftY="221" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(242, 243, 245, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>产品特点</p>
+        </content>
+      </shape>
+      <shape width="241" height="56" topLeftX="76" topLeftY="388" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="right">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="212" height="40" topLeftX="110" topLeftY="357" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2" textAlign="right">
+          <p>二级观点 #2</p>
+        </content>
+      </shape>
+      <shape width="241" height="56" topLeftX="644" topLeftY="142" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="212" height="40" topLeftX="644" topLeftY="110" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2" textAlign="left">
+          <p>二级观点 #3</p>
+        </content>
+      </shape>
+      <shape width="241" height="56" topLeftX="644" topLeftY="388" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="212" height="40" topLeftX="644" topLeftY="357" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2" textAlign="left">
+          <p>二级观点 #4</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="AJEbbuSXXouiGbx4bXNcouexn0g" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="QvCWbM5xqoVaJzxvKBXcIGiBnLf" width="367" height="540" topLeftX="593" topLeftY="0" saturation="-16" temperature="28">
+        <crop type="rect" leftOffset="21" rightOffset="26" topOffset="0" bottomOffset="74"/>
+      </img>
+      <shape width="269" height="56" topLeftX="85" topLeftY="170" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>确定产品的目标用户群体，并说明产品在市场中的定位和竞争优势。</p>
+        </content>
+      </shape>
+      <shape width="432" height="64" topLeftX="85" topLeftY="100" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>用户画像</p>
+        </content>
+      </shape>
+      <shape width="298" height="39" topLeftX="85" topLeftY="299" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2">
+          <p>用户画像</p>
+        </content>
+      </shape>
+      <shape width="298" height="94" topLeftX="85" topLeftY="343" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" lineSpacing="multiple:2">
+          <ul>
+            <li>
+              <p lineSpacing="multiple:2">
+                <span fontSize="12">关键核心描述</span>
+              </p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:2">
+                <span fontSize="12">关键核心描述</span>
+              </p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:2">
+                <span fontSize="12">关键核心描述</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="CeKhbKPBboW8zMxwnIsckRXjnwh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="271" height="271" topLeftX="831" topLeftY="100" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="619" height="619" topLeftX="411" topLeftY="247" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="11" height="11" topLeftX="832" topLeftY="265" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="200" height="74" topLeftX="70" topLeftY="150" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span color="rgba(242, 243, 245, 1)" fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="692" height="92" topLeftX="70" topLeftY="62" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span color="rgba(242, 243, 245, 1)" fontSize="60">市场分析</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="291" height="160" topLeftX="647" topLeftY="362" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="140" color="rgba(242, 243, 245, 1)" bold="true" lineSpacing="multiple:1" letterSpacing="2" textAlign="right">
+          <p>02</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="FooxbXPOJoYY0RxELmOcRJaEnNe" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="253" topLeftX="0" topLeftY="0" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+      </shape>
+      <img src="NcsLb3VSRoeJEVxfOuTc1ISdnPf" width="960" height="253" topLeftX="0" topLeftY="0" alpha="0.5">
+        <crop type="rect" leftOffset="85" rightOffset="12" topOffset="25" bottomOffset="0"/>
+      </img>
+      <shape width="269" height="56" topLeftX="53" topLeftY="370" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="432" height="64" topLeftX="53" topLeftY="300" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>目标市场</p>
+        </content>
+      </shape>
+      <shape width="392" height="39" topLeftX="490" topLeftY="311" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2">
+          <p>描述的目标市场</p>
+        </content>
+      </shape>
+      <shape width="298" height="94" topLeftX="490" topLeftY="355" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" lineSpacing="multiple:2">
+          <ul>
+            <li>
+              <p lineSpacing="multiple:2">关键核心描述</p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:2">
+                <span fontSize="12">关键核心描述</span>
+              </p>
+            </li>
+            <li>
+              <p lineSpacing="multiple:2">
+                <span fontSize="12">关键核心描述</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="QPp4bfbR9ocU43xZdn1cHZZxnYd" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="570" height="570" topLeftX="-30" topLeftY="70" alpha="0.6" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="420" height="420" topLeftX="43" topLeftY="220" alpha="0.6" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="258" height="258" topLeftX="127" topLeftY="382" alpha="0.6" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="330" height="47" topLeftX="594" topLeftY="122" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true">
+          <p>关键结论 #1</p>
+        </content>
+      </shape>
+      <shape width="212" height="40" topLeftX="152" topLeftY="447" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2" textAlign="center">
+          <p>高端市场</p>
+        </content>
+      </shape>
+      <shape width="212" height="40" topLeftX="152" topLeftY="312" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2" textAlign="center">
+          <p>中端市场</p>
+        </content>
+      </shape>
+      <shape width="212" height="40" topLeftX="152" topLeftY="158" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" lineSpacing="multiple:1.2" textAlign="center">
+          <p>低端市场</p>
+        </content>
+      </shape>
+      <shape width="110" height="68" topLeftX="203" topLeftY="396" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="40" color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>10%</p>
+        </content>
+      </shape>
+      <shape width="110" height="68" topLeftX="203" topLeftY="260" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="40" color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>30%</p>
+        </content>
+      </shape>
+      <shape width="110" height="68" topLeftX="203" topLeftY="106" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="40" color="linear-gradient(0deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>60%</p>
+        </content>
+      </shape>
+      <shape width="309" height="56" topLeftX="594" topLeftY="295" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="330" height="47" topLeftX="594" topLeftY="263" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true">
+          <p>关键结论 #2</p>
+        </content>
+      </shape>
+      <shape width="309" height="56" topLeftX="594" topLeftY="153" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="309" height="56" topLeftX="594" topLeftY="442" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="330" height="47" topLeftX="594" topLeftY="410" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true">
+          <p>关键结论 #3</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="LeJHbiXkToox4uxb12Oc7AVUnqf" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="933" startY="101" endX="29" endY="102" alpha="0.1">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="933" startY="326" endX="29" endY="327" alpha="0.1">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="933" startY="209" endX="29" endY="210" alpha="0.1">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="19" height="19" topLeftX="54" topLeftY="124" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="19" height="19" topLeftX="54" topLeftY="235" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="19" height="19" topLeftX="54" topLeftY="354" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+      </shape>
+      <line startX="924" startY="442" endX="20" endY="443" alpha="0.1">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="439" height="56" topLeftX="395" topLeftY="375" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <ul>
+            <li>
+              <p>
+                <span fontSize="12">这是指机器学习模型为其预测和决策提供解释的能力</span>
+              </p>
+            </li>
+            <li>
+              <p>
+                <span fontSize="12">它可以提高人工智能系统的透明度和可信度，以及识别和纠正错误或偏见</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="439" height="56" topLeftX="395" topLeftY="257" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <ul>
+            <li>
+              <p>
+                <span fontSize="12">这是一个帮助程序员编写、调试和优化代码的工具</span>
+              </p>
+            </li>
+            <li>
+              <p>
+                <span fontSize="12">它可以提供诸如代码自动完成、纠错、性能改进、文档生成等功能。</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="439" height="56" topLeftX="395" topLeftY="145" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <ul>
+            <li>
+              <p>
+                <span fontSize="12">这是一种人工智能技术，可以创造新的内容，如文本、图像、视频或音频。它可用于文案写作、音乐、药物发现等任务。</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="218" height="40" topLeftX="184" topLeftY="374" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <strong>
+              <span fontSize="16">解释型 AI</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="40" topLeftX="184" topLeftY="257" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <strong>
+              <span fontSize="16">AI 编码助手</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="40" topLeftX="184" topLeftY="144" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <strong>
+              <span fontSize="16">生成式 AI</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="110" height="56" topLeftX="71" topLeftY="366" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="true">
+          <p>
+            <strong>
+              <span fontSize="24">趋势 #</span>
+            </strong>
+            <strong>
+              <span fontSize="24">3</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="110" height="56" topLeftX="71" topLeftY="248" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="true">
+          <p>
+            <strong>
+              <span fontSize="24">趋势 #</span>
+            </strong>
+            <strong>
+              <span fontSize="24">2</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="110" height="56" topLeftX="71" topLeftY="136" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="true">
+          <p>
+            <strong>
+              <span fontSize="24">趋势 #1</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="CeKhbKPBboW8zMxwnIsckRXjnwh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="271" height="271" topLeftX="831" topLeftY="100" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="619" height="619" topLeftX="411" topLeftY="247" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="11" height="11" topLeftX="832" topLeftY="265" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="200" height="74" topLeftX="70" topLeftY="150" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span color="rgba(242, 243, 245, 1)" fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="692" height="92" topLeftX="70" topLeftY="62" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span color="rgba(242, 243, 245, 1)" fontSize="60">竞争分析</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="291" height="160" topLeftX="647" topLeftY="362" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="140" color="rgba(242, 243, 245, 1)" bold="true" lineSpacing="multiple:1" letterSpacing="2" textAlign="right">
+          <p>03</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="ZQekbiWtbo1NMUxcr8NccVqdnDr" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="552" height="38" topLeftX="26" topLeftY="135" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>主要竞争对手和市场份额：列举产品的主要竞争对手，并分析他们在市场中的地位和市场份额。</p>
+        </content>
+      </shape>
+      <shape width="432" height="59" topLeftX="26" topLeftY="85" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" bold="true" lineSpacing="multiple:1.2">
+          <p>竞争对手</p>
+        </content>
+      </shape>
+      <table topLeftX="26" topLeftY="198">
+        <colgroup>
+          <col span="4" width="224"/>
+        </colgroup>
+        <tr height="41">
+          <td>
+            <borderTop color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="rgba(45, 78, 249, 1)"/>
+            </fill>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="14">竞争对手</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderTop color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="rgba(45, 78, 249, 1)"/>
+            </fill>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="14">2025</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderTop color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="rgba(45, 78, 249, 1)"/>
+            </fill>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="14">2026</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderTop color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(45, 78, 249, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+            </fill>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="14">相关细节</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="46">
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12">竞争对手 A</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">30M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">32M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="46">
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12">竞争对手 B</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">45M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">40M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="46">
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12">竞争对手 C</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">15M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">30M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="46">
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12">竞争对手 D</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">60M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">66M</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(176, 194, 225, 1)" lineJoin="miter" miterLimit="10"/>
+            <content verticalAlign="top" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+              <p>
+                <span fontSize="12">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+      </table>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="824" height="416" topLeftX="68" topLeftY="62" presetHandlers="16" alpha="0.54" type="round-rect">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(222, 235, 255, 1) 0%,rgba(229, 238, 253, 1) 0%,rgba(214, 226, 244, 1) 70%,rgba(144, 188, 255, 1) 100%,rgba(214, 230, 255, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="100" height="34" topLeftX="436" topLeftY="20" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(0, 0, 0, 1)" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="12">容易使用</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="94" height="34" topLeftX="876" topLeftY="253" rotation="90" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(0, 0, 0, 1)" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="12">高效率</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="100" height="34" topLeftX="436" topLeftY="483" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(0, 0, 0, 1)" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="12">难以使用</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="94" height="34" topLeftX="-10" topLeftY="254" rotation="270" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(0, 0, 0, 1)" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="12">低效率</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="90" startY="272" endX="870" endY="275" alpha="0.12">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="481" startY="462" endX="479" endY="78" alpha="0.12">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="67" height="67" topLeftX="652" topLeftY="94" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(242, 243, 245, 1)">
+          <p>
+            <span color="rgba(242, 243, 245, 1)">A</span>
+          </p>
+        </content>
+        <shadow offset="4" blur="26" color="rgba(45, 78, 249, 0.18)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="634" topLeftY="157" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">你的产品</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="56" height="56" topLeftX="800" topLeftY="143" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>B</p>
+        </content>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="778" topLeftY="196" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="32" topLeftX="544" topLeftY="183" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="508" topLeftY="211" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="39" height="45" topLeftX="541" topLeftY="177" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" textAlign="center">
+          <p>
+            <span fontSize="16">C</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="64" height="64" topLeftX="267" topLeftY="90" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>D</p>
+        </content>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="247" topLeftY="149" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="104" height="38" topLeftX="332" topLeftY="244" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="32" topLeftX="368" topLeftY="220" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="38" height="44" topLeftX="365" topLeftY="215" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" textAlign="center">
+          <p>F</p>
+        </content>
+      </shape>
+      <shape width="67" height="67" topLeftX="139" topLeftY="164" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>E</p>
+        </content>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="121" topLeftY="226" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="74" height="74" topLeftX="708" topLeftY="344" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="30">
+          <p>
+            <span fontSize="30">J</span>
+          </p>
+        </content>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="693" topLeftY="414" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="56" height="56" topLeftX="562" topLeftY="306" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>I</p>
+        </content>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="538" topLeftY="358" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="32" topLeftX="368" topLeftY="322" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="332" topLeftY="350" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="38" height="44" topLeftX="365" topLeftY="316" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" textAlign="center">
+          <p>
+            <span fontSize="16">H</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="44" height="44" topLeftX="226" topLeftY="359" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14">
+          <p>
+            <span fontSize="14">G</span>
+          </p>
+        </content>
+        <shadow offset="7" blur="7" color="rgba(165, 178, 244, 0.17)"/>
+      </shape>
+      <shape width="104" height="38" topLeftX="196" topLeftY="398" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">竞争对手</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="CeKhbKPBboW8zMxwnIsckRXjnwh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="271" height="271" topLeftX="831" topLeftY="100" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="619" height="619" topLeftX="411" topLeftY="247" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="11" height="11" topLeftX="832" topLeftY="265" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="200" height="74" topLeftX="70" topLeftY="150" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>
+            <span color="rgba(242, 243, 245, 1)" fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="692" height="92" topLeftX="70" topLeftY="62" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>
+            <strong>
+              <span color="rgba(242, 243, 245, 1)" fontSize="60">建议与措施</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="291" height="160" topLeftX="647" topLeftY="362" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="140" color="rgba(242, 243, 245, 1)" bold="true" lineSpacing="multiple:1" letterSpacing="2" textAlign="right">
+          <p>04</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="468" height="56" topLeftX="246" topLeftY="86" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="center">
+          <p>（竞争对手的优势、劣势、机会和威胁）：对竞争对手进行SWOT分析，评估他们的优势、劣势、面临的机会和威胁。</p>
+        </content>
+      </shape>
+      <shape width="432" height="54" topLeftX="264" topLeftY="45" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>
+            <span fontSize="28">SWOT 分析</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="173" height="173" topLeftX="333" topLeftY="177" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">S</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="173" height="173" topLeftX="454" topLeftY="177" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">W</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="173" height="173" topLeftX="454" topLeftY="301" type="ellipse">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">O</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="173" height="173" topLeftX="333" topLeftY="301" flipX="true" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">T</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="295" height="47" topLeftX="9" topLeftY="200" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true" textAlign="right">
+          <p>优势</p>
+        </content>
+      </shape>
+      <shape width="219" height="56" topLeftX="85" topLeftY="241" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="right">
+          <p>专有的技术平台。具有深厚行业知识的强大团队 .低管理成本</p>
+        </content>
+      </shape>
+      <shape width="295" height="47" topLeftX="9" topLeftY="347" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true" textAlign="right">
+          <p>挑战</p>
+        </content>
+      </shape>
+      <shape width="219" height="74" topLeftX="85" topLeftY="388" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="right">
+          <p>来自老牌企业的激烈竞争。不可预见的市场和经济条件。网络安全风险和潜在违规行为</p>
+        </content>
+      </shape>
+      <shape width="295" height="47" topLeftX="656" topLeftY="200" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true" textAlign="left">
+          <p>劣势</p>
+        </content>
+      </shape>
+      <shape width="219" height="74" topLeftX="656" topLeftY="241" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>拥挤的电子商务市场中的新进入者。品牌知名度有限。扩大经营规模的潜在问题</p>
+        </content>
+      </shape>
+      <shape width="295" height="47" topLeftX="656" topLeftY="347" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true" textAlign="left">
+          <p>机遇</p>
+        </content>
+      </shape>
+      <shape width="219" height="56" topLeftX="656" topLeftY="388" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>不断增长的网上购物趋势。智能手机用户数量的增加。扩展到国际市场</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="PgVbbpypho2FaOxbrbmcPQpfnwh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="449" height="449" topLeftX="504" topLeftY="192" alpha="0.15" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="514" height="514" topLeftX="598" topLeftY="-19" alpha="0.15" type="ellipse">
+        <border color="linear-gradient(90deg,rgba(46, 78, 246, 1) 0%,rgba(33, 130, 244, 1) 100%)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="13" height="13" topLeftX="593" topLeftY="227" alpha="0.8" type="ellipse">
+        <fill>
+          <fillColor color="rgba(226, 234, 249, 1)"/>
+        </fill>
+      </shape>
+      <shape width="581" height="56" topLeftX="43" topLeftY="120" alpha="0.5" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12">
+          <p>提出建议和策略：根据市场洞察和机会与挑战分析，提出具体的建议和策略，以帮助企业在电子商务行业中取得竞争优势。例如，加强供应链管理，提升用户体验，拓展新兴市场等。</p>
+        </content>
+      </shape>
+      <shape width="583" height="64" topLeftX="43" topLeftY="50" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" bold="true" lineSpacing="multiple:1.2">
+          <p>建议与措施</p>
+        </content>
+      </shape>
+      <undefined type="fallback"/>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="CeKhbKPBboW8zMxwnIsckRXjnwh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="557" height="557" topLeftX="497" topLeftY="113" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" dashArray="long-dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="514" height="514" topLeftX="703" topLeftY="-204" alpha="0.51" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="11" height="11" topLeftX="708" topLeftY="116" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="575" height="110" topLeftX="37" topLeftY="389" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="90" color="rgba(242, 243, 245, 1)" bold="true" lineSpacing="multiple:1" letterSpacing="2">
+          <p>感谢您的观赏</p>
+        </content>
+      </shape>
+      <shape width="162" height="39" topLeftX="30" topLeftY="28" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" fontFamily="undefined" color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="false" italic="false" underline="false" strikethrough="false" list="none" listStyle="circle-hollow-square" textAlign="left" autoFit="shape-auto-fit">
+          <p list="none" textAlign="left">
+            <span color="rgba(255, 255, 255, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="12" fontFamily="undefined" bold="false" italic="false" strikethrough="false" underline="false">你的团队</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>
