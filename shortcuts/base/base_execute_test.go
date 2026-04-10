@@ -376,7 +376,7 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 		if err := runShortcut(t, BaseTableList, []string{"+table-list", "--base-token", "app_x", "--limit", "1"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"table_name": "Alpha"`) {
+		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"name": "Alpha"`) || strings.Contains(got, `"items"`) || strings.Contains(got, `"offset"`) || strings.Contains(got, `"limit"`) || strings.Contains(got, `"count"`) || strings.Contains(got, `"table_name": "Alpha"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -471,6 +471,52 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("list with fields and view", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "field_id=Name&field_id=Age&limit=1&offset=0&view_id=vew_x",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name", "Age"},
+					"record_id_list": []interface{}{"rec_fields"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_x", "--limit", "1", "--field-id", "Name", "--field-id", "Age"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"rec_fields"`) || !strings.Contains(got, `"Alice"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list with comma field", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "field_id=A%2CB&field_id=C&limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"A,B", "C"},
+					"record_id_list": []interface{}{"rec_json_fields"},
+					"data":           []interface{}{[]interface{}{"value-1", "value-2"}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1", "--field-id", "A,B", "--field-id", "C"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"A,B"`) || !strings.Contains(got, `"rec_json_fields"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
 	t.Run("list new shape", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -491,6 +537,22 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"Bob"`) || !strings.Contains(got, `"rec_2"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list legacy fields flag rejected", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("list legacy fields flag rejected in dry-run", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name", "--dry-run"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
+			t.Fatalf("err=%v", err)
 		}
 	})
 
@@ -810,6 +872,61 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"filter"`) || !strings.Contains(got, `"Status"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("get-visible-fields", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_1/visible_fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": []interface{}{"fld_primary", "fld_status"},
+			},
+		})
+		if err := runShortcut(t, BaseViewGetVisibleFields, []string{"+view-get-visible-fields", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_1"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"visible_fields"`) || !strings.Contains(got, `"fld_primary"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("set-visible-fields-array-invalid", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(
+			t,
+			BaseViewSetVisibleFields,
+			[]string{"+view-set-visible-fields", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_1", "--json", `["fld_status"]`},
+			factory,
+			stdout,
+		)
+		if err == nil || !strings.Contains(err.Error(), "invalid JSON object") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("set-visible-fields-object", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		updateStub := &httpmock.Stub{
+			Method: "PUT",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_1/visible_fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": []interface{}{"fld_primary", "fld_status"},
+			},
+		}
+		reg.Register(updateStub)
+		if err := runShortcut(t, BaseViewSetVisibleFields, []string{"+view-set-visible-fields", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_1", "--json", `{"visible_fields":["fld_status"]}`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := string(updateStub.CapturedBody)
+		if !strings.Contains(body, `"visible_fields":["fld_status"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+		if strings.Contains(body, `{"visible_fields":{"visible_fields":`) {
+			t.Fatalf("request body double wrapped: %s", body)
 		}
 	})
 }

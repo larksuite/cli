@@ -25,6 +25,8 @@ func Shortcuts() []common.Shortcut {
 		BaseViewDelete,
 		BaseViewGetFilter,
 		BaseViewSetFilter,
+		BaseViewGetVisibleFields,
+		BaseViewSetVisibleFields,
 		BaseViewGetGroup,
 		BaseViewSetGroup,
 		BaseViewGetSort,
