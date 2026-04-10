@@ -109,7 +109,11 @@ var SearchTasklist = common.Shortcut{
 
 			tasklist, err := getTasklistDetail(runtime, tasklistID)
 			if err != nil {
-				tasklists = append(tasklists, map[string]interface{}{"guid": tasklistID})
+				// Keep a stable identifier and avoid rendering "<nil>" in pretty output.
+				tasklists = append(tasklists, map[string]interface{}{
+					"guid": tasklistID,
+					"name": fmt.Sprintf("(unknown tasklist: %s)", tasklistID),
+				})
 				continue
 			}
 			urlVal, _ := tasklist["url"].(string)

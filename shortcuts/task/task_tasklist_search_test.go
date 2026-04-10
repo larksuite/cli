@@ -185,6 +185,31 @@ func TestSearchTasklist_Execute(t *testing.T) {
 			wantParts: []string{`"guid": "tl-fallback"`},
 		},
 		{
+			name: "pretty fallback avoids nil name",
+			args: []string{"+tasklist-search", "--query", "fallback-pretty", "--as", "bot", "--format", "pretty"},
+			register: func(reg *httpmock.Registry) {
+				reg.Register(&httpmock.Stub{
+					Method: "POST",
+					URL:    "/open-apis/task/v2/tasklists/search",
+					Body: map[string]interface{}{
+						"code": 0,
+						"msg":  "success",
+						"data": map[string]interface{}{
+							"has_more":   false,
+							"page_token": "",
+							"items":      []interface{}{map[string]interface{}{"id": "tl-fallback"}},
+						},
+					},
+				})
+				reg.Register(&httpmock.Stub{
+					Method: "GET",
+					URL:    "/open-apis/task/v2/tasklists/tl-fallback",
+					Body:   map[string]interface{}{"code": 99991663, "msg": "not found"},
+				})
+			},
+			wantParts: []string{"(unknown tasklist: tl-fallback)", "GUID: tl-fallback"},
+		},
+		{
 			name: "empty pretty with pagination",
 			args: []string{"+tasklist-search", "--query", "none", "--as", "bot", "--format", "pretty", "--page-limit", "2"},
 			register: func(reg *httpmock.Registry) {
