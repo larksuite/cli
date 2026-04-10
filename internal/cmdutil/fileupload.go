@@ -5,7 +5,6 @@ package cmdutil
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -20,7 +19,7 @@ import (
 // prefix is present, defaultField is used as the field name.
 // A path of "-" indicates stdin; in that case filePath is empty and isStdin is true.
 func ParseFileFlag(raw, defaultField string) (fieldName, filePath string, isStdin bool) {
-	if idx := strings.IndexByte(raw, '='); idx >= 0 {
+	if idx := strings.IndexByte(raw, '='); idx > 0 {
 		fieldName = raw[:idx]
 		filePath = raw[idx+1:]
 	} else {
@@ -67,10 +66,18 @@ func ValidateFileFlag(file, params, data, outputPath string, pageAll bool, httpM
 	return nil
 }
 
+// FileUploadMeta holds file upload metadata for dry-run display.
+// Returned by request builders when dry-run mode skips actual file reading.
+type FileUploadMeta struct {
+	FieldName  string
+	FilePath   string
+	FormFields any
+}
+
 // BuildFormdata constructs a multipart form data payload for file upload.
 // If isStdin is true, the file content is read from stdin.
 // Top-level keys from dataJSON are added as text form fields.
-func BuildFormdata(ctx context.Context, fileIO fileio.FileIO, fieldName, filePath string, isStdin bool, stdin io.Reader, dataJSON any) (*larkcore.Formdata, error) {
+func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin bool, stdin io.Reader, dataJSON any) (*larkcore.Formdata, error) {
 	fd := larkcore.NewFormdata()
 
 	if isStdin {
@@ -90,7 +97,12 @@ func BuildFormdata(ctx context.Context, fileIO fileio.FileIO, fieldName, filePat
 		if err != nil {
 			return nil, output.ErrValidation("cannot open file: %s", filePath)
 		}
-		fd.AddFile(fieldName, f)
+		defer f.Close()
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return nil, output.ErrValidation("--file: failed to read %s: %v", filePath, err)
+		}
+		fd.AddFile(fieldName, bytes.NewReader(data))
 	}
 
 	// Add top-level JSON keys as text form fields.

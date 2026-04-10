@@ -107,22 +107,24 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 }
 
 // buildAPIRequest validates flags and builds a RawApiRequest.
-func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
+// When dryRun is true and a file is provided, file reading is skipped and
+// FileUploadMeta is returned instead so the caller can render dry-run output.
+func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
 	stdin := opts.Factory.IOStreams.In
 
 	// Validate --file mutual exclusions first.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
-		return client.RawApiRequest{}, err
+		return client.RawApiRequest{}, nil, err
 	}
 
 	// Existing stdin conflict check (--params vs --data, without --file).
 	if opts.File == "" && opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
 
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
 	if err != nil {
-		return client.RawApiRequest{}, err
+		return client.RawApiRequest{}, nil, err
 	}
 	if opts.PageSize > 0 {
 		params["page_size"] = opts.PageSize
@@ -144,17 +146,22 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 		if opts.Data != "" {
 			dataFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
 			if err != nil {
-				return client.RawApiRequest{}, err
+				return client.RawApiRequest{}, nil, err
 			}
 		}
 
+		if opts.DryRun {
+			return request, &cmdutil.FileUploadMeta{
+				FieldName: fieldName, FilePath: filePath, FormFields: dataFields,
+			}, nil
+		}
+
 		fd, err := cmdutil.BuildFormdata(
-			opts.Ctx,
 			opts.Factory.ResolveFileIO(opts.Ctx),
 			fieldName, filePath, isStdin, stdin, dataFields,
 		)
 		if err != nil {
-			return client.RawApiRequest{}, err
+			return client.RawApiRequest{}, nil, err
 		}
 		request.Data = fd
 		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
@@ -162,7 +169,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 		// Normal path: JSON body.
 		data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
 		if err != nil {
-			return client.RawApiRequest{}, err
+			return client.RawApiRequest{}, nil, err
 		}
 		request.Data = data
 		if opts.Output != "" {
@@ -170,7 +177,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 		}
 	}
 
-	return request, nil
+	return request, nil, nil
 }
 
 func apiRun(opts *APIOptions) error {
@@ -188,38 +195,7 @@ func apiRun(opts *APIOptions) error {
 		return err
 	}
 
-	// Handle dry-run with file: skip building formdata, show file metadata instead.
-	if opts.DryRun && opts.File != "" {
-		if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
-			return err
-		}
-		stdin := f.IOStreams.In
-		params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
-		if err != nil {
-			return err
-		}
-		var formFields any
-		if opts.Data != "" {
-			formFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
-			if err != nil {
-				return err
-			}
-		}
-		config, err := f.Config()
-		if err != nil {
-			return err
-		}
-		fieldName, filePath, _ := cmdutil.ParseFileFlag(opts.File, "file")
-		request := client.RawApiRequest{
-			Method: opts.Method,
-			URL:    normalisePath(opts.Path),
-			Params: params,
-			As:     opts.As,
-		}
-		return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fieldName, filePath, formFields)
-	}
-
-	request, err := buildAPIRequest(opts)
+	request, fileMeta, err := buildAPIRequest(opts)
 	if err != nil {
 		return err
 	}
@@ -230,6 +206,9 @@ func apiRun(opts *APIOptions) error {
 	}
 
 	if opts.DryRun {
+		if fileMeta != nil {
+			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+		}
 		return apiDryRun(f, request, config, opts.Format)
 	}
 	// Identity info is now included in the JSON envelope; skip stderr printing.

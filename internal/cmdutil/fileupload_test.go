@@ -5,7 +5,6 @@ package cmdutil
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,6 +84,14 @@ func TestParseFileFlag(t *testing.T) {
 			defaultField: "file",
 			wantField:    "image",
 			wantPath:     "/tmp/photo.jpg",
+			wantStdin:    false,
+		},
+		{
+			name:         "empty field prefix falls through to default",
+			raw:          "=photo.jpg",
+			defaultField: "file",
+			wantField:    "file",
+			wantPath:     "=photo.jpg",
 			wantStdin:    false,
 		},
 	}
@@ -220,12 +227,11 @@ func TestValidateFileFlag(t *testing.T) {
 }
 
 func TestBuildFormdata(t *testing.T) {
-	ctx := context.Background()
 	fio := &localfileio.LocalFileIO{}
 
 	t.Run("stdin success", func(t *testing.T) {
 		stdin := bytes.NewReader([]byte("file-content-here"))
-		fd, err := BuildFormdata(ctx, fio, "file", "", true, stdin, nil)
+		fd, err := BuildFormdata(fio, "file", "", true, stdin, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -235,7 +241,7 @@ func TestBuildFormdata(t *testing.T) {
 	})
 
 	t.Run("stdin nil reader", func(t *testing.T) {
-		_, err := BuildFormdata(ctx, fio, "file", "", true, nil, nil)
+		_, err := BuildFormdata(fio, "file", "", true, nil, nil)
 		if err == nil {
 			t.Fatal("expected error for nil stdin")
 		}
@@ -246,7 +252,7 @@ func TestBuildFormdata(t *testing.T) {
 
 	t.Run("stdin empty", func(t *testing.T) {
 		stdin := bytes.NewReader([]byte{})
-		_, err := BuildFormdata(ctx, fio, "file", "", true, stdin, nil)
+		_, err := BuildFormdata(fio, "file", "", true, stdin, nil)
 		if err == nil {
 			t.Fatal("expected error for empty stdin")
 		}
@@ -263,7 +269,7 @@ func TestBuildFormdata(t *testing.T) {
 			t.Fatalf("failed to create test file: %v", err)
 		}
 
-		fd, err := BuildFormdata(ctx, fio, "photo", "test.txt", false, nil, nil)
+		fd, err := BuildFormdata(fio, "photo", "test.txt", false, nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -276,7 +282,7 @@ func TestBuildFormdata(t *testing.T) {
 		dir := t.TempDir()
 		TestChdir(t, dir)
 
-		_, err := BuildFormdata(ctx, fio, "file", "nonexistent.txt", false, nil, nil)
+		_, err := BuildFormdata(fio, "file", "nonexistent.txt", false, nil, nil)
 		if err == nil {
 			t.Fatal("expected error for missing file")
 		}
@@ -299,7 +305,7 @@ func TestBuildFormdata(t *testing.T) {
 			"size":        1024,
 		}
 
-		fd, err := BuildFormdata(ctx, fio, "file", "upload.bin", false, nil, dataJSON)
+		fd, err := BuildFormdata(fio, "file", "upload.bin", false, nil, dataJSON)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -310,7 +316,7 @@ func TestBuildFormdata(t *testing.T) {
 
 	t.Run("dataJSON nil is fine", func(t *testing.T) {
 		stdin := bytes.NewReader([]byte("content"))
-		fd, err := BuildFormdata(ctx, fio, "file", "", true, stdin, nil)
+		fd, err := BuildFormdata(fio, "file", "", true, stdin, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -321,7 +327,7 @@ func TestBuildFormdata(t *testing.T) {
 
 	t.Run("dataJSON non-map is ignored", func(t *testing.T) {
 		stdin := bytes.NewReader([]byte("content"))
-		fd, err := BuildFormdata(ctx, fio, "file", "", true, stdin, "not-a-map")
+		fd, err := BuildFormdata(fio, "file", "", true, stdin, "not-a-map")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

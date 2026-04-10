@@ -237,70 +237,15 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		}
 	}
 
-	// Handle dry-run with file: skip building formdata, show file metadata instead.
-	if opts.DryRun && opts.File != "" {
-		httpMethod := registry.GetStrFromMap(opts.Method, "httpMethod")
-		if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
-			return err
-		}
-		stdin := f.IOStreams.In
-		params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
-		if err != nil {
-			return err
-		}
-		var formFields any
-		if opts.Data != "" {
-			formFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
-			if err != nil {
-				return err
-			}
-		}
-		// Auto-detect default field name from metadata.
-		defaultField := "file"
-		if len(opts.FileFields) == 1 {
-			defaultField = opts.FileFields[0]
-		}
-		fieldName, filePath, _ := cmdutil.ParseFileFlag(opts.File, defaultField)
-
-		// Build URL with path params (same logic as buildServiceRequest).
-		spec := opts.Spec
-		method := opts.Method
-		url := registry.GetStrFromMap(spec, "servicePath") + "/" + registry.GetStrFromMap(method, "path")
-		parameters, _ := method["parameters"].(map[string]any)
-		for name, param := range parameters {
-			p, _ := param.(map[string]any)
-			if registry.GetStrFromMap(p, "location") != "path" {
-				continue
-			}
-			val, ok := params[name]
-			if !ok || util.IsEmptyValue(val) {
-				return output.ErrWithHint(output.ExitValidation, "validation",
-					fmt.Sprintf("missing required path parameter: %s", name),
-					fmt.Sprintf("lark-cli schema %s", opts.SchemaPath))
-			}
-			valStr := fmt.Sprintf("%v", val)
-			if err := validate.ResourceName(valStr, name); err != nil {
-				return output.ErrValidation("%s", err)
-			}
-			url = strings.Replace(url, "{"+name+"}", validate.EncodePathSegment(valStr), 1)
-			delete(params, name)
-		}
-
-		request := client.RawApiRequest{
-			Method: httpMethod,
-			URL:    url,
-			Params: params,
-			As:     opts.As,
-		}
-		return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fieldName, filePath, formFields)
-	}
-
-	request, err := buildServiceRequest(opts)
+	request, fileMeta, err := buildServiceRequest(opts)
 	if err != nil {
 		return err
 	}
 
 	if opts.DryRun {
+		if fileMeta != nil {
+			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+		}
 		return serviceDryRun(f, request, config, opts.Format)
 	}
 
@@ -386,7 +331,9 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
-func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, error) {
+// When dryRun is true and a file is provided, file reading is skipped and
+// FileUploadMeta is returned instead so the caller can render dry-run output.
+func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
 	spec := opts.Spec
 	method := opts.Method
 	schemaPath := opts.SchemaPath
@@ -398,14 +345,14 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 
 	// Validate --file mutual exclusions.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
-		return client.RawApiRequest{}, err
+		return client.RawApiRequest{}, nil, err
 	}
 	if opts.File == "" && opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
 	if err != nil {
-		return client.RawApiRequest{}, err
+		return client.RawApiRequest{}, nil, err
 	}
 
 	url := registry.GetStrFromMap(spec, "servicePath") + "/" + registry.GetStrFromMap(method, "path")
@@ -418,13 +365,13 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		}
 		val, ok := params[name]
 		if !ok || util.IsEmptyValue(val) {
-			return client.RawApiRequest{}, output.ErrWithHint(output.ExitValidation, "validation",
+			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
 				fmt.Sprintf("missing required path parameter: %s", name),
 				fmt.Sprintf("lark-cli schema %s", schemaPath))
 		}
 		valStr := fmt.Sprintf("%v", val)
 		if err := validate.ResourceName(valStr, name); err != nil {
-			return client.RawApiRequest{}, output.ErrValidation("%s", err)
+			return client.RawApiRequest{}, nil, output.ErrValidation("%s", err)
 		}
 		url = strings.Replace(url, "{"+name+"}", validate.EncodePathSegment(valStr), 1)
 		delete(params, name)
@@ -440,7 +387,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		required, _ := p["required"].(bool)
 		isPaginationParam := opts.PageAll && (name == "page_token" || name == "page_size")
 		if required && !isPaginationParam && (!exists || util.IsEmptyValue(value)) {
-			return client.RawApiRequest{}, output.ErrWithHint(output.ExitValidation, "validation",
+			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
 				fmt.Sprintf("missing required query parameter: %s", name),
 				fmt.Sprintf("lark-cli schema %s", schemaPath))
 		}
@@ -474,24 +421,29 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		if opts.Data != "" {
 			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
 			if err != nil {
-				return client.RawApiRequest{}, err
+				return client.RawApiRequest{}, nil, err
 			}
 		}
 
+		if opts.DryRun {
+			return request, &cmdutil.FileUploadMeta{
+				FieldName: fieldName, FilePath: filePath, FormFields: dataFields,
+			}, nil
+		}
+
 		fd, err := cmdutil.BuildFormdata(
-			opts.Ctx,
 			opts.Factory.ResolveFileIO(opts.Ctx),
 			fieldName, filePath, isStdin, stdin, dataFields,
 		)
 		if err != nil {
-			return client.RawApiRequest{}, err
+			return client.RawApiRequest{}, nil, err
 		}
 		request.Data = fd
 		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
 	} else {
 		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
 		if err != nil {
-			return client.RawApiRequest{}, err
+			return client.RawApiRequest{}, nil, err
 		}
 		request.Data = data
 		if opts.Output != "" {
@@ -499,7 +451,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		}
 	}
 
-	return request, nil
+	return request, nil, nil
 }
 
 func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
