@@ -42,6 +42,7 @@ type RuntimeContext struct {
 	resolvedAs    core.Identity                     // effective identity resolved by framework
 	Factory       *cmdutil.Factory                  // injected by framework
 	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	botInfoFunc   func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
 	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
 }
 
@@ -70,6 +71,57 @@ func (ctx *RuntimeContext) IsBot() bool {
 
 // UserOpenId returns the current user's open_id from config.
 func (ctx *RuntimeContext) UserOpenId() string { return ctx.Config.UserOpenId }
+
+// BotInfo holds bot identity metadata fetched lazily from /bot/v3/info.
+type BotInfo struct {
+	OpenID  string
+	AppName string
+}
+
+// BotInfo returns the bot's open_id and display name, fetched lazily from /bot/v3/info.
+// Unlike UserOpenId() (which reads from config), this requires a network call and may fail.
+// Thread-safe via sync.OnceValues; the API is called at most once per RuntimeContext.
+func (ctx *RuntimeContext) BotInfo() (*BotInfo, error) {
+	if ctx.botInfoFunc == nil {
+		return nil, fmt.Errorf("BotInfo not available (runtime context not fully initialized)")
+	}
+	return ctx.botInfoFunc()
+}
+
+// fetchBotInfo calls /bot/v3/info using bot identity and parses the response.
+func (ctx *RuntimeContext) fetchBotInfo() (*BotInfo, error) {
+	if !ctx.Config.CanBot() {
+		return nil, fmt.Errorf("fetch bot info: bot identity is not available in current credential context")
+	}
+	resp, err := ctx.DoAPIAsBot(&larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/bot/v3/info",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("fetch bot info: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("fetch bot info: HTTP %d", resp.StatusCode)
+	}
+	var envelope struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			OpenID  string `json:"open_id"`
+			AppName string `json:"app_name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(resp.RawBody, &envelope); err != nil {
+		return nil, fmt.Errorf("fetch bot info: unmarshal: %w", err)
+	}
+	if envelope.Code != 0 {
+		return nil, fmt.Errorf("fetch bot info: [%d] %s", envelope.Code, envelope.Msg)
+	}
+	if envelope.Data.OpenID == "" {
+		return nil, fmt.Errorf("fetch bot info: open_id is empty")
+	}
+	return &BotInfo{OpenID: envelope.Data.OpenID, AppName: envelope.Data.AppName}, nil
+}
 
 // Ctx returns the context.Context propagated from cmd.Context().
 func (ctx *RuntimeContext) Ctx() context.Context { return ctx.ctx }
@@ -639,6 +691,7 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
 		return f.NewAPIClientWithConfig(config)
 	})
+	rctx.botInfoFunc = sync.OnceValues(rctx.fetchBotInfo)
 
 	sdk, err := f.LarkClient()
 	if err != nil {
