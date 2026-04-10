@@ -79,6 +79,8 @@ type Updater struct {
 	SkillsUpdateOverride     func() *NpmResult
 	VerifyOverride           func(expectedVersion string) error
 	RestoreAvailableOverride func() bool
+
+	backupCreated bool
 }
 
 // New creates an Updater with default (real) behavior.
@@ -154,7 +156,7 @@ func (u *Updater) RunSkillsUpdate() *NpmResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, "skills", "add", "larksuite/cli", "-g", "-y")
+	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", "larksuite/cli", "-g")
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()
@@ -199,6 +201,9 @@ func (u *Updater) VerifyBinary(expectedVersion string) error {
 
 // Truncate returns the last maxLen runes of s.
 func Truncate(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
 	r := []rune(s)
 	if len(r) <= maxLen {
 		return s

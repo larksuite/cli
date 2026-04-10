@@ -31,6 +31,7 @@ func (u *Updater) PrepareSelfReplace() (restore func(), err error) {
 	if err := vfs.Rename(exe, oldPath); err != nil {
 		return noop, fmt.Errorf("cannot rename binary for update: %w", err)
 	}
+	u.backupCreated = true
 
 	// Restore: remove any partial file npm may have left, then move .old back.
 	restore = func() {
@@ -71,5 +72,5 @@ func (u *Updater) CanRestorePreviousVersion() bool {
 	if u.RestoreAvailableOverride != nil {
 		return u.RestoreAvailableOverride()
 	}
-	return true
+	return u.backupCreated
 }

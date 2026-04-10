@@ -29,7 +29,7 @@ if (process.platform === "win32" && fs.existsSync(oldBin)) {
     restoreOldBinary();
   } else {
     try {
-      execFileSync(bin, ["--version"], { stdio: "ignore" });
+      execFileSync(bin, ["--version"], { stdio: "ignore", timeout: 10000 });
       try {
         fs.rmSync(oldBin, { force: true });
       } catch (_) {
