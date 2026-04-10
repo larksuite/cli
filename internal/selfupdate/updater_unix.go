@@ -13,3 +13,12 @@ func (u *Updater) PrepareSelfReplace() (restore func(), err error) {
 
 // CleanupStaleFiles is a no-op on Unix (no .old files are created).
 func (u *Updater) CleanupStaleFiles() {}
+
+// CanRestorePreviousVersion reports whether PrepareSelfReplace created a
+// restorable backup for the current update attempt.
+func (u *Updater) CanRestorePreviousVersion() bool {
+	if u.RestoreAvailableOverride != nil {
+		return u.RestoreAvailableOverride()
+	}
+	return false
+}

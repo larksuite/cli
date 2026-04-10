@@ -12,11 +12,32 @@ const bin = path.join(__dirname, "..", "bin", "lark-cli" + ext);
 // On Windows, a crashed self-update may have left the binary renamed to .old.
 // Recover it before proceeding so the CLI remains functional.
 const oldBin = bin + ".old";
-if (!fs.existsSync(bin) && fs.existsSync(oldBin)) {
+function restoreOldBinary() {
   try {
+    if (fs.existsSync(bin)) {
+      fs.rmSync(bin, { force: true });
+    }
     fs.renameSync(oldBin, bin);
+    return true;
   } catch (_) {
-    // Best-effort; fall through to the normal "not found" error below.
+    return false;
+  }
+}
+
+if (process.platform === "win32" && fs.existsSync(oldBin)) {
+  if (!fs.existsSync(bin)) {
+    restoreOldBinary();
+  } else {
+    try {
+      execFileSync(bin, ["--version"], { stdio: "ignore" });
+      try {
+        fs.rmSync(oldBin, { force: true });
+      } catch (_) {
+        // Best-effort cleanup; keep running the healthy binary.
+      }
+    } catch (_) {
+      restoreOldBinary();
+    }
   }
 }
 

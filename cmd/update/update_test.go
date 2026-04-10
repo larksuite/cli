@@ -23,21 +23,6 @@ func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffe
 	return f, stdout, stderr
 }
 
-// mockNpmSuccess mocks both npm install and skills update to succeed
-// via the newUpdater override.
-func mockNpmSuccess(t *testing.T) {
-	t.Helper()
-	origNew := newUpdater
-	prev := newUpdater // capture what newUpdater currently returns (may already have DetectOverride)
-	newUpdater = func() *selfupdate.Updater {
-		u := prev()
-		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
-		u.SkillsUpdateOverride = func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
-		return u
-	}
-	t.Cleanup(func() { newUpdater = origNew })
-}
-
 // mockDetect sets up newUpdater to return an Updater with the given DetectResult.
 // It preserves any existing NpmInstallOverride/SkillsUpdateOverride that may be set later.
 func mockDetect(t *testing.T, result selfupdate.DetectResult) {
@@ -62,6 +47,7 @@ func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult,
 		u.DetectOverride = func() selfupdate.DetectResult { return result }
 		u.NpmInstallOverride = npmFn
 		u.SkillsUpdateOverride = skillsFn
+		u.VerifyOverride = func(string) error { return nil }
 		return u
 	}
 	t.Cleanup(func() { newUpdater = origNew })
@@ -124,6 +110,8 @@ func TestUpdateManual_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
 
 	origFetch := fetchLatest
 	fetchLatest = func() (string, error) { return "2.0.0", nil }
@@ -424,6 +412,59 @@ func TestUpdateNpmFail_Human(t *testing.T) {
 	}
 }
 
+func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
+		}
+		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		u.VerifyOverride = func(string) error { return errors.New("bad binary") }
+		u.RestoreAvailableOverride = func() bool { return false }
+		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
+			t.Fatal("skills update should not run when binary verification fails")
+			return nil
+		}
+		return u
+	}
+	defer func() { newUpdater = origNew }()
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected verification failure")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI (%d), got %d", output.ExitAPI, exitErr.Code)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "automatic rollback is unavailable") {
+		t.Errorf("expected unavailable rollback hint, got: %s", out)
+	}
+	if strings.Contains(out, "previous version has been restored") {
+		t.Errorf("should not claim restore when no backup is available, got: %s", out)
+	}
+	if !strings.Contains(out, "npm install -g @larksuite/cli@2.0.0") {
+		t.Errorf("expected manual reinstall command in hint, got: %s", out)
+	}
+}
+
 func TestUpdateCheck_JSON_Npm(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
@@ -714,6 +755,7 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
 		}
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		u.VerifyOverride = func(string) error { return nil }
 		// Skills update fails
 		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
 			r := &selfupdate.NpmResult{}
@@ -765,6 +807,7 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
 		}
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		u.VerifyOverride = func(string) error { return nil }
 		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
 			r := &selfupdate.NpmResult{}
 			r.Stderr.WriteString("npx: command not found")

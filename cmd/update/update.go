@@ -243,7 +243,25 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 		if hint := permissionHint(combined); hint != "" {
 			fmt.Fprintf(io.ErrOut, "  %s\n", hint)
 		}
-		return output.ErrBare(1)
+		return output.ErrBare(output.ExitAPI)
+	}
+
+	// Verify the new binary is functional before proceeding.
+	// If corrupt, restore the previous version from .old.
+	if err := updater.VerifyBinary(latest); err != nil {
+		restore()
+		msg := fmt.Sprintf("new binary verification failed: %s", err)
+		hint := verificationFailureHint(updater, latest)
+		if opts.JSON {
+			output.PrintJson(io.Out, map[string]interface{}{
+				"ok":    false,
+				"error": map[string]interface{}{"type": "update_error", "message": msg, "hint": hint},
+			})
+			return output.ErrBare(output.ExitAPI)
+		}
+		fmt.Fprintf(io.ErrOut, "\n%s %s\n", symFail(), msg)
+		fmt.Fprintf(io.ErrOut, "  %s\n", hint)
+		return output.ErrBare(output.ExitAPI)
 	}
 
 	// Skills update (best-effort).
@@ -286,4 +304,11 @@ func permissionHint(npmOutput string) string {
 		return "Permission denied. Try: sudo lark-cli update, or adjust your npm global prefix: https://docs.npmjs.com/resolving-eacces-permissions-errors"
 	}
 	return ""
+}
+
+func verificationFailureHint(updater *selfupdate.Updater, latest string) string {
+	if updater.CanRestorePreviousVersion() {
+		return "the previous version has been restored"
+	}
+	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually: npm install -g %s@%s, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
 }

@@ -8,9 +8,11 @@ package selfupdate
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -25,6 +27,12 @@ const (
 
 const (
 	NpmPackage = "@larksuite/cli"
+)
+
+const (
+	npmInstallTimeout   = 10 * time.Minute
+	skillsUpdateTimeout = 2 * time.Minute
+	verifyTimeout       = 10 * time.Second
 )
 
 // DetectResult holds installation detection results.
@@ -63,11 +71,14 @@ func (r *NpmResult) CombinedOutput() string {
 // Platform-specific methods (PrepareSelfReplace, CleanupStaleFiles)
 // are in updater_unix.go and updater_windows.go.
 //
-// Override DetectOverride / NpmInstallOverride / SkillsUpdateOverride for testing.
+// Override DetectOverride / NpmInstallOverride / SkillsUpdateOverride / VerifyOverride
+// / RestoreAvailableOverride for testing.
 type Updater struct {
-	DetectOverride       func() DetectResult
-	NpmInstallOverride   func(version string) *NpmResult
-	SkillsUpdateOverride func() *NpmResult
+	DetectOverride           func() DetectResult
+	NpmInstallOverride       func(version string) *NpmResult
+	SkillsUpdateOverride     func() *NpmResult
+	VerifyOverride           func(expectedVersion string) error
+	RestoreAvailableOverride func() bool
 }
 
 // New creates an Updater with default (real) behavior.
@@ -118,10 +129,15 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 		r.Err = fmt.Errorf("npm not found in PATH: %w", err)
 		return r
 	}
-	cmd := exec.Command(npmPath, "install", "-g", NpmPackage+"@"+version)
+	ctx, cancel := context.WithTimeout(context.Background(), npmInstallTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, npmPath, "install", "-g", NpmPackage+"@"+version)
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		r.Err = fmt.Errorf("npm install timed out after %s", npmInstallTimeout)
+	}
 	return r
 }
 
@@ -136,11 +152,49 @@ func (u *Updater) RunSkillsUpdate() *NpmResult {
 		r.Err = fmt.Errorf("npx not found in PATH: %w", err)
 		return r
 	}
-	cmd := exec.Command(npxPath, "skills", "add", "larksuite/cli", "-g", "-y")
+	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, npxPath, "skills", "add", "larksuite/cli", "-g", "-y")
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		r.Err = fmt.Errorf("skills update timed out after %s", skillsUpdateTimeout)
+	}
 	return r
+}
+
+// VerifyBinary checks that the installed binary reports the expected version
+// by running "lark-cli --version" and comparing the version token exactly.
+// Output format is "lark-cli version X.Y.Z"; the last field is extracted and
+// compared against expectedVersion (both stripped of any "v" prefix).
+func (u *Updater) VerifyBinary(expectedVersion string) error {
+	if u.VerifyOverride != nil {
+		return u.VerifyOverride(expectedVersion)
+	}
+	exe, err := u.resolveExe()
+	if err != nil {
+		return fmt.Errorf("cannot locate binary: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), verifyTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, exe, "--version").Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("binary verification timed out after %s", verifyTimeout)
+	}
+	if err != nil {
+		return fmt.Errorf("binary not executable: %w", err)
+	}
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) == 0 {
+		return fmt.Errorf("empty version output")
+	}
+	actual := strings.TrimPrefix(fields[len(fields)-1], "v")
+	expected := strings.TrimPrefix(expectedVersion, "v")
+	if actual != expected {
+		return fmt.Errorf("expected version %s, got %q", expectedVersion, actual)
+	}
+	return nil
 }
 
 // Truncate returns the last maxLen bytes of s.

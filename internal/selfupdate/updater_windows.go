@@ -64,3 +64,12 @@ func (u *Updater) CleanupStaleFiles() {
 	// Both exist — .old is stale, clean up.
 	vfs.Remove(oldPath)
 }
+
+// CanRestorePreviousVersion reports whether PrepareSelfReplace created a
+// restorable backup for the current update attempt.
+func (u *Updater) CanRestorePreviousVersion() bool {
+	if u.RestoreAvailableOverride != nil {
+		return u.RestoreAvailableOverride()
+	}
+	return true
+}
