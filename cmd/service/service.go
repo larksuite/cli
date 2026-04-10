@@ -111,6 +111,21 @@ type ServiceMethodOptions struct {
 	Format    string
 	JqExpr    string
 	DryRun    bool
+	File       string   // --file flag value
+	FileFields []string // auto-detected file field names from metadata
+}
+
+// detectFileFields returns field names with type "file" in the method's requestBody.
+func detectFileFields(method map[string]interface{}) []string {
+	rb, _ := method["requestBody"].(map[string]interface{})
+	var fields []string
+	for name, field := range rb {
+		f, _ := field.(map[string]interface{})
+		if registry.GetStrFromMap(f, "type") == "file" {
+			fields = append(fields, name)
+		}
+	}
+	return fields
 }
 
 func registerMethod(parent *cobra.Command, spec map[string]interface{}, method map[string]interface{}, name string, resName string, f *cmdutil.Factory) {
@@ -161,6 +176,16 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
 
+	// Conditionally register --file for methods with file-type fields.
+	fileFields := detectFileFields(method)
+	opts.FileFields = fileFields
+	if len(fileFields) > 0 {
+		switch httpMethod {
+		case "POST", "PUT", "PATCH", "DELETE":
+			cmd.Flags().StringVar(&opts.File, "file", "", "file to upload ([field=]path, supports - for stdin)")
+		}
+	}
+
 	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"user", "bot"}, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -210,6 +235,64 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		if err := checkServiceScopes(opts.Ctx, f.Credential, opts.As, config, opts.Method, scopes); err != nil {
 			return err
 		}
+	}
+
+	// Handle dry-run with file: skip building formdata, show file metadata instead.
+	if opts.DryRun && opts.File != "" {
+		httpMethod := registry.GetStrFromMap(opts.Method, "httpMethod")
+		if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
+			return err
+		}
+		stdin := f.IOStreams.In
+		params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+		if err != nil {
+			return err
+		}
+		var formFields any
+		if opts.Data != "" {
+			formFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+			if err != nil {
+				return err
+			}
+		}
+		// Auto-detect default field name from metadata.
+		defaultField := "file"
+		if len(opts.FileFields) == 1 {
+			defaultField = opts.FileFields[0]
+		}
+		fieldName, filePath, _ := cmdutil.ParseFileFlag(opts.File, defaultField)
+
+		// Build URL with path params (same logic as buildServiceRequest).
+		spec := opts.Spec
+		method := opts.Method
+		url := registry.GetStrFromMap(spec, "servicePath") + "/" + registry.GetStrFromMap(method, "path")
+		parameters, _ := method["parameters"].(map[string]any)
+		for name, param := range parameters {
+			p, _ := param.(map[string]any)
+			if registry.GetStrFromMap(p, "location") != "path" {
+				continue
+			}
+			val, ok := params[name]
+			if !ok || util.IsEmptyValue(val) {
+				return output.ErrWithHint(output.ExitValidation, "validation",
+					fmt.Sprintf("missing required path parameter: %s", name),
+					fmt.Sprintf("lark-cli schema %s", opts.SchemaPath))
+			}
+			valStr := fmt.Sprintf("%v", val)
+			if err := validate.ResourceName(valStr, name); err != nil {
+				return output.ErrValidation("%s", err)
+			}
+			url = strings.Replace(url, "{"+name+"}", validate.EncodePathSegment(valStr), 1)
+			delete(params, name)
+		}
+
+		request := client.RawApiRequest{
+			Method: httpMethod,
+			URL:    url,
+			Params: params,
+			As:     opts.As,
+		}
+		return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fieldName, filePath, formFields)
 	}
 
 	request, err := buildServiceRequest(opts)
@@ -312,7 +395,12 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 	// stdin is an io.Reader consumed at most once. Only one of --params/--data
 	// may use "-" (stdin); the conflict check below prevents silent data loss.
 	stdin := opts.Factory.IOStreams.In
-	if opts.Params == "-" && opts.Data == "-" {
+
+	// Validate --file mutual exclusions.
+	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
+		return client.RawApiRequest{}, err
+	}
+	if opts.File == "" && opts.Params == "-" && opts.Data == "-" {
 		return client.RawApiRequest{}, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
@@ -366,21 +454,51 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		}
 	}
 
-	data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
-	if err != nil {
-		return client.RawApiRequest{}, err
-	}
-
 	request := client.RawApiRequest{
 		Method: httpMethod,
 		URL:    url,
 		Params: queryParams,
-		Data:   data,
 		As:     opts.As,
 	}
-	if opts.Output != "" {
-		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+
+	if opts.File != "" {
+		// File upload: determine default field name from metadata.
+		defaultField := "file"
+		if len(opts.FileFields) == 1 {
+			defaultField = opts.FileFields[0]
+		}
+		fieldName, filePath, isStdin := cmdutil.ParseFileFlag(opts.File, defaultField)
+
+		// Parse --data as form fields.
+		var dataFields any
+		if opts.Data != "" {
+			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+			if err != nil {
+				return client.RawApiRequest{}, err
+			}
+		}
+
+		fd, err := cmdutil.BuildFormdata(
+			opts.Ctx,
+			opts.Factory.ResolveFileIO(opts.Ctx),
+			fieldName, filePath, isStdin, stdin, dataFields,
+		)
+		if err != nil {
+			return client.RawApiRequest{}, err
+		}
+		request.Data = fd
+		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
+	} else {
+		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+		if err != nil {
+			return client.RawApiRequest{}, err
+		}
+		request.Data = data
+		if opts.Output != "" {
+			request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+		}
 	}
+
 	return request, nil
 }
 
