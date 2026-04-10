@@ -234,8 +234,12 @@ func PrintDryRunWithFile(w io.Writer, request client.RawApiRequest, config *core
 	if len(request.Params) > 0 {
 		dr.Params(request.Params)
 	}
+	filePathDisplay := filePath
+	if filePathDisplay == "" {
+		filePathDisplay = "<stdin>"
+	}
 	fileInfo := map[string]any{
-		"file": map[string]string{"field": fileField, "path": filePath},
+		"file": map[string]string{"field": fileField, "path": filePathDisplay},
 	}
 	if formFields != nil {
 		fileInfo["form_fields"] = formFields

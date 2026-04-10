@@ -11,8 +11,22 @@ import (
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/registry"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
+
+// DetectFileFields returns field names with type "file" in the method's requestBody.
+func DetectFileFields(method map[string]interface{}) []string {
+	rb, _ := method["requestBody"].(map[string]interface{})
+	var fields []string
+	for name, field := range rb {
+		f, _ := field.(map[string]interface{})
+		if registry.GetStrFromMap(f, "type") == "file" {
+			fields = append(fields, name)
+		}
+	}
+	return fields
+}
 
 // ParseFileFlag parses a --file flag value into its components.
 // The format is either "path" or "field=path". When no explicit "field="

@@ -117,8 +117,8 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 		return client.RawApiRequest{}, nil, err
 	}
 
-	// Existing stdin conflict check (--params vs --data, without --file).
-	if opts.File == "" && opts.Params == "-" && opts.Data == "-" {
+	// stdin conflict: --params and --data cannot both read from stdin, regardless of --file.
+	if opts.Params == "-" && opts.Data == "-" {
 		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
 

@@ -75,14 +75,7 @@ func printResourceList(w io.Writer, spec map[string]interface{}) {
 
 // hasFileFields returns true if any requestBody field has type "file".
 func hasFileFields(method map[string]interface{}) (bool, []string) {
-	rb, _ := method["requestBody"].(map[string]interface{})
-	var names []string
-	for name, field := range rb {
-		f, _ := field.(map[string]interface{})
-		if registry.GetStrFromMap(f, "type") == "file" {
-			names = append(names, name)
-		}
-	}
+	names := cmdutil.DetectFileFields(method)
 	return len(names) > 0, names
 }
 

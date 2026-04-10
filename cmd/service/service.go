@@ -115,17 +115,9 @@ type ServiceMethodOptions struct {
 	FileFields []string // auto-detected file field names from metadata
 }
 
-// detectFileFields returns field names with type "file" in the method's requestBody.
+// detectFileFields delegates to the shared cmdutil.DetectFileFields helper.
 func detectFileFields(method map[string]interface{}) []string {
-	rb, _ := method["requestBody"].(map[string]interface{})
-	var fields []string
-	for name, field := range rb {
-		f, _ := field.(map[string]interface{})
-		if registry.GetStrFromMap(f, "type") == "file" {
-			fields = append(fields, name)
-		}
-	}
-	return fields
+	return cmdutil.DetectFileFields(method)
 }
 
 func registerMethod(parent *cobra.Command, spec map[string]interface{}, method map[string]interface{}, name string, resName string, f *cmdutil.Factory) {
@@ -347,7 +339,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
 		return client.RawApiRequest{}, nil, err
 	}
-	if opts.File == "" && opts.Params == "-" && opts.Data == "-" {
+	if opts.Params == "-" && opts.Data == "-" {
 		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
