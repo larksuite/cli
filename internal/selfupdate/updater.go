@@ -61,7 +61,7 @@ func (r *NpmResult) CombinedOutput() string {
 
 // Updater manages self-update operations.
 // Platform-specific methods (PrepareSelfReplace, CleanupStaleFiles)
-// are in replace_unix.go and replace_windows.go.
+// are in updater_unix.go and updater_windows.go.
 //
 // Override DetectOverride / NpmInstallOverride / SkillsUpdateOverride for testing.
 type Updater struct {
