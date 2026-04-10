@@ -8,18 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-
-	"github.com/larksuite/cli/internal/vfs"
 )
-
-type resolveTestFS struct {
-	vfs.OsFs
-	exe string
-}
-
-func (f resolveTestFS) Executable() (string, error) { return f.exe, nil }
-
-func (f resolveTestFS) EvalSymlinks(path string) (string, error) { return path, nil }
 
 func TestResolveExe(t *testing.T) {
 	u := New()
@@ -59,9 +48,9 @@ func TestVerifyBinaryChecksVersion(t *testing.T) {
 		t.Fatalf("write test binary: %v", err)
 	}
 
-	origFS := vfs.DefaultFS
-	vfs.DefaultFS = resolveTestFS{OsFs: vfs.OsFs{}, exe: exe}
-	t.Cleanup(func() { vfs.DefaultFS = origFS })
+	// Put the temp dir at the front of PATH so LookPath finds our test binary.
+	origPath := os.Getenv("PATH")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+origPath)
 
 	// Matching version → success.
 	if err := New().VerifyBinary("2.0.0"); err != nil {

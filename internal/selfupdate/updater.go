@@ -174,9 +174,12 @@ func (u *Updater) VerifyBinary(expectedVersion string) error {
 	if u.VerifyOverride != nil {
 		return u.VerifyOverride(expectedVersion)
 	}
-	exe, err := u.resolveExe()
+	// Use LookPath to find the newly installed binary in PATH, not
+	// os.Executable() which returns the currently running (old) binary.
+	// After npm install the file layout may differ from the old package.
+	exe, err := exec.LookPath("lark-cli")
 	if err != nil {
-		return fmt.Errorf("cannot locate binary: %w", err)
+		return fmt.Errorf("cannot locate binary in PATH: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), verifyTimeout)
 	defer cancel()
