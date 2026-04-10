@@ -16,5 +16,10 @@ func Shortcuts() []common.Shortcut {
 		SheetFind,
 		SheetCreate,
 		SheetExport,
+		SheetMergeCells,
+		SheetUnmergeCells,
+		SheetReplace,
+		SheetSetStyle,
+		SheetBatchSetStyle,
 	}
 }
