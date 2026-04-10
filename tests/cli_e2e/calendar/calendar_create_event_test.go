@@ -91,18 +91,4 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		result.AssertStdoutStatus(t, 0)
 	})
 
-	// Step 5: Verify delete was acknowledged (event may have eventual consistency)
-	t.Run("verify delete acknowledged", func(t *testing.T) {
-		require.NotEmpty(t, eventID)
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"calendar", "events", "get"},
-			Params: map[string]any{
-				"calendar_id": calendarID,
-				"event_id":    eventID,
-			},
-		})
-		require.NoError(t, err)
-		// Note: API may have eventual consistency - delete acknowledged but get may still succeed briefly
-		_ = result
-	})
 }

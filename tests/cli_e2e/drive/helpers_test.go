@@ -60,7 +60,7 @@ func uploadTestFile(t *testing.T, parentT *testing.T, ctx context.Context, suffi
 	parentT.Cleanup(func() {
 		clie2e.RunCmd(context.Background(), clie2e.Request{
 			Args:   []string{"drive", "files", "delete"},
-			Params: map[string]any{"file_token": fileToken},
+			Params: map[string]any{"file_token": fileToken, "type": "file"},
 		})
 	})
 

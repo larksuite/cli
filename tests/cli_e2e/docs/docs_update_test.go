@@ -43,7 +43,8 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 		require.NotEmpty(t, docToken, "stdout:\n%s", result.Stdout)
 
 		parentT.Cleanup(func() {
-			// best-effort cleanup
+			// No docs delete command is currently available in lark-cli,
+			// so created docs are intentionally left in the test account.
 		})
 	})
 
