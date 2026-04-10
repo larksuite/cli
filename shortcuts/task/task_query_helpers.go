@@ -35,11 +35,18 @@ func parseTimeRangeMillis(input string) (string, string, error) {
 	}
 
 	var startMillis, endMillis string
+	var startSecInt, endSecInt int64
+	var hasStart, hasEnd bool
 	if startInput != "" {
 		startSec, err := parseTimeFlagSec(startInput, "start")
 		if err != nil {
 			return "", "", err
 		}
+		startSecInt, err = strconv.ParseInt(startSec, 10, 64)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid start timestamp: %w", err)
+		}
+		hasStart = true
 		startMillis = startSec + "000"
 	}
 	if endInput != "" {
@@ -47,7 +54,15 @@ func parseTimeRangeMillis(input string) (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
+		endSecInt, err = strconv.ParseInt(endSec, 10, 64)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid end timestamp: %w", err)
+		}
+		hasEnd = true
 		endMillis = endSec + "000"
+	}
+	if hasStart && hasEnd && startSecInt > endSecInt {
+		return "", "", fmt.Errorf("start time must be earlier than or equal to end time")
 	}
 	return startMillis, endMillis, nil
 }

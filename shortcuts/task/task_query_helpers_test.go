@@ -86,6 +86,7 @@ func TestParseTimeRangeMillisAndRequireSearchFilter(t *testing.T) {
 		{name: "empty input", input: "", wantStart: "", wantEnd: ""},
 		{name: "invalid input", input: "bad-time", wantErr: true},
 		{name: "range input", input: "-1d,+1d", wantStart: "non-empty", wantEnd: "non-empty"},
+		{name: "reversed range fails fast", input: "+1d,-1d", wantErr: true},
 	}
 	for _, tt := range timeTests {
 		t.Run("parse:"+tt.name, func(t *testing.T) {
