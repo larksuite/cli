@@ -73,6 +73,19 @@ func printResourceList(w io.Writer, spec map[string]interface{}) {
 	fmt.Fprintf(w, "%sUsage: lark-cli schema %s.<resource>.<method>%s\n", output.Dim, name, output.Reset)
 }
 
+// hasFileFields returns true if any requestBody field has type "file".
+func hasFileFields(method map[string]interface{}) (bool, []string) {
+	rb, _ := method["requestBody"].(map[string]interface{})
+	var names []string
+	for name, field := range rb {
+		f, _ := field.(map[string]interface{})
+		if registry.GetStrFromMap(f, "type") == "file" {
+			names = append(names, name)
+		}
+	}
+	return len(names) > 0, names
+}
+
 func printMethodDetail(w io.Writer, spec map[string]interface{}, resName, methodName string, method map[string]interface{}) {
 	servicePath := registry.GetStrFromMap(spec, "servicePath")
 	specName := registry.GetStrFromMap(spec, "name")
@@ -80,6 +93,7 @@ func printMethodDetail(w io.Writer, spec map[string]interface{}, resName, method
 	fullPath := servicePath + "/" + methodPath
 	httpMethod := registry.GetStrFromMap(method, "httpMethod")
 	desc := registry.GetStrFromMap(method, "description")
+	isFileUpload, fileFieldNames := hasFileFields(method)
 
 	fmt.Fprintf(w, "%s%s.%s.%s%s\n\n", output.Bold, specName, resName, methodName, output.Reset)
 
@@ -138,10 +152,23 @@ func printMethodDetail(w io.Writer, spec map[string]interface{}, resName, method
 		if len(params) == 0 {
 			fmt.Fprintf(w, "%sParameters:%s\n\n", output.Bold, output.Reset)
 		}
-		fmt.Fprintf(w, "  %s--data%s  <json>  %soptional%s\n", output.Cyan, output.Reset, output.Dim, output.Reset)
+		fileUploadTag := ""
+		if isFileUpload {
+			fileUploadTag = fmt.Sprintf("  %s[file upload]%s", output.Yellow, output.Reset)
+		}
+		fmt.Fprintf(w, "  %s--data%s  <json>  %soptional%s%s\n", output.Cyan, output.Reset, output.Dim, output.Reset, fileUploadTag)
 		requestBody, _ := method["requestBody"].(map[string]interface{})
 		if len(requestBody) > 0 {
 			printNestedFields(w, requestBody, "      ", "")
+		}
+
+		if isFileUpload {
+			defaultField := "file"
+			if len(fileFieldNames) == 1 {
+				defaultField = fileFieldNames[0]
+			}
+			fmt.Fprintf(w, "\n  %s--file%s  <[field=]path>  %sfile upload%s\n", output.Cyan, output.Reset, output.Dim, output.Reset)
+			fmt.Fprintf(w, "      Upload file as multipart/form-data. Default field: %q\n", defaultField)
 		}
 		fmt.Fprintln(w)
 	}
@@ -184,7 +211,11 @@ func printMethodDetail(w io.Writer, spec map[string]interface{}, resName, method
 	}
 
 	// CLI example
-	fmt.Fprintf(w, "%sCLI:%s      lark-cli %s %s %s\n", output.Bold, output.Reset, specName, resName, methodName)
+	if isFileUpload {
+		fmt.Fprintf(w, "%sCLI:%s      lark-cli %s %s %s --file <path>\n", output.Bold, output.Reset, specName, resName, methodName)
+	} else {
+		fmt.Fprintf(w, "%sCLI:%s      lark-cli %s %s %s\n", output.Bold, output.Reset, specName, resName, methodName)
+	}
 
 	// Docs
 	if docUrl := registry.GetStrFromMap(method, "docUrl"); docUrl != "" {
