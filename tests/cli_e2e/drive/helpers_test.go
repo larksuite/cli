@@ -62,15 +62,8 @@ func uploadTestFile(t *testing.T, parentT *testing.T, ctx context.Context, suffi
 	require.NotEmpty(t, fileToken, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		// No drive delete shortcut/resource is currently available in lark-cli.
-		// Keep this cleanup bounded and best-effort so it does not hang teardown.
-		_, _ = clie2e.RunCmd(cleanupCtx, clie2e.Request{
-			Args:   []string{"drive", "files", "delete"},
-			Params: map[string]any{"file_token": fileToken, "type": "file"},
-		})
+		// No drive delete shortcut/resource is currently available in lark-cli,
+		// so uploaded files cannot be cleaned up automatically.
 	})
 
 	return fileToken
@@ -129,15 +122,8 @@ func importTestDoc(t *testing.T, parentT *testing.T, ctx context.Context, suffix
 	require.NotEmpty(t, docToken, "doc_token is required, stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		// No drive delete shortcut/resource is currently available in lark-cli.
-		// Keep this cleanup bounded and best-effort so it does not hang teardown.
-		_, _ = clie2e.RunCmd(cleanupCtx, clie2e.Request{
-			Args:   []string{"drive", "files", "delete"},
-			Params: map[string]any{"file_token": docToken, "type": "docx"},
-		})
+		// No drive delete shortcut/resource is currently available in lark-cli,
+		// so imported docs cannot be cleaned up automatically.
 	})
 
 	return docToken
