@@ -7,7 +7,8 @@ package selfupdate
 
 import (
 	"fmt"
-	"os"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // PrepareSelfReplace renames the running .exe to .old so that npm's
@@ -24,17 +25,17 @@ func PrepareSelfReplace() (restore func(), err error) {
 	oldPath := exe + ".old"
 
 	// Clean up stale .old from a previous upgrade.
-	os.Remove(oldPath)
+	vfs.Remove(oldPath)
 
 	// Rename running.exe → running.exe.old (Windows allows rename of locked files).
-	if err := os.Rename(exe, oldPath); err != nil {
+	if err := vfs.Rename(exe, oldPath); err != nil {
 		return noop, fmt.Errorf("cannot rename binary for update: %w", err)
 	}
 
 	// Restore: remove any partial file npm may have left, then move .old back.
 	restore = func() {
-		os.Remove(exe)
-		os.Rename(oldPath, exe)
+		vfs.Remove(exe)
+		vfs.Rename(oldPath, exe)
 	}
 
 	return restore, nil
@@ -50,16 +51,16 @@ func CleanupStaleFiles() {
 	}
 	oldPath := exe + ".old"
 
-	if _, err := os.Stat(oldPath); err != nil {
+	if _, err := vfs.Stat(oldPath); err != nil {
 		return // no .old file
 	}
 
-	if _, err := os.Stat(exe); err != nil {
+	if _, err := vfs.Stat(exe); err != nil {
 		// Original missing, .old exists — restore to recover.
-		os.Rename(oldPath, exe)
+		vfs.Rename(oldPath, exe)
 		return
 	}
 
 	// Both exist — .old is stale, clean up.
-	os.Remove(oldPath)
+	vfs.Remove(oldPath)
 }
