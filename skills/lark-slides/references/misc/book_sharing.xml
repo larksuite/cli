@@ -1,0 +1,1338 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>读书分享</title>
+  <theme>
+    <textStyles>
+      <headline fontColor="rgba(31, 35, 41, 1)"/>
+      <sub-headline fontColor="rgba(31, 35, 41, 1)"/>
+      <body fontColor="rgba(31, 35, 41, 1)"/>
+      <caption fontColor="rgba(155, 158, 162, 1)" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style/>
+    <data>
+      <shape width="235" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <line startX="31" startY="305" endX="202" endY="305" alpha="0.2">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <img src="Vs1kbXlH7odmtpxtMvUcMpnln3b" width="726" height="540" topLeftX="235" topLeftY="0">
+        <crop type="rect" leftOffset="117" rightOffset="117" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="173" height="189" topLeftX="28" topLeftY="320" alpha="0.6" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。在书的世界里，我们汲取智慧，分享感悟，让书香飘满生活，让心灵在阅读中绽放光芒。</p>
+        </content>
+      </shape>
+      <shape width="21" height="101" topLeftX="84" topLeftY="109" alpha="0.6" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" lineSpacing="multiple:1.2" textAlign="center">
+          <p>分享人</p>
+          <p/>
+          <p>无名</p>
+        </content>
+      </shape>
+      <shape width="21" height="144" topLeftX="115" topLeftY="88" alpha="0.6" type="text">
+        <content textType="headline" fontSize="20" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>十二月十二日</p>
+        </content>
+      </shape>
+      <shape width="56" height="260" topLeftX="146" topLeftY="30" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>读书分享</p>
+        </content>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="BAxubS8njoiHOtxh55RcK8DWnWy" width="960" height="540" topLeftX="0" topLeftY="0" saturation="-8" temperature="-32">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="960" height="136" topLeftX="0" topLeftY="404" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <shape width="89" height="96" topLeftX="382" topLeftY="66" alpha="0.9" type="text">
+        <content textType="title" fontSize="80" fontFamily="马善政毛笔楷体" color="rgba(32, 31, 29, 1)" bold="false" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">
+            <span color="rgba(32, 31, 29, 1)" fontSize="80" fontFamily="马善政毛笔楷体" bold="false">目</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="89" height="96" topLeftX="486" topLeftY="66" alpha="0.9" type="text">
+        <content textType="title" fontSize="80" fontFamily="马善政毛笔楷体" color="rgba(32, 31, 29, 1)" bold="false" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">
+            <span color="rgba(32, 31, 29, 1)" fontSize="80" fontFamily="马善政毛笔楷体" bold="false">录</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="210" height="184" topLeftX="50" topLeftY="278" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="210" height="184" topLeftX="45" topLeftY="263" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="53" height="75" topLeftX="188" topLeftY="263" type="text">
+        <content fontSize="50" fontFamily="有字库龙藏体" color="rgba(128, 66, 8, 1)" bold="true">
+          <p>
+            <span color="rgba(128, 66, 8, 1)" fontSize="50" fontFamily="有字库龙藏体">壹</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="69" startY="331" endX="141" endY="331" alpha="0.2">
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </line>
+      <shape width="210" height="184" topLeftX="270" topLeftY="278" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="210" height="184" topLeftX="530" topLeftY="537" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="53" height="75" topLeftX="673" topLeftY="537" type="text">
+        <content fontSize="50" fontFamily="有字库龙藏体" color="rgba(128, 66, 8, 1)" bold="true">
+          <p>
+            <span color="rgba(128, 66, 8, 1)" fontSize="50" fontFamily="有字库龙藏体">贰</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="288" startY="331" endX="358" endY="331" alpha="0.2">
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </line>
+      <shape width="210" height="184" topLeftX="490" topLeftY="278" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="210" height="184" topLeftX="485" topLeftY="263" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="53" height="75" topLeftX="629" topLeftY="263" type="text">
+        <content fontSize="50" fontFamily="有字库龙藏体" color="rgba(128, 66, 8, 1)" bold="true">
+          <p>
+            <span color="rgba(128, 66, 8, 1)">叁</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="508" startY="331" endX="597" endY="331" alpha="0.2">
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </line>
+      <shape width="210" height="184" topLeftX="711" topLeftY="278" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="210" height="184" topLeftX="706" topLeftY="263" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="53" height="75" topLeftX="849" topLeftY="263" type="text">
+        <content fontSize="50" fontFamily="有字库龙藏体" color="rgba(128, 66, 8, 1)" bold="true">
+          <p>
+            <span color="rgba(128, 66, 8, 1)" fontSize="50" fontFamily="有字库龙藏体">肆</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="732" startY="331" endX="802" endY="331" alpha="0.2">
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </line>
+      <shape width="114" height="27" topLeftX="724" topLeftY="303" alpha="0.9" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>读书感悟</p>
+        </content>
+      </shape>
+      <shape width="173" height="72" topLeftX="724" topLeftY="358" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="114" height="27" topLeftX="504" topLeftY="303" alpha="0.9" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>运用与实践</p>
+        </content>
+      </shape>
+      <shape width="173" height="72" topLeftX="504" topLeftY="358" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="114" height="27" topLeftX="283" topLeftY="303" alpha="0.9" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>主要内容</p>
+        </content>
+      </shape>
+      <shape width="173" height="72" topLeftX="283" topLeftY="358" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="114" height="27" topLeftX="63" topLeftY="303" alpha="0.9" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>书籍简介</p>
+        </content>
+      </shape>
+      <shape width="173" height="72" topLeftX="63" topLeftY="358" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="235" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+      </shape>
+      <line startX="31" startY="305" endX="202" endY="305" alpha="0.2">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <line startX="31" startY="203" endX="54" endY="180" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <line startX="109" startY="122" endX="132" endY="98" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <img src="Rhznb8AGNochNBxKVXYcoW2Nn7e" width="726" height="540" topLeftX="235" topLeftY="0">
+        <crop type="rect" leftOffset="117" rightOffset="117" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="173" height="189" topLeftX="28" topLeftY="320" alpha="0.6" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。在书的世界里，我们汲取智慧，分享感悟，让书香飘满生活，让心灵在阅读中绽放光芒。</p>
+        </content>
+      </shape>
+      <shape width="87" height="96" topLeftX="43" topLeftY="95" alpha="0.2" type="text">
+        <content textType="headline" fontSize="80" fontFamily="有字库龙藏体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>壹</p>
+        </content>
+      </shape>
+      <shape width="56" height="259" topLeftX="146" topLeftY="30" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>书籍简介</p>
+        </content>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="OaxvbuffroAXa9xbVQycZo52nUh" width="960" height="540" topLeftX="0.23" topLeftY="0" saturation="-8" temperature="-32">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="264" height="540" topLeftX="696" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <shape width="275" height="452" topLeftX="75" topLeftY="47" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="275" height="452" topLeftX="69" topLeftY="42" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <line startX="90" startY="397" endX="90" endY="469">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="275" height="452" topLeftX="680" topLeftY="47" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="275" height="452" topLeftX="674" topLeftY="42" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <line startX="695" startY="397" endX="695" endY="469">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="75" height="75" topLeftX="765" topLeftY="423" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <line startX="739" startY="214" endX="914" endY="214" alpha="0.2">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <img src="Sf0ib5ym0omh9bxgJK7c5s95nf3" width="274" height="274" topLeftX="360" topLeftY="43">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="10" bottomOffset="10" presetHandlers="4"/>
+      </img>
+      <img src="NAsKbXSjsoMWpYxsVJPcna3TnIe" width="274" height="274" topLeftX="57" topLeftY="43">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="10" bottomOffset="10" presetHandlers="4"/>
+      </img>
+      <shape width="173" height="126" topLeftX="739" topLeftY="61" alpha="0.6" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="56" height="259" topLeftX="858" topLeftY="239" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>书籍简介</p>
+        </content>
+      </shape>
+      <shape width="226" height="18" topLeftX="394" topLeftY="369" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p textAlign="center">作者 无名氏</p>
+        </content>
+      </shape>
+      <shape width="226" height="27" topLeftX="394" topLeftY="336" alpha="0.9" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="center">
+          <p>《书籍名称》</p>
+        </content>
+      </shape>
+      <shape width="226" height="72" topLeftX="394" topLeftY="398" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="226" height="18" topLeftX="89" topLeftY="369" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p textAlign="center">作者 无名氏</p>
+        </content>
+      </shape>
+      <shape width="226" height="27" topLeftX="89" topLeftY="336" alpha="0.9" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="center">
+          <p>《书籍名称》</p>
+        </content>
+      </shape>
+      <shape width="226" height="72" topLeftX="89" topLeftY="398" alpha="0.9" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="30" height="97" topLeftX="590" topLeftY="58" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="思源宋体">标签文案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="30" height="97" topLeftX="288" topLeftY="58" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="思源宋体">标签文案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="87" height="60" topLeftX="759" topLeftY="431" type="text">
+        <content textType="headline" fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>壹</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="LX0Eb0lfOoOFBhxPjf5cTiL1nCb" width="960" height="540" topLeftX="0.23" topLeftY="0" saturation="-8" temperature="-32">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="814" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <img src="FoG6bCzywoWLaOxhYXDcSTdZnxe" width="342" height="498" topLeftX="20" topLeftY="21">
+        <crop type="rect" leftOffset="80" rightOffset="76" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="75" height="75" topLeftX="39" topLeftY="426" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <shape width="93" height="75" topLeftX="30" topLeftY="421" type="text">
+        <content fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" textAlign="center">
+          <p textAlign="center">
+            <span color="rgba(43, 54, 44, 1)" fontSize="50" fontFamily="有字库龙藏体">壹</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="56" height="259" topLeftX="48" topLeftY="52" alpha="0.9" type="text">
+        <content textType="title" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">作者简介</p>
+        </content>
+        <shadow offset="0" angle="90" blur="72" color="rgba(0, 0, 0, 0.68)"/>
+      </shape>
+      <shape width="83" height="30" topLeftX="446" topLeftY="49" alpha="0.9" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>关键标题</p>
+        </content>
+      </shape>
+      <shape width="314" height="63" topLeftX="446" topLeftY="82" alpha="0.5" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="30" height="97" topLeftX="391" topLeftY="49" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>基本信息</p>
+        </content>
+      </shape>
+      <shape width="93" height="30" topLeftX="446" topLeftY="222" alpha="0.9" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>关键标题</p>
+        </content>
+      </shape>
+      <shape width="314" height="63" topLeftX="446" topLeftY="255" alpha="0.5" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="30" height="97" topLeftX="391" topLeftY="222" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>生平经历</p>
+        </content>
+      </shape>
+      <shape width="80" height="30" topLeftX="446" topLeftY="394" alpha="0.9" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>关键标题</p>
+        </content>
+      </shape>
+      <shape width="314" height="63" topLeftX="446" topLeftY="428" alpha="0.5" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="30" height="97" topLeftX="391" topLeftY="394" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>文学成就</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="235" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+      </shape>
+      <line startX="31" startY="305" endX="202" endY="305" alpha="0.2">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <line startX="31" startY="203" endX="54" endY="180" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <line startX="109" startY="122" endX="132" endY="98" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <img src="ZINkbj3gpoXaTqxLDVIcJUbIn4b" width="726" height="540" topLeftX="235" topLeftY="0">
+        <crop type="rect" leftOffset="117" rightOffset="117" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="173" height="189" topLeftX="28" topLeftY="320" alpha="0.6" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。在书的世界里，我们汲取智慧，分享感悟，让书香飘满生活，让心灵在阅读中绽放光芒。</p>
+        </content>
+      </shape>
+      <shape width="87" height="96" topLeftX="43" topLeftY="95" alpha="0.2" type="text">
+        <content textType="headline" fontSize="80" fontFamily="有字库龙藏体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>贰</p>
+        </content>
+      </shape>
+      <shape width="56" height="259" topLeftX="146" topLeftY="30" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>主要内容</p>
+        </content>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="ZTjJbjef3oBcQmx6s3HcHZ1MnKc" width="960" height="540" topLeftX="0.12" topLeftY="0" saturation="-8" temperature="-32">
+        <crop type="rect" leftOffset="0.34" rightOffset="0.34" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="275" height="280" topLeftX="50" topLeftY="218" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="275" height="279" topLeftX="45" topLeftY="212" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <line startX="65" startY="273" endX="65" endY="338">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="275" height="280" topLeftX="347" topLeftY="218" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="275" height="279" topLeftX="341" topLeftY="212" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <line startX="362" startY="273" endX="362" endY="338">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="275" height="280" topLeftX="643" topLeftY="218" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="275" height="279" topLeftX="638" topLeftY="212" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <line startX="658" startY="273" endX="658" endY="338">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="75" height="75" topLeftX="835" topLeftY="43" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <shape width="237" height="84" topLeftX="657" topLeftY="376" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="226" height="27" topLeftX="668" topLeftY="228" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>核心内容三</p>
+        </content>
+      </shape>
+      <shape width="226" height="72" topLeftX="668" topLeftY="269" alpha="0.6" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="237" height="84" topLeftX="361" topLeftY="376" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="226" height="27" topLeftX="372" topLeftY="228" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>核心内容二</p>
+        </content>
+      </shape>
+      <shape width="226" height="72" topLeftX="372" topLeftY="269" alpha="0.6" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="237" height="84" topLeftX="65" topLeftY="376" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="226" height="27" topLeftX="76" topLeftY="228" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>核心内容一</p>
+        </content>
+      </shape>
+      <shape width="226" height="72" topLeftX="76" topLeftY="269" alpha="0.6" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="425" height="65" topLeftX="46" topLeftY="38" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>书籍核心内容</p>
+        </content>
+      </shape>
+      <shape width="425" height="63" topLeftX="46" topLeftY="118" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="76" height="28" topLeftX="229" topLeftY="229" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="思源宋体">标签文案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="76" height="28" topLeftX="524" topLeftY="229" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="思源宋体">标签文案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="76" height="28" topLeftX="821" topLeftY="229" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="思源宋体">标签文案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="87" height="60" topLeftX="830" topLeftY="49" type="text">
+        <content textType="headline" fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>贰</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 54, 44, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="30" height="124" topLeftX="424" topLeftY="148" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>重点观点一</p>
+        </content>
+      </shape>
+      <shape width="75" height="75" topLeftX="842" topLeftY="43" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <shape width="30" height="124" topLeftX="600" topLeftY="148" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>重点观点二</p>
+        </content>
+      </shape>
+      <shape width="30" height="124" topLeftX="774" topLeftY="148" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>重点观点二</p>
+        </content>
+      </shape>
+      <img src="IslubYfSdo3unxxJBsvcsCf8nlg" width="383" height="346" topLeftX="0" topLeftY="148">
+        <crop type="rect" leftOffset="116" rightOffset="116" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="93" height="231" topLeftX="822" topLeftY="148" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="93" height="231" topLeftX="648" topLeftY="148" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="93" height="231" topLeftX="472" topLeftY="148" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明请输入详细说明</p>
+        </content>
+      </shape>
+      <shape width="425" height="65" topLeftX="46" topLeftY="38" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>重点观点</p>
+        </content>
+      </shape>
+      <shape width="15" height="358" topLeftX="111" topLeftY="146" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <shape width="15" height="358" topLeftX="251" topLeftY="146" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <shape width="87" height="60" topLeftX="838" topLeftY="49" type="text">
+        <content textType="headline" fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>贰</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="PCntbNU9WoYVGZxtkaYcaMPKnlg" width="725" height="540" topLeftX="235" topLeftY="0" contrast="5" saturation="-11">
+        <crop type="rect" leftOffset="118" rightOffset="118" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="235" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+      </shape>
+      <shape width="93" height="120" topLeftX="39" topLeftY="83" alpha="0.2" type="text">
+        <content fontSize="80" fontFamily="有字库龙藏体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p textAlign="center">
+            <span color="rgba(255, 255, 255, 1)" fontSize="80" fontFamily="有字库龙藏体">叁</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="56" height="324" topLeftX="146" topLeftY="30" alpha="0.9" type="text">
+        <content textType="title" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">运用与实践</p>
+        </content>
+      </shape>
+      <shape width="173" height="126" topLeftX="28" topLeftY="384" alpha="0.5" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontFamily="思源宋体">书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="31" startY="368" endX="202" endY="368" alpha="0.2">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <shape width="112" height="24" topLeftX="318" topLeftY="-80" type="text">
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <line startX="31" startY="203" endX="46" endY="188" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <line startX="109" startY="122" endX="132" endY="98" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 54, 44, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="75" height="75" topLeftX="765" topLeftY="43" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <shape width="275" height="144" topLeftX="38" topLeftY="30" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="275" height="143" topLeftX="32" topLeftY="24" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <line startX="52" startY="84" endX="52" endY="149">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="275" height="144" topLeftX="351" topLeftY="369" presetHandlers="4" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <shape width="275" height="143" topLeftX="345" topLeftY="363" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(64, 85, 62, 1)" width="1"/>
+      </shape>
+      <line startX="366" startY="423" endX="366" endY="488">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <img src="RNjQbZbFfomP8vx2FYhcMyLOnbg" width="277" height="338" topLeftX="36" topLeftY="202">
+        <crop type="rect" leftOffset="32" rightOffset="32" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="R6Vgbg6i1onkBIxt80tcE5O6ndd" width="277" height="338" topLeftX="345" topLeftY="0">
+        <crop type="rect" leftOffset="162" rightOffset="162" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="173" height="189" topLeftX="740" topLeftY="311" alpha="0.6" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。在书的世界里，我们汲取智慧，分享感悟，让书香飘满生活，让心灵在阅读中绽放光芒。</p>
+        </content>
+      </shape>
+      <shape width="236" height="27" topLeftX="366" topLeftY="377" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>启发二</p>
+        </content>
+      </shape>
+      <shape width="226" height="72" topLeftX="376" topLeftY="419" alpha="0.6" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="236" height="27" topLeftX="52" topLeftY="40" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(128, 66, 8, 1)" bold="true" textAlign="left">
+          <p>启发一</p>
+        </content>
+      </shape>
+      <shape width="226" height="72" topLeftX="62" topLeftY="82" alpha="0.6" type="text">
+        <content textType="headline" fontSize="12" fontFamily="思源宋体" color="rgba(43, 54, 44, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="56" height="130" topLeftX="858" topLeftY="38" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>启发</p>
+        </content>
+      </shape>
+      <shape width="87" height="60" topLeftX="761" topLeftY="49" type="text">
+        <content textType="headline" fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>叁</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 54, 44, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="AA6EbfqopoFdxaxAtcFcm1evnKm" width="302" height="540" topLeftX="329" topLeftY="0">
+        <crop type="rect" leftOffset="202" rightOffset="43" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="30" height="102" topLeftX="659" topLeftY="79" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>重点一</p>
+        </content>
+      </shape>
+      <shape width="30" height="102" topLeftX="268" topLeftY="219" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>重点二</p>
+        </content>
+      </shape>
+      <shape width="30" height="102" topLeftX="659" topLeftY="359" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>重点三</p>
+        </content>
+      </shape>
+      <shape width="75" height="75" topLeftX="53" topLeftY="415" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <shape width="207" height="105" topLeftX="707" topLeftY="359" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="207" height="105" topLeftX="707" topLeftY="79" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="207" height="105" topLeftX="46" topLeftY="219" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="right">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="182" height="130" topLeftX="46" topLeftY="38" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>运用与</p>
+          <p>实践</p>
+        </content>
+      </shape>
+      <shape width="87" height="60" topLeftX="47" topLeftY="422" type="text">
+        <content textType="headline" fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>叁</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="235" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+      </shape>
+      <line startX="31" startY="305" endX="202" endY="305" alpha="0.2">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <shape width="705" height="500" topLeftX="245" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="685" height="520" topLeftX="255" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <line startX="31" startY="203" endX="54" endY="180" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <line startX="109" startY="122" endX="132" endY="98" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </line>
+      <img src="B9ZAbt2N2oftTjxO417c6Ax9nzf" width="726" height="540" topLeftX="235" topLeftY="0">
+        <crop type="rect" leftOffset="117" rightOffset="117" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="173" height="189" topLeftX="28" topLeftY="320" alpha="0.6" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left"/>
+      </shape>
+      <shape width="87" height="96" topLeftX="43" topLeftY="95" alpha="0.2" type="text">
+        <content textType="headline" fontSize="80" fontFamily="有字库龙藏体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>肆</p>
+        </content>
+      </shape>
+      <shape width="56" height="259" topLeftX="146" topLeftY="30" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>读书感悟</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 54, 44, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="450" height="450" topLeftX="61" topLeftY="45" type="ellipse">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <img src="WVe4bI5ufo5WDkxpbIacwBfwnXe" width="450" height="450" topLeftX="48" topLeftY="45" contrast="5" saturation="-11">
+        <crop type="ellipse" leftOffset="3" rightOffset="3" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="75" height="75" topLeftX="47" topLeftY="423" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <shape width="30" height="102" topLeftX="557" topLeftY="79" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>感悟一</p>
+        </content>
+      </shape>
+      <shape width="30" height="102" topLeftX="557" topLeftY="219" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>感悟二</p>
+        </content>
+      </shape>
+      <shape width="30" height="102" topLeftX="557" topLeftY="359" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>感悟二</p>
+        </content>
+      </shape>
+      <img src="H6qeb1mziotaEQx2asjcyF71nnf" width="450" height="450" topLeftX="48" topLeftY="45">
+        <crop type="rect" leftOffset="3" rightOffset="3" topOffset="0" bottomOffset="0" presetHandlers="225"/>
+      </img>
+      <shape width="207" height="105" topLeftX="605" topLeftY="357" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="207" height="105" topLeftX="605" topLeftY="217" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="207" height="105" topLeftX="605" topLeftY="77" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="56" height="259" topLeftX="858" topLeftY="212" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>读书感悟</p>
+        </content>
+      </shape>
+      <shape width="87" height="60" topLeftX="41" topLeftY="431" type="text">
+        <content textType="headline" fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>肆</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 54, 44, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="30" height="102" topLeftX="173" topLeftY="213" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>总结一</p>
+        </content>
+      </shape>
+      <shape width="30" height="102" topLeftX="173" topLeftY="343" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(128, 66, 8, 1)"/>
+        </fill>
+        <content fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)">
+          <p>总结二</p>
+        </content>
+      </shape>
+      <shape width="151" height="212" topLeftX="0" topLeftY="0" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(64, 85, 62, 1)"/>
+        </fill>
+      </shape>
+      <shape width="520" height="93" topLeftX="440" topLeftY="447" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(64, 85, 62, 1)"/>
+        </fill>
+      </shape>
+      <shape width="75" height="75" topLeftX="765" topLeftY="43" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <shadow angle="90" blur="21"/>
+      </shape>
+      <img src="GQfkbUM1soULBWxx0KqcjZiMnJd" width="520" height="235" topLeftX="440" topLeftY="212">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="62" bottomOffset="62" presetHandlers="0"/>
+      </img>
+      <img src="W7jnbtvFXo2aNUxo960ctEXlncc" width="151" height="235" topLeftX="0" topLeftY="212">
+        <crop type="rect" leftOffset="95" rightOffset="95" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="473" height="42" topLeftX="464" topLeftY="472" alpha="0.5" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="207" height="105" topLeftX="219" topLeftY="341" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="207" height="105" topLeftX="219" topLeftY="211" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</p>
+        </content>
+      </shape>
+      <shape width="87" height="60" topLeftX="761" topLeftY="49" type="text">
+        <content textType="headline" fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p>肆</p>
+        </content>
+      </shape>
+      <shape width="56" height="130" topLeftX="858" topLeftY="38" type="text">
+        <content textType="headline" fontSize="54" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.2">
+          <p>总结</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="JMXPb7rVToic0yxUCMacn4YJnyd" width="960" height="540" topLeftX="0.12" topLeftY="0" alpha="0.2" saturation="-8" temperature="-32">
+        <crop type="rect" leftOffset="0.34" rightOffset="0.34" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="960" height="270" topLeftX="0" topLeftY="270" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <img src="ToembDV69oCS2Axcw7XcHdwynz9" width="150" height="150" topLeftX="38" topLeftY="318">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="6" bottomOffset="6" presetHandlers="4"/>
+      </img>
+      <img src="Mz8Hb9vY0oJqC8x9C53cRiAUnuh" width="150" height="150" topLeftX="218" topLeftY="318">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="6" bottomOffset="6" presetHandlers="4"/>
+      </img>
+      <img src="WHVsbntGdoZiq6xVHNEcjKcDnih" width="150" height="150" topLeftX="397" topLeftY="318">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="6" bottomOffset="6" presetHandlers="4"/>
+      </img>
+      <shape width="327" height="293" topLeftX="595" topLeftY="134" type="rect">
+        <border color="rgba(43, 54, 44, 1)" width="1"/>
+      </shape>
+      <img src="EQN1bi9m9ohLo2xZAXzcVU0bnJe" width="327" height="327" topLeftX="588" topLeftY="140">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="12" bottomOffset="12" presetHandlers="4"/>
+      </img>
+      <shape width="75" height="75" topLeftX="843" topLeftY="37" alpha="0.9" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="93" height="75" topLeftX="834" topLeftY="34" type="text">
+        <content fontSize="50" fontFamily="有字库龙藏体" color="rgba(43, 54, 44, 1)" bold="true" textAlign="center">
+          <p textAlign="center">
+            <strong>肆</strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="167" height="21" topLeftX="669" topLeftY="476" alpha="0.7" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="center">
+          <p textAlign="center">作者·书籍</p>
+        </content>
+      </shape>
+      <shape width="327" height="327" topLeftX="588" topLeftY="140" type="rect">
+        <border color="rgba(43, 54, 44, 1)" width="1"/>
+      </shape>
+      <shape width="238" height="65" topLeftX="40" topLeftY="34" alpha="0.9" type="text">
+        <content textType="title" fontSize="54" fontFamily="思源宋体" color="rgba(32, 31, 29, 1)" bold="true" lineSpacing="multiple:1.2" textAlign="left">
+          <p textAlign="left" lineSpacing="multiple:1.2">
+            <span color="rgba(32, 31, 29, 1)">延伸阅读</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="489" height="42" topLeftX="39" topLeftY="191" alpha="0.7" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(0, 0, 0, 1)" bold="false">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontFamily="思源宋体" bold="false">书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="130" height="21" topLeftX="228" topLeftY="476" alpha="0.7" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="center">
+          <p textAlign="center">
+            <span color="rgba(255, 255, 255, 1)">作者·书籍</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="130" height="21" topLeftX="51" topLeftY="476" alpha="0.7" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="center">
+          <p textAlign="center">作者·书籍</p>
+        </content>
+      </shape>
+      <shape width="130" height="21" topLeftX="408" topLeftY="476" alpha="0.7" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="center">
+          <p textAlign="center">作者·书籍</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="CTE8bLVM3o28DdxTy9NchsGCnbh" width="961" height="541" topLeftX="0" topLeftY="0">
+        <crop type="rect" leftOffset="0.65" rightOffset="0.65" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="940" height="364" topLeftX="10" topLeftY="20" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="920" height="384" topLeftX="20" topLeftY="10" type="rect">
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="960" height="136" topLeftX="0" topLeftY="404" presetHandlers="0" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 54, 44, 1)"/>
+        </fill>
+      </shape>
+      <shape width="89" height="96" topLeftX="380" topLeftY="22" alpha="0.9" type="text">
+        <content textType="title" fontSize="80" fontFamily="马善政毛笔楷体" color="rgba(32, 31, 29, 1)" bold="false" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">
+            <span color="rgba(32, 31, 29, 1)" fontSize="80" fontFamily="马善政毛笔楷体" bold="false">感</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="89" height="96" topLeftX="444" topLeftY="65" alpha="0.9" type="text">
+        <content textType="title" fontSize="80" fontFamily="马善政毛笔楷体" color="rgba(32, 31, 29, 1)" bold="false" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">
+            <span color="rgba(32, 31, 29, 1)" fontSize="80" fontFamily="马善政毛笔楷体" bold="false">谢</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="89" height="96" topLeftX="380" topLeftY="97" alpha="0.9" type="text">
+        <content textType="title" fontSize="80" fontFamily="马善政毛笔楷体" color="rgba(32, 31, 29, 1)" bold="false" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">
+            <span color="rgba(32, 31, 29, 1)" fontSize="80" fontFamily="马善政毛笔楷体" bold="false">观</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="89" height="96" topLeftX="444" topLeftY="140" alpha="0.9" type="text">
+        <content textType="title" fontSize="80" fontFamily="马善政毛笔楷体" color="rgba(32, 31, 29, 1)" bold="false" lineSpacing="multiple:1.2">
+          <p lineSpacing="multiple:1.2">
+            <span color="rgba(32, 31, 29, 1)" fontSize="80" fontFamily="马善政毛笔楷体" bold="false">看</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="440" height="84" topLeftX="30" topLeftY="430" alpha="0.5" type="text">
+        <content textType="headline" fontSize="14" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>书海畅游意无穷，墨香四溢映心中。分享佳作如明灯，照亮前路启智明。佳句共赏添雅趣，思想碰撞智慧生。读书之乐同分享，知识海洋任君行。在书的世界里，我们汲取智慧，分享感悟，让书香飘满生活，让心灵在阅读中绽放光芒。</p>
+        </content>
+      </shape>
+      <img src="YvRMb7i4NoiI30xZy4gc5E5Cn1c" width="89" height="89" topLeftX="843" topLeftY="427">
+        <shadow angle="90" color="rgba(17, 39, 112, 0.15)"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>
