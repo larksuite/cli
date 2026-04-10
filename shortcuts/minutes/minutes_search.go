@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultMinutesSearchPageSize = 15
-	maxMinutesSearchPageSize     = 200
+	maxMinutesSearchPageSize     = 30
 	maxMinutesSearchQueryLen     = 50
 )
 
