@@ -415,6 +415,9 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 			if err != nil {
 				return client.RawApiRequest{}, nil, err
 			}
+			if _, ok := dataFields.(map[string]any); !ok {
+				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+			}
 		}
 
 		if opts.DryRun {

@@ -148,6 +148,9 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 			if err != nil {
 				return client.RawApiRequest{}, nil, err
 			}
+			if _, ok := dataFields.(map[string]any); !ok {
+				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+			}
 		}
 
 		if opts.DryRun {

@@ -156,12 +156,13 @@ func printMethodDetail(w io.Writer, spec map[string]interface{}, resName, method
 		}
 
 		if isFileUpload {
-			defaultField := "file"
 			if len(fileFieldNames) == 1 {
-				defaultField = fileFieldNames[0]
+				fmt.Fprintf(w, "\n  %s--file%s  <[field=]path>  %sfile upload%s\n", output.Cyan, output.Reset, output.Dim, output.Reset)
+				fmt.Fprintf(w, "      Upload file as multipart/form-data. Default field: %q\n", fileFieldNames[0])
+			} else {
+				fmt.Fprintf(w, "\n  %s--file%s  <field=path>  %sfile upload%s\n", output.Cyan, output.Reset, output.Dim, output.Reset)
+				fmt.Fprintf(w, "      Upload file as multipart/form-data. Fields: %s\n", strings.Join(fileFieldNames, ", "))
 			}
-			fmt.Fprintf(w, "\n  %s--file%s  <[field=]path>  %sfile upload%s\n", output.Cyan, output.Reset, output.Dim, output.Reset)
-			fmt.Fprintf(w, "      Upload file as multipart/form-data. Default field: %q\n", defaultField)
 		}
 		fmt.Fprintln(w)
 	}
@@ -204,8 +205,10 @@ func printMethodDetail(w io.Writer, spec map[string]interface{}, resName, method
 	}
 
 	// CLI example
-	if isFileUpload {
+	if isFileUpload && len(fileFieldNames) == 1 {
 		fmt.Fprintf(w, "%sCLI:%s      lark-cli %s %s %s --file <path>\n", output.Bold, output.Reset, specName, resName, methodName)
+	} else if isFileUpload {
+		fmt.Fprintf(w, "%sCLI:%s      lark-cli %s %s %s --file <field=path>\n", output.Bold, output.Reset, specName, resName, methodName)
 	} else {
 		fmt.Fprintf(w, "%sCLI:%s      lark-cli %s %s %s\n", output.Bold, output.Reset, specName, resName, methodName)
 	}
