@@ -4,7 +4,6 @@
 package bot
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -15,7 +14,7 @@ import (
 // BotStatusOptions holds inputs for the bot status command.
 type BotStatusOptions struct {
 	Factory *cmdutil.Factory
-	Ctx     context.Context
+	Ctx     interface{} // Placeholder, not used yet
 }
 
 // newCmdBotStatus creates the bot status command.
@@ -25,7 +24,6 @@ func newCmdBotStatus(opts *BotStatusOptions) *cobra.Command {
 		Short: "查看 Bot 运行状态",
 		Long:  "查看 Claude Code Bot 的运行状态、会话数、消息处理统计等",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Ctx = cmd.Context()
 			return botStatusRun(opts)
 		},
 	}
@@ -36,7 +34,6 @@ func newCmdBotStatus(opts *BotStatusOptions) *cobra.Command {
 // botStatusRun executes the bot status command.
 func botStatusRun(opts *BotStatusOptions) error {
 	f := opts.Factory
-	ctx := opts.Ctx
 
 	// TODO: 实现状态检查逻辑
 	// 1. 读取 PID 文件

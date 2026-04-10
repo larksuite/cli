@@ -5,10 +5,14 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"time"
 
-	"github.com/larksuite/cli/cmd/cmdutil"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/bot"
 	"github.com/spf13/cobra"
 )
@@ -23,18 +27,26 @@ type BotStartOptions struct {
 
 // newCmdBotStart creates the bot start command.
 func newCmdBotStart(opts *BotOptions) *cobra.Command {
+	var config string
+	var daemon bool
+
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "启动 Claude Code Bot",
 		Long:  "启动飞书 Bot，监听消息并路由给 Claude Code 处理",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Ctx = cmd.Context()
-			return botStartRun(opts)
+			startOpts := &BotStartOptions{
+				Factory: opts.Factory,
+				Ctx:     cmd.Context(),
+				Config:  config,
+				Daemon:  daemon,
+			}
+			return botStartRun(startOpts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Config, "config", "", "配置文件路径")
-	cmd.Flags().BoolVar(&opts.Daemon, "daemon", false, "后台运行模式")
+	cmd.Flags().StringVar(&config, "config", "", "配置文件路径")
+	cmd.Flags().BoolVar(&daemon, "daemon", false, "后台运行模式")
 
 	return cmd
 }
@@ -85,14 +97,27 @@ func botStartRun(opts *BotStartOptions) error {
 	fmt.Fprintf(io.Out, "✓ Bot 处理器已初始化\n")
 
 	// 5. Initialize event subscriber
-	runtime := f.InitializedRuntime
 	fmt.Fprintf(io.Out, "初始化事件订阅...\n")
+
+	// Load config
+	config, err := core.LoadMultiAppConfig()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		}
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	app := config.CurrentAppConfig(f.Invocation.Profile)
+	if app == nil {
+		return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli profile list")
+	}
 
 	subscriber := bot.NewEventSubscriber(bot.EventSubscriberConfig{
 		BotHandler: botHandler,
-		AppID:      runtime.Config.AppID,
-		AppSecret:  runtime.Config.AppSecret,
-		Brand:      string(runtime.Config.Brand),
+		AppID:      app.AppId,
+		AppSecret:  app.AppSecret,
+		Brand:      string(app.Brand),
 		Quiet:      false,
 	})
 	fmt.Fprintf(io.Out, "✓ 事件订阅已初始化\n")

@@ -4,7 +4,6 @@
 package bot
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"syscall"
@@ -17,7 +16,7 @@ import (
 // BotStopOptions holds inputs for the bot stop command.
 type BotStopOptions struct {
 	Factory *cmdutil.Factory
-	Ctx     context.Context
+	Ctx     interface{} // Placeholder, not used yet
 }
 
 // newCmdBotStop creates the bot stop command.
@@ -27,7 +26,6 @@ func newCmdBotStop(opts *BotStopOptions) *cobra.Command {
 		Short: "停止运行中的 Bot",
 		Long:  "优雅地停止 Claude Code Bot，保存会话状态",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Ctx = cmd.Context()
 			return botStopRun(opts)
 		},
 	}
@@ -38,7 +36,6 @@ func newCmdBotStop(opts *BotStopOptions) *cobra.Command {
 // botStopRun executes the bot stop command.
 func botStopRun(opts *BotStopOptions) error {
 	f := opts.Factory
-	ctx := opts.Ctx
 
 	// TODO: 实现停止逻辑
 	// 1. 读取 PID 文件

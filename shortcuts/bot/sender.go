@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	"github.com/larksuite/oapi-sdk-go/v3/service/im"
 )
 
 // MessageSender handles sending messages back to Lark
@@ -45,17 +43,18 @@ func (s *MessageSender) buildMessageContent(text string) (string, error) {
 }
 
 // CreateMessageRequest creates a Lark message send request
-func (s *MessageSender) CreateMessageRequest(chatID, content, parentMessageID string) *im.CreateMessageReq {
-	req := &im.CreateMessageReq{}
-	req.MsgType = "text"
-	req.ReceiveIdType = "chat_id"
-	req.ReceiveId = chatID
-	req.Content = content
-
-	if parentMessageID != "" {
-		req.ReplyInThread = true
-		req.ParentId = parentMessageID
-	}
-
-	return req
-}
+// TODO: Implement when integrating with im +messages-send
+// func (s *MessageSender) CreateMessageRequest(chatID, content, parentMessageID string) *im.CreateMessageReq {
+// 	req := &im.CreateMessageReq{}
+// 	req.MsgType = "text"
+// 	req.ReceiveIdType = "chat_id"
+// 	req.ReceiveId = chatID
+// 	req.Content = content
+//
+// 	if parentMessageID != "" {
+// 		req.ReplyInThread = true
+// 		req.ParentId = parentMessageID
+// 	}
+//
+// 	return req
+// }

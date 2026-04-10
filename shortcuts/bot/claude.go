@@ -8,8 +8,6 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/larksuite/cli/cmd/cmdutil"
 )
 
 // ClaudeResponse represents the JSON output from claude CLI

@@ -9,9 +9,10 @@ import (
 	"syscall"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
+	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
+	"github.com/larksuite/cli/internal/core"
 )
 
 // EventSubscriber manages Lark event subscription for the bot
@@ -19,7 +20,7 @@ type EventSubscriber struct {
 	botHandler   *BotHandler
 	sender       *MessageSender
 	appID        string
-	appSecret    string
+	appSecret    core.SecretInput
 	domain       string
 	eventCount   int
 	quiet        bool
@@ -29,7 +30,7 @@ type EventSubscriber struct {
 type EventSubscriberConfig struct {
 	BotHandler  *BotHandler
 	AppID       string
-	AppSecret   string
+	AppSecret   core.SecretInput
 	Brand       string // "feishu" or "lark"
 	Quiet       bool
 }
@@ -54,7 +55,7 @@ func NewEventSubscriber(config EventSubscriberConfig) *EventSubscriber {
 // Subscribe starts listening for Lark events
 func (s *EventSubscriber) Subscribe(ctx context.Context) error {
 	// Create event dispatcher
-	eventDispatcher := larkevent.NewDispatcher("", "")
+	eventDispatcher := dispatcher.NewEventDispatcher("", "")
 	eventDispatcher.InitConfig()
 
 	// Register message event handler
@@ -62,7 +63,7 @@ func (s *EventSubscriber) Subscribe(ctx context.Context) error {
 	eventDispatcher.OnCustomizedEvent("im.message.receive_v1", rawHandler)
 
 	// Create WebSocket client
-	cli := larkws.NewClient(s.appID, s.appSecret,
+	cli := larkws.NewClient(s.appID, s.appSecret.Plain,
 		larkws.WithEventHandler(eventDispatcher),
 		larkws.WithDomain(s.domain),
 	)
