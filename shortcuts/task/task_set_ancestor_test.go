@@ -82,17 +82,56 @@ func TestSetAncestorTask_Execute(t *testing.T) {
 	tests := []struct {
 		name      string
 		args      []string
+		register  func(*httpmock.Registry)
+		wantErr   bool
 		wantParts []string
 	}{
 		{
-			name:      "json output with ancestor",
-			args:      []string{"+set-ancestor", "--task-id", "task-123", "--ancestor-id", "task-456", "--as", "bot", "--format", "json"},
+			name: "json output with ancestor",
+			args: []string{"+set-ancestor", "--task-id", "task-123", "--ancestor-id", "task-456", "--as", "bot", "--format", "json"},
+			register: func(reg *httpmock.Registry) {
+				reg.Register(&httpmock.Stub{
+					Method: "POST",
+					URL:    "/open-apis/task/v2/tasks/task-123/set_ancestor_task",
+					Body: map[string]interface{}{
+						"code": 0,
+						"msg":  "success",
+						"data": map[string]interface{}{},
+					},
+				})
+			},
 			wantParts: []string{`"guid": "task-123"`},
 		},
 		{
-			name:      "pretty output clears ancestor",
-			args:      []string{"+set-ancestor", "--task-id", "task-123", "--as", "bot", "--format", "pretty"},
+			name: "pretty output clears ancestor",
+			args: []string{"+set-ancestor", "--task-id", "task-123", "--as", "bot", "--format", "pretty"},
+			register: func(reg *httpmock.Registry) {
+				reg.Register(&httpmock.Stub{
+					Method: "POST",
+					URL:    "/open-apis/task/v2/tasks/task-123/set_ancestor_task",
+					Body: map[string]interface{}{
+						"code": 0,
+						"msg":  "success",
+						"data": map[string]interface{}{},
+					},
+				})
+			},
 			wantParts: []string{"Ancestor cleared", "Task ID: task-123"},
+		},
+		{
+			name: "api-level error (code!=0) returns error",
+			args: []string{"+set-ancestor", "--task-id", "task-123", "--ancestor-id", "task-456", "--as", "bot", "--format", "pretty"},
+			register: func(reg *httpmock.Registry) {
+				reg.Register(&httpmock.Stub{
+					Method: "POST",
+					URL:    "/open-apis/task/v2/tasks/task-123/set_ancestor_task",
+					Body: map[string]interface{}{
+						"code": 10003,
+						"msg":  "permission denied",
+					},
+				})
+			},
+			wantErr: true,
 		},
 	}
 
@@ -100,17 +139,18 @@ func TestSetAncestorTask_Execute(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f, stdout, _, reg := taskShortcutTestFactory(t)
 			warmTenantToken(t, f, reg)
-			reg.Register(&httpmock.Stub{
-				Method: "POST",
-				URL:    "/open-apis/task/v2/tasks/task-123/set_ancestor_task",
-				Body: map[string]interface{}{
-					"code": 0,
-					"msg":  "success",
-					"data": map[string]interface{}{},
-				},
-			})
+			tt.register(reg)
 
 			err := runMountedTaskShortcut(t, SetAncestorTask, tt.args, f, stdout)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if out := stdout.String(); out != "" {
+					t.Fatalf("expected empty stdout on error, got: %s", out)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("runMountedTaskShortcut() error = %v", err)
 			}

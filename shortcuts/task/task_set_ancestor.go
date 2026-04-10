@@ -5,6 +5,7 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,13 +40,19 @@ var SetAncestorTask = common.Shortcut{
 		queryParams := make(larkcore.QueryParams)
 		queryParams.Set("user_id_type", "open_id")
 
-		_, err := runtime.DoAPI(&larkcore.ApiReq{
+		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 			HttpMethod:  http.MethodPost,
 			ApiPath:     "/open-apis/task/v2/tasks/" + url.PathEscape(taskID) + "/set_ancestor_task",
 			QueryParams: queryParams,
 			Body:        buildSetAncestorBody(runtime.Str("ancestor-id")),
 		})
-		if err != nil {
+		var result map[string]interface{}
+		if err == nil {
+			if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
+				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "set ancestor task")
+			}
+		}
+		if _, err = HandleTaskApiResult(result, err, "set ancestor task"); err != nil {
 			return err
 		}
 
