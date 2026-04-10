@@ -21,5 +21,10 @@ func Shortcuts() []common.Shortcut {
 		SheetReplace,
 		SheetSetStyle,
 		SheetBatchSetStyle,
+		SheetAddDimension,
+		SheetInsertDimension,
+		SheetUpdateDimension,
+		SheetMoveDimension,
+		SheetDeleteDimension,
 	}
 }
