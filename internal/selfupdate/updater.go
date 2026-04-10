@@ -80,6 +80,9 @@ type Updater struct {
 	VerifyOverride           func(expectedVersion string) error
 	RestoreAvailableOverride func() bool
 
+	// backupCreated is set to true by PrepareSelfReplace (Windows) when the
+	// running binary is successfully renamed to .old. Used by
+	// CanRestorePreviousVersion to report whether rollback is possible.
 	backupCreated bool
 }
 

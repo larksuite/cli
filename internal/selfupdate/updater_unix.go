@@ -20,5 +20,5 @@ func (u *Updater) CanRestorePreviousVersion() bool {
 	if u.RestoreAvailableOverride != nil {
 		return u.RestoreAvailableOverride()
 	}
-	return false
+	return u.backupCreated
 }
