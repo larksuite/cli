@@ -33,8 +33,14 @@ func (u *Updater) PrepareSelfReplace() (restore func(), err error) {
 	}
 	u.backupCreated = true
 
-	// Restore: remove any partial file npm may have left, then move .old back.
+	// Restore: move .old back to the original path.
+	// Guard with Stat: run.js may have already recovered .old on its own
+	// during VerifyBinary; if .old is gone, skip to avoid deleting the
+	// only working binary.
 	restore = func() {
+		if _, err := vfs.Stat(oldPath); err != nil {
+			return
+		}
 		vfs.Remove(exe)
 		vfs.Rename(oldPath, exe)
 	}

@@ -146,7 +146,7 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	return r
 }
 
-// RunSkillsUpdate executes npx skills add larksuite/cli -g -y.
+// RunSkillsUpdate executes npx -y skills add larksuite/cli -g.
 func (u *Updater) RunSkillsUpdate() *NpmResult {
 	if u.SkillsUpdateOverride != nil {
 		return u.SkillsUpdateOverride()
