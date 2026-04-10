@@ -41,7 +41,7 @@ lark-cli base +record-list \
   --base-token XXXXXX \
   --table-id tblXXX \
   --view-id vewXXX \
-  --field-id fld_status \
+  --field-id fldStatus \
   --field-id 项目名称 \
   --offset 0 \
   --limit 50
