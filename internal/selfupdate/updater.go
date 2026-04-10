@@ -197,12 +197,13 @@ func (u *Updater) VerifyBinary(expectedVersion string) error {
 	return nil
 }
 
-// Truncate returns the last maxLen bytes of s.
+// Truncate returns the last maxLen runes of s.
 func Truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	r := []rune(s)
+	if len(r) <= maxLen {
 		return s
 	}
-	return s[len(s)-maxLen:]
+	return string(r[len(r)-maxLen:])
 }
 
 // resolveExe returns the resolved path of the current running binary.
