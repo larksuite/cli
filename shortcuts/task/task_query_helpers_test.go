@@ -33,38 +33,6 @@ func TestSplitAndTrimCSV(t *testing.T) {
 	}
 }
 
-func TestBuildUserIDs(t *testing.T) {
-	tests := []struct {
-		name string
-		ids  []string
-		want []map[string]interface{}
-	}{
-		{
-			name: "multiple ids",
-			ids:  []string{"ou_1", "ou_2"},
-			want: []map[string]interface{}{
-				{"id": "ou_1", "type": "user"},
-				{"id": "ou_2", "type": "user"},
-			},
-		},
-		{name: "empty ids", ids: []string{}, want: []map[string]interface{}{}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := buildUserIDs(tt.ids)
-			if len(got) != len(tt.want) {
-				t.Fatalf("len(buildUserIDs()) = %d, want %d", len(got), len(tt.want))
-			}
-			for i := range got {
-				if got[i]["id"] != tt.want[i]["id"] || got[i]["type"] != tt.want[i]["type"] {
-					t.Fatalf("buildUserIDs()[%d] = %#v, want %#v", i, got[i], tt.want[i])
-				}
-			}
-		})
-	}
-}
-
 func TestOutputTaskSummary(t *testing.T) {
 	tests := []struct {
 		name string

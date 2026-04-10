@@ -22,17 +22,6 @@ func splitAndTrimCSV(input string) []string {
 	return out
 }
 
-func buildUserIDs(ids []string) []map[string]interface{} {
-	out := make([]map[string]interface{}, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, map[string]interface{}{
-			"id":   id,
-			"type": "user",
-		})
-	}
-	return out
-}
-
 func parseTimeRangeMillis(input string) (string, string, error) {
 	if strings.TrimSpace(input) == "" {
 		return "", "", nil
