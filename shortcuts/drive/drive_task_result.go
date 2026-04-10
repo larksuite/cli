@@ -111,7 +111,7 @@ var DriveTaskResult = common.Shortcut{
 		// the CLI surface uniform for resume-on-timeout workflows.
 		switch scenario {
 		case "import":
-			result, err = queryImportTask(runtime, ticket)
+			result, err = queryImportTaskAndAutoGrantPermission(runtime, ticket)
 		case "export":
 			result, err = queryExportTask(runtime, ticket, fileToken)
 		case "task_check":
@@ -127,14 +127,16 @@ var DriveTaskResult = common.Shortcut{
 	},
 }
 
-// queryImportTask returns a stable, shortcut-friendly view of the import task.
-func queryImportTask(runtime *common.RuntimeContext, ticket string) (map[string]interface{}, error) {
+// queryImportTaskAndAutoGrantPermission returns a stable, shortcut-friendly
+// view of the import task and, in bot mode, retries the current-user
+// permission grant once the imported cloud document becomes ready.
+func queryImportTaskAndAutoGrantPermission(runtime *common.RuntimeContext, ticket string) (map[string]interface{}, error) {
 	status, err := getDriveImportStatus(runtime, ticket)
 	if err != nil {
 		return nil, err
 	}
 
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"scenario":         "import",
 		"ticket":           status.Ticket,
 		"type":             status.DocType,
@@ -146,7 +148,13 @@ func queryImportTask(runtime *common.RuntimeContext, ticket string) (map[string]
 		"token":            status.Token,
 		"url":              status.URL,
 		"extra":            status.Extra,
-	}, nil
+	}
+	if status.Ready() {
+		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, status.Token, status.DocType); grant != nil {
+			result["permission_grant"] = grant
+		}
+	}
+	return result, nil
 }
 
 // queryExportTask returns the export task status together with download metadata

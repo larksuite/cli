@@ -134,7 +134,7 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 	if total == 0 {
 		total = len(fields)
 	}
-	runtime.Out(map[string]interface{}{"items": simplifyFields(fields), "offset": offset, "limit": limit, "count": len(fields), "total": total}, nil)
+	runtime.Out(map[string]interface{}{"fields": fields, "total": total}, nil)
 	return nil
 }
 

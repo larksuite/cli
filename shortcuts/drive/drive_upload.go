@@ -38,7 +38,7 @@ var DriveUpload = common.Shortcut{
 		if fileName == "" {
 			fileName = filepath.Base(filePath)
 		}
-		return common.NewDryRunAPI().
+		d := common.NewDryRunAPI().
 			Desc("multipart/form-data upload (files > 20MB use chunked 3-step upload)").
 			POST("/open-apis/drive/v1/files/upload_all").
 			Body(map[string]interface{}{
@@ -47,6 +47,10 @@ var DriveUpload = common.Shortcut{
 				"parent_node": folderToken,
 				"file":        "@" + filePath,
 			})
+		if runtime.IsBot() {
+			d.Desc("After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new file.")
+		}
+		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
@@ -77,11 +81,16 @@ var DriveUpload = common.Shortcut{
 			return err
 		}
 
-		runtime.Out(map[string]interface{}{
+		out := map[string]interface{}{
 			"file_token": fileToken,
 			"file_name":  fileName,
 			"size":       fileSize,
-		}, nil)
+		}
+		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, fileToken, "file"); grant != nil {
+			out["permission_grant"] = grant
+		}
+
+		runtime.Out(out, nil)
 		return nil
 	},
 }

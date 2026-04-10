@@ -31,26 +31,23 @@ lark-cli docs +create --title "学习笔记" --wiki-space my_library --markdown 
 - **`doc_id`**（string）：文档的唯一标识符（token），格式如 `doxcnXXXXXXXXXXXXXXXXXXX`
 - **`doc_url`**（string）：文档的访问链接，可直接在浏览器中打开
 - **`message`**（string）：操作结果消息，如"文档创建成功"
+- **`permission_grant`**（object，可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
 
 > [!IMPORTANT]
 > 当文档创建在 `wiki_node` 或 `wiki_space` 下时，返回的 `doc_url` 可能是 `/wiki/...` 形式的知识库链接，而不是 `/docx/...` 形式的文档链接。
 > 如果后续要调用 [`lark-doc-media-insert`](lark-doc-media-insert.md) 这类当前只支持 `doc_id` 或 `/docx/...` URL 自动提取的 skill，请优先使用返回值里的 `doc_id`，不要直接复用这个 `doc_url`。
 
 > [!IMPORTANT]
-> 如果文档是**以应用身份（bot）创建**的，agent 在创建成功后应**默认继续使用 bot 身份**，为当前可用的 user 身份添加该文档的 `full_access`（管理员）权限。推荐流程：
-> 1. 先用 `lark-cli contact +get-user` 获取当前用户信息，并从返回结果中读取该用户的 `open_id`
-> 2. 再切回 bot 身份，使用这个 `open_id` 给该用户授权该文档的 `full_access`（管理员）权限
+> 如果文档是**以应用身份（bot）创建**的，如 `lark-cli docs +create --as bot` 在文档创建成功后， CLI 会**尝试为当前 CLI 用户自动授予该文档的 `full_access`（可管理权限）**。
 >
-> 如果 `lark-cli contact +get-user` 无法执行，或者本地没有可用的 user 身份、拿不到当前用户的 `open_id`，则应视为“本地没有可用的 user 身份”，明确说明因此未完成授权。
+> 以应用身份创建时，结果里会额外返回 `permission_grant` 字段，明确说明授权结果：
+> - `status = granted`：当前 CLI 用户已获得该文档的可管理权限
+> - `status = skipped`：本地没有可用的当前用户 `open_id`，因此不会自动授权；可提示用户先完成 `lark-cli auth login`，再让 AI / agent 继续使用应用身份（bot）授予当前用户权限
+> - `status = failed`：文档已创建成功，但自动授权用户失败；会带上失败原因，并提示稍后重试或继续使用 bot 身份处理该文档
 >
-> 回复创建结果时，除 `doc_id` / `doc_url` 外，还必须明确告知用户授权结果：
-> - 如果授权成功：直接说明当前 user 已获得该文档的管理员权限
-> - 如果本地没有可用的 user 身份：明确说明因此未完成授权
-> - 如果授权失败：明确说明文档已创建成功，但授权失败，并透出失败原因；同时提示用户可以稍后重试授权，或继续使用应用身份（bot）处理该文档
+> `permission_grant.perm = full_access` 表示该资源已授予“可管理权限”。
 >
-> 如果授权未完成，应继续给出后续引导：用户可以稍后重试授权，也可以继续使用应用身份（bot）处理该文档；如果希望后续改由自己管理，也可将文档 owner 转移给该用户。
->
-> **仍然不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
+> **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
 
 ## 参数
 

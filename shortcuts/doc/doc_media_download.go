@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
-	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -17,17 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-var mimeToExt = map[string]string{
-	"image/png":       ".png",
-	"image/jpeg":      ".jpg",
-	"image/gif":       ".gif",
-	"image/webp":      ".webp",
-	"image/svg+xml":   ".svg",
-	"application/pdf": ".pdf",
-	"video/mp4":       ".mp4",
-	"text/plain":      ".txt",
-}
 
 var DocMediaDownload = common.Shortcut{
 	Service:     "docs",
@@ -90,19 +77,11 @@ var DocMediaDownload = common.Shortcut{
 		}
 		defer resp.Body.Close()
 
-		// Auto-detect extension from Content-Type
-		finalPath := outputPath
-		currentExt := filepath.Ext(outputPath)
-		if currentExt == "" {
-			contentType := resp.Header.Get("Content-Type")
-			mimeType := strings.Split(contentType, ";")[0]
-			mimeType = strings.TrimSpace(mimeType)
-			if ext, ok := mimeToExt[mimeType]; ok {
-				finalPath = outputPath + ext
-			} else if mediaType == "whiteboard" {
-				finalPath = outputPath + ".png"
-			}
+		fallbackExt := ""
+		if mediaType == "whiteboard" {
+			fallbackExt = ".png"
 		}
+		finalPath, _ := autoAppendDocMediaExtension(outputPath, resp.Header, fallbackExt)
 
 		// Validate final path after extension append
 		if finalPath != outputPath {

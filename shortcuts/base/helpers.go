@@ -662,45 +662,6 @@ func viewName(view map[string]interface{}) string {
 	return v
 }
 
-func viewType(view map[string]interface{}) string {
-	if v, _ := view["type"].(string); v != "" {
-		return v
-	}
-	v, _ := view["view_type"].(string)
-	return v
-}
-
-func simplifyFields(fields []map[string]interface{}) []interface{} {
-	items := make([]interface{}, 0, len(fields))
-	for _, field := range fields {
-		entry := map[string]interface{}{
-			"field_id":   fieldID(field),
-			"field_name": fieldName(field),
-			"type":       fieldTypeName(field),
-		}
-		if style, ok := field["style"].(map[string]interface{}); ok && len(style) > 0 {
-			entry["style"] = style
-		}
-		if multiple, ok := field["multiple"].(bool); ok {
-			entry["multiple"] = multiple
-		}
-		items = append(items, entry)
-	}
-	return items
-}
-
-func simplifyViews(views []map[string]interface{}) []interface{} {
-	items := make([]interface{}, 0, len(views))
-	for _, view := range views {
-		items = append(items, map[string]interface{}{
-			"view_id":   viewID(view),
-			"view_name": viewName(view),
-			"view_type": viewType(view),
-		})
-	}
-	return items
-}
-
 func canonicalValue(v interface{}) string {
 	switch val := v.(type) {
 	case nil:

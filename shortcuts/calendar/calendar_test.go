@@ -132,6 +132,26 @@ func TestCreate_CreateEventOnly(t *testing.T) {
 	}
 }
 
+func TestBuildEventData_DefaultVChat(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("summary", "", "")
+	cmd.Flags().String("description", "", "")
+	cmd.Flags().String("rrule", "", "")
+	cmd.Flags().Set("summary", "Team Sync")
+	cmd.Flags().Set("description", "Weekly meeting")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	eventData := buildEventData(runtime, "1742515200", "1742518800")
+
+	vchat, ok := eventData["vchat"].(map[string]string)
+	if !ok {
+		t.Fatalf("vchat = %T, want map[string]string", eventData["vchat"])
+	}
+	if got := vchat["vc_type"]; got != "vc" {
+		t.Fatalf("vchat.vc_type = %q, want %q", got, "vc")
+	}
+}
+
 func TestCreate_WithAttendees_Success(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
