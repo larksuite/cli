@@ -22,7 +22,7 @@ metadata:
    - 临时统计 / 聚合分析 → `+data-query`
    - 要把结果长期显示在表里 → formula 字段
    - 用户明确要 lookup，或确实更适合 `from/select/where/aggregate` → lookup 字段
-   - 明细读取 / 导出 → `+record-list / +record-get`
+   - 明细读取 / 关键词检索 / 导出 → `+record-search / +record-list / +record-get`
 2. **先拿结构，再写命令**
    - 至少先拿当前表结构：`+field-list` 或 `+table-get`
    - 跨表场景必须再查**目标表**的结构
@@ -35,7 +35,7 @@ metadata:
 
 ## Agent 禁止行为
 
-- 不要把 `+record-list` 当聚合分析引擎
+- 不要把 `+record-list / +record-search` 当聚合分析引擎
 - 不要没读 guide 就直接创建 formula / lookup 字段
 - 不要凭自然语言猜表名、字段名、公式表达式里的字段引用
 - 不要把系统字段、formula 字段、lookup 字段当成 `+record-upsert / +record-batch-create / +record-batch-update` 的写入目标
@@ -62,8 +62,8 @@ metadata:
    - 特征：要把结果长期显示在 Base 里，跟随记录自动更新。
 3. **显式要求 Lookup，或确实要按 source/select/where/aggregate 建模** → 用 lookup 字段
    - 默认仍优先考虑 formula。lookup 只在用户明确要求、或更符合固定查找配置时使用。
-4. **原始记录读取 / 明细导出** → `+record-list / +record-get`
-   - 不要把 `+record-list` 当分析引擎；它负责取明细，不负责聚合计算。
+4. **原始记录读取 / 关键词检索 / 明细导出** → `+record-search / +record-list / +record-get`
+   - 不要把 `+record-list / +record-search` 当分析引擎；它们负责取明细，不负责聚合计算。
 
 ## 公式 / Lookup 专项规则
 
@@ -112,9 +112,9 @@ metadata:
 1. **只使用原子命令** — 使用 `+table-list / +table-get / +field-create / +record-upsert / +record-batch-create / +record-batch-update / +view-set-filter / +record-history-list / +base-get` 这类一命令一动作的写法，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`
 2. **写记录前先读字段结构** — 先调用 `+field-list` 获取字段结构，再读 [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) 确认各字段类型的写入值格式
 3. **写字段前先看字段属性规范** — 先读 [lark-base-shortcut-field-properties.md](references/lark-base-shortcut-field-properties.md) 确认 `+field-create/+field-update` 的 JSON 结构
-4. **筛选查询按视图能力执行** — 先读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) 和 [lark-base-record-list.md](references/lark-base-record-list.md)，通过 `+view-set-filter` + `+record-list` 组合完成筛选读取
+4. **筛选查询按场景执行** — 先读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)、[lark-base-record-list.md](references/lark-base-record-list.md)、[lark-base-record-search.md](references/lark-base-record-search.md)；默认优先 `+record-list`，仅当用户提供明确搜索关键词时使用 `+record-search`；视图筛选读取用 `+view-set-filter` + `+record-list`
 5. **对记录进行分析（涉及"最高/最低/总计/平均/排名/比较/数量"等分析意图）** — 先读 [lark-base-data-query.md](references/lark-base-data-query.md)，通过 `+data-query` 进行数据筛选聚合的服务端计算
-6. **聚合分析与取数互斥** — 需要分组统计 / SUM / MAX / AVG / COUNT 时，必须使用 `+data-query`（服务端计算），禁止用 `+record-list` 拉全量记录再手动计算；反之，`+data-query` 不返回原始记录，取数场景仍走 `+record-list / +record-get`
+6. **聚合分析与取数互斥** — 需要分组统计 / SUM / MAX / AVG / COUNT 时，必须使用 `+data-query`（服务端计算），禁止用 `+record-list / +record-search` 拉全量记录再手动计算；反之，`+data-query` 不返回原始记录，取数场景走 `+record-search / +record-list / +record-get`
 7. **所有 `+xxx-list` 禁止并发调用** — `+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list` 只能串行执行
 8. **批量上限 500 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
 9. **统一参数名** — 一律使用 `--base-token`，不使用旧 `--app-token`
@@ -140,11 +140,12 @@ metadata:
 | 创建 / 更新字段 | `lark-cli base +field-create` / `+field-update` | 使用 `--json` |
 | 创建 / 更新公式字段 | `lark-cli base +field-create` / `+field-update` | `type=formula`；先读 formula guide，再创建 / 更新 |
 | 创建 / 更新 lookup 字段 | `lark-cli base +field-create` / `+field-update` | `type=lookup`；先读 lookup guide，再创建 / 更新，默认先判断 formula 是否更合适 |
+| 关键词搜索记录 | `lark-cli base +record-search` | 透传搜索参数；用于关键词检索，不用于聚合分析 |
 | 列表 / 获取记录 | `lark-cli base +record-list` / `+record-get` | 原子命令，如果需要`聚合计算`，`分组统计` 推荐走 `+data-query` |
 | 创建 / 更新记录 | `lark-cli base +record-upsert` | `--table-id [--record-id] --json` |
 | 批量创建记录 | `lark-cli base +record-batch-create` | 适合大量创建写入（如 CSV/Excel 导入）；先按 record-value 规范整理为 `json.fields + json.rows` |
 | 批量更新指定记录 | `lark-cli base +record-batch-update` | `--table-id --json`（`json.record_id_list + json.patch`） |
-| 聚合分析 / 比较排序 / 求最值 / 筛选统计 | `lark-cli base +data-query` | 不要用 `+record-list` 拉全量数据再手动计算，需使用 `+data-query` 走服务端计算 |
+| 聚合分析 / 比较排序 / 求最值 / 筛选统计 | `lark-cli base +data-query` | 不要用 `+record-list / +record-search` 拉全量数据再手动计算，需使用 `+data-query` 走服务端计算 |
 | 配置 / 查询视图 | `lark-cli base +view-*` | `list/get/create/delete/get-*/set-*/rename` |
 | 查看记录历史 | `lark-cli base +record-history-list` | 按表和记录查询变更历史 |
 | 按视图筛选查询 | `lark-cli base +view-set-filter` + `lark-cli base +record-list` | 组合调用 |
@@ -166,7 +167,10 @@ metadata:
 
 - **Base token 口径统一**：统一使用 `--base-token`
 - **`+xxx-list` 调用纪律**：`+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list / +dashboard-list / +dashboard-block-list / +workflow-list` 禁止并发调用；批量执行时只能串行
-- **`+record-list` 分页规则**：`--limit` 最大 `200`。先拉首批并检查返回 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时再继续翻页。用户只要样例或前 N 条时，不要继续拉全量
+- **`+record-list` 分页与 limit**：`--limit` 最大 `200`。先拉首批并检查 `has_more`；仅当 `has_more=true` 且用户明确需要更多数据（如“全部导出/全量明细/继续下一页”）时再按 `offset` 递增翻页，禁止单次传超过 `200`
+- **记录读取字段筛选**：`+record-list` 支持重复传参 `--field-id` 做字段筛选
+- **`+record-list / +record-search` 选择规则**：优先使用 `+record-list`；仅当用户给出明确搜索关键词时，才使用 `+record-search`
+- **`+record-search` 使用规则**：仅通过 `--json` 传搜索请求体；`keyword/search_fields/offset/limit` 等字段合法性由 API 侧按 schema 校验
 - **`+record-batch-create` 适用边界**：优先用于大量创建写入（如 CSV/Excel 导入）。当输入是长表格或长文本时，先按 [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) 做字段映射和类型规范化，再组装 `fields + rows` 调用命令写入
 - **字段可写性先判断**：存储字段才可写；公式 / lookup / 系统字段默认只读，写记录时应跳过
 - **公式能力要主动想到**：用户说“算一下”“生成标签”“判断是否异常”“跨表汇总”“按日期差预警”时，要先判断是否应该建公式字段，而不是只返回手工分析方案
@@ -285,6 +289,7 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 - [lookup-field-guide.md](references/lookup-field-guide.md) — lookup 字段配置规则、where/aggregate 约束、与 formula 的取舍
 - [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) — 视图筛选配置
 - [lark-base-record-list.md](references/lark-base-record-list.md) — 记录列表读取与分页
+- [lark-base-record-search.md](references/lark-base-record-search.md) — 关键词搜索记录
 - [lark-base-advperm-enable.md](references/lark-base-advperm-enable.md) — `+advperm-enable` 启用高级权限
 - [lark-base-advperm-disable.md](references/lark-base-advperm-disable.md) — `+advperm-disable` 停用高级权限
 - [lark-base-role-list.md](references/lark-base-role-list.md) — `+role-list` 列出角色
@@ -307,7 +312,7 @@ https://{domain}/base/{base-token}?table={table-id}&view={view-id}
 |----------|------|
 | [`table commands`](references/lark-base-table.md) | `+table-list / +table-get / +table-create / +table-update / +table-delete` |
 | [`field commands`](references/lark-base-field.md) | `+field-list / +field-get / +field-create / +field-update / +field-delete / +field-search-options` |
-| [`record commands`](references/lark-base-record.md) | `+record-list / +record-get / +record-upsert / +record-batch-create / +record-batch-update / +record-upload-attachment / +record-delete` |
+| [`record commands`](references/lark-base-record.md) | `+record-search / +record-list / +record-get / +record-upsert / +record-batch-create / +record-batch-update / +record-upload-attachment / +record-delete` |
 | [`view commands`](references/lark-base-view.md) | `+view-list / +view-get / +view-create / +view-delete / +view-get-* / +view-set-* / +view-rename` |
 | [`data-query commands`](references/lark-base-data-query.md) | `+data-query` |
 | [`history commands`](references/lark-base-history.md) | `+record-history-list` |

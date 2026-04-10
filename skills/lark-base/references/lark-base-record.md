@@ -8,6 +8,7 @@ record 相关命令索引。
 
 | 文档 | 命令 | 说明 |
 |------|------|------|
+| [lark-base-record-search.md](lark-base-record-search.md) | `+record-search` | 按关键词和字段范围检索记录 |
 | [lark-base-record-list.md](lark-base-record-list.md) | `+record-list` | 分页列记录 |
 | [lark-base-record-get.md](lark-base-record-get.md) | `+record-get` | 获取单条记录 |
 | [lark-base-record-upsert.md](lark-base-record-upsert.md) | `+record-upsert` | 创建或更新记录 |
@@ -20,5 +21,6 @@ record 相关命令索引。
 
 - 聚合页只保留目录职责；每个命令的详细说明请进入对应单命令文档。
 - 所有 `+xxx-list` 调用都必须串行执行；若要批量跑多个 list 请求，只能串行执行。
+- `+record-list` 支持重复传参 `--field-id` 做字段筛选。
 - 写记录 JSON 前优先阅读 [lark-base-shortcut-record-value.md](lark-base-shortcut-record-value.md)。
 - 本地文件写入附件字段时，必须使用 `+record-upload-attachment`。
