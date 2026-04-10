@@ -14,3 +14,4 @@ id = "lark-session-token"
 description = "Detect Lark session tokens"
 regex = '''\bXN0YXJ0-[A-Za-z0-9_-]+-WVuZA\b'''
 keywords = ["XN0YXJ0-", "-WVuZA"]
+
