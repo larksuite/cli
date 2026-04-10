@@ -154,7 +154,7 @@ func executeViewList(runtime *common.RuntimeContext) error {
 	if total == 0 {
 		total = len(views)
 	}
-	runtime.Out(map[string]interface{}{"items": simplifyViews(views), "offset": offset, "limit": limit, "count": len(views), "total": total}, nil)
+	runtime.Out(map[string]interface{}{"views": views, "total": total}, nil)
 	return nil
 }
 

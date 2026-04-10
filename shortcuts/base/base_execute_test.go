@@ -303,7 +303,7 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		if err := runShortcut(t, BaseFieldList, []string{"+field-list", "--base-token", "app_x", "--table-id", "tbl_x", "--offset", "0", "--limit", "1"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"field_name": "Amount"`) {
+		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"fields"`) || !strings.Contains(got, `"name": "Amount"`) || strings.Contains(got, `"items"`) || strings.Contains(got, `"offset"`) || strings.Contains(got, `"limit"`) || strings.Contains(got, `"count"`) || strings.Contains(got, `"field_name": "Amount"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -427,7 +427,7 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 		if err := runShortcut(t, BaseTableGet, []string{"+table-get", "--base-token", "app_x", "--table-id", "tbl_x"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"name": "Orders"`) || !strings.Contains(got, `"primary_field": "fld_x"`) || !strings.Contains(got, `"vew_x"`) {
+		if got := stdout.String(); !strings.Contains(got, `"name": "Orders"`) || !strings.Contains(got, `"primary_field": "fld_x"`) || !strings.Contains(got, `"id": "fld_x"`) || !strings.Contains(got, `"name": "OrderNo"`) || !strings.Contains(got, `"id": "vew_x"`) || !strings.Contains(got, `"name": "Main"`) || strings.Contains(got, `"field_name": "OrderNo"`) || strings.Contains(got, `"view_name": "Main"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -739,7 +739,7 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 		if err := runShortcut(t, BaseViewList, []string{"+view-list", "--base-token", "app_x", "--table-id", "tbl_x", "--offset", "0", "--limit", "1"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"total": 3`) || !strings.Contains(got, `"view_name": "Main"`) {
+		if got := stdout.String(); !strings.Contains(got, `"total": 3`) || !strings.Contains(got, `"views"`) || !strings.Contains(got, `"name": "Main"`) || strings.Contains(got, `"items"`) || strings.Contains(got, `"offset"`) || strings.Contains(got, `"limit"`) || strings.Contains(got, `"count"`) || strings.Contains(got, `"view_name": "Main"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})

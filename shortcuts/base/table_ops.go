@@ -93,8 +93,8 @@ func executeTableGet(runtime *common.RuntimeContext) error {
 	}
 	runtime.Out(map[string]interface{}{
 		"table":  table,
-		"fields": simplifyFields(fields),
-		"views":  simplifyViews(views),
+		"fields": fields,
+		"views":  views,
 	}, nil)
 	return nil
 }
