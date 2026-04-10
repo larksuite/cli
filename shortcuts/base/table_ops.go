@@ -68,11 +68,7 @@ func executeTableList(runtime *common.RuntimeContext) error {
 	if total == 0 {
 		total = len(tables)
 	}
-	items := make([]interface{}, 0, len(tables))
-	for _, table := range tables {
-		items = append(items, map[string]interface{}{"table_id": tableID(table), "table_name": tableNameFromMap(table)})
-	}
-	runtime.Out(map[string]interface{}{"items": items, "offset": offset, "limit": limit, "count": len(items), "total": total}, nil)
+	runtime.Out(map[string]interface{}{"tables": tables, "total": total}, nil)
 	return nil
 }
 

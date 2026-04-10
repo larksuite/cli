@@ -376,7 +376,7 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 		if err := runShortcut(t, BaseTableList, []string{"+table-list", "--base-token", "app_x", "--limit", "1"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"table_name": "Alpha"`) {
+		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"name": "Alpha"`) || strings.Contains(got, `"items"`) || strings.Contains(got, `"offset"`) || strings.Contains(got, `"limit"`) || strings.Contains(got, `"count"`) || strings.Contains(got, `"table_name": "Alpha"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
