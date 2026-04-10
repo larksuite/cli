@@ -1,6 +1,6 @@
 # Architecture Overview
 
-<!-- Generated: 2026-04-10 | Files scanned: 549 | Token estimate: ~650 -->
+<!-- Generated: 2026-04-11 | Files scanned: 558 | Token estimate: ~650 -->
 
 ## Project Type
 
@@ -203,23 +203,23 @@ User can pipe to other tools (e.g., bot handler)
 ### Location: `cmd/bot/` & `shortcuts/bot/`
 - **Purpose**: Claude Code Bot - "Feishu → Claude Code" integration
 - **Branch**: `feature/claude-code-bot`
-- **Status**: Core modules complete, reply sending pending
+- **Status**: ✅ Complete - All modules implemented, 85.1% test coverage
 
 ### Architecture
 ```
-Feishu message
+Feishu message (WebSocket)
     ↓
-bot/subscribe.go (WebSocket event subscription)
+bot/subscribe.go (event subscription, eventCount tracking)
     ↓
-bot/handler.go (message processing & parsing)
+bot/handler.go (parseMessageEvent, extractTextContent)
     ↓
-bot/claude.go (Claude Code CLI integration)
+bot/router.go (command routing: /status, /help, /clear)
     ↓
-bot/session.go (session_id persistence)
+bot/claude.go (ProcessMessage with retry & backoff)
     ↓
-bot/sender.go (send reply to Feishu)
+bot/session.go (session persistence with TTL)
     ↓
-lark-cli im +messages-send (reply)
+bot/sender.go (send reply via im +messages-send)
 ```
 
 ### Key Files
@@ -230,14 +230,34 @@ lark-cli im +messages-send (reply)
 - `stop.go` - Stop bot (TODO)
 
 **Core Modules** (`shortcuts/bot/`):
-- `claude.go` - Claude Code CLI integration (216 lines)
-- `session.go` - Session persistence with TTL (207 lines)
-- `handler.go` - Message event processing (224 lines)
-- `router.go` - Command routing & whitelist (280 lines)
-- `subscribe.go` - WebSocket event subscriber (197 lines)
-- `sender.go` - Message sender (64 lines)
+- `claude.go` - Claude Code CLI integration, retry logic (216 lines)
+- `session.go` - Session persistence with TTL, file-based storage (207 lines)
+- `handler.go` - Message event processing, text extraction (224 lines)
+- `router.go` - Command routing, whitelist, pattern matching (280 lines)
+- `subscribe.go` - WebSocket event subscriber, graceful shutdown (197 lines)
+- `sender.go` - Message sender, JSON content builder (64 lines)
 
-**Total**: 1,188 lines of Go code
+**Tests** (`shortcuts/bot/`):
+- `claude_test.go` - Claude client tests (ProcessMessage, retry logic)
+- `handler_test.go` - Handler tests (parseMessageEvent, extractTextContent)
+- `router_test.go` - Router tests (command routing, pattern matching)
+- `session_test.go` - Session manager tests (TTL, concurrent access)
+- `sender_test.go` - Message sender tests (content building)
+- `subscribe_test.go` - Event subscriber tests (info, error, debug methods)
+- `subscribe_integration_test.go` - Integration tests (handleMessageEvent, sendReply)
+
+**Total**: 1,188 lines Go code + 7 test files (85.1% coverage)
+
+### Test Coverage
+| Module | Coverage |
+|--------|----------|
+| sender.go | 100% |
+| router.go | 95% |
+| handler.go | 94% |
+| session.go | 90% |
+| claude.go | 85% |
+| subscribe.go | 85% |
+| **Total** | **85.1%** |
 
 ---
 
