@@ -12,6 +12,8 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+> **导入分流规则：** 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
+
 ## 快速决策
 
 - 用户要把本地 `.xlsx` / `.csv` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
@@ -154,6 +156,9 @@ Drive Folder (云空间文件夹)
 - 使用 `drive file.comments batch_query` 是**已知评论 ID 后**的批量查询，需要传入具体的评论 ID 列表。
 - 使用 `drive file.comments list` 用于分页获取评论列表，适合统计评论总数、遍历所有评论，或获取"最新/最后 N 条评论"等场景。
 
+#### Reaction 场景
+- 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](../../skills/lark-drive/references/lark-drive-reactions.md) 了解如何使用**。
+
 ### 典型错误与解决方案
 
 | 错误信息 | 原因 | 解决方案 |
@@ -201,7 +206,7 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 
 ### file.comment.replys
 
-  - `create` — 
+  - `create` — 添加回复
   - `delete` — 删除回复
   - `list` — 获取回复
   - `update` — 更新回复
@@ -230,6 +235,10 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 
   - `list` — 获取文档的访问者记录
 
+### file.comment.reply.reactions
+
+  - `update_reaction` — 添加/删除 reaction
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -254,3 +263,4 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 | `user.subscription_status` | `docs:event:subscribe` |
 | `file.statistics.get` | `drive:drive.metadata:readonly` |
 | `file.view_records.list` | `drive:file:view_record:readonly` |
+| `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create` |
