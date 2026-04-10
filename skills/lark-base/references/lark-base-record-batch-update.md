@@ -55,7 +55,6 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_update
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `has_more` | `boolean` | 是否还有剩余数据 |
 | `record_id_list` | `string[]` | 本次更新到的记录 ID 列表 |
 | `update` | `object` | 本次应用的字段更新结果；可能为空对象 |
 | `ignored_fields` | `{id,name,reason}[]` | 可选，被忽略字段信息 |
