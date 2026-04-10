@@ -8,7 +8,16 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
+
+type executableTestFS struct {
+	vfs.OsFs
+	exe string
+}
+
+func (f executableTestFS) Executable() (string, error) { return f.exe, nil }
 
 func TestResolveExe(t *testing.T) {
 	u := New()
@@ -48,7 +57,12 @@ func TestVerifyBinaryChecksVersion(t *testing.T) {
 		t.Fatalf("write test binary: %v", err)
 	}
 
-	// Put the temp dir at the front of PATH so LookPath finds our test binary.
+	// Mock vfs.Executable to return our test script, matching VerifyBinary's
+	// primary lookup path. Also prepend to PATH for the LookPath fallback.
+	origFS := vfs.DefaultFS
+	vfs.DefaultFS = executableTestFS{OsFs: vfs.OsFs{}, exe: exe}
+	t.Cleanup(func() { vfs.DefaultFS = origFS })
+
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+origPath)
 

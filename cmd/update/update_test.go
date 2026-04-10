@@ -831,7 +831,7 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 	if !strings.Contains(out, "Skills update failed") {
 		t.Errorf("expected skills failure warning, got: %s", out)
 	}
-	if !strings.Contains(out, "npx skills add") {
+	if !strings.Contains(out, "npx -y skills add") {
 		t.Errorf("expected manual skills command hint, got: %s", out)
 	}
 }

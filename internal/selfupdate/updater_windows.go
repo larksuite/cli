@@ -37,12 +37,17 @@ func (u *Updater) PrepareSelfReplace() (restore func(), err error) {
 	// Guard with Stat: run.js may have already recovered .old on its own
 	// during VerifyBinary; if .old is gone, skip to avoid deleting the
 	// only working binary.
+	// On any failure, clear backupCreated so CanRestorePreviousVersion
+	// reports the real outcome instead of claiming success.
 	restore = func() {
 		if _, err := vfs.Stat(oldPath); err != nil {
+			u.backupCreated = false
 			return
 		}
 		vfs.Remove(exe)
-		vfs.Rename(oldPath, exe)
+		if err := vfs.Rename(oldPath, exe); err != nil {
+			u.backupCreated = false
+		}
 	}
 
 	return restore, nil

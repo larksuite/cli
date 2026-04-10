@@ -205,7 +205,7 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", selfupdate.NpmPackage, latest)
-	fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx skills add larksuite/cli -g -y\n")
+	fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx -y skills add larksuite/cli -g\n")
 	return nil
 }
 
@@ -292,7 +292,7 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 		if detail := strings.TrimSpace(skillsResult.Stderr.String()); detail != "" {
 			fmt.Fprintf(io.ErrOut, "  %s\n", selfupdate.Truncate(detail, 500))
 		}
-		fmt.Fprintf(io.ErrOut, "  Run manually: npx skills add larksuite/cli -g -y\n")
+		fmt.Fprintf(io.ErrOut, "  Run manually: npx -y skills add larksuite/cli -g\n")
 	} else {
 		fmt.Fprintf(io.ErrOut, "%s Skills updated\n", symOK())
 	}
