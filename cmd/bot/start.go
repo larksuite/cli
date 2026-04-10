@@ -5,15 +5,10 @@ package bot
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/larksuite/cli/cmd/cmdutil"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/bot"
 	"github.com/spf13/cobra"
 )
@@ -89,28 +84,26 @@ func botStartRun(opts *BotStartOptions) error {
 	}
 	fmt.Fprintf(io.Out, "✓ Bot 处理器已初始化\n")
 
-	// 5. Start event subscription (TODO: integrate event +subscribe)
-	fmt.Fprintf(io.Out, "\n⚠️  事件订阅集成待实现\n")
-	fmt.Fprintf(io.Out, "当前状态：核心模块已完成，需要集成 event +subscribe\n")
+	// 5. Initialize event subscriber
+	runtime := f.InitializedRuntime
+	fmt.Fprintf(io.Out, "初始化事件订阅...\n")
 
-	// Show status
-	stats, _ := botHandler.GetStats(ctx)
-	output.PrintJson(io.Out, stats)
+	subscriber := bot.NewEventSubscriber(bot.EventSubscriberConfig{
+		BotHandler: botHandler,
+		AppID:      runtime.Config.AppID,
+		AppSecret:  runtime.Config.AppSecret,
+		Brand:      string(runtime.Config.Brand),
+		Quiet:      false,
+	})
+	fmt.Fprintf(io.Out, "✓ 事件订阅已初始化\n")
 
-	// 设置信号监听（用于优雅退出）
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(sigChan)
+	// 6. Start event subscription (blocking)
+	fmt.Fprintf(io.Out, "\n=== 开始监听飞书消息 ===\n")
 
-	// 如果不是 daemon 模式，等待信号
-	if !opts.Daemon {
-		fmt.Fprintf(io.Out, "\n按 Ctrl+C 停止 Bot\n")
-		<-sigChan
-		fmt.Fprintf(io.Out, "\n=== Bot 已停止 ===\n")
-		return nil
+	if err := subscriber.Subscribe(ctx); err != nil {
+		return fmt.Errorf("event subscription failed: %w", err)
 	}
 
-	// Daemon 模式：后台运行
-	// TODO: 实现 daemon 模式（fork 进程、PID 文件等）
-	return errors.New("daemon 模式尚未实现")
+	fmt.Fprintf(io.Out, "\n=== Bot 已停止 ===\n")
+	return nil
 }
