@@ -1,0 +1,3378 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>白底通用模板</title>
+  <theme>
+    <textStyles>
+      <title fontColor="#000000FF"/>
+      <headline fontColor="#000000FF"/>
+      <sub-headline fontColor="#000000FF"/>
+      <body fontColor="#000000FF"/>
+      <caption fontColor="#808080FF" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style/>
+    <data>
+      <shape width="668" height="36" topLeftX="100" topLeftY="293" type="text">
+        <content textType="headline" fontSize="24" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>通用模板副标题</p>
+        </content>
+      </shape>
+      <shape width="668" height="66" topLeftX="100" topLeftY="229" type="text">
+        <content textType="headline" fontSize="44" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>通用模板</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="OpAVbV1zhoQbSQx1DCCcVYypnDb" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="818" height="24" topLeftX="70" topLeftY="448" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>通用模板副标题</p>
+        </content>
+      </shape>
+      <shape width="818" height="48" topLeftX="70" topLeftY="397" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>通用模板</p>
+        </content>
+      </shape>
+      <shape width="818" height="21" topLeftX="70" topLeftY="98" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)">
+          <p>日期：XX.XX</p>
+        </content>
+      </shape>
+      <shape width="818" height="21" topLeftX="70" topLeftY="73" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)">
+          <p>作者：XXX</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(244, 245, 246, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="200" height="260" topLeftX="41" topLeftY="181" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="200" height="260" topLeftX="267" topLeftY="181" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="200" height="260" topLeftX="493" topLeftY="181" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="200" height="260" topLeftX="719" topLeftY="181" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="164" height="52" topLeftX="59" topLeftY="215" type="text">
+        <content paddingTop="10" paddingBottom="10" fontSize="32" fontFamily="Arial Black" color="rgba(78, 110, 253, 1)" italic="true" lineSpacing="multiple:1">
+          <p lineSpacing="multiple:1">
+            <em>
+              <span color="rgba(78, 110, 253, 1)" fontSize="32" fontFamily="Arial Black">01.</span>
+            </em>
+          </p>
+        </content>
+      </shape>
+      <shape width="164" height="52" topLeftX="285" topLeftY="215" type="text">
+        <content paddingTop="10" paddingBottom="10" fontSize="32" fontFamily="Arial Black" color="rgba(78, 110, 253, 1)" italic="true" lineSpacing="multiple:1">
+          <p lineSpacing="multiple:1">
+            <em>
+              <span color="rgba(78, 110, 253, 1)" fontSize="32" fontFamily="Arial Black">02.</span>
+            </em>
+          </p>
+        </content>
+      </shape>
+      <shape width="164" height="52" topLeftX="511" topLeftY="215" type="text">
+        <content paddingTop="10" paddingBottom="10" fontSize="32" fontFamily="Arial Black" color="rgba(78, 110, 253, 1)" italic="true" lineSpacing="multiple:1">
+          <p lineSpacing="multiple:1">
+            <em>
+              <span color="rgba(78, 110, 253, 1)" fontSize="32" fontFamily="Arial Black">03.</span>
+            </em>
+          </p>
+        </content>
+      </shape>
+      <shape width="164" height="52" topLeftX="737" topLeftY="215" type="text">
+        <content paddingTop="10" paddingBottom="10" fontSize="32" fontFamily="Arial Black" color="rgba(78, 110, 253, 1)" italic="true" lineSpacing="multiple:1">
+          <p lineSpacing="multiple:1">
+            <em>
+              <span color="rgba(78, 110, 253, 1)" fontSize="32" fontFamily="Arial Black">04.</span>
+            </em>
+          </p>
+        </content>
+      </shape>
+      <shape width="164" height="105" topLeftX="737" topLeftY="311" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="164" height="24" topLeftX="737" topLeftY="278" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="164" height="105" topLeftX="511" topLeftY="311" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="164" height="24" topLeftX="511" topLeftY="278" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="164" height="105" topLeftX="285" topLeftY="311" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="164" height="24" topLeftX="285" topLeftY="278" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="164" height="105" topLeftX="59" topLeftY="311" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="164" height="24" topLeftX="59" topLeftY="278" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="818" height="48" topLeftX="70" topLeftY="88" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>目录</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="40" height="40" topLeftX="100" topLeftY="198" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" color="rgba(255, 255, 255, 0.922)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.922)" fontSize="14" fontFamily="Arial">01</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="40" height="40" topLeftX="505" topLeftY="198" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 0.922)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.922)" fontFamily="Arial">02</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="40" height="40" topLeftX="100" topLeftY="287" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 0.922)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.922)" fontFamily="Arial">03</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="40" height="40" topLeftX="505" topLeftY="287" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 0.922)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.922)" fontFamily="Arial">04</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="40" height="40" topLeftX="100" topLeftY="375" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 0.922)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.922)" fontFamily="Arial">05</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="40" height="40" topLeftX="505" topLeftY="375" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 0.922)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.922)" fontFamily="Arial">06</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="300" height="27" topLeftX="155" topLeftY="382" type="text">
+        <content fontSize="18" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="300" height="27" topLeftX="155" topLeftY="293" type="text">
+        <content fontSize="18" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="300" height="27" topLeftX="560" topLeftY="382" type="text">
+        <content fontSize="18" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="300" height="27" topLeftX="560" topLeftY="293" type="text">
+        <content fontSize="18" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="300" height="27" topLeftX="560" topLeftY="205" type="text">
+        <content fontSize="18" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="300" height="27" topLeftX="155" topLeftY="205" type="text">
+        <content fontSize="18" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="760" height="48" topLeftX="100" topLeftY="108" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>目录</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="MhPNbCRWsoCTBvxtoRzc4VrYnse" width="450" height="540" topLeftX="510" topLeftY="0">
+        <crop type="rect" leftOffset="257" rightOffset="257" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="376" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>目录</p>
+        </content>
+      </shape>
+      <shape width="24" height="27" topLeftX="70" topLeftY="411" type="text">
+        <content fontSize="18" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>06</p>
+        </content>
+      </shape>
+      <shape width="330" height="27" topLeftX="116" topLeftY="411" type="text">
+        <content fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="27" topLeftX="70" topLeftY="358" type="text">
+        <content fontSize="18" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>05</p>
+        </content>
+      </shape>
+      <shape width="330" height="27" topLeftX="116" topLeftY="358" type="text">
+        <content fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="27" topLeftX="70" topLeftY="306" type="text">
+        <content fontSize="18" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>04</p>
+        </content>
+      </shape>
+      <shape width="330" height="27" topLeftX="116" topLeftY="306" type="text">
+        <content fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="27" topLeftX="70" topLeftY="253" type="text">
+        <content fontSize="18" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>03</p>
+        </content>
+      </shape>
+      <shape width="330" height="27" topLeftX="116" topLeftY="253" type="text">
+        <content fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="27" topLeftX="70" topLeftY="201" type="text">
+        <content fontSize="18" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>02</p>
+        </content>
+      </shape>
+      <shape width="330" height="27" topLeftX="116" topLeftY="201" type="text">
+        <content fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="27" topLeftX="70" topLeftY="149" type="text">
+        <content fontSize="18" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>01</p>
+        </content>
+      </shape>
+      <shape width="330" height="27" topLeftX="116" topLeftY="149" type="text">
+        <content fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <line startX="480" startY="98" endX="890" endY="98" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="127" endX="890" endY="127" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="156" endX="890" endY="156" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="203" endX="890" endY="203" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="232" endX="890" endY="232" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="261" endX="890" endY="261" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="308" endX="890" endY="308" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="337" endX="890" endY="337" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="366" endX="890" endY="366" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="413" endX="890" endY="413" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="442" endX="890" endY="442" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="471" endX="890" endY="471" alpha="0.4">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="24" height="18" topLeftX="865" topLeftY="448" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>32</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="419" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>30</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="385" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" textAlign="right">
+          <p>29</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="448" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="419" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="21" topLeftX="480" topLeftY="385" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="343" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>27</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="314" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>23</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="280" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" textAlign="right">
+          <p>22</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="343" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="314" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="21" topLeftX="480" topLeftY="280" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="238" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>20</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="209" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>15</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="175" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" textAlign="right">
+          <p>14</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="238" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="209" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="21" topLeftX="480" topLeftY="175" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="133" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>08</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="104" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(100, 102, 107, 1)" bold="false" textAlign="right">
+          <p>04</p>
+        </content>
+      </shape>
+      <shape width="24" height="18" topLeftX="865" topLeftY="70" type="text">
+        <content fontSize="12" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" textAlign="right">
+          <p>03</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="133" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="18" topLeftX="480" topLeftY="104" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+          <p>子目录</p>
+        </content>
+      </shape>
+      <shape width="380" height="21" topLeftX="480" topLeftY="70" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>目录标题</p>
+        </content>
+      </shape>
+      <shape width="400" height="32" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" lineSpacing="multiple:1" textAlign="left">
+          <p lineSpacing="multiple:1">目录</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="760" height="86" topLeftX="100" topLeftY="227" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="44" color="rgba(48, 48, 48, 1)" bold="true" textAlign="left">
+          <p textAlign="left">
+            <span color="rgba(48, 48, 48, 1)">通用模板标题</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="760" height="36" topLeftX="100" topLeftY="287" type="text">
+        <content textType="caption" fontSize="24" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>通用模板标题</p>
+        </content>
+      </shape>
+      <shape width="760" height="66" topLeftX="100" topLeftY="217" type="text">
+        <content textType="caption" fontSize="44" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>通用模板标题</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="760" height="72" topLeftX="100" topLeftY="352" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="760" height="72" topLeftX="100" topLeftY="262" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="760" height="54" topLeftX="100" topLeftY="190" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="760" height="48" topLeftX="100" topLeftY="100" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="390" height="90" topLeftX="500" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="30" topLeftX="500" topLeftY="240" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="390" height="30" topLeftX="70" topLeftY="240" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="390" height="90" topLeftX="70" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="760" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="240" height="30" topLeftX="360" topLeftY="240" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="240" height="90" topLeftX="360" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="650" topLeftY="240" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="240" height="90" topLeftX="650" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="70" topLeftY="240" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="240" height="90" topLeftX="70" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="180" height="30" topLeftX="497" topLeftY="240" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="180" height="90" topLeftX="497" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="180" height="30" topLeftX="283" topLeftY="240" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="180" height="90" topLeftX="283" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="180" height="30" topLeftX="710" topLeftY="240" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题四</p>
+        </content>
+      </shape>
+      <shape width="180" height="90" topLeftX="710" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="180" height="30" topLeftX="70" topLeftY="240" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="180" height="90" topLeftX="70" topLeftY="280" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="360" topLeftY="320" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题五</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="360" topLeftY="360" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="650" topLeftY="320" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题六</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="650" topLeftY="360" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="70" topLeftY="320" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题四</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="70" topLeftY="360" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="650" topLeftY="169" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="650" topLeftY="210" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="360" topLeftY="169" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="360" topLeftY="210" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="30" topLeftX="70" topLeftY="168" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="70" topLeftY="210" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="470" height="30" topLeftX="420" topLeftY="350" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="470" height="54" topLeftX="420" topLeftY="393" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="470" height="30" topLeftX="420" topLeftY="227" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="470" height="54" topLeftX="420" topLeftY="270" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="470" height="30" topLeftX="420" topLeftY="104" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="470" height="54" topLeftX="420" topLeftY="147" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="300" height="48" topLeftX="70" topLeftY="246" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <icon width="32" height="32" topLeftX="337" topLeftY="102" iconType="iconpark/Base/camera.svg">
+        <border color="rgba(31, 35, 41, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="32" height="32" topLeftX="631" topLeftY="102" iconType="iconpark/Office/agreement.svg">
+        <border color="rgba(31, 35, 41, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="32" height="32" topLeftX="337" topLeftY="293" iconType="iconpark/Office/schedule.svg">
+        <border color="rgba(31, 35, 41, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="32" height="32" topLeftX="631" topLeftY="293" iconType="iconpark/Clothes/clothes-sweater.svg">
+        <border color="rgba(31, 35, 41, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="260" height="24" topLeftX="631" topLeftY="339" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题四</p>
+        </content>
+      </shape>
+      <shape width="260" height="72" topLeftX="631" topLeftY="373" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="260" height="24" topLeftX="337" topLeftY="339" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="260" height="72" topLeftX="337" topLeftY="373" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="260" height="24" topLeftX="631" topLeftY="146" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="260" height="72" topLeftX="631" topLeftY="180" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="260" height="24" topLeftX="337" topLeftY="146" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="260" height="72" topLeftX="337" topLeftY="180" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="233" height="48" topLeftX="70" topLeftY="246" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="32" height="32" topLeftX="70" topLeftY="173" presetHandlers="4" type="round-rect">
+        <border color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" italic="false">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="14" fontFamily="Arial" italic="false">01</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="32" topLeftX="500" topLeftY="173" presetHandlers="4" type="round-rect">
+        <border color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" italic="false">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="14" fontFamily="Arial" italic="false">02</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="32" topLeftX="70" topLeftY="324" presetHandlers="4" type="round-rect">
+        <border color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" italic="false">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="14" fontFamily="Arial" italic="false">03</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="32" topLeftX="500" topLeftY="324" presetHandlers="4" type="round-rect">
+        <border color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" color="rgba(31, 35, 41, 1)" bold="true" italic="false">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="14" fontFamily="Arial" italic="false">04</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="390" height="24" topLeftX="500" topLeftY="372" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题四</p>
+        </content>
+      </shape>
+      <shape width="390" height="36" topLeftX="500" topLeftY="406" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="24" topLeftX="70" topLeftY="372" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="390" height="36" topLeftX="70" topLeftY="406" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="24" topLeftX="500" topLeftY="221" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="390" height="36" topLeftX="500" topLeftY="255" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="24" topLeftX="70" topLeftY="221" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="390" height="36" topLeftX="70" topLeftY="255" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="46" height="46" topLeftX="70" topLeftY="176" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="81" topLeftY="187" iconType="iconpark/Emoji/winking-face-with-open-eyes.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="176" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="187" iconType="iconpark/Emoji/relieved-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="70" topLeftY="322" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="81" topLeftY="333" iconType="iconpark/Emoji/smiling-face-with-squinting-eyes.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="322" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="333" iconType="iconpark/Emoji/grinning-face-with-tightly-closed-eyes-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="330" height="24" topLeftX="560" topLeftY="322" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题四</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="560" topLeftY="356" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="330" height="24" topLeftX="131" topLeftY="322" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="131" topLeftY="356" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="330" height="24" topLeftX="560" topLeftY="176" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="560" topLeftY="210" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="330" height="24" topLeftX="131" topLeftY="176" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="131" topLeftY="210" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="70" topLeftY="176" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="81" topLeftY="187" iconType="iconpark/Emoji/winking-face-with-open-eyes.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="176" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="187" iconType="iconpark/Emoji/relieved-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="70" topLeftY="322" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="81" topLeftY="333" iconType="iconpark/Emoji/smiling-face-with-squinting-eyes.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="322" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="333" iconType="iconpark/Emoji/grinning-face-with-tightly-closed-eyes-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(244, 245, 246, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="253" height="323" topLeftX="70" topLeftY="147" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="46" height="46" topLeftX="92" topLeftY="172" presetHandlers="8" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="103" topLeftY="183" iconType="iconpark/Emoji/winking-face-with-open-eyes.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="253" height="323" topLeftX="353" topLeftY="147" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="46" height="46" topLeftX="375" topLeftY="172" presetHandlers="8" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="386" topLeftY="183" iconType="iconpark/Emoji/smiling-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="253" height="323" topLeftX="637" topLeftY="147" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="46" height="46" topLeftX="659" topLeftY="172" presetHandlers="8" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="670" topLeftY="183" iconType="iconpark/Emoji/distraught-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="210" height="24" topLeftX="659" topLeftY="247" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="210" height="144" topLeftX="659" topLeftY="281" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" lineSpacing="multiple:2" textAlign="left">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="210" height="24" topLeftX="375" topLeftY="247" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="210" height="144" topLeftX="375" topLeftY="281" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" lineSpacing="multiple:2" textAlign="left">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="210" height="24" topLeftX="91" topLeftY="247" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="210" height="144" topLeftX="91" topLeftY="281" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" lineSpacing="multiple:2" textAlign="left">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+            <li>
+              <p>输入相关的描述信息以解释你的标题</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="92" topLeftY="172" presetHandlers="8" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="103" topLeftY="183" iconType="iconpark/Emoji/winking-face-with-open-eyes.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="375" topLeftY="172" presetHandlers="8" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="386" topLeftY="183" iconType="iconpark/Emoji/smiling-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="659" topLeftY="172" presetHandlers="8" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="670" topLeftY="183" iconType="iconpark/Emoji/distraught-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(244, 245, 246, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="253" height="140" topLeftX="70" topLeftY="147" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="253" height="140" topLeftX="353" topLeftY="147" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="253" height="140" topLeftX="637" topLeftY="147" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="253" height="140" topLeftX="70" topLeftY="316" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="253" height="140" topLeftX="353" topLeftY="316" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="253" height="140" topLeftX="637" topLeftY="316" presetHandlers="12" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.84)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90" blur="40" color="rgba(147, 150, 156, 0.2)"/>
+      </shape>
+      <shape width="210" height="24" topLeftX="659" topLeftY="342" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题六</p>
+        </content>
+      </shape>
+      <shape width="210" height="54" topLeftX="659" topLeftY="376" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="210" height="24" topLeftX="375" topLeftY="342" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题五</p>
+        </content>
+      </shape>
+      <shape width="210" height="54" topLeftX="375" topLeftY="376" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="210" height="24" topLeftX="92" topLeftY="342" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题四</p>
+        </content>
+      </shape>
+      <shape width="210" height="54" topLeftX="92" topLeftY="376" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="210" height="24" topLeftX="659" topLeftY="173" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="210" height="54" topLeftX="659" topLeftY="207" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="210" height="24" topLeftX="375" topLeftY="173" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="210" height="54" topLeftX="375" topLeftY="207" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="210" height="24" topLeftX="92" topLeftY="173" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="210" height="54" topLeftX="92" topLeftY="207" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="UdtdbZbpKoaEEexUz07c9OHVnMd" width="961" height="395" topLeftX="0" topLeftY="0">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="72" bottomOffset="72"/>
+      </img>
+      <shape width="820" height="30" topLeftX="70" topLeftY="477" type="text">
+        <content textType="headline" fontSize="20" fontFamily="思源黑体" bold="true" textAlign="center">
+          <p>副标题</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="426" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="center">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="RUV0bZ37YouKpjxf4VKckdjhn6e" width="820" height="308" topLeftX="70" topLeftY="162">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="76" bottomOffset="76" presetHandlers="12"/>
+      </img>
+      <shape width="606" height="63" topLeftX="284" topLeftY="70" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="200" height="48" topLeftX="70" topLeftY="78" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="N61xbdsLro9jPzxFdaNcTyCjnNe" width="427" height="540" topLeftX="533" topLeftY="0">
+        <crop type="rect" leftOffset="268" rightOffset="268" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="390" height="72" topLeftX="70" topLeftY="395" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="36" topLeftX="70" topLeftY="339" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="72" topLeftX="70" topLeftY="247" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="30" topLeftX="70" topLeftY="122" type="text">
+        <content textType="headline" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>副标题</p>
+        </content>
+      </shape>
+      <shape width="390" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="B1fHbkd1voF2iGxyg0mc66LGnDb" width="360" height="400" topLeftX="530" topLeftY="70">
+        <crop type="rect" leftOffset="177" rightOffset="177" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="390" height="30" topLeftX="70" topLeftY="213" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题</p>
+        </content>
+      </shape>
+      <shape width="390" height="72" topLeftX="70" topLeftY="255" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="46" height="46" topLeftX="499" topLeftY="145" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="156" iconType="iconpark/Emoji/relieved-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="266" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="277" iconType="iconpark/Emoji/grinning-face-with-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="386" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="397" iconType="iconpark/Emoji/grinning-face-with-tightly-closed-eyes-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <img src="NK3ObUBQqocaMkxlLt2cr5C1nNf" width="427" height="540" topLeftX="0" topLeftY="0">
+        <crop type="rect" leftOffset="268" rightOffset="268" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="330" height="24" topLeftX="560" topLeftY="386" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="560" topLeftY="420" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="330" height="24" topLeftX="560" topLeftY="265" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="560" topLeftY="299" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="330" height="24" topLeftX="560" topLeftY="145" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="560" topLeftY="179" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="48" topLeftX="500" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="499" topLeftY="145" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="156" iconType="iconpark/Emoji/relieved-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="266" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="277" iconType="iconpark/Emoji/grinning-face-with-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="499" topLeftY="386" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="510" topLeftY="397" iconType="iconpark/Emoji/grinning-face-with-tightly-closed-eyes-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="46" height="46" topLeftX="70" topLeftY="145" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">01</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="70" topLeftY="228" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">02</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="70" topLeftY="311" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">03</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="70" topLeftY="394" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="16" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">04</span>
+          </p>
+        </content>
+      </shape>
+      <img src="Cpjjb7QKFohJzixFmudcveLanec" width="360" height="400" topLeftX="530" topLeftY="70">
+        <crop type="rect" leftOffset="177" rightOffset="177" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="340" height="54" topLeftX="131" topLeftY="394" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="340" height="54" topLeftX="131" topLeftY="311" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="340" height="54" topLeftX="131" topLeftY="228" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="340" height="54" topLeftX="131" topLeftY="145" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="401" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="UrinbB8Q4oj0LkxoOkfcJ1KinVc" width="160" height="312" topLeftX="422" topLeftY="151">
+        <crop type="rect" leftOffset="198" rightOffset="198" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="XFbNbpyKtouApzx0zevcG7txnhf" width="160" height="312" topLeftX="246" topLeftY="151">
+        <crop type="rect" leftOffset="198" rightOffset="198" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="HWkXbtsmuoiDjpxPJDTcLH7Hnsc" width="160" height="312" topLeftX="70" topLeftY="151">
+        <crop type="rect" leftOffset="198" rightOffset="198" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="270" height="24" topLeftX="620" topLeftY="375" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="270" height="54" topLeftX="620" topLeftY="409" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="270" height="24" topLeftX="620" topLeftY="263" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="270" height="54" topLeftX="620" topLeftY="297" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="270" height="24" topLeftX="620" topLeftY="147" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="270" height="54" topLeftX="620" topLeftY="181" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="Ndgob5bcsoqoMTxOmz1c6z0vnYc" width="390" height="192" topLeftX="500" topLeftY="150">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="13" bottomOffset="13" presetHandlers="12"/>
+      </img>
+      <img src="MUwyb6SnjoQTwuxiOB1cL6MYnTp" width="390" height="192" topLeftX="70" topLeftY="150">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="13" bottomOffset="13" presetHandlers="12"/>
+      </img>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="390" height="24" topLeftX="500" topLeftY="368" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="390" height="72" topLeftX="500" topLeftY="402" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="390" height="24" topLeftX="70" topLeftY="368" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="390" height="72" topLeftX="70" topLeftY="402" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="JWmUbcsENoCPNgxmG61cOXArnTb" width="240" height="120" topLeftX="650" topLeftY="187">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="7" bottomOffset="7" presetHandlers="12"/>
+      </img>
+      <img src="CeeobQbgaoWXlkxOhXYcu0rgnhd" width="240" height="120" topLeftX="360" topLeftY="187">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="7" bottomOffset="7" presetHandlers="12"/>
+      </img>
+      <img src="DMsebV7EnoQocLxkLz3cyl9jned" width="240" height="120" topLeftX="70" topLeftY="187">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="7" bottomOffset="7" presetHandlers="12"/>
+      </img>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="650" topLeftY="334" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="650" topLeftY="368" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="360" topLeftY="334" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="360" topLeftY="368" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="70" topLeftY="334" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="70" topLeftY="368" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="AAOvbGpghofRb3xgLUscy8kJnHb" width="240" height="120" topLeftX="70" topLeftY="281">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="7" bottomOffset="7" presetHandlers="12"/>
+      </img>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <img src="HpHabXmYbo3v7YxIybRcGBqmn9K" width="240" height="120" topLeftX="650" topLeftY="281">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="7" bottomOffset="7" presetHandlers="12"/>
+      </img>
+      <img src="QnC9b6Au9owetoxxL1bcLxk7nlc" width="240" height="120" topLeftX="360" topLeftY="281">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="7" bottomOffset="7" presetHandlers="12"/>
+      </img>
+      <shape width="240" height="24" topLeftX="650" topLeftY="174" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="650" topLeftY="208" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="360" topLeftY="174" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="360" topLeftY="208" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="70" topLeftY="174" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="70" topLeftY="208" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="LaQAbab0ToMFZHx2vcFcekoDnfj" width="190" height="190" topLeftX="70" topLeftY="280">
+        <crop type="rect" leftOffset="75" rightOffset="75" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="VZIib07cQojdKyxxadWcg1EOn4f" width="190" height="190" topLeftX="280" topLeftY="280">
+        <crop type="rect" leftOffset="75" rightOffset="75" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="RwdhbPR67orsSQxUItvcZ1GDn9g" width="190" height="190" topLeftX="70" topLeftY="70">
+        <crop type="rect" leftOffset="75" rightOffset="75" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="IBgNbWYZdoW4cvxJ7KOczv96npc" width="190" height="190" topLeftX="280" topLeftY="70">
+        <crop type="rect" leftOffset="75" rightOffset="75" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="360" height="126" topLeftX="530" topLeftY="344" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="360" height="48" topLeftX="530" topLeftY="280" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="KMPwbZANDoM8VtxikwbcdgtYn6e" width="175" height="249" topLeftX="715" topLeftY="380">
+        <crop type="rect" leftOffset="135" rightOffset="135" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="QZLubWOb5ou0jGxHuK8cvyovnuU" width="175" height="140" topLeftX="715" topLeftY="223">
+        <crop type="rect" leftOffset="37" rightOffset="37" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="EOA1bzkFOodgKJxRt32cGkiPn5b" width="175" height="249" topLeftX="715" topLeftY="-43">
+        <crop type="rect" leftOffset="135" rightOffset="135" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="Qv1eb4EBRoTyBtxYhWScsA9pnUe" width="175" height="140" topLeftX="523" topLeftY="-43">
+        <crop type="rect" leftOffset="37" rightOffset="37" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="DaV6bjvbooZq39xWX6CcD5I8nFh" width="175" height="140" topLeftX="523" topLeftY="426">
+        <crop type="rect" leftOffset="37" rightOffset="37" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="OE5nb3nAgoEZPCxtAzycCV03ns4" width="175" height="140" topLeftX="523" topLeftY="269">
+        <crop type="rect" leftOffset="37" rightOffset="37" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="Eg5Ob6bqZoXa2cxL1sYcUjXZnnh" width="175" height="140" topLeftX="523" topLeftY="113">
+        <crop type="rect" leftOffset="37" rightOffset="37" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="400" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="400" height="24" topLeftX="70" topLeftY="379" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="400" height="36" topLeftX="70" topLeftY="413" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="400" height="24" topLeftX="70" topLeftY="269" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="400" height="36" topLeftX="70" topLeftY="303" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="400" height="24" topLeftX="70" topLeftY="161" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="400" height="36" topLeftX="70" topLeftY="195" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="CVlxbnjeXoXmyvxizbIcyhEAnkc" width="240" height="329" topLeftX="650" topLeftY="141">
+        <crop type="rect" leftOffset="173" rightOffset="173" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="BGQQbKBsxoZ6a9xwCUzcfvsinSJ" width="240" height="329" topLeftX="360" topLeftY="141">
+        <crop type="rect" leftOffset="173" rightOffset="173" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="NAo6bVZokosccOxFzWic0xdEnWe" width="240" height="329" topLeftX="70" topLeftY="141">
+        <crop type="rect" leftOffset="173" rightOffset="173" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="CUMbbcVlnoM4sfxUEC1cHXCRn5e" width="551" height="150" topLeftX="339" topLeftY="320">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="79" bottomOffset="79" presetHandlers="12"/>
+      </img>
+      <img src="JTi1binYYoah0fxefx2cw73Rnuf" width="551" height="150" topLeftX="339" topLeftY="141">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="79" bottomOffset="79" presetHandlers="12"/>
+      </img>
+      <img src="Ic1UbbFDroNj15xyXrFc13jvnPf" width="240" height="329" topLeftX="70" topLeftY="141">
+        <crop type="rect" leftOffset="173" rightOffset="173" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="TOsLbMBi6olv5txLhV8cxP83nbi" width="190" height="152" topLeftX="280" topLeftY="312">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="FlAcbO793o38sCxU9GrcmIyxnbd" width="190" height="152" topLeftX="70" topLeftY="312">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="YS8AbcHFNoetRkxihPcc4s5Dnte" width="190" height="152" topLeftX="700" topLeftY="312">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="V67bb63eYox1eHxtKmPcHF7FnFh" width="190" height="152" topLeftX="490" topLeftY="312">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="TV3DbPu8loC75UxSlQIcHleznVe" width="190" height="152" topLeftX="700" topLeftY="139">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="TtcYba7nLoI5cexx4DDcsVuHnsd" width="190" height="152" topLeftX="490" topLeftY="139">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="KdSsbBljKocygSxfL1EcIF7Mnog" width="190" height="152" topLeftX="280" topLeftY="141">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="L3Gsb31ZAogVLVx2HCtcunn9n1X" width="190" height="152" topLeftX="70" topLeftY="141">
+        <crop type="rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="838" height="28" topLeftX="51" topLeftY="295" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="linear-gradient(271deg,rgba(35, 72, 197, 0.38) 0%,rgba(72, 239, 207, 0.11) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="12" height="12" topLeftX="86" topLeftY="303" type="ellipse">
+        <border color="rgba(78, 110, 253, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="249" startY="319" endX="249" endY="402">
+        <border color="rgba(78, 110, 253, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="12" height="12" topLeftX="400" topLeftY="303" type="ellipse">
+        <border color="rgba(78, 110, 253, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="16" height="16" topLeftX="551" topLeftY="301" type="ellipse">
+        <border color="rgba(78, 110, 253, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="12" height="12" topLeftX="685" topLeftY="303" type="ellipse">
+        <border color="rgba(78, 110, 253, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="559" startY="317" endX="559" endY="403">
+        <border color="rgba(78, 110, 253, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="16" height="16" topLeftX="241" topLeftY="301" type="ellipse">
+        <border color="rgba(78, 110, 253, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="406" startY="175" endX="406" endY="301">
+        <border color="rgba(78, 110, 253, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="691" startY="175" endX="691" endY="301">
+        <border color="rgba(78, 110, 253, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="91" startY="175" endX="91" endY="301">
+        <border color="rgba(78, 110, 253, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="215" height="24" topLeftX="268" topLeftY="360" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>时间点</p>
+        </content>
+      </shape>
+      <shape width="215" height="54" topLeftX="268" topLeftY="394" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="215" height="24" topLeftX="578" topLeftY="360" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>时间点</p>
+        </content>
+      </shape>
+      <shape width="215" height="54" topLeftX="578" topLeftY="394" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="215" height="24" topLeftX="710" topLeftY="162" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>时间点</p>
+        </content>
+      </shape>
+      <shape width="215" height="54" topLeftX="710" topLeftY="197" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="215" height="24" topLeftX="425" topLeftY="162" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>时间点</p>
+        </content>
+      </shape>
+      <shape width="215" height="54" topLeftX="425" topLeftY="197" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="215" height="24" topLeftX="110" topLeftY="162" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>时间点</p>
+        </content>
+      </shape>
+      <shape width="215" height="54" topLeftX="110" topLeftY="197" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>时间轴</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <undefined type="fallback"/>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>时间轴</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <line startX="120" startY="159" endX="120" endY="451" alpha="0.4">
+        <border color="rgba(78, 110, 253, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="100" height="34" topLeftX="70" topLeftY="381" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>2024-2026</p>
+        </content>
+      </shape>
+      <shape width="100" height="34" topLeftX="70" topLeftY="287" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>2022-2023</p>
+        </content>
+      </shape>
+      <shape width="100" height="34" topLeftX="70" topLeftY="193" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>2020-2021</p>
+        </content>
+      </shape>
+      <shape width="160" height="24" topLeftX="211" topLeftY="386" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="480" height="54" topLeftX="410" topLeftY="371" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="160" height="24" topLeftX="211" topLeftY="292" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="480" height="54" topLeftX="410" topLeftY="277" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="480" height="54" topLeftX="410" topLeftY="183" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="160" height="24" topLeftX="211" topLeftY="198" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>时间轴</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="188" height="24" topLeftX="516" topLeftY="144" type="text">
+        <content fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">数据标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="374" height="27" topLeftX="516" topLeftY="175" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(244, 245, 246, 1)"/>
+        </fill>
+        <border color="rgba(43, 47, 54, 1)" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="274" height="20" topLeftX="519" topLeftY="178" presetHandlers="2" type="rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <shape width="65" height="24" topLeftX="825" topLeftY="144" type="text">
+        <content fontSize="16" color="rgba(78, 110, 253, 1)" bold="true" textAlign="right">
+          <p textAlign="right">
+            <strong>
+              <span color="rgba(78, 110, 253, 1)" fontSize="16">67%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="188" height="24" topLeftX="516" topLeftY="241" type="text">
+        <content fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">数据标题</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="374" height="27" topLeftX="516" topLeftY="272" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(244, 245, 246, 1)"/>
+        </fill>
+        <border color="rgba(43, 47, 54, 1)" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="357" height="20" topLeftX="519" topLeftY="275" presetHandlers="2" type="rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <shape width="65" height="26" topLeftX="825" topLeftY="241" type="text">
+        <content fontSize="17" color="rgba(78, 110, 253, 1)" bold="true" textAlign="right">
+          <p textAlign="right">
+            <strong>
+              <span color="rgba(78, 110, 253, 1)" fontSize="17">98%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="188" height="24" topLeftX="516" topLeftY="341" type="text">
+        <content fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>
+            <span color="rgba(31, 35, 41, 1)">数据标题</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="374" height="27" topLeftX="516" topLeftY="372" presetHandlers="4" type="rect">
+        <fill>
+          <fillColor color="rgba(244, 245, 246, 1)"/>
+        </fill>
+        <border color="rgba(43, 47, 54, 1)" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="174" height="20" topLeftX="519" topLeftY="375" presetHandlers="2" type="rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <shape width="65" height="26" topLeftX="825" topLeftY="341" type="text">
+        <content fontSize="17" color="rgba(78, 110, 253, 1)" bold="true" textAlign="right">
+          <p textAlign="right">
+            <strong>
+              <span color="rgba(78, 110, 253, 1)" fontSize="17">43%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="380" height="48" topLeftX="70" topLeftY="154" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p textAlign="left">标题和描述</p>
+        </content>
+      </shape>
+      <shape width="380" height="54" topLeftX="70" topLeftY="222" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="380" height="90" topLeftX="70" topLeftY="296" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(48, 48, 48, 1)" bold="true">
+          <p>
+            <span fontSize="32" fontFamily="思源黑体">标题和描述</span>
+          </p>
+        </content>
+      </shape>
+      <undefined type="chart_refer_host_perm"/>
+      <undefined type="chart_refer_host_perm"/>
+      <undefined type="chart_refer_host_perm"/>
+      <shape width="240" height="24" topLeftX="650" topLeftY="165" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(51, 51, 51, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="650" topLeftY="199" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="360" topLeftY="165" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(51, 51, 51, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="360" topLeftY="199" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="70" topLeftY="165" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(51, 51, 51, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="70" topLeftY="199" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <undefined type="chart_refer_host_perm"/>
+      <shape width="330" height="24" topLeftX="131" topLeftY="386" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(51, 51, 51, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="131" topLeftY="420" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="330" height="24" topLeftX="131" topLeftY="265" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(51, 51, 51, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="131" topLeftY="299" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="330" height="24" topLeftX="131" topLeftY="145" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(51, 51, 51, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="330" height="54" topLeftX="131" topLeftY="179" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="70" topLeftY="145" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="81" topLeftY="156" iconType="iconpark/Emoji/relieved-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="70" topLeftY="266" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="81" topLeftY="277" iconType="iconpark/Emoji/grinning-face-with-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="70" topLeftY="386" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="81" topLeftY="397" iconType="iconpark/Emoji/grinning-face-with-tightly-closed-eyes-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="391" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(48, 48, 48, 1)" bold="true">
+          <p>
+            <span fontSize="32" fontFamily="思源黑体">标题和描述</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <table topLeftX="70" topLeftY="152">
+        <colgroup>
+          <col span="4" width="205"/>
+        </colgroup>
+        <tr height="53">
+          <td>
+            <borderTop color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="rgba(78, 110, 253, 1)"/>
+            </fill>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="思源黑体">标题</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderTop color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="rgba(78, 110, 253, 1)"/>
+            </fill>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>项目一</p>
+            </content>
+          </td>
+          <td>
+            <borderTop color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="rgba(78, 110, 253, 1)"/>
+            </fill>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="Arial">项目二</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderTop color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <fill>
+              <fillColor color="rgba(78, 110, 253, 1)"/>
+            </fill>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+              <p>
+                <strong>
+                  <span color="rgba(255, 255, 255, 1)" fontSize="14" fontFamily="思源黑体">相关细节</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="60">
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="14" fontFamily="思源黑体">标题</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">30M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">32M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+              <p>
+                <span color="rgba(100, 102, 107, 1)" fontSize="12" fontFamily="思源黑体">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="60">
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" bold="true">
+              <p>
+                <span fontFamily="思源黑体">标题</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">45M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">40M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+              <p>
+                <span color="rgba(100, 102, 107, 1)" fontSize="12" fontFamily="思源黑体">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="60">
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" bold="true">
+              <p>
+                <span fontFamily="思源黑体">标题</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">15M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">30M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+              <p>
+                <span color="rgba(100, 102, 107, 1)" fontSize="12" fontFamily="思源黑体">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+        <tr height="60">
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderLeft color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" bold="true">
+              <p>
+                <span fontFamily="思源黑体">标题</span>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">60M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="Arial" bold="true">
+              <p>
+                <strong>
+                  <span fontSize="12" fontFamily="Arial">66M</span>
+                </strong>
+              </p>
+            </content>
+          </td>
+          <td>
+            <borderRight color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <borderBottom color="rgba(78, 110, 253, 1)" lineJoin="miter" miterLimit="10"/>
+            <content paddingTop="0" paddingBottom="0" paddingLeft="0" paddingRight="0" fontSize="14" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)">
+              <p>
+                <span color="rgba(100, 102, 107, 1)" fontSize="12" fontFamily="思源黑体">更多细节描述</span>
+              </p>
+            </content>
+          </td>
+        </tr>
+      </table>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="390" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(48, 48, 48, 1)" bold="true">
+          <p>
+            <span color="rgba(48, 48, 48, 1)" fontSize="32" fontFamily="思源黑体">标题和描述</span>
+          </p>
+        </content>
+      </shape>
+      <img src="BhwkbrUYDoICFDxn2bYcuCpGnsd" width="427" height="540" topLeftX="533" topLeftY="0">
+        <crop type="rect" leftOffset="268" rightOffset="268" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="120" height="18" topLeftX="70" topLeftY="331" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p textAlign="left">
+            <span color="rgba(100, 102, 107, 1)" fontSize="12" bold="false">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="66" topLeftX="70" topLeftY="267" type="text">
+        <content textType="headline" fontSize="44" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true">
+          <p>
+            <span fontSize="44" fontFamily="Arial">2,080</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="18" topLeftX="265" topLeftY="331" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p textAlign="left">
+            <span color="rgba(100, 102, 107, 1)" fontSize="12" bold="false">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="66" topLeftX="265" topLeftY="267" type="text">
+        <content textType="headline" fontSize="44" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true">
+          <p>
+            89
+            <span fontSize="24">%</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="18" topLeftX="70" topLeftY="444" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p textAlign="left">
+            <span color="rgba(100, 102, 107, 1)" fontSize="12" bold="false">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="66" topLeftX="70" topLeftY="380" type="text">
+        <content textType="headline" fontSize="44" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true">
+          <p>
+            <span fontSize="44" fontFamily="Arial">1,562</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="18" topLeftX="265" topLeftY="444" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p textAlign="left">
+            <span color="rgba(100, 102, 107, 1)" fontSize="12" bold="false">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="66" topLeftX="265" topLeftY="380" type="text">
+        <content textType="headline" fontSize="44" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true">
+          <p>76</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="105" height="90" topLeftX="70" topLeftY="209" type="text">
+        <content textType="sub-headline" fontSize="38" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true" textAlign="left">
+          <p textAlign="left">
+            <span fontSize="60" fontFamily="Arial">98</span>
+            <span fontSize="38" fontFamily="Arial">%</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="260" height="18" topLeftX="70" topLeftY="194" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" textAlign="left">
+          <p textAlign="left">
+            <span fontFamily="思源黑体">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="200" height="18" topLeftX="70" topLeftY="343" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" textAlign="left">
+          <p textAlign="left">
+            <span fontFamily="思源黑体">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="200" height="57" topLeftX="70" topLeftY="358" type="text">
+        <content textType="sub-headline" fontSize="38" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true" textAlign="left">
+          <p textAlign="left">2,080</p>
+        </content>
+      </shape>
+      <shape width="200" height="18" topLeftX="380" topLeftY="343" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" textAlign="left">
+          <p textAlign="left">
+            <span fontFamily="思源黑体">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="200" height="57" topLeftX="380" topLeftY="358" type="text">
+        <content textType="sub-headline" fontSize="38" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true" textAlign="left">
+          <p textAlign="left">6,098</p>
+        </content>
+      </shape>
+      <shape width="200" height="18" topLeftX="690" topLeftY="343" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" textAlign="left">
+          <p textAlign="left">
+            <span fontFamily="思源黑体">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="200" height="57" topLeftX="690" topLeftY="358" type="text">
+        <content textType="sub-headline" fontSize="38" fontFamily="Arial" color="rgba(48, 48, 48, 1)" bold="true" textAlign="left">
+          <p textAlign="left">
+            78
+            <span fontSize="24">%</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="890" startY="306" endX="70" endY="306">
+        <border color="rgba(208, 211, 214, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="42" height="36" topLeftX="175" topLeftY="244" type="text">
+        <content fontSize="16" color="rgba(78, 110, 253, 1)" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(78, 110, 253, 1)" fontSize="24">↑</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="120" height="120" topLeftX="130" topLeftY="156" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="24">2,080</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="120" topLeftX="420" topLeftY="156" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="24">6,098</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="120" height="120" topLeftX="710" topLeftY="156" type="ellipse">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" fontFamily="Arial" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="24">98%</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="70" topLeftY="338" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" textAlign="center">
+          <p textAlign="center">
+            <span fontSize="12" fontFamily="思源黑体">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="70" topLeftY="300" type="text">
+        <content textType="sub-headline" fontSize="16" color="rgba(48, 48, 48, 1)" bold="true" textAlign="center">
+          <p textAlign="center">
+            <span color="rgba(48, 48, 48, 1)" fontSize="16">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="360" topLeftY="338" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" textAlign="center">
+          <p textAlign="center">
+            <span fontSize="12" fontFamily="思源黑体">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="360" topLeftY="300" type="text">
+        <content textType="sub-headline" fontSize="16" color="rgba(48, 48, 48, 1)" bold="true" textAlign="center">
+          <p textAlign="center">
+            <span fontSize="16">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="650" topLeftY="338" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" textAlign="center">
+          <p textAlign="center">
+            <span fontSize="12" fontFamily="思源黑体">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="650" topLeftY="300" type="text">
+        <content textType="sub-headline" fontSize="16" color="rgba(48, 48, 48, 1)" bold="true" textAlign="center">
+          <p textAlign="center">
+            <span fontSize="16">关键数据</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="820" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="TS3obuM9uoiDLLxgxw7cdpVRnDb" width="194" height="389" topLeftX="609" topLeftY="76">
+        <crop type="rect" leftOffset="79" rightOffset="80" topOffset="11" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="UHSabFVFBoL8PzxboqFc1wIine9" width="162" height="353" topLeftX="626" topLeftY="89">
+        <crop type="rect" leftOffset="234" rightOffset="234" topOffset="0" bottomOffset="0" presetHandlers="22"/>
+      </img>
+      <shape width="472" height="30" topLeftX="70" topLeftY="205" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题</p>
+        </content>
+      </shape>
+      <shape width="472" height="72" topLeftX="70" topLeftY="245" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="TS3obuM9uoiDLLxgxw7cdpVRnDb" width="316" height="633" topLeftX="529" topLeftY="76">
+        <crop type="rect" leftOffset="128" rightOffset="130" topOffset="18" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="WTL3bP2ZYo7hcexcplTczqrXn3b" width="264" height="574" topLeftX="557" topLeftY="95">
+        <crop type="rect" leftOffset="381" rightOffset="381" topOffset="0" bottomOffset="0" presetHandlers="38"/>
+      </img>
+      <shape width="360" height="24" topLeftX="70" topLeftY="375" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="360" height="36" topLeftX="70" topLeftY="409" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="360" height="24" topLeftX="70" topLeftY="263" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="360" height="36" topLeftX="70" topLeftY="297" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="360" height="24" topLeftX="70" topLeftY="147" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="360" height="36" topLeftX="70" topLeftY="181" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="360" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <line startX="390" startY="166" endX="320" endY="166">
+        <border color="rgba(100, 102, 107, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+        <startArrow type="solid-circle"/>
+      </line>
+      <line startX="390" startY="279" endX="320" endY="279">
+        <border color="rgba(100, 102, 107, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+        <startArrow type="solid-circle"/>
+      </line>
+      <line startX="390" startY="392" endX="320" endY="392">
+        <border color="rgba(100, 102, 107, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+        <startArrow type="solid-circle"/>
+      </line>
+      <line startX="573" startY="218" endX="643" endY="218">
+        <border color="rgba(100, 102, 107, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+        <startArrow type="solid-circle"/>
+      </line>
+      <line startX="573" startY="320" endX="643" endY="320">
+        <border color="rgba(100, 102, 107, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+        <startArrow type="solid-circle"/>
+      </line>
+      <img src="TS3obuM9uoiDLLxgxw7cdpVRnDb" width="194" height="389" topLeftX="383" topLeftY="83">
+        <crop type="rect" leftOffset="79" rightOffset="80" topOffset="11" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="OYjWbO3vzo5RXLxneqxcGkcrnog" width="162" height="353" topLeftX="400" topLeftY="96">
+        <crop type="rect" leftOffset="234" rightOffset="234" topOffset="0" bottomOffset="0" presetHandlers="22"/>
+      </img>
+      <shape width="240" height="72" topLeftX="654" topLeftY="284" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="654" topLeftY="180" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="70" topLeftY="356" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="70" topLeftY="243" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="72" topLeftX="70" topLeftY="131" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="TS3obuM9uoiDLLxgxw7cdpVRnDb" width="194" height="389" topLeftX="67" topLeftY="83">
+        <crop type="rect" leftOffset="79" rightOffset="80" topOffset="11" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="TS3obuM9uoiDLLxgxw7cdpVRnDb" width="194" height="389" topLeftX="276" topLeftY="83">
+        <crop type="rect" leftOffset="79" rightOffset="80" topOffset="11" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="46" height="46" topLeftX="517" topLeftY="211" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="528" topLeftY="222" iconType="iconpark/Emoji/relieved-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="517" topLeftY="331" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="528" topLeftY="342" iconType="iconpark/Emoji/grinning-face-with-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <img src="Q2FybbJISoe4gJxBqCZcdcGLnt7" width="162" height="353" topLeftX="293" topLeftY="96">
+        <crop type="rect" leftOffset="234" rightOffset="234" topOffset="0" bottomOffset="0" presetHandlers="22"/>
+      </img>
+      <img src="Io74bsywQorRoYxblTecisEgnlg" width="162" height="353" topLeftX="84" topLeftY="96">
+        <crop type="rect" leftOffset="234" rightOffset="234" topOffset="0" bottomOffset="0" presetHandlers="22"/>
+      </img>
+      <shape width="310" height="24" topLeftX="578" topLeftY="331" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="310" height="54" topLeftX="578" topLeftY="365" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="310" height="24" topLeftX="578" topLeftY="210" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="310" height="54" topLeftX="578" topLeftY="244" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="370" height="48" topLeftX="518" topLeftY="135" type="text">
+        <content textType="headline" fontSize="32" fontFamily="思源黑体" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <shape width="46" height="46" topLeftX="517" topLeftY="211" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="528" topLeftY="222" iconType="iconpark/Emoji/relieved-face.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="46" height="46" topLeftX="517" topLeftY="331" presetHandlers="23" type="round-rect">
+        <fill>
+          <fillColor color="rgba(78, 110, 253, 1)"/>
+        </fill>
+      </shape>
+      <icon width="24" height="24" topLeftX="528" topLeftY="342" iconType="iconpark/Emoji/grinning-face-with-open-mouth.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="Rhy4b1ms1oQzsJx1OiicAr7HnNh" width="151" height="302" topLeftX="115" topLeftY="70">
+        <crop type="rect" leftOffset="61" rightOffset="62" topOffset="9" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="Rhy4b1ms1oQzsJx1OiicAr7HnNh" width="151" height="302" topLeftX="405" topLeftY="70">
+        <crop type="rect" leftOffset="61" rightOffset="62" topOffset="9" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="Rhy4b1ms1oQzsJx1OiicAr7HnNh" width="151" height="302" topLeftX="694" topLeftY="70">
+        <crop type="rect" leftOffset="61" rightOffset="62" topOffset="9" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="IkNBba1tKov0OcxMu7pcottvnLf" width="127" height="277" topLeftX="707" topLeftY="78">
+        <crop type="rect" leftOffset="183" rightOffset="183" topOffset="0" bottomOffset="0" presetHandlers="18"/>
+      </img>
+      <img src="BzuMbFf9SoFq5Zx1R0wcIJZznFh" width="127" height="277" topLeftX="417" topLeftY="78">
+        <crop type="rect" leftOffset="183" rightOffset="183" topOffset="0" bottomOffset="0" presetHandlers="18"/>
+      </img>
+      <img src="QKaEb8jPBo2oRjxJtgvcD6gVndd" width="127" height="277" topLeftX="127" topLeftY="78">
+        <crop type="rect" leftOffset="183" rightOffset="183" topOffset="0" bottomOffset="0" presetHandlers="18"/>
+      </img>
+      <shape width="240" height="24" topLeftX="650" topLeftY="381" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>主题标题三</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="650" topLeftY="415" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="center">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="360" topLeftY="381" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>主题标题二</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="360" topLeftY="415" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="center">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="240" height="24" topLeftX="70" topLeftY="381" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>主题标题一</p>
+        </content>
+      </shape>
+      <shape width="240" height="54" topLeftX="70" topLeftY="415" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="center">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="JiksbRvHYoWRPxxBUYNcSuGZnjc" width="595" height="359" topLeftX="182" topLeftY="95" saturation="-100">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="KCLSbcQRPojNiIxEZNncl3bxnQc" width="477" height="321" topLeftX="242" topLeftY="104">
+        <crop type="rect" leftOffset="48" rightOffset="48" topOffset="0" bottomOffset="0" presetHandlers="10"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="JiksbRvHYoWRPxxBUYNcSuGZnjc" width="595" height="359" topLeftX="451" topLeftY="95" saturation="-100">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="T4o1bdSsuo4rXRxygYfc73h6nbe" width="477" height="321" topLeftX="511" topLeftY="104">
+        <crop type="rect" leftOffset="48" rightOffset="48" topOffset="0" bottomOffset="0" presetHandlers="10"/>
+      </img>
+      <shape width="390" height="30" topLeftX="70" topLeftY="210" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题</p>
+        </content>
+      </shape>
+      <shape width="390" height="72" topLeftX="70" topLeftY="250" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="JiksbRvHYoWRPxxBUYNcSuGZnjc" width="790" height="477" topLeftX="10" topLeftY="180" saturation="-100">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="820" height="30" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>主题标题</p>
+        </content>
+      </shape>
+      <shape width="820" height="36" topLeftX="70" topLeftY="110" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <img src="VpaZbZ7K9oKUdCxODBVcIZ7ln5b" width="633" height="426" topLeftX="88" topLeftY="190">
+        <crop type="rect" leftOffset="64" rightOffset="64" topOffset="0" bottomOffset="0" presetHandlers="12"/>
+      </img>
+      <img src="Rhy4b1ms1oQzsJx1OiicAr7HnNh" width="205" height="412" topLeftX="667" topLeftY="283">
+        <crop type="rect" leftOffset="83" rightOffset="85" topOffset="12" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="ADcsbOc5xoAjRxx4RbLchlm7nsg" width="172" height="374" topLeftX="685" topLeftY="296">
+        <crop type="rect" leftOffset="248" rightOffset="248" topOffset="0" bottomOffset="0" presetHandlers="24"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="400" height="90" topLeftX="70" topLeftY="371" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="400" height="54" topLeftX="70" topLeftY="294" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="400" height="30" topLeftX="70" topLeftY="118" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>副标题</p>
+        </content>
+      </shape>
+      <shape width="400" height="48" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>标题和描述</p>
+        </content>
+      </shape>
+      <img src="JiksbRvHYoWRPxxBUYNcSuGZnjc" width="595" height="359" topLeftX="544" topLeftY="95" saturation="-100">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="TacibFO8eoOOhqxBubBchT75nTd" width="477" height="321" topLeftX="603" topLeftY="104">
+        <crop type="rect" leftOffset="48" rightOffset="48" topOffset="0" bottomOffset="0" presetHandlers="10"/>
+      </img>
+      <img src="Rhy4b1ms1oQzsJx1OiicAr7HnNh" width="151" height="302" topLeftX="499" topLeftY="197">
+        <crop type="rect" leftOffset="61" rightOffset="62" topOffset="9" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="BMJpb7YAvoeKgdxBAoQcsX6Gn6e" width="126" height="275" topLeftX="513" topLeftY="206">
+        <crop type="rect" leftOffset="182" rightOffset="182" topOffset="0" bottomOffset="0" presetHandlers="18"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="CPicb3HffodDqFxKjLmcD6ubnuh" width="653" height="540" topLeftX="307" topLeftY="0">
+        <crop type="rect" leftOffset="155" rightOffset="155" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="180" height="48" topLeftX="70" topLeftY="423" type="text">
+        <content textType="caption" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>谢谢观看</p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="70" topLeftY="270" type="text">
+        <content textType="caption" fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>湖北省 武汉市 洪山区</p>
+        </content>
+      </shape>
+      <shape width="180" height="18" topLeftX="70" topLeftY="252" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>联系地址</p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="70" topLeftY="192" type="text">
+        <content textType="caption" fontSize="18" fontFamily="思源黑体" color="rgba(78, 110, 253, 1)" bold="true" textAlign="left">
+          <p>
+            <a href="mailto:sherry@gmail.com">
+              <span color="rgba(78, 110, 253, 1)">Sherry@gmail.com</span>
+            </a>
+          </p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="70" topLeftY="167" type="text">
+        <content textType="caption" fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>+132 9792 710X</p>
+        </content>
+      </shape>
+      <shape width="180" height="18" topLeftX="70" topLeftY="149" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>联系方式</p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="70" topLeftY="88" type="text">
+        <content textType="caption" fontSize="18" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>XXX</p>
+        </content>
+      </shape>
+      <shape width="180" height="18" topLeftX="70" topLeftY="70" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(100, 102, 107, 1)" bold="false" textAlign="left">
+          <p>联系人</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>
