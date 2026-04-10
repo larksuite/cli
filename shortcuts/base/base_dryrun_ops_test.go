@@ -218,3 +218,18 @@ func TestDryRunViewOps(t *testing.T) {
 
 	assertDryRunContains(t, dryRunViewGetProperty(listRT, "a/b"), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/a%2Fb")
 }
+
+func TestDryRunRecordListWithViewName(t *testing.T) {
+	ctx := context.Background()
+	rt := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "Main"},
+		nil,
+		map[string]int{"offset": 0, "limit": 20},
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordList(ctx, rt),
+		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records",
+		"view_id=%3Cresolved+from+view+name%3A+Main%3E",
+	)
+}
