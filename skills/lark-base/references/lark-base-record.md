@@ -25,4 +25,4 @@ record 相关命令索引。
 - `+record-list` 支持重复传参 `--field-id` 做字段筛选。
 - 写记录 JSON 前优先阅读 [lark-base-shortcut-record-value.md](lark-base-shortcut-record-value.md)。
 - 本地文件写入附件字段时，必须使用 `+record-upload-attachment`。
-- 从附件字段下载文件时，用 `lark-cli docs +media-download --token <file_token>`，用法见 [`../../lark-doc/references/lark-doc-media-download.md`](../../lark-doc/references/lark-doc-media-download.md)。
+- 从附件字段下载文件时，用 `lark-cli docs +media-download --token <file_token> --output <path>`，用法见 [`../../lark-doc/references/lark-doc-media-download.md`](../../lark-doc/references/lark-doc-media-download.md)。

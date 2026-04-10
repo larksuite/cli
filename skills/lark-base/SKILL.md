@@ -220,7 +220,7 @@ metadata:
 | 用户明确要求 lookup，或天然是固定查找配置 | `lookup` 字段 | 不要默认先上 lookup；先判断 formula 是否更合适 |
 | 读取原始记录明细 / 关键词检索 / 导出 | `+record-search / +record-list / +record-get` | 不要拿 `+data-query` 当取数命令 |
 | 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
-| 下载记录里的附件文件 | `lark-cli docs +media-download --token <file_token>` | `file_token` 从 `+record-get` 返回的附件字段里取；用法见 [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) |
+| 下载记录里的附件文件 | `lark-cli docs +media-download --token <file_token> --output <path>` | `file_token` 从 `+record-get` 返回的附件字段里取；用法见 [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) |
 | 基于视图做筛选读取 | `+view-set-filter` + `+record-list` | 不要跳过视图筛选直接猜条件 |
 | 本地 Excel / CSV 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
 
