@@ -34,8 +34,8 @@ func createChat(t *testing.T, parentT *testing.T, ctx context.Context, name stri
 	require.NotEmpty(t, chatID, "chat_id should not be empty")
 
 	parentT.Cleanup(func() {
-		// Best-effort cleanup - chat will be automatically orphaned
-		// since im chats delete command is not available
+		// No IM chat delete command is currently available in lark-cli,
+		// so created chats are intentionally left in the test account.
 	})
 
 	return chatID

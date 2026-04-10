@@ -62,8 +62,8 @@ func uploadTestFile(t *testing.T, parentT *testing.T, ctx context.Context, suffi
 	require.NotEmpty(t, fileToken, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		// No drive delete shortcut/resource is currently available in lark-cli,
-		// so uploaded files cannot be cleaned up automatically.
+		// No drive delete command is currently available in lark-cli,
+		// so uploaded files are intentionally left in the test account.
 	})
 
 	return fileToken
@@ -122,8 +122,8 @@ func importTestDoc(t *testing.T, parentT *testing.T, ctx context.Context, suffix
 	require.NotEmpty(t, docToken, "doc_token is required, stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		// No drive delete shortcut/resource is currently available in lark-cli,
-		// so imported docs cannot be cleaned up automatically.
+		// No drive delete command is currently available in lark-cli,
+		// so imported docs are intentionally left in the test account.
 	})
 
 	return docToken
