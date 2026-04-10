@@ -41,6 +41,7 @@ type APIOptions struct {
 	Format    string
 	JqExpr    string
 	DryRun    bool
+	File      string
 }
 
 var urlPrefixRe = regexp.MustCompile(`https?://[^/]+(/open-apis/.+)`)
@@ -87,6 +88,7 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	cmd.Flags().StringVar(&opts.File, "file", "", "file to upload as multipart/form-data ([field=]path, supports - for stdin)")
 
 	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
@@ -106,17 +108,19 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 
 // buildAPIRequest validates flags and builds a RawApiRequest.
 func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
-	// stdin is an io.Reader consumed at most once. Only one of --params/--data
-	// may use "-" (stdin); the conflict check below prevents silent data loss.
 	stdin := opts.Factory.IOStreams.In
-	if opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, output.ErrValidation("--params and --data cannot both read from stdin (-)")
-	}
-	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
-	if err != nil {
+
+	// Validate --file mutual exclusions first.
+	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
 		return client.RawApiRequest{}, err
 	}
-	data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+
+	// Existing stdin conflict check (--params vs --data, without --file).
+	if opts.File == "" && opts.Params == "-" && opts.Data == "-" {
+		return client.RawApiRequest{}, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+	}
+
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
 	if err != nil {
 		return client.RawApiRequest{}, err
 	}
@@ -128,13 +132,44 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 		Method: opts.Method,
 		URL:    normalisePath(opts.Path),
 		Params: params,
-		Data:   data,
 		As:     opts.As,
 	}
-	// WithFileDownload tells the SDK to skip CodeError parsing on 200 OK.
-	if opts.Output != "" {
-		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+
+	if opts.File != "" {
+		// File upload path: build formdata.
+		fieldName, filePath, isStdin := cmdutil.ParseFileFlag(opts.File, "file")
+
+		// Parse --data as JSON map for form fields (not as body).
+		var dataFields any
+		if opts.Data != "" {
+			dataFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+			if err != nil {
+				return client.RawApiRequest{}, err
+			}
+		}
+
+		fd, err := cmdutil.BuildFormdata(
+			opts.Ctx,
+			opts.Factory.ResolveFileIO(opts.Ctx),
+			fieldName, filePath, isStdin, stdin, dataFields,
+		)
+		if err != nil {
+			return client.RawApiRequest{}, err
+		}
+		request.Data = fd
+		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
+	} else {
+		// Normal path: JSON body.
+		data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+		if err != nil {
+			return client.RawApiRequest{}, err
+		}
+		request.Data = data
+		if opts.Output != "" {
+			request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+		}
 	}
+
 	return request, nil
 }
 
@@ -151,6 +186,37 @@ func apiRun(opts *APIOptions) error {
 	}
 	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
 		return err
+	}
+
+	// Handle dry-run with file: skip building formdata, show file metadata instead.
+	if opts.DryRun && opts.File != "" {
+		if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
+			return err
+		}
+		stdin := f.IOStreams.In
+		params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+		if err != nil {
+			return err
+		}
+		var formFields any
+		if opts.Data != "" {
+			formFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+			if err != nil {
+				return err
+			}
+		}
+		config, err := f.Config()
+		if err != nil {
+			return err
+		}
+		fieldName, filePath, _ := cmdutil.ParseFileFlag(opts.File, "file")
+		request := client.RawApiRequest{
+			Method: opts.Method,
+			URL:    normalisePath(opts.Path),
+			Params: params,
+			As:     opts.As,
+		}
+		return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fieldName, filePath, formFields)
 	}
 
 	request, err := buildAPIRequest(opts)

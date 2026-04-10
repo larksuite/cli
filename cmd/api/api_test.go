@@ -5,6 +5,7 @@ package api
 
 import (
 	"errors"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -704,5 +705,100 @@ func TestApiCmd_MethodUppercase(t *testing.T) {
 	}
 	if gotOpts.Method != "POST" {
 		t.Errorf("expected method POST (uppercased), got %s", gotOpts.Method)
+	}
+}
+
+func TestApiCmd_FileFlagParsing(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--file", "image=photo.jpg", "--data", `{"image_type":"message"}`})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts.File != "image=photo.jpg" {
+		t.Errorf("expected File = %q, got %q", "image=photo.jpg", gotOpts.File)
+	}
+}
+
+func TestApiCmd_FileAndOutputConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "photo.jpg", "--output", "out.json"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --file with --output")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+}
+
+func TestApiCmd_FileWithGET(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--file", "photo.jpg"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --file with GET")
+	}
+	if !strings.Contains(err.Error(), "requires POST") {
+		t.Errorf("expected method error, got: %v", err)
+	}
+}
+
+func TestApiCmd_FileStdinConflictWithData(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "-", "--data", "-"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --file stdin with --data stdin")
+	}
+	if !strings.Contains(err.Error(), "cannot both read from stdin") {
+		t.Errorf("expected stdin conflict error, got: %v", err)
+	}
+}
+
+func TestApiCmd_DryRunWithFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.jpg"
+	if err := os.WriteFile(tmpFile, []byte("fake-image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/im/v1/images", "--file", "image=" + tmpFile, "--data", `{"image_type":"message"}`, "--dry-run", "--as", "bot"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "image") {
+		t.Errorf("expected dry-run output to mention file field, got: %s", out)
+	}
+	if !strings.Contains(out, "Dry Run") {
+		t.Errorf("expected dry-run header, got: %s", out)
 	}
 }
