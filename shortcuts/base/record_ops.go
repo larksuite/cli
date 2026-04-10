@@ -1,3 +1,4 @@
+```go
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
@@ -5,6 +6,7 @@ package base
 
 import (
 	"context"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -34,9 +36,23 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 		Set("record_id", runtime.Str("record-id"))
 }
 
+func recordBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+	jsonVal := strings.TrimSpace(runtime.Str("json"))
+	fieldsVal := strings.TrimSpace(runtime.Str("fields"))
+	if jsonVal != "" && fieldsVal != "" {
+		return nil, common.FlagErrorf("--json and --fields are mutually exclusive")
+	}
+	if jsonVal != "" {
+		return parseJSONObject(jsonVal, "json")
+	}
+	if fieldsVal != "" {
+		return parseJSONObject(fieldsVal, "fields")
+	}
+	return nil, common.FlagErrorf("provide --json or --fields")
+}
+
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	pc := newParseCtx(runtime)
-	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	body, _ := recordBody(runtime)
 	if recordID := runtime.Str("record-id"); recordID != "" {
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
@@ -76,6 +92,14 @@ func dryRunRecordHistoryList(_ context.Context, runtime *common.RuntimeContext) 
 }
 
 func validateRecordJSON(runtime *common.RuntimeContext) error {
+	jsonVal := strings.TrimSpace(runtime.Str("json"))
+	fieldsVal := strings.TrimSpace(runtime.Str("fields"))
+	if jsonVal != "" && fieldsVal != "" {
+		return common.FlagErrorf("--json and --fields are mutually exclusive")
+	}
+	if jsonVal == "" && fieldsVal == "" {
+		return common.FlagErrorf("provide --json or --fields")
+	}
 	return nil
 }
 
@@ -107,8 +131,7 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordUpsert(runtime *common.RuntimeContext) error {
-	pc := newParseCtx(runtime)
-	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	body, err := recordBody(runtime)
 	if err != nil {
 		return err
 	}
@@ -138,3 +161,4 @@ func executeRecordDelete(runtime *common.RuntimeContext) error {
 	runtime.Out(map[string]interface{}{"deleted": true, "record_id": runtime.Str("record-id")}, nil)
 	return nil
 }
+```

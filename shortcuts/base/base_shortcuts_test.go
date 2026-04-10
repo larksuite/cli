@@ -247,6 +247,15 @@ func TestBaseRecordValidate(t *testing.T) {
 	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": "{"}, nil, nil)); err != nil {
 		t.Fatalf("invalid record json should bypass CLI validate, err=%v", err)
 	}
+	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "fields": `{"Name":"A"}`}, nil, nil)); err != nil {
+		t.Fatalf("fields validate err=%v", err)
+	}
+	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err == nil {
+		t.Fatalf("expected error when neither --json nor --fields provided")
+	}
+	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"A"}`, "fields": `{"Name":"A"}`}, nil, nil)); err == nil {
+		t.Fatalf("expected error when both --json and --fields provided")
+	}
 }
 
 func TestBaseViewValidate(t *testing.T) {

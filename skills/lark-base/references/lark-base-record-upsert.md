@@ -7,16 +7,24 @@
 ## 推荐命令
 
 ```bash
+# 使用 --fields 创建记录（推荐用于脚本）
 lark-cli base +record-upsert \
   --base-token app_xxx \
   --table-id tbl_xxx \
-  --json '{"项目名称":"Apollo","状态":"进行中"}' 
+  --fields '{"项目名称":"Apollo","状态":"进行中"}'
 
+# 使用 --json 创建记录
+lark-cli base +record-upsert \
+  --base-token app_xxx \
+  --table-id tbl_xxx \
+  --json '{"项目名称":"Apollo","状态":"进行中"}'
+
+# 更新记录
 lark-cli base +record-upsert \
   --base-token app_xxx \
   --table-id tbl_xxx \
   --record-id rec_xxx \
-  --json '{"项目名称":"Apollo","状态":"进行中","标签":["高优","外部依赖"],"截止日期":"2026-03-24 10:00:00"}'
+  --fields '{"项目名称":"Apollo","状态":"进行中","标签":["高优","外部依赖"],"截止日期":"2026-03-24 10:00:00"}'
 ```
 
 ## 参数
@@ -26,7 +34,8 @@ lark-cli base +record-upsert \
 | `--base-token <token>` | 是 | Base Token |
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--record-id <id>` | 否 | 传入时走更新，不传时走创建 |
-| `--json <body>` | 是 | 记录 JSON 对象 |
+| `--fields <json>` | 二选一 | 字段值 JSON 对象，与 `--json` 互斥 |
+| `--json <body>` | 二选一 | 记录 JSON 对象，与 `--fields` 互斥 |
 
 ## API 入参详情
 
@@ -79,7 +88,8 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records
 
 ## 坑点
 
-- ⚠️ `--json` 必须是对象，不支持数组。
+- ⚠️ `--fields` 和 `--json` 互斥，必须且只能提供一个。
+- ⚠️ `--fields` / `--json` 必须是 JSON 对象，不支持数组。
 - ⚠️ 有 `--record-id` 就一定走更新；不传就一定走创建，不会自动查重。
 - ⚠️ 这是写入操作，执行前必须确认。
 
