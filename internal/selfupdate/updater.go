@@ -146,7 +146,7 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	return r
 }
 
-// RunSkillsUpdate executes npx -y skills add larksuite/cli -g.
+// RunSkillsUpdate executes npx -y skills add larksuite/cli -g -y.
 func (u *Updater) RunSkillsUpdate() *NpmResult {
 	if u.SkillsUpdateOverride != nil {
 		return u.SkillsUpdateOverride()
@@ -159,7 +159,7 @@ func (u *Updater) RunSkillsUpdate() *NpmResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", "larksuite/cli", "-g")
+	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", "larksuite/cli", "-g", "-y")
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()
