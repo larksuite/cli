@@ -72,21 +72,44 @@ func TestMessageSender_buildMessageContent(t *testing.T) {
 	}
 }
 
-// TestMessageSender_SendMessage tests sending messages (without actual API call)
-func TestMessageSender_SendMessage(t *testing.T) {
-	sender := NewMessageSender()
+// TestMessageSender_SendMessage_NilClient tests error handling when Lark client is nil
+func TestMessageSender_SendMessage_NilClient(t *testing.T) {
+	sender := NewMessageSender() // nil client
 	ctx := context.Background()
 
-	// Test with empty chat ID - placeholder returns nil
-	err := sender.SendMessage(ctx, "", "test_message", "")
-	if err != nil {
-		t.Errorf("SendMessage() with empty chatID returned error: %v", err)
+	tests := []struct {
+		name      string
+		chatID    string
+		message   string
+		parentMsg string
+		wantErr   bool
+	}{
+		{
+			name:    "nil client",
+			chatID:  "oc_test",
+			message: "hello",
+			parentMsg: "",
+			wantErr: true, // nil larkClient causes error
+		},
+		{
+			name:    "empty chat ID with nil client",
+			chatID:  "",
+			message: "test",
+			parentMsg: "",
+			wantErr: true, // empty chat_id causes error
+		},
 	}
 
-	// Test with valid chat ID - placeholder returns nil
-	err = sender.SendMessage(ctx, "test_chat", "Hello", "msg123")
-	if err != nil {
-		t.Errorf("SendMessage() returned error: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sender.SendMessage(ctx, tt.chatID, tt.message, tt.parentMsg)
+			if tt.wantErr && err == nil {
+				t.Error("SendMessage() expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("SendMessage() unexpected error: %v", err)
+			}
+		})
 	}
 }
 

@@ -24,16 +24,18 @@ type EventSubscriber struct {
 	domain       string
 	eventCount   int
 	quiet        bool
+	larkClient   *lark.Client
 }
 
 // EventSubscriberConfig configures a new EventSubscriber
 type EventSubscriberConfig struct {
-	BotHandler  *BotHandler
+	BotHandler    *BotHandler
 	MessageSender *MessageSender
-	AppID       string
-	AppSecret   core.SecretInput
-	Brand       string // "feishu" or "lark"
-	Quiet       bool
+	AppID         string
+	AppSecret     core.SecretInput
+	Brand         string // "feishu" or "lark"
+	Quiet         bool
+	LarkClient    *lark.Client // Optional; created from app credentials if nil
 }
 
 // NewEventSubscriber creates a new event subscriber
@@ -43,9 +45,20 @@ func NewEventSubscriber(config EventSubscriberConfig) *EventSubscriber {
 		domain = lark.LarkBaseUrl
 	}
 
+	// Create Lark client from app credentials if not provided
+	larkClient := config.LarkClient
+	if larkClient == nil && config.AppID != "" && config.AppSecret.Plain != "" {
+		larkClient = lark.NewClient(config.AppID, config.AppSecret.Plain)
+	}
+
+	// Create sender with real Lark client
 	sender := config.MessageSender
 	if sender == nil {
-		sender = NewMessageSender()
+		if larkClient != nil {
+			sender = NewMessageSenderWithClient(larkClient)
+		} else {
+			sender = &MessageSender{}
+		}
 	}
 
 	return &EventSubscriber{
@@ -55,6 +68,7 @@ func NewEventSubscriber(config EventSubscriberConfig) *EventSubscriber {
 		appSecret:  config.AppSecret,
 		domain:     domain,
 		quiet:      config.Quiet,
+		larkClient: larkClient,
 	}
 }
 
