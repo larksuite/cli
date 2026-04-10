@@ -1,0 +1,1854 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>学生职业生涯规划</title>
+  <theme>
+    <textStyles>
+      <title fontColor="#000000FF"/>
+      <headline fontColor="#000000FF"/>
+      <sub-headline fontColor="#000000FF"/>
+      <body fontColor="#000000FF"/>
+      <caption fontColor="#808080FF" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="296" height="296" topLeftX="125" topLeftY="122" type="ellipse">
+        <fill>
+          <fillColor color="rgba(248, 206, 56, 1)"/>
+        </fill>
+      </shape>
+      <shape width="259" height="260" topLeftX="-340" topLeftY="140" type="ellipse">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="130" height="130" topLeftX="-340" topLeftY="270" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <line startX="567" startY="-1" endX="462" endY="122" alpha="0.6">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="552" startY="34" endX="480" endY="118" alpha="0.6">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="468" startY="293" endX="316" endY="471" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="469" startY="312" endX="396" endY="399" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="404" height="68" topLeftX="129" topLeftY="276" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="false">
+          <p>Career Planning</p>
+        </content>
+        <shadow offset="4" angle="90" blur="20" color="rgba(0, 0, 0, 0.06)"/>
+      </shape>
+      <shape width="668" height="101" topLeftX="129" topLeftY="195" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="54" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>大学生职业发展规划</p>
+        </content>
+        <shadow offset="4" angle="90" blur="20" color="rgba(0, 0, 0, 0.06)"/>
+      </shape>
+      <shape width="355" height="44" topLeftX="41" topLeftY="46" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="false">
+          <p>XX大学学生发展中心</p>
+        </content>
+      </shape>
+      <shape width="130" height="44" topLeftX="41" topLeftY="450" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="false">
+          <p>主讲人：XXX</p>
+        </content>
+      </shape>
+      <shape width="73" height="44" topLeftX="834" topLeftY="46" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="false" textAlign="right">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">LOGO</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="44" height="10" topLeftX="855" topLeftY="462" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="44" height="10" topLeftX="855" topLeftY="462" rotation="270" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="546" height="460" topLeftX="376" topLeftY="40" presetHandlers="16" type="rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="72" height="68" topLeftX="456" topLeftY="90" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">01</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="53" topLeftX="517" topLeftY="98" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="22" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="22">自我认知</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="41" topLeftX="517" topLeftY="134" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(234, 234, 234, 1)" bold="false">
+          <p>
+            <span color="rgba(234, 234, 234, 1)" fontSize="14" bold="false">KNOW YOURSELF</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="72" height="68" topLeftX="456" topLeftY="182" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">02</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="53" topLeftX="517" topLeftY="189" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="22" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">行业认知</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="41" topLeftX="517" topLeftY="226" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(234, 234, 234, 1)" bold="false">
+          <p>
+            <span color="rgba(234, 234, 234, 1)" fontSize="14" bold="false">CAREER COGNITION</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="72" height="68" topLeftX="456" topLeftY="273" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">03</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="53" topLeftX="517" topLeftY="280" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="22" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">职业定位</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="41" topLeftX="517" topLeftY="317" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(234, 234, 234, 1)" bold="false">
+          <p>
+            <span color="rgba(234, 234, 234, 1)">Career positioning</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="72" height="68" topLeftX="456" topLeftY="365" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="32">04</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="53" topLeftX="517" topLeftY="372" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="22" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">实施计划</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="284" height="41" topLeftX="517" topLeftY="409" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(234, 234, 234, 1)" bold="false">
+          <p>
+            <span color="rgba(234, 234, 234, 1)" fontSize="14" bold="false">IMPLEMENT PLAN</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="28" topLeftX="180" topLeftY="147" rotation="30" type="triangle">
+        <border color="rgba(100, 237, 255, 1)" width="10" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="74" height="74" topLeftX="77" topLeftY="73" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="326" height="71" topLeftX="95" topLeftY="84" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">目录</span>
+          </p>
+        </content>
+        <shadow offset="4" angle="90" blur="12" color="rgba(0, 0, 0, 0.08)"/>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="64" height="385" topLeftX="760" topLeftY="324" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="419" topLeftX="801" topLeftY="290" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="404" topLeftY="169" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <line startX="83" startY="180" endX="14" endY="263" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="79" startY="198" endX="57" endY="224" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="416" startY="-190" endX="350" endY="-113" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="389" startY="-173" endX="363" endY="-143" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="64" height="432" topLeftX="875" topLeftY="182" type="rect">
+        <fill>
+          <fillColor color="rgba(215, 163, 201, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="466" topLeftX="916" topLeftY="148" type="rect">
+        <fill>
+          <fillColor color="rgba(215, 163, 201, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="486" topLeftY="74" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(215, 163, 201, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="138" height="125" topLeftX="65" topLeftY="66" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="70" color="rgba(248, 206, 56, 1)" bold="true">
+          <p>01</p>
+        </content>
+      </shape>
+      <shape width="737" height="77" topLeftX="63" topLeftY="372" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="44" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.3">
+          <p>自我认知</p>
+        </content>
+      </shape>
+      <shape width="328" height="46" topLeftX="65" topLeftY="436" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="17" color="rgba(145, 144, 168, 1)">
+          <p>KNOW YOURSELF</p>
+        </content>
+      </shape>
+      <img src="UANBb22iFo5JGuxZAO6cQ0LCnOh" width="441" height="412" topLeftX="519" topLeftY="128">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="5" bottomOffset="29" presetHandlers="15"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="55" height="55" topLeftX="46" topLeftY="58" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="167" height="44" topLeftX="755" topLeftY="53" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>LOGO</p>
+        </content>
+      </shape>
+      <shape width="367" height="71" topLeftX="63" topLeftY="61" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>个人背景</p>
+        </content>
+      </shape>
+      <shape width="885" height="327" topLeftX="38" topLeftY="173" presetHandlers="20" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="154" height="135" topLeftX="148" topLeftY="240" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">现在就开始打字吧，写下任何你想表达的内容。用简洁明了的语言来传达你的想法，结合图像和图表，让你的观众更好地理解和记住你的演示。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="154" height="44" topLeftX="148" topLeftY="208" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(234, 234, 234, 1)" fontSize="16">专业技能</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="74" height="74" topLeftX="71" topLeftY="210" type="ellipse">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <icon width="42" height="42" topLeftX="87" topLeftY="226" iconType="iconpark/Base/tool.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="154" height="135" topLeftX="441" topLeftY="240" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">现在就开始打字吧，写下任何你想表达的内容。用简洁明了的语言来传达你的想法，结合图像和图表，让你的观众更好地理解和记住你的演示。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="154" height="44" topLeftX="441" topLeftY="208" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>
+            <span fontSize="16">教育背景</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="74" height="74" topLeftX="363" topLeftY="210" type="ellipse">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <icon width="42" height="42" topLeftX="379" topLeftY="226" iconType="iconpark/Office/book-one.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="154" height="135" topLeftX="733" topLeftY="240" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">现在就开始打字吧，写下任何你想表达的内容。用简洁明了的语言来传达你的想法，结合图像和图表，让你的观众更好地理解和记住你的演示。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="154" height="44" topLeftX="733" topLeftY="208" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>
+            <span fontSize="16">获奖经历</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="74" height="74" topLeftX="656" topLeftY="210" type="ellipse">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <icon width="42" height="42" topLeftX="672" topLeftY="226" iconType="iconpark/Base/config.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <line startX="333" startY="201" endX="333" endY="472" alpha="0.4">
+        <border color="rgba(222, 224, 227, 0.8)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="625" startY="201" endX="625" endY="472" alpha="0.4">
+        <border color="rgba(222, 224, 227, 0.8)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="JXhjb7HM3oI3RpxUtYcc0EgnnEd" width="202" height="202" topLeftX="273" topLeftY="270">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="VbI1bwroaoADdcxxAK8cbHbVnue" width="202" height="202" topLeftX="475" topLeftY="68">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="185" height="56" topLeftX="290" topLeftY="150" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="185" height="56" topLeftX="290" topLeftY="150" rotation="270" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="225" height="51" topLeftX="460" topLeftY="342" rotation="315" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="225" height="51" topLeftX="460" topLeftY="342" rotation="225" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="54" height="54" topLeftX="78" topLeftY="428" type="donut">
+        <fill>
+          <fillColor color="rgba(248, 206, 56, 1)"/>
+        </fill>
+      </shape>
+      <shape width="32" height="28" topLeftX="846" topLeftY="64" rotation="40" type="triangle">
+        <border color="rgba(251, 142, 241, 1)" width="10" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="200" height="97" topLeftX="68" topLeftY="125" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示。所以，让我们开始吧，展示你的想法和知识吧！</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="116" height="42" topLeftX="68" topLeftY="73" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="116" height="44" topLeftX="68" topLeftY="73" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>个人性格</p>
+        </content>
+      </shape>
+      <shape width="200" height="97" topLeftX="700" topLeftY="382" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示。所以，让我们开始吧，展示你的想法和知识吧！</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="116" height="42" topLeftX="700" topLeftY="331" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="116" height="44" topLeftX="700" topLeftY="330" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>职业性格</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="64" height="385" topLeftX="760" topLeftY="324" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="419" topLeftX="801" topLeftY="290" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="404" topLeftY="169" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <line startX="83" startY="180" endX="14" endY="263" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="79" startY="198" endX="57" endY="224" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="416" startY="-190" endX="350" endY="-113" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="389" startY="-173" endX="363" endY="-143" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="64" height="432" topLeftX="875" topLeftY="182" type="rect">
+        <fill>
+          <fillColor color="rgba(251, 202, 227, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="466" topLeftX="916" topLeftY="148" type="rect">
+        <fill>
+          <fillColor color="rgba(251, 202, 227, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="486" topLeftY="74" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(251, 202, 227, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <img src="R6RabwEXIonZtUxf9U1c2s4qnVg" width="474" height="438" topLeftX="486" topLeftY="102">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="18" bottomOffset="18" presetHandlers="2"/>
+      </img>
+      <shape width="138" height="125" topLeftX="65" topLeftY="66" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="70" color="rgba(248, 206, 56, 1)" bold="true">
+          <p>02</p>
+        </content>
+      </shape>
+      <shape width="737" height="77" topLeftX="63" topLeftY="372" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="44" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.3">
+          <p>行业认知</p>
+        </content>
+      </shape>
+      <shape width="328" height="46" topLeftX="65" topLeftY="436" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="17" color="rgba(145, 144, 168, 1)">
+          <p>CAREER COGNITION</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="55" height="55" topLeftX="46" topLeftY="58" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="367" height="71" topLeftX="63" topLeftY="61" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>职业价值观</p>
+        </content>
+      </shape>
+      <shape width="452" height="115" topLeftX="446" topLeftY="365" presetHandlers="20" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="332" height="58" topLeftX="552" topLeftY="412" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="332" height="50" topLeftX="552" topLeftY="374" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>享受型</p>
+        </content>
+      </shape>
+      <shape width="80" height="80" topLeftX="460" topLeftY="382" type="ellipse">
+        <fill>
+          <fillColor color="rgba(66, 59, 152, 1)"/>
+        </fill>
+      </shape>
+      <icon width="42" height="42" topLeftX="479" topLeftY="401" iconType="iconpark/Game/game-handle.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="452" height="115" topLeftX="446" topLeftY="73" presetHandlers="20" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="332" height="58" topLeftX="552" topLeftY="120" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="332" height="50" topLeftX="552" topLeftY="82" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>志愿型</p>
+        </content>
+      </shape>
+      <shape width="80" height="80" topLeftX="460" topLeftY="90" type="ellipse">
+        <fill>
+          <fillColor color="rgba(66, 59, 152, 1)"/>
+        </fill>
+      </shape>
+      <icon width="42" height="42" topLeftX="479" topLeftY="109" iconType="iconpark/Base/tips.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="452" height="115" topLeftX="446" topLeftY="219" presetHandlers="20" type="round-rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="332" height="58" topLeftX="552" topLeftY="266" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(255, 255, 255, 1)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="332" height="50" topLeftX="552" topLeftY="228" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="20">自由型</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="80" height="80" topLeftX="461" topLeftY="236" alpha="0.4" type="ellipse">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <icon width="42" height="42" topLeftX="480" topLeftY="255" iconType="iconpark/Others/magic.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="6" height="6" topLeftX="146" topLeftY="434" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="165" topLeftY="434" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="127" topLeftY="434" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="108" topLeftY="434" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="89" topLeftY="434" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="71" topLeftY="434" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="71" topLeftY="454" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="71" topLeftY="473" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="89" topLeftY="454" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="89" topLeftY="473" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="108" topLeftY="454" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="108" topLeftY="473" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="127" topLeftY="454" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="127" topLeftY="473" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="165" topLeftY="454" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="165" topLeftY="473" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="146" topLeftY="454" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="146" topLeftY="473" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="55" height="55" topLeftX="46" topLeftY="58" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="167" height="44" topLeftX="755" topLeftY="53" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>LOGO</p>
+        </content>
+      </shape>
+      <shape width="367" height="71" topLeftX="63" topLeftY="61" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>环境分析</p>
+        </content>
+      </shape>
+      <shape width="404" height="115" topLeftX="63" topLeftY="362" presetHandlers="16" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="81" topLeftX="73" topLeftY="379" presetHandlers="3" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="370" height="58" topLeftX="83" topLeftY="409" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="370" height="50" topLeftX="83" topLeftY="371" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>社会环境</p>
+        </content>
+      </shape>
+      <shape width="404" height="115" topLeftX="493" topLeftY="362" presetHandlers="16" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="370" height="58" topLeftX="513" topLeftY="409" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="370" height="50" topLeftX="513" topLeftY="371" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>职业环境</p>
+        </content>
+      </shape>
+      <shape width="6" height="81" topLeftX="503" topLeftY="379" presetHandlers="3" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="404" height="115" topLeftX="63" topLeftY="217" presetHandlers="16" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="81" topLeftX="73" topLeftY="234" presetHandlers="3" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="370" height="58" topLeftX="83" topLeftY="264" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="370" height="50" topLeftX="83" topLeftY="226" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>家庭环境</p>
+        </content>
+      </shape>
+      <shape width="404" height="115" topLeftX="493" topLeftY="217" presetHandlers="16" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="370" height="58" topLeftX="513" topLeftY="264" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="370" height="50" topLeftX="513" topLeftY="226" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>学校环境</p>
+        </content>
+      </shape>
+      <shape width="6" height="81" topLeftX="503" topLeftY="234" presetHandlers="3" type="rect">
+        <fill>
+          <fillColor color="rgba(100, 237, 255, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="64" height="385" topLeftX="760" topLeftY="324" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="419" topLeftX="801" topLeftY="290" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="404" topLeftY="169" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <line startX="83" startY="180" endX="14" endY="263" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="79" startY="198" endX="57" endY="224" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="416" startY="-190" endX="350" endY="-113" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="389" startY="-173" endX="363" endY="-143" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="64" height="432" topLeftX="875" topLeftY="182" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 187, 233, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="466" topLeftX="916" topLeftY="148" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 187, 233, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="486" topLeftY="74" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 187, 233, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <img src="APzubfYrBoCiqZxaqpxcZ6hnnXk" width="474" height="438" topLeftX="486" topLeftY="102" exposure="9" contrast="4" saturation="4" temperature="-11">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="18" bottomOffset="18" presetHandlers="2"/>
+      </img>
+      <shape width="138" height="125" topLeftX="65" topLeftY="66" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="70" color="rgba(248, 206, 56, 1)" bold="true">
+          <p>03</p>
+        </content>
+      </shape>
+      <shape width="737" height="77" topLeftX="63" topLeftY="372" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="44" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.3">
+          <p>职业定位</p>
+        </content>
+      </shape>
+      <shape width="328" height="46" topLeftX="65" topLeftY="436" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="17" color="rgba(145, 144, 168, 1)">
+          <p>Career positioning</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="55" height="55" topLeftX="46" topLeftY="58" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="167" height="44" topLeftX="755" topLeftY="53" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>LOGO</p>
+        </content>
+      </shape>
+      <shape width="367" height="71" topLeftX="63" topLeftY="61" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>优劣势分析</p>
+        </content>
+      </shape>
+      <shape width="404" height="295" topLeftX="63" topLeftY="182" presetHandlers="16" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="341" height="78" topLeftX="94" topLeftY="270" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 1)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">在这个幻灯片中，你可以描述相关的信息以解释你的标题。无论是介绍一个产品、提供数据分析、讲解一个概念，还是分享一段故事，都可以通过这个占位符来开始</p>
+        </content>
+      </shape>
+      <shape width="116" height="42" topLeftX="88" topLeftY="203" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="116" height="44" topLeftX="88" topLeftY="202" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="16">优势分析</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="404" height="295" topLeftX="494" topLeftY="182" presetHandlers="16" alpha="0.5" type="round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="341" height="78" topLeftX="525" topLeftY="270" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 1)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">在这个幻灯片中，你可以描述相关的信息以解释你的标题。无论是介绍一个产品、提供数据分析、讲解一个概念，还是分享一段故事，都可以通过这个占位符来开始</p>
+        </content>
+      </shape>
+      <shape width="116" height="42" topLeftX="519" topLeftY="203" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="116" height="44" topLeftX="519" topLeftY="202" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>劣势分析</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="55" height="55" topLeftX="46" topLeftY="58" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="167" height="44" topLeftX="755" topLeftY="53" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>LOGO</p>
+        </content>
+      </shape>
+      <shape width="367" height="71" topLeftX="63" topLeftY="61" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>职业发展方向</p>
+        </content>
+      </shape>
+      <shape width="164" height="164" topLeftX="398" topLeftY="236" type="ellipse">
+        <border color="rgba(251, 142, 241, 1)" width="60" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="363" startY="318" endX="597" endY="318">
+        <border color="rgba(44, 41, 100, 1)" width="8" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="480" startY="201" endX="480" endY="434">
+        <border color="rgba(44, 41, 100, 1)" width="8" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="80" height="80" topLeftX="362" topLeftY="202" type="ellipse">
+        <fill>
+          <fillColor color="rgba(70, 218, 238, 1)"/>
+        </fill>
+        <shadow offset="10" angle="90" blur="25" color="rgba(0, 0, 0, 0.15)"/>
+      </shape>
+      <icon width="42" height="42" topLeftX="381" topLeftY="221" iconType="iconpark/Abstract/six-points.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="80" height="80" topLeftX="362" topLeftY="343" type="ellipse">
+        <fill>
+          <fillColor color="rgba(70, 218, 238, 1)"/>
+        </fill>
+        <shadow offset="10" angle="90" blur="25" color="rgba(0, 0, 0, 0.15)"/>
+      </shape>
+      <icon width="42" height="42" topLeftX="381" topLeftY="362" iconType="iconpark/Abstract/circle-three.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="80" height="80" topLeftX="517" topLeftY="202" type="ellipse">
+        <fill>
+          <fillColor color="rgba(70, 218, 238, 1)"/>
+        </fill>
+        <shadow offset="10" angle="90" blur="25" color="rgba(0, 0, 0, 0.15)"/>
+      </shape>
+      <icon width="42" height="42" topLeftX="536" topLeftY="221" iconType="iconpark/Abstract/sales-report.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow/>
+      </icon>
+      <shape width="80" height="80" topLeftX="517" topLeftY="343" type="ellipse">
+        <fill>
+          <fillColor color="rgba(70, 218, 238, 1)"/>
+        </fill>
+        <shadow offset="10" angle="90" blur="25" color="rgba(0, 0, 0, 0.15)"/>
+      </shape>
+      <icon width="42" height="42" topLeftX="536" topLeftY="362" iconType="iconpark/Abstract/stereo-nesting.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+        <shadow angle="90"/>
+      </icon>
+      <shape width="287" height="58" topLeftX="611" topLeftY="239" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="287" height="50" topLeftX="611" topLeftY="201" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>发展方向二</p>
+        </content>
+      </shape>
+      <shape width="287" height="58" topLeftX="611" topLeftY="381" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="287" height="50" topLeftX="611" topLeftY="343" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>发展方向四</p>
+        </content>
+      </shape>
+      <shape width="287" height="58" topLeftX="63" topLeftY="239" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="287" height="50" topLeftX="63" topLeftY="201" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>发展方向一</p>
+        </content>
+      </shape>
+      <shape width="287" height="58" topLeftX="63" topLeftY="381" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)" fontSize="12">通过精心设计的幻灯片模板，你可以制作出引人注目且具有影响力的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="287" height="50" topLeftX="63" topLeftY="343" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(234, 234, 234, 1)" bold="true">
+          <p>发展方向三</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="64" height="385" topLeftX="760" topLeftY="324" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="419" topLeftX="801" topLeftY="290" type="rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="404" topLeftY="169" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(208, 50, 193, 1)"/>
+        </fill>
+      </shape>
+      <line startX="83" startY="180" endX="14" endY="263" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="79" startY="198" endX="57" endY="224" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="416" startY="-190" endX="350" endY="-113" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="389" startY="-173" endX="363" endY="-143" alpha="0.5">
+        <border color="rgba(255, 255, 255, 1)" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="64" height="432" topLeftX="875" topLeftY="182" type="rect">
+        <fill>
+          <fillColor color="rgba(249, 190, 213, 1)"/>
+        </fill>
+      </shape>
+      <shape width="338" height="466" topLeftX="916" topLeftY="148" type="rect">
+        <fill>
+          <fillColor color="rgba(249, 190, 213, 1)"/>
+        </fill>
+      </shape>
+      <shape width="262" height="131" topLeftX="486" topLeftY="74" presetHandlers="32" type="round-rect">
+        <fill>
+          <fillColor color="rgba(249, 190, 213, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-132" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="520" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="539" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="557" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="576" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="614" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-113" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="6" height="6" topLeftX="595" topLeftY="-93" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <img src="U07qbNriwojg4wxvawdce2vJnqh" width="286" height="343" topLeftX="596" topLeftY="154">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="138" height="125" topLeftX="65" topLeftY="66" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="70" color="rgba(248, 206, 56, 1)" bold="true">
+          <p>04</p>
+        </content>
+      </shape>
+      <shape width="737" height="77" topLeftX="63" topLeftY="372" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="44" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.3">
+          <p>实施计划</p>
+        </content>
+      </shape>
+      <shape width="328" height="46" topLeftX="65" topLeftY="436" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="17" color="rgba(145, 144, 168, 1)">
+          <p>CAREER DECISION-DECISION-MAKING</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="55" height="55" topLeftX="46" topLeftY="58" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="167" height="44" topLeftX="755" topLeftY="53" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>LOGO</p>
+        </content>
+      </shape>
+      <shape width="367" height="71" topLeftX="63" topLeftY="61" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>计划周期一览</p>
+        </content>
+      </shape>
+      <shape width="249" height="78" topLeftX="63" topLeftY="402" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">用简洁明了的语言来传达你的想法，结合图像和图表，让你的观众更好地理解和记住你的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="835" height="29" topLeftX="63" topLeftY="357" type="slides-full-round-rect">
+        <fill>
+          <fillColor color="rgba(21, 20, 87, 1)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="29" topLeftX="386" topLeftY="357" type="ellipse">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="29" topLeftX="63" topLeftY="357" type="ellipse">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="324" height="29" topLeftX="77" topLeftY="357" type="rect">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="29" topLeftX="627" topLeftY="357" type="ellipse">
+        <fill>
+          <fillColor color="rgba(248, 206, 56, 1)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="29" topLeftX="304" topLeftY="357" type="ellipse">
+        <fill>
+          <fillColor color="rgba(248, 206, 56, 1)"/>
+        </fill>
+      </shape>
+      <shape width="324" height="29" topLeftX="318" topLeftY="357" type="rect">
+        <fill>
+          <fillColor color="rgba(248, 206, 56, 1)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="29" topLeftX="869" topLeftY="357" type="ellipse">
+        <fill>
+          <fillColor color="rgba(70, 218, 238, 1)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="29" topLeftX="578" topLeftY="357" type="ellipse">
+        <fill>
+          <fillColor color="rgba(70, 218, 238, 1)"/>
+        </fill>
+      </shape>
+      <shape width="294" height="29" topLeftX="589" topLeftY="357" type="rect">
+        <fill>
+          <fillColor color="rgba(70, 218, 238, 1)"/>
+        </fill>
+      </shape>
+      <shape width="50" height="50" topLeftX="847" topLeftY="346" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 248, 254, 1)"/>
+        </fill>
+        <border color="rgba(70, 218, 238, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <icon width="25" height="25" topLeftX="860" topLeftY="359" iconType="iconpark/Base/radar.svg">
+        <border color="rgba(70, 218, 238, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="50" height="50" topLeftX="288" topLeftY="346" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 248, 254, 1)"/>
+        </fill>
+        <border color="rgba(251, 142, 241, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <icon width="25" height="25" topLeftX="300" topLeftY="359" iconType="iconpark/Base/aiming.svg">
+        <border color="rgba(251, 142, 241, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="50" height="50" topLeftX="567" topLeftY="346" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 248, 254, 1)"/>
+        </fill>
+        <border color="rgba(248, 206, 56, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <icon width="25" height="25" topLeftX="580" topLeftY="359" iconType="iconpark/Charts/chart-ring.svg">
+        <border color="rgba(248, 206, 56, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="187" height="41" topLeftX="90" topLeftY="349" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">短期目标</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="187" height="41" topLeftX="356" topLeftY="349" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">中期目标</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="187" height="41" topLeftX="643" topLeftY="349" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">长期目标</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="249" height="78" topLeftX="336" topLeftY="402" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">用简洁明了的语言来传达你的想法，结合图像和图表，让你的观众更好地理解和记住你的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="249" height="78" topLeftX="612" topLeftY="402" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">用简洁明了的语言来传达你的想法，结合图像和图表，让你的观众更好地理解和记住你的演示</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="525" height="58" topLeftX="63" topLeftY="140" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 1)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">在这个幻灯片中，你可以描述相关的信息以解释你的标题。无论是介绍一个产品、提供数据分析、讲解一个概念，还是分享一段故事，都可以通过这个占位符来开始</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="55" height="55" topLeftX="46" topLeftY="58" type="donut">
+        <fill>
+          <fillColor color="linear-gradient(135deg,rgba(248, 206, 56, 1) 0%,rgba(248, 206, 56, 1) 23%,rgba(248, 206, 56, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="167" height="44" topLeftX="755" topLeftY="53" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16">
+          <p>LOGO</p>
+        </content>
+      </shape>
+      <shape width="367" height="71" topLeftX="63" topLeftY="61" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="34" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>效果评估</p>
+        </content>
+      </shape>
+      <shape width="467" height="340" topLeftX="432" topLeftY="143" type="triangle">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <line startX="579" startY="260" endX="750" endY="260">
+        <border color="rgba(44, 41, 100, 1)" width="8" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="497" startY="372" endX="833" endY="372">
+        <border color="rgba(44, 41, 100, 1)" width="8" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="116" height="44" topLeftX="607" topLeftY="187" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="16">长期目标</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="116" height="44" topLeftX="607" topLeftY="297" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="16">中期目标</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="116" height="44" topLeftX="607" topLeftY="406" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="16">短期目标</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="602" startY="206" endX="382" endY="206" alpha="0.4">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="315" height="58" topLeftX="63" topLeftY="187" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">无论是介绍一个产品、提供数据分析、讲解一个概念，还是分享一段故事，都可以通过这个占位符来开始</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="523" startY="318" endX="335" endY="318" alpha="0.4">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="257" height="78" topLeftX="63" topLeftY="279" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">无论是介绍一个产品、提供数据分析、讲解一个概念，还是分享一段故事，都可以通过这个占位符来开始</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="446" startY="427" endX="293" endY="427" alpha="0.4">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="220" height="78" topLeftX="63" topLeftY="388" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(222, 224, 227, 0.8)" lineSpacing="multiple:1.6">
+          <p lineSpacing="multiple:1.6">
+            <span color="rgba(222, 224, 227, 0.8)">无论是介绍一个产品、提供数据分析、讲解一个概念，还是分享一段故事，都可以通过这个占位符来开始</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(44, 41, 100, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="296" height="296" topLeftX="332" topLeftY="122" type="ellipse">
+        <fill>
+          <fillColor color="rgba(248, 206, 56, 1)"/>
+        </fill>
+      </shape>
+      <shape width="149" height="149" topLeftX="332" topLeftY="269" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(248, 206, 56, 1)"/>
+        </fill>
+      </shape>
+      <shape width="247" height="247" topLeftX="356" topLeftY="146" type="ellipse">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+      <shape width="525" height="101" topLeftX="218" topLeftY="202" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="54" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">谢谢!</span>
+          </p>
+        </content>
+        <shadow offset="4" angle="90" blur="12" color="rgba(0, 0, 0, 0.08)"/>
+      </shape>
+      <shape width="525" height="44" topLeftX="218" topLeftY="283" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 1)" textAlign="center">
+          <p>
+            <span color="rgba(255, 255, 255, 1)">副标题信息</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="32" height="28" topLeftX="637" topLeftY="158" rotation="30" type="triangle">
+        <border color="rgba(100, 237, 255, 1)" width="10" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="42" height="42" topLeftX="263" topLeftY="347" type="donut">
+        <fill>
+          <fillColor color="rgba(251, 142, 241, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>
