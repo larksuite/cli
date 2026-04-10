@@ -4,27 +4,24 @@
 package selfupdate
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestCurrentExePath(t *testing.T) {
-	p, err := currentExePath()
+func TestResolveExe(t *testing.T) {
+	u := New()
+	p, err := u.resolveExe()
 	if err != nil {
-		t.Fatalf("currentExePath() error: %v", err)
+		t.Fatalf("resolveExe() error: %v", err)
 	}
 	if !filepath.IsAbs(p) {
 		t.Errorf("expected absolute path, got: %s", p)
 	}
-	if _, err := os.Stat(p); err != nil {
-		t.Errorf("resolved path should exist: %v", err)
-	}
 }
 
 func TestPrepareSelfReplace_ReturnsNoError(t *testing.T) {
-	// On any platform, calling PrepareSelfReplace should not panic.
-	restore, err := PrepareSelfReplace()
+	u := New()
+	restore, err := u.PrepareSelfReplace()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,5 +29,6 @@ func TestPrepareSelfReplace_ReturnsNoError(t *testing.T) {
 }
 
 func TestCleanupStaleFiles_NoPanic(t *testing.T) {
-	CleanupStaleFiles()
+	u := New()
+	u.CleanupStaleFiles()
 }

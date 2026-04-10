@@ -14,10 +14,10 @@ import (
 // PrepareSelfReplace renames the running .exe to .old so that npm's
 // postinstall script can write the new binary without hitting EBUSY.
 // Returns a restore function that undoes the rename on failure.
-func PrepareSelfReplace() (restore func(), err error) {
+func (u *Updater) PrepareSelfReplace() (restore func(), err error) {
 	noop := func() {}
 
-	exe, err := currentExePath()
+	exe, err := u.resolveExe()
 	if err != nil {
 		return noop, nil // best-effort; don't block update
 	}
@@ -44,8 +44,8 @@ func PrepareSelfReplace() (restore func(), err error) {
 // CleanupStaleFiles removes leftover .old files from previous upgrades.
 // If the original binary is missing but .old exists (crash mid-update),
 // it restores the .old to recover the installation.
-func CleanupStaleFiles() {
-	exe, err := currentExePath()
+func (u *Updater) CleanupStaleFiles() {
+	exe, err := u.resolveExe()
 	if err != nil {
 		return
 	}

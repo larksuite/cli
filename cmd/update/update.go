@@ -6,9 +6,7 @@ package cmdupdate
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -19,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 type installMethod int
@@ -127,7 +126,8 @@ func updateRun(opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
 	cur := currentVersion()
 
-	selfupdate.CleanupStaleFiles()
+	updater := selfupdate.New()
+	updater.CleanupStaleFiles()
 
 	// Suppress the global update-available notice for the update command itself.
 	// Without this, non-success JSON envelopes (already_up_to_date, manual_required, etc.)
@@ -180,7 +180,7 @@ func updateRun(opts *UpdateOptions) error {
 		reason := manualReason(method, npmPath != "")
 		return doManualUpdate(opts, io, cur, latest, resolvedPath, reason)
 	}
-	return doNpmUpdate(opts, io, cur, latest)
+	return doNpmUpdate(opts, io, cur, latest, updater)
 }
 
 // --- Shared helpers ---
@@ -234,11 +234,11 @@ func detectInstallMethod(resolvedPath string) installMethod {
 }
 
 func detectInstallMethodAuto() (installMethod, string) {
-	exe, err := os.Executable()
+	exe, err := vfs.Executable()
 	if err != nil {
 		return installManual, ""
 	}
-	resolved, err := filepath.EvalSymlinks(exe)
+	resolved, err := vfs.EvalSymlinks(exe)
 	if err != nil {
 		return installManual, exe
 	}
@@ -308,9 +308,9 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest, res
 }
 
 // doNpmUpdate runs the npm install + skills update, formatting output based on opts.JSON.
-func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string) error {
+func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, updater *selfupdate.Updater) error {
 	// On Windows, rename the running .exe out of the way so npm postinstall can write.
-	restore, err := selfupdate.PrepareSelfReplace()
+	restore, err := updater.PrepareSelfReplace()
 	if err != nil {
 		return reportError(opts, io, output.ExitAPI, "update_error", "failed to prepare update: %s", err)
 	}

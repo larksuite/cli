@@ -7,9 +7,9 @@ package selfupdate
 
 // PrepareSelfReplace is a no-op on Unix.
 // Unix allows overwriting a running executable via inode semantics.
-func PrepareSelfReplace() (restore func(), err error) {
+func (u *Updater) PrepareSelfReplace() (restore func(), err error) {
 	return func() {}, nil
 }
 
 // CleanupStaleFiles is a no-op on Unix (no .old files are created).
-func CleanupStaleFiles() {}
+func (u *Updater) CleanupStaleFiles() {}
