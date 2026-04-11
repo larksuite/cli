@@ -67,6 +67,10 @@ POST /open-apis/base/v3/bases
 2. `--folder-token`、`--time-zone` 都是可选项；用户没要求时不要为此额外追问。
 3. 创建成功后，整理并返回：Base 名称、token，以及响应中已有的可访问链接。
 
+## 坑点
+
+- ⚠️ 创建 Base 时会自动生成一张默认表，表内含有空记录。如需写入数据，应先用 `+record-list` 查出空行的 record_id，再用 `+record-delete --yes` 清理，避免脏数据。
+
 ## 参考
 
 - [lark-base-workspace.md](lark-base-workspace.md) — base / workspace 索引页

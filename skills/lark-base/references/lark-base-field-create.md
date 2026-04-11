@@ -53,7 +53,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 - 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
 - `type` 不同，必填子字段不同：
   - `select`：用 `multiple` + `options`（`options` 里只传 `name/hue/lightness`，不要传 `id`）。
-  - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。
+  - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。**一个 `link` 字段只能关联一张固定的表**，同一列的不同行无法各自关联到不同的表。若主表的不同记录需要指向不同子表，不要用 `link` 字段，改用命名约定（如用文本字段记录子表名）。
   - `formula`：必须有 `expression`；先读 formula guide，再创建。
   - `lookup`：必须有 `from`、`select`、`where`；先读 lookup guide，再创建。
 
@@ -95,6 +95,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 - ⚠️ 这是写入操作，执行前必须确认。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先读对应 guide，再创建。
+- ⚠️ `link` 字段只能关联一张固定的表，同一列的不同行无法各自关联到不同的表。若需要不同记录指向不同子表，改用文本字段 + 命名约定。
 
 ## 参考
 
