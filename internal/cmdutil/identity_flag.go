@@ -12,8 +12,8 @@ import (
 )
 
 // AddAPIIdentityFlag registers the standard --as flag shape used by api/service commands.
-func AddAPIIdentityFlag(cmd *cobra.Command, f *Factory, target *string) {
-	addIdentityFlag(cmd, f, target, identityFlagConfig{
+func AddAPIIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory, target *string) {
+	addIdentityFlag(ctx, cmd, f, target, identityFlagConfig{
 		defaultValue:     "auto",
 		usage:            "identity type: user | bot | auto (default)",
 		completionValues: []string{"user", "bot"},
@@ -21,11 +21,11 @@ func AddAPIIdentityFlag(cmd *cobra.Command, f *Factory, target *string) {
 }
 
 // AddShortcutIdentityFlag registers the standard --as flag shape used by shortcuts.
-func AddShortcutIdentityFlag(cmd *cobra.Command, f *Factory, authTypes []string) {
+func AddShortcutIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory, authTypes []string) {
 	if len(authTypes) == 0 {
 		authTypes = []string{"user"}
 	}
-	addIdentityFlag(cmd, f, nil, identityFlagConfig{
+	addIdentityFlag(ctx, cmd, f, nil, identityFlagConfig{
 		defaultValue:     authTypes[0],
 		usage:            "identity type: " + strings.Join(authTypes, " | "),
 		completionValues: authTypes,
@@ -41,8 +41,8 @@ type identityFlagConfig struct {
 // addIdentityFlag centralizes --as registration and strict-mode UX.
 // When strict mode is active, the flag is still accepted for compatibility
 // but hidden from help/completion and locked to the forced identity by default.
-func addIdentityFlag(cmd *cobra.Command, f *Factory, target *string, cfg identityFlagConfig) {
-	if forced := f.ResolveStrictMode(context.Background()).ForcedIdentity(); forced != "" {
+func addIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory, target *string, cfg identityFlagConfig) {
+	if forced := f.ResolveStrictMode(ctx).ForcedIdentity(); forced != "" {
 		// Keep registering --as in strict mode even though it is hidden.
 		// This preserves parser compatibility for existing invocations that still pass
 		// --as, and keeps downstream GetString("as") / ResolveAs paths stable.

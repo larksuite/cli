@@ -99,12 +99,12 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
 	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
-	rootCmd.AddCommand(api.NewCmdApi(f, nil))
+	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
-	service.RegisterServiceCommands(rootCmd, f)
-	shortcuts.RegisterShortcuts(rootCmd, f)
+	service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
+	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 
 	// Prune commands incompatible with strict mode.
 	if mode := f.ResolveStrictMode(ctx); mode.IsActive() {
