@@ -90,6 +90,19 @@ lark-cli auth login --recommend
 lark-cli calendar +agenda
 ```
 
+#### 可选：Shell Completion
+
+`lark-cli completion` 是一个普通的顶层命令，不需要先登录。可以为常用 shell 生成补全脚本：
+
+```bash
+# Bash
+lark-cli completion bash > ~/.local/share/bash-completion/completions/lark-cli
+
+# Zsh
+mkdir -p ~/.zfunc
+lark-cli completion zsh > ~/.zfunc/_lark-cli
+```
+
 ### 快速开始（AI Agent）
 
 > 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
@@ -124,6 +137,12 @@ lark-cli auth login --recommend
 
 ```bash
 lark-cli auth status
+```
+
+Shell completion 也不依赖认证：
+
+```bash
+lark-cli completion fish > ~/.config/fish/completions/lark-cli.fish
 ```
 
 
