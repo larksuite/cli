@@ -1,0 +1,227 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "8px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": "你的设备申请流程已结束，我们诚邀你对本次服务做出评价！",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "form",
+                    "elements": [
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "整体领用评分",
+                                            "text_align": "left",
+                                            "text_size": "normal"
+                                        },
+                                        {
+                                            "tag": "select_static",
+                                            "placeholder": {
+                                                "tag": "plain_text",
+                                                "content": "请选择"
+                                            },
+                                            "options": [
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "非常满意"
+                                                    },
+                                                    "value": "1",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "sheet-iconsets-star-100_filled"
+                                                    }
+                                                },
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "满意"
+                                                    },
+                                                    "value": "2",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "sheet-iconsets-star-100_filled"
+                                                    }
+                                                },
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "一般"
+                                                    },
+                                                    "value": "5",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "sheet-iconsets-star-100_filled"
+                                                    }
+                                                },
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "不满意"
+                                                    },
+                                                    "value": "3",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "sheet-iconsets-star-100_filled"
+                                                    }
+                                                },
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "非常不满意"
+                                                    },
+                                                    "value": "4",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "sheet-iconsets-star-100_filled"
+                                                    }
+                                                }
+                                            ],
+                                            "type": "default",
+                                            "width": "fill",
+                                            "name": "Select_m7d0zq95"
+                                        }
+                                    ],
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "weight": 1
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "更多优化建议",
+                                            "text_align": "left",
+                                            "text_size": "normal",
+                                            "margin": "4px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "input",
+                                            "placeholder": {
+                                                "tag": "plain_text",
+                                                "content": "请输入"
+                                            },
+                                            "default_value": "",
+                                            "width": "fill",
+                                            "name": "Input_m7d0zq9a"
+                                        }
+                                    ],
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "weight": 1
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": "提交"
+                                            },
+                                            "type": "primary_filled",
+                                            "width": "100px",
+                                            "form_action_type": "submit",
+                                            "name": "Button_m7t30yjl"
+                                        }
+                                    ],
+                                    "padding": "4px 0px 0px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px",
+                                    "weight": 1
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "direction": "horizontal",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "padding": "4px 0px 4px 0px",
+                    "margin": "0px 0px 0px 0px",
+                    "name": "Form_m7t30yjk"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "【设备领取评价】请对本次设备领用的服务做出评价"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "yellow",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "select-down_outlined"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

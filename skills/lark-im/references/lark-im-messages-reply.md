@@ -170,6 +170,25 @@ lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' -
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
 
+## Interactive Cards
+
+- Use **version 2.0** when:
+  1. the user explicitly asks for **2.0**, or
+  2. the requested card involves **complex interactive behavior**.
+
+- Before building a **2.0** card:
+  1. Read the **structure** doc to understand the overall schema.
+  2. Read the **component overview** to see available components.
+  3. Then read **only the necessary component detail docs**.
+  4. Choose **1-2** relevant examples under [`../card-examples`](../card-examples) to read and learn from before composing the final card reply; **do not** read the whole folder.
+
+- Prefer the **markdown** version of documentation URLs by appending `.md`.
+
+Reference docs:
+- component overview: https://open.larkoffice.com/document/feishu-cards/card-json-v2-components/component-json-v2-overview.md
+- structure: https://open.larkoffice.com/document/feishu-cards/card-json-v2-structure.md
+
+
 ## Return Value
 
 ```json

@@ -1,0 +1,349 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "8px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "20px 20px 20px 20px",
+            "elements": [
+                {
+                    "tag": "form",
+                    "elements": [
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "**项目名称**<font color='red'>*</font>",
+                                            "text_align": "left",
+                                            "text_size": "normal",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "add-app_outlined",
+                                                "color": "light_grey"
+                                            }
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "weight": 1
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "业务做大做强",
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "weight": 4
+                                }
+                            ],
+                            "margin": "0px 0px 4px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "**经办人**<font color='red'>*</font>",
+                                            "text_align": "left",
+                                            "text_size": "normal",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "member_outlined",
+                                                "color": "light_grey"
+                                            }
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "weight": 1
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "select_person",
+                                            "placeholder": {
+                                                "tag": "plain_text",
+                                                "content": "请选择"
+                                            },
+                                            "options": [],
+                                            "width": "fill",
+                                            "type": "default",
+                                            "name": "PersonSelect_d8a92vdf4m"
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "weight": 4
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "**优先级**<font color='red'>*</font>",
+                                            "text_align": "left",
+                                            "text_size": "normal",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "msgcard-rectangle_outlined",
+                                                "color": "light_grey"
+                                            }
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "weight": 1
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "select_static",
+                                            "placeholder": {
+                                                "tag": "plain_text",
+                                                "content": "请选择"
+                                            },
+                                            "options": [
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "P0"
+                                                    },
+                                                    "value": "1",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "sheet-iconsets-increase_filled"
+                                                    }
+                                                },
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "P1"
+                                                    },
+                                                    "value": "P1",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "sheet-iconsets-stable_filled"
+                                                    }
+                                                },
+                                                {
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "P2"
+                                                    },
+                                                    "value": "3",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "expand-down_filled"
+                                                    }
+                                                }
+                                            ],
+                                            "type": "default",
+                                            "width": "fill",
+                                            "name": "Select_fbg14loa99c"
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "weight": 4
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "**项目评论**",
+                                            "text_align": "left",
+                                            "text_size": "normal",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "chat_outlined",
+                                                "color": "light_grey"
+                                            }
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "weight": 1
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "input",
+                                            "placeholder": {
+                                                "tag": "plain_text",
+                                                "content": "请输入"
+                                            },
+                                            "default_value": "",
+                                            "width": "fill",
+                                            "name": "Input_cq6bixohu6n"
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "weight": 4
+                                }
+                            ],
+                            "margin": "0px 0px 4px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "right",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "110px",
+                                    "elements": [],
+                                    "padding": "0px 0px 0px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": "提交"
+                                            },
+                                            "type": "primary_filled",
+                                            "width": "fill",
+                                            "form_action_type": "submit",
+                                            "name": "Button_m7t30yjh"
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "weight": 1
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": "取消"
+                                            },
+                                            "type": "default",
+                                            "width": "fill",
+                                            "size": "medium",
+                                            "name": "Button_vghtjecc609",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "weight": 1
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "16px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "padding": "4px 0px 4px 0px",
+                    "margin": "0px 0px 0px 0px",
+                    "name": "Form_m7t30yiz"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "项目小助理"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "wathet",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "app-default_outlined"
+            },
+            "padding": "12px 12px 12px 20px"
+        }
+    }
+}

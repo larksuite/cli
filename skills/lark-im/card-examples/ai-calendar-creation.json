@@ -1,0 +1,145 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "horizontal",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "12px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "20px 20px 20px 20px",
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": "开发者运营项目启动会",
+                    "text_align": "left",
+                    "text_size": "heading"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "2024年1月25日（周四） ",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "calendar_outlined",
+                        "color": "grey"
+                    }
+                },
+                {
+                    "tag": "markdown",
+                    "content": "14:30 - 15:00 (GMT+8)",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "time_outlined",
+                        "color": "grey"
+                    }
+                },
+                {
+                    "tag": "person_list",
+                    "persons": [
+                        {
+                            "id": "1"
+                        },
+                        {
+                            "id": "2"
+                        },
+                        {
+                            "id": "3"
+                        }
+                    ],
+                    "size": "small",
+                    "lines": 1,
+                    "show_avatar": true,
+                    "show_name": true,
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "group_outlined",
+                        "color": "grey"
+                    },
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "12px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "确定日程"
+                                    },
+                                    "type": "primary_filled",
+                                    "width": "fill",
+                                    "size": "medium"
+                                }
+                            ],
+                            "direction": "horizontal",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "编辑日程"
+                                    },
+                                    "type": "default",
+                                    "width": "fill",
+                                    "size": "medium"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top"
+                        }
+                    ],
+                    "margin": "4px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "为您创建了一个会议日程，请确认："
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "yellow",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "calendar_colorful"
+            },
+            "padding": "12px 12px 12px 20px"
+        }
+    }
+}

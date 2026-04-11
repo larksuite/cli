@@ -1,0 +1,197 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "color": {
+                    "color_5rohwuq2vxf": {
+                        "light_mode": "rgba(247, 250, 255, 1)",
+                        "dark_mode": "rgba(10, 22, 41, 1)"
+                    },
+                    "color_t7lsds46e9s": {
+                        "light_mode": "rgba(247, 250, 255, 1)",
+                        "dark_mode": "rgba(10, 22, 41, 1)"
+                    }
+                },
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "0px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "0px 0px 0px 0px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "transparent": false,
+                    "scale_type": "crop_center",
+                    "size": "stretch",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "background_style": "color_t7lsds46e9s",
+                    "horizontal_spacing": "0px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "##### <number_tag background_color=\"blue-500\" font_color=\"white\">1</number_tag> **企业信息传递痛点**",
+                                    "text_align": "left",
+                                    "text_size": "heading",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "部门壁垒森严，信息难以流通，导致协同效率低下。\n信息传递不及时，反馈延迟，错过最佳决策时机。\n数据分散，缺乏整合，难以形成有效决策依据。",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "##### <number_tag background_color=\"blue-500\" font_color=\"white\">2</number_tag> **信息流开放来帮你**",
+                                    "text_align": "left",
+                                    "text_size": "heading"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "打破部门壁垒，实现信息无缝流通，提升协同效率。\n实时共享数据，快速反馈，助力高效决策。\n整合数据资源，智能分析，为决策提供有力支持。",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 5
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "interactive_container",
+                                    "width": "fill",
+                                    "height": "auto",
+                                    "corner_radius": "24px",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"white\">立即申请开通</font>",
+                                            "text_align": "center",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "has_border": false,
+                                    "background_style": "blue-500",
+                                    "padding": "5px 24px 5px 24px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "interactive_container",
+                                    "width": "fill",
+                                    "height": "auto",
+                                    "corner_radius": "24px",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"blue\">查看接入指南</font>",
+                                            "text_align": "center",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "has_border": true,
+                                    "border_color": "blue-500",
+                                    "padding": "5px 24px 5px 24px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "center",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "margin": "12px 12px 12px 12px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "重要信息找不到？让「飞书信息流开放」来帮你！"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "blue",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "lark-logo_colorful"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

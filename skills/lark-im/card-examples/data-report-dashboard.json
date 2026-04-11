@@ -1,0 +1,235 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                },
+                "color": {
+                    "color_bkz3vrj7o4b": {
+                        "light_mode": "rgba(250, 251, 255, 1)",
+                        "dark_mode": "rgba(10, 16, 41, 1)"
+                    },
+                    "color_w1ysuydl1b": {
+                        "light_mode": "rgba(250, 251, 255, 1)",
+                        "dark_mode": "rgba(10, 16, 41, 1)"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "8px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "12px 4px 12px 4px",
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": "**个人审批效率总览**",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 12px 0px 12px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "background_style": "color_w1ysuydl1b",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color = \"grey\">已审批单量（单）</font>\n### 10\n<font color='grey'>领先团队</font><font color='green'> 20% </font>",
+                                    "text_align": "left",
+                                    "text_size": "notation"
+                                }
+                            ],
+                            "padding": "8px 12px 8px 12px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "2px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color = \"grey\">平均审批耗时（小时）</font>\n### 32\n<font color='grey'>领先团队</font><font color='green'> 20% </font>",
+                                    "text_align": "left",
+                                    "text_size": "notation"
+                                }
+                            ],
+                            "padding": "8px 12px 8px 12px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "2px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color = \"grey\">待审批（单）</font>\n### 12\n<font color='grey'>落后团队</font><font color='red'> 20% </font>",
+                                    "text_align": "left",
+                                    "text_size": "notation"
+                                }
+                            ],
+                            "padding": "8px 12px 8px 12px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "2px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 12px 0px 12px"
+                },
+                {
+                    "tag": "chart",
+                    "chart_spec": {
+                        "type": "bar",
+                        "title": {
+                            "text": "柱状图"
+                        },
+                        "data": {
+                            "values": [
+                                {
+                                    "type": "已审批单量（单）",
+                                    "value": 10,
+                                    "year": ""
+                                },
+                                {
+                                    "type": "平均审批耗时（小时）",
+                                    "value": 32,
+                                    "year": ""
+                                },
+                                {
+                                    "type": "待审批（单）",
+                                    "value": 12,
+                                    "year": ""
+                                }
+                            ]
+                        },
+                        "xField": [
+                            "year",
+                            "type"
+                        ],
+                        "yField": "value",
+                        "seriesField": "type",
+                        "legends": {
+                            "visible": true,
+                            "orient": "bottom"
+                        }
+                    },
+                    "preview": true,
+                    "color_theme": "brand",
+                    "height": "300px",
+                    "margin": "8px 0px 24px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "**团队审批效率参考**",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "8px 12px 0px 12px"
+                },
+                {
+                    "tag": "table",
+                    "columns": [
+                        {
+                            "data_type": "persons",
+                            "name": "name",
+                            "display_name": "审批人",
+                            "horizontal_align": "left",
+                            "width": "auto"
+                        },
+                        {
+                            "data_type": "text",
+                            "name": "duration",
+                            "display_name": "审批时长",
+                            "horizontal_align": "left",
+                            "width": "auto"
+                        },
+                        {
+                            "data_type": "markdown",
+                            "name": "diff",
+                            "display_name": "对比上周变化",
+                            "horizontal_align": "left",
+                            "width": "auto"
+                        }
+                    ],
+                    "rows": [
+                        {
+                            "name": [
+                                "xxx"
+                            ],
+                            "duration": "小于1小时",
+                            "diff": "↓12%"
+                        },
+                        {
+                            "name": [
+                                "xxx"
+                            ],
+                            "duration": "2 小时",
+                            "diff": "↑5%"
+                        },
+                        {
+                            "name": [
+                                "xxx"
+                            ],
+                            "duration": "3 小时",
+                            "diff": "↓10%"
+                        }
+                    ],
+                    "row_height": "low",
+                    "header_style": {
+                        "background_style": "grey",
+                        "bold": true,
+                        "lines": 1
+                    },
+                    "page_size": 5,
+                    "margin": "0px 12px 0px 12px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "**待优化的任务类型**\n- 加班申请审批耗时  ： <font color='grey'>低于部门</font> <font color='red'>95% </font><font color='grey'>的审批人</font> \n- 休假申请审批耗时：<font color='grey'>低于部门</font> <font color='red'>55% </font><font color='grey'>的审批人</font> ",
+                    "text_align": "left",
+                    "text_size": "normal",
+                    "margin": "8px 12px 0px 12px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "**效率高的任务类型**\n- 数据权限申请 ：<font color='grey'>高于部门</font> <font color='green'>68% </font><font color='grey'>的审批人</font> \n- BOT推送消息：<font color='grey'>高于部门</font> <font color='green'>56% </font><font color='grey'>的审批人</font> ",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "16px 12px 8px 12px"
+                }
+            ]
+        }
+    }
+}

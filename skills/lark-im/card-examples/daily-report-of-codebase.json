@@ -1,0 +1,241 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "项目开发日报"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": "2025年12月2日 星期一"
+            },
+            "template": "blue",
+            "padding": "12px 12px 12px 12px",
+            "text_tag_list": [
+                {
+                    "tag": "text_tag",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": "日报"
+                    },
+                    "color": "blue"
+                }
+            ]
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "12px",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "vertical_align": "top",
+                            "background_style": "blue-50",
+                            "padding": "8px 8px 8px 8px",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**<font color='blue'>3</font>**\n<font color='grey'>总提交数</font>",
+                                    "text_align": "center"
+                                }
+                            ]
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "vertical_align": "top",
+                            "background_style": "wathet-50",
+                            "padding": "8px 8px 8px 8px",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**<font color='wathet'>3</font>**\n<font color='grey'>活跃贡献者</font>",
+                                    "text_align": "center"
+                                }
+                            ]
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "vertical_align": "top",
+                            "background_style": "indigo-50",
+                            "padding": "8px 8px 8px 8px",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**<font color='indigo'>2</font>**\n<font color='grey'>Open MR</font>",
+                                    "text_align": "center"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "🚀 **新功能**"
+                    }
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "margin": "4px 0px 0px 0px",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "vertical_align": "top",
+                            "background_style": "green-50",
+                            "padding": "12px 12px 12px 12px",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "• **更新构建配置支持 Web Platform Baseline 标准**: 升级浏览器兼容性目标（Chrome 111+, Edge 111+, Firefox 113+, Safari 16.4+），确保构建输出利用现代 Web 平台特性 `维护者 A`"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "♻️ **代码重构**"
+                    }
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "margin": "4px 0px 0px 0px",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "vertical_align": "top",
+                            "background_style": "purple-50",
+                            "padding": "12px 12px 12px 12px",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "• **重构核心追踪器以支持完整请求生命周期追踪**: 将请求追踪 Hook 从仅错误追踪扩展为完整请求生命周期追踪，添加 `isLoading` 参数支持请求开始和结束状态追踪 `维护者 B`\n\n⚠️ **BREAKING CHANGE**: 请求追踪 Hook API 变更，需要传入 isLoading 参数"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "💄 **样式优化**"
+                    }
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "margin": "4px 0px 0px 0px",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "vertical_align": "top",
+                            "background_style": "turquoise-50",
+                            "padding": "12px 12px 12px 12px",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "• **优化任务列表组件 UI 样式**: 优化列表项字体样式为等宽字体，提升交互体验 `维护者 C`"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "📋 **当前处于 OPEN 状态的 MR**"
+                    }
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "margin": "4px 0px 0px 0px",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "vertical_align": "top",
+                            "background_style": "grey-50",
+                            "padding": "12px 12px 12px 12px",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**!306 - ✨ feat: 前端监控与日志系统优化** `维护者 D`"
+                                },
+                                {
+                                    "tag": "hr"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "**!289 - ✅ test: 为关键 UI 组件添加测试 ID 属性** `维护者 E`"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": "Generated by Feishu Card Agent • 2025-12-02",
+                        "text_size": "caption",
+                        "text_color": "grey-400"
+                    }
+                }
+            ]
+        }
+    }
+}

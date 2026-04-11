@@ -1,0 +1,127 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "locales": [
+                "en_us"
+            ],
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": "👋 <at id=\"${open_id}\"></at> 你好，欢迎体验 **机器人卡片交互教程** ！\n\n📦 这个教程将以 “发起告警、告警处理” 作为示例，帮助你了解：\n- 如何搭建 1 个卡片\n- 如何实现卡片按钮点击交互\n- 如何配置机器人菜单",
+                    "i18n_content": {
+                        "en_us": "👋 <at id=\"${open_id}\"></at> Hello, ready to explore our **Bot Card Interaction Guide**? 🤖\n\nThis tutorial uses \"Alert System\" as an example to help you understand:\n- Creating your first interactive card\n- Setting up interactive buttons on your card\n- Customizing your bot's menu options"
+                    },
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "hr",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "**现在就点击按钮开始体验吧！**",
+                    "i18n_content": {
+                        "en_us": "**Jump right in – click the button below to get started!**"
+                    },
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "去体验：发起告警",
+                                        "i18n_content": {
+                                            "en_us": "Try It: Initiate Alert"
+                                        }
+                                    },
+                                    "type": "primary_filled",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "behaviors": [
+                                        {
+                                            "type": "callback",
+                                            "value": {
+                                                "action": "send_alarm"
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "查看教程",
+                                        "i18n_content": {
+                                            "en_us": "View Tutorial"
+                                        }
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "behaviors": [
+                                        {
+                                            "type": "open_url",
+                                            "default_url": "about:blank#tutorial",
+                                            "pc_url": "",
+                                            "ios_url": "",
+                                            "android_url": ""
+                                        }
+                                    ]
+                                }
+                            ],
+                            "direction": "horizontal",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "欢迎体验「机器人卡片交互教程」",
+                "i18n_content": {
+                    "en_us": "👋 Dive into Bot Card Interactions: A Hands-on Tutorial"
+                }
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "blue",
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

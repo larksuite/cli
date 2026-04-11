@@ -1,0 +1,321 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "locales": [
+                "zh_cn",
+                "en_us",
+                "ja_jp"
+            ],
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                },
+                "color": {
+                    "color_dtgiw98jw3s": {
+                        "light_mode": "rgba(129, 158, 38, 1)",
+                        "dark_mode": "rgba(196, 223, 112, 1)"
+                    },
+                    "color_aedgx4h5lst": {
+                        "light_mode": "rgba(75, 211, 187, 1)",
+                        "dark_mode": "rgba(46, 199, 172, 1)"
+                    },
+                    "color_cpi1ty18y07": {
+                        "light_mode": "rgba(205, 136, 97, 1)",
+                        "dark_mode": "rgba(176, 97, 53, 1)"
+                    },
+                    "color_yshuzkazoo": {
+                        "light_mode": "rgba(63, 65, 69, 1)",
+                        "dark_mode": "rgba(196, 198, 203, 1)"
+                    },
+                    "color_7u3svrs1gk": {
+                        "light_mode": "rgba(129, 158, 38, 1)",
+                        "dark_mode": "rgba(196, 223, 112, 1)"
+                    },
+                    "color_5fjelryhkr7": {
+                        "light_mode": "rgba(75, 211, 187, 1)",
+                        "dark_mode": "rgba(46, 199, 172, 1)"
+                    },
+                    "color_9uxmooevtbs": {
+                        "light_mode": "rgba(205, 136, 97, 1)",
+                        "dark_mode": "rgba(176, 97, 53, 1)"
+                    },
+                    "color_bqm6462lklw": {
+                        "light_mode": "rgba(63, 65, 69, 1)",
+                        "dark_mode": "rgba(196, 198, 203, 1)"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "12px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "24px 24px 24px 24px",
+            "elements": [
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": false,
+                                    "transparent": false,
+                                    "scale_type": "crop_center",
+                                    "size": "small",
+                                    "corner_radius": "40px",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "## 嗨，我是*丽萨*, ",
+                                    "i18n_content": {
+                                        "en_us": "## Hi，I'm Lisa~"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "##### 今天我可以为你做什么👋 ",
+                    "i18n_content": {
+                        "en_us": "##### How may I help you today👋 "
+                    },
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "interactive_container",
+                    "width": "fill",
+                    "height": "auto",
+                    "corner_radius": "6px",
+                    "elements": [
+                        {
+                            "tag": "column_set",
+                            "flex_mode": "stretch",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "background_style": "color_7u3svrs1gk",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "",
+                                            "text_align": "right",
+                                            "text_size": "heading",
+                                            "margin": "0px 0px 0px 0px",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "sheet-iconsets-rightup-grey_filled",
+                                                "color": "white"
+                                            }
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "##### <font color=\"grey-00\">与机器人 </font>\n##### <font color=\"grey-00\">对话 </font>",
+                                            "i18n_content": {
+                                                "en_us": "##### <font color=\"grey-00\">Talk </font>\n##### <font color=\"grey-00\">with BOT</font>",
+                                                "ja_jp": "##### <font color=\"grey-00\">ボットと </font>\n##### <font color=\"grey-00\">話す </font>"
+                                            },
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "padding": "12px 12px 12px 12px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px",
+                                    "weight": 2
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "column_set",
+                                            "horizontal_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "columns": [
+                                                {
+                                                    "tag": "column",
+                                                    "width": "weighted",
+                                                    "background_style": "color_5fjelryhkr7",
+                                                    "elements": [
+                                                        {
+                                                            "tag": "markdown",
+                                                            "content": "",
+                                                            "text_align": "right",
+                                                            "text_size": "heading",
+                                                            "margin": "0px 0px 0px 0px",
+                                                            "icon": {
+                                                                "tag": "standard_icon",
+                                                                "token": "sheet-iconsets-rightup-grey_filled",
+                                                                "color": "white"
+                                                            }
+                                                        },
+                                                        {
+                                                            "tag": "markdown",
+                                                            "content": "##### <font color=\"grey-00\">与机器人</font>\n##### <font color=\"grey-00\">聊天</font>",
+                                                            "i18n_content": {
+                                                                "en_us": "##### <font color=\"grey-00\">Chat</font>\n##### <font color=\"grey-00\">with BOT</font>",
+                                                                "ja_jp": "##### <font color=\"grey-00\">ボットと</font>\n##### <font color=\"grey-00\">チャット</font>"
+                                                            },
+                                                            "text_align": "left",
+                                                            "text_size": "normal_v2",
+                                                            "margin": "0px 0px 0px 0px"
+                                                        }
+                                                    ],
+                                                    "padding": "12px 12px 32px 12px",
+                                                    "direction": "vertical",
+                                                    "horizontal_spacing": "8px",
+                                                    "vertical_spacing": "8px",
+                                                    "horizontal_align": "left",
+                                                    "vertical_align": "top",
+                                                    "margin": "0px 0px 0px 0px",
+                                                    "weight": 1
+                                                }
+                                            ],
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "column_set",
+                                            "horizontal_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "columns": [
+                                                {
+                                                    "tag": "column",
+                                                    "width": "weighted",
+                                                    "background_style": "color_9uxmooevtbs",
+                                                    "elements": [
+                                                        {
+                                                            "tag": "markdown",
+                                                            "content": "",
+                                                            "text_align": "right",
+                                                            "text_size": "heading",
+                                                            "margin": "0px 0px 0px 0px",
+                                                            "icon": {
+                                                                "tag": "standard_icon",
+                                                                "token": "sheet-iconsets-rightup-grey_filled",
+                                                                "color": "white"
+                                                            }
+                                                        },
+                                                        {
+                                                            "tag": "markdown",
+                                                            "content": "##### <font color=\"grey-00\">根据图片</font>\n##### <font color=\"grey-00\">搜索</font>",
+                                                            "i18n_content": {
+                                                                "en_us": "##### <font color=\"grey-00\">Search</font>\n##### <font color=\"grey-00\">by Image</font>",
+                                                                "ja_jp": "##### <font color=\"grey-00\">画像で</font>\n##### <font color=\"grey-00\">検索</font>"
+                                                            },
+                                                            "text_align": "left",
+                                                            "text_size": "normal_v2",
+                                                            "margin": "0px 0px 0px 0px"
+                                                        }
+                                                    ],
+                                                    "padding": "12px 12px 32px 12px",
+                                                    "direction": "vertical",
+                                                    "horizontal_spacing": "8px",
+                                                    "vertical_spacing": "8px",
+                                                    "horizontal_align": "left",
+                                                    "vertical_align": "top",
+                                                    "margin": "0px 0px 0px 0px",
+                                                    "weight": 1
+                                                }
+                                            ],
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "padding": "0px 0px 0px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px",
+                                    "weight": 3
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "has_border": false,
+                    "padding": "0px 0px 0px 0px",
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "interactive_container",
+                    "width": "fill",
+                    "height": "auto",
+                    "corner_radius": "6px",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": "🚀 <font color=\"grey-100\"> Get Started</font>",
+                            "text_align": "center",
+                            "text_size": "normal_v2",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "has_border": false,
+                    "background_style": "color_bqm6462lklw",
+                    "padding": "4px 8px 4px 8px",
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        }
+    }
+}

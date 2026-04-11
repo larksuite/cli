@@ -1,0 +1,295 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "20px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "12px 12px 20px 12px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "transparent": false,
+                    "scale_type": "crop_center",
+                    "size": "16:4",
+                    "alt": {
+                        "tag": "plain_text",
+                        "content": ""
+                    },
+                    "corner_radius": "8px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "💿 **旋律黑胶**",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "此款黑胶唱片机采用复古设计语言，融合现代声学技术，温暖木质色调搭配金属旋钮，重现经典音乐质感。每台唱片机均由资深工匠手工调校，呈现细腻音质与优雅外观，既传承黑胶文化精髓，又满足现代听觉需求，是音乐爱好者与家居装饰的理想之选。",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "140px",
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "",
+                                        "text_size": "normal",
+                                        "text_align": "left",
+                                        "text_color": "default"
+                                    }
+                                },
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "scale_type": "crop_center",
+                                    "size": "4:3",
+                                    "alt": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "corner_radius": "8px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top"
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "🎧 **降噪耳机**",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "传承声学工程匠心，此款降噪耳机由经验丰富的音频工程师在专业工作室精心调校。每一个细节都凝聚着对音质的极致追求，主动降噪技术和人体工学设计使其成为音乐聆听与移动办公的理想伴侣。",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "140px",
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "",
+                                        "text_size": "normal",
+                                        "text_align": "left",
+                                        "text_color": "default"
+                                    }
+                                },
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "scale_type": "crop_center",
+                                    "size": "4:3",
+                                    "alt": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "corner_radius": "8px"
+                                }
+                            ],
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top"
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "🎵 **蓝牙音箱**",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "\n这款现代日式陶瓷以精美造型和艺术装饰风格脱颖而出。设计灵感源自传统与现代的交融，色彩明快、线条流畅，无论用作家居摆件还是实用器皿，都能为空间增添一份时尚雅致。",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "140px",
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "",
+                                        "text_size": "normal",
+                                        "text_align": "left",
+                                        "text_color": "default"
+                                    }
+                                },
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "scale_type": "crop_center",
+                                    "size": "4:3",
+                                    "alt": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "corner_radius": "8px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top"
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "一键触达客户案例"
+                                    },
+                                    "type": "primary",
+                                    "width": "fill",
+                                    "size": "medium",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "direction": "horizontal",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "查看更多社区精选"
+                                    },
+                                    "type": "default",
+                                    "width": "fill",
+                                    "size": "medium"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "音乐期刊 No.25 “声动生活，品质音乐新体验”"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "violet",
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

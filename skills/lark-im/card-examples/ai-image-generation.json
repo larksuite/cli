@@ -1,0 +1,406 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                },
+                "color": {
+                    "color_xj6fr0l5p8e": {
+                        "light_mode": "rgba(65, 120, 40, 1)",
+                        "dark_mode": "rgba(172, 221, 149, 1)"
+                    },
+                    "color_j5ehqvnvpv": {
+                        "light_mode": "rgba(248, 253, 248, 1)",
+                        "dark_mode": "rgba(11, 40, 11, 1)"
+                    },
+                    "color_rrm0acxf3o": {
+                        "light_mode": "rgba(65, 120, 40, 1)",
+                        "dark_mode": "rgba(172, 221, 149, 1)"
+                    },
+                    "color_85reaik0d67": {
+                        "light_mode": "rgba(248, 253, 248, 1)",
+                        "dark_mode": "rgba(11, 40, 11, 1)"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "0px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "0px 0px 0px 0px",
+            "elements": [
+                {
+                    "tag": "interactive_container",
+                    "width": "fill",
+                    "height": "auto",
+                    "corner_radius": "",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": "🎄**<font color='grey-00'>即梦 - 圣诞特辑</font>**",
+                            "text_align": "left",
+                            "text_size": "normal_v2",
+                            "margin": "0px 0px 0px 8px"
+                        }
+                    ],
+                    "has_border": false,
+                    "background_style": "color_rrm0acxf3o",
+                    "padding": "12px 4px 12px 4px",
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "interactive_container",
+                    "width": "auto",
+                    "height": "auto",
+                    "corner_radius": "0px",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": "一个 Jellycat 风格的圣诞老人和驯鹿站在一起，圣诞老人圆滚滚，身穿红色毛绒服，手里举着一根糖果拐杖，旁边的🫎驯鹿则带着小鹿角，围着一条软绵的毛绒围巾。两人站在柔软的雪地上，背景是一棵闪烁着暖光的毛绒圣诞树🎄，四周点缀着礼物盒和飘舞的雪花❄️。:Movie: **<font color='green-600'>想象力挑战第21期</font>** ` 图片 2.1 `  ",
+                            "text_align": "left",
+                            "text_size": "normal",
+                            "margin": "0px 0px 4px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "flex_mode": "stretch",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "4px",
+                                    "elements": [
+                                        {
+                                            "tag": "column_set",
+                                            "flex_mode": "bisect",
+                                            "horizontal_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "columns": [
+                                                {
+                                                    "tag": "column",
+                                                    "width": "weighted",
+                                                    "elements": [
+                                                        {
+                                                            "tag": "column_set",
+                                                            "flex_mode": "stretch",
+                                                            "horizontal_spacing": "8px",
+                                                            "horizontal_align": "left",
+                                                            "columns": [
+                                                                {
+                                                                    "tag": "column",
+                                                                    "width": "weighted",
+                                                                    "elements": [
+                                                                        {
+                                                                            "tag": "img",
+                                                                            "img_key": "xxx",
+                                                                            "preview": true,
+                                                                            "transparent": false,
+                                                                            "scale_type": "fit_horizontal",
+                                                                            "alt": {
+                                                                                "tag": "plain_text",
+                                                                                "content": ""
+                                                                            },
+                                                                            "corner_radius": "6px",
+                                                                            "margin": "0px 0px 0px 0px"
+                                                                        },
+                                                                        {
+                                                                            "tag": "img",
+                                                                            "img_key": "xxx",
+                                                                            "preview": true,
+                                                                            "transparent": false,
+                                                                            "scale_type": "fit_horizontal",
+                                                                            "alt": {
+                                                                                "tag": "plain_text",
+                                                                                "content": ""
+                                                                            },
+                                                                            "corner_radius": "6px",
+                                                                            "margin": "0px 0px 0px 0px"
+                                                                        },
+                                                                        {
+                                                                            "tag": "img",
+                                                                            "img_key": "xxx",
+                                                                            "preview": true,
+                                                                            "transparent": false,
+                                                                            "scale_type": "fit_horizontal",
+                                                                            "alt": {
+                                                                                "tag": "plain_text",
+                                                                                "content": ""
+                                                                            },
+                                                                            "corner_radius": "6px",
+                                                                            "margin": "0px 0px 0px 0px"
+                                                                        },
+                                                                        {
+                                                                            "tag": "img",
+                                                                            "img_key": "xxx",
+                                                                            "preview": true,
+                                                                            "transparent": false,
+                                                                            "scale_type": "fit_horizontal",
+                                                                            "alt": {
+                                                                                "tag": "plain_text",
+                                                                                "content": ""
+                                                                            },
+                                                                            "corner_radius": "8px",
+                                                                            "margin": "0px 0px 0px 0px"
+                                                                        }
+                                                                    ],
+                                                                    "padding": "0px 0px 0px 0px",
+                                                                    "direction": "horizontal",
+                                                                    "horizontal_spacing": "8px",
+                                                                    "vertical_spacing": "8px",
+                                                                    "horizontal_align": "left",
+                                                                    "vertical_align": "top",
+                                                                    "margin": "0px 0px 0px 0px",
+                                                                    "weight": 1
+                                                                }
+                                                            ],
+                                                            "margin": "0px 0px 0px 0px"
+                                                        }
+                                                    ],
+                                                    "padding": "0px 0px 0px 0px",
+                                                    "direction": "vertical",
+                                                    "horizontal_spacing": "8px",
+                                                    "vertical_spacing": "8px",
+                                                    "horizontal_align": "left",
+                                                    "vertical_align": "top",
+                                                    "margin": "0px 0px 0px 0px",
+                                                    "weight": 1
+                                                },
+                                                {
+                                                    "tag": "column",
+                                                    "width": "weighted",
+                                                    "elements": [
+                                                        {
+                                                            "tag": "img",
+                                                            "img_key": "xxx",
+                                                            "preview": true,
+                                                            "transparent": false,
+                                                            "scale_type": "fit_horizontal",
+                                                            "alt": {
+                                                                "tag": "plain_text",
+                                                                "content": ""
+                                                            },
+                                                            "corner_radius": "6px",
+                                                            "margin": "0px 0px 0px 0px"
+                                                        },
+                                                        {
+                                                            "tag": "img",
+                                                            "img_key": "xxx",
+                                                            "preview": true,
+                                                            "transparent": false,
+                                                            "scale_type": "fit_horizontal",
+                                                            "alt": {
+                                                                "tag": "plain_text",
+                                                                "content": ""
+                                                            },
+                                                            "corner_radius": "6px",
+                                                            "margin": "0px 0px 0px 0px"
+                                                        },
+                                                        {
+                                                            "tag": "img",
+                                                            "img_key": "xxx",
+                                                            "preview": true,
+                                                            "transparent": false,
+                                                            "scale_type": "fit_horizontal",
+                                                            "alt": {
+                                                                "tag": "plain_text",
+                                                                "content": ""
+                                                            },
+                                                            "corner_radius": "6px",
+                                                            "margin": "0px 0px 0px 0px"
+                                                        },
+                                                        {
+                                                            "tag": "img",
+                                                            "img_key": "xxx",
+                                                            "preview": true,
+                                                            "transparent": false,
+                                                            "scale_type": "fit_horizontal",
+                                                            "alt": {
+                                                                "tag": "plain_text",
+                                                                "content": ""
+                                                            },
+                                                            "corner_radius": "6px",
+                                                            "margin": "0px 0px 0px 0px"
+                                                        }
+                                                    ],
+                                                    "padding": "0px 0px 0px 0px",
+                                                    "direction": "vertical",
+                                                    "horizontal_spacing": "8px",
+                                                    "vertical_spacing": "8px",
+                                                    "horizontal_align": "left",
+                                                    "vertical_align": "top",
+                                                    "margin": "0px 0px 0px 0px",
+                                                    "weight": 1
+                                                }
+                                            ],
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "padding": "0px 0px 0px 0px",
+                                    "direction": "horizontal",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "flex_mode": "flow",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "auto",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": ""
+                                            },
+                                            "type": "text",
+                                            "width": "fill",
+                                            "size": "large",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "replace_outlined"
+                                            },
+                                            "hover_tips": {
+                                                "tag": "plain_text",
+                                                "content": "再次生成"
+                                            },
+                                            "behaviors": [
+                                                {
+                                                    "type": "callback",
+                                                    "value": "refresh"
+                                                }
+                                            ],
+                                            "margin": "0px 0px 0px 0px",
+                                            "element_id": "a1"
+                                        }
+                                    ],
+                                    "padding": "3px 4px 4px 4px",
+                                    "direction": "horizontal",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "auto",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": ""
+                                            },
+                                            "type": "text",
+                                            "width": "fill",
+                                            "size": "large",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "ccm-edit_outlined"
+                                            },
+                                            "hover_tips": {
+                                                "tag": "plain_text",
+                                                "content": "重新编辑"
+                                            },
+                                            "behaviors": [
+                                                {
+                                                    "type": "callback",
+                                                    "value": "rewrite"
+                                                }
+                                            ],
+                                            "margin": "0px 0px 0px 0px",
+                                            "element_id": "a2"
+                                        }
+                                    ],
+                                    "padding": "3px 4px 4px 4px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "auto",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": ""
+                                            },
+                                            "type": "text",
+                                            "width": "fill",
+                                            "size": "large",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "upload_outlined"
+                                            },
+                                            "hover_tips": {
+                                                "tag": "plain_text",
+                                                "content": "发布图片"
+                                            },
+                                            "behaviors": [
+                                                {
+                                                    "type": "callback",
+                                                    "value": "release"
+                                                }
+                                            ],
+                                            "margin": "0px 0px 0px 0px",
+                                            "element_id": "a3"
+                                        }
+                                    ],
+                                    "padding": "3px 4px 4px 4px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "margin": "4px 4px 4px 4px"
+                        }
+                    ],
+                    "has_border": false,
+                    "background_style": "color_85reaik0d67",
+                    "padding": "8px 8px 8px 8px",
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        }
+    }
+}

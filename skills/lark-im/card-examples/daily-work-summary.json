@@ -1,0 +1,347 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                },
+                "color": {
+                    "color_ab3oezw88gl": {
+                        "light_mode": "rgba(248, 250, 255, 1)",
+                        "dark_mode": "rgba(10, 19, 41, 1)"
+                    },
+                    "color_py8zcp0z9a": {
+                        "light_mode": "rgba(248, 250, 255, 1)",
+                        "dark_mode": "rgba(10, 19, 41, 1)"
+                    },
+                    "color_duazavbtkl": {
+                        "light_mode": "rgba(248, 250, 255, 1)",
+                        "dark_mode": "rgba(10, 19, 41, 1)"
+                    },
+                    "color_iua6qms32yh": {
+                        "light_mode": "rgba(248, 250, 255, 1)",
+                        "dark_mode": "rgba(10, 19, 41, 1)"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "8px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "0px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "interactive_container",
+                    "width": "fill",
+                    "height": "auto",
+                    "corner_radius": "12px",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": "**重要结论**",
+                            "text_align": "left",
+                            "text_size": "normal_v2",
+                            "margin": "0px 20px 0px 20px",
+                            "icon": {
+                                "tag": "standard_icon",
+                                "token": "vote_colorful",
+                                "color": "grey"
+                            }
+                        },
+                        {
+                            "tag": "hr"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "- **用原型模拟下真实效果再最后确定**\n- **暂时保持两种字号并存**",
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "\n<font color=\"grey\">AI x 飞书｜参会人员：</font><person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person> <person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person>",
+                                            "text_align": "left",
+                                            "text_size": "notation",
+                                            "margin": "0px 0px 0px 22px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "- **提供人员组件原子设计稿**",
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"grey\">人员组件方案讨论｜参会人员：</font><person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person> <person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person> ",
+                                            "text_align": "left",
+                                            "text_size": "notation",
+                                            "margin": "0px 0px 0px 22px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "- **方案方向正确，继续优化细节部分**",
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"grey\">统一卡片框架对齐</font><font color=\"grey\">｜参会人员：</font><person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person>",
+                                            "text_align": "left",
+                                            "text_size": "notation",
+                                            "margin": "0px 0px 0px 22px"
+                                        }
+                                    ],
+                                    "padding": "0px 0px 12px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 20px",
+                                    "weight": 3
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "img",
+                                            "img_key": "xxx",
+                                            "preview": true,
+                                            "transparent": true,
+                                            "scale_type": "fit_horizontal",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "padding": "0px 0px 0px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "bottom",
+                                    "margin": "0px 0px 0px 0px",
+                                    "weight": 1
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "has_border": true,
+                    "border_color": "blue-100",
+                    "background_style": "color_duazavbtkl",
+                    "padding": "12px 0px 0px 0px",
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "12px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "interactive_container",
+                    "width": "fill",
+                    "height": "auto",
+                    "corner_radius": "12px",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": "**TODO**",
+                            "text_align": "left",
+                            "text_size": "normal",
+                            "margin": "0px 20px 0px 20px",
+                            "icon": {
+                                "tag": "standard_icon",
+                                "token": "todo_colorful",
+                                "color": "grey"
+                            }
+                        },
+                        {
+                            "tag": "hr"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "- **主题：卡片标题主题色确定**",
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"grey\">验证一下长卡片的效果 </font>[创建待办](about:blank#todo)\n<font color=\"grey\">卡片讨论小群｜参会人员：</font><person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person> <person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person>",
+                                            "text_align": "left",
+                                            "text_size": "notation",
+                                            "margin": "0px 0px 0px 22px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "- **主题：模型自定义文档**",
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"grey\">查看模型自定义文档</font> [创建待办](about:blank#todo)\n<font color=\"grey\">模型｜参会人员：</font><person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person>",
+                                            "text_align": "left",
+                                            "text_size": "notation",
+                                            "margin": "0px 0px 0px 22px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "- **主题：消息卡片自定义**",
+                                            "text_align": "left",
+                                            "text_size": "normal_v2",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"grey\">人员组件方案讨论｜参会人员：</font><person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\"></person>",
+                                            "text_align": "left",
+                                            "text_size": "notation",
+                                            "margin": "0px 0px 0px 22px"
+                                        }
+                                    ],
+                                    "padding": "0px 0px 12px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 20px",
+                                    "weight": 3
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "elements": [
+                                        {
+                                            "tag": "img",
+                                            "img_key": "xxx",
+                                            "preview": true,
+                                            "transparent": true,
+                                            "scale_type": "fit_horizontal",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "padding": "0px 0px 0px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "bottom",
+                                    "margin": "0px 0px 0px 0px",
+                                    "weight": 1
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "has_border": true,
+                    "border_color": "blue-100",
+                    "background_style": "color_iua6qms32yh",
+                    "padding": "12px 0px 0px 0px",
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "12px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">每天早上为你带来前一天的工作消息回顾 😘 </font>",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "退订"
+                                    },
+                                    "type": "primary_text",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "no_outlined"
+                                    }
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top"
+                        }
+                    ]
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "早上好！请查收09月11号工作总结"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "default",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "myai_colorful"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

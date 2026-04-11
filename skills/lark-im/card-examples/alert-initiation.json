@@ -1,0 +1,211 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "locales": [
+                "en_us"
+            ],
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">告警内容</font>\n移动端打开异常率达到5%",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Alert details</font>\nMobile client crash rate at 5%"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">错误信息</font>\n服务请求数量过多，超出限频",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Diagnostic info</font>\nService request volume exceeds rate limit"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">告警等级</font>\nP0",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Priority level</font>\nP0"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">告警时间</font>\n${alarm_time}",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Incident time</font>\n${alarm_time}"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "hr",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "form",
+                    "elements": [
+                        {
+                            "tag": "input",
+                            "placeholder": {
+                                "tag": "plain_text",
+                                "content": "处理情况说明，选填",
+                                "i18n_content": {
+                                    "en_us": "Action taken (if any)"
+                                }
+                            },
+                            "default_value": "",
+                            "width": "fill",
+                            "name": "notes_input",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "auto",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": "处理完成",
+                                                "i18n_content": {
+                                                    "en_us": "Mark as Resolved"
+                                                }
+                                            },
+                                            "type": "primary",
+                                            "width": "default",
+                                            "behaviors": [
+                                                {
+                                                    "type": "callback",
+                                                    "value": {
+                                                        "action": "complete_alarm",
+                                                        "time": "${alarm_time}"
+                                                    }
+                                                }
+                                            ],
+                                            "form_action_type": "submit",
+                                            "name": "Button_m6vy7xom"
+                                        }
+                                    ],
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top"
+                                }
+                            ],
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "direction": "vertical",
+                    "padding": "4px 0px 4px 0px",
+                    "margin": "0px 0px 0px 0px",
+                    "name": "Form_m6vy7xol"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "[待处理] 告警通知：操作执行出错请及时处理",
+                "i18n_content": {
+                    "en_us": "[Action Needed] Alert: Process Error - Please Address Promptly",
+                    "ja_jp": "注文確認待ち"
+                }
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "red",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "warning-hollow_filled"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

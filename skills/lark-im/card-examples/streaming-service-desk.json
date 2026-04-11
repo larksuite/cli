@@ -1,0 +1,256 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": "要配置消息卡片流式更新，可参考以下内容：",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": " **一、JSON结构中的相关字段配置**\n1. **streaming_mode字段**<number_tag>1</number_tag><number_tag>2</number_tag>\n<number_tag>4</number_tag><number_tag>5</number_tag>\n    - 类型为Boolean，用于开启或关闭流式更新模式 \n    - 若要开启卡片的流式更新模式，需将此值设为true \n2. **streaming_config字段**<number_tag>1</number_tag><number_tag>3</number_tag>\n<number_tag>4</number_tag>\n    - 类型为Object，用于指定流式更新的频率、步长和更新策略等参数\n    - **print_frequency_ms子字段**<number_tag>1</number_tag><number_tag>2</number_tag>\n        - 用于设置流式更新频率，即两次流式更新上屏之间的间隔时长，默认为70ms \n        - 支持分端配置，若要配置三端统一的流式参数，仅指定default的值即可；若要为三端指定不同的流式参数，则在填写default参数的基础上，可选增加android/ios/pc三端的参数 \n        - default（三端通用统一频率）为必填项，单位为毫秒，数据校验规则为20 - 1000；android、ios、pc端频率为可选项，同样需满足20 - 1000的毫秒数据校验规则 \n    - **print_step子字段**<number_tag>3</number_tag>\n<number_tag>4</number_tag>\n        - 用于设置流式更新步长，即每次流式更新上屏打印的增量字符数，默认为1\n        - 支持分端配置，若要配置三端统一的流式参数，仅指定default的值即可；若要为三端指定不同的流式参数，则在填写default参数的基础上，可选增加android/ios/pc三端的参数 \n        - default（三端通用统一频率）为必填项，单位为毫秒，数据校验规则为20 - 1000；android、ios、pc端频率为可选项，同样需满足20 - 1000的毫秒数据校验规则 \n    - **print_strategy子字段**<number_tag>1</number_tag><number_tag>5</number_tag>\n        - 类型为enum，用于设置单个文本或富文本组件内文本的流式更新策略，可选值有fast（快速上屏，为7.20 - 7.22版本的默认策略）和delay（延迟上屏），默认为fast\n\n        - fast策略下，调用 [流式更新文本](about:blank#streaming-content) 接口后，若历史文本尚未流式上屏完毕，未上屏的部分将立即全部上屏，然后立即开始本次内容上屏；delay策略下，调用 [流式更新文本](about:blank#streaming-content) 接口后，若历史文本尚未流式输出完毕，历史文本中未上屏部分将会继续按打字机效果输出直到全部输出完毕，再开始本次内容上屏。\n\n**二、前提条件**\n1. **创建应用并添加相关权限**<number_tag>1</number_tag>\n\n        - 已在 飞书开发者后台创建了一个应用，并为应用添加了机器人能力、开通了以下权限：以应用的身份发消息（im:message:send_as_bot）、获取与发送单聊、群组消息（im:message）、创建与更新卡片（cardkit:card:write） \n\n2. **构建卡片JSON**<number_tag>1</number_tag><number_tag>2</number_tag>\n<number_tag>4</number_tag><number_tag>5</number_tag>\n    - 已基于<link icon='file-link-bitable_outlined' url='about:blank#card-json-structure' pc_url='' ios_url='' android_url=''>卡片 JSON 2.0 结构</link>构建了卡片JSON \n    - 若要开启卡片的流式更新模式，需将此值设为true \n3. **设置流式更新参数并开启模式**<number_tag>1</number_tag>\n\n    - 按需设置了流式更新的频率、步长和策略，并将全局属性streaming_mode设置为true，以开启卡片流式更新模式 \n\n**三、操作步骤** \n\n1. **调用 创建卡片实体**<number_tag>1</number_tag><number_tag>2</number_tag>\n<number_tag>4</number_tag><number_tag>6</number_tag>\n    - 通过调用 <link icon='file-link-bitable_outlined' url='about:blank#card-create' pc_url='' ios_url='' android_url=''>创建卡片实体</link>体接口，开启卡片的流式更新模式。同时获取卡片实体的ID，用于发送卡片 。\n    - Mac系统和Windows系统都有对应的Curl示例。调用成功将返回卡片实体ID，同时为该卡片开启流式更新模式 。流式更新模式将在距上次开启10分钟后自动关闭，也可随时调用<link icon='file-link-bitable_outlined' url='about:blank#card-settings' pc_url='' ios_url='' android_url=''>更新卡片配置</link>API将streaming_mode字段值设置为false，以终止卡片的流式更新模式 \n2. **发送卡片实体**\n    - 参考 <link icon='file-link-bitable_outlined' url='about:blank#message-create' pc_url='' ios_url='' android_url=''>发送消息接口文档</link>，在请求体的content字段中传入卡片实体ID，以发送卡片实体 。\n    - 注意事项：\n        - 卡片实体仅支持发送一次 \n        - 发送卡片实体的应用必须是该卡片实体的创建应用 \n        - 发送卡片实体时，content字段中的结构有相应要求，文档中有请求体示例、Mac系统和Windows系统的Curl命令示例以及成功返回的响应示例 \n3. ** （可选）流式更新文本 **\n    - 飞书卡片中的普通文本组件和富文本组件支持对文本进行持续、增量的更新，从而实现“打字机”式的文字输出效果，提升终端用户体验 \n    - 卡片发送后，可调用 \n <link icon='file-link-bitable_outlined' url='about:blank#streaming-content' pc_url='' ios_url='' android_url=''>流式更新文本</link>\n 接口，对卡片中的普通文本组件或富文本组件传入全量文本内容 。若旧文本为传入的新文本的前缀子串，新增文本将在旧文本末尾继续以打字机效果输出；若新旧文本前缀不同，全量文本将直接上屏输出，无打字机效果。同样有Mac系统和Windows系统的Curl命令示例 。",
+                    "text_align": "left",
+                    "text_size": "normal",
+                    "margin": "0px 0px 0px 0px",
+                    "element_id": "streaming_txt"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "**为你找到 3 篇参考资料**",
+                    "text_align": "left",
+                    "text_size": "normal",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<number_tag>1</number_tag><link icon='file-link-bitable_outlined' url='about:blank#streaming-guide' pc_url='' ios_url='' android_url=''>飞书卡片流式更新 OpenAPI 调用指南</link>",
+                                    "text_align": "left",
+                                    "text_size": "normal",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "<number_tag>2</number_tag><link icon='file-link-bitable_outlined' url='about:blank#card-json-structure' pc_url='' ios_url='' android_url=''>卡片 JSON 2.0 结构</link>",
+                                    "text_align": "left",
+                                    "text_size": "normal",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "<number_tag>3</number_tag><link icon='file-link-bitable_outlined' url='about:blank#streaming-content' pc_url='' ios_url='' android_url=''>流式更新文本</link>",
+                                    "text_align": "left",
+                                    "text_size": "normal",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "2px",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "**相关问题**",
+                    "text_align": "left",
+                    "text_size": "normal",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "批量更新卡片实体"
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "删除组件"
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "新增组件"
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "更新组件"
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "horizontal",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "margin": "0px 0px 4px 0px"
+                },
+                {
+                    "tag": "hr",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "12px",
+                    "horizontal_align": "right",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey-600\">以上内容由 AI 生成，仅供参考。更多详细、准确信息可点击引用链接查看</font>",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "margin": "4px 0px 0px 0px",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "robot_outlined",
+                                        "color": "grey"
+                                    }
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "20px",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "type": "text",
+                                    "width": "fill",
+                                    "size": "medium",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "thumbsup_outlined"
+                                    },
+                                    "hover_tips": {
+                                        "tag": "plain_text",
+                                        "content": "有帮助"
+                                    },
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "30px",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "type": "text",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "thumbdown_outlined"
+                                    },
+                                    "hover_tips": {
+                                        "tag": "plain_text",
+                                        "content": "无帮助"
+                                    },
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "vertical_spacing": "8px",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "margin": "0px 0px 4px 0px"
+                }
+            ]
+        }
+    }
+}

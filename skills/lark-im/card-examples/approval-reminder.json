@@ -1,0 +1,268 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "16px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "0px 20px 20px 20px",
+            "elements": [
+                {
+                    "tag": "hr",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "column_set",
+                                    "flex_mode": "stretch",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "<font color = \"grey\">时间</font>\n2024-3-11 至 2024-3-15 （共 5 天）",
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "<font color = \"grey\">备注</font>\n世界这么大，我想去转转",
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px",
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "flex_mode": "stretch",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "<font color = \"grey\">申请人</font>\n<person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"capsule\">",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "2px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "<font color = \"grey\">休假类型</font>\n年假",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px",
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "16px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "form",
+                    "elements": [
+                        {
+                            "tag": "input",
+                            "placeholder": {
+                                "tag": "plain_text",
+                                "content": "请输入审批备注，选填"
+                            },
+                            "default_value": "",
+                            "max_length": 200,
+                            "width": "fill",
+                            "required": false,
+                            "name": "Input_m7d0zq9v",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column_set",
+                            "flex_mode": "stretch",
+                            "horizontal_spacing": "8px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "auto",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": "同意"
+                                            },
+                                            "type": "primary_filled",
+                                            "width": "fill",
+                                            "size": "medium",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "list-check-bold_outlined"
+                                            },
+                                            "form_action_type": "submit",
+                                            "name": "Button_m7d0zqa2"
+                                        }
+                                    ],
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top"
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "auto",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": "拒绝"
+                                            },
+                                            "type": "default",
+                                            "width": "fill",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "close_outlined"
+                                            },
+                                            "form_action_type": "submit",
+                                            "name": "Button_m7d0zqa3"
+                                        }
+                                    ],
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top"
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "auto",
+                                    "elements": [],
+                                    "padding": "0px 0px 0px 0px",
+                                    "direction": "vertical",
+                                    "horizontal_spacing": "8px",
+                                    "vertical_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "vertical_align": "top",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "margin": "4px 0px 0px 0px"
+                        }
+                    ],
+                    "direction": "vertical",
+                    "horizontal_spacing": "8px",
+                    "vertical_spacing": "12px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top",
+                    "padding": "0px 0px 0px 0px",
+                    "margin": "0px 0px 0px 0px",
+                    "name": "Form_m7d0zqa1"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "你有一个休假申请待审批"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "default",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "approval_colorful"
+            },
+            "padding": "12px 12px 12px 20px"
+        }
+    }
+}

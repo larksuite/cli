@@ -1,0 +1,368 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "0px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "background_style": "grey-100",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "160px",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "transparent": false,
+                                    "scale_type": "fit_horizontal",
+                                    "corner_radius": "4px",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "北京香格里拉酒店 ⭐️⭐️⭐️⭐️⭐️",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "之前订过 <text_tag color='blue'>4.9</text_tag> ",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "thumbsup_outlined",
+                                        "color": "grey"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "西直门/北京展览馆地区",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "local_outlined",
+                                        "color": "grey"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "**<font color='red'>700</font>**/晚起 <text_tag color='yellow'></text_tag> <text_tag color='yellow'>协议价</text_tag>",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "sheet-currency_outlined",
+                                        "color": "grey"
+                                    }
+                                }
+                            ],
+                            "padding": "6px 8px 6px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "去预定"
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium"
+                                }
+                            ],
+                            "padding": "10px 10px 10px 10px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "background_style": "grey-100",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "160px",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "transparent": false,
+                                    "scale_type": "fit_horizontal",
+                                    "corner_radius": "4px",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "北京泰富酒店 ⭐️⭐️⭐️⭐️⭐️",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "之前订过 <text_tag color='blue'>4.6</text_tag> ",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "thumbsup_outlined",
+                                        "color": "grey"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "中关村/五道口",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "local_outlined",
+                                        "color": "grey"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "**<font color='red'>700</font>**/晚起 <text_tag color='yellow'></text_tag> <text_tag color='yellow'>协议价</text_tag>",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "sheet-currency_outlined",
+                                        "color": "grey"
+                                    }
+                                }
+                            ],
+                            "padding": "6px 8px 6px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "去预定"
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium"
+                                }
+                            ],
+                            "padding": "10px 10px 10px 10px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "margin": "8px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "background_style": "grey-100",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "160px",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "transparent": false,
+                                    "scale_type": "fit_horizontal",
+                                    "corner_radius": "4px",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "北京朝阳公园亚朵酒店 ⭐️⭐️⭐️⭐️",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "步行可达办公点 <text_tag color='blue'>4.5</text_tag> ",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "thumbsup_outlined",
+                                        "color": "grey"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "国贸地区",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "local_outlined",
+                                        "color": "grey"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "**<font color='red'>500</font>**/晚起 <text_tag color='yellow'> 同事推荐</text_tag> <text_tag color='yellow'>协议价</text_tag>",
+                                    "text_align": "left",
+                                    "text_size": "notation",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "sheet-currency_outlined",
+                                        "color": "grey"
+                                    }
+                                }
+                            ],
+                            "padding": "6px 0px 6px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "去预定"
+                                    },
+                                    "type": "default",
+                                    "width": "default",
+                                    "size": "medium"
+                                }
+                            ],
+                            "padding": "10px 10px 10px 10px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "margin": "8px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "前往北京的差旅即将开始，别忘记预定酒店啦！"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": "为你推荐以下酒店："
+            },
+            "template": "blue",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "building_outlined"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

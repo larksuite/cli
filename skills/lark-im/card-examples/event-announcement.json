@@ -1,0 +1,155 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "0px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "0px 0px 0px 0px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "transparent": true,
+                    "scale_type": "crop_center",
+                    "size": "21:8",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "16px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "气温回暖，万象更新。我们即将组织 Q1 团建活动，有意向参与的同学快点击按钮报名接龙吧！",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "flex_mode": "stretch",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "background_style": "grey-100",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "<font color=\"grey\">📅  活动时间</font>\n2024 年 3 月 15 日",
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2"
+                                                }
+                                            ],
+                                            "padding": "8px 12px 8px 12px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "background_style": "grey-100",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "<font color=\"grey\">📍 活动地点</font>\n云栖竹径",
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2"
+                                                }
+                                            ],
+                                            "padding": "8px 12px 8px 12px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "center",
+                                            "margin": "0px 0px 0px 0px",
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "<number_tag background_color='turquoise-100' font_color='black'>1</number_tag> <person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"normal\"></person> <font color=\"grey\">已报名</font>\n\n<number_tag background_color='turquoise-100' font_color='black'>2</number_tag> <person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"normal\"></person> <font color=\"grey\">已报名</font>\n\n<number_tag background_color='turquoise-100' font_color='black'>3</number_tag> <person id=\"xxx\" show_avatar=\"true\" show_name=\"true\" style=\"normal\"></person> <font color=\"grey\">已报名</font>",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "立即接龙"
+                                    },
+                                    "type": "primary_filled",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "member-add_outlined"
+                                    },
+                                    "margin": "4px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "20px 20px 20px 20px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "16px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "春日团建活动报名接龙"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "turquoise",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "day_outlined"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}
