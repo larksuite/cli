@@ -145,10 +145,10 @@ func TestRuntimeContext_FileIO_UsesExecutionContext(t *testing.T) {
 	}
 }
 
-func newTestShortcutCmd(s *Shortcut) *cobra.Command {
+func newTestShortcutCmd(s *Shortcut, f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{Use: "test-shortcut"}
 	cmd.SetContext(context.Background())
-	registerShortcutFlags(cmd, s)
+	registerShortcutFlags(cmd, f, s)
 	return cmd
 }
 
@@ -177,7 +177,7 @@ func TestRunShortcut_JqAndFormatConflict(t *testing.T) {
 			return nil
 		},
 	}
-	cmd := newTestShortcutCmd(s)
+	cmd := newTestShortcutCmd(s, newTestFactory())
 	cmd.Flags().Set("jq", ".data")
 	cmd.Flags().Set("format", "table")
 	cmd.Flags().Set("as", "bot")
@@ -200,7 +200,7 @@ func TestRunShortcut_JqInvalidExpression(t *testing.T) {
 			return nil
 		},
 	}
-	cmd := newTestShortcutCmd(s)
+	cmd := newTestShortcutCmd(s, newTestFactory())
 	cmd.Flags().Set("jq", "invalid[")
 	cmd.Flags().Set("as", "bot")
 
@@ -223,7 +223,7 @@ func TestRunShortcut_JqRuntimeError_PropagatesError(t *testing.T) {
 			return nil
 		},
 	}
-	cmd := newTestShortcutCmd(s)
+	cmd := newTestShortcutCmd(s, newTestFactory())
 	cmd.Flags().Set("jq", ".foo | invalid_func_xyz")
 	cmd.Flags().Set("as", "bot")
 
