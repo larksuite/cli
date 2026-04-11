@@ -17,6 +17,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+export-download",
 		"+import",
 		"+move",
+		"+delete",
 		"+task_result",
 	}
 

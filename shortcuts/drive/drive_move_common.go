@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	driveMovePollAttempts = 30
-	driveMovePollInterval = 2 * time.Second
+	driveTaskCheckPollAttempts = 30
+	driveTaskCheckPollInterval = 2 * time.Second
 )
 
 // driveMoveAllowedTypes mirrors the document kinds accepted by the Drive move
@@ -61,7 +61,7 @@ func validateDriveMoveSpec(spec driveMoveSpec) error {
 }
 
 // driveTaskCheckStatus represents the status payload returned by
-// /drive/v1/files/task_check for async folder operations.
+// /drive/v1/files/task_check for async folder move/delete operations.
 type driveTaskCheckStatus struct {
 	TaskID string
 	Status string
@@ -72,7 +72,11 @@ func (s driveTaskCheckStatus) Ready() bool {
 }
 
 func (s driveTaskCheckStatus) Failed() bool {
-	return strings.EqualFold(strings.TrimSpace(s.Status), "failed")
+	status := strings.TrimSpace(s.Status)
+	// The shared task_check endpoint is reused by multiple async flows. Some
+	// backends return "failed", while folder delete can return the shorter
+	// terminal state "fail".
+	return strings.EqualFold(status, "failed") || strings.EqualFold(status, "fail")
 }
 
 func (s driveTaskCheckStatus) Pending() bool {
@@ -91,8 +95,8 @@ func (s driveTaskCheckStatus) StatusLabel() string {
 
 // driveTaskCheckResultCommand prints the resume command shown when bounded
 // polling ends before the backend task completes.
-func driveTaskCheckResultCommand(taskID string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario task_check --task-id %s", taskID)
+func driveTaskCheckResultCommand(taskID, as string) string {
+	return fmt.Sprintf("lark-cli drive +task_result --scenario task_check --task-id %s --as %s", taskID, as)
 }
 
 // driveTaskCheckParams keeps the task_check query parameter shape in one place
@@ -130,30 +134,41 @@ func parseDriveTaskCheckStatus(taskID string, data map[string]interface{}) drive
 	}
 }
 
-// pollDriveTaskCheck polls the backend for a bounded period and returns the
-// last seen status so callers can emit a follow-up command when needed.
+// pollDriveTaskCheck polls the shared task_check endpoint for a bounded period
+// and returns the last seen status so callers can emit a follow-up command
+// when needed.
 func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTaskCheckStatus, bool, error) {
 	lastStatus := driveTaskCheckStatus{TaskID: taskID}
-	for attempt := 1; attempt <= driveMovePollAttempts; attempt++ {
+	var (
+		seenStatus bool
+		lastErr    error
+	)
+	for attempt := 1; attempt <= driveTaskCheckPollAttempts; attempt++ {
 		if attempt > 1 {
-			time.Sleep(driveMovePollInterval)
+			time.Sleep(driveTaskCheckPollInterval)
 		}
 
 		status, err := getDriveTaskCheckStatus(runtime, taskID)
 		if err != nil {
+			lastErr = err
 			fmt.Fprintf(runtime.IO().ErrOut, "Error polling task %s: %s\n", taskID, err)
 			continue
 		}
+		seenStatus = true
 		lastStatus = status
 		// Success and failure are terminal backend states. Any other value is kept
 		// as pending so the caller can decide whether to continue or resume later.
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Folder move completed successfully.\n")
+			fmt.Fprintf(runtime.IO().ErrOut, "Folder task completed successfully.\n")
 			return status, true, nil
 		}
 		if status.Failed() {
-			return status, false, output.Errorf(output.ExitAPI, "api_error", "folder move task failed")
+			return status, false, output.Errorf(output.ExitAPI, "api_error", "folder task failed")
 		}
+	}
+
+	if !seenStatus && lastErr != nil {
+		return driveTaskCheckStatus{}, false, lastErr
 	}
 
 	return lastStatus, false, nil
