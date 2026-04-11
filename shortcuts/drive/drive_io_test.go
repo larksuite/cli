@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -17,6 +18,8 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+var driveTaskCheckPollMu sync.Mutex
 
 func driveTestConfig() *core.CliConfig {
 	return &core.CliConfig{
@@ -35,6 +38,18 @@ func mountAndRunDrive(t *testing.T, s common.Shortcut, args []string, f *cmdutil
 		stdout.Reset()
 	}
 	return parent.Execute()
+}
+
+func withSingleDriveTaskCheckPoll(t *testing.T) {
+	t.Helper()
+	driveTaskCheckPollMu.Lock()
+
+	prevAttempts, prevInterval := driveTaskCheckPollAttempts, driveTaskCheckPollInterval
+	driveTaskCheckPollAttempts, driveTaskCheckPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveTaskCheckPollAttempts, driveTaskCheckPollInterval = prevAttempts, prevInterval
+		driveTaskCheckPollMu.Unlock()
+	})
 }
 
 func withDriveWorkingDir(t *testing.T, dir string) {

@@ -100,6 +100,10 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | [`+notes`](references/lark-vc-notes.md) | Query meeting notes (via meeting-ids, minute-tokens, or calendar-event-ids) |
 | [`+recording`](references/lark-vc-recording.md) | Query minute_token from meeting-ids or calendar-event-ids |
 
+- 使用 `+search` 命令时，必须阅读 [references/lark-vc-search.md](references/lark-vc-search.md)，了解搜索参数和返回值结构。
+- 使用 `+notes` 命令时，必须阅读 [references/lark-vc-notes.md](references/lark-vc-notes.md)，了解查询参数、产物类型和返回值结构。
+- 使用 `+recording` 命令时，必须阅读 [references/lark-vc-recording.md](references/lark-vc-recording.md)，了解查询参数和返回值结构。
+
 ## API Resources
 
 ```bash

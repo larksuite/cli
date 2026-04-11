@@ -43,6 +43,10 @@
     "en": { "title": "Sheets", "description": "Spreadsheet operations" },
     "zh": { "title": "电子表格", "description": "电子表格操作" }
   },
+  "slides": {
+    "en": { "title": "Slides", "description": "Create and manage presentations, read content, and add or remove slides" },
+    "zh": { "title": "幻灯片", "description": "创建和管理演示文稿、读取内容，以及新增或删除幻灯片页面" }
+  },
   "task": {
     "en": { "title": "Task", "description": "Task, task list, and subtask management" },
     "zh": { "title": "任务", "description": "任务、清单、子任务管理" }
@@ -53,7 +57,8 @@
   },
   "whiteboard": {
     "en": { "title": "Whiteboard", "description": "Create and edit boards" },
-    "zh": { "title": "画板", "description": "画板创建、编辑" }
+    "zh": { "title": "画板", "description": "画板创建、编辑" },
+    "auth_domain": "docs"
   },
   "wiki": {
     "en": { "title": "Wiki", "description": "Wiki space and node management" },

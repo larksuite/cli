@@ -187,3 +187,24 @@ func TestResolveConfigFromMulti_DoesNotUseEnvProfileFallback(t *testing.T) {
 		t.Fatalf("ResolveConfigFromMulti() profile = %q, want %q", cfg.ProfileName, "active")
 	}
 }
+
+func TestCliConfig_CanBot(t *testing.T) {
+	tests := []struct {
+		name                string
+		supportedIdentities uint8
+		want                bool
+	}{
+		{"unset (0) defaults to true", 0, true},
+		{"user only", 1, false},
+		{"bot only", 2, true},
+		{"both", 3, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &CliConfig{SupportedIdentities: tt.supportedIdentities}
+			if got := cfg.CanBot(); got != tt.want {
+				t.Errorf("CanBot() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
