@@ -26,5 +26,15 @@ func Shortcuts() []common.Shortcut {
 		SheetUpdateDimension,
 		SheetMoveDimension,
 		SheetDeleteDimension,
+		SheetCreateFilterView,
+		SheetUpdateFilterView,
+		SheetListFilterViews,
+		SheetGetFilterView,
+		SheetDeleteFilterView,
+		SheetCreateFilterViewCondition,
+		SheetUpdateFilterViewCondition,
+		SheetListFilterViewConditions,
+		SheetGetFilterViewCondition,
+		SheetDeleteFilterViewCondition,
 	}
 }
