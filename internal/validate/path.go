@@ -28,3 +28,9 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 func SafeLocalFlagPath(flagName, value string) (string, error) {
 	return localfileio.SafeLocalFlagPath(flagName, value)
 }
+
+// SafeServiceName validates that a service name is a single, safe path
+// component. Delegates to localfileio.SafeServiceName.
+func SafeServiceName(name string) error {
+	return localfileio.SafeServiceName(name)
+}

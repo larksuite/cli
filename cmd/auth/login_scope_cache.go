@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/larksuite/cli/internal/appdir"
 	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -25,7 +25,7 @@ type loginScopeCacheRecord struct {
 // loginScopeCacheDir returns the directory used to persist auth login --no-wait
 // requested scopes keyed by device_code.
 func loginScopeCacheDir() string {
-	return filepath.Join(core.GetConfigDir(), "cache", "auth_login_scopes")
+	return filepath.Join(appdir.CacheDir(), "auth_login_scopes")
 }
 
 // loginScopeCachePath returns the cache file path for a given device_code.
@@ -44,14 +44,14 @@ func sanitizeLoginScopeCacheKey(deviceCode string) string {
 
 // saveLoginRequestedScope persists the requested scope string for a device_code.
 func saveLoginRequestedScope(deviceCode, requestedScope string) error {
-	if err := vfs.MkdirAll(loginScopeCacheDir(), 0700); err != nil {
+	if err := vfs.MkdirAll(loginScopeCacheDir(), 0o700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(loginScopeCacheRecord{RequestedScope: requestedScope})
 	if err != nil {
 		return err
 	}
-	return validate.AtomicWrite(loginScopeCachePath(deviceCode), data, 0600)
+	return validate.AtomicWrite(loginScopeCachePath(deviceCode), data, 0o600)
 }
 
 // loadLoginRequestedScope loads the cached requested scope string for a device_code.

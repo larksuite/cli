@@ -5,6 +5,7 @@ package registry
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -110,6 +111,7 @@ func TestColdStart_NoEmbedded_SyncFetch(t *testing.T) {
 	resetInit()
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_CACHE_DIR", filepath.Join(tmp, "cache"))
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -130,12 +132,17 @@ func TestRemoteOff_SkipsRemoteLogic(t *testing.T) {
 	resetInit()
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_CACHE_DIR", filepath.Join(tmp, "cache"))
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "off")
 
 	// Create a fake cache that should NOT be loaded
 	cDir := filepath.Join(tmp, "cache")
-	os.MkdirAll(cDir, 0700)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("fake_remote_svc"), 0644)
+	if err := os.MkdirAll(cDir, 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%q): %v", cDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("fake_remote_svc"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.json): %v", err)
+	}
 
 	Init()
 
@@ -149,16 +156,23 @@ func TestCacheHit_WithinTTL(t *testing.T) {
 	resetInit()
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_CACHE_DIR", filepath.Join(tmp, "cache"))
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
 	t.Setenv("LARKSUITE_CLI_META_TTL", "3600")
 
 	// Pre-seed cache with a custom service
 	cDir := filepath.Join(tmp, "cache")
-	os.MkdirAll(cDir, 0700)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("custom_svc"), 0644)
+	if err := os.MkdirAll(cDir, 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%q): %v", cDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("custom_svc"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.json): %v", err)
+	}
 	meta := CacheMeta{LastCheckAt: time.Now().Unix()}
 	metaData, _ := json.Marshal(meta)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644)
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.meta.json): %v", err)
+	}
 
 	// Point META_URL to a server that would fail if contacted
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -186,16 +200,23 @@ func TestNetworkError_SilentDegradation(t *testing.T) {
 	resetInit()
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_CACHE_DIR", filepath.Join(tmp, "cache"))
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
 	t.Setenv("LARKSUITE_CLI_META_TTL", "0") // Always refresh
 
 	// Pre-seed cache so we have data to fall back on
 	cDir := filepath.Join(tmp, "cache")
-	os.MkdirAll(cDir, 0700)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("cached_svc"), 0644)
+	if err := os.MkdirAll(cDir, 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%q): %v", cDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("cached_svc"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.json): %v", err)
+	}
 	meta := CacheMeta{LastCheckAt: time.Now().Add(-2 * time.Hour).Unix()}
 	metaData, _ := json.Marshal(meta)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644)
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.meta.json): %v", err)
+	}
 
 	// Use a mock server that returns an error immediately (instead of 127.0.0.1:1 which
 	// may hang up to fetchTimeout=5s, leaking the background goroutine into subsequent tests).
@@ -406,14 +427,21 @@ func TestCorruptedCache_SelfHeals(t *testing.T) {
 	resetInit()
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_CACHE_DIR", filepath.Join(tmp, "cache"))
 
 	// Write corrupted cache
 	cDir := filepath.Join(tmp, "cache")
-	os.MkdirAll(cDir, 0700)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.json"), []byte("not json{{{"), 0644)
+	if err := os.MkdirAll(cDir, 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%q): %v", cDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), []byte("not json{{{"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.json): %v", err)
+	}
 	meta := CacheMeta{LastCheckAt: time.Now().Unix()}
 	metaData, _ := json.Marshal(meta)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644)
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.meta.json): %v", err)
+	}
 
 	// loadCachedMerged should fail and remove the corrupted files
 	_, err := loadCachedMerged()
@@ -450,16 +478,23 @@ func TestBrandSwitchInvalidatesCache(t *testing.T) {
 	resetInit()
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_CACHE_DIR", filepath.Join(tmp, "cache"))
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
 	t.Setenv("LARKSUITE_CLI_META_TTL", "3600")
 
 	// Pre-seed cache with feishu brand
 	cDir := filepath.Join(tmp, "cache")
-	os.MkdirAll(cDir, 0700)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("feishu_svc"), 0644)
+	if err := os.MkdirAll(cDir, 0o700); err != nil {
+		t.Fatalf("os.MkdirAll(%q): %v", cDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), testCacheJSON("feishu_svc"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.json): %v", err)
+	}
 	meta := CacheMeta{LastCheckAt: time.Now().Unix(), Version: "test-1.0", Brand: "feishu"}
 	metaData, _ := json.Marshal(meta)
-	os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644)
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0o644); err != nil {
+		t.Fatalf("os.WriteFile(remote_meta.meta.json): %v", err)
+	}
 
 	// Server returns lark-specific data
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -470,7 +505,7 @@ func TestBrandSwitchInvalidatesCache(t *testing.T) {
 	testMetaURL = ts.URL
 
 	// Init with lark brand — should invalidate feishu cache and sync fetch
-	InitWithBrand(core.BrandLark)
+	InitWithBrand(core.BrandLark, io.Discard)
 
 	// The old feishu_svc should NOT be loaded from stale cache
 	// The new lark_svc from sync fetch should be available

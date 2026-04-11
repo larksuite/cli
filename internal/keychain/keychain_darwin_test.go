@@ -42,7 +42,11 @@ func TestPlatformSetFallsBackToFileMasterKey(t *testing.T) {
 		t.Fatalf("platformSet() error = %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(StorageDir(service), fileMasterKeyName)); err != nil {
+	sdir, err := StorageDir(service)
+	if err != nil {
+		t.Fatalf("StorageDir() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sdir, fileMasterKeyName)); err != nil {
 		t.Fatalf("file master key not created: %v", err)
 	}
 
@@ -87,18 +91,21 @@ func TestPlatformGetPrefersFileMasterKey(t *testing.T) {
 	account := "test-account"
 	secret := "secret-value"
 
-	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	dir, err := StorageDir(service)
+	if err != nil {
+		t.Fatalf("StorageDir() error = %v", err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, fileMasterKeyName), fileKey, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, fileMasterKeyName), fileKey, 0o600); err != nil {
 		t.Fatalf("WriteFile(master key) error = %v", err)
 	}
 	encrypted, err := encryptData(secret, fileKey)
 	if err != nil {
 		t.Fatalf("encryptData() error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, safeFileName(account)), encrypted, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, safeFileName(account)), encrypted, 0o600); err != nil {
 		t.Fatalf("WriteFile(secret) error = %v", err)
 	}
 
@@ -136,8 +143,11 @@ func TestPlatformSetPrefersExistingFileMasterKey(t *testing.T) {
 	account := "test-account"
 	secret := "secret-value"
 
-	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	dir, err := StorageDir(service)
+	if err != nil {
+		t.Fatalf("StorageDir() error = %v", err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
@@ -145,7 +155,7 @@ func TestPlatformSetPrefersExistingFileMasterKey(t *testing.T) {
 	for i := range fileKey {
 		fileKey[i] = byte(i + 1)
 	}
-	if err := os.WriteFile(filepath.Join(dir, fileMasterKeyName), fileKey, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, fileMasterKeyName), fileKey, 0o600); err != nil {
 		t.Fatalf("WriteFile(master key) error = %v", err)
 	}
 

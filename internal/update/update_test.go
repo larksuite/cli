@@ -185,7 +185,7 @@ func TestUpdateInfoMethods(t *testing.T) {
 func TestCheckCached(t *testing.T) {
 	clearSkipEnv(t)
 	tmp := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_STATE_DIR", tmp)
 
 	// No cache → nil
 	info := CheckCached("1.0.0")
@@ -196,7 +196,9 @@ func TestCheckCached(t *testing.T) {
 	// Write cache with newer version
 	state := &updateState{LatestVersion: "2.0.0", CheckedAt: time.Now().Unix()}
 	data, _ := json.Marshal(state)
-	os.WriteFile(filepath.Join(tmp, stateFile), data, 0644)
+	if err := os.WriteFile(filepath.Join(tmp, stateFile), data, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q): %v", filepath.Join(tmp, stateFile), err)
+	}
 
 	info = CheckCached("1.0.0")
 	if info == nil {
@@ -216,7 +218,7 @@ func TestCheckCached(t *testing.T) {
 func TestRefreshCache(t *testing.T) {
 	clearSkipEnv(t)
 	tmp := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_STATE_DIR", tmp)
 
 	// Set up mock npm registry via DefaultClient
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/zalando/go-keyring"
 )
@@ -44,12 +45,8 @@ var keyringGet = keyring.Get
 var keyringSet = keyring.Set
 
 // StorageDir returns the storage directory for a given service name on macOS.
-func StorageDir(service string) string {
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(".lark-cli", "keychain", service)
-	}
-	return filepath.Join(home, "Library", "Application Support", service)
+func StorageDir(service string) (string, error) {
+	return appdir.DataDir(service)
 }
 
 var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
@@ -124,7 +121,10 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 // getFileMasterKey retrieves the fallback master key from local storage.
 // If allowCreate is true, it generates and stores a new fallback master key when missing.
 func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
-	dir := StorageDir(service)
+	dir, err := StorageDir(service)
+	if err != nil {
+		return nil, err
+	}
 	keyPath := filepath.Join(dir, fileMasterKeyName)
 
 	key, err := vfs.ReadFile(keyPath)
@@ -140,7 +140,7 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 	if !allowCreate {
 		return nil, errNotInitialized
 	}
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	key = make([]byte, masterKeyBytes)
@@ -148,7 +148,7 @@ func getFileMasterKey(service string, allowCreate bool) ([]byte, error) {
 		return nil, err
 	}
 
-	file, err := vfs.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := vfs.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			for i := 0; i < 3; i++ {
@@ -248,7 +248,11 @@ func decryptData(data []byte, key []byte) (string, error) {
 
 // platformGet retrieves a value from the macOS keychain.
 func platformGet(service, account string) (string, error) {
-	path := filepath.Join(StorageDir(service), safeFileName(account))
+	dir, err := StorageDir(service)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, safeFileName(account))
 	data, err := vfs.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
@@ -274,8 +278,15 @@ func platformGet(service, account string) (string, error) {
 
 // platformSet stores a value in the macOS keychain.
 func platformSet(service, account, data string) error {
+	dir, err := StorageDir(service)
+	if err != nil {
+		return err
+	}
 	key, err := getFileMasterKey(service, false)
 	if err != nil {
+		if err := vfs.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
 		key, err = getMasterKey(service, true)
 		if err != nil {
 			key, err = getFileMasterKey(service, true)
@@ -283,10 +294,6 @@ func platformSet(service, account, data string) error {
 				return err
 			}
 		}
-	}
-	dir := StorageDir(service)
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
-		return err
 	}
 	encrypted, err := encryptData(data, key)
 	if err != nil {
@@ -297,7 +304,7 @@ func platformSet(service, account, data string) error {
 	tmpPath := filepath.Join(dir, safeFileName(account)+"."+uuid.New().String()+".tmp")
 	defer vfs.Remove(tmpPath)
 
-	if err := vfs.WriteFile(tmpPath, encrypted, 0600); err != nil {
+	if err := vfs.WriteFile(tmpPath, encrypted, 0o600); err != nil {
 		return err
 	}
 
@@ -310,7 +317,11 @@ func platformSet(service, account, data string) error {
 
 // platformRemove deletes a value from the macOS keychain.
 func platformRemove(service, account string) error {
-	err := vfs.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
+	dir, err := StorageDir(service)
+	if err != nil {
+		return err
+	}
+	err = vfs.Remove(filepath.Join(dir, safeFileName(account)))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}

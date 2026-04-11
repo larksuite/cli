@@ -10,36 +10,24 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 
 	"github.com/google/uuid"
-	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
-const masterKeyBytes = 32
-const ivBytes = 12
-const tagBytes = 16
+const (
+	masterKeyBytes = 32
+	ivBytes        = 12
+	tagBytes       = 16
+)
 
 // StorageDir returns the directory where encrypted files are stored.
-func StorageDir(service string) string {
-	if dir := os.Getenv("LARKSUITE_CLI_DATA_DIR"); dir != "" {
-		safeDir, err := validate.SafeEnvDirPath(dir, "LARKSUITE_CLI_DATA_DIR")
-		if err == nil {
-			return filepath.Join(safeDir, service)
-		}
-	}
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		// If home is missing, fallback to relative path and print warning.
-		// This matches the behavior in internal/core/config.go.
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-	xdgData := filepath.Join(home, ".local", "share")
-	return filepath.Join(xdgData, service)
+func StorageDir(service string) (string, error) {
+	return appdir.DataDir(service)
 }
 
 var safeFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
@@ -52,7 +40,10 @@ func safeFileName(account string) string {
 // getMasterKey retrieves the master key from the file system.
 // If allowCreate is true, it generates and stores a new master key if one doesn't exist.
 func getMasterKey(service string, allowCreate bool) ([]byte, error) {
-	dir := StorageDir(service)
+	dir, err := StorageDir(service)
+	if err != nil {
+		return nil, err
+	}
 	keyPath := filepath.Join(dir, "master.key")
 
 	key, err := vfs.ReadFile(keyPath)
@@ -72,7 +63,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		return nil, errNotInitialized
 	}
 
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 
@@ -84,7 +75,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 	tmpKeyPath := filepath.Join(dir, "master.key."+uuid.New().String()+".tmp")
 	defer vfs.Remove(tmpKeyPath)
 
-	if err := vfs.WriteFile(tmpKeyPath, key, 0600); err != nil {
+	if err := vfs.WriteFile(tmpKeyPath, key, 0o600); err != nil {
 		return nil, err
 	}
 
@@ -149,7 +140,11 @@ func decryptData(data []byte, key []byte) (string, error) {
 
 // platformGet retrieves a value from the file system.
 func platformGet(service, account string) (string, error) {
-	path := filepath.Join(StorageDir(service), safeFileName(account))
+	dir, err := StorageDir(service)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, safeFileName(account))
 	data, err := vfs.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
@@ -174,8 +169,11 @@ func platformSet(service, account, data string) error {
 	if err != nil {
 		return err
 	}
-	dir := StorageDir(service)
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
+	dir, err := StorageDir(service)
+	if err != nil {
+		return err
+	}
+	if err := vfs.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	encrypted, err := encryptData(data, key)
@@ -187,7 +185,7 @@ func platformSet(service, account, data string) error {
 	tmpPath := filepath.Join(dir, safeFileName(account)+"."+uuid.New().String()+".tmp")
 	defer vfs.Remove(tmpPath)
 
-	if err := vfs.WriteFile(tmpPath, encrypted, 0600); err != nil {
+	if err := vfs.WriteFile(tmpPath, encrypted, 0o600); err != nil {
 		return err
 	}
 
@@ -200,7 +198,11 @@ func platformSet(service, account, data string) error {
 
 // platformRemove deletes a value from the file system.
 func platformRemove(service, account string) error {
-	err := vfs.Remove(filepath.Join(StorageDir(service), safeFileName(account)))
+	dir, err := StorageDir(service)
+	if err != nil {
+		return err
+	}
+	err = vfs.Remove(filepath.Join(dir, safeFileName(account)))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}

@@ -12,7 +12,11 @@ import (
 // LARKSUITE_CLI_LOG_DIR is normalized and used as the auth log directory.
 func TestAuthLogDir_UsesValidatedLogDirEnv(t *testing.T) {
 	base := t.TempDir()
-	base, _ = filepath.EvalSymlinks(base)
+	var err error
+	base, err = filepath.EvalSymlinks(base)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", base, err)
+	}
 	t.Setenv("LARKSUITE_CLI_LOG_DIR", filepath.Join(base, "logs", "..", "auth"))
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", "")
 
@@ -23,15 +27,21 @@ func TestAuthLogDir_UsesValidatedLogDirEnv(t *testing.T) {
 	}
 }
 
-// TestAuthLogDir_InvalidLogDirFallsBackToConfigDir verifies that an invalid
-// LARKSUITE_CLI_LOG_DIR falls back to LARKSUITE_CLI_CONFIG_DIR/logs.
-func TestAuthLogDir_InvalidLogDirFallsBackToConfigDir(t *testing.T) {
+// TestAuthLogDir_InvalidLogDirFallsBackToStateDir verifies that an invalid
+// LARKSUITE_CLI_LOG_DIR falls back to LARKSUITE_CLI_STATE_DIR/logs.
+func TestAuthLogDir_InvalidLogDirFallsBackToStateDir(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_LOG_DIR", "relative-logs")
-	configDir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	stateDir := t.TempDir()
+	var err error
+	stateDir, err = filepath.EvalSymlinks(stateDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", stateDir, err)
+	}
+	t.Setenv("LARKSUITE_CLI_STATE_DIR", stateDir)
 
 	got := authLogDir()
-	want := filepath.Join(configDir, "logs")
+	want := filepath.Join(stateDir, "logs")
 	if got != want {
 		t.Fatalf("authLogDir() = %q, want %q", got, want)
 	}

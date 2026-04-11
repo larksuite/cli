@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -18,11 +17,19 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+
+func diagnosticWriter(w io.Writer) io.Writer {
+	if w == nil {
+		return io.Discard
+	}
+	return w
+}
 
 // sanitizeID replaces empty IDs with "default" to prevent file path issues.
 func sanitizeID(id string) string {
@@ -51,15 +58,12 @@ type UATStatus struct {
 
 // NewUATCallOptions creates UATCallOptions from a CLI config.
 func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
-	if errOut == nil {
-		errOut = os.Stderr
-	}
 	return UATCallOptions{
 		UserOpenId: cfg.UserOpenId,
 		AppId:      cfg.AppID,
 		AppSecret:  cfg.AppSecret,
 		Domain:     cfg.Brand,
-		ErrOut:     errOut,
+		ErrOut:     diagnosticWriter(errOut),
 	}
 }
 
@@ -91,11 +95,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 
 	// expired
 	if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
-		if opts.ErrOut != nil {
-			fmt.Fprintf(opts.ErrOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-		}
+		fmt.Fprintf(diagnosticWriter(opts.ErrOut), "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
 	}
 	return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
 }
@@ -126,10 +126,10 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	// 2. Cross-process lock using flock
 	// We use the same underlying storage directory resolution as keychain_other.go
 	// to ensure locks are isolated properly alongside other sensitive data.
-	configDir := core.GetConfigDir()
+	configDir := appdir.StateDir()
 
 	lockDir := filepath.Join(configDir, "locks")
-	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
+	if err := vfs.MkdirAll(lockDir, 0o700); err != nil {
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
 	}
 
@@ -170,10 +170,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 
 // doRefreshToken performs the actual HTTP request to refresh the token.
 func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
-	errOut := opts.ErrOut
-	if errOut == nil {
-		errOut = os.Stderr
-	}
+	errOut := diagnosticWriter(opts.ErrOut)
 
 	now := time.Now().UnixMilli()
 	if now >= stored.RefreshExpiresAt {

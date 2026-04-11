@@ -9,13 +9,12 @@ import (
 	"net/http"
 
 	"github.com/charmbracelet/huh"
-	"github.com/larksuite/cli/internal/build"
-	qrcode "github.com/skip2/go-qrcode"
-
 	larkauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 // configInitResult holds the result of the interactive config init flow.
@@ -169,7 +168,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 
 	// Step 1: Request app registration (begin)
 	httpClient := &http.Client{}
-	authResp, err := larkauth.RequestAppRegistration(httpClient, larkBrand, f.IOStreams.ErrOut)
+	authResp, err := larkauth.RequestAppRegistration(httpClient, larkBrand)
 	if err != nil {
 		return nil, output.ErrAuth("app registration failed: %v", err)
 	}
