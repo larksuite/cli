@@ -9,7 +9,8 @@ import (
 
 	"github.com/larksuite/cli/cmd"
 
-	_ "github.com/larksuite/cli/extension/credential/env" // activate env credential provider
+	_ "github.com/larksuite/cli/extension/credential/env"      // activate env credential provider
+	_ "github.com/larksuite/cli/extension/credential/jsonfile" // activate jsonfile credential provider
 )
 
 func main() {

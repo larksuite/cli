@@ -186,6 +186,38 @@ lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
 
+### 凭证文件
+
+如果你已有应用凭证，可以跳过交互式 `config init`，通过环境变量指定 JSON 文件直接注入：
+
+```bash
+export LARKSUITE_CLI_CREDENTIAL_FILE=/path/to/credentials.json
+```
+
+JSON 文件格式：
+
+```json
+{
+  "app_id": "cli_xxxx",
+  "app_secret": "你的app_secret",
+  "brand": "feishu",
+  "user_access_token": "u-xxxx",
+  "tenant_access_token": "t-xxxx",
+  "refresh_token": "r-xxxx"
+}
+```
+
+| 字段                  | 必填 | 说明                                           |
+| -------------------- | ---- | ---------------------------------------------- |
+| `app_id`             | 是   | 飞书/Lark 应用 ID                               |
+| `app_secret`         | 否   | 应用密钥（如已提供 token 则可省略）                |
+| `brand`              | 否   | `feishu`（默认）或 `lark`                        |
+| `user_access_token`  | 否   | 预先获取的用户访问令牌                            |
+| `tenant_access_token`| 否   | 预先获取的租户访问令牌                            |
+| `refresh_token`      | 否   | 用于自动刷新用户令牌的 Refresh Token（需配合 `app_secret`）|
+
+> **注意：** 文件路径必须为绝对路径。凭证文件的优先级高于默认配置（`config init`），但低于环境变量（`LARKSUITE_CLI_APP_ID` 等）。
+
 ## 三层命令调用
 
 CLI 提供三种粒度的调用方式，覆盖从快速操作到完全自定义的全部场景：
