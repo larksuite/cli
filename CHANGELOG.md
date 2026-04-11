@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.9] - 2026-04-11
+
+### Features
+
+- Add attendance `user_task.query` (#405)
+- Support minutes search (#359)
+- **slides**: Add slides `+create` shortcut with `--slides` one-step creation (#389)
+- **slides**: Return presentation URL in slides `+create` output (#425)
+- **sheets**: Add dimension shortcuts for row/column operations (#413)
+- **sheets**: Add cell operation shortcuts for merge, replace, and style (#412)
+- **drive**: Add drive folder delete shortcut with async task polling (#415)
+
+### Documentation
+
+- **drive**: Add guide for granting document permission to current bot (#414)
+
 ## [v1.0.8] - 2026-04-10
 
 ### Features
@@ -287,6 +303,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.9]: https://github.com/larksuite/cli/releases/tag/v1.0.9
+[v1.0.8]: https://github.com/larksuite/cli/releases/tag/v1.0.8
 [v1.0.7]: https://github.com/larksuite/cli/releases/tag/v1.0.7
 [v1.0.6]: https://github.com/larksuite/cli/releases/tag/v1.0.6
 [v1.0.5]: https://github.com/larksuite/cli/releases/tag/v1.0.5
