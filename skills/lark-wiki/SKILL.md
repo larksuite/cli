@@ -1,7 +1,7 @@
 ---
 name: lark-wiki
 version: 1.0.0
-description: "飞书知识库：管理知识空间和文档节点。创建和查询知识空间、管理节点层级结构、在知识库中组织文档和快捷方式。当用户需要在知识库中查找或创建文档、浏览知识空间结构、移动或复制节点时使用。"
+description: "飞书知识库：管理知识空间、空间成员和文档节点。创建和查询知识空间、查看和管理空间成员、管理节点层级结构、在知识库中组织文档和快捷方式。当用户需要在知识库中查找或创建文档、浏览知识空间结构、查看或管理空间成员、移动或复制节点时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -31,15 +31,21 @@ lark-cli wiki <resource> <method> [flags] # 调用 API
 
 ### spaces
 
-- `get` — 获取知识空间信息
-- `get_node` — 获取知识空间节点信息
-- `list` — 获取知识空间列表
+  - `get` — 获取知识空间信息
+  - `get_node` — 获取知识空间节点信息
+  - `list` — 获取知识空间列表
+
+### members
+
+  - `create` — 添加知识空间成员
+  - `delete` — 删除知识空间成员
+  - `list` — 获取知识空间成员列表
 
 ### nodes
 
-- `copy` — 创建知识空间节点副本
-- `create` — 创建知识空间节点
-- `list` — 获取知识空间子节点列表
+  - `copy` — 创建知识空间节点副本
+  - `create` — 创建知识空间节点
+  - `list` — 获取知识空间子节点列表
 
 ## 权限表
 
@@ -48,6 +54,10 @@ lark-cli wiki <resource> <method> [flags] # 调用 API
 | `spaces.get` | `wiki:space:read` |
 | `spaces.get_node` | `wiki:node:read` |
 | `spaces.list` | `wiki:space:retrieve` |
+| `members.create` | `wiki:member:create` |
+| `members.delete` | `wiki:member:update` |
+| `members.list` | `wiki:member:retrieve` |
 | `nodes.copy` | `wiki:node:copy` |
 | `nodes.create` | `wiki:node:create` |
 | `nodes.list` | `wiki:node:retrieve` |
+
