@@ -98,8 +98,8 @@ func TestWikiShortcutsIncludesNodeCreate(t *testing.T) {
 	t.Parallel()
 
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 1 {
-		t.Fatalf("len(Shortcuts()) = %d, want 1", len(shortcuts))
+	if len(shortcuts) == 0 {
+		t.Fatalf("len(Shortcuts()) = 0, want at least 1")
 	}
 	if shortcuts[0].Command != "+node-create" {
 		t.Fatalf("shortcut command = %q, want %q", shortcuts[0].Command, "+node-create")
