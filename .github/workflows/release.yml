@@ -45,6 +45,32 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Fetch checksums.txt from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern checksums.txt \
+            --dir .
+
+      - name: Verify checksums.txt is present and matches current version
+        run: |
+          set -euo pipefail
+          test -s checksums.txt
+          VERSION="${GITHUB_REF_NAME#v}"
+          for plat in \
+            "linux-amd64.tar.gz"  \
+            "linux-arm64.tar.gz"  \
+            "darwin-amd64.tar.gz" \
+            "darwin-arm64.tar.gz" \
+            "windows-amd64.zip"   \
+            "windows-arm64.zip"
+          do
+            grep -qE '^[0-9a-fA-F]{64}[[:space:]]+\*?lark-cli-'"${VERSION}"'-'"${plat}"'$' checksums.txt \
+              || { echo "checksums.txt missing valid entry for lark-cli-${VERSION}-${plat}"; exit 1; }
+          done
+
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
