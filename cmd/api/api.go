@@ -5,7 +5,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -40,18 +39,9 @@ type APIOptions struct {
 	PageLimit int
 	PageDelay int
 	Format    string
+	JqExpr    string
 	DryRun    bool
-}
-
-func parseJsonOpt(input, label string) (map[string]interface{}, error) {
-	if input == "" {
-		return nil, nil
-	}
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(input), &result); err != nil {
-		return nil, output.ErrValidation("%s invalid format, expected JSON object", label)
-	}
-	return result, nil
+	File      string
 }
 
 var urlPrefixRe = regexp.MustCompile(`https?://[^/]+(/open-apis/.+)`)
@@ -87,8 +77,8 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "query parameters JSON")
-	cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "query parameters JSON (supports - for stdin)")
+	cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
 	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
@@ -96,7 +86,9 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.PageDelay, "page-delay", 200, "delay in ms between pages")
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
+	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	cmd.Flags().StringVar(&opts.File, "file", "", "file to upload as multipart/form-data ([field=]path, supports - for stdin)")
 
 	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
@@ -115,20 +107,24 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 }
 
 // buildAPIRequest validates flags and builds a RawApiRequest.
-func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
-	params, err := parseJsonOpt(opts.Params, "--params")
+// When dryRun is true and a file is provided, file reading is skipped and
+// FileUploadMeta is returned instead so the caller can render dry-run output.
+func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
+	stdin := opts.Factory.IOStreams.In
+
+	// Validate --file mutual exclusions first.
+	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
+		return client.RawApiRequest{}, nil, err
+	}
+
+	// stdin conflict: --params and --data cannot both read from stdin, regardless of --file.
+	if opts.Params == "-" && opts.Data == "-" {
+		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+	}
+
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
 	if err != nil {
-		return client.RawApiRequest{}, err
-	}
-	if params == nil {
-		params = map[string]interface{}{}
-	}
-	var data interface{}
-	if opts.Data != "" {
-		data, err = parseJsonOpt(opts.Data, "--data")
-		if err != nil {
-			return client.RawApiRequest{}, err
-		}
+		return client.RawApiRequest{}, nil, err
 	}
 	if opts.PageSize > 0 {
 		params["page_size"] = opts.PageSize
@@ -138,35 +134,84 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 		Method: opts.Method,
 		URL:    normalisePath(opts.Path),
 		Params: params,
-		Data:   data,
 		As:     opts.As,
 	}
-	// WithFileDownload tells the SDK to skip CodeError parsing on 200 OK.
-	if opts.Output != "" {
-		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+
+	if opts.File != "" {
+		// File upload path: build formdata.
+		fieldName, filePath, isStdin := cmdutil.ParseFileFlag(opts.File, "file")
+
+		// Parse --data as JSON map for form fields (not as body).
+		var dataFields any
+		if opts.Data != "" {
+			dataFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+			if err != nil {
+				return client.RawApiRequest{}, nil, err
+			}
+			if _, ok := dataFields.(map[string]any); !ok {
+				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+			}
+		}
+
+		if opts.DryRun {
+			return request, &cmdutil.FileUploadMeta{
+				FieldName: fieldName, FilePath: filePath, FormFields: dataFields,
+			}, nil
+		}
+
+		fd, err := cmdutil.BuildFormdata(
+			opts.Factory.ResolveFileIO(opts.Ctx),
+			fieldName, filePath, isStdin, stdin, dataFields,
+		)
+		if err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
+		request.Data = fd
+		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
+	} else {
+		// Normal path: JSON body.
+		data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+		if err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
+		request.Data = data
+		if opts.Output != "" {
+			request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+		}
 	}
-	return request, nil
+
+	return request, nil, nil
 }
 
 func apiRun(opts *APIOptions) error {
 	f := opts.Factory
-	opts.As = f.ResolveAs(opts.Cmd, opts.As)
+	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
+
+	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
+		return err
+	}
 
 	if opts.PageAll && opts.Output != "" {
 		return output.ErrValidation("--output and --page-all are mutually exclusive")
 	}
+	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
+		return err
+	}
 
-	request, err := buildAPIRequest(opts)
+	request, fileMeta, err := buildAPIRequest(opts)
 	if err != nil {
 		return err
 	}
 
-	config, err := f.ResolveConfig(opts.As)
+	config, err := f.Config()
 	if err != nil {
 		return err
 	}
 
 	if opts.DryRun {
+		if fileMeta != nil {
+			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+		}
 		return apiDryRun(f, request, config, opts.Format)
 	}
 	// Identity info is now included in the JSON envelope; skip stderr printing.
@@ -184,36 +229,43 @@ func apiRun(opts *APIOptions) error {
 	}
 
 	if opts.PageAll {
-		return apiPaginate(opts.Ctx, ac, request, format, out, f.IOStreams.ErrOut,
+		return apiPaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay})
 	}
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
-		return output.MarkRaw(output.ErrNetwork("API call failed: %v", err))
+		return output.MarkRaw(client.WrapDoAPIError(err))
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath: opts.Output,
 		Format:     format,
+		JqExpr:     opts.JqExpr,
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
+		FileIO:     f.ResolveFileIO(opts.Ctx),
 	})
-	// MarkRaw tells root error handler that the API response was already written
-	// to stdout, so it should skip the stderr error envelope. Only apply when
-	// HandleResponse actually wrote output (i.e. returned a business/API error
-	// after printing JSON to stdout). Non-JSON HTTP errors (e.g. 404 text/plain)
-	// produce no stdout output and need the envelope.
-	if err != nil && client.IsJSONContentType(resp.Header.Get("Content-Type")) {
+	// MarkRaw tells root error handler to skip enrichPermissionError,
+	// preserving the original API error detail (log_id, troubleshooter, etc.).
+	if err != nil {
 		return output.MarkRaw(err)
 	}
-	return err
+	return nil
 }
 
 func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
 	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
 }
 
-func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, out, errOut io.Writer, pagOpts client.PaginationOptions) error {
+func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions) error {
+	// When jq is set, always aggregate all pages then filter.
+	if jqExpr != "" {
+		if err := client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, client.CheckLarkResponse); err != nil {
+			return output.MarkRaw(err)
+		}
+		return nil
+	}
+
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
 		pf := output.NewPaginatedFormatter(out, format)

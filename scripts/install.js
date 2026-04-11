@@ -1,6 +1,8 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
 const { execSync } = require("child_process");
 const os = require("os");
 
@@ -32,45 +34,34 @@ if (!platform || !arch) {
 const isWindows = process.platform === "win32";
 const ext = isWindows ? ".zip" : ".tar.gz";
 const archiveName = `${NAME}-${VERSION}-${platform}-${arch}${ext}`;
-const url = `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
+const GITHUB_URL = `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
+const MIRROR_URL = `https://registry.npmmirror.com/-/binary/lark-cli/v${VERSION}/${archiveName}`;
+
 const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
 fs.mkdirSync(binDir, { recursive: true });
 
 function download(url, destPath) {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith("https") ? https : require("http");
-    client
-      .get(url, (res) => {
-        if (res.statusCode === 302 || res.statusCode === 301) {
-          return download(res.headers.location, destPath).then(
-            resolve,
-            reject
-          );
-        }
-        if (res.statusCode !== 200) {
-          return reject(
-            new Error(`Download failed with status ${res.statusCode}: ${url}`)
-          );
-        }
-        const file = fs.createWriteStream(destPath);
-        res.pipe(file);
-        file.on("finish", () => {
-          file.close();
-          resolve();
-        });
-      })
-      .on("error", reject);
-  });
+  // --ssl-revoke-best-effort: on Windows (Schannel), avoid CRYPT_E_REVOCATION_OFFLINE
+  // errors when the certificate revocation list server is unreachable
+  const sslFlag = isWindows ? "--ssl-revoke-best-effort " : "";
+  execSync(
+    `curl ${sslFlag}--fail --location --silent --show-error --connect-timeout 10 --max-time 120 --output "${destPath}" "${url}"`,
+    { stdio: ["ignore", "ignore", "pipe"] }
+  );
 }
 
-async function install() {
+function install() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-"));
   const archivePath = path.join(tmpDir, archiveName);
 
   try {
-    await download(url, archivePath);
+    try {
+      download(GITHUB_URL, archivePath);
+    } catch (err) {
+      download(MIRROR_URL, archivePath);
+    }
 
     if (isWindows) {
       execSync(
@@ -94,7 +85,14 @@ async function install() {
   }
 }
 
-install().catch((err) => {
+try {
+  install();
+} catch (err) {
   console.error(`Failed to install ${NAME}:`, err.message);
+  console.error(
+    `\nIf you are behind a firewall or in a restricted network, try setting a proxy:\n` +
+    `  export https_proxy=http://your-proxy:port\n` +
+    `  npm install -g @larksuite/cli`
+  );
   process.exit(1);
-});
+}

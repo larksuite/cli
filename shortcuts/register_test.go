@@ -4,6 +4,10 @@
 package shortcuts
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -63,6 +67,19 @@ func TestRegisterShortcutsMountsBaseCommands(t *testing.T) {
 	}
 }
 
+func TestRegisterShortcutsMountsDocsMediaPreview(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, &cmdutil.Factory{})
+
+	previewCmd, _, err := program.Find([]string{"docs", "+media-preview"})
+	if err != nil {
+		t.Fatalf("find docs media preview shortcut: %v", err)
+	}
+	if previewCmd == nil || previewCmd.Name() != "+media-preview" {
+		t.Fatalf("docs media preview shortcut not mounted: %#v", previewCmd)
+	}
+}
+
 func TestRegisterShortcutsReusesExistingServiceCommand(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	existingBase := &cobra.Command{Use: "base", Short: "existing base service"}
@@ -87,4 +104,40 @@ func TestRegisterShortcutsReusesExistingServiceCommand(t *testing.T) {
 	if workspaceCmd == nil {
 		t.Fatal("base workspace shortcut not mounted on existing service command")
 	}
+}
+
+func TestGenerateShortcutsJSON(t *testing.T) {
+	output := os.Getenv("SHORTCUTS_OUTPUT")
+	if output == "" {
+		t.Skip("set SHORTCUTS_OUTPUT env to generate shortcuts.json")
+	}
+
+	shortcuts := AllShortcuts()
+
+	type entry struct {
+		Verb        string   `json:"verb"`
+		Description string   `json:"description"`
+		Scopes      []string `json:"scopes"`
+	}
+	grouped := make(map[string][]entry)
+	for _, s := range shortcuts {
+		verb := strings.TrimPrefix(s.Command, "+")
+		grouped[s.Service] = append(grouped[s.Service], entry{
+			Verb:        verb,
+			Description: s.Description,
+			Scopes:      s.ScopesForIdentity("user"),
+		})
+	}
+
+	data, err := json.MarshalIndent(grouped, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal shortcuts: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(output, data, 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	t.Logf("wrote %d bytes to %s", len(data), output)
 }

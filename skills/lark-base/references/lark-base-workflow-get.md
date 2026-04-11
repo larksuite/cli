@@ -1,7 +1,7 @@
 # base +workflow-get
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-> **必读参考：** 获取到的 `steps` 列表的具体节点结构和各触发器/动作组件的完整配置项，请参见 [`lark-base-workflow-schema.md`](lark-base-workflow-schema.md)。
+> 💡 **按需查阅：** 如需深入理解返回的 `steps` 节点结构，可参考 [workflow-schema.md](lark-base-workflow-schema.md)。简单统计（如节点数量）无需阅读 schema。
 
 获取一个 workflow 的完整定义，包括标题、状态、所有步骤（steps）及其配置。
 
@@ -115,7 +115,6 @@ GET /open-apis/base/v3/bases/:base_token/workflows/:workflow_id
         "id": "trigger_1",
         "type": "AddRecordTrigger",
         "title": "监控新订单",
-        "children": { "links": [] },
         "next": "action_1",
         "data": { "table_name": "订单表", "watched_field_name": "订单号" }
       },
@@ -123,7 +122,6 @@ GET /open-apis/base/v3/bases/:base_token/workflows/:workflow_id
         "id": "action_1",
         "type": "LarkMessageAction",
         "title": "发送通知",
-        "children": { "links": [] },
         "next": null,
         "data": { "..." : "..." }
       }

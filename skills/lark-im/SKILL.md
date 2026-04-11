@@ -56,15 +56,15 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat with bot identity; bot-only; creates private/public chats, invites users/bots, optionally sets bot manager |
+| [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat; user/bot; creates private/public chats, invites users/bots, optionally sets bot manager |
 | [`+chat-messages-list`](references/lark-im-chat-messages-list.md) | List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range/sort/pagination |
 | [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by keyword and/or member open_ids (e.g. look up chat_id by group name); user/bot; supports member/type filters, sorting, and pagination |
 | [`+chat-update`](references/lark-im-chat-update.md) | Update group chat name or description; user/bot; updates a chat's name or description |
 | [`+messages-mget`](references/lark-im-messages-mget.md) | Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies |
-| [`+messages-reply`](references/lark-im-messages-reply.md) | Reply to a message (supports thread replies) with bot identity; bot-only; supports text/markdown/post/media replies, reply-in-thread, idempotency key |
+| [`+messages-reply`](references/lark-im-messages-reply.md) | Reply to a message (supports thread replies); user/bot; supports text/markdown/post/media replies, reply-in-thread, idempotency key |
 | [`+messages-resources-download`](references/lark-im-messages-resources-download.md) | Download images/files from a message; user/bot; downloads image/file resources by message-id and file-key to a safe relative output path |
-| [`+messages-search`](references/lark-im-messages-search.md) | Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query |
-| [`+messages-send`](references/lark-im-messages-send.md) | Send a message to a chat or direct message with bot identity; bot-only; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key |
+| [`+messages-search`](references/lark-im-messages-search.md) | Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, supports auto-pagination via `--page-all` / `--page-limit`, enriches results via batched mget and chats batch_query |
+| [`+messages-send`](references/lark-im-messages-send.md) | Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key |
 | [`+threads-messages-list`](references/lark-im-threads-messages-list.md) | List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports sort/pagination |
 
 ## API Resources
@@ -87,6 +87,7 @@ lark-cli im <resource> <method> [flags] # 调用 API
 ### chat.members
 
   - `create` — 将用户或机器人拉入群聊。Identity: supports `user` and `bot`; the caller must be in the target chat; for `bot` calls, added users must be within the app's availability; for internal chats the operator must belong to the same tenant; if only owners/admins can add members, the caller must be an owner/admin, or a chat-creator bot with `im:chat:operate_as_owner`.
+  - `delete` — 将用户或机器人移出群聊。Identity: supports `user` and `bot`; only group owner, admin, or creator bot can remove others; max 50 users or 5 bots per request.
   - `get` — 获取群成员列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
 
 ### messages
@@ -123,6 +124,7 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `chats.list` | `im:chat:read` |
 | `chats.update` | `im:chat:update` |
 | `chat.members.create` | `im:chat.members:write_only` |
+| `chat.members.delete` | `im:chat.members:write_only` |
 | `chat.members.get` | `im:chat.members:read` |
 | `messages.delete` | `im:message:recall` |
 | `messages.forward` | `im:message` |
@@ -136,4 +138,3 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `pins.create` | `im:message.pins:write_only` |
 | `pins.delete` | `im:message.pins:write_only` |
 | `pins.list` | `im:message.pins:read` |
-

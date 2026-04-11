@@ -8,11 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
@@ -26,13 +24,14 @@ var MailDraftEdit = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me)"},
+		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me). Prefer --mailbox for clarity; --from is kept for backward compatibility."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Takes priority over --from when both are set."},
 		{Name: "draft-id", Desc: "Target draft ID. Required for real edits. It can be omitted only when using the --print-patch-template flag by itself."},
 		{Name: "set-subject", Desc: "Replace the subject with this final value. Use this for full subject replacement, not for appending a fragment to the existing subject."},
 		{Name: "set-to", Desc: "Replace the entire To recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "set-cc", Desc: "Replace the entire Cc recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "set-bcc", Desc: "Replace the entire Bcc recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
-		{Name: "patch-file", Desc: "Edit entry point for body edits, incremental recipient changes, header edits, attachment changes, or inline-image changes. All body edits MUST go through --patch-file. Two body ops: set_body (full replacement including quote) and set_reply_body (replaces only user-authored content, auto-preserves quote block). Run --inspect first to check has_quoted_content, then --print-patch-template for the JSON structure."},
+		{Name: "patch-file", Desc: "Edit entry point for body edits, incremental recipient changes, header edits, attachment changes, or inline-image changes. All body edits MUST go through --patch-file. Two body ops: set_body (full replacement including quote) and set_reply_body (replaces only user-authored content, auto-preserves quote block). Run --inspect first to check has_quoted_content, then --print-patch-template for the JSON structure. Relative path only."},
 		{Name: "print-patch-template", Type: "bool", Desc: "Print the JSON template and supported operations for the --patch-file flag. Recommended first step before generating a patch file. No draft read or write is performed."},
 		{Name: "inspect", Type: "bool", Desc: "Inspect the draft without modifying it. Returns the draft projection including subject, recipients, body summary, has_quoted_content (whether the draft contains a reply/forward quote block), attachments_summary (with part_id and cid for each attachment), and inline_summary. Run this BEFORE editing body to check has_quoted_content: if true, use set_reply_body in --patch-file to preserve the quote; if false, use set_body."},
 	},
@@ -93,7 +92,8 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("parse draft raw EML failed: %v", err)
 		}
-		if err := draftpkg.Apply(snapshot, patch); err != nil {
+		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
+		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
 			return output.ErrValidation("apply draft patch failed: %v", err)
 		}
 		serialized, err := draftpkg.Serialize(snapshot)
@@ -216,7 +216,7 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 
 	patchFile := strings.TrimSpace(runtime.Str("patch-file"))
 	if patchFile != "" {
-		filePatch, err := loadPatchFile(patchFile)
+		filePatch, err := loadPatchFile(runtime, patchFile)
 		if err != nil {
 			return patch, err
 		}
@@ -264,13 +264,14 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 	return patch, patch.Validate()
 }
 
-func loadPatchFile(path string) (draftpkg.Patch, error) {
+func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch, error) {
 	var patch draftpkg.Patch
-	safePath, err := validate.SafeInputPath(path)
+	f, err := runtime.FileIO().Open(path)
 	if err != nil {
 		return patch, fmt.Errorf("--patch-file %q: %w", path, err)
 	}
-	data, err := os.ReadFile(safePath)
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return patch, err
 	}
@@ -303,14 +304,14 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			{"op": "set_recipients", "shape": map[string]interface{}{"field": "to|cc|bcc", "addresses": []map[string]interface{}{{"address": "string", "name": "string(optional)"}}}},
 			{"op": "add_recipient", "shape": map[string]interface{}{"field": "to|cc|bcc", "address": "string", "name": "string(optional)"}},
 			{"op": "remove_recipient", "shape": map[string]interface{}{"field": "to|cc|bcc", "address": "string"}},
-			{"op": "set_body", "shape": map[string]interface{}{"value": "string"}},
-			{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically)"}},
+			{"op": "set_body", "shape": map[string]interface{}{"value": "string (supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
+			{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
 			{"op": "set_header", "shape": map[string]interface{}{"name": "string", "value": "string"}},
 			{"op": "remove_header", "shape": map[string]interface{}{"name": "string"}},
-			{"op": "add_attachment", "shape": map[string]interface{}{"path": "string"}},
+			{"op": "add_attachment", "shape": map[string]interface{}{"path": "string(relative path)"}},
 			{"op": "remove_attachment", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
-			{"op": "add_inline", "shape": map[string]interface{}{"path": "string", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}},
-			{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
+			{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
+			{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 			{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
 		},
 		"supported_ops_by_group": []map[string]interface{}{
@@ -318,8 +319,8 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 				"group": "subject_and_body",
 				"ops": []map[string]interface{}{
 					{"op": "set_subject", "shape": map[string]interface{}{"value": "string"}},
-					{"op": "set_body", "shape": map[string]interface{}{"value": "string"}},
-					{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically)"}},
+					{"op": "set_body", "shape": map[string]interface{}{"value": "string (supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
+					{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
 				},
 			},
 			{
@@ -340,10 +341,10 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			{
 				"group": "attachments_and_inline",
 				"ops": []map[string]interface{}{
-					{"op": "add_attachment", "shape": map[string]interface{}{"path": "string"}},
+					{"op": "add_attachment", "shape": map[string]interface{}{"path": "string(relative path)"}},
 					{"op": "remove_attachment", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
-					{"op": "add_inline", "shape": map[string]interface{}{"path": "string", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}},
-					{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
+					{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
+					{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 					{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
 				},
 			},
@@ -359,11 +360,13 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			{"situation": "draft created by +reply or +forward (has_quoted_content=true)", "recommended_op": "set_reply_body — replaces only the user-authored portion and automatically preserves the quoted original message; if user explicitly wants to remove the quote, use set_body instead"},
 		},
 		"notes": []string{
+			"`set_body`/`set_reply_body` support inline images via local file paths: use <img src=\"./local/file.png\" /> in the HTML value — the local path is automatically resolved into an inline MIME part with a generated CID; removing or replacing an <img> tag automatically cleans up or replaces the corresponding MIME part; do NOT use `add_inline` for this; example: {\"op\":\"set_body\",\"value\":\"<div>Hello<img src=\\\"./logo.png\\\" /></div>\"}",
+			"`add_inline` is an advanced op for precise CID control only — in most cases, use <img src=\"./path\"> in `set_body`/`set_reply_body` instead",
 			"`ops` is executed in order",
+			"all file paths (--patch-file and `path` fields in ops) must be relative — no absolute paths or .. traversal",
 			"all body edits MUST go through --patch-file; there is no --set-body flag",
 			"`set_body` replaces the ENTIRE body including any reply/forward quote block; when the draft has both text/plain and text/html, it updates the HTML body and regenerates the plain-text summary, so the input should be HTML",
 			"`set_reply_body` replaces only the user-authored portion of the body and automatically re-appends the trailing reply/forward quote block (generated by +reply or +forward); the value you pass should contain ONLY the new user-authored content WITHOUT the quote block — the quote block will be re-inserted automatically; if the user wants to modify content INSIDE the quote block, use `set_body` instead for full replacement; if the draft has no quote block, it behaves identically to `set_body`",
-			"`add_inline` only adds the MIME binary part; it does NOT insert an <img> tag into the HTML body; to display the image in the body, you must ALSO use set_body/set_reply_body to insert <img src=\"cid:...\"> into the body content; forgetting this causes the inline part to become an orphaned attachment when sent",
 			"`body_kind` only supports text/plain and text/html",
 			"`selector` currently only supports primary",
 			"`remove_attachment` target supports part_id or cid; priority: part_id > cid",

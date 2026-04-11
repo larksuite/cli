@@ -14,7 +14,9 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 )
 
 // NewCmdAuth creates the auth command with subcommands.
@@ -48,7 +50,7 @@ type userInfoResponse struct {
 func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, name string, err error) {
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
-		ApiPath:                   "/open-apis/authen/v1/user_info",
+		ApiPath:                   larkauth.PathUserInfoV1,
 		SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser},
 	}, larkcore.WithUserAccessToken(accessToken))
 	if err != nil {
@@ -99,7 +101,7 @@ type appInfoResponse struct {
 
 // getAppInfo queries app info from the Lark API.
 func getAppInfo(ctx context.Context, f *cmdutil.Factory, appId string) (*appInfo, error) {
-	sdk, err := f.LarkClient()
+	ac, err := f.NewAPIClient()
 	if err != nil {
 		return nil, err
 	}
@@ -107,12 +109,11 @@ func getAppInfo(ctx context.Context, f *cmdutil.Factory, appId string) (*appInfo
 	queryParams := make(larkcore.QueryParams)
 	queryParams.Set("lang", "zh_cn")
 
-	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
-		HttpMethod:                http.MethodGet,
-		ApiPath:                   "/open-apis/application/v6/applications/" + appId,
-		QueryParams:               queryParams,
-		SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant},
-	})
+	apiResp, err := ac.DoSDKRequest(ctx, &larkcore.ApiReq{
+		HttpMethod:  http.MethodGet,
+		ApiPath:     larkauth.ApplicationInfoPath(appId),
+		QueryParams: queryParams,
+	}, core.AsBot)
 	if err != nil {
 		return nil, err
 	}

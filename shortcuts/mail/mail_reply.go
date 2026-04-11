@@ -18,27 +18,28 @@ var MailReply = common.Shortcut{
 	Command:     "+reply",
 	Description: "Reply to a message and save as draft (default). Use --confirm-send to send immediately after user confirmation. Sets Re: subject, In-Reply-To, and References headers automatically.",
 	Risk:        "write",
-	Scopes:      []string{"mail:user_mailbox.message:send", "mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
+	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "Required. Message ID to reply to", Required: true},
 		{Name: "body", Desc: "Required. Reply body. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the reply body and the original message. Use --plain-text to force plain-text mode.", Required: true},
-		{Name: "from", Desc: "Sender address; also selects the mailbox to send from (defaults to the authenticated user's primary mailbox)"},
+		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "to", Desc: "Additional To address(es), comma-separated (appended to original sender's address)"},
 		{Name: "cc", Desc: "Additional CC email address(es), comma-separated"},
 		{Name: "bcc", Desc: "BCC email address(es), comma-separated"},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring all HTML auto-detection. Cannot be used with --inline."},
-		{Name: "attach", Desc: "Attachment file path(s), comma-separated"},
-		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<local-path>\"}. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		{Name: "attach", Desc: "Attachment file path(s), comma-separated (relative path only)"},
+		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the reply immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		confirmSend := runtime.Bool("confirm-send")
 		mailboxID := resolveComposeMailboxID(runtime)
-		desc := "Reply: fetch original message → fetch mailbox profile (default From) → save as draft"
+		desc := "Reply: fetch original message → resolve sender address → save as draft"
 		if confirmSend {
-			desc = "Reply (--confirm-send): fetch original message → fetch mailbox profile (default From) → create draft → send draft"
+			desc = "Reply (--confirm-send): fetch original message → resolve sender address → create draft → send draft"
 		}
 		api := common.NewDryRunAPI().
 			Desc(desc).
@@ -52,12 +53,14 @@ var MailReply = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
+		if err := validateConfirmSendScope(runtime); err != nil {
+			return err
+		}
+		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
 		body := runtime.Str("body")
-		fromFlag := runtime.Str("from")
 		toFlag := runtime.Str("to")
 		ccFlag := runtime.Str("cc")
 		bccFlag := runtime.Str("bcc")
@@ -78,12 +81,9 @@ var MailReply = common.Shortcut{
 		}
 		orig := sourceMsg.Original
 
-		senderEmail := fromFlag
+		senderEmail := resolveComposeSenderEmail(runtime)
 		if senderEmail == "" {
-			senderEmail = fetchCurrentUserEmail(runtime)
-			if senderEmail == "" {
-				senderEmail = orig.headTo
-			}
+			senderEmail = orig.headTo
 		}
 
 		replyTo := orig.replyTo
@@ -107,7 +107,7 @@ var MailReply = common.Shortcut{
 		}
 
 		quoted := quoteForReply(&orig, useHTML)
-		bld := emlbuilder.New().
+		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(buildReplySubject(orig.subject)).
 			ToAddrs(parseNetAddrs(replyTo))
 		if senderEmail != "" {
@@ -125,23 +125,44 @@ var MailReply = common.Shortcut{
 		if messageId != "" {
 			bld = bld.LMSReplyToMessageID(messageId)
 		}
+		var autoResolvedPaths []string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply blocked: %w", err)
 			}
-			bld = bld.HTMLBody([]byte(bodyStr + quoted))
-			bld, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
+			var srcCIDs []string
+			bld, srcCIDs, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
 			if err != nil {
+				return err
+			}
+			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(bodyStr)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			fullHTML := resolved + quoted
+			bld = bld.HTMLBody([]byte(fullHTML))
+			var userCIDs []string
+			for _, ref := range refs {
+				bld = bld.AddFileInline(ref.FilePath, ref.CID)
+				autoResolvedPaths = append(autoResolvedPaths, ref.FilePath)
+				userCIDs = append(userCIDs, ref.CID)
+			}
+			for _, spec := range inlineSpecs {
+				bld = bld.AddFileInline(spec.FilePath, spec.CID)
+				userCIDs = append(userCIDs, spec.CID)
+			}
+			if err := validateInlineCIDs(resolved, userCIDs, srcCIDs); err != nil {
 				return err
 			}
 		} else {
 			bld = bld.TextBody([]byte(bodyStr + quoted))
 		}
+		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
+		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
+			return err
+		}
 		for _, path := range splitByComma(attachFlag) {
 			bld = bld.AddFileAttachment(path)
-		}
-		for _, spec := range inlineSpecs {
-			bld = bld.AddFileInline(spec.FilePath, spec.CID)
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {

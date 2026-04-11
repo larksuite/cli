@@ -9,15 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -91,15 +90,16 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 
 func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 	filePath := runtime.Str("file")
-	safeFilePath, err := validate.SafeInputPath(filePath)
-	if err != nil {
-		return output.ErrValidation("unsafe file path: %s", err)
+	fio := runtime.FileIO()
+	if fio == nil {
+		return output.ErrValidation("file operations require a FileIO provider")
 	}
-	filePath = safeFilePath
-
-	fileInfo, err := os.Stat(filePath)
+	fileInfo, err := fio.Stat(filePath)
 	if err != nil {
-		return output.ErrValidation("file not found: %s", filePath)
+		if errors.Is(err, fileio.ErrPathValidation) {
+			return output.ErrValidation("unsafe file path: %s", err)
+		}
+		return output.ErrValidation("file not accessible: %s: %v", filePath, err)
 	}
 	if fileInfo.Size() > baseAttachmentUploadMaxFileSize {
 		return output.ErrValidation("file %.1fMB exceeds 20MB limit", float64(fileInfo.Size())/1024/1024)
@@ -209,7 +209,7 @@ func normalizeAttachmentForPatch(attachment map[string]interface{}) map[string]i
 }
 
 func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, baseToken string, fileSize int64) (map[string]interface{}, error) {
-	f, err := os.Open(filePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
 		return nil, output.ErrValidation("cannot open file: %v", err)
 	}

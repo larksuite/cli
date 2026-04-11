@@ -33,7 +33,7 @@ lark-cli docs +fetch --doc Z1FjxxxxxxxxxxxxxxxxxxxtnAc --format pretty
 
 ## 重要：图片、文件、画板的处理
 
-**文档中的图片、文件、画板需要通过 `lark-doc-media-download`（docs +media-download）单独获取！**
+**文档中的图片、文件、画板需要通过独立的 media shortcut 单独获取。**
 
 ### 识别格式
 
@@ -60,7 +60,11 @@ lark-cli docs +fetch --doc Z1FjxxxxxxxxxxxxxxxxxxxtnAc --format pretty
 ### 获取步骤
 
 1. 从 HTML 标签中提取 `token` 属性值
-2. 调用 lark-doc-media-download（docs +media-download）：
+2. 如果目标是图片/文件素材，且用户只是想查看/预览，调用 [`lark-doc-media-preview`](lark-doc-media-preview.md)（`docs +media-preview`）：
+   ```bash
+   lark-cli docs +media-preview --token "提取的token" --output ./preview_media
+   ```
+3. 如果用户明确要下载，或目标是 `<whiteboard token="..."/>`，调用 [`lark-doc-media-download`](lark-doc-media-download.md)（`docs +media-download`）：
    ```bash
    lark-cli docs +media-download --token "提取的token" --output ./downloaded_media
    ```
@@ -87,6 +91,7 @@ lark-cli docs +fetch --doc Z1FjxxxxxxxxxxxxxxxxxxxtnAc --format pretty
 | 需求 | 工具 |
 |------|------|
 | 获取文档文本 | `docs +fetch` |
+| 预览图片/文件素材 | `docs +media-preview` |
 | 下载图片/文件/画板 | `docs +media-download` |
 | 创建新文档 | `docs +create` |
 | 更新文档内容 | `docs +update` |
@@ -95,5 +100,6 @@ lark-cli docs +fetch --doc Z1FjxxxxxxxxxxxxxxxxxxxtnAc --format pretty
 
 - [lark-doc-create](lark-doc-create.md) — 创建文档
 - [lark-doc-update](lark-doc-update.md) — 更新文档
+- [lark-doc-media-preview](lark-doc-media-preview.md) — 预览素材
 - [lark-doc-media-download](lark-doc-media-download.md) — 下载素材/画板缩略图
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

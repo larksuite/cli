@@ -8,18 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-const maxDriveUploadFileSize = 20 * 1024 * 1024 // 20MB
 
 var DriveUpload = common.Shortcut{
 	Service:     "drive",
@@ -29,7 +26,7 @@ var DriveUpload = common.Shortcut{
 	Scopes:      []string{"drive:file:upload"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (max 20MB)", Required: true},
+		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
 		{Name: "folder-token", Desc: "target folder token (default: root)"},
 		{Name: "name", Desc: "uploaded file name (default: local file name)"},
 	},
@@ -41,8 +38,8 @@ var DriveUpload = common.Shortcut{
 		if fileName == "" {
 			fileName = filepath.Base(filePath)
 		}
-		return common.NewDryRunAPI().
-			Desc("multipart/form-data upload").
+		d := common.NewDryRunAPI().
+			Desc("multipart/form-data upload (files > 20MB use chunked 3-step upload)").
 			POST("/open-apis/drive/v1/files/upload_all").
 			Body(map[string]interface{}{
 				"file_name":   fileName,
@@ -50,53 +47,58 @@ var DriveUpload = common.Shortcut{
 				"parent_node": folderToken,
 				"file":        "@" + filePath,
 			})
+		if runtime.IsBot() {
+			d.Desc("After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new file.")
+		}
+		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
 		folderToken := runtime.Str("folder-token")
 		name := runtime.Str("name")
 
-		safeFilePath, err := validate.SafeInputPath(filePath)
-		if err != nil {
-			return output.ErrValidation("unsafe file path: %s", err)
-		}
-		filePath = safeFilePath
-
 		fileName := name
 		if fileName == "" {
 			fileName = filepath.Base(filePath)
 		}
 
-		info, err := os.Stat(filePath)
+		info, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return output.ErrValidation("cannot read file: %s", err)
+			return common.WrapInputStatError(err)
 		}
 		fileSize := info.Size()
-		if fileSize > maxDriveUploadFileSize {
-			return output.ErrValidation("file %.1fMB exceeds 20MB limit", float64(fileSize)/1024/1024)
-		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s)\n", fileName, common.FormatSize(fileSize))
 
-		// Use SDK multipart upload
-		fileToken, err := uploadFileToDrive(ctx, runtime, filePath, fileName, folderToken, fileSize)
+		var fileToken string
+		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
+			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
+			fileToken, err = uploadFileMultipart(ctx, runtime, filePath, fileName, folderToken, fileSize)
+		} else {
+			fileToken, err = uploadFileToDrive(ctx, runtime, filePath, fileName, folderToken, fileSize)
+		}
 		if err != nil {
 			return err
 		}
 
-		runtime.Out(map[string]interface{}{
+		out := map[string]interface{}{
 			"file_token": fileToken,
 			"file_name":  fileName,
 			"size":       fileSize,
-		}, nil)
+		}
+		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, fileToken, "file"); grant != nil {
+			out["permission_grant"] = grant
+		}
+
+		runtime.Out(out, nil)
 		return nil
 	},
 }
 
 func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, folderToken string, fileSize int64) (string, error) {
-	f, err := os.Open(filePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
-		return "", err
+		return "", common.WrapInputStatError(err)
 	}
 	defer f.Close()
 
@@ -136,5 +138,100 @@ func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, file
 	if fileToken == "" {
 		return "", output.Errorf(output.ExitAPI, "api_error", "upload failed: no file_token returned")
 	}
+	return fileToken, nil
+}
+
+// uploadFileMultipart uploads a large file using the three-step multipart API:
+// 1. upload_prepare — get upload_id, block_size, block_num
+// 2. upload_part   — upload each block sequentially
+// 3. upload_finish — finalize and get file_token
+func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, filePath, fileName, folderToken string, fileSize int64) (string, error) {
+	// Step 1: Prepare
+	prepareBody := map[string]interface{}{
+		"file_name":   fileName,
+		"parent_type": "explorer",
+		"parent_node": folderToken,
+		"size":        fileSize,
+	}
+	prepareResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)
+	if err != nil {
+		return "", err
+	}
+
+	uploadID := common.GetString(prepareResult, "upload_id")
+	blockSizeF := common.GetFloat(prepareResult, "block_size")
+	blockNumF := common.GetFloat(prepareResult, "block_num")
+	blockSize := int64(blockSizeF)
+	blockNum := int(blockNumF)
+
+	if uploadID == "" || blockSize <= 0 || blockNum <= 0 {
+		return "", output.Errorf(output.ExitAPI, "api_error",
+			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
+			uploadID, blockSize, blockNum)
+	}
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload: %s, block size %s, %d block(s)\n",
+		common.FormatSize(fileSize), common.FormatSize(blockSize), blockNum)
+
+	// Step 2: Upload parts
+	for seq := 0; seq < blockNum; seq++ {
+		offset := int64(seq) * blockSize
+		partSize := blockSize
+		if remaining := fileSize - offset; partSize > remaining {
+			partSize = remaining
+		}
+
+		partFile, err := runtime.FileIO().Open(filePath)
+		if err != nil {
+			return "", common.WrapInputStatError(err)
+		}
+
+		fd := larkcore.NewFormdata()
+		fd.AddField("upload_id", uploadID)
+		fd.AddField("seq", fmt.Sprintf("%d", seq))
+		fd.AddField("size", fmt.Sprintf("%d", partSize))
+		fd.AddFile("file", io.NewSectionReader(partFile, offset, partSize))
+
+		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+			HttpMethod: http.MethodPost,
+			ApiPath:    "/open-apis/drive/v1/files/upload_part",
+			Body:       fd,
+		}, larkcore.WithFileUpload())
+		partFile.Close()
+		if err != nil {
+			var exitErr *output.ExitError
+			if errors.As(err, &exitErr) {
+				return "", err
+			}
+			return "", output.ErrNetwork("upload part %d/%d failed: %v", seq+1, blockNum, err)
+		}
+
+		var partResult map[string]interface{}
+		if err := json.Unmarshal(apiResp.RawBody, &partResult); err != nil {
+			return "", output.Errorf(output.ExitAPI, "api_error", "upload part %d/%d: invalid response JSON: %v", seq+1, blockNum, err)
+		}
+		if larkCode := int(common.GetFloat(partResult, "code")); larkCode != 0 {
+			msg, _ := partResult["msg"].(string)
+			return "", output.ErrAPI(larkCode, fmt.Sprintf("upload part %d/%d failed: [%d] %s", seq+1, blockNum, larkCode, msg), partResult["error"])
+		}
+
+		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, blockNum, common.FormatSize(partSize))
+	}
+
+	// Step 3: Finish
+	finishBody := map[string]interface{}{
+		"upload_id": uploadID,
+		"block_num": blockNum,
+	}
+	finishResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_finish", nil, finishBody)
+	if err != nil {
+		return "", err
+	}
+
+	fileToken := common.GetString(finishResult, "file_token")
+	if fileToken == "" {
+		return "", output.Errorf(output.ExitAPI, "api_error", "upload_finish succeeded but no file_token returned")
+	}
+
 	return fileToken, nil
 }

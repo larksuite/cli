@@ -23,6 +23,8 @@ var (
 	cellRefPattern         = regexp.MustCompile(`^([A-Za-z]+)([1-9][0-9]*)$`)
 )
 
+var sheetRangeSeparatorReplacer = strings.NewReplacer(`\！`, "!", `\!`, "!", "！", "!")
+
 // getFirstSheetID queries the spreadsheet and returns the first sheet's ID.
 func getFirstSheetID(runtime *common.RuntimeContext, spreadsheetToken string) (string, error) {
 	data, err := runtime.CallAPI("GET", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/query", validate.EncodePathSegment(spreadsheetToken)), nil, nil)
@@ -56,7 +58,7 @@ func extractSpreadsheetToken(input string) string {
 }
 
 func normalizeSheetRange(sheetID, input string) string {
-	input = strings.TrimSpace(input)
+	input = normalizeSheetRangeSeparators(input)
 	if input == "" || strings.Contains(input, "!") || sheetID == "" {
 		return input
 	}
@@ -80,7 +82,7 @@ func normalizePointRange(sheetID, input string) string {
 
 func normalizeWriteRange(sheetID, input string, values interface{}) string {
 	rows, cols := matrixDimensions(values)
-	input = strings.TrimSpace(input)
+	input = normalizeSheetRangeSeparators(input)
 	if input == "" {
 		return buildRectRange(sheetID, "A1", rows, cols)
 	}
@@ -97,7 +99,7 @@ func normalizeWriteRange(sheetID, input string, values interface{}) string {
 }
 
 func validateSheetRangeInput(sheetID, input string) error {
-	input = strings.TrimSpace(input)
+	input = normalizeSheetRangeSeparators(input)
 	if input == "" || strings.Contains(input, "!") || sheetID != "" {
 		return nil
 	}
@@ -107,8 +109,31 @@ func validateSheetRangeInput(sheetID, input string) error {
 	return nil
 }
 
+// validateSingleCellRange rejects multi-cell spans (e.g. "A1:B2") that are
+// invalid for single-cell operations like write-image. Empty and single-cell
+// values pass through.
+func validateSingleCellRange(input string) error {
+	input = normalizeSheetRangeSeparators(input)
+	if input == "" {
+		return nil
+	}
+	// Extract the sub-range after the sheet ID prefix, if present.
+	subRange := input
+	if _, sr, ok := splitSheetRange(input); ok {
+		subRange = sr
+	}
+	if cellSpanRangePattern.MatchString(subRange) {
+		parts := strings.SplitN(subRange, ":", 2)
+		if strings.EqualFold(parts[0], parts[1]) {
+			return nil
+		}
+		return common.FlagErrorf("--range %q must be a single cell (e.g. A1 or A1:A1), got a multi-cell span", input)
+	}
+	return nil
+}
+
 func looksLikeRelativeRange(input string) bool {
-	input = strings.TrimSpace(input)
+	input = normalizeSheetRangeSeparators(input)
 	if input == "" {
 		return false
 	}
@@ -120,11 +145,19 @@ func looksLikeRelativeRange(input string) bool {
 }
 
 func splitSheetRange(input string) (sheetID, subRange string, ok bool) {
-	parts := strings.SplitN(strings.TrimSpace(input), "!", 2)
+	parts := strings.SplitN(normalizeSheetRangeSeparators(input), "!", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", false
 	}
 	return parts[0], parts[1], true
+}
+
+func normalizeSheetRangeSeparators(input string) string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return input
+	}
+	return sheetRangeSeparatorReplacer.Replace(input)
 }
 
 func buildRectRange(sheetID, anchor string, rows, cols int) string {

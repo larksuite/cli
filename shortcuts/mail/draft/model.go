@@ -9,6 +9,8 @@ import (
 	"mime"
 	"net/mail"
 	"strings"
+
+	"github.com/larksuite/cli/extension/fileio"
 )
 
 type DraftRaw struct {
@@ -96,6 +98,12 @@ func (p *Part) FileName() string {
 		return name
 	}
 	return ""
+}
+
+// DraftCtx carries runtime dependencies for draft operations.
+// It is separate from DraftSnapshot to keep the snapshot a pure data model.
+type DraftCtx struct {
+	FIO fileio.FileIO
 }
 
 type DraftSnapshot struct {

@@ -13,12 +13,6 @@ import (
 func TestExpandThreadReplies(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages"):
 			if req.URL.Query().Get("container_id") != "omt_1" {
 				return nil, fmt.Errorf("unexpected thread lookup: %s", req.URL.String())
@@ -76,12 +70,6 @@ func TestExpandThreadReplies(t *testing.T) {
 func TestFetchThreadRepliesError(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages"):
 			return nil, fmt.Errorf("boom")
 		default:
@@ -104,12 +92,6 @@ func TestFetchThreadRepliesError(t *testing.T) {
 func TestExpandThreadRepliesMarksFetchError(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
-		case strings.Contains(req.URL.Path, "tenant_access_token"):
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code":                0,
-				"tenant_access_token": "tenant-token",
-				"expire":              7200,
-			}), nil
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages"):
 			return nil, fmt.Errorf("boom")
 		default:

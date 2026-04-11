@@ -1,0 +1,617 @@
+[
+  {
+    "name": "#234 现在使用必须要创建应用吗？",
+    "title": "现在使用必须要创建应用吗？",
+    "body": "能不能支持使用个人身份呢？",
+    "expected_type": "enhancement",
+    "expected_domains": [],
+    "source_url": "https://github.com/larksuite/cli/issues/234",
+    "source_labels": []
+  },
+  {
+    "name": "#240 查看妙记需要导出权限, 但是却没有申请导出权限的地方",
+    "title": "查看妙记需要导出权限, 但是却没有申请导出权限的地方",
+    "body": "现在整体让 AI 读取妙记的流程, 是有 bug 的.\n\n* 首先, binger-lark-api 读取秒记(比如 https://larksuite.com/minutes/obusrsm7fp44doce3rss4864), 需要有导出权限, AI 才能够读取(这儿有点奇怪, 人能够读取, 但是 AI 需要额外权限才能读取, cli 的重要目标就是人能读的,AI 也要能读)\n* ok, 那我去申请导出权限, 但是秒记右上角的权限申请, 只有\"申请编辑权限\", 无法申请导出权限\n\n建议解决方案:\n\n1. 所有秒记, 默认有阅读权限, 就有导出权限. 即 阅读权限=导出权限. (本来能在 web 页面上读取, 那么手动复制也是一种\"导出\"方式)\n2. 为秒记增加申请权限设置, 增加按钮\"申请导出权限\"\n3. 提供 open-api 能够发起\"申请导出权限\"",
+    "expected_type": "bug",
+    "expected_domains": [
+      "minutes"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/240",
+    "source_labels": []
+  },
+  {
+    "name": "#244 安装脚本没有给 Trae CN 安装 skills",
+    "title": "安装脚本没有给 Trae CN 安装 skills",
+    "body": "Trae CN 的 skills 位置在：`~/.trae-cn/skills`，希望可以加入检测",
+    "expected_type": "bug",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/244",
+    "source_labels": []
+  },
+  {
+    "name": "#201 postinstall: binary download fails silently behind HTTP proxy (Node.js https ign",
+    "title": "postinstall: binary download fails silently behind HTTP proxy (Node.js https ignores https_proxy)",
+    "body": "## Environment\n\n- **OS**: macOS 26.3.1 (Darwin 25.3.0) arm64\n- **lark-cli version**: v1.0.2 (also reproduced on v1.0.0)\n- **Node.js**: v25.8.2\n- **npm**: 11.11.1\n- **Installation method**: npm global install\n- **Network**: Behind HTTP proxy (https_proxy=http://127.0.0.1:7897)\n\n## Description\n\n`npm install -g @larksuite/cli` completes without error, but the `bin/` directory is empty — the Go binary is never downloaded. The postinstall script (`scripts/install.js`) uses Node.js native `https.get()` which does **not** honor the `https_proxy` / `HTTP_PROXY` environment variables. In mainland China (and other regions where GitHub is slow or blocked), this causes the download to fail silently.\n\n`curl` and `wget` in the same shell session work fine because they respect proxy environment variables.\n\n## Steps to Reproduce\n\n1. Set an HTTP proxy:\n   ```bash\n   export https_proxy=http://127.0.0.1:7897\n   ```\n\n2. Install lark-cli:\n   ```bash\n   npm install -g @larksuite/cli\n   ```\n\n3. Check the binary:\n   ```bash\n   ls $(npm root -g)/@larksuite/cli/bin/\n   # Empty directory — no binary\n   ```\n\n4. Verify curl works with the same proxy:\n   ```bash\n   curl -fSL -o /tmp/lark-cli.tar.gz \\\n     \"http\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/201",
+    "source_labels": [
+      "bug"
+    ]
+  },
+  {
+    "name": "#239 从命令行创建markdown不太可行",
+    "title": "从命令行创建markdown不太可行",
+    "body": "[与Agent的聊天记录](https://app.lobehub.com/share/t/XeiXXDP1)\n\n它试图运行\n\n``` shell\nlark-cli docs +create --title \"Hello Lobe\" --markdown \"## 欢迎使用飞书文档\\n\\n这是一个由 Lobe 通过飞书 CLI 自动生成的文档。\\n\\n### 功能测试\\n- [x] 文档创建\\n- [ ] 更多功能探索\\n\\n<callout emoji=\\\"💡\\\" background-color=\\\"light-blue\\\">\\n提示：你可以通过飞书 CLI 轻松管理你的云空间文档。\\n</callout>\"\n```\n\n但是，空格会被截断，换行也不能正确换行\n\n这个是在消耗了500K token之后给出的方案（在本地编写了一个js再运行）：\n\n``` js\nconst { spawnSync } = require('child_process');\n\nconst title = \"Lobe 完美传输测试\";\nconst markdown = `## 飞书文档集成测试 ✅\n\n这是一个通过 **Node.js 子进程 (shell: false)** 传输的文档。这次我们完全禁用了 Shell 解释器，由操作系统直接通过命令行数组分发参数。\n\n### 为什么这个有效？\n由于我们禁用了 shell，操作系统会直接把这些带空格的字符串塞给进程，而不需要通过引号转义处理。\n\n<callout emoji=\"🚀\" background-color=\"light-green\">\n成功发送！空格和引号截断问题已彻底解决。\n</callout>\n`;\n\n// 使用全路径直接运行 node 和 cli 脚本，完全避免 shell 解析\nconst nodePath = process.execPath;\nconst cliScript = 'C:\\\\nvm4w\\\\nodejs\\\\node_modules\\\\@larksuite\\\\cli\\\\scripts\\\\run.js';\n\nconst result = spawnSync(nodePath, [cliScript, 'docs', '+create', '--title', title, '--markdown', markdown], {\n  encoding: 'utf8',\n  shell: false // 关键：禁用 Shell\n});\n\nconsole.log(result.stdout || result.stderr);\n\n```",
+    "expected_type": null,
+    "expected_domains": [
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/239",
+    "source_labels": []
+  },
+  {
+    "name": "#204 CLI的多用户授权支持需求",
+    "title": "CLI的多用户授权支持需求",
+    "body": "当支持多用户的Agent使用CLI时，无法根据openid对不同用户进行授权管理，可能与当前CLI针对个人助理方向有关。但这对企业级多用户Agent也是非常广泛的和有价值需求，希望增加不同openid的授权模式功能。",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/204",
+    "source_labels": []
+  },
+  {
+    "name": "#122 lark-cli api POST silently fails with --as user (exit 1, no output)",
+    "title": "lark-cli api POST silently fails with --as user (exit 1, no output)",
+    "body": "## Description\n\n`lark-cli api POST` silently fails when using `--as user` identity. The command exits with code 1 but produces **no stdout and no stderr output**, making it impossible to debug.\n\n## Environment\n\n- lark-cli version: 1.0.0\n- OS: macOS (Darwin 25.4.0, arm64)\n- Auth: user token valid, scope `im:message.send_as_user` confirmed granted\n\n## Steps to Reproduce\n\n```bash\n# This works fine (GET with user identity):\nlark-cli api GET /open-apis/im/v1/chats --as user\n# Returns JSON response correctly\n\n# This silently fails (POST with user identity):\nlark-cli api POST /open-apis/im/v1/messages \\\n  --params '{\"receive_id_type\":\"open_id\"}' \\\n  --data '{\"receive_id\":\"ou_xxx\",\"msg_type\":\"text\",\"content\":\"{\\\"text\\\":\\\"hello\\\"}\"}' \\\n  --as user\n# Exit code 1, NO stdout, NO stderr\n```\n\n## Expected Behavior\n\nShould either:\n1. Successfully send the message and return the API response, or\n2. Print an error message explaining why it failed\n\n## Actual Behavior\n\n- Exit code: 1\n- stdout: empty\n- stderr: empty\n\n## Additional Context\n\n- `--dry-run` works correctly and shows the expected request structure\n- `lark-cli api GET` with `--as user` works fine\n- `lark-cli api POST` with `--as bot` (via sh\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "auth",
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/122",
+    "source_labels": []
+  },
+  {
+    "name": "#123 base +record-upsert returns 800010701 \"Invalid input\" for any non-empty    field",
+    "title": "base +record-upsert returns 800010701 \"Invalid input\" for any non-empty    fields (POST with user identity broken)",
+    "body": "## Description                                                                \n                                                                                \n  `lark-cli base +record-upsert` returns error `800010701 (Invalid input)`      \n  whenever the `fields` object is non-empty, even with correct JSON format      \n  matching the table schema.                                                    \n                                                                                \n  ## Environment                                                                \n\n  - lark-cli version: 1.0.0\n  - OS: macOS (Darwin 25.x)\n  - Auth: user token valid, all base scopes confirmed granted\n  (`base:record:create`, `base:record:update`, etc.)                            \n  \n  ## Steps to Reproduce                                                         \n                                                                              \n  1. `lark-cli base +base-create --name \"Test\"` → success                       \n  2. `lark-cli base +table-create --base-token <token> --name \"Test\"` → success\n  (creates table with auto ID field)                                            \n  3. `lark-cli base +field-cre\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "base"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/123",
+    "source_labels": [
+      "domain/base"
+    ]
+  },
+  {
+    "name": "#200 希望支持多维表格设置 字段默认值（default_value）和字段描述（description）",
+    "title": "希望支持多维表格设置 字段默认值（default_value）和字段描述（description）",
+    "body": "经过实操验证\n❌ 不支持（需手动在客户端/网页端设置）：\n- 字段默认值\n- 字段描述/备注\n\n还有整理字段顺序，现在配错要么删除重新，要么手动调整顺序。",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "base"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/200",
+    "source_labels": [
+      "domain/base"
+    ]
+  },
+  {
+    "name": "#89 无法以用户的名义发送消息，只能以bot的名义，还有操作多维表格的时候，插入的格式以及插入的地方，不能够准确插入",
+    "title": "无法以用户的名义发送消息，只能以bot的名义，还有操作多维表格的时候，插入的格式以及插入的地方，不能够准确插入",
+    "body": "",
+    "expected_type": "bug",
+    "expected_domains": [
+      "base",
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/89",
+    "source_labels": [
+      "domain/base",
+      "domain/im"
+    ]
+  },
+  {
+    "name": "#18 为什么代码层面写死了只能以 bot 身份发",
+    "title": "为什么代码层面写死了只能以 bot 身份发",
+    "body": "",
+    "expected_type": "question",
+    "expected_domains": [],
+    "source_url": "https://github.com/larksuite/cli/issues/18",
+    "source_labels": []
+  },
+  {
+    "name": "#225 Riscv64 is not supported",
+    "title": "Riscv64 is not supported",
+    "body": "`npm install -g @larksuite/cli\nnpm error code EBADPLATFORM\nnpm error notsup Unsupported platform for @larksuite/cli@1.0.2: wanted {\"os\":\"darwin,linux,win32\",\"cpu\":\"x64,arm64\"} (current: {\"os\":\"linux\",\"cpu\":\"riscv64\"})\nnpm error notsup Valid os:   darwin,linux,win32\nnpm error notsup Actual os:  linux\nnpm error notsup Valid cpu:  x64,arm64\nnpm error notsup Actual cpu: riscv64`",
+    "expected_type": "bug",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/225",
+    "source_labels": []
+  },
+  {
+    "name": "#222 动态选项字段无法通过 API 写入",
+    "title": "动态选项字段无法通过 API 写入",
+    "body": "在使用 lark-cli base +record-upsert 写入飞书多维表格记录时，部分字段无法通过 API 写入，但在浏览器 UI 中可以正常操作。受影响的字段类型在 API 中显示为 not_support 类型，无法写入：\n\n相关日志\n\n  # 字段列表返回\n  $ lark-cli base +field-list --base-token xxx --table-id xxx\n\n  # 返回结果中字段类型为 not_support\n  {\n    \"field_id\": \"fld9P55tkb\",\n    \"field_name\": \"工号\",\n    \"type\": \"not_support\"\n  }\n\n  # 写入记录时\n  $ lark-cli base +record-upsert --base-token xxx --table-id xxx --json '{\"工号\": \"F1336477\"}'\n\n  # 字段被忽略\n  {\n    \"ignored_fields\": [\n      {\n        \"id\": \"fld9P55tkb\",\n        \"name\": \"工号\",\n        \"reason\": \"UNSUPPORTED: select field with dynamic options cannot be written through OpenAPI.\"\n      }\n    ]\n  }",
+    "expected_type": "bug",
+    "expected_domains": [
+      "base"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/222",
+    "source_labels": []
+  },
+  {
+    "name": "#215 bug(api): Drive folder raw APIs silently fail with exit code 1 and no output",
+    "title": "bug(api): Drive folder raw APIs silently fail with exit code 1 and no output",
+    "body": "## Summary\n\nWhen using `lark-cli api` to call Drive folder-related raw APIs, the CLI exits with code `1` but prints no stdout and no stderr.\n\nThis makes it impossible to debug or build folder automation on top of Lark CLI raw API.\n\n## Environment\n\n- CLI: `@larksuite/cli`\n- Install method: global npm install\n- OS: macOS arm64\n- Identity: `--as user`\n- Authentication: valid user login\n- Related shortcut commands such as `lark-cli drive +upload` work correctly in the same environment\n\n## Affected raw APIs\n\nThe following official APIs are documented and can be composed correctly by `--dry-run`, but fail silently on real execution.\n\n### List items in folder\n\n```bash\nlark-cli api GET /open-apis/drive/v1/files \\\n  --as user \\\n  --format json \\\n  --params '{\"folder_token\":\"<FOLDER_TOKEN>\",\"page_size\":100}'\n```\n\n### Create folder\n\n```bash\nlark-cli api POST /open-apis/drive/v1/files/create_folder \\\n  --as user \\\n  --format json \\\n  --data '{\"name\":\"analysis-test\",\"folder_token\":\"<FOLDER_TOKEN>\"}'\n```\n\n## Reproduction steps\n\n1. Ensure `lark-cli auth login` is complete and user auth is valid.\n2. Use a folder token that is confirmed accessible under the same account.\n3. Run:\n\n```bash\nlark-cli a\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "auth",
+      "drive"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/215",
+    "source_labels": []
+  },
+  {
+    "name": "#175 lark-cli api POST /open-apis/im/v1/messages --as user 静默失败（exit code 1，无输出）",
+    "title": "lark-cli api POST /open-apis/im/v1/messages --as user 静默失败（exit code 1，无输出）",
+    "body": "## 问题描述\n\n使用 `lark-cli api` 以 user 身份调用 `POST /open-apis/im/v1/messages` 发送消息时，命令以 exit code 1 退出，但 **stdout 和 stderr 均无任何输出**，无法定位失败原因。\n\n## 复现步骤\n\n### 1. 环境信息\n\n- lark-cli version: **1.0.0**\n- OS: macOS (Darwin 25.3.0)\n- 已通过 `lark-cli auth login --scope \"im:message\"` 完成用户授权\n- `lark-cli auth status` 显示 token 有效，scope 包含 `im:message`\n- `lark-cli auth check --scope \"im:message\"` 返回 granted\n\n### 2. 复现命令\n\n```bash\nlark-cli api POST /open-apis/im/v1/messages \\\n  --as user \\\n  --params '{\"receive_id_type\":\"chat_id\"}' \\\n  --data '{\"receive_id\":\"oc_xxx\",\"msg_type\":\"text\",\"content\":\"{\\\"text\\\":\\\"test\\\"}\"}'\n```\n\n### 3. 实际结果\n\n命令直接以 exit code 1 退出，stdout 和 stderr **均无输出**：\n\n```bash\n$ lark-cli api POST /open-apis/im/v1/messages --as user \\\n    --params '{\"receive_id_type\":\"chat_id\"}' \\\n    --data '{\"receive_id\":\"oc_xxx\",\"msg_type\":\"text\",\"content\":\"{\\\"text\\\":\\\"test\\\"}\"}' \\\n    2>&1; echo \"EXIT:$?\"\nEXIT:1\n```\n\n### 4. 期望结果\n\n- 如果 API 支持 user_access_token：应成功发送消息并返回 JSON 响应\n- 如果 API 不支持 user_access_token：应输出明确的错误信息（如 `\"error\": {\"type\": \"unsupported_token\", ...}`），而非静默退出\n\n## 排查过程\n\n| 测试 | 结果 |\n|------|------|\n| `--dry-run` 预览请求 | ✅ 正常输出，请求结构正确 |\n| `lark-cli api GET /open-apis/im/v1/chats --as user` | ✅ 正常\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "auth",
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/175",
+    "source_labels": []
+  },
+  {
+    "name": "#129 期望支持 token 直传",
+    "title": "期望支持 token 直传",
+    "body": "CLI 封装好了命令，不想重复造轮子，能支持多用户并行使用就太好了。",
+    "expected_type": null,
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/129",
+    "source_labels": []
+  },
+  {
+    "name": "#137 需要开通授权的权限不支持部分勾选",
+    "title": "需要开通授权的权限不支持部分勾选",
+    "body": "lark-cli auth login --recommend，执行这一步提取授权链接发送给管理员审批；\n和文档知识库有关的权限太多了，尤其是删除，编辑相关权限，我只想要授权文档查看的权限",
+    "expected_type": null,
+    "expected_domains": [
+      "auth",
+      "doc",
+      "wiki"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/137",
+    "source_labels": []
+  },
+  {
+    "name": "#209 [Feature request] The read and post of comments with user info within a feishu d",
+    "title": "[Feature request] The read and post of comments with user info within a feishu document",
+    "body": "As the title stated, I want a cli command to access the comments posted by other users within the feishu document. And it's better to have another command to response comments by agents. \n\nWhen converting the feishu document into markdown format, the comments could be represented by a speical grammar, like  [userA]: <> (This is a comment.)",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/209",
+    "source_labels": []
+  },
+  {
+    "name": "#208 lark-cli im +messages-send -markdown xxx 的时候能否支持 表格语法？",
+    "title": "lark-cli im +messages-send -markdown xxx 的时候能否支持 表格语法？",
+    "body": "我发送的表格内容似乎都会丢失，如果想发送表格类内容有什么简单的方法嘛， 富文本的json需要转换，没有AI原生输出 markdown丝滑",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/208",
+    "source_labels": []
+  },
+  {
+    "name": "#52 不支持以自己的机器人应用创建会议吗？",
+    "title": "不支持以自己的机器人应用创建会议吗？",
+    "body": "我执行命令后使用的是默认的飞书 CLI应用？",
+    "expected_type": null,
+    "expected_domains": [
+      "vc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/52",
+    "source_labels": []
+  },
+  {
+    "name": "#17 Feature Request: Add minutes list command to browse all minutes",
+    "title": "Feature Request: Add minutes list command to browse all minutes",
+    "body": "## Summary\n\nCurrently `lark-cli minutes minutes get` only supports fetching a single minute by `minute_token`. There is no way to **list or search** minutes via the CLI.\n\n## Use Case\n\nAs a user, I want to browse my minutes records from the CLI or through an AI agent, without needing to know the exact `minute_token` in advance.\n\nFor example:\n```bash\n# Desired: list my recent minutes\nlark-cli minutes minutes list\n\n# Desired: search minutes by keyword\nlark-cli minutes minutes list --params '{\"keyword\": \"周会\"}'\n```\n\n## Current Behavior\n\n- `lark-cli minutes minutes` only has `get` subcommand\n- `get` requires a `minute_token` parameter, which can only be obtained from the Feishu web UI\n- No list/search command is available\n\n## Expected Behavior\n\nAdd a `list` command (or a `+` shortcut like `+list`) that returns the user's minutes, ideally with pagination and optional filters (date range, keyword, etc.).\n\n## Environment\n\n- lark-cli installed via `npm install -g @larksuite/cli`\n- OS: Linux",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "minutes"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/17",
+    "source_labels": []
+  },
+  {
+    "name": "#76 飞书auth login支持自定义权限，或者auth机器人已申请的权限",
+    "title": "飞书auth login支持自定义权限，或者auth机器人已申请的权限",
+    "body": "lark-cli auth login 的生成的链接不支持自定义权限，如移除部分权限，也无法批量auth机器人已经拥有的权限。\n建议支持仅auth已拥有的权限，或者批量导入json权限配置",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "auth"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/76",
+    "source_labels": []
+  },
+  {
+    "name": "#203 ⚠️ 过程状态卡片更新失败，已降级为独立结果消息",
+    "title": "⚠️ 过程状态卡片更新失败，已降级为独立结果消息",
+    "body": "<img width=\"596\" height=\"117\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/85060bfc-a914-4bad-a600-e91d64a03174\" />",
+    "expected_type": null,
+    "expected_domains": [
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/203",
+    "source_labels": []
+  },
+  {
+    "name": "#64 Windows: `--params` JSON parsing fails for `im messages read_users` (and other n",
+    "title": "Windows: `--params` JSON parsing fails for `im messages read_users` (and other non-empty params calls)",
+    "body": "## Summary\n\nOn Windows, `lark-cli` appears to support `im messages read_users`, but any call that passes a non-empty JSON object to `--params` fails in CLI parsing.\n\nThe Feishu OpenAPI itself works correctly. The same request succeeds in the official API debugger.\n\n## Environment\n\n- OS: Windows\n- Shell: PowerShell\n- CLI version: `lark-cli 1.0.0`\n\n## What works\n\n- `lark-cli im messages read_users --help`\n- `lark-cli schema im.messages.read_users`\n- Feishu OpenAPI debugger successfully calls:\n  - `GET /open-apis/im/v1/messages/{message_id}/read_users`\n  - with `user_id_type=open_id`\n\n## What fails\n\nThis command is expected to work, but fails with JSON parsing error:\n\n```powershell\nlark-cli im messages read_users --as bot --params '{\"message_id\":\"om_x100b53a771492ca8b4ca3ca7535d2d0\",\"user_id_type\":\"open_id\"}' --format json\n```\n\nActual result:\n\n```json\n{\n  \"ok\": false,\n  \"identity\": \"bot\",\n  \"error\": {\n    \"type\": \"validation\",\n    \"message\": \"--params invalid JSON format\"\n  }\n}\n```\n\nI also observed similar behavior on Windows for other commands when `--params` is a non-empty JSON object.\n\nFor example, even a simple dry-run can fail:\n\n```powershell\nlark-cli api GET /open-apis/calendar/\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/64",
+    "source_labels": []
+  },
+  {
+    "name": "#202 im +messages-send --markdown: table syntax and blank lines are silently dropped",
+    "title": "im +messages-send --markdown: table syntax and blank lines are silently dropped",
+    "body": "## Environment\n\n- **OS**: macOS 26.3.1 arm64\n- **lark-cli version**: v1.0.2\n- **Shell**: zsh\n\n## Description\n\nWhen sending messages with `--markdown`, two formatting issues occur:\n\n1. **Markdown tables are completely lost** — `| col | col |` syntax produces no output at all, the table content disappears silently\n2. **Blank lines are collapsed** — double newlines `\\n\\n` between paragraphs are compressed to single newlines, removing paragraph spacing\n\n## Steps to Reproduce\n\n```bash\nlark-cli im +messages-send --as bot --chat-id \"oc_xxx\" --markdown '**Test**\n\n| Item | Status |\n|------|--------|\n| Table | Testing |\n\nParagraph 1\n\nParagraph 2 (should have blank line above)'\n```\n\n### Expected output in Feishu\n\n```\n**Test**\n\n| Item   | Status  |\n|--------|---------|\n| Table  | Testing |\n\nParagraph 1\n\nParagraph 2 (should have blank line above)\n```\n\n### Actual output in Feishu\n\n```\nTest\nParagraph 1\nParagraph 2 (should have blank line above)\n```\n\n- Table is completely missing\n- Bold renders correctly\n- All blank lines between paragraphs are gone\n\n## Impact\n\nThis makes `--markdown` unreliable for any structured data output. Users must fall back to `--text` (which preserves blank lines but has n\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/202",
+    "source_labels": []
+  },
+  {
+    "name": "#62 Intermittent EOF errors on base commands (+table-list / +record-list / +record-g",
+    "title": "Intermittent EOF errors on base commands (+table-list / +record-list / +record-get / +record-upsert) during batch operations",
+    "body": "## Summary\n\nI encountered intermittent `EOF` errors when using `lark-cli` with Base APIs.\n\nThe issue first appeared during batch processing against a Base table, but later even simple read-only commands started failing with the same `EOF` error.\n\nAt the moment I’m not sure whether this is caused by `lark-cli`, the upstream Base OpenAPI, or connection handling between them, but I’d like to report the behavior because it makes long-running batch jobs unreliable.\n\n## Environment\n\n- `lark-cli` version: `1.0.0`\n- OS: macOS\n- identity: `user`\n\n## Affected commands\n\nI observed `EOF` on multiple commands, including:\n\n- `lark-cli base +table-list`\n- `lark-cli base +record-list`\n- `lark-cli base +record-get`\n- `lark-cli base +record-upsert`\n\n## Example errors\n\n### table-list\n```text\n{\n  \"ok\": false,\n  \"identity\": \"user\",\n  \"error\": {\n    \"type\": \"api_error\",\n    \"message\": \"API call failed: Get \\\"https://open.feishu.cn/open-apis/base/v3/bases/<base_token>/tables?limit=5&offset=0\\\": EOF\"\n  }\n}",
+    "expected_type": "bug",
+    "expected_domains": [
+      "base"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/62",
+    "source_labels": []
+  },
+  {
+    "name": "#128 一台电脑上能否创建多个飞书 cli？",
+    "title": "一台电脑上能否创建多个飞书 cli？",
+    "body": "如题。个人账号和飞书账号都想使用，之前在个人账号创建了一个飞书 cli，想在公司做演示，用公司的账号又创建了一个飞书 cli，但是原来个人账号创建的不见了。家目录的 .lark-cli/config.json 只有一份。",
+    "expected_type": null,
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/128",
+    "source_labels": []
+  },
+  {
+    "name": "#124 返回结果全部使用json 太浪费token 了, 最好可以重新设计cli的返回结果.",
+    "title": "返回结果全部使用json 太浪费token 了, 最好可以重新设计cli的返回结果.",
+    "body": "cli 返回的结果都是 json 格式的数据 , 其中有很多字段和结果是无关的. \n无论是从格式上还是字段内容上都非常浪费token.",
+    "expected_type": null,
+    "expected_domains": [],
+    "source_url": "https://github.com/larksuite/cli/issues/124",
+    "source_labels": []
+  },
+  {
+    "name": "#196 建议官方支持 Bun 作为 Node.js 替代方案，提升开发体验",
+    "title": "建议官方支持 Bun 作为 Node.js 替代方案，提升开发体验",
+    "body": "## 背景\n目前 larksuite/cli 运行环境依赖 Node.js（`engines.node`），实际核心 CLI 是 Go 预编译二进制，通过 JS 脚本（如 `install.js`、`run.js`）进行管理。\n\nBun 是一个新兴的 JavaScript 运行时，兼容 Node.js 大部分 API，具备以下显著优势：\n\n- 启动速度更快，依赖安装与执行体验远优于 Node.js\n- 不需 nvm 等版本隔离工具，减少环境冲突\n- 自带包管理器（等价于 npm/yarn/pnpm）\n- 更低的内存和 CPU 占用\n- 更适合 CLI 场景与现代云/AI 环境\n\n目前个人和许多开发者因为多项目需要频繁切换不同 Node 版本、维护 nvm，自从迁移到 Bun 后感到大大减负。而像本项目这样主要用 JS 脚本起 GO 二进制的模式，用 Bun 兼容性极好，且用 `bun run`/`bunx` 启动 CLI 体验非常流畅。\n\n## 建议\n- 在 `package.json` 里添加 `engines.bun` 字段：\n  ```json\n  \"engines\": {\n    \"node\": \">=16\",\n    \"bun\": \">=1.0\"\n  },\n  \"packageManager\": \"bun@latest\"\n  ```\n- 脚本部分支持 `bun` 和 `node` 两种运行方式（如 postinstall 可试`bun ... || node ...`），官方 Readme 说明支持 Bun\n- 将 Bun 作为推荐的 CLI 运行方式之一，面向现代开发者和 AI 场景\n\n## 期望效果\n- 降低对特定 Node 版本的依赖，减少 nvm 疲劳\n- CLI 启动速度及依赖安装更快\n- 吸引更多 Bun 用户与下一代 JavaScript 社区\n\n感谢官方团队的付出！很期待能看到官方 Bun 支持或意见！",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/196",
+    "source_labels": []
+  },
+  {
+    "name": "#195 这个和feishu-mcp有什么区别",
+    "title": "这个和feishu-mcp有什么区别",
+    "body": "相关链接 https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/mcp_integration/mcp_introduction",
+    "expected_type": "question",
+    "expected_domains": [],
+    "source_url": "https://github.com/larksuite/cli/issues/195",
+    "source_labels": []
+  },
+  {
+    "name": "#160 【feature】我现在在做 feishu 集成 Agent，发现日历和任务清单有问题",
+    "title": "【feature】我现在在做 feishu 集成 Agent，发现日历和任务清单有问题",
+    "body": "# 如题\n我想让Agent把任务记到将任务清单和日历。这样我可以在飞书上很清晰的看到需要做什么事情。\n\n但是现在获取日历的接口，不支持获取任务清单的数据，但是人类在飞书上却可以看到。",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "calendar",
+      "task"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/160",
+    "source_labels": []
+  },
+  {
+    "name": "#161 不能给未授权用户发消息",
+    "title": "不能给未授权用户发消息",
+    "body": "lark-cli api POST --data 在 Windows 上有 bug\nlark-cli im +messages-send 只支持 bot 身份\nbot 没有权限给未授权的用户发消息",
+    "expected_type": "bug",
+    "expected_domains": [
+      "auth",
+      "im"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/161",
+    "source_labels": []
+  },
+  {
+    "name": "#58 今天使用cli来操作wiki，能力需要补强",
+    "title": "今天使用cli来操作wiki，能力需要补强",
+    "body": "在claude code中操作wiki，本来想重构我的wiki知识库的结构、目录之类，但是发现以下能力并没有，希望可以尽快补强\n\n---                                                                                                   \n  ❌ 不能做的（缺失的能力）\n                                                                                                        \n  Wiki 操作缺失\n                                                                                                        \n  1. 创建新节点/文档 — 无法在 Wiki 中新建节点                                                           \n  2. 删除节点 — 没有删除 Wiki 节点的 API                                                                \n  3. 直接上传文件到 Wiki — 上传只能到 Drive，无法直接上传到 Wiki 知识库                                 \n                                                                                                        \n  集成能力缺失                                                                                          \n                                                                                                        \n  1. Wiki ↔ Drive 自动集成 — 上传文件后无法自动归类到 Wiki 目录                                         \n  2. 批量操作 — 没有批量移动/创建节点的能力\n---",
+    "expected_type": "bug",
+    "expected_domains": [
+      "doc",
+      "drive",
+      "wiki"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/58",
+    "source_labels": []
+  },
+  {
+    "name": "#189 [Doc] base +record-list 分页读取时字段顺序不稳定的说明与最佳实践",
+    "title": "[Doc] base +record-list 分页读取时字段顺序不稳定的说明与最佳实践",
+    "body": "## 问题描述\n\n在使用 `lark-cli base +record-list` 分页读取多维表格数据时，发现一个容易被忽视的问题：\n\n**API 返回的 `field_id_list` 顺序在不同分页中可能不同**\n\n这会导致：\n1. 用硬编码索引定位字段时，第二页数据解析错误\n2. 数据匹配失败，程序误判为\"读取完成\"\n3. 实际数据遗漏，但不会报错\n\n## 复现场景\n\n```python\n# 错误做法 - 假设字段顺序固定\nresult = run_lark_cli(['base', '+record-list', '--offset', '0', '--limit', '500'])\nfields = result['data']['fields']\nid_idx = fields.index('编号')  # 第一页：索引可能是 0\n\n# 第二页\nresult = run_lark_cli(['base', '+record-list', '--offset', '500', '--limit', '500'])\nfields = result['data']['fields']\nrecord = result['data']['data'][0]\nsample_id = record[id_idx]  # 第二页：索引可能是 11，数据错位！\n```\n\n**实际案例**：\n- 表格总记录：254 条\n- 第一页返回：200 条，字段顺序 A\n- 第二页返回：54 条，字段顺序 B（与 A 不同）\n- 结果：第二页数据全部解析错误，匹配失败\n\n## 解决方案\n\n**必须使用 `field_id_list` 定位字段，且每页都要重新计算索引**：\n\n```python\nID_FIELD_ID = \"fld64hLsFo\"  # 编号字段的 field_id（固定不变）\n\ndef load_all_records(base_token, table_id):\n    record_map = {}\n    offset = 0\n    page_size = 500\n\n    while True:\n        result = run_lark_cli([\n            'base', '+record-list',\n            '--base-token', base_token,\n            '--table-id', table_id,\n            '--limit', str(page_size),\n            '--offset', str(offset)\n        ])\n\n        data = result.get('data', {})\n        fie\n\n...(truncated)",
+    "expected_type": "documentation",
+    "expected_domains": [
+      "base",
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/189",
+    "source_labels": []
+  },
+  {
+    "name": "#187 持久化连接授权",
+    "title": "持久化连接授权",
+    "body": "每次使用都要重新授权一次，说旧的已经过期，有什么方法可持久授权吗？",
+    "expected_type": null,
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/187",
+    "source_labels": []
+  },
+  {
+    "name": "#167 什么时候支持私有化版本飞书呢？",
+    "title": "什么时候支持私有化版本飞书呢？",
+    "body": "什么时候支持私有化版本飞书呢？",
+    "expected_type": null,
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/167",
+    "source_labels": []
+  },
+  {
+    "name": "#184 [Bug] docs +update --mode replace_all 导致文档内容被重复追加（100% 复现）",
+    "title": "[Bug] docs +update --mode replace_all 导致文档内容被重复追加（100% 复现）",
+    "body": "# 问题描述（由 Claude Code 发现并总结）\n\n## 环境信息\n\n- **lark-cli 版本**: 1.0.1\n- **操作系统**: macOS (Darwin 25.2.0, arm64)\n- **Node.js**: v25.2.1\n- **身份**: user 模式\n\n## 问题描述\n\n使用 `docs +update --mode replace_all` 对飞书云文档执行纯文本关键词替换时，文档内容不是被原地替换，而是**整个文档内容被复制一份追加到末尾**。每执行一次，文档就多一份副本。\n\n## 复现步骤\n\n1. 准备一份飞书云文档（wiki 类型，obj_type=docx），文档包含嵌入电子表格（`<sheet token=\"...\"/>`）、图片（`<image token=\"...\"/>`）、文档引用（`<mention-doc token=\"...\"/>`）等 PROTECTED 内容，总计约 12 个 token，文档大小约 38,000 字符。\n\n2. 执行以下命令：\n```bash\nlark-cli docs +update \\\n  --doc \"<doc_token>\" \\\n  --mode replace_all \\\n  --selection-with-ellipsis \"oldKeyword\" \\\n  --markdown \"newKeyword\"\n```\n\n3. 命令返回异步 task_id：\n```json\n{\n  \"ok\": true,\n  \"data\": {\n    \"status\": \"running\",\n    \"task_id\": \"<task_id>\",\n    \"tool\": \"update_doc\"\n  }\n}\n```\n\n4. 等待 10 秒后 fetch 文档内容验证。\n\n## 预期行为\n\n文档中 3 处 `oldKeyword` 被替换为 `newKeyword`，文档大小基本不变。\n\n## 实际行为\n\n- 文档大小从 **~38,000 字符膨胀到 ~77,000 字符**（精确翻倍）\n- 文档一级标题从出现 1 次变为 2 次（整个文档被复制了一份追加到末尾）\n- PROTECTED token 数量从 12 个变为 22 个（新副本中生成了新的 token）\n- 原始内容中 `oldKeyword` 仍存在 3 处（在未被替换的副本中）\n- `newKeyword` 从 3 处变为 9 处\n\n**在未恢复的情况下再次执行同一命令，文档进一步膨胀到 ~115,000 字符（3 份副本），标题出现 3 次。**\n\n## 复现率\n\n**3/3 次，100% 复现。**\n\n| 次数 | 操作前 | 操作后 | 结果 |\n|------|--------|--------|------|\n\n...(truncated)",
+    "expected_type": "bug",
+    "expected_domains": [
+      "doc",
+      "sheets"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/184",
+    "source_labels": []
+  },
+  {
+    "name": "#185 lark-cli 不支持多个 Gateway 实例共享配置",
+    "title": "lark-cli 不支持多个 Gateway 实例共享配置",
+    "body": "## 问题描述（由 Claude Code 发现并总结）\n\nlark-cli 使用全局配置文件 `~/.lark-cli/config.json`，不支持多实例共享或指定配置文件路径。\n\n当有多个 OpenClaw Gateway 实例（如 Friday、Andy、vovo）需要各自使用不同的飞书 App 时，lark-cli 只能配置一个 App，导致其他实例的图片/文件发送会路由到错误的 App。\n\n## 复现场景\n\n1. 部署多个 OpenClaw Gateway 实例\n2. 每个实例使用不同的飞书 App（不同的 App ID/Secret）\n3. 尝试使用 lark-cli 发送图片\n\n## 当前问题\n\n- lark-cli 只读取 `~/.lark-cli/config.json`\n- 没有 `--config` 或环境变量方式指定其他配置文件\n- 导致不同 Gateway 实例混用同一个 App 认证\n\n## 期望行为\n\n支持以下任一方案：\n\n1. **多配置文件支持**：通过 `--config <path>` 指定配置文件路径\n2. **环境变量配置**：`LARK_CONFIG_PATH` 环境变量\n3. **全局配置节**：在单一配置文件中支持多个 App 配置，通过 `--app-id` 切换\n\n## 替代方案（临时解决）\n\n为每个 Gateway 创建独立的发送脚本，直接调用飞书 API 而非使用 lark-cli：\n\n```bash\n#!/bin/bash\n# feishu-send-image.sh - 使用指定 App 发送图片\nAPP_ID=\"cli_xxxxx\"\nAPP_SECRET=\"xxxxx\"\n# 直接调用飞书 API\n```\n\n但这增加了维护成本，且无法使用 lark-cli 的其他功能。\n\n## 环境信息\n\n- OS: macOS\n- lark-cli 版本: 1.0.0+\n- Node.js: 22.x",
+    "expected_type": "bug",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/185",
+    "source_labels": [
+      "bug",
+      "domain/event"
+    ]
+  },
+  {
+    "name": "#177 通过auth login仅选择已有的Scope进行登录,但依然会跳转到Scope Authorization",
+    "title": "通过auth login仅选择已有的Scope进行登录,但依然会跳转到Scope Authorization",
+    "body": "我登录Scopes仅选择docs, 这是我已有的权限,但链接依然会跳转到Scope Authorization去申请全部权限",
+    "expected_type": null,
+    "expected_domains": [
+      "auth"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/177",
+    "source_labels": []
+  },
+  {
+    "name": "#182 只能创建一个应用，config配置内使用apps:[]，看着像支持多个应用，实际上每次都是覆盖，没法同时配置多个",
+    "title": "只能创建一个应用，config配置内使用apps:[]，看着像支持多个应用，实际上每次都是覆盖，没法同时配置多个",
+    "body": "",
+    "expected_type": null,
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/182",
+    "source_labels": [
+      "enhancement"
+    ]
+  },
+  {
+    "name": "#248 [Bug] macOS: `config init --new` creates encrypted files but does not persist `master.key` to Keychain, causing fresh processes to fail",
+    "title": "[Bug] macOS: `config init --new` creates encrypted files but does not persist `master.key` to Keychain, causing fresh processes to fail",
+    "expected_type": "bug",
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/248",
+    "source_labels": []
+  },
+  {
+    "name": "#153 feat(drive): add folder/file management shortcuts for Drive API",
+    "title": "feat(drive): add folder/file management shortcuts for Drive API",
+    "body": "## Feature Request\n\nAdd Drive file/folder management shortcuts to lark-cli.\n\n## Current Gap\n\nThe current Drive module only supports 3 commands:\n- `+upload` - Upload a local file\n- `+download` - Download a file\n- `+add-comment` - Add a comment to a file\n\nMissing essential Drive operations for building a complete CLI experience:\n- Create folders/directories\n- List files in a folder\n- Copy/Move files\n- Delete files\n- Get file metadata (including folder token)\n\n## Use Case\n\nFor AI Agent (Hermes) integration, I want to build an automated knowledge base system:\n1. Create a folder hierarchy for knowledge management (e.g., 🧠 Knowledge Base > Embedded/AI/DevOps)\n2. Programmatically organize files into folders\n3. Link folder tokens to Bitable index records\n\nCurrently `lark-cli drive` is insufficient for this use case.\n\n## Proposed Shortcuts\n\n```go\nfunc Shortcuts() []common.Shortcut {\n    return []common.Shortcut{\n        DriveUpload,\n        DriveDownload,\n        DriveAddComment,\n        // New:\n        DriveCreateFolder,      // lark-cli drive +create-folder\n        DriveListFiles,        // lark-cli drive +list\n        DriveFileCopy,         // lark-cli drive +copy (extends existing copy)\n        DriveFileDelete,       // lark-cli drive +delete\n        DriveGetFileMeta,      // lark-cli drive +meta\n    }\n}\n```\n\n## Workaround\n\nCurrently I'm using lark-cli api to create folders, but the drive API needs a user identity scope which lark-cli does not have built-in support for.\n\n## Context\n\nThis issue arises when integrating lark-cli with [Hermes Agent](https://github.com/openmule/hermes-agent) for knowledge base creation in Feishu.\n",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "drive"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/153",
+    "source_labels": []
+  },
+  {
+    "name": "#143 Feature Request: Add base +record-search command (POST /records/search API)",
+    "title": "Feature Request: Add base +record-search command (POST /records/search API)",
+    "body": "## Background\n\nCurrently, querying records in a Bitable table requires `+record-list` with client-side filtering. For large tables (2400+ records), this requires 13+ serial API calls and takes 60+ seconds.\n\nThe Feishu Open Platform provides a more efficient `/records/search` API:\n- **Endpoint**: `POST /open-apis/bitable/v1/apps/:app_token/tables/:table_id/records/search`\n- **Server-side filtering**: supports `contains`, `is`, `isNot`, etc. on any field\n- **Larger page size**: up to 500 records per request (vs 200 for list)\n- **Result**: 1–2 requests instead of 13+, roughly 10–100x faster\n\n## Problem with current `lark-cli api`\n\nCalling this endpoint via `lark-cli api` silently exits with code 1, no stdout, no stderr:\n\n```bash\nMSYS_NO_PATHCONV=1 lark-cli api POST \"/open-apis/bitable/v1/apps/xxx/tables/yyy/records/search\"   --as user --data '{\"page_size\":5}'\n# Exit: 1, no output at all\n```\n\nGET requests to other bitable endpoints work fine via `lark-cli api`. The issue appears specific to POST `/records/search`.\n\n## Requested Command\n\n```bash\nlark-cli base +record-search   --base-token <token>   --table-id <table_id>   --filter '{\"conjunction\":\"and\",\"conditions\":[{\"field_name\":\"会议名称\",\"operator\":\"contains\",\"value\":[\"keyword\"]}]}'   --sort '[{\"field_name\":\"会议开始时间\",\"desc\":true}]'   --field-names '[\"会议名称\",\"会议开始时间\",\"面试录音\"]'   --page-size 500   --page-all\n```\n\n## Performance Impact\n\nSearching interview records in a 2400-row Bitable table:\n\n| Method | Requests | Time |\n|--------|----------|------|\n| Current `+record-list` (full scan) | 13 serial calls | 60+ sec |\n| Optimized `+record-list` (range scan) | 5 calls | ~6 sec |\n| `+record-search` (server-side filter) | 1–2 calls | ~1 sec |\n\n## Reference\n\n- [Search records API](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/bitable-v1/app-table-record/search)",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "base"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/143",
+    "source_labels": []
+  },
+  {
+    "name": "#165 macOS arm64: lark-cli binary fails with exit code 137 (SIGKILL)",
+    "title": "macOS arm64: lark-cli binary fails with exit code 137 (SIGKILL)",
+    "body": "# lark-cli Binary Fails to Execute on macOS arm64 (Exit Code 137/SIGKILL)\n\n## Environment\n\n- **OS**: macOS 15.1 (Darwin 25.1.0) arm64\n- **lark-cli version**: v1.0.1\n- **Node.js**: v22.21.1\n- **npm**: 10.9.4\n- **Installation method**: npm global install\n- **Architecture**: Apple Silicon (arm64)\n\n## Description\n\nAfter successfully installing `@larksuite/cli` via npm and running the postinstall script, the `lark-cli` binary fails to execute with exit code 137 (SIGKILL). The binary is killed by the system immediately upon execution without producing any output.\n\n## Steps to Reproduce\n\n1. Install lark-cli globally:\n```bash\nnpm install -g @larksuite/cli\n```\n\n2. Run postinstall script manually (as per issue #135):\n```bash\ncd ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli\nnode scripts/install.js\n```\nOutput: `lark-cli v1.0.1 installed successfully`\n\n3. Verify binary exists and is executable:\n```bash\nls -la ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli/bin/lark-cli\nfile ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli/bin/lark-cli\n```\nOutput:\n```\n-rwxr-xr-x  1 yang  staff  14846642 Mar 31 20:46 lark-cli\nMach-O 64-bit executable arm64\n```\n\n4. Attempt to run any lark-cli command:\n```bash\nlark-cli --version\nlark-cli --help\nlark-cli config init\n```\n\n## Expected Behavior\n\nThe command should display help text, version information, or start the configuration wizard.\n\n## Actual Behavior\n\n- The process exits immediately with code 137 (SIGKILL)\n- No output is produced on stdout or stderr\n- The process appears in `ps` briefly then disappears\n- No crash reports are generated in `~/Library/Logs/DiagnosticReports/`\n\n## Additional Information\n\n### Binary Details\n\n```bash\notool -L ~/.nvm/versions/node/v22.21.1/lib/node_modules/@larksuite/cli/bin/lark-cli\n```\n\nOutput:\n```\n/usr/lib/libSystem.B.dylib (compatibility version 0.0.0, current version 0.0.0)\n/usr/lib/libresolv.9.dylib (compatibility version 0.0.0, current version 0.0.0)\n/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation\n/System/Library/Frameworks/Security.framework/Versions/A/Security\n```\n\n### Attempted Solutions\n\n1. **Tried downloading pre-built binary from GitHub releases:**\n   - Downloaded `lark-cli-1.0.1-darwin-arm64.tar.gz`\n   - Same behavior (exit code 137)\n\n2. **Attempted source build:**\n   - Encountered SSL certificate verification error during `make install`\n   - Compiled binary exhibits same exit code 137 behavior\n\n3. **Checked for quarantine attributes:**\n   - No `com.apple.quarantine` attribute found\n   - `spctl --assess` rejects the binary\n\n4. **Skills installation successful:**\n   - `npx skills add larksuite/cli -y -g` completed successfully\n   - All 19 skills installed to `~/.agents/skills/`\n\n## Exit Code 137 Context\n\nExit code 137 = 128 + 9 = SIGKILL, which typically indicates:\n- The process was forcibly terminated by the system\n- Possible code signing issues\n- Possible compatibility issues with the macOS version\n- Security restrictions preventing execution\n\n## Related Issues\n\n- Issue #135: pnpm installation requires manual postinstall (similar installation flow issue)\n- Issue #70: macOS token persistence issues (macOS-specific behavior)\n- Issue #122: Silent failures on macOS arm64 environment\n\n## Workaround Needed\n\nIs there:\n1. A known issue with code signing for the macOS arm64 binary?\n2. An alternative installation method that works on macOS 15.x?\n3. Any additional configuration needed for the binary to execute?\n\n## System Details\n\n```bash\n# macOS Version\nsw_vers\n```\nOutput:\n```\nProductName:\t\tmacOS\nProductVersion:\t\t15.1\nBuildVersion:\t\t24B83\n```\n\n```bash\n# Architecture\nuname -m\n```\nOutput: `arm64`\n\n```bash\n# Go version (for reference)\ngo version\n```\nOutput: `go version go1.25.7 darwin/arm64`\n\n---\n\nThe skills package installed successfully, but the CLI binary itself cannot be used. Any guidance would be appreciated!",
+    "expected_type": "bug",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/165",
+    "source_labels": []
+  },
+  {
+    "name": "#107 Request Windows binary release",
+    "title": "Request Windows binary release",
+    "body": "## Request: Add Windows (win32) binary release\\n\\n### Problem\\nThe current GitHub release (v1.0.0) only contains macOS and Linux binaries. The Windows platform is not supported.\\n\\nWhen installing via npm (\npm install -g @larksuite/cli) on Windows, the install script attempts to download lark-cli-1.0.0-windows-amd64.zip from the release page, but this file does not exist, resulting in a 404 error followed by connection timeout.\\n\\n### Evidence\\n- Release assets only contain: lark-cli-1.0.0-darwin-amd64.tar.gz, lark-cli-1.0.0-darwin-arm64.tar.gz, lark-cli-1.0.0-linux-amd64.tar.gz\\n- No lark-cli-1.0.0-windows-amd64.zip\\n\\n### Why this matters\\nWindows is a major platform for development and AI agent workflows. Without a pre-built binary, Windows users must build from source (requiring Go 1.23+), which is a significant barrier.\\n\\n### Request\\nPlease add Windows binary to the CI/CD release pipeline. The install script already supports win32 (see scripts/install.js platform mapping), so it should be straightforward to add a Windows build step.\\n\\n### Additional context\\n- Node.js version: v24.14.0 (Windows x64)\\n- Platform: Windows_NT 10.0.22631\\n",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/107",
+    "source_labels": []
+  },
+  {
+    "name": "#147 [Feature] Implement Encrypted File Fallback for Keychain Storage",
+    "title": "[Feature] Implement Encrypted File Fallback for Keychain Storage",
+    "body": "### **Problem Statement**\nCurrently, `lark-cli` relies on the system keychain on macOS to store sensitive information like App Secrets and User Access Tokens. However, in certain environments—such as restricted sandboxes, headless CI/CD servers, or remote SSH sessions —the system keychain may be unavailable.\n\nWhen this happens, the CLI currently fails to save configurations, preventing users from completing `lark-cli config init` or logging in.\n\n### **Proposed Solution**\nIntroduce a secondary, locally-managed encrypted storage layer. If the primary system keychain is unreachable or returns an \"unavailable\" error, the CLI should gracefully degrade to storing credentials in an AES-GCM encrypted file within the user’s config directory.\n\n### **Requirements**\n* **Encryption:** Use AES-GCM with a locally generated `master.key` (permission 0600) to ensure data at rest is not plain text.\n* **Transparency:** Warn the user when a fallback is being used so they are aware of the storage change.\n* **Safety:** Ensure that changing an App ID doesn't lead to the accidental reuse of a secret reference from a previous configuration.\n* **Refactoring:** Centralize config directory resolution and encryption logic to avoid duplication across platform-specific files.\n",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "auth",
+      "core"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/147",
+    "source_labels": []
+  },
+  {
+    "name": "#75 Feature Request: Support creating folders via drive command (+create-folder shortcut)",
+    "title": "Feature Request: Support creating folders via drive command (+create-folder shortcut)",
+    "body": "## Feature Request\n\n### Summary\nAdd a shortcut command to create folders in Lark Drive, similar to how `docs +create` creates documents.\n\n### Proposed Command\n```bash\nlark-cli drive +create-folder --folder-token <parent_folder_token> --name <folder_name>\n```\n\n### Underlying API\nThe Feishu Open Platform already provides this capability:\n- **Create Folder API:** `POST /open-apis/drive/v1/files/create_folder`\n- **Scope:** `drive:drive:write`\n- **API Doc:** https://open.feishu.cn/document/server-docs/docs/drive-v1/folder/create\n\n### Use Case\nWhen organizing files programmatically (e.g., creating weekly report folders under a parent directory), there is currently no way to create folders via `lark-cli`. The `drive` module only supports `files.copy`, not folder creation. The only workaround is using `lark-cli api POST /open-apis/drive/v1/files/create_folder --data '...'`, which is verbose and error-prone for a common operation.\n\n### Proposed Parameters\n| Flag | Required | Description |\n|------|----------|-------------|\n| `--folder-token` | Yes | Parent folder token where the new folder will be created |\n| `--name` | Yes | Name of the new folder |\n\n### Additional Context\nOther drive operations like `+upload`, `+download`, `+add-comment` already have shortcut commands. Folder creation is a fundamental operation and deserves the same treatment.",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "drive"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/75",
+    "source_labels": []
+  },
+  {
+    "name": "#82 Docs create bug: create --markdown only write the first line and discard the others",
+    "title": "Docs create bug: create --markdown only write the first line and discard the others",
+    "body": "<img width=\"946\" height=\"284\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/39b0c4ba-43a3-4210-acc3-889bb0f64ca4\" />\n\nwhen I test the docs cli, it only write the fist line of markdown content. my test demo is :\nlark-cli docs +create --title \"飞书CLI命令一览表-测试\" --markdown \"🔐 认证相关 命令 说明 lark-cli auth login 扫码登录（无需创建应用） lark-cli auth status 查看当前登录状态 lark-cli auth list 列出所有已登录用户 lark-cli auth logout 退出登录 ⚙️ 配置管理 命令 说明 lark-cli config init 初始化配置（App ID / App Secret） lark-cli config show 显示当前配置 lark-cli config remove 移除配置 📅 日历 Calendar 命令 说明 lark-cli calendar +agenda 查看今日日程 lark-cli calendar +create 创建日历事件 lark-cli calendar events list 列出日历事件 👥 联系人 Contact 命令 说明 lark-cli contact +get-user 获取用户信息 lark-cli contact +search-user 搜索用户 💬 消息 IM 命令 说明 lark-cli im +chat-create 创建群聊 lark-cli im +chat-messages-list 查看聊天消息 lark-cli im +messages-reply 回复消息 lark-cli im +messages-send 发送消息 📝 文档 Docs 命令 说明 lark-cli docs +create 创建文档 lark-cli docs +fetch 获取文档内容 lark-cli docs +search 搜索文档 📊 表格 Sheets 命令 说明 lark-cli sheets +create 创建表格 lark-cli sheets +read 读取表格内容 lark-cli sheets +write 写入表格 lark-cli sheets +append 追加行 📁 云盘 Drive 命令 说明 lark-cli drive +upload 上传文件 lark-cli drive +download 下载文件 lark-cli drive +add-comment 添加评论 📧 邮件 Mail 命令 说明 lark-cli mail +draft-create 创建邮件草稿 lark-cli mail +message 查看邮件内容 ✅ 任务 Task 命令 说明 lark-cli task +create 创建任务 lark-cli task +complete 完成任务 lark-cli task +get-my-tasks 获取我的任务 🔧 通用功能 命令 说明 lark-cli api GET /path 调用任意 API lark-cli schema 查看 API 参数和权限 lark-cli doctor 健康检查\"",
+    "expected_type": "bug",
+    "expected_domains": [
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/82",
+    "source_labels": []
+  },
+  {
+    "name": "#254 你好",
+    "title": "你好",
+    "body": "",
+    "expected_type": null,
+    "expected_domains": [],
+    "source_url": "https://github.com/larksuite/cli/issues/254",
+    "source_labels": []
+  },
+  {
+    "name": "#9 Meeting room booking is possible, but room discovery is missing from CLI docs and command surface",
+    "title": "Meeting room booking is possible, but room discovery is missing from CLI docs and command surface",
+    "body": "Does it support meeting room discovery? Is there a `lark-cli calendar` command to discover meeting rooms? The CLI docs/command surface lacks room discovery.",
+    "expected_type": "question",
+    "expected_domains": [
+      "calendar",
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/9",
+    "source_labels": [
+      "enhancement"
+    ]
+  },
+  {
+    "name": "#81 mail +draft-edit: add_inline does not actually insert inline image into HTML body",
+    "title": "mail +draft-edit: add_inline does not actually insert inline image into HTML body",
+    "body": "`add_inline` fails to insert inline image into HTML body. Expected the image to be present; actual: missing.",
+    "expected_type": "bug",
+    "expected_domains": [
+      "mail"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/81",
+    "source_labels": [
+      "enhancement",
+      "domain/mail"
+    ]
+  },
+  {
+    "name": "#259 Feature: docs +fetch should support --resolve-media to auto-download images/files",
+    "title": "Feature: docs +fetch should support --resolve-media to auto-download images/files",
+    "body": "Feature request: `lark-cli docs +fetch` should support `--resolve-media` to download images/files referenced in docs.",
+    "expected_type": "enhancement",
+    "expected_domains": [
+      "doc"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/259",
+    "source_labels": [
+      "bug",
+      "domain/doc",
+      "domain/core"
+    ]
+  },
+  {
+    "name": "#265 wiki只能获取到标题，无法获取到内容，针对mindmap",
+    "title": "wiki只能获取到标题，无法获取到内容，针对mindmap",
+    "body": "",
+    "expected_type": "bug",
+    "expected_domains": [
+      "wiki"
+    ],
+    "source_url": "https://github.com/larksuite/cli/issues/265",
+    "source_labels": [
+      "enhancement",
+      "domain/wiki"
+    ]
+  }
+]

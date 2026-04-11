@@ -5,6 +5,7 @@ package api
 
 import (
 	"errors"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -70,16 +71,6 @@ func TestApiCmd_BotMode(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	// Register tenant_access_token stub
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code":                0,
-			"msg":                 "ok",
-			"tenant_access_token": "t-test-token",
-			"expire":              7200,
-		},
-	})
 	// Register API endpoint stub
 	reg.Register(&httpmock.Stub{
 		URL:  "/open-apis/test",
@@ -209,6 +200,22 @@ func TestApiCmd_PageLimitDefault(t *testing.T) {
 	}
 }
 
+func TestApiCmd_ParamsAndDataBothStdinConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--params", "-", "--data", "-"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when both --params and --data use stdin")
+	}
+	if !strings.Contains(err.Error(), "cannot both read from stdin") {
+		t.Errorf("expected stdin conflict error, got: %v", err)
+	}
+}
+
 func TestApiCmd_OutputAndPageAllConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -235,13 +242,6 @@ func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
 	})
 
 	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-bin", "expire": 7200,
-		},
-	})
-	reg.Register(&httpmock.Stub{
 		URL:         "/open-apis/drive/v1/files/xxx/download",
 		RawBody:     []byte("fake-binary-content"),
 		ContentType: "application/octet-stream",
@@ -266,14 +266,6 @@ func TestApiCmd_PageAll_NonBatchAPI_FallbackToJSON(t *testing.T) {
 		AppID: "test-app-pageall1", AppSecret: "test-secret-pageall1", Brand: core.BrandFeishu,
 	})
 
-	// Register tenant_access_token stub
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-pa1", "expire": 7200,
-		},
-	})
 	// Register a non-batch API that returns scalar data (no array field)
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/contact/v3/users/u123",
@@ -310,13 +302,6 @@ func TestApiCmd_PageAll_NonBatchAPI_ErrorStillOutputsJSON(t *testing.T) {
 		AppID: "test-app-pageall-err", AppSecret: "test-secret-pageall-err", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-err", "expire": 7200,
-		},
-	})
 	// Non-batch API that returns a business error (code != 0)
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/im/v1/chats/oc_xxx/announcement",
@@ -346,14 +331,6 @@ func TestApiCmd_PageAll_BatchAPI_StreamsItems(t *testing.T) {
 		AppID: "test-app-pageall2", AppSecret: "test-secret-pageall2", Brand: core.BrandFeishu,
 	})
 
-	// Register tenant_access_token stub (unique app credentials => new token request)
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-pa2", "expire": 7200,
-		},
-	})
 	// Register a batch API that returns an array field
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/contact/v3/users",
@@ -409,13 +386,6 @@ func TestApiCmd_APIError_IsRaw(t *testing.T) {
 		AppID: "test-app-raw", AppSecret: "test-secret-raw", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-raw", "expire": 7200,
-		},
-	})
 	// Return a permission error from the API
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/perm",
@@ -446,10 +416,9 @@ func TestApiCmd_APIError_IsRaw(t *testing.T) {
 		t.Error("expected API error from api command to be marked Raw")
 	}
 
-	// stderr should NOT contain an error envelope (identity line is OK)
-	if strings.Contains(stderr.String(), `"ok"`) {
-		t.Error("expected no JSON error envelope on stderr for Raw API error")
-	}
+	// Note: stderr envelope output is tested at the root level (TestHandleRootError_*)
+	// since WriteErrorEnvelope is called by handleRootError, not by cobra's Execute.
+	_ = stderr
 }
 
 func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
@@ -457,13 +426,6 @@ func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
 		AppID: "test-app-origmsg", AppSecret: "test-secret-origmsg", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-origmsg", "expire": 7200,
-		},
-	})
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/origmsg",
 		Body: map[string]interface{}{
@@ -501,18 +463,48 @@ func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
 	}
 }
 
+func TestApiCmd_InvalidJSONResponse_ShowsDiagnostic(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-invalidjson", AppSecret: "test-secret-invalidjson", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL:         "/open-apis/test/invalidjson",
+		RawBody:     []byte{},
+		ContentType: "application/json",
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test/invalidjson", "--as", "bot"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI, got %d", exitErr.Code)
+	}
+	if exitErr.Detail == nil {
+		t.Fatal("expected detail on exit error")
+	}
+	if !strings.Contains(exitErr.Detail.Message, "invalid JSON response") &&
+		!strings.Contains(exitErr.Detail.Message, "empty JSON response body") {
+		t.Fatalf("expected JSON diagnostic, got %q", exitErr.Detail.Message)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "--output") {
+		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)
+	}
+}
+
 func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-rawpage", AppSecret: "test-secret-rawpage", Brand: core.BrandFeishu,
 	})
 
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/auth/v3/tenant_access_token/internal",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"tenant_access_token": "t-test-token-rawpage", "expire": 7200,
-		},
-	})
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/test/rawpage",
 		Body: map[string]interface{}{
@@ -537,6 +529,165 @@ func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
 	}
 }
 
+func TestApiCmd_JqFlag_Parsing(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--jq", ".data"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts.JqExpr != ".data" {
+		t.Errorf("expected JqExpr=.data, got %s", gotOpts.JqExpr)
+	}
+}
+
+func TestApiCmd_JqFlag_ShortForm(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "-q", ".data"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts.JqExpr != ".data" {
+		t.Errorf("expected JqExpr=.data, got %s", gotOpts.JqExpr)
+	}
+}
+
+func TestApiCmd_JqAndOutputConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--output", "file.bin"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --jq + --output conflict")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
+	}
+}
+
+func TestApiCmd_JqFilter_AppliesExpression(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-jq", AppSecret: "test-secret-jq", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/jq",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"name": "Alice"},
+					map[string]interface{}{"name": "Bob"},
+				},
+			},
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test/jq", "--as", "bot", "--jq", ".data.items[].name"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Alice") || !strings.Contains(out, "Bob") {
+		t.Errorf("expected jq-filtered names, got: %s", out)
+	}
+	// Should NOT contain the full envelope structure
+	if strings.Contains(out, `"code"`) {
+		t.Errorf("expected jq to filter out envelope, got: %s", out)
+	}
+}
+
+func TestApiCmd_JqAndFormatConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--format", "ndjson"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --jq + --format ndjson conflict")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
+	}
+}
+
+func TestApiCmd_JqInvalidExpression(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", "invalid["})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid jq expression")
+	}
+	if !strings.Contains(err.Error(), "invalid jq expression") {
+		t.Errorf("expected 'invalid jq expression' error, got: %v", err)
+	}
+}
+
+func TestApiCmd_PageAll_WithJq(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-pjq", AppSecret: "test-secret-pjq", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "u1"}, map[string]interface{}{"id": "u2"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--jq", ".data.items[].id"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "u1") || !strings.Contains(out, "u2") {
+		t.Errorf("expected jq-filtered ids, got: %s", out)
+	}
+	if strings.Contains(out, `"code"`) {
+		t.Errorf("expected jq to filter out envelope, got: %s", out)
+	}
+}
+
 func TestApiCmd_MethodUppercase(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -554,5 +705,100 @@ func TestApiCmd_MethodUppercase(t *testing.T) {
 	}
 	if gotOpts.Method != "POST" {
 		t.Errorf("expected method POST (uppercased), got %s", gotOpts.Method)
+	}
+}
+
+func TestApiCmd_FileFlagParsing(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--file", "image=photo.jpg", "--data", `{"image_type":"message"}`})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts.File != "image=photo.jpg" {
+		t.Errorf("expected File = %q, got %q", "image=photo.jpg", gotOpts.File)
+	}
+}
+
+func TestApiCmd_FileAndOutputConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "photo.jpg", "--output", "out.json"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --file with --output")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+}
+
+func TestApiCmd_FileWithGET(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--file", "photo.jpg"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --file with GET")
+	}
+	if !strings.Contains(err.Error(), "requires POST") {
+		t.Errorf("expected method error, got: %v", err)
+	}
+}
+
+func TestApiCmd_FileStdinConflictWithData(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		return apiRun(opts)
+	})
+	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "-", "--data", "-"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --file stdin with --data stdin")
+	}
+	if !strings.Contains(err.Error(), "cannot both read from stdin") {
+		t.Errorf("expected stdin conflict error, got: %v", err)
+	}
+}
+
+func TestApiCmd_DryRunWithFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.jpg"
+	if err := os.WriteFile(tmpFile, []byte("fake-image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/im/v1/images", "--file", "image=" + tmpFile, "--data", `{"image_type":"message"}`, "--dry-run", "--as", "bot"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "image") {
+		t.Errorf("expected dry-run output to mention file field, got: %s", out)
+	}
+	if !strings.Contains(out, "Dry Run") {
+		t.Errorf("expected dry-run header, got: %s", out)
 	}
 }

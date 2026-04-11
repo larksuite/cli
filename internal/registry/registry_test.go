@@ -9,6 +9,14 @@ import (
 	"testing"
 )
 
+func ensureFreshRegistry(t *testing.T) {
+	t.Helper()
+	resetInit()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_REMOTE_META", "off")
+	Init()
+}
+
 func TestLoadScopePriorities(t *testing.T) {
 	priorities := LoadScopePriorities()
 	if len(priorities) == 0 {
@@ -123,6 +131,7 @@ func TestComputeMinimumScopeSet(t *testing.T) {
 }
 
 func TestComputeMinimumScopeSet_Tenant(t *testing.T) {
+	ensureFreshRegistry(t)
 	minSet := ComputeMinimumScopeSet("tenant")
 	if len(minSet) == 0 {
 		if len(ListFromMetaProjects()) == 0 {
@@ -553,5 +562,56 @@ func TestCollectScopesForProjects_NonexistentProject(t *testing.T) {
 	scopes := CollectScopesForProjects([]string{"nonexistent_project_xyz"}, "user")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent project, got %d", len(scopes))
+	}
+}
+
+// --- auth_domain functions ---
+
+func TestGetAuthDomain_Configured(t *testing.T) {
+	// whiteboard has auth_domain: "docs" in service_descriptions.json
+	if got := GetAuthDomain("whiteboard"); got != "docs" {
+		t.Errorf("GetAuthDomain(whiteboard) = %q, want %q", got, "docs")
+	}
+}
+
+func TestGetAuthDomain_NotConfigured(t *testing.T) {
+	if got := GetAuthDomain("calendar"); got != "" {
+		t.Errorf("GetAuthDomain(calendar) = %q, want empty", got)
+	}
+}
+
+func TestGetAuthDomain_Unknown(t *testing.T) {
+	if got := GetAuthDomain("nonexistent_xyz"); got != "" {
+		t.Errorf("GetAuthDomain(nonexistent_xyz) = %q, want empty", got)
+	}
+}
+
+func TestHasAuthDomain(t *testing.T) {
+	if !HasAuthDomain("whiteboard") {
+		t.Error("HasAuthDomain(whiteboard) = false, want true")
+	}
+	if HasAuthDomain("calendar") {
+		t.Error("HasAuthDomain(calendar) = true, want false")
+	}
+}
+
+func TestGetAuthChildren(t *testing.T) {
+	children := GetAuthChildren("docs")
+	found := false
+	for _, c := range children {
+		if c == "whiteboard" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("GetAuthChildren(docs) = %v, want to contain 'whiteboard'", children)
+	}
+}
+
+func TestGetAuthChildren_NoChildren(t *testing.T) {
+	children := GetAuthChildren("calendar")
+	if len(children) != 0 {
+		t.Errorf("GetAuthChildren(calendar) = %v, want empty", children)
 	}
 }

@@ -5,7 +5,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/util"
@@ -109,7 +109,15 @@ type ServiceMethodOptions struct {
 	PageLimit int
 	PageDelay int
 	Format    string
+	JqExpr    string
 	DryRun    bool
+	File       string   // --file flag value
+	FileFields []string // auto-detected file field names from metadata
+}
+
+// detectFileFields delegates to the shared cmdutil.DetectFileFields helper.
+func detectFileFields(method map[string]interface{}) []string {
+	return cmdutil.DetectFileFields(method)
 }
 
 func registerMethod(parent *cobra.Command, spec map[string]interface{}, method map[string]interface{}, name string, resName string, f *cmdutil.Factory) {
@@ -146,10 +154,10 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON (supports - for stdin)")
 	switch httpMethod {
 	case "POST", "PUT", "PATCH", "DELETE":
-		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON")
+		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
 	}
 	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
@@ -157,7 +165,18 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.PageDelay, "page-delay", 200, "delay in ms between pages")
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
+	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+
+	// Conditionally register --file for methods with file-type fields.
+	fileFields := detectFileFields(method)
+	opts.FileFields = fileFields
+	if len(fileFields) > 0 {
+		switch httpMethod {
+		case "POST", "PUT", "PATCH", "DELETE":
+			cmd.Flags().StringVar(&opts.File, "file", "", "file to upload ([field=]path, supports - for stdin)")
+		}
+	}
 
 	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"user", "bot"}, cobra.ShellCompDirectiveNoFileComp
@@ -167,13 +186,20 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 	})
 
 	cmdutil.SetTips(cmd, registry.GetStrSliceFromMap(method, "tips"))
+	if tokens, ok := method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
+		cmdutil.SetSupportedIdentities(cmd, cmdutil.AccessTokensToIdentities(tokens))
+	}
 
 	return cmd
 }
 
 func serviceMethodRun(opts *ServiceMethodOptions) error {
 	f := opts.Factory
-	opts.As = f.ResolveAs(opts.Cmd, opts.As)
+	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
+
+	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
+		return err
+	}
 
 	// Check if this API method supports the resolved identity.
 	if tokens, ok := opts.Method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
@@ -185,8 +211,11 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if opts.PageAll && opts.Output != "" {
 		return output.ErrValidation("--output and --page-all are mutually exclusive")
 	}
+	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
+		return err
+	}
 
-	config, err := f.ResolveConfig(opts.As)
+	config, err := f.Config()
 	if err != nil {
 		return err
 	}
@@ -195,17 +224,20 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	scopes, _ := opts.Method["scopes"].([]interface{})
 	if !opts.As.IsBot() {
-		if err := checkServiceScopes(config, opts.Method, scopes); err != nil {
+		if err := checkServiceScopes(opts.Ctx, f.Credential, opts.As, config, opts.Method, scopes); err != nil {
 			return err
 		}
 	}
 
-	request, err := buildServiceRequest(opts)
+	request, fileMeta, err := buildServiceRequest(opts)
 	if err != nil {
 		return err
 	}
 
 	if opts.DryRun {
+		if fileMeta != nil {
+			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+		}
 		return serviceDryRun(f, request, config, opts.Format)
 	}
 
@@ -223,7 +255,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	checkErr := scopeAwareChecker(scopes, opts.As.IsBot())
 
 	if opts.PageAll {
-		return servicePaginate(opts.Ctx, ac, request, format, out, f.IOStreams.ErrOut,
+		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
@@ -234,31 +266,38 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	return client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath: opts.Output,
 		Format:     format,
+		JqExpr:     opts.JqExpr,
 		Out:        out,
 		ErrOut:     f.IOStreams.ErrOut,
+		FileIO:     f.ResolveFileIO(opts.Ctx),
 		CheckError: checkErr,
 	})
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.
-func checkServiceScopes(config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
+func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	result, err := cred.ResolveToken(ctx, credential.NewTokenSpec(identity, config.AppID))
+	if err != nil || result == nil || result.Scopes == "" {
+		return nil //nolint:nilerr // skip scope check when token resolution fails or has no scopes
+	}
+
 	requiredScopes, hasRequired := method["requiredScopes"].([]interface{})
 
 	if hasRequired && len(requiredScopes) > 0 {
 		// Strict: ALL requiredScopes must be present
-		stored := auth.GetStoredToken(config.AppID, config.UserOpenId)
-		if stored != nil {
-			required := make([]string, 0, len(requiredScopes))
-			for _, s := range requiredScopes {
-				if str, ok := s.(string); ok {
-					required = append(required, str)
-				}
+		required := make([]string, 0, len(requiredScopes))
+		for _, s := range requiredScopes {
+			if str, ok := s.(string); ok {
+				required = append(required, str)
 			}
-			if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-				return output.ErrWithHint(output.ExitAuth, "missing_scope",
-					fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-					fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
-			}
+		}
+		if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
+			return output.ErrWithHint(output.ExitAuth, "missing_scope",
+				fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
+				fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
 		}
 		return nil
 	}
@@ -268,16 +307,12 @@ func checkServiceScopes(config *core.CliConfig, method map[string]interface{}, s
 	}
 
 	// Default: ANY one of the declared scopes is sufficient
-	stored := auth.GetStoredToken(config.AppID, config.UserOpenId)
-	if stored == nil {
-		return nil
-	}
-	grantedScopes := make(map[string]bool)
-	for _, s := range strings.Fields(stored.Scope) {
-		grantedScopes[s] = true
+	grantedSet := make(map[string]bool)
+	for _, s := range strings.Fields(result.Scopes) {
+		grantedSet[s] = true
 	}
 	for _, s := range scopes {
-		if str, ok := s.(string); ok && grantedScopes[str] {
+		if str, ok := s.(string); ok && grantedSet[str] {
 			return nil
 		}
 	}
@@ -288,19 +323,28 @@ func checkServiceScopes(config *core.CliConfig, method map[string]interface{}, s
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
-func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, error) {
+// When dryRun is true and a file is provided, file reading is skipped and
+// FileUploadMeta is returned instead so the caller can render dry-run output.
+func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
 	spec := opts.Spec
 	method := opts.Method
 	schemaPath := opts.SchemaPath
 	httpMethod := registry.GetStrFromMap(method, "httpMethod")
 
-	var params map[string]interface{}
-	if opts.Params != "" {
-		if err := json.Unmarshal([]byte(opts.Params), &params); err != nil {
-			return client.RawApiRequest{}, output.ErrValidation("--params invalid JSON format")
-		}
-	} else {
-		params = map[string]interface{}{}
+	// stdin is an io.Reader consumed at most once. Only one of --params/--data
+	// may use "-" (stdin); the conflict check below prevents silent data loss.
+	stdin := opts.Factory.IOStreams.In
+
+	// Validate --file mutual exclusions.
+	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
+		return client.RawApiRequest{}, nil, err
+	}
+	if opts.Params == "-" && opts.Data == "-" {
+		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+	}
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+	if err != nil {
+		return client.RawApiRequest{}, nil, err
 	}
 
 	url := registry.GetStrFromMap(spec, "servicePath") + "/" + registry.GetStrFromMap(method, "path")
@@ -313,13 +357,13 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		}
 		val, ok := params[name]
 		if !ok || util.IsEmptyValue(val) {
-			return client.RawApiRequest{}, output.ErrWithHint(output.ExitValidation, "validation",
+			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
 				fmt.Sprintf("missing required path parameter: %s", name),
 				fmt.Sprintf("lark-cli schema %s", schemaPath))
 		}
 		valStr := fmt.Sprintf("%v", val)
 		if err := validate.ResourceName(valStr, name); err != nil {
-			return client.RawApiRequest{}, output.ErrValidation("%s", err)
+			return client.RawApiRequest{}, nil, output.ErrValidation("%s", err)
 		}
 		url = strings.Replace(url, "{"+name+"}", validate.EncodePathSegment(valStr), 1)
 		delete(params, name)
@@ -335,7 +379,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		required, _ := p["required"].(bool)
 		isPaginationParam := opts.PageAll && (name == "page_token" || name == "page_size")
 		if required && !isPaginationParam && (!exists || util.IsEmptyValue(value)) {
-			return client.RawApiRequest{}, output.ErrWithHint(output.ExitValidation, "validation",
+			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
 				fmt.Sprintf("missing required query parameter: %s", name),
 				fmt.Sprintf("lark-cli schema %s", schemaPath))
 		}
@@ -349,22 +393,60 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, erro
 		}
 	}
 
-	data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data)
-	if err != nil {
-		return client.RawApiRequest{}, err
-	}
-
 	request := client.RawApiRequest{
 		Method: httpMethod,
 		URL:    url,
 		Params: queryParams,
-		Data:   data,
 		As:     opts.As,
 	}
-	if opts.Output != "" {
-		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+
+	if opts.File != "" {
+		// File upload: determine default field name from metadata.
+		defaultField := "file"
+		if len(opts.FileFields) == 1 {
+			defaultField = opts.FileFields[0]
+		}
+		fieldName, filePath, isStdin := cmdutil.ParseFileFlag(opts.File, defaultField)
+
+		// Parse --data as form fields.
+		var dataFields any
+		if opts.Data != "" {
+			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+			if err != nil {
+				return client.RawApiRequest{}, nil, err
+			}
+			if _, ok := dataFields.(map[string]any); !ok {
+				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+			}
+		}
+
+		if opts.DryRun {
+			return request, &cmdutil.FileUploadMeta{
+				FieldName: fieldName, FilePath: filePath, FormFields: dataFields,
+			}, nil
+		}
+
+		fd, err := cmdutil.BuildFormdata(
+			opts.Factory.ResolveFileIO(opts.Ctx),
+			fieldName, filePath, isStdin, stdin, dataFields,
+		)
+		if err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
+		request.Data = fd
+		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
+	} else {
+		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+		if err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
+		request.Data = data
+		if opts.Output != "" {
+			request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+		}
 	}
-	return request, nil
+
+	return request, nil, nil
 }
 
 func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
@@ -400,7 +482,12 @@ func scopeAwareChecker(scopes []interface{}, isBotMode bool) func(interface{}) e
 	}
 }
 
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}) error) error {
+func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}) error) error {
+	// When jq is set, always aggregate all pages then filter.
+	if jqExpr != "" {
+		return client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, checkErr)
+	}
+
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
 		pf := output.NewPaginatedFormatter(out, format)

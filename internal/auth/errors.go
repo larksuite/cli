@@ -31,6 +31,7 @@ type NeedAuthorizationError struct {
 	UserOpenId string
 }
 
+// Error returns the error message for NeedAuthorizationError.
 func (e *NeedAuthorizationError) Error() string {
 	return fmt.Sprintf("need_user_authorization (user: %s)", e.UserOpenId)
 }
@@ -44,6 +45,7 @@ type SecurityPolicyError struct {
 	Err          error
 }
 
+// Error returns the error message for SecurityPolicyError.
 func (e *SecurityPolicyError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("security policy error [%d]: %s: %v", e.Code, e.Message, e.Err)
@@ -51,6 +53,7 @@ func (e *SecurityPolicyError) Error() string {
 	return fmt.Sprintf("security policy error [%d]: %s", e.Code, e.Message)
 }
 
+// Unwrap returns the underlying error.
 func (e *SecurityPolicyError) Unwrap() error {
 	return e.Err
 }

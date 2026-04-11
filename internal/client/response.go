@@ -6,18 +6,17 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
-	"os"
-	"path/filepath"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
-	"github.com/larksuite/cli/internal/validate"
 )
 
 // ── Response routing ──
@@ -26,8 +25,10 @@ import (
 type ResponseOptions struct {
 	OutputPath string        // --output flag; "" = auto-detect
 	Format     output.Format // output format for JSON responses
+	JqExpr     string        // if set, apply jq filter instead of Format
 	Out        io.Writer     // stdout
 	ErrOut     io.Writer     // stderr
+	FileIO     fileio.FileIO // file transfer abstraction; required when saving files (--output or binary response)
 	// CheckError is called on parsed JSON results. Nil defaults to CheckLarkResponse.
 	CheckError func(interface{}) error
 }
@@ -54,25 +55,31 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	if IsJSONContentType(ct) || ct == "" {
 		result, err := ParseJSONResponse(resp)
 		if err != nil {
-			return output.ErrNetwork("API call failed: %v", err)
+			return WrapJSONResponseParseError(err, resp.RawBody)
 		}
 		if apiErr := check(result); apiErr != nil {
 			return apiErr
 		}
 		if opts.OutputPath != "" {
-			return saveAndPrint(resp, opts.OutputPath, opts.Out)
+			return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
+		}
+		if opts.JqExpr != "" {
+			return output.JqFilter(opts.Out, result, opts.JqExpr)
 		}
 		output.FormatValue(opts.Out, result, opts.Format)
 		return nil
 	}
 
 	// Non-JSON (binary) responses.
+	if opts.JqExpr != "" {
+		return output.ErrValidation("--jq requires a JSON response (got Content-Type: %s)", ct)
+	}
 	if opts.OutputPath != "" {
-		return saveAndPrint(resp, opts.OutputPath, opts.Out)
+		return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
 	}
 
 	// No --output: auto-save with derived filename.
-	meta, err := SaveResponse(resp, ResolveFilename(resp))
+	meta, err := SaveResponse(opts.FileIO, resp, ResolveFilename(resp))
 	if err != nil {
 		return output.Errorf(output.ExitInternal, "file_error", "%s", err)
 	}
@@ -81,8 +88,8 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	return nil
 }
 
-func saveAndPrint(resp *larkcore.ApiResp, path string, w io.Writer) error {
-	meta, err := SaveResponse(resp, path)
+func saveAndPrint(fio fileio.FileIO, resp *larkcore.ApiResp, path string, w io.Writer) error {
+	meta, err := SaveResponse(fio, resp, path)
 	if err != nil {
 		return output.Errorf(output.ExitInternal, "file_error", "%s", err)
 	}
@@ -104,7 +111,7 @@ func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(resp.RawBody))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
-		return nil, fmt.Errorf("response parse error: %v (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
+		return nil, fmt.Errorf("response parse error: %w (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
 	}
 	return result, nil
 }
@@ -112,23 +119,34 @@ func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
 // ── File saving ──
 
 // SaveResponse writes an API response body to the given outputPath and returns metadata.
-func SaveResponse(resp *larkcore.ApiResp, outputPath string) (map[string]interface{}, error) {
-	safePath, err := validate.SafeOutputPath(outputPath)
+// It delegates to FileIO.Save for path validation and atomic write; fio must not be nil.
+func SaveResponse(fio fileio.FileIO, resp *larkcore.ApiResp, outputPath string) (map[string]interface{}, error) {
+	result, err := fio.Save(outputPath, fileio.SaveOptions{
+		ContentType:   resp.Header.Get("Content-Type"),
+		ContentLength: int64(len(resp.RawBody)),
+	}, bytes.NewReader(resp.RawBody))
 	if err != nil {
-		return nil, fmt.Errorf("unsafe output path: %s", err)
+		var me *fileio.MkdirError
+		var we *fileio.WriteError
+		switch {
+		case errors.Is(err, fileio.ErrPathValidation):
+			return nil, fmt.Errorf("unsafe output path: %s", err)
+		case errors.As(err, &me):
+			return nil, fmt.Errorf("create directory: %s", err)
+		case errors.As(err, &we):
+			return nil, fmt.Errorf("cannot write file: %s", err)
+		default:
+			return nil, fmt.Errorf("cannot write file: %s", err)
+		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-		return nil, fmt.Errorf("create directory: %s", err)
+	resolvedPath, err := fio.ResolvePath(outputPath)
+	if err != nil || resolvedPath == "" {
+		resolvedPath = outputPath
 	}
-
-	if err := validate.AtomicWrite(safePath, resp.RawBody, 0644); err != nil {
-		return nil, fmt.Errorf("cannot write file: %s", err)
-	}
-
 	return map[string]interface{}{
-		"saved_path":   safePath,
-		"size_bytes":   len(resp.RawBody),
+		"saved_path":   resolvedPath,
+		"size_bytes":   result.Size(),
 		"content_type": resp.Header.Get("Content-Type"),
 	}, nil
 }

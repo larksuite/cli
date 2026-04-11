@@ -8,15 +8,24 @@
 
 - `--json` 必须是 JSON 对象。
 - 顶层统一使用：`type` + `name` + 类型特有字段。
+- 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
 - `+field-update` 是 `PUT` 语义，建议先 `+field-get` 再全量提交目标字段配置。
 - `type=formula` 或 `type=lookup` 创建时，必须先读对应 guide。
+
+```json
+{
+  "type": "text",
+  "name": "需求背景",
+  "description": "记录需求背景与已知约束；填写口径可参考[说明模板](https://example.com/spec)"
+}
+```
 
 ## 2. 各类型格式与示例
 
 ### 2.1 text
 
-**要求**：`name` 必填；`style.type` 可选，默认 `plain`。
+**要求**：`name` 必填；可选传 `description`；`style.type` 可选，默认 `plain`。
 
 ```json
 {
@@ -36,6 +45,7 @@
   "properties": {
     "type": { "type": "string", "const": "text", "description": "Text field type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "style": {
       "type": "object",
       "properties": { "type": { "type": "string", "enum": ["plain", "phone", "url", "email", "barcode"], "description": "Text style type" } },
@@ -101,6 +111,7 @@
   "properties": {
     "type": { "type": "string", "const": "number", "description": "Number field type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "style": {
       "anyOf": [
         {
@@ -197,6 +208,7 @@
   "properties": {
     "type": { "type": "string", "const": "select", "description": "Select field type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "multiple": { "type": "boolean", "default": false, "description": "Allow multiple" },
     "options": {
       "type": "array",
@@ -250,6 +262,7 @@
   "properties": {
     "type": { "type": "string", "const": "datetime", "description": "Date time type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "style": {
       "type": "object",
       "properties": { "format": { "type": "string", "enum": ["yyyy/MM/dd", "yyyy/MM/dd HH:mm", "yyyy/MM/dd HH:mm Z", "yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm Z", "MM-dd", "MM/dd/yyyy", "dd/MM/yyyy"], "default": "yyyy/MM/dd", "description": "Date format" } },
@@ -273,6 +286,7 @@
   "properties": {
     "type": { "type": "string", "const": "created_at", "description": "Created time type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "style": {
       "type": "object",
       "properties": { "format": { "type": "string", "enum": ["yyyy/MM/dd", "yyyy/MM/dd HH:mm", "yyyy/MM/dd HH:mm Z", "yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm Z", "MM-dd", "MM/dd/yyyy", "dd/MM/yyyy"], "default": "yyyy/MM/dd", "description": "Date format" } },
@@ -296,6 +310,7 @@
   "properties": {
     "type": { "type": "string", "const": "updated_at", "description": "Modified time type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "style": {
       "type": "object",
       "properties": { "format": { "type": "string", "enum": ["yyyy/MM/dd", "yyyy/MM/dd HH:mm", "yyyy/MM/dd HH:mm Z", "yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm Z", "MM-dd", "MM/dd/yyyy", "dd/MM/yyyy"], "default": "yyyy/MM/dd", "description": "Date format" } },
@@ -330,7 +345,7 @@
 ```json
 {
   "type": "object",
-  "properties": { "type": { "type": "string", "const": "user", "description": "User field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "multiple": { "type": "boolean", "default": true, "description": "Allow multiple" } },
+  "properties": { "type": { "type": "string", "const": "user", "description": "User field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" }, "multiple": { "type": "boolean", "default": true, "description": "Allow multiple" } },
   "required": ["type", "name"],
   "additionalProperties": false,
   "description": "User field",
@@ -343,7 +358,7 @@
 ```json
 {
   "type": "object",
-  "properties": { "type": { "type": "string", "const": "created_by", "description": "Created by type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" } },
+  "properties": { "type": { "type": "string", "const": "created_by", "description": "Created by type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
   "required": ["type", "name"],
   "additionalProperties": false,
   "description": "Created by field",
@@ -356,7 +371,7 @@
 ```json
 {
   "type": "object",
-  "properties": { "type": { "type": "string", "const": "updated_by", "description": "Modified by type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" } },
+  "properties": { "type": { "type": "string", "const": "updated_by", "description": "Modified by type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
   "required": ["type", "name"],
   "additionalProperties": false,
   "description": "Modified by field",
@@ -386,6 +401,7 @@
   "properties": {
     "type": { "type": "string", "const": "link", "description": "Link field type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "link_table": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Linked table" },
     "bidirectional": { "type": "boolean", "default": false, "description": "Bidirectional link" },
     "bidirectional_link_field_name": { "$ref": "#/properties/name", "description": "Bidirectional link field name" }
@@ -414,7 +430,7 @@
 ```json
 {
   "type": "object",
-  "properties": { "type": { "type": "string", "const": "formula", "description": "Formula field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "expression": { "type": "string", "description": "Formula expression" } },
+  "properties": { "type": { "type": "string", "const": "formula", "description": "Formula field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" }, "expression": { "type": "string", "description": "Formula expression" } },
   "required": ["type", "name", "expression"],
   "additionalProperties": false,
   "description": "Formula field",
@@ -451,6 +467,7 @@
   "properties": {
     "type": { "type": "string", "const": "lookup", "description": "Lookup field type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "from": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Source data table" },
     "select": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Field to aggregate from source table" },
     "where": {
@@ -545,6 +562,7 @@
   "properties": {
     "type": { "type": "string", "const": "auto_number", "description": "Auto number type" },
     "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
+    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
     "style": {
       "type": "object",
       "properties": {
@@ -620,7 +638,7 @@
 ```json
 {
   "type": "object",
-  "properties": { "type": { "type": "string", "const": "attachment", "description": "Attachment field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" } },
+  "properties": { "type": { "type": "string", "const": "attachment", "description": "Attachment field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
   "required": ["type", "name"],
   "additionalProperties": false,
   "description": "Attachment field",
@@ -633,7 +651,7 @@
 ```json
 {
   "type": "object",
-  "properties": { "type": { "type": "string", "const": "location", "description": "Location field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" } },
+  "properties": { "type": { "type": "string", "const": "location", "description": "Location field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
   "required": ["type", "name"],
   "additionalProperties": false,
   "description": "Location field",
@@ -646,7 +664,7 @@
 ```json
 {
   "type": "object",
-  "properties": { "type": { "type": "string", "const": "checkbox", "description": "Checkbox field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" } },
+  "properties": { "type": { "type": "string", "const": "checkbox", "description": "Checkbox field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
   "required": ["type", "name"],
   "additionalProperties": false,
   "description": "Checkbox field",

@@ -4,18 +4,48 @@
 package im
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func decodePostContentForTest(t *testing.T, raw string) []interface{} {
+	t.Helper()
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v, raw=%s", err, raw)
+	}
+	locale, _ := payload["zh_cn"].(map[string]interface{})
+	content, _ := locale["content"].([]interface{})
+	if content == nil {
+		t.Fatalf("post content missing: %#v", payload)
+	}
+	return content
+}
+
+func decodePostParagraphForTest(t *testing.T, raw string, idx int) map[string]interface{} {
+	t.Helper()
+
+	content := decodePostContentForTest(t, raw)
+	if idx >= len(content) {
+		t.Fatalf("paragraph index %d out of range, len=%d, raw=%s", idx, len(content), raw)
+	}
+	paragraph, _ := content[idx].([]interface{})
+	if len(paragraph) != 1 {
+		t.Fatalf("paragraph %d = %#v, want single node", idx, paragraph)
+	}
+	node, _ := paragraph[0].(map[string]interface{})
+	return node
+}
 
 func TestNormalizeAtMentions(t *testing.T) {
 	input := `<at id=ou_alpha/> hi <at open_id="ou_beta"> and <at user_id=ou_gamma /> and <at email="x@example.com"/>`
@@ -138,6 +168,16 @@ func TestWrapMarkdownAsPostForDryRun(t *testing.T) {
 	}
 	if !strings.Contains(desc, "placeholder image keys") {
 		t.Fatalf("wrapMarkdownAsPostForDryRun() desc = %q, want placeholder note", desc)
+	}
+}
+
+func TestWrapMarkdownAsPostForDryRun_SegmentedBlankLines(t *testing.T) {
+	content, _ := wrapMarkdownAsPostForDryRun("hello\n\n![alt](https://example.com/a.png)")
+	if !strings.Contains(content, `![alt](img_dryrun_1)`) {
+		t.Fatalf("wrapMarkdownAsPostForDryRun(segmented) content = %q, want placeholder img key", content)
+	}
+	if !strings.Contains(content, `"tag":"text"`) {
+		t.Fatalf("wrapMarkdownAsPostForDryRun(segmented) content = %q, want blank-line text paragraph", content)
 	}
 }
 
@@ -265,10 +305,13 @@ func TestParseMp4Duration(t *testing.T) {
 }
 
 func TestParseMediaDuration(t *testing.T) {
-	if got := parseMediaDuration("test.pdf", "pdf"); got != "" {
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected")
+	}))
+	if got := parseMediaDuration(rt, "test.pdf", "pdf"); got != "" {
 		t.Fatalf("parseMediaDuration(pdf) = %q, want empty", got)
 	}
-	if got := parseMediaDuration("nonexistent.opus", "opus"); got != "" {
+	if got := parseMediaDuration(rt, "nonexistent.opus", "opus"); got != "" {
 		t.Fatalf("parseMediaDuration(missing) = %q, want empty", got)
 	}
 }
@@ -282,7 +325,7 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 		{
 			name:  "heading downgrade H1 and H2",
 			input: "# Title\n## Section\ntext",
-			want:  "#### Title\n<br>\n##### Section\ntext",
+			want:  "#### Title\n\n##### Section\ntext",
 		},
 		{
 			name:  "no downgrade when no H1-H3",
@@ -292,17 +335,17 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 		{
 			name:  "code block protected",
 			input: "# Title\n```\n# not a heading\n```\ntext",
-			want:  "#### Title\n\n<br>\n```\n# not a heading\n```\n<br>\n\ntext",
+			want:  "#### Title\n```\n# not a heading\n```\ntext",
 		},
 		{
 			name:  "table spacing",
 			input: "text\n| A | B |\n| - | - |\n| 1 | 2 |\nafter",
-			want:  "text\n<br>\n| A | B |\n| - | - |\n| 1 | 2 |\n<br>\nafter",
+			want:  "text\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nafter",
 		},
 		{
 			name:  "table spacing keeps heading separation",
 			input: "# Title\n| A | B |\n| - | - |\n| 1 | 2 |\n## Next",
-			want:  "#### Title\n\n<br>\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<br>\n##### Next",
+			want:  "#### Title\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n##### Next",
 		},
 		{
 			name:  "excess blank lines compressed",
@@ -332,15 +375,88 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 
 func TestWrapMarkdownAsPost(t *testing.T) {
 	got := wrapMarkdownAsPost("hello **world**")
-	// Should produce valid JSON with post structure
-	if !strings.Contains(got, `"tag":"md"`) {
-		t.Fatalf("wrapMarkdownAsPost() missing md tag: %s", got)
+	content := decodePostContentForTest(t, got)
+	if len(content) != 1 {
+		t.Fatalf("wrapMarkdownAsPost() content len = %d, want 1", len(content))
 	}
-	if !strings.Contains(got, `"zh_cn"`) {
-		t.Fatalf("wrapMarkdownAsPost() missing zh_cn: %s", got)
+	node := decodePostParagraphForTest(t, got, 0)
+	if node["tag"] != "md" {
+		t.Fatalf("wrapMarkdownAsPost() tag = %#v, want md", node["tag"])
 	}
-	if !strings.Contains(got, "hello **world**") {
-		t.Fatalf("wrapMarkdownAsPost() missing content: %s", got)
+	if node["text"] != "hello **world**" {
+		t.Fatalf("wrapMarkdownAsPost() text = %#v, want %q", node["text"], "hello **world**")
+	}
+}
+
+func TestShouldUseSegmentedPost(t *testing.T) {
+	tests := []struct {
+		name     string
+		markdown string
+		want     bool
+	}{
+		{name: "single newline", markdown: "a\nb", want: false},
+		{name: "blank line", markdown: "a\n\nb", want: true},
+		{name: "blank line with spaces", markdown: "a\n  \nb", want: true},
+		{name: "multiple blank lines", markdown: "a\n \n \n b", want: true},
+		{name: "blank lines inside code block only", markdown: "```go\n\n\nfmt.Println(1)\n```\nnext", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldUseSegmentedPost(tt.markdown); got != tt.want {
+				t.Fatalf("shouldUseSegmentedPost(%q) = %v, want %v", tt.markdown, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWrapMarkdownAsPost_SegmentedBlankLines(t *testing.T) {
+	got := wrapMarkdownAsPost("a\n\nb")
+	content := decodePostContentForTest(t, got)
+	if len(content) != 3 {
+		t.Fatalf("wrapMarkdownAsPost(a\\n\\nb) content len = %d, want 3", len(content))
+	}
+
+	first := decodePostParagraphForTest(t, got, 0)
+	if first["tag"] != "md" || first["text"] != "a" {
+		t.Fatalf("first paragraph = %#v, want md/a", first)
+	}
+
+	second := decodePostParagraphForTest(t, got, 1)
+	if second["tag"] != "text" || second["text"] != postBlankLinePlaceholder {
+		t.Fatalf("second paragraph = %#v, want blank text placeholder", second)
+	}
+
+	third := decodePostParagraphForTest(t, got, 2)
+	if third["tag"] != "md" || third["text"] != "b" {
+		t.Fatalf("third paragraph = %#v, want md/b", third)
+	}
+}
+
+func TestWrapMarkdownAsPost_SegmentedMultipleBlankLines(t *testing.T) {
+	got := wrapMarkdownAsPost("a\n\n\nb")
+	content := decodePostContentForTest(t, got)
+	if len(content) != 4 {
+		t.Fatalf("wrapMarkdownAsPost(a\\n\\n\\nb) content len = %d, want 4", len(content))
+	}
+
+	for i := 1; i <= 2; i++ {
+		node := decodePostParagraphForTest(t, got, i)
+		if node["tag"] != "text" || node["text"] != postBlankLinePlaceholder {
+			t.Fatalf("blank paragraph %d = %#v, want blank text placeholder", i, node)
+		}
+	}
+}
+
+func TestWrapMarkdownAsPost_SegmentedBlankLinesWithSpaces(t *testing.T) {
+	got := wrapMarkdownAsPost("a\n  \nb")
+	content := decodePostContentForTest(t, got)
+	if len(content) != 3 {
+		t.Fatalf("wrapMarkdownAsPost(a\\n  \\nb) content len = %d, want 3", len(content))
+	}
+	node := decodePostParagraphForTest(t, got, 1)
+	if node["tag"] != "text" || node["text"] != postBlankLinePlaceholder {
+		t.Fatalf("middle paragraph = %#v, want blank text placeholder", node)
 	}
 }
 
@@ -471,19 +587,13 @@ func TestNormalizeDownloadOutputPath(t *testing.T) {
 }
 
 func TestDownloadIMResourceToPathHTTPClientError(t *testing.T) {
-	runtime := &common.RuntimeContext{
-		Factory: &cmdutil.Factory{
-			HttpClient: func() (*http.Client, error) {
-				return nil, errors.New("http client unavailable")
-			},
-			IOStreams: &cmdutil.IOStreams{
-				Out:    &bytes.Buffer{},
-				ErrOut: &bytes.Buffer{},
-			},
-		},
-	}
+	// DoAPIStream now goes through APIClient, which requires a fully constructed Factory.
+	// When HttpClient returns an error, NewAPIClient fails, and getAPIClient propagates it.
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("http client unavailable")
+	}))
 
-	_, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "img_123", "image", "out.bin")
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "img_123", "image", "out.bin")
 	if err == nil || !strings.Contains(err.Error(), "http client unavailable") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}

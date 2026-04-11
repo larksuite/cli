@@ -1,0 +1,43 @@
+name: PR Labels
+
+on:
+  pull_request_target:
+    # NOTE: This event runs with base-branch code and write permissions.
+    # Do NOT add `ref: github.event.pull_request.head.sha` to the checkout step,
+    # as that would execute untrusted PR code with elevated access.
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync-pr-labels:
+    if: ${{ github.event.pull_request.state == 'open' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync managed PR labels
+        id: sync_pr_labels
+        # Labeling is best-effort and must not block PR merges.
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/pr-labels/index.js
+
+      - name: Warn when label sync fails
+        if: ${{ always() && steps.sync_pr_labels.outcome == 'failure' }}
+        run: |
+          echo "::warning::PR label sync failed; labels may be stale."
+          echo "⚠️ PR label sync failed; labels may be stale." >> "$GITHUB_STEP_SUMMARY"

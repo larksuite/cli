@@ -1,214 +1,118 @@
 ---
 name: lark-whiteboard
+version: 1.0.0
 description: >
-  当用户要求在飞书云文档中绘制图表，或使用飞书画板绘制架构图、流程图、思维导图、时序图或其他可视化图表时使用此 skill。
-compatibility: Requires Node.js 18+
+  飞书画板：查询和编辑飞书云文档中的画板。支持导出画板为预览图片、导出原始节点结构、使用 PlantUML/Mermaid 代码或 OpenAPI 原生格式更新画板内容。
+  当用户需要查看画板内容、导出画板图片、或编辑画板，或是需要可视化表达架构、流程、组织关系、时间线、因果、对比等结构化信息时使用此 skill，无论是否提及"画板"。
 metadata:
   requires:
-    bins: ["lark-cli"]
+    bins: [ "lark-cli" ]
+  cliHelp: "lark-cli whiteboard --help"
 ---
 
-# Whiteboard Cli Skill
+# whiteboard (v1)
 
-> [!NOTE]
-> **环境依赖**：绘制画板需要 `@larksuite/whiteboard-cli`（画板 Node.js CLI 工具），以及 `lark-cli`（LarkSuite CLI 工具）。
-> 如果执行失败，手动安装后重试：`npm install -g @larksuite/whiteboard-cli@^0.1.0`
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
-> [!IMPORTANT]
-> 执行 `npm install` 安装新的依赖前，务必征得用户同意！
+## 核心概念
 
+### 画板 Token
+
+画板 token 是画板的唯一标识符。飞书画板嵌入在云文档中，可以从云文档的 `docs +fetch` 结果中获取（`<whiteboard token="xxx"/>`
+标签），或从 `docs +update` 新建画板后的 `data.board_tokens` 字段中获取。
+
+## 快速决策
+
+当需要插入图表时：
+
+1. 能否使用飞书画板？
+    - 能 → 走画板路径（推荐！可编辑、可协作）
+    - 不能 → 走图片路径
+
+| 用户需求                             | 推荐 Shortcut                                                                                                                                            |
+|----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| "查看这个画板的内容"                      | [`+query --output_as image`](references/lark-whiteboard-query.md)                                                                                      |
+| "导出画板为图片"                        | [`+query --output_as image`](references/lark-whiteboard-query.md)                                                                                      |
+| "获取画板的 PlantUML/Mermaid 代码"      | [`+query --output_as code`](references/lark-whiteboard-query.md)                                                                                       |
+| "检查画板是否由 PlantUML/Mermaid 代码块组成" | [`+query --output_as code`](references/lark-whiteboard-query.md)                                                                                       |
+| "修改画板某个节点的颜色或文字"                 | [`+query --output_as raw`](references/lark-whiteboard-query.md) 后 [`+update`](references/lark-whiteboard-update.md)                                    |
+| "用 PlantUML 绘制画板"                | [`+update --input_format plantuml`](references/lark-whiteboard-update.md)                                                                              |
+| "用 Mermaid 绘制画板"                 | [`+update --input_format mermaid`](references/lark-whiteboard-update.md)                                                                               |
+| "在画板绘制复杂图表"                      | [`+update --input_format raw`](references/lark-whiteboard-update.md), 需要使用 whiteboard-cli 工具，参见 [lark-whiteboard-cli](../lark-whiteboard-cli/SKILL.md) |
+
+## Shortcuts
+
+| Shortcut                                          | 说明                                          |
+|---------------------------------------------------|---------------------------------------------|
+| [`+query`](references/lark-whiteboard-query.md)   | 查询画板，导出为预览图片、代码或原始节点结构                      |
+| [`+update`](references/lark-whiteboard-update.md) | 更新画板内容，支持 PlantUML、Mermaid 或 OpenAPI 原生格式输入 |
 
 ## Workflow
 
-> **这是画板，不是网页。** 画板是无限画布上自由放置元素，flex 布局是可选增强。
+### 场景 1: 创作一个画板
 
-```
-Step 1: 路由 & 读取知识
-  - 判断渲染路径（见路由表）：Mermaid 还是 DSL？
-  - 读对应 scene 指南 — 了解结构特征和布局策略
-  - 确定布局策略（见下方快速判断）和构建方式
-  - 读 references/ 核心模块 — 语法、布局、配色、排版、连线
+1. 确定需要创作的画板 Token（从用户请求或对应的文档中获取）与要创作的内容
+2. 参考 [lark-whiteboard-cli](../lark-whiteboard-cli/SKILL.md) 生成画板内容
+3. 使用 [`+update`](references/lark-whiteboard-update.md) shortcut 更新画板内容
 
-Step 2: 生成完整 DSL（含颜色）
-  - 按 content.md 规划信息量和分组
-  - 按 layout.md 选择布局模式和间距
-  - 按 style.md 上色（用户没指定时用默认经典色板）
-  - 按 schema.md 语法输出完整 JSON
-  - 连线参考 connectors.md，排版参考 typography.md
+### 场景 2: 修改或优化一个画板
 
-  注意：部分图形（鱼骨/飞轮/柱状/折线等）等, 要按 scene 指南的脚本模板写 .js 脚本生成 JSON：
-    - node xxx.js → 产出 JSON 文件
-    - 用产出的 JSON 文件进入 Step 3
+1. 确定要修改的画板 Token （从用户请求或对应的文档中获取）
+2. 使用 [`+query --output_as code`](references/lark-whiteboard-query.md) shortcut 导出画板代码，确认画板是否由 Mermaid 或
+   PlantUML 绘制
+    1. 如果 +query --output_as code 返回了 Mermaid / PlantUML 代码块，则在这一代码的基础上优化修改
+    2. 如果没有返回代码块，则使用 [`+query --output_as image`](references/lark-whiteboard-query.md)
+       获取画板预览图片，根据图片内容参考 [lark-whiteboard-cli](../lark-whiteboard-cli/SKILL.md) 重绘优化
+    3. 如果用户只需要简单修改某个节点的文本内容/颜色，可以使用 [
+       `+query --output_as raw`](references/lark-whiteboard-query.md) shortcut 导出画板原生 OpenAPI 格式，并在此基础上修改。
+    4. 如果用户有明确要求，则以用户要求优先。
+3. 使用 [`+update`](references/lark-whiteboard-update.md) shortcut 创建新的画板内容。根据用户需求，你可能会需要使用 [
+   `docs +update`](../lark-doc/references/lark-doc-update.md) 创建新的画板，或使用 [
+   `+update --overwrite`](references/lark-whiteboard-update.md) 在原画板上覆盖式更新。
 
-Step 3: 渲染 & 审查 → 交付
-  - 渲染前自查（见下方检查清单）
-  - 渲染 PNG，检查：
-    · 信息完整？布局合理？配色协调？
-    · 文字无截断？连线无交叉？
-  - 有问题 → 按症状表修复 → 重新渲染（最多 2 轮）
-  - 2 轮后仍有严重问题 → 考虑走 Mermaid 路径兜底
-  - 没问题 → 交付：
-    · 用户要求上传飞书 → 见下方”上传飞书画板”章节中的说明
-    · 用户未指定 → 展示 PNG 图片给用户
-```
+## 与 lark-doc 的配合使用
 
-**布局策略快速判断**（详见 layout.md）：
+### 场景 1: 从文档中获取画板 token
 
-| 判断条件 | 布局策略 | 构建方式 |
-|----------|----------|----------|
-| 有明确上下层级（用户层→服务层→数据层） | Flex 分层 | 直接写 JSON |
-| 空间位置承载信息（地理、拓扑、角度） | 纯绝对定位 | 写脚本算坐标（node xxx.js） |
-| 多个独立模块平级互联 | 混合（岛屿式） | 直接写 JSON + 估高辅助 |
-| 不确定 | 默认 Flex（最安全） | 直接写 JSON |
+1. 使用 `lark-doc` 的 [`+fetch`](../lark-doc/references/lark-doc-fetch.md) 获取文档内容
+2. 从返回的 markdown 中解析 `<whiteboard token="xxx"/>` 标签，记录画板 token
+3. 使用本 skill 的 `+query` 或 `+update` 读取或操作画板
 
-> **构建方式是强约束**：当 scene 指南要求"脚本生成"时，必须先写脚本（.js）并用 `node` 执行来产出 JSON 文件。绝对定位场景（鱼骨图、飞轮图、柱状图、折线图等）的坐标需要数学计算，直接手写 JSON 极易导致节点重叠或连线穿模。
+### 场景 2: 新建画板并编辑（完整流程）
 
----
+这是最常见的使用场景，**必须完整执行以下步骤**：
 
-## 渲染路径选择（DSL or Mermaid）
+1. 使用 `lark-doc` 的 [`+update`](../lark-doc/references/lark-doc-update.md) 创建空白画板
+    - 在 markdown 中传入 `<whiteboard type="blank"></whiteboard>`
+    - **注意这一 XML 标签不要转义**
+    - 需要多个画板时，重复多个 whiteboard 标签
 
-| 图表类型 | 路径 | 理由 |
-|----------|------|------|
-| 思维导图 | **Mermaid** | 辐射结构自动布局 |
-| 时序图 | **Mermaid** | 参与方+消息自动排列 |
-| 类图 | **Mermaid** | 类关系自动布局 |
-| 饼图 | **Mermaid** | Mermaid 原生支持 |
-| 流程图 | **Mermaid** | 通过 Mermaid 语法稳定生成结构 |
-| 其他所有类型 | **DSL** | 精确控制样式和布局 |
+2. 从响应的 `data.board_tokens` 中获取新建画板的 token 列表
+    - 记录每个 token 对应的图表类型和位置
 
-**路由规则**：
-1. **自动 Mermaid**：思维导图、时序图、类图、饼图、流程图 → 默认走 Mermaid
-2. **显式 Mermaid**：用户输入包含 Mermaid 语法 → 走 Mermaid
-3. **DSL 路径**：其他所有类型 → 先读核心模块，再读对应场景指南
+3. 根据文档主题，为每个画板设计相应的内容
+    - 参考下方"常见图表模板与参考指南"选择合适的语法
+    - 使用 Mermaid（推荐）、PlantUML 或 [lark-whiteboard-cli](../lark-whiteboard-cli/SKILL.md) 生成内容
 
-**Mermaid 路径**：参考 `scenes/mermaid.md` 编写 `.mmd` 文件，跳过 DSL 模块。
-**DSL 路径**：按 Workflow 3 步执行。
+4. **逐个更新画板**：使用本 skill 的 `+update` shortcut 编辑每个画板的内容
+    - 不要遗漏任何一个画板 token
+    - 确保每个画板都有实际内容，不是空白
 
----
+### 常见图表模板与参考指南
 
-## 模块索引
-
-### 核心参考（DSL 路径必读）
-
-| 模块 | 文件 | 说明 |
-|------|------|------|
-| DSL 语法 | `references/schema.md` | 节点类型、属性、尺寸值 |
-| 内容规划 | `references/content.md` | 信息提取、密度决策、连线预判 |
-| 布局系统 | `references/layout.md` | 网格方法论、Flex 映射、间距规则 |
-| 排版规则 | `references/typography.md` | 字号层级、对齐、行距 |
-| 连线系统 | `references/connectors.md` | 拓扑规划、锚点选择 |
-| 配色系统 | `references/style.md` | 多色板、视觉层级 |
-
-
-### 场景指南（按类型选读一个）
-
-| 图表类型 | 文件 | 适用场景 |
-|----------|------|----------|
-| 架构图 | `scenes/architecture.md` | 分层架构、微服务架构 |
-| 组织架构图 | `scenes/organization.md` | 公司组织、树形层级 |
-| 对比图 | `scenes/comparison.md` | 方案对比、功能矩阵 |
-| 鱼骨图 | `scenes/fishbone.md` | 因果分析、根因分析 |
-| 柱状图 | `scenes/bar-chart.md` | 柱状图、条形图 |
-| 折线图 | `scenes/line-chart.md` | 折线图、趋势图 |
-| 树状图 | `scenes/treemap.md` | 矩形树图、层级占比 |
-| 漏斗图 | `scenes/funnel.md` | 转化漏斗、销售漏斗 |
-| 金字塔图 | `scenes/pyramid.md` | 层级结构、需求层次 |
-| 循环/飞轮图 | `scenes/flywheel.md` | 增长飞轮、闭环链路 |
-| 里程碑 | `scenes/milestone.md` | 时间线、版本演进 |
-| Mermaid | `scenes/mermaid.md` | 思维导图、时序图、类图、饼图、流程图 |
-
----
-
-## CLI 命令
-
-**渲染**：
-```bash
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i my-diagram.json -o ./images/my-diagram.png        # DSL 路径
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i diagram.mmd -o ./images/diagram.png               # Mermaid 路径
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i skeleton.json -o ./images/step1.png -l coords.json  # 两阶段（提取坐标）
-```
-
-**上传飞书画板**：
-
-> 上传需要飞书认证。遇到认证或权限错误时，阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 了解登录和权限处理。
-
-**第一步：获取画板 Token**
-
-| 用户给了什么 | 怎么获取 Token |
-|------------|--------------|
-| 画板 Token（`XXX`） | 直接使用 |
-| 文档 URL 或 doc_id，文档中已有画板 | `lark-cli docs +fetch --doc <URL> --as user`，从返回的 `<whiteboard token=”XXX”/>` 中提取 token |
-| 文档 URL 或 doc_id，需要新建画板 | `lark-cli docs +update --doc <doc_id> --mode append --markdown '<whiteboard type=”blank”></whiteboard>' --as user`，从响应的 `data.board_tokens[0]` 获取 token |
-
-关于飞书文档的创建，读取等更多操作，请参考 lark-doc skill [`../lark-doc/SKILL.md`](../lark-doc/SKILL.md)。
-
-**第二步：上传**
-
-> [!CAUTION]
-> **MANDATORY PRE-FLIGHT CHECK (上传前强制拦截检查)**
-> 当你要向一个**已存在的画板 Token** 写入内容时，**绝对禁止**直接执行上传命令！你必须严格遵守以下两步：
-> **强制执行 Dry Run（状态探测）**
-> 必须先在命令中添加 `--overwrite --dry-run` 参数来探测画板当前状态。示例命令：
-> ```bash
-> npx -y @larksuite/whiteboard-cli@^0.1.0 --to openapi -i <输入文件> --format json | lark-cli docs +whiteboard-update --whiteboard-token <Token> --overwrite --dry-run --as user
-> ```
->
-> **解析结果并拦截**
-> - 仔细阅读 Dry Run 的输出日志。
-> - **如果日志包含 `XX whiteboard nodes will be deleted`**：这说明画板**非空**，当前操作会覆盖并摧毁用户的原有图表！
-> - **你必须立即停止操作**，并通过 `AskUserQuestion` 工具（或直接回复）向用户确认：”目标画板当前非空，继续更新将清空原有的 XX 个节点，是否确认覆盖？”
-> - 只有在用户明确授权”同意覆盖”后，你才能移除 `--dry-run` 真正执行上传。
-> - 用户可能会要求你不覆盖更新画板内容，在这种情况下，移除 `--overwrite` 和 `--dry-run` 参数再上传。
-
-```bash
-npx -y @larksuite/whiteboard-cli@^0.1.0 --to openapi -i <输入文件> --format json | lark-cli docs +whiteboard-update --whiteboard-token <画板Token> --yes --as user
-```
-> 画板一经上传不可修改。如需应用身份上传，将 `--as user` 替换为 `--as bot`。
-> 如果画板非空，先加 `--overwrite --dry-run` 检查待删除节点数，向用户确认后去掉 `--dry-run` 执行。
-
-**症状→修复表**（视觉审查发现问题时参照）：
-
-| 看到的问题 | 改什么 |
-|-----------|--------|
-| 文字被截断 | height 改为 fit-content |
-| 文字溢出容器右侧 | 增大 width，或缩短文字 |
-| 节点重叠粘连 | 增大 gap |
-| 节点挤成一团 | 增大 padding 和 gap |
-| 连线穿过节点 | 调整 fromAnchor/toAnchor 或增大间距 |
-| 大面积空白 | 缩小外层 frame 宽度 |
-| 文字和背景色太接近 | 调整 fillColor 或 textColor |
-| 布局整体偏左/偏右 | 调整绝对定位的 x 坐标使内容居中 |
-
----
-
-## 渲染前自查
-
-生成 DSL 后、渲染前，快速检查：
-
-- [ ] 不同分组用了不同颜色？同组节点样式完全一致？
-- [ ] 外层浅色背景、内层白色节点？（外重内轻）
-- [ ] 所有节点有边框（borderWidth=2）？文字在背景上清晰可读？
-- [ ] 连线用灰色（#BBBFC4），不用彩色？
-- [ ] frame 都写了 layout 属性？gap 和 padding 都显式设置了？
-- [ ] 含文字节点 height 用 fit-content？connector 在顶层 nodes 数组？
-
----
-
-## 关键约束速查
-
-> 最高频出错的规则，即使不读子模块文件也必须遵守。
-
-1. **含文字节点的 height 必须用 `'fit-content'`** — 写死数值会截断文字
-2. **`fill-container` 仅在 flex 父容器中生效** — `layout: 'none'` 下宽度退化为 0
-3. **connector 必须放在顶层 nodes 数组** — 不能嵌套在 frame children 里
-4. **图层顺序** — 数组顺序 = 绘制顺序。后定义的元素层级越高，会覆盖先定义的。重叠/浮层/标注元素务必放在数组末尾。
-5. **flex 容器内的 x/y 会被完全忽略** — 需要自由定位时用 `layout: 'none'` 或放在顶层 nodes
-
-❌ 致命错误：flex 容器内设 x/y，坐标不生效，节点按顺序排列
-```json
-{ "type": "frame", "layout": "vertical", "children": [
-  { "type": "rect", "x": 100, "y": 0, "text": "成都" },
-  { "type": "rect", "x": 540, "y": 0, "text": "康定" }
-]}
-```
-✅ 正确：用 `layout: "none"` 或放在顶层 nodes 用 x/y 定位。
+| 图表类型           | 推荐语法               | 详细参考指南                                                                                      |
+|----------------|--------------------|---------------------------------------------------------------------------------------------|
+| 架构图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/architecture.md](../lark-whiteboard-cli/scenes/architecture.md) |
+| 流程图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/flowchart.md](../lark-whiteboard-cli/scenes/flowchart.md)       |
+| 组织架构图          | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/organization.md](../lark-whiteboard-cli/scenes/organization.md) |
+| 里程碑/时间线        | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/milestone.md](../lark-whiteboard-cli/scenes/milestone.md)       |
+| 鱼骨图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/fishbone.md](../lark-whiteboard-cli/scenes/fishbone.md)         |
+| 对比图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/comparison.md](../lark-whiteboard-cli/scenes/comparison.md)     |
+| 飞轮图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/flywheel.md](../lark-whiteboard-cli/scenes/flywheel.md)         |
+| 金字塔图           | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/pyramid.md](../lark-whiteboard-cli/scenes/pyramid.md)           |
+| 思维导图/饼图/时序图/类图 | Mermaid            | [lark-whiteboard-cli/scenes/mermaid.md](../lark-whiteboard-cli/scenes/mermaid.md)           |
+| 柱状图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/bar-chart.md](../lark-whiteboard-cli/scenes/bar-chart.md)       |
+| 折线图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/line-chart.md](../lark-whiteboard-cli/scenes/line-chart.md)     |
+| 树状图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/treemap.md](../lark-whiteboard-cli/scenes/treemap.md)           |
+| 漏斗图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/funnel.md](../lark-whiteboard-cli/scenes/funnel.md)             |
+| 泳道图            | whiteboard-cli DSL | [lark-whiteboard-cli/scenes/swimlane.md](../lark-whiteboard-cli/scenes/swimlane.md)         |

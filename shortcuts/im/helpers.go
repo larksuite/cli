@@ -4,6 +4,7 @@
 package im
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -12,13 +13,13 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -155,18 +156,17 @@ func sanitizeURLForDisplay(rawURL string) string {
 	return host + "/" + base
 }
 
-const maxURLDownloadSize = 100 * 1024 * 1024 // 100MB
-
-// downloadURLToTempFile downloads a URL to a temp file, returning the path.
-// The caller is responsible for removing the temp file.
-func downloadURLToTempFile(ctx context.Context, runtime *common.RuntimeContext, rawURL string) (string, error) {
+// startURLDownload performs URL validation, creates an HTTP client, and sends a
+// GET request. It returns the response (with Body still open) and the file
+// extension inferred from the URL. The caller must close resp.Body.
+func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawURL string) (*http.Response, string, error) {
 	if err := validate.ValidateDownloadSourceURL(ctx, rawURL); err != nil {
-		return "", fmt.Errorf("blocked URL: %w", err)
+		return nil, "", fmt.Errorf("blocked URL: %w", err)
 	}
 
 	httpClient, err := runtime.Factory.HttpClient()
 	if err != nil {
-		return "", fmt.Errorf("http client: %w", err)
+		return nil, "", fmt.Errorf("http client: %w", err)
 	}
 	httpClient = validate.NewDownloadHTTPClient(httpClient, validate.DownloadHTTPClientOptions{
 		AllowHTTP: true,
@@ -174,57 +174,78 @@ func downloadURLToTempFile(ctx context.Context, runtime *common.RuntimeContext, 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL: %w", err)
+		return nil, "", fmt.Errorf("invalid URL: %w", err)
 	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
+		return nil, "", fmt.Errorf("download failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
 
-	// Determine extension from URL for correct file type detection.
 	ext := filepath.Ext(fileNameFromURL(rawURL))
-	tmpFile, err := os.CreateTemp("", "lark-media-*"+ext)
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-
-	n, err := io.Copy(tmpFile, io.LimitReader(resp.Body, maxURLDownloadSize+1))
-	tmpFile.Close()
-	if err != nil {
-		os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("download failed: %w", err)
-	}
-	if n > maxURLDownloadSize {
-		os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("download exceeds size limit (max 100MB)")
-	}
-
-	return tmpFile.Name(), nil
+	return resp, ext, nil
 }
 
-// resolveToLocalPath resolves a media value to a local file path.
-// If the value is a URL, it downloads to a temp file; the returned cleanup func
-// removes the temp file (no-op for local paths). Returns ("", nil, nil) for media keys.
-func resolveToLocalPath(ctx context.Context, runtime *common.RuntimeContext, flagName, value string) (localPath string, cleanup func(), err error) {
-	noop := func() {}
-	if isMediaKey(value) {
-		return "", noop, nil
+// downloadURLToReader returns a size-limited io.ReadCloser for the URL content
+// and the file extension inferred from the URL. The caller must close the
+// returned ReadCloser. No temp file is created and the content is not buffered.
+func downloadURLToReader(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64) (io.ReadCloser, string, error) {
+	resp, ext, err := startURLDownload(ctx, runtime, rawURL) //nolint:bodyclose // resp.Body is closed by the returned limitedReadCloser
+	if err != nil {
+		return nil, "", err
 	}
-	if isURL(value) {
-		fmt.Fprintf(runtime.IO().ErrOut, "downloading %s: %s\n", flagName, sanitizeURLForDisplay(value))
-		tmpPath, err := downloadURLToTempFile(ctx, runtime, value)
-		if err != nil {
-			return "", noop, err
-		}
-		return tmpPath, func() { os.Remove(tmpPath) }, nil
+	lr := &limitedReadCloser{
+		r:      io.LimitReader(resp.Body, maxSize+1),
+		closer: resp.Body,
+		max:    maxSize,
 	}
-	return value, noop, nil
+	return lr, ext, nil
+}
+
+// limitedReadCloser wraps a LimitReader and checks for size overflow on Close.
+type limitedReadCloser struct {
+	r      io.Reader
+	closer io.Closer
+	max    int64
+	n      int64
+}
+
+func (l *limitedReadCloser) Read(p []byte) (int, error) {
+	n, err := l.r.Read(p)
+	l.n += int64(n)
+	if l.n > l.max {
+		return n, fmt.Errorf("download exceeds size limit (max %s)", common.FormatSize(l.max))
+	}
+	return n, err
+}
+
+func (l *limitedReadCloser) Close() error {
+	return l.closer.Close()
+}
+
+// mediaKind distinguishes image uploads (image_key) from file uploads (file_key).
+type mediaKind int
+
+const (
+	mediaKindImage mediaKind = iota // upload via image API, returns image_key
+	mediaKindFile                   // upload via file API, returns file_key
+)
+
+// mediaSpec describes how to resolve and upload a single media input.
+type mediaSpec struct {
+	value        string    // raw input value (path, URL, or media key)
+	flagName     string    // CLI flag name for log messages, e.g. "--image"
+	mediaType    string    // human label for errors, e.g. "image"
+	msgType      string    // IM message type, e.g. "image", "file", "audio"
+	kind         mediaKind // image vs file upload
+	maxSize      int64     // download size limit
+	withDuration bool      // whether to parse audio/video duration
+	resultKey    string    // JSON key for the upload result, e.g. "image_key"
 }
 
 // resolveMediaContent resolves text/media flags to (msgType, contentJSON) for Execute.
@@ -234,105 +255,112 @@ func resolveMediaContent(ctx context.Context, runtime *common.RuntimeContext, te
 		jsonBytes, _ := json.Marshal(map[string]string{"text": text})
 		return "text", string(jsonBytes), nil
 	}
+
+	// Video is special: it produces two keys (file_key + image_key for cover).
 	if videoVal != "" {
-		fKey := videoVal
-		if !isMediaKey(videoVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--video", videoVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(videoVal, "video", dlErr)
-			}
-			defer cleanup()
-			if localPath == "" {
-				localPath = videoVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading video: %s\n", filepath.Base(localPath))
-			ft := detectIMFileType(localPath)
-			fKey, err = uploadFileToIM(ctx, runtime, localPath, ft, parseMediaDuration(localPath, ft))
-			if err != nil {
-				return mediaFallbackOrError(videoVal, "video", err)
-			}
-		}
-		var coverKey string
-		if isMediaKey(videoCoverVal) {
-			coverKey = videoCoverVal
-		} else {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--video-cover", videoCoverVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(videoCoverVal, "cover image", dlErr)
-			}
-			defer cleanup()
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading cover image: %s\n", filepath.Base(localPath))
-			coverKey, err = uploadImageToIM(ctx, runtime, localPath, "message")
-			if err != nil {
-				return "", "", fmt.Errorf("cover image upload failed: %w", err)
-			}
-		}
-		jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey, "image_key": coverKey})
-		return "media", string(jsonBytes), nil
+		return resolveVideoContent(ctx, runtime, videoVal, videoCoverVal)
 	}
-	if imageVal != "" {
-		imageKey := imageVal
-		if !isMediaKey(imageVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--image", imageVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(imageVal, "image", dlErr)
-			}
-			defer cleanup()
-			if localPath == "" {
-				// isMediaKey path — won't happen since we checked above, but be safe.
-				localPath = imageVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading image: %s\n", filepath.Base(localPath))
-			imageKey, err = uploadImageToIM(ctx, runtime, localPath, "message")
-			if err != nil {
-				return mediaFallbackOrError(imageVal, "image", err)
-			}
-		}
-		jsonBytes, _ := json.Marshal(map[string]string{"image_key": imageKey})
-		return "image", string(jsonBytes), nil
+
+	// All other media types follow a uniform pattern: single input → single key.
+	specs := []mediaSpec{
+		{value: imageVal, flagName: "--image", mediaType: "image", msgType: "image", kind: mediaKindImage, maxSize: maxImageUploadSize, resultKey: "image_key"},
+		{value: fileVal, flagName: "--file", mediaType: "file", msgType: "file", kind: mediaKindFile, maxSize: maxFileUploadSize, resultKey: "file_key"},
+		{value: audioVal, flagName: "--audio", mediaType: "audio", msgType: "audio", kind: mediaKindFile, maxSize: maxFileUploadSize, withDuration: true, resultKey: "file_key"},
 	}
-	if fileVal != "" {
-		fKey := fileVal
-		if !isMediaKey(fileVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--file", fileVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(fileVal, "file", dlErr)
-			}
-			defer cleanup()
-			if localPath == "" {
-				localPath = fileVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading file: %s\n", filepath.Base(localPath))
-			fKey, err = uploadFileToIM(ctx, runtime, localPath, detectIMFileType(localPath), "")
-			if err != nil {
-				return mediaFallbackOrError(fileVal, "file", err)
-			}
+
+	for _, s := range specs {
+		if s.value == "" {
+			continue
 		}
-		jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey})
-		return "file", string(jsonBytes), nil
-	}
-	if audioVal != "" {
-		fKey := audioVal
-		if !isMediaKey(audioVal) {
-			localPath, cleanup, dlErr := resolveToLocalPath(ctx, runtime, "--audio", audioVal)
-			if dlErr != nil {
-				return mediaFallbackOrError(audioVal, "audio", dlErr)
-			}
-			defer cleanup()
-			if localPath == "" {
-				localPath = audioVal
-			}
-			fmt.Fprintf(runtime.IO().ErrOut, "uploading audio: %s\n", filepath.Base(localPath))
-			ft := detectIMFileType(localPath)
-			fKey, err = uploadFileToIM(ctx, runtime, localPath, ft, parseMediaDuration(localPath, ft))
-			if err != nil {
-				return mediaFallbackOrError(audioVal, "audio", err)
-			}
+		key, resolveErr := resolveOneMedia(ctx, runtime, s)
+		if resolveErr != nil {
+			return mediaFallbackOrError(s.value, s.mediaType, resolveErr)
 		}
-		jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey})
-		return "audio", string(jsonBytes), nil
+		jsonBytes, _ := json.Marshal(map[string]string{s.resultKey: key})
+		return s.msgType, string(jsonBytes), nil
 	}
 	return "", "", nil
+}
+
+// resolveOneMedia uploads a single media input (image, file, or audio) and
+// returns the resulting key. It handles media keys, URLs, and local paths.
+func resolveOneMedia(ctx context.Context, runtime *common.RuntimeContext, s mediaSpec) (string, error) {
+	if isMediaKey(s.value) {
+		return s.value, nil
+	}
+
+	if isURL(s.value) {
+		return resolveURLMedia(ctx, runtime, s)
+	}
+	return resolveLocalMedia(ctx, runtime, s)
+}
+
+// resolveURLMedia downloads a URL and uploads it.
+func resolveURLMedia(ctx context.Context, runtime *common.RuntimeContext, s mediaSpec) (string, error) {
+	fmt.Fprintf(runtime.IO().ErrOut, "downloading %s: %s\n", s.flagName, sanitizeURLForDisplay(s.value))
+
+	if s.kind == mediaKindImage {
+		rc, _, err := downloadURLToReader(ctx, runtime, s.value, s.maxSize)
+		if err != nil {
+			return "", err
+		}
+		defer rc.Close()
+		fmt.Fprintf(runtime.IO().ErrOut, "uploading %s\n", s.mediaType)
+		return uploadImageFromReader(ctx, runtime, rc, "message")
+	}
+
+	// File-kind: buffer in memory for possible duration parsing.
+	mb, err := newMediaBuffer(ctx, runtime, s.value, s.maxSize)
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(runtime.IO().ErrOut, "uploading %s: %s\n", s.mediaType, mb.FileName())
+	dur := ""
+	if s.withDuration {
+		dur = mb.Duration()
+	}
+	return uploadFileFromReader(ctx, runtime, mb.Reader(), mb.FileName(), mb.FileType(), dur)
+}
+
+// resolveLocalMedia uploads a local file.
+func resolveLocalMedia(ctx context.Context, runtime *common.RuntimeContext, s mediaSpec) (string, error) {
+	fmt.Fprintf(runtime.IO().ErrOut, "uploading %s: %s\n", s.mediaType, filepath.Base(s.value))
+
+	if s.kind == mediaKindImage {
+		return uploadImageToIM(ctx, runtime, s.value, "message")
+	}
+
+	ft := detectIMFileType(s.value)
+	dur := ""
+	if s.withDuration {
+		dur = parseMediaDuration(runtime, s.value, ft)
+	}
+	return uploadFileToIM(ctx, runtime, s.value, ft, dur)
+}
+
+// resolveVideoContent handles the video case which needs both a file_key and
+// a cover image_key.
+func resolveVideoContent(ctx context.Context, runtime *common.RuntimeContext, videoVal, videoCoverVal string) (string, string, error) {
+	videoSpec := mediaSpec{
+		value: videoVal, flagName: "--video", mediaType: "video",
+		kind: mediaKindFile, maxSize: maxFileUploadSize, withDuration: true, resultKey: "file_key",
+	}
+	fKey, err := resolveOneMedia(ctx, runtime, videoSpec)
+	if err != nil {
+		return mediaFallbackOrError(videoVal, "video", err)
+	}
+
+	coverSpec := mediaSpec{
+		value: videoCoverVal, flagName: "--video-cover", mediaType: "cover image",
+		kind: mediaKindImage, maxSize: maxImageUploadSize, resultKey: "image_key",
+	}
+	coverKey, err := resolveOneMedia(ctx, runtime, coverSpec)
+	if err != nil {
+		return "", "", fmt.Errorf("cover image upload failed: %w", err)
+	}
+
+	jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey, "image_key": coverKey})
+	return "media", string(jsonBytes), nil
 }
 
 // mediaFallbackOrError returns a text fallback for URL inputs when upload fails,
@@ -522,18 +550,16 @@ func findMP4Box(data []byte, start, end int, boxType string) (int, int) {
 // for audio/video uploads. Only reads the minimal portion of the file needed
 // for parsing (tail for OGG, box headers + moov for MP4).
 // Returns "" if parsing fails or the file type is not audio/video.
-func parseMediaDuration(filePath, fileType string) string {
+func parseMediaDuration(runtime *common.RuntimeContext, filePath, fileType string) string {
 	if fileType != "opus" && fileType != "mp4" {
 		return ""
 	}
-	f, err := os.Open(filePath)
-	if err != nil {
+	info, err := runtime.FileIO().Stat(filePath)
+	if err != nil || info.Size() == 0 {
 		return ""
 	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil || info.Size() == 0 {
+	f, err := runtime.FileIO().Open(filePath)
+	if err != nil {
 		return ""
 	}
 
@@ -549,8 +575,122 @@ func parseMediaDuration(filePath, fileType string) string {
 	return strconv.FormatInt(ms, 10)
 }
 
+// mediaBuffer holds downloaded media content in memory, providing both random
+// access (for duration parsing) and an io.Reader (for upload). It replaces temp
+// files for URL-sourced media that needs seek-like access before upload.
+type mediaBuffer struct {
+	data []byte
+	ext  string // file extension including leading dot, e.g. ".mp4"
+}
+
+// newMediaBuffer downloads URL content into memory via downloadURLToReader.
+func newMediaBuffer(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64) (*mediaBuffer, error) {
+	rc, ext, err := downloadURLToReader(ctx, runtime, rawURL, maxSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("download failed: %w", err)
+	}
+	return &mediaBuffer{data: data, ext: ext}, nil
+}
+
+// Reader returns a new io.Reader over the buffered data. Each call returns a
+// fresh reader starting from the beginning, so the buffer can be read multiple
+// times (once for duration parsing, once for upload).
+func (b *mediaBuffer) Reader() io.Reader {
+	return bytes.NewReader(b.data)
+}
+
+// FileName returns a synthetic file name based on the URL extension.
+func (b *mediaBuffer) FileName() string {
+	return "media" + b.ext
+}
+
+// FileType returns the IM file type detected from the extension.
+func (b *mediaBuffer) FileType() string {
+	return detectIMFileType("file" + b.ext)
+}
+
+// Duration parses audio/video duration from the buffered data.
+func (b *mediaBuffer) Duration() string {
+	ft := b.FileType()
+	if ft != "opus" && ft != "mp4" {
+		return ""
+	}
+	if len(b.data) == 0 {
+		return ""
+	}
+	var ms int64
+	if ft == "opus" {
+		ms = readOggDurationBytes(b.data)
+	} else {
+		ms = readMp4DurationBytes(b.data)
+	}
+	if ms <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(ms, 10)
+}
+
+// readOggDurationBytes parses OGG duration from the tail of in-memory data.
+func readOggDurationBytes(data []byte) int64 {
+	const maxTail = 65536
+	buf := data
+	if len(buf) > maxTail {
+		buf = buf[len(buf)-maxTail:]
+	}
+	return parseOggOpusDuration(buf)
+}
+
+// readMp4DurationBytes walks top-level MP4 boxes in memory to find moov/mvhd duration.
+func readMp4DurationBytes(data []byte) int64 {
+	fileSize := int64(len(data))
+	var offset int64
+	for offset+8 <= fileSize {
+		size := int64(binary.BigEndian.Uint32(data[offset : offset+4]))
+		typ := string(data[offset+4 : offset+8])
+
+		var boxEnd, dataStart int64
+		switch {
+		case size == 0:
+			boxEnd = fileSize
+			dataStart = offset + 8
+		case size == 1:
+			if offset+16 > fileSize {
+				return 0
+			}
+			boxEnd = int64(binary.BigEndian.Uint64(data[offset+8 : offset+16]))
+			dataStart = offset + 16
+		case size < 8:
+			return 0
+		default:
+			boxEnd = offset + size
+			dataStart = offset + 8
+		}
+
+		if typ == "moov" {
+			moovLen := boxEnd - dataStart
+			if moovLen <= 0 || moovLen > 10<<20 || dataStart+moovLen > fileSize {
+				return 0
+			}
+			moov := data[dataStart : dataStart+moovLen]
+			mvhdStart, mvhdEnd := findMP4Box(moov, 0, len(moov), "mvhd")
+			if mvhdStart < 0 {
+				return 0
+			}
+			return parseMvhdPayload(moov[mvhdStart:mvhdEnd])
+		}
+		offset = boxEnd
+	}
+	return 0
+}
+
 // readOggDuration reads the tail of an OGG file (up to 64 KB) and parses duration.
-func readOggDuration(f *os.File, fileSize int64) int64 {
+func readOggDuration(f fileio.File, fileSize int64) int64 {
 	const maxTail = 65536
 	readSize := fileSize
 	if readSize > maxTail {
@@ -565,7 +705,7 @@ func readOggDuration(f *os.File, fileSize int64) int64 {
 
 // readMp4Duration walks top-level MP4 boxes via file seeks to find moov,
 // then reads only the moov content to locate mvhd and extract the duration.
-func readMp4Duration(f *os.File, fileSize int64) int64 {
+func readMp4Duration(f fileio.File, fileSize int64) int64 {
 	hdr := make([]byte, 16)
 	var offset int64
 	for offset+8 <= fileSize {
@@ -619,39 +759,54 @@ func readMp4Duration(f *os.File, fileSize int64) int64 {
 // Steps:
 //  1. Extract code blocks with placeholders to protect them
 //  2. Downgrade headings: H1 → H4, H2~H6 → H5 (only when H1~H3 present)
-//  3. Add <br> between consecutive headings
-//  4. Add spacing around tables with <br>
-//  5. Restore code blocks with <br> wrappers
-//  6. Compress excess blank lines
-//  7. Strip invalid image references (keep only img_xxx keys)
+//  3. Normalize spacing between consecutive headings and tables with blank lines
+//  4. Restore code blocks
+//  5. Compress excess blank lines
+//  6. Strip invalid image references (keep only img_xxx keys)
 var (
-	reH2toH6       = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
-	reH1           = regexp.MustCompile(`(?m)^# (.+)$`)
-	reHasH1toH3    = regexp.MustCompile(`(?m)^#{1,3} `)
-	reConsecH      = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
-	reTableNoGap   = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
-	reTableBefore  = regexp.MustCompile(`\n\n((?:\|.+\|[^\S\n]*\n?)+)`)
-	reTableAfter   = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
-	reTableTxtPre  = regexp.MustCompile(`(?m)^([^\n]+)\n\n(<br>)\n\n(\|)`)
-	reTableBoldPre = regexp.MustCompile(`(?m)^(\*\*.+)\n\n(<br>)\n\n(\|)`)
-	reTableTxtPost = regexp.MustCompile(`(?m)(\|[^\n]*\n)\n(<br>\n)([^\n]+)`)
-	reExcessNL     = regexp.MustCompile(`\n{3,}`)
-	reInvalidImg   = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
-	reCodeBlock    = regexp.MustCompile("```[\\s\\S]*?```")
+	reH2toH6             = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
+	reH1                 = regexp.MustCompile(`(?m)^# (.+)$`)
+	reHasH1toH3          = regexp.MustCompile(`(?m)^#{1,3} `)
+	reConsecH            = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
+	reTableNoGap         = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
+	reTableAfter         = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
+	reExcessNL           = regexp.MustCompile(`\n{3,}`)
+	reInvalidImg         = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
+	reCodeBlock          = regexp.MustCompile("```[\\s\\S]*?```")
+	reBlankLineSeparator = regexp.MustCompile(`\n(?:[ \t]*\n)+`)
 )
 
-func isTableSpacingProtectedLine(line string) bool {
-	return strings.HasPrefix(line, "#### ") || strings.HasPrefix(line, "##### ") || strings.HasPrefix(line, "**")
+const (
+	markdownCodeBlockPlaceholder = "___CB_"
+	postBlankLinePlaceholder     = "\u200B"
+)
+
+type markdownPart struct {
+	text         string
+	newlineCount int
+	isSeparator  bool
+}
+
+func protectMarkdownCodeBlocks(text string) (string, []string) {
+	var codeBlocks []string
+	protected := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
+		idx := len(codeBlocks)
+		codeBlocks = append(codeBlocks, m)
+		return fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx)
+	})
+	return protected, codeBlocks
+}
+
+func restoreMarkdownCodeBlocks(text string, codeBlocks []string) string {
+	restored := text
+	for i, block := range codeBlocks {
+		restored = strings.Replace(restored, fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, i), block, 1)
+	}
+	return restored
 }
 
 func optimizeMarkdownStyle(text string) string {
-	const mark = "___CB_"
-	var codeBlocks []string
-	r := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
-		idx := len(codeBlocks)
-		codeBlocks = append(codeBlocks, m)
-		return fmt.Sprintf("%s%d___", mark, idx)
-	})
+	r, codeBlocks := protectMarkdownCodeBlocks(text)
 
 	// Only downgrade when original text has H1~H3; order matters (H2~H6 first).
 	if reHasH1toH3.MatchString(text) {
@@ -659,30 +814,12 @@ func optimizeMarkdownStyle(text string) string {
 		r = reH1.ReplaceAllString(r, "#### $1")
 	}
 
-	r = reConsecH.ReplaceAllString(r, "$1\n<br>\n$2")
+	r = reConsecH.ReplaceAllString(r, "$1\n\n$2")
 
 	r = reTableNoGap.ReplaceAllString(r, "$1\n\n$2")
-	r = reTableBefore.ReplaceAllString(r, "\n\n<br>\n\n$1")
-	r = reTableAfter.ReplaceAllString(r, "$1\n<br>\n")
-	r = reTableTxtPre.ReplaceAllStringFunc(r, func(m string) string {
-		sub := reTableTxtPre.FindStringSubmatch(m)
-		if len(sub) != 4 || isTableSpacingProtectedLine(sub[1]) {
-			return m
-		}
-		return sub[1] + "\n" + sub[2] + "\n" + sub[3]
-	})
-	r = reTableBoldPre.ReplaceAllString(r, "$1\n$2\n\n$3")
-	r = reTableTxtPost.ReplaceAllStringFunc(r, func(m string) string {
-		sub := reTableTxtPost.FindStringSubmatch(m)
-		if len(sub) != 4 || isTableSpacingProtectedLine(sub[3]) {
-			return m
-		}
-		return sub[1] + sub[2] + sub[3]
-	})
+	r = reTableAfter.ReplaceAllString(r, "$1\n")
 
-	for i, block := range codeBlocks {
-		r = strings.Replace(r, fmt.Sprintf("%s%d___", mark, i), "\n<br>\n"+block+"\n<br>\n", 1)
-	}
+	r = restoreMarkdownCodeBlocks(r, codeBlocks)
 
 	r = reExcessNL.ReplaceAllString(r, "\n\n")
 
@@ -701,12 +838,109 @@ func optimizeMarkdownStyle(text string) string {
 	return r
 }
 
+func shouldUseSegmentedPost(markdown string) bool {
+	protected, _ := protectMarkdownCodeBlocks(markdown)
+	return reBlankLineSeparator.MatchString(protected)
+}
+
+func splitMarkdownByBlankLines(markdown string) []markdownPart {
+	protected, codeBlocks := protectMarkdownCodeBlocks(markdown)
+	locs := reBlankLineSeparator.FindAllStringIndex(protected, -1)
+	if len(locs) == 0 {
+		return []markdownPart{{text: markdown}}
+	}
+
+	parts := make([]markdownPart, 0, len(locs)*2+1)
+	last := 0
+	for _, loc := range locs {
+		if loc[0] > last {
+			content := restoreMarkdownCodeBlocks(protected[last:loc[0]], codeBlocks)
+			if content != "" {
+				parts = append(parts, markdownPart{text: content})
+			}
+		}
+		separator := protected[loc[0]:loc[1]]
+		parts = append(parts, markdownPart{
+			isSeparator:  true,
+			newlineCount: strings.Count(separator, "\n"),
+		})
+		last = loc[1]
+	}
+
+	if last < len(protected) {
+		content := restoreMarkdownCodeBlocks(protected[last:], codeBlocks)
+		if content != "" {
+			parts = append(parts, markdownPart{text: content})
+		}
+	}
+
+	if len(parts) == 0 {
+		return []markdownPart{{text: markdown}}
+	}
+	return parts
+}
+
+func marshalMarkdownPostContent(content [][]map[string]interface{}) string {
+	payload := map[string]interface{}{
+		"zh_cn": map[string]interface{}{
+			"content": content,
+		},
+	}
+	data, _ := json.Marshal(payload)
+	return string(data)
+}
+
+func buildSingleMDPost(markdown string) string {
+	return marshalMarkdownPostContent([][]map[string]interface{}{
+		{{
+			"tag":  "md",
+			"text": optimizeMarkdownStyle(markdown),
+		}},
+	})
+}
+
+func buildSegmentedPost(markdown string) string {
+	parts := splitMarkdownByBlankLines(markdown)
+	content := make([][]map[string]interface{}, 0, len(parts))
+	for _, part := range parts {
+		if part.isSeparator {
+			for i := 1; i < part.newlineCount; i++ {
+				content = append(content, []map[string]interface{}{{
+					"tag":  "text",
+					"text": postBlankLinePlaceholder,
+				}})
+			}
+			continue
+		}
+		if part.text == "" {
+			continue
+		}
+		optimized := strings.Trim(optimizeMarkdownStyle(part.text), "\n")
+		if optimized == "" {
+			continue
+		}
+		content = append(content, []map[string]interface{}{{
+			"tag":  "md",
+			"text": optimized,
+		}})
+	}
+	if len(content) == 0 {
+		return buildSingleMDPost(markdown)
+	}
+	return marshalMarkdownPostContent(content)
+}
+
+func buildMarkdownPostContent(markdown string) string {
+	if shouldUseSegmentedPost(markdown) {
+		return buildSegmentedPost(markdown)
+	}
+	return buildSingleMDPost(markdown)
+}
+
 // wrapMarkdownAsPost wraps markdown text into Feishu post format JSON (no network).
-// Used by DryRun. Output: {"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
+// Used by DryRun. Output may include md/text paragraphs when blank-line separators are present.
 func wrapMarkdownAsPost(markdown string) string {
-	optimized := optimizeMarkdownStyle(markdown)
-	inner, _ := json.Marshal(optimized)
-	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
+	return buildMarkdownPostContent(markdown)
 }
 
 var reMarkdownImage = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^)\s]+)\)`)
@@ -741,9 +975,7 @@ func wrapMarkdownAsPostForDryRun(markdown string) (content, desc string) {
 // and wraps as post format JSON. Used by Execute (makes network calls).
 func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
 	resolved := resolveMarkdownImageURLs(ctx, runtime, markdown)
-	optimized := optimizeMarkdownStyle(resolved)
-	inner, _ := json.Marshal(optimized)
-	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
+	return buildMarkdownPostContent(resolved)
 }
 
 // resolveMarkdownImageURLs finds ![alt](https://...) in markdown, downloads each URL,
@@ -759,15 +991,15 @@ func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContex
 		}
 		imgURL := sub[1]
 
-		tmpPath, err := downloadURLToTempFile(ctx, runtime, imgURL)
+		rc, _, err := downloadURLToReader(ctx, runtime, imgURL, maxImageUploadSize)
 		if err != nil {
 			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to download image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
 			return ""
 		}
-		defer os.Remove(tmpPath)
+		defer rc.Close()
 
 		fmt.Fprintf(runtime.IO().ErrOut, "uploading image from URL: %s\n", sanitizeURLForDisplay(imgURL))
-		imgKey, err := uploadImageToIM(ctx, runtime, tmpPath, "message")
+		imgKey, err := uploadImageFromReader(ctx, runtime, rc, "message")
 		if err != nil {
 			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to upload image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
 			return ""
@@ -882,16 +1114,11 @@ const maxImageUploadSize = 5 * 1024 * 1024  // 5MB — Lark API limit for images
 const maxFileUploadSize = 100 * 1024 * 1024 // 100MB — Lark API limit for files
 
 func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, imageType string) (string, error) {
-	safePath, err := validate.SafeInputPath(filePath)
-	if err != nil {
-		return "", err
-	}
-
-	if info, err := os.Stat(safePath); err == nil && info.Size() > maxImageUploadSize {
+	if info, err := runtime.FileIO().Stat(filePath); err == nil && info.Size() > maxImageUploadSize {
 		return "", fmt.Errorf("image size %s exceeds limit (max 5MB)", common.FormatSize(info.Size()))
 	}
 
-	f, err := os.Open(safePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
 		return "", err
 	}
@@ -901,7 +1128,7 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 	fd.AddField("image_type", imageType)
 	fd.AddFile("image", f)
 
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/images",
 		Body:       fd,
@@ -924,16 +1151,11 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 }
 
 func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, fileType, duration string) (string, error) {
-	safePath, err := validate.SafeInputPath(filePath)
-	if err != nil {
-		return "", err
-	}
-
-	if info, err := os.Stat(safePath); err == nil && info.Size() > maxFileUploadSize {
+	if info, err := runtime.FileIO().Stat(filePath); err == nil && info.Size() > maxFileUploadSize {
 		return "", fmt.Errorf("file size %s exceeds limit (max 100MB)", common.FormatSize(info.Size()))
 	}
 
-	f, err := os.Open(safePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
 		return "", err
 	}
@@ -941,13 +1163,73 @@ func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePat
 
 	fd := larkcore.NewFormdata()
 	fd.AddField("file_type", fileType)
-	fd.AddField("file_name", filepath.Base(safePath))
+	fd.AddField("file_name", filepath.Base(filePath))
 	if duration != "" {
 		fd.AddField("duration", duration)
 	}
 	fd.AddFile("file", f)
 
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+		HttpMethod: http.MethodPost,
+		ApiPath:    "/open-apis/im/v1/files",
+		Body:       fd,
+	}, larkcore.WithFileUpload())
+	if err != nil {
+		return "", err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
+		return "", fmt.Errorf("parse error: %w", err)
+	}
+
+	data, _ := result["data"].(map[string]interface{})
+	fileKey, _ := data["file_key"].(string)
+	if fileKey == "" {
+		return "", fmt.Errorf("file_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+	}
+	return fileKey, nil
+}
+
+// uploadImageFromReader uploads an image from an io.Reader (no local file needed).
+func uploadImageFromReader(ctx context.Context, runtime *common.RuntimeContext, r io.Reader, imageType string) (string, error) {
+	fd := larkcore.NewFormdata()
+	fd.AddField("image_type", imageType)
+	fd.AddFile("image", r)
+
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+		HttpMethod: http.MethodPost,
+		ApiPath:    "/open-apis/im/v1/images",
+		Body:       fd,
+	}, larkcore.WithFileUpload())
+	if err != nil {
+		return "", err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
+		return "", fmt.Errorf("parse error: %w", err)
+	}
+
+	data, _ := result["data"].(map[string]interface{})
+	imageKey, _ := data["image_key"].(string)
+	if imageKey == "" {
+		return "", fmt.Errorf("image_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+	}
+	return imageKey, nil
+}
+
+// uploadFileFromReader uploads a file from an io.Reader (no local file needed).
+func uploadFileFromReader(ctx context.Context, runtime *common.RuntimeContext, r io.Reader, fileName, fileType, duration string) (string, error) {
+	fd := larkcore.NewFormdata()
+	fd.AddField("file_type", fileType)
+	fd.AddField("file_name", fileName)
+	if duration != "" {
+		fd.AddField("duration", duration)
+	}
+	fd.AddFile("file", r)
+
+	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/files",
 		Body:       fd,

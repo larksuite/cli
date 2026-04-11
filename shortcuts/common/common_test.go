@@ -5,8 +5,6 @@ package common
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -56,33 +54,4 @@ func TestParseTimeEndHint(t *testing.T) {
 	if parsed.Hour() != 23 || parsed.Minute() != 59 || parsed.Second() != 59 {
 		t.Errorf("ParseTime(2026-03-15, end) = %v, want 23:59:59", parsed)
 	}
-}
-
-func TestEnsureWritableFile(t *testing.T) {
-	t.Run("allows missing target", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "missing.txt")
-		if err := EnsureWritableFile(path, false); err != nil {
-			t.Fatalf("EnsureWritableFile() unexpected error: %v", err)
-		}
-	})
-
-	t.Run("rejects existing target without overwrite", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "exists.txt")
-		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
-			t.Fatalf("WriteFile() error: %v", err)
-		}
-		if err := EnsureWritableFile(path, false); err == nil {
-			t.Fatalf("expected overwrite protection error, got nil")
-		}
-	})
-
-	t.Run("allows existing target with overwrite", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "exists.txt")
-		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
-			t.Fatalf("WriteFile() error: %v", err)
-		}
-		if err := EnsureWritableFile(path, true); err != nil {
-			t.Fatalf("EnsureWritableFile() unexpected error: %v", err)
-		}
-	})
 }

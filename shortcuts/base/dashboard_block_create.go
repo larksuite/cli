@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -23,20 +24,25 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "name", Desc: "block name", Required: true},
-		{Name: "type", Desc: "block type: column / bar / line / pie / ring / area / combo / scatter / funnel / wordCloud / radar / statistics", Required: true},
+		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本). Read dashboard-block-data-config.md before creating.", Required: true},
 		{Name: "data-config", Desc: "data config JSON object (table_name, series, count_all, group_by, filter, etc.)"},
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		pc := newParseCtx(runtime)
 		if runtime.Bool("no-validate") {
 			return nil
 		}
 		raw := runtime.Str("data-config")
 		if strings.TrimSpace(raw) == "" {
-			return nil // 允许无 data_config 的创建（某些类型可先创建后配置）
+			// text 类型必须提供 data-config（含 text 内容）
+			if strings.ToLower(runtime.Str("type")) == "text" {
+				return fmt.Errorf("text 类型组件必须提供 data-config，包含必填字段 text")
+			}
+			return nil
 		}
-		cfg, err := parseJSONObject(raw, "data-config")
+		cfg, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return err
 		}
@@ -50,6 +56,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		pc := newParseCtx(runtime)
 		body := map[string]interface{}{}
 		if name := runtime.Str("name"); name != "" {
 			body["name"] = name
@@ -58,7 +65,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 			body["type"] = t
 		}
 		if raw := runtime.Str("data-config"); raw != "" {
-			if parsed, err := parseJSONObject(raw, "data-config"); err == nil {
+			if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
 				body["data_config"] = parsed
 			}
 		}

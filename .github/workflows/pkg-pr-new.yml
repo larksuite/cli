@@ -1,0 +1,71 @@
+name: PR Preview Package
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4
+        with:
+          node-version: lts/*
+
+      - name: Build preview package
+        run: ./scripts/build-pkg-pr-new.sh
+
+      - name: Publish to pkg.pr.new
+        run: npx pkg-pr-new publish --no-compact --json output.json --comment=off ./.pkg-pr-new
+
+      - name: Build comment payload
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SOURCE_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+
+          const output = JSON.parse(fs.readFileSync("output.json", "utf8"));
+          const url = output?.packages?.[0]?.url;
+          if (!url) throw new Error("No package URL found in output.json");
+          if (!url.startsWith("https://pkg.pr.new/")) {
+            throw new Error(`Unexpected package URL: ${url}`);
+          }
+
+          const pr = Number(process.env.PR_NUMBER);
+          if (!Number.isInteger(pr) || pr <= 0) {
+            throw new Error(`Invalid PR_NUMBER: ${process.env.PR_NUMBER}`);
+          }
+
+          const payload = {
+            pr,
+            url,
+            sourceRepo: process.env.SOURCE_REPO || "",
+            sourceBranch: process.env.SOURCE_BRANCH || "",
+          };
+
+          fs.writeFileSync(
+            "pkg-pr-new-comment-payload.json",
+            JSON.stringify(payload),
+          );
+          NODE
+
+      - name: Upload comment payload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pkg-pr-new-comment-payload
+          path: pkg-pr-new-comment-payload.json

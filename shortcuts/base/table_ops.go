@@ -68,11 +68,7 @@ func executeTableList(runtime *common.RuntimeContext) error {
 	if total == 0 {
 		total = len(tables)
 	}
-	items := make([]interface{}, 0, len(tables))
-	for _, table := range tables {
-		items = append(items, map[string]interface{}{"table_id": tableID(table), "table_name": tableNameFromMap(table)})
-	}
-	runtime.Out(map[string]interface{}{"items": items, "offset": offset, "limit": limit, "count": len(items), "total": total}, nil)
+	runtime.Out(map[string]interface{}{"tables": tables, "total": total}, nil)
 	return nil
 }
 
@@ -93,8 +89,8 @@ func executeTableGet(runtime *common.RuntimeContext) error {
 	}
 	runtime.Out(map[string]interface{}{
 		"table":  table,
-		"fields": simplifyFields(fields),
-		"views":  simplifyViews(views),
+		"fields": fields,
+		"views":  views,
 	}, nil)
 	return nil
 }
@@ -107,8 +103,9 @@ func executeTableCreate(runtime *common.RuntimeContext) error {
 	}
 	result := map[string]interface{}{"table": created}
 	tableIDValue := tableID(created)
+	pc := newParseCtx(runtime)
 	if tableIDValue != "" && runtime.Str("fields") != "" {
-		fieldItems, err := parseJSONArray(runtime.Str("fields"), "fields")
+		fieldItems, err := parseJSONArray(pc, runtime.Str("fields"), "fields")
 		if err != nil {
 			return err
 		}
@@ -139,7 +136,7 @@ func executeTableCreate(runtime *common.RuntimeContext) error {
 		result["fields"] = createdFields
 	}
 	if tableIDValue != "" && runtime.Str("view") != "" {
-		viewItems, err := parseObjectList(runtime.Str("view"), "view")
+		viewItems, err := parseObjectList(pc, runtime.Str("view"), "view")
 		if err != nil {
 			return err
 		}

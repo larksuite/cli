@@ -25,6 +25,7 @@ type StoredUAToken struct {
 
 const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
 
+// accountKey generates a unique key for an account based on its AppID and UserOpenID.
 func accountKey(appId, userOpenId string) string {
 	return fmt.Sprintf("%s:%s", appId, userOpenId)
 }
@@ -39,8 +40,8 @@ func MaskToken(token string) string {
 
 // GetStoredToken reads the stored UAT for a given (appId, userOpenId) pair.
 func GetStoredToken(appId, userOpenId string) *StoredUAToken {
-	jsonStr := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
-	if jsonStr == "" {
+	jsonStr, err := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
+	if err != nil || jsonStr == "" {
 		return nil
 	}
 	var token StoredUAToken

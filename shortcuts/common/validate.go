@@ -5,11 +5,10 @@ package common
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -87,40 +86,11 @@ func ParseIntBounded(rt *RuntimeContext, name string, min, max int) int {
 // ValidateSafeOutputDir ensures outputDir is a relative path that resolves
 // within the current working directory, preventing path traversal attacks
 // (including symlink-based escape).
-func ValidateSafeOutputDir(outputDir string) error {
-	if filepath.IsAbs(outputDir) {
-		return fmt.Errorf("--output-dir must be a relative path, got: %q", outputDir)
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("cannot determine working directory: %w", err)
-	}
-	canonicalCwd, err := filepath.EvalSymlinks(cwd)
-	if err != nil {
-		canonicalCwd = cwd
-	}
-	abs := filepath.Clean(filepath.Join(cwd, outputDir))
-
-	// Resolve symlinks in abs to prevent symlink-escape attacks (e.g. an
-	// attacker-controlled symlink inside CWD pointing outside).
-	canonicalAbs, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("--output-dir %q: %w", outputDir, err)
-		}
-		// Path does not exist yet. If os.Lstat succeeds the entry is a dangling
-		// symlink — reject it to prevent future escapes once the target is created.
-		if _, lstErr := os.Lstat(abs); lstErr == nil {
-			return fmt.Errorf("--output-dir %q is a symlink with a non-existent target", outputDir)
-		}
-		// The path itself doesn't exist; the string-level check is sufficient.
-		canonicalAbs = abs
-	}
-
-	if !strings.HasPrefix(canonicalAbs, canonicalCwd+string(filepath.Separator)) {
-		return fmt.Errorf("--output-dir %q resolves outside the working directory", outputDir)
-	}
-	return nil
+// It delegates all validation to FileIO.ResolvePath which already performs
+// cwd-boundary checks, symlink resolution, and control-character rejection.
+func ValidateSafeOutputDir(fio fileio.FileIO, outputDir string) error {
+	_, err := fio.ResolvePath(outputDir)
+	return err
 }
 
 // RejectDangerousChars returns an error if value contains ASCII control

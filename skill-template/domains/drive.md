@@ -1,4 +1,13 @@
 
+> **导入分流规则：** 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
+
+## 快速决策
+
+- 用户要把本地 `.xlsx` / `.csv` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
+- 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
+- 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
+- `lark-base` 只负责导入完成后的 Base 内部操作（表、字段、记录、视图），不要在“本地文件 -> Base”这一步提前切到 `lark-base`。
+
 ## 核心概念
 
 ### 文档类型与 Token
@@ -134,6 +143,9 @@ Drive Folder (云空间文件夹)
 - 使用 `drive file.comments batch_query` 是**已知评论 ID 后**的批量查询，需要传入具体的评论 ID 列表。
 - 使用 `drive file.comments list` 用于分页获取评论列表，适合统计评论总数、遍历所有评论，或获取"最新/最后 N 条评论"等场景。
 
+#### Reaction / 表情场景
+- 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](../../skills/lark-drive/references/lark-drive-reactions.md) 了解如何使用**。
+
 ### 典型错误与解决方案
 
 | 错误信息 | 原因 | 解决方案 |
@@ -141,3 +153,22 @@ Drive Folder (云空间文件夹)
 | `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
 | `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet） |
+
+### 授权当前应用访问文档
+
+当需要将文档权限授予**当前应用（bot）自身**时，先通过 bot info 接口获取应用的 open_id，再调用权限接口授权：
+
+```bash
+# 1. 获取当前应用的 open_id
+lark-cli api GET /open-apis/bot/v3/info --as bot
+# 从返回值中取 bot.open_id
+
+# 2. 授权当前应用访问文档
+lark-cli drive permission.members create \
+  --params '{"token":"<doc_token>","type":"<resource_type>"}' \
+  --data '{"member_type":"openid","member_id":"<bot_open_id>","perm":"view","type":"user"}'
+```
+
+> **注意**：此方式仅适用于需要授权给**当前应用**的场景。授权给其他用户时，直接使用对方的 open_id 即可，无需调用 bot info 接口。
+
+`<resource_type>` 可选值：`doc`、`docx`、`sheet`、`bitable`、`file`、`folder`、`wiki`。

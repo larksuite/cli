@@ -23,6 +23,7 @@ func buildEventData(runtime *common.RuntimeContext, startTs, endTs string) map[s
 		"end_time":         map[string]string{"timestamp": endTs},
 		"attendee_ability": "can_modify_event",
 		"free_busy_status": "busy",
+		"vchat":            map[string]string{"vc_type": "vc"},
 		"reminders": []map[string]int{
 			{"minutes": 5},
 		},
@@ -81,6 +82,9 @@ var CalendarCreate = common.Shortcut{
 		{Name: "rrule", Desc: "recurrence rule (rfc5545)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
+			return err
+		}
 		for _, flag := range []string{"summary", "description", "rrule", "calendar-id"} {
 			if val := runtime.Str(flag); val != "" {
 				if err := common.RejectDangerousChars("--"+flag, val); err != nil {

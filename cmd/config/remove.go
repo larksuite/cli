@@ -64,7 +64,11 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 	// Save empty config first. If this fails, keep secrets and tokens intact so the
 	// existing config can still be retried instead of ending up half-removed.
 	empty := &core.MultiAppConfig{Apps: []core.AppConfig{}}
+<<<<<<< fix/auth-check-and-config-remove
 	if err := opts.SaveConfig(empty); err != nil {
+=======
+	if err := core.SaveMultiAppConfig(empty); err != nil {
+>>>>>>> main
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 
@@ -72,9 +76,13 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 	for _, app := range config.Apps {
 		opts.RemoveSecret(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
+<<<<<<< fix/auth-check-and-config-remove
 			if err := opts.RemoveStoredToken(app.AppId, user.UserOpenId); err != nil {
 				fmt.Fprintf(f.IOStreams.ErrOut, "warning: failed to remove stored token for app %q user %q: %v\n", app.AppId, user.UserOpenId, err)
 			}
+=======
+			_ = auth.RemoveStoredToken(app.AppId, user.UserOpenId)
+>>>>>>> main
 		}
 	}
 

@@ -30,3 +30,8 @@ test_scripts/
 tests/mail/reports/
 
 /log/
+
+
+# Generated / test artifacts
+internal/registry/meta_data.json
+cmd/api/download.bin

@@ -98,6 +98,18 @@ POST /open-apis/base/v3/bases/:base_token/workflows/list
 }
 ```
 
+## ⚡ 性能提示
+### 场景适用性
+**✅ 需要先 list 的场景**:
+- 批量操作：启用/停用多个工作流（先 list，再批量 enable/disable）
+- 查询统计：统计定时触发的工作流数量（先 list，再筛选）
+- 修改操作：修改指定名称的工作流（先 list ，从列表中找到对应名称工作流的 workflow_id，再 get/update）
+  **❌ 不需要先 list 的场景**:
+- **创建工作流**：直接调用 `+workflow-create`，不需要先 list
+- 查看指定工作流详情：如果已知 workflow_id，直接 `+workflow-get`
+### 缓存策略
+同一会话中处理多个工作流时，只需调用一次 `+workflow-list` 获取全部结果，然后从中筛选所需的工作流，避免重复查询。
+
 ## 坑点
 
 - ⚠️ **列表用 POST 不用 GET**：`/workflows/list` 是 POST 接口，`page_token` 放在 Request Body 里而不是 Query 参数，常见误区

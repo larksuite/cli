@@ -1,0 +1,26 @@
+name: License Header
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.go"
+      - "**/*.js"
+      - "**/*.py"
+      - .licenserc.yaml
+      - .github/workflows/license-header.yml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  header-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Check license headers
+        uses: apache/skywalking-eyes/header@8c96ee223558797cdd9eba82c0919258e1cf2dad
+        with:
+          config: .licenserc.yaml

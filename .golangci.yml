@@ -1,0 +1,127 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - asasalint       # checks for pass []any as any in variadic func(...any)
+    - asciicheck      # checks that code does not contain non-ASCII identifiers
+    - bidichk         # checks for dangerous unicode character sequences
+    - bodyclose       # checks whether HTTP response body is closed successfully
+    - copyloopvar     # detects places where loop variables are copied
+    - durationcheck   # checks for two durations multiplied together
+    - exptostd        # detects functions from golang.org/x/exp/ replaceable by std
+    - fatcontext      # detects nested contexts in loops
+    - gocheckcompilerdirectives # validates go compiler directive comments (//go:)
+    - gochecksumtype  # checks exhaustiveness on Go "sum types"
+    - gocritic        # diagnostics for bugs, performance and style
+    - gomoddirectives # checks for replace, retract, and exclude in go.mod
+    - goprintffuncname # checks that printf-like functions end with f
+    - govet           # reports suspicious constructs
+    - ineffassign     # detects ineffective assignments
+    - nilerr          # finds code that returns nil even if error is not nil
+    - nolintlint      # reports ill-formed nolint directives
+    - nosprintfhostport # checks for misuse of Sprintf to construct host:port
+    - reassign        # checks that package variables are not reassigned
+    - unconvert       # removes unnecessary type conversions
+    - unused          # checks for unused constants, variables, functions and types
+    - depguard        # blocks forbidden package imports
+    - forbidigo       # forbids specific function calls
+
+    # To enable later after fixing existing issues:
+    # - errcheck      # checks for unchecked errors
+    # - errname       # checks that error types are named XxxError
+    # - errorlint     # checks error wrapping best practices
+    # - gosec         # security-oriented linter
+    # - misspell      # finds commonly misspelled English words
+    # - staticcheck   # comprehensive static analysis
+
+  exclusions:
+    paths:
+      - generated
+    rules:
+      - path: _test\.go$
+        linters:
+          - bodyclose
+          - gocritic
+          - depguard
+          - forbidigo
+      - path-except: (shortcuts/|internal/)
+        linters:
+          - forbidigo
+      - path: internal/vfs/
+        linters:
+          - forbidigo
+
+  settings:
+    depguard:
+      rules:
+        shortcuts-no-vfs:
+          files:
+            - "**/shortcuts/**"
+          deny:
+            - pkg: "github.com/larksuite/cli/internal/vfs"
+              desc: >-
+                shortcuts must not import internal/vfs directly.
+                Use runtime.FileIO() for file operations or runtime.ValidatePath() for path validation.
+            - pkg: "github.com/larksuite/cli/internal/vfs/localfileio"
+              desc: >-
+                shortcuts must not import internal/vfs/localfileio directly.
+                Use runtime.FileIO() for file operations or runtime.ValidatePath() for path validation.
+    forbidigo:
+      forbid:
+        # ── os: already wrapped in internal/vfs ──
+        - pattern: os\.(Stat|Lstat|Open|OpenFile|Rename|ReadFile|WriteFile|Getwd|UserHomeDir|ReadDir)\b
+          msg: "use the corresponding vfs.Xxx() from internal/vfs"
+        - pattern: os\.(Create|CreateTemp|MkdirTemp)\b
+          msg: >-
+            internal/: use vfs.CreateTemp() or vfs.OpenFile().
+            shortcuts/: avoid temp files — use io.Reader streaming or in-memory buffers.
+        - pattern: os\.Mkdir(All)?\b
+          msg: "use vfs.MkdirAll() from internal/vfs"
+        - pattern: os\.Remove\b
+          msg: >-
+            internal/: use vfs.Remove() from internal/vfs.
+            shortcuts/: avoid temp files — use io.Reader streaming or in-memory buffers.
+        - pattern: os\.RemoveAll\b
+          msg: >-
+            internal/: add RemoveAll to internal/vfs/fs.go first, then use vfs.RemoveAll().
+            shortcuts/: avoid temp files — use io.Reader streaming or in-memory buffers.
+        # ── os: not yet in vfs — add to vfs/fs.go first ──
+        - pattern: os\.(Chdir|Chmod|Chown|Lchown|Chtimes|CopyFS|DirFS|Link|Symlink|Readlink|Truncate|SameFile)\b
+          msg: "add this function to internal/vfs/fs.go first, then use vfs.Xxx()"
+        # ── os: IO streams ──
+        - pattern: os\.Std(in|out|err)\b
+          msg: "use IOStreams (In/Out/ErrOut) instead of os.Stdin/Stdout/Stderr"
+        # ── os: process ──
+        - pattern: os\.Exit\b
+          msg: >-
+            Do not use os.Exit in shortcuts/. Return an error instead and let
+            the caller (cmd layer) decide how to terminate.
+        # ── filepath: functions that access the filesystem ──
+        - pattern: filepath\.(EvalSymlinks|Walk|WalkDir|Glob|Abs)\b
+          msg: >-
+            These filepath functions access the filesystem directly.
+            internal/: use vfs helpers or localfileio path validation.
+            shortcuts/: use runtime.ValidatePath() or runtime.FileIO().
+      analyze-types: true
+    gocritic:
+      disabled-checks:
+        - appendAssign
+        - hugeParam
+      disabled-tags:
+        - style
+    govet:
+      enable:
+        - httpresponse
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

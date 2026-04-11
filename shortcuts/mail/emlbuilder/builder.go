@@ -44,34 +44,36 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"math/rand"
 	"mime"
 	"net/mail"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
 // MaxEMLSize is the maximum allowed raw EML size in bytes.
 const MaxEMLSize = 25 * 1024 * 1024 // 25 MB
 
-// readFile reads the named file and returns its contents.
-func readFile(path string) ([]byte, error) {
-	safePath, err := validate.SafeInputPath(path)
+// readFile reads the named file and returns its contents via FileIO.
+func readFile(fio fileio.FileIO, path string) ([]byte, error) {
+	f, err := fio.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("attachment %q: %w", path, err)
 	}
-	return os.ReadFile(safePath)
+	defer f.Close()
+	return io.ReadAll(f)
 }
 
 // Builder constructs a Lark-compatible RFC 2822 EML message.
 // All setter methods return a copy of the Builder (immutable/fluent style),
 // so a base builder can be reused across multiple goroutines safely.
 type Builder struct {
+	fio                 fileio.FileIO // injected via WithFileIO; must be set before AddFile* calls
 	from                mail.Address
 	to                  []mail.Address
 	cc                  []mail.Address
@@ -91,6 +93,12 @@ type Builder struct {
 	extraHeaders        [][2]string // ordered list of [name, value] pairs
 	allowNoRecipients   bool        // when true, Build() skips the recipient check (for drafts)
 	err                 error
+}
+
+// WithFileIO returns a copy of b with the given FileIO.
+func (b Builder) WithFileIO(fio fileio.FileIO) Builder {
+	b.fio = fio
+	return b
 }
 
 type attachment struct {
@@ -425,7 +433,7 @@ func (b Builder) AddFileAttachment(path string) Builder {
 		b.err = err
 		return b
 	}
-	content, err := readFile(path)
+	content, err := readFile(b.fio, path)
 	if err != nil {
 		b.err = err
 		return b
@@ -480,7 +488,7 @@ func (b Builder) AddFileInline(path, contentID string) Builder {
 	if b.err != nil {
 		return b
 	}
-	content, err := readFile(path)
+	content, err := readFile(b.fio, path)
 	if err != nil {
 		b.err = err
 		return b
@@ -539,7 +547,7 @@ func (b Builder) AddFileOtherPart(path, contentID string) Builder {
 	if b.err != nil {
 		return b
 	}
-	content, err := readFile(path)
+	content, err := readFile(b.fio, path)
 	if err != nil {
 		b.err = err
 		return b

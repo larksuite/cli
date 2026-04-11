@@ -8,18 +8,18 @@ Add existing tasks to a tasklist.
 
 ```bash
 # Add a single task to a tasklist
-lark-cli task +tasklist-task-add --tasklist-id "tl_xxx" --task-id "t_aaa"
+lark-cli task +tasklist-task-add --tasklist-id "<tasklist_guid>" --task-id "<task_guid>"
 
 # Add multiple tasks to a tasklist
-lark-cli task +tasklist-task-add --tasklist-id "tl_xxx" --task-id "t_aaa,t_bbb,t_ccc"
+lark-cli task +tasklist-task-add --tasklist-id "<tasklist_guid>" --task-id "<task_guid>,<another_task_guid>,<third_task_guid>"
 ```
 
 ## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--tasklist-id <id>` | Yes | The GUID of the tasklist, or a full AppLink URL. |
-| `--task-id <ids>` | Yes | Comma-separated list of task IDs to add to the tasklist. |
+| `--tasklist-id <guid>` | Yes | The GUID of the tasklist, or a full AppLink URL. |
+| `--task-id <guids>` | Yes | Comma-separated list of task GUIDs to add to the tasklist. For Feishu task applinks, use each task's `guid` query parameter, not the `suite_entity_num` / display task ID like `t104121`. |
 
 ## Workflow
 

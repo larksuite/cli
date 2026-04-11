@@ -1,8 +1,12 @@
 # base +dashboard-create
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [lark-base-dashboard.md](lark-base-dashboard.md) 了解整体工作流。
 
-创建仪表盘。
+创建空白仪表盘。创建成功后务必记录返回的 `dashboard_id`，后续添加组件和管理仪表盘都需要用到。
+
+## 关键约束
+
+- **dashboard_id** 在 create 返回中取得，后续 get/update/delete 使用。
 
 ## 推荐命令
 
@@ -41,36 +45,29 @@ lark-cli base +dashboard-create \
 | `deepDark` | 深色 |
 | `futuristic` | 未来感 |
 
-## API 入参详情
+## 返回示例
 
-**HTTP 方法和路径：**
-
+```json
+{
+  "dashboard_id": "blkxxxxxxxxxxxx",
+  "name": "数据分析仪表盘",
+  "theme": {
+    "theme_style": "default"
+  }
+}
 ```
-POST /open-apis/base/v3/bases/:base_token/dashboards
-```
-
-**Request Body：**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `name` | string | 仪表盘名称 |
-| `theme` | object | 主题配置 |
-| `theme.theme_style` | string | 主题风格 |
 
 ## 返回重点
 
-- 返回创建后的仪表盘对象，包含 `dashboard_id`。
-
-## 工作流
+| 字段 | 说明 |
+|------|------|
+| `dashboard_id` | 仪表盘 ID（如 `blkxxxxxxxxxxxx`），后续操作都需要用到，务必记录 |
+| `name` | 仪表盘名称 |
+| `theme.theme_style` | 主题风格 |
 
 > [!CAUTION]
 > 这是**写入操作** — 执行前必须向用户确认。
 
-## 坑点
-
-- **dashboard_id** 在 create 返回中取得，后续 get/update/delete 使用。
-- **theme_style** 是嵌套在 `theme` 对象下的字段，shortcut 自动包装为 `{"theme": {"theme_style": "..."}}`。
-
 ## 参考
 
-- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 索引页
+- [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块指引

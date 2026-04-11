@@ -7,27 +7,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-var mimeToExt = map[string]string{
-	"image/png":       ".png",
-	"image/jpeg":      ".jpg",
-	"image/gif":       ".gif",
-	"image/webp":      ".webp",
-	"image/svg+xml":   ".svg",
-	"application/pdf": ".pdf",
-	"video/mp4":       ".mp4",
-	"text/plain":      ".txt",
-}
 
 var DocMediaDownload = common.Shortcut{
 	Service:     "docs",
@@ -66,8 +53,7 @@ var DocMediaDownload = common.Shortcut{
 		if err := validate.ResourceName(token, "--token"); err != nil {
 			return output.ErrValidation("%s", err)
 		}
-		// Early path validation before API call (final validation after auto-extension below)
-		if _, err := validate.SafeOutputPath(outputPath); err != nil {
+		if _, err := runtime.ResolveSavePath(outputPath); err != nil {
 			return output.ErrValidation("unsafe output path: %s", err)
 		}
 
@@ -82,48 +68,51 @@ var DocMediaDownload = common.Shortcut{
 			apiPath = fmt.Sprintf("/open-apis/drive/v1/medias/%s/download", encodedToken)
 		}
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 			HttpMethod: http.MethodGet,
 			ApiPath:    apiPath,
-		}, larkcore.WithFileDownload())
+		})
 		if err != nil {
 			return output.ErrNetwork("download failed: %v", err)
 		}
-		if apiResp.StatusCode >= 400 {
-			return output.ErrNetwork("download failed: HTTP %d: %s", apiResp.StatusCode, strings.TrimSpace(string(apiResp.RawBody)))
-		}
+		defer resp.Body.Close()
 
-		// Auto-detect extension from Content-Type
-		finalPath := outputPath
-		currentExt := filepath.Ext(outputPath)
-		if currentExt == "" {
-			contentType := apiResp.Header.Get("Content-Type")
-			mimeType := strings.Split(contentType, ";")[0]
-			mimeType = strings.TrimSpace(mimeType)
-			if ext, ok := mimeToExt[mimeType]; ok {
-				finalPath = outputPath + ext
-			} else if mediaType == "whiteboard" {
-				finalPath = outputPath + ".png"
+		fallbackExt := ""
+		if mediaType == "whiteboard" {
+			fallbackExt = ".png"
+		}
+		finalPath, _ := autoAppendDocMediaExtension(outputPath, resp.Header, fallbackExt)
+
+		// Validate final path after extension append
+		if finalPath != outputPath {
+			if _, err := runtime.ResolveSavePath(finalPath); err != nil {
+				return output.ErrValidation("unsafe output path: %s", err)
 			}
 		}
 
-		safePath, err := validate.SafeOutputPath(finalPath)
+		// Overwrite check on final path (after extension detection)
+		if !overwrite {
+			if _, statErr := runtime.FileIO().Stat(finalPath); statErr == nil {
+				return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", finalPath)
+			}
+		}
+
+		result, err := runtime.FileIO().Save(finalPath, fileio.SaveOptions{
+			ContentType:   resp.Header.Get("Content-Type"),
+			ContentLength: resp.ContentLength,
+		}, resp.Body)
 		if err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
-		}
-		if err := common.EnsureWritableFile(safePath, overwrite); err != nil {
-			return err
+			return common.WrapSaveErrorByCategory(err, "io")
 		}
 
-		os.MkdirAll(filepath.Dir(safePath), 0755)
-		if err := validate.AtomicWrite(safePath, apiResp.RawBody, 0644); err != nil {
-			return output.Errorf(output.ExitInternal, "io", "cannot create file: %v", err)
+		savedPath, _ := runtime.ResolveSavePath(finalPath)
+		if savedPath == "" {
+			savedPath = finalPath
 		}
-
 		runtime.Out(map[string]interface{}{
-			"saved_path":   safePath,
-			"size_bytes":   len(apiResp.RawBody),
-			"content_type": apiResp.Header.Get("Content-Type"),
+			"saved_path":   savedPath,
+			"size_bytes":   result.Size(),
+			"content_type": resp.Header.Get("Content-Type"),
 		}, nil)
 		return nil
 	},

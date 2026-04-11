@@ -11,19 +11,22 @@
 package vc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -89,44 +92,45 @@ func getPrimaryCalendarID(runtime *common.RuntimeContext) (string, error) {
 	return calID, nil
 }
 
-// fetchNoteByCalendarEventID queries notes via calendar event instance ID.
-// Chain: primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note_id
-func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeContext, instanceID string, calendarID string) map[string]any {
-	errOut := runtime.IO().ErrOut
+// eventRelationInfo holds the resolved relation info from mget_instance_relation_info API.
+type eventRelationInfo struct {
+	MeetingIDs   []string // meeting IDs (one event may spawn multiple meetings)
+	MeetingNotes []string // user-bound meeting note doc tokens
+}
 
-	// call mget_instance_relation_info to get meeting_id
+// resolveMeetingIDsFromCalendarEvent resolves a calendar event instance to its
+// associated meeting IDs and optionally note doc tokens via the mget_instance_relation_info API.
+// When needNotes is true, meeting_notes are also requested.
+// Shared by +notes and +recording for the --calendar-event-ids path.
+func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instanceID string, calendarID string, needNotes bool) (*eventRelationInfo, error) {
+	body := map[string]any{
+		"instance_ids":              []string{instanceID},
+		"need_meeting_instance_ids": true,
+	}
+	if needNotes {
+		body["need_meeting_notes"] = true
+	}
 	data, err := runtime.DoAPIJSON(http.MethodPost,
 		fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/mget_instance_relation_info", validate.EncodePathSegment(calendarID)),
 		nil,
-		map[string]any{
-			"instance_ids":              []string{instanceID},
-			"need_meeting_instance_ids": true,
-			"need_meeting_notes":        true,
-			"need_ai_meeting_notes":     true,
-		})
+		body)
 	if err != nil {
-		return map[string]any{"calendar_event_id": instanceID, "error": fmt.Sprintf("failed to query event relation info: %v", err)}
+		return nil, fmt.Errorf("failed to query event relation info: %w", err)
 	}
 
-	// parse instance_relation_infos
 	infos, _ := data["instance_relation_infos"].([]any)
 	if len(infos) == 0 {
-		return map[string]any{"calendar_event_id": instanceID, "error": "no event relation info found"}
+		return nil, fmt.Errorf("no event relation info found")
 	}
 	info, _ := infos[0].(map[string]any)
 
-	// get meeting_instance_ids
-	meetingIDs, _ := info["meeting_instance_ids"].([]any)
-	if len(meetingIDs) == 0 {
-		return map[string]any{"calendar_event_id": instanceID, "error": "no associated video meeting for this event"}
+	rawIDs, _ := info["meeting_instance_ids"].([]any)
+	if len(rawIDs) == 0 {
+		return nil, fmt.Errorf("no associated video meeting for this event")
 	}
 
-	if len(meetingIDs) > 1 {
-		fmt.Fprintf(errOut, "%s event %s has %d meetings, trying each\n", logPrefix, sanitizeLogValue(instanceID), len(meetingIDs))
-	}
-
-	// try each meeting_instance_id until one has notes
-	for _, mid := range meetingIDs {
+	result := &eventRelationInfo{}
+	for _, mid := range rawIDs {
 		if mid == nil {
 			continue
 		}
@@ -139,15 +143,101 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 		default:
 			meetingID = fmt.Sprintf("%v", v)
 		}
+		result.MeetingIDs = append(result.MeetingIDs, meetingID)
+	}
+
+	result.MeetingNotes = extractStringSlice(info, "meeting_notes")
+
+	return result, nil
+}
+
+// extractStringSlice extracts a []string from a JSON array field in a map.
+func extractStringSlice(m map[string]any, key string) []string {
+	raw, _ := m[key].([]any)
+	var out []string
+	for _, v := range raw {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// fetchNoteByCalendarEventID queries notes via calendar event instance ID.
+// Two sources of doc tokens are collected and deduplicated:
+//   - mget_instance_relation_info: meeting_notes (user-bound note doc tokens)
+//   - meeting_id chain: meeting.get → note detail (note_doc_token, verbatim_doc_token, shared_doc_tokens)
+func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeContext, instanceID string, calendarID string) map[string]any {
+	errOut := runtime.IO().ErrOut
+
+	relInfo, err := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID, true)
+	if err != nil {
+		return map[string]any{"calendar_event_id": instanceID, "error": err.Error()}
+	}
+
+	result := map[string]any{"calendar_event_id": instanceID}
+
+	// source 1: user-bound meeting note doc tokens from mget_instance_relation_info
+	if len(relInfo.MeetingNotes) > 0 {
+		result["meeting_notes"] = relInfo.MeetingNotes
+	}
+
+	// source 2: meeting_id → meeting.get → note detail (for shared_doc_tokens etc.)
+	if len(relInfo.MeetingIDs) > 1 {
+		fmt.Fprintf(errOut, "%s event %s has %d meetings, trying each\n", logPrefix, sanitizeLogValue(instanceID), len(relInfo.MeetingIDs))
+	}
+
+	for _, meetingID := range relInfo.MeetingIDs {
 		fmt.Fprintf(errOut, "%s event %s → meeting_id=%s\n", logPrefix, sanitizeLogValue(instanceID), sanitizeLogValue(meetingID))
-		result := fetchNoteByMeetingID(ctx, runtime, meetingID)
-		if result["error"] == nil {
+		noteResult := fetchNoteByMeetingID(ctx, runtime, meetingID)
+		if noteResult["error"] == nil {
+			for k, v := range noteResult {
+				result[k] = v
+			}
+			deduplicateDocTokens(result)
 			return result
 		}
-		// if this meeting has no notes, try next
-		fmt.Fprintf(errOut, "%s meeting_id=%s: %s, trying next\n", logPrefix, sanitizeLogValue(meetingID), result["error"])
+		fmt.Fprintf(errOut, "%s meeting_id=%s: %s, trying next\n", logPrefix, sanitizeLogValue(meetingID), noteResult["error"])
 	}
-	return map[string]any{"calendar_event_id": instanceID, "error": "no notes found in any associated meeting"}
+
+	// meeting chain failed, but still succeed if relation info returned note tokens
+	if len(relInfo.MeetingNotes) > 0 {
+		return result
+	}
+	result["error"] = "no notes found in any associated meeting"
+	return result
+}
+
+// deduplicateDocTokens removes meeting_notes entries that duplicate note detail fields.
+func deduplicateDocTokens(result map[string]any) {
+	seen := map[string]bool{}
+	if v, _ := result["note_doc_token"].(string); v != "" {
+		seen[v] = true
+	}
+	if v, _ := result["verbatim_doc_token"].(string); v != "" {
+		seen[v] = true
+	}
+	for _, tok := range asStringSlice(result["shared_doc_tokens"]) {
+		seen[tok] = true
+	}
+
+	var filtered []string
+	for _, tok := range asStringSlice(result["meeting_notes"]) {
+		if !seen[tok] {
+			filtered = append(filtered, tok)
+		}
+	}
+	if len(filtered) > 0 {
+		result["meeting_notes"] = filtered
+	} else {
+		delete(result, "meeting_notes")
+	}
+}
+
+// asStringSlice casts v to []string; returns nil for non-[]string or nil values.
+func asStringSlice(v any) []string {
+	ss, _ := v.([]string)
+	return ss
 }
 
 // fetchNoteByMeetingID queries notes via meeting_id.
@@ -251,23 +341,14 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		base = outDir
 	}
 	dirName := filepath.Join(base, sanitizeDirName(title, minuteToken))
+	transcriptPath := filepath.Join(dirName, "transcript.txt")
+
+	// Overwrite check via FileIO.Stat
 	if !runtime.Bool("overwrite") {
-		transcriptPath := filepath.Join(dirName, "transcript.txt")
-		if _, statErr := os.Stat(transcriptPath); statErr == nil {
+		if _, statErr := runtime.FileIO().Stat(transcriptPath); statErr == nil {
 			fmt.Fprintf(errOut, "%s transcript already exists: %s (use --overwrite to replace)\n", logPrefix, transcriptPath)
 			return transcriptPath
 		}
-	}
-
-	transcriptPath := filepath.Join(dirName, "transcript.txt")
-	safePath, err := validate.SafeOutputPath(transcriptPath)
-	if err != nil {
-		fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
-		return ""
-	}
-	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
-		fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
-		return ""
 	}
 
 	fmt.Fprintf(errOut, "%s downloading transcript: %s\n", logPrefix, transcriptPath)
@@ -292,8 +373,16 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		fmt.Fprintf(errOut, "%s transcript is empty (not available for this minute)\n", logPrefix)
 		return ""
 	}
-	if err := validate.AtomicWrite(safePath, apiResp.RawBody, 0644); err != nil {
-		fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
+	if _, err := runtime.FileIO().Save(transcriptPath, fileio.SaveOptions{}, bytes.NewReader(apiResp.RawBody)); err != nil {
+		var me *fileio.MkdirError
+		switch {
+		case errors.Is(err, fileio.ErrPathValidation):
+			fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
+		case errors.As(err, &me):
+			fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
+		default:
+			fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
+		}
 		return ""
 	}
 	return transcriptPath
@@ -427,7 +516,7 @@ var VCNotes = common.Shortcut{
 		}
 		// output-dir 路径安全校验
 		if outDir := runtime.Str("output-dir"); outDir != "" {
-			if err := common.ValidateSafeOutputDir(outDir); err != nil {
+			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
 				return err
 			}
 		}
@@ -443,16 +532,12 @@ var VCNotes = common.Shortcut{
 		default:
 			// unreachable: ExactlyOne already ensures one flag is set
 		}
-		appID := runtime.Config.AppID
-		userOpenId := runtime.UserOpenId()
-		if appID != "" && userOpenId != "" {
-			stored := auth.GetStoredToken(appID, userOpenId)
-			if stored != nil {
-				if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-					return output.ErrWithHint(output.ExitAuth, "missing_scope",
-						fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-						fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
-				}
+		result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
+		if err == nil && result != nil && result.Scopes != "" {
+			if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
+				return output.ErrWithHint(output.ExitAuth, "missing_scope",
+					fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
+					fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
 			}
 		}
 		return nil
@@ -562,6 +647,9 @@ var VCNotes = common.Shortcut{
 				if id == "" {
 					id, _ = m["minute_token"].(string)
 				}
+				if id == "" {
+					id, _ = m["calendar_event_id"].(string)
+				}
 				row := map[string]interface{}{"id": id}
 				if errMsg, _ := m["error"].(string); errMsg != "" {
 					row["status"] = "FAIL"
@@ -576,6 +664,9 @@ var VCNotes = common.Shortcut{
 					}
 					if v, _ := m["shared_doc_tokens"].([]string); len(v) > 0 {
 						row["shared_docs"] = strings.Join(v, ", ")
+					}
+					if v := asStringSlice(m["meeting_notes"]); len(v) > 0 {
+						row["meeting_notes"] = strings.Join(v, ", ")
 					}
 					if v, _ := m["source"].(string); v != "" {
 						row["source"] = v
