@@ -120,6 +120,8 @@ func permissionTargetLabel(resourceType string) string {
 		return "spreadsheet"
 	case "bitable", "base":
 		return "base"
+	case "slides":
+		return "presentation"
 	case "file":
 		return "file"
 	case "folder":
