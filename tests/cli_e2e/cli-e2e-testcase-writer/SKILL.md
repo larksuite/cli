@@ -1,6 +1,6 @@
 ---
 name: cli-e2e-testcase-writer
-description: Write scenario-based end-to-end Go testcases for the compiled `lark-cli` binary under `tests/cli_e2e`. Use when adding or updating a CLI testcase that should autonomously explore help and schema output, build a self-contained lifecycle with `clie2e.RunCmd`, organize steps with `t.Run`, clean up with `t.Cleanup`, and assert JSON output with `testify/assert` and `gjson`.
+description: Use when adding or updating Go CLI E2E coverage for one `tests/cli_e2e/{domain}` domain of the compiled `lark-cli`, especially when the work requires live `--help` or `schema` exploration, scenario-based `clie2e.RunCmd` workflows, and per-domain `coverage.md` maintenance.
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -8,211 +8,115 @@ metadata:
 
 # CLI E2E Testcase Writer
 
-Write testcase code, not framework code. `tests/cli_e2e/core.go` already provides the harness, and `tests/cli_e2e/demo/task_lifecycle_test.go` is the reference example only. Unless the user explicitly asks for framework work, add or update testcase files only.
+Work on one domain per run. Produce exactly two artifacts for that domain:
+- workflow testcase files under `tests/cli_e2e/{domain}/`
+- `tests/cli_e2e/{domain}/coverage.md`
 
-## What a good testcase looks like
+Focus on domain testcase files. Do not change shared E2E support code such as `tests/cli_e2e/core.go` unless the user explicitly asks. Treat `tests/cli_e2e/demo/` as reference only.
 
-A good cli e2e testcase here is:
-- scenario-based, not a loose smoke test
-- self-contained and data-consistent
-  create the resource you later read, update, search, or delete
-- broad enough to prove the workflow
-  usually create plus one or more follow-up reads or mutations plus teardown
-- scoped to one feature or one workflow
-  do not turn one testcase into the entire domain
-- written with normal Go testing primitives
+## Core standard
 
-This is different from traditional API test suites where usage docs live elsewhere. Here, the command contract is discoverable from `lark-cli --help`, domain help, subcommand help, and schema output, and the agent is expected to explore and verify it autonomously.
+- Make the testcase scenario-based and self-contained.
+- Prove one workflow end to end: create plus follow-up read, or mutate plus teardown.
+- Prefer one file per workflow or one closely related feature.
+- For mutable flows, prove persisted state with read-after-write assertions, not just exit code.
+- Leave prerequisite-heavy paths uncovered when they cannot be proven, and explain why in `coverage.md`.
 
-## File organization
+## Workflow
 
-Put real domain testcases under:
-
-```text
-tests/cli_e2e/{domain}/
-```
-
-Examples:
-- `tests/cli_e2e/task/task_status_workflow_test.go`
-- `tests/cli_e2e/task/task_comment_workflow_test.go`
-
-Treat `tests/cli_e2e/demo/` as reference material, not as the place to accumulate real coverage.
-
-## How to split cases
-
-Split by feature or workflow, not by API surface inventory.
-
-Good splits:
-- one file for task status flow: `create -> complete -> get -> reopen -> get`
-- one file for task comment flow
-- one file for task reminder flow
-- one file for tasklist association flow
-
-Bad split:
-- one giant `task_test.go` that creates a task, updates it, comments it, reminds it, assigns it, adds followers, attaches tasklists, and queries everything in one lifecycle
-
-Prefer:
-- one top-level test per workflow
-- one file per workflow or per closely related feature
-- small shared helpers in the same domain test package when setup/cleanup logic truly repeats
-
-## Explore before writing
-
-Do not guess command names, flags, or payload fields from memory. Discover them:
+### 1. Explore the live CLI before writing code
 
 ```bash
 lark-cli --help
 lark-cli <domain> --help
 lark-cli <domain> +<shortcut> -h
-lark-cli <domain> <resource> <method> -h
-lark-cli schema <domain>.<resource>.<method>
+lark-cli <domain> <group> --help
+lark-cli <domain> <group> <method> -h
+lark-cli schema <domain>.<group>.<method>
 ```
 
-Use this exploration loop repeatedly while writing the testcase:
-1. find the right domain and command path
-2. decide whether the scenario should use a shortcut or a resource method
-3. inspect the exact `--params` and `--data` shape
-4. run the draft testcase
-5. inspect failures, then go back to help or schema and refine
+### 2. Count leaf commands for the denominator
 
-Also inspect environmental constraints before finalizing coverage:
-- whether the current test environment supports `bot`, `user`, or both
-- whether the scenario needs external identities, preexisting groups, documents, chats, or other remote fixtures
-- whether the command path is actually executable in CI-like conditions
+- A leaf command is one that executes an action — it has no further subcommands.
+- If `lark-cli <domain> <group> --help` lists no subcommands, `<group>` itself is the leaf.
+- Count `task +create` as one leaf and `task tasks get` as one leaf.
+- Do not count parameter combinations.
+- Reuse coverage already present under `tests/cli_e2e/{domain}/`. Do not count `tests/cli_e2e/demo/`.
 
-## Use the harness directly
+### 3. Choose the proof surface before editing
 
-Call `clie2e.RunCmd` with `clie2e.Request`.
+Identify the provable risks for the touched workflow: invalid input, missing prerequisite, identity or permission, state transition, output shape, cleanup safety. If only the happy path is testable, document the blocked risk areas in `coverage.md`.
 
-```go
-result, err := clie2e.RunCmd(ctx, clie2e.Request{
-	Args: []string{"task", "tasks", "get"},
-	Params: map[string]any{
-		"task_guid": taskGUID,
-	},
-})
-require.NoError(t, err)
-result.AssertExitCode(t, 0)
-result.AssertStdoutStatus(t, 0)
+### 4. Add or update the workflow testcase
+
+- Use `clie2e.RunCmd(ctx, clie2e.Request{...})`.
+- Put command path and plain flags in `Args`; put JSON in `Params` (URL/path parameters) and `Data` (request body).
+- Prefer one top-level test per workflow with `t.Run` substeps.
+- Register teardown on `parentT.Cleanup` so it survives subtest failures.
+- When touching an existing command, verify the JSON response shape is stable: assert status type, field paths, and identifiers consumed by later steps before changing assertions.
+
+### 5. Run and iterate
+
+Run `go test ./tests/cli_e2e/{domain} -count=1` while iterating and before finishing. If command shape or behavior is unclear, re-check help or schema (step 1) before changing assertions.
+
+### 6. Refresh the domain outputs
+
+- Update the workflow testcase files.
+- Update `coverage.md`: recompute the denominator from live help output, mark each command as `shortcut` or `api`, and keep one command table for the whole domain.
+
+## Testcase rules
+
+- Override `BinaryPath`, `DefaultAs`, or `Format` on `clie2e.Request` only when the testcase truly needs it.
+- Use `require.NoError`, `result.AssertExitCode`, `result.AssertStdoutStatus`, `assert`, and `gjson`.
+- Shortcut responses (`{ok: bool}`) assert `true`; API responses (`{code: int}`) assert `0`.
+- Use `t.Helper()` only for setup or assertion helpers that are called from multiple tests.
+- Use table-driven tests only when the scenario shape repeats across inputs.
+- For expected failures, assert stderr content and exit code when the environment makes them deterministic.
+- If identity or external fixtures cannot be proven, leave the command uncovered and document the prerequisite rather than faking confidence.
+
+## coverage.md
+
+Keep `coverage.md` brief and mechanical. Include:
+- a domain-specific H1 title
+- a metrics section with denominator, covered count, and coverage rate
+- a summary section restating each `Test...` workflow, key `t.Run(...)` proof points, and main blockers
+- one command table for all commands
+
+Recommended structure:
+
+```markdown
+# <Domain> CLI E2E Coverage
+
+## Metrics
+- Denominator: N leaf commands
+- Covered: N
+- Coverage: N%
+
+## Summary
+- TestXxx: ... key `t.Run(...)` proof points ...
+- Blocked area: ...
+
+## Command Table
+| Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
+| --- | --- | --- | --- | --- | --- |
+| ✓ | task +create | shortcut | task_status_workflow_test.go::TestTask_StatusWorkflow | basic create; create with due | |
+| ✕ | task +assign | shortcut |  | none | requires real user open_id |
 ```
 
-Use `Request` like this:
-- `Args`: command path and plain flags
-- `Params`: JSON for `--params`
-- `Data`: JSON for `--data`
-- `BinaryPath`, `DefaultAs`, `Format`: only when the testcase must override defaults
+- Mark each command `shortcut` or `api`.
+- Write testcase entries in `go test -run` friendly form.
+- Commands only exercised in `parentT.Cleanup` teardown are not counted as covered.
+- Do not split covered and uncovered commands into separate sections.
 
-## Default testcase shape
+## Guardrails
 
-Use one top-level test per workflow. Break the workflow into substeps with `t.Run`.
-
-```go
-func TestDomain_Scenario(t *testing.T) {
-	parentT := t
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	t.Cleanup(cancel)
-
-	suffix := time.Now().UTC().Format("20060102-150405")
-	var resourceID string
-
-	t.Run("create", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{...})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-		resourceID = gjson.Get(result.Stdout, "data.guid").String()
-		require.NotEmpty(t, resourceID)
-
-		parentT.Cleanup(func() {
-			// best-effort delete
-		})
-	})
-
-	t.Run("get", func(t *testing.T) {
-		require.NotEmpty(t, resourceID)
-	})
-}
-```
-
-Use this shape because:
-- `t.Run` makes reports readable
-- `parentT.Cleanup` keeps created resources alive for later substeps
-- one testcase owns one full resource lifecycle
-
-## Data self-consistency
-
-Prefer workflows whose data can be created and cleaned up entirely within the testcase.
-
-Good:
-- create a task, then get/update/comment/delete that same task
-- create a tasklist, then add a task created by the testcase
-
-Be explicit when the data is not self-consistent:
-- if a testcase needs a real user open_id, preexisting chat, existing document, or tenant-specific fixture, do not invent one
-- call out the missing prerequisite to the user
-- if you still want to leave a reference testcase in code, write it with `t.Skip()` and a short reason
-
-Example:
-
-```go
-func TestTask_AssignWorkflow_UserOnly(t *testing.T) {
-	t.Skip("requires a real user open_id and user-capable test environment")
-}
-```
-
-Do not silently hardcode made-up IDs, fake URLs, or guessed remote resources just to make the testcase look complete.
-
-## Environment constraints
-
-Assume the current local/CI-like environment may support only `bot` identity by default.
-
-Implications:
-- do not assume `--as user` works
-- commands or workflows that require user identity may be unsupported in the current environment
-- confirm this by checking help, running the command, or using known repo guidance before writing the final testcase set
-
-When `--as user` is unavailable:
-- still implement bot-compatible workflows normally
-- for user-only workflows, either stop and tell the user what prerequisite is missing, or leave a skipped testcase with `t.Skip()`
-
-Typical risky areas:
-- `+get-my-tasks`
-- commands that require current-user profile or self identity lookup
-- workflows that need a real user open_id for assign/follower/member mutations
-
-## Go testing rules
-
-- Use `t.Run` for lifecycle steps such as `create`, `update`, `get`, `list`, `delete`.
-- Use `t.Cleanup` for teardown and shared cleanup.
-- Use `t.Helper()` in local helpers when the same setup or assertion logic really repeats.
-- Use table-driven tests only when the same scenario shape repeats across multiple inputs. Do not force table-driven style onto a single live workflow.
-- Use `require.NoError` for command execution and prerequisites.
-- Use `assert` for returned field values after the command has succeeded.
-- Use `gjson.Get(result.Stdout, "...")` for JSON field extraction.
-
-## Output conventions
-
-- shortcut-style commands often return `{"ok": true, ...}` and should use `result.AssertStdoutStatus(t, true)`
-- service-style commands often return `{"code": 0, "data": ...}` and should use `result.AssertStdoutStatus(t, 0)`
-
-Then assert the business fields with `gjson`.
-
-## Common mistakes
-
-- Do not modify `tests/cli_e2e/core.go` just because one testcase wants a convenience wrapper.
-- Do not write a testcase that depends on preexisting remote data.
-- Do not put agent, model, or vendor brand names into task summaries, comments, tasklist names, fixture IDs, or other visible remote test data; use neutral prefixes such as `lark-cli-e2e-` or `<domain>-e2e-`.
-- Do not attach cleanup to the create subtest if later subtests still need the resource.
+- Run as bot identity only; do not assume `--as user` works.
 - Do not place new real coverage under `tests/cli_e2e/demo/`.
-- Do not dump all domain behaviors into one file or one testcase.
-- Do not hardcode obvious defaults unless the command really needs explicit flags.
-- Do not guess `Params` or `Data` fields when schema output can tell you the exact shape.
-- Do not fabricate prerequisite data when the scenario needs real external fixtures.
-- Do not force a user-only workflow to run in a bot-only environment; use `t.Skip()` with a concrete reason.
-- Do not stop after the first draft. Run, inspect, explore again, and improve the testcase.
-
-## Validation
-
-- Run `go test ./tests/cli_e2e/... -count=1`.
-- Rerun the touched package directly when the testcase is live and slow.
-- If behavior is unclear, go back to help and schema before changing the testcase.
+- Do not depend on preexisting remote data.
+- Do not fabricate open_ids, chats, docs, or other remote fixtures.
+- Prefer deterministic negative cases over tenant-dependent assertions.
+- Do not guess `Params` or `Data` fields when help or schema can tell you the exact shape.
+- Do not hardcode obvious defaults unless the command truly requires explicit flags.
+- Do not put agent, model, or vendor brand names in visible remote test data; use neutral prefixes such as `lark-cli-e2e-` or `<domain>-e2e-`.
+- A command is covered only when the testcase asserts returned fields or persisted state, not just exit code.
+- Cleanup-only execution is not primary coverage, except `delete` in the same workflow that created the resource.
