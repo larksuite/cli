@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -30,10 +31,14 @@ var DocsCreate = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := buildCreateBody(runtime)
-		return common.NewDryRunAPI().
+		d := common.NewDryRunAPI().
 			POST("/open-apis/docs_ai/v1/documents").
 			Desc("OpenAPI: create document").
 			Body(body)
+		if runtime.IsBot() {
+			d.Desc("After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new document.")
+		}
+		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildCreateBody(runtime)
@@ -44,6 +49,7 @@ var DocsCreate = common.Shortcut{
 		}
 
 		stripBlockIDs(data)
+		augmentDocsCreatePermission(runtime, data)
 		runtime.OutRaw(data, nil)
 		return nil
 	},
@@ -61,4 +67,20 @@ func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
 		body["parent_position"] = v
 	}
 	return body
+}
+
+// augmentDocsCreatePermission grants full_access to the current CLI user when
+// the document was created with bot identity.
+func augmentDocsCreatePermission(runtime *common.RuntimeContext, data map[string]interface{}) {
+	doc, _ := data["document"].(map[string]interface{})
+	if doc == nil {
+		return
+	}
+	docID := strings.TrimSpace(common.GetString(doc, "document_id"))
+	if docID == "" {
+		return
+	}
+	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, docID, "docx"); grant != nil {
+		data["permission_grant"] = grant
+	}
 }

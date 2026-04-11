@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -21,10 +19,12 @@ func TestDocsCreateBotAutoGrantSuccess(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	permStub := &httpmock.Stub{
@@ -46,8 +46,7 @@ func TestDocsCreateBotAutoGrantSuccess(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--title", "项目计划",
-		"--markdown", "## 目标",
+		"--content", "<title>项目计划</title><h1>目标</h1>",
 		"--as", "bot",
 	})
 	if err != nil {
@@ -79,15 +78,17 @@ func TestDocsCreateBotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--markdown", "## 内容",
+		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "bot",
 	})
 	if err != nil {
@@ -108,15 +109,17 @@ func TestDocsCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--markdown", "## 内容",
+		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "user",
 	})
 	if err != nil {
@@ -133,15 +136,17 @@ func TestDocsCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/wiki/wikcn_new_node",
-		"message": "文档创建成功",
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	permStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/drive/v1/permissions/wikcn_new_node/members",
+		URL:    "/open-apis/drive/v1/permissions/doxcn_new_doc/members",
 		Body: map[string]interface{}{
 			"code": 230001,
 			"msg":  "no permission",
@@ -151,8 +156,7 @@ func TestDocsCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--markdown", "## 内容",
-		"--wiki-space", "my_library",
+		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "bot",
 	})
 	if err != nil {
@@ -170,14 +174,6 @@ func TestDocsCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	if !strings.Contains(grant["message"].(string), "retry later") {
 		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
 	}
-
-	var body map[string]interface{}
-	if err := json.Unmarshal(permStub.CapturedBody, &body); err != nil {
-		t.Fatalf("failed to parse permission request body: %v", err)
-	}
-	if body["perm_type"] != "container" {
-		t.Fatalf("permission request perm_type = %#v, want %q", body["perm_type"], "container")
-	}
 }
 
 func docsCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {
@@ -193,20 +189,14 @@ func docsCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {
 	}
 }
 
-func registerDocsCreateMCPStub(reg *httpmock.Registry, result map[string]interface{}) {
-	payload, _ := json.Marshal(result)
+func registerDocsCreateAPIStub(reg *httpmock.Registry, data map[string]interface{}) {
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/mcp",
+		URL:    "/open-apis/docs_ai/v1/documents",
 		Body: map[string]interface{}{
-			"result": map[string]interface{}{
-				"content": []map[string]interface{}{
-					{
-						"type": "text",
-						"text": string(payload),
-					},
-				},
-			},
+			"code": 0,
+			"msg":  "ok",
+			"data": data,
 		},
 	})
 }
@@ -214,15 +204,7 @@ func registerDocsCreateMCPStub(reg *httpmock.Registry, result map[string]interfa
 func runDocsCreateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buffer, args []string) error {
 	t.Helper()
 
-	parent := &cobra.Command{Use: "docs"}
-	DocsCreate.Mount(parent, f)
-	parent.SetArgs(args)
-	parent.SilenceErrors = true
-	parent.SilenceUsage = true
-	if stdout != nil {
-		stdout.Reset()
-	}
-	return parent.Execute()
+	return mountAndRunDocs(t, DocsCreate, args, f, stdout)
 }
 
 func decodeDocsCreateEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
