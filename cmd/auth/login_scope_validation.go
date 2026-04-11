@@ -22,24 +22,36 @@ type requestedScopeDiagnostics struct {
 	Suggestions map[string][]string
 }
 
+var loadAppInfo = getAppInfo
+
 func explainScopeRequestError(ctx context.Context, f *cmdutil.Factory, config *core.CliConfig, requestedScope string, requestErr error) error {
 	if requestErr == nil {
 		return nil
 	}
-	if !strings.Contains(strings.ToLower(requestErr.Error()), "invalid or malformed scope") {
+	if !isInvalidScopeError(requestErr) {
 		return nil
 	}
 
 	var enabled map[string]bool
-	if info, err := getAppInfo(ctx, f, config.AppID); err == nil && info != nil {
+	var appInfoErr error
+	if info, err := loadAppInfo(ctx, f, config.AppID); err == nil && info != nil {
 		enabled = make(map[string]bool, len(info.UserScopes))
 		for _, scope := range info.UserScopes {
 			enabled[scope] = true
 		}
+	} else {
+		appInfoErr = err
 	}
 
 	diag := diagnoseRequestedScopes(requestedScope, knownUserScopes(), enabled)
 	if len(diag.Unknown) == 0 && len(diag.NotEnabled) == 0 {
+		if appInfoErr != nil {
+			return output.ErrAuth(
+				"requested scope list could not be fully diagnosed: failed to inspect enabled app scopes automatically: %v\nrequested scopes: %s\nhint: run \"lark-cli auth scopes\" to inspect enabled app scopes, or prefer --domain/--recommend when possible",
+				appInfoErr,
+				strings.Join(uniqueScopeList(requestedScope), " "),
+			)
+		}
 		return nil
 	}
 
@@ -55,8 +67,22 @@ func explainScopeRequestError(ctx context.Context, f *cmdutil.Factory, config *c
 	for _, scope := range diag.NotEnabled {
 		lines = append(lines, fmt.Sprintf("- scope not enabled for current app: %s", scope))
 	}
+	if appInfoErr != nil {
+		lines = append(lines, fmt.Sprintf("- enabled app scopes could not be fully inspected automatically: %v", appInfoErr))
+	}
 	lines = append(lines, `tip: run "lark-cli auth scopes" to inspect enabled app scopes, or prefer --domain/--recommend when possible`)
-	return output.ErrValidation("%s", strings.Join(lines, "\n"))
+	return output.ErrAuth("%s", strings.Join(lines, "\n"))
+}
+
+func isInvalidScopeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "invalid or malformed scope") {
+		return true
+	}
+	return strings.Contains(msg, "scope") && (strings.Contains(msg, "invalid") || strings.Contains(msg, "malformed"))
 }
 
 func diagnoseRequestedScopes(scopeArg string, known map[string]bool, enabled map[string]bool) requestedScopeDiagnostics {
