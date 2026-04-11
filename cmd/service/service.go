@@ -101,16 +101,16 @@ type ServiceMethodOptions struct {
 	SchemaPath string
 
 	// Flags
-	Params    string
-	Data      string
-	As        core.Identity
-	Output    string
-	PageAll   bool
-	PageLimit int
-	PageDelay int
-	Format    string
-	JqExpr    string
-	DryRun    bool
+	Params     string
+	Data       string
+	As         core.Identity
+	Output     string
+	PageAll    bool
+	PageLimit  int
+	PageDelay  int
+	Format     string
+	JqExpr     string
+	DryRun     bool
 	File       string   // --file flag value
 	FileFields []string // auto-detected file field names from metadata
 }
@@ -159,7 +159,7 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 	case "POST", "PUT", "PATCH", "DELETE":
 		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
 	}
-	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
+	cmdutil.AddAPIIdentityFlag(cmd, f, &asStr)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
@@ -177,10 +177,6 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 			cmd.Flags().StringVar(&opts.File, "file", "", "file to upload ([field=]path, supports - for stdin)")
 		}
 	}
-
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"user", "bot"}, cobra.ShellCompDirectiveNoFileComp
-	})
 	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
 	})

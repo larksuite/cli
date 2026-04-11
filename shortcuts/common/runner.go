@@ -592,7 +592,7 @@ func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
-	registerShortcutFlags(cmd, &shortcut)
+	registerShortcutFlags(cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	parent.AddCommand(cmd)
 }
@@ -823,7 +823,7 @@ func rejectPositionalArgs() cobra.PositionalArgs {
 	}
 }
 
-func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
+func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	for _, fl := range s.Flags {
 		desc := fl.Desc
 		if len(fl.Enum) > 0 {
@@ -874,11 +874,7 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
-	cmd.Flags().String("as", s.AuthTypes[0], "identity type: user | bot")
-
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return s.AuthTypes, cobra.ShellCompDirectiveNoFileComp
-	})
+	cmdutil.AddShortcutIdentityFlag(cmd, f, s.AuthTypes)
 	if s.HasFormat {
 		_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
