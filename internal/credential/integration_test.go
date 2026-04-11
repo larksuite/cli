@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/keychain"
 )
 
 type noopKC struct{}
@@ -99,7 +100,7 @@ func TestFullChain_ConfigStrictMode(t *testing.T) {
 	}
 
 	ep := &envprovider.Provider{}
-	defaultAcct := credential.NewDefaultAccountProvider(&noopKC{}, "")
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "")
 
 	cp := credential.NewCredentialProvider(
 		[]extcred.Provider{ep},

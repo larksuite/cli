@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-	"golang.org/x/term"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
@@ -34,27 +32,26 @@ import (
 //	Phase 2: Credential (sole data source for account info)
 //	Phase 3: Config derived from Credential
 //	Phase 4: LarkClient derived from Credential
-func NewDefault(inv InvocationContext) *Factory {
+func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
+	if streams == nil {
+		streams = SystemIO()
+	}
 	f := &Factory{
 		Keychain:   keychain.Default(),
 		Invocation: inv,
-	}
-	f.IOStreams = &IOStreams{
-		In:         os.Stdin,
-		Out:        os.Stdout,
-		ErrOut:     os.Stderr,
-		IsTerminal: term.IsTerminal(int(os.Stdin.Fd())),
+		IOStreams:  streams,
 	}
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
 
 	// Phase 1: HttpClient (no credential dependency)
-	f.HttpClient = cachedHttpClientFunc()
+	f.HttpClient = cachedHttpClientFunc(f)
 
 	// Phase 2: Credential (sole data source)
+	// Keychain is read via closure so callers can replace f.Keychain after construction.
 	f.Credential = buildCredentialProvider(credentialDeps{
-		Keychain:   f.Keychain,
+		Keychain:   func() keychain.KeychainAccess { return f.Keychain },
 		Profile:    inv.Profile,
 		HttpClient: f.HttpClient,
 		ErrOut:     f.IOStreams.ErrOut,
@@ -93,9 +90,9 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func cachedHttpClientFunc() func() (*http.Client, error) {
+func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		util.WarnIfProxied(os.Stderr)
+		util.WarnIfProxied(f.IOStreams.ErrOut)
 
 		var transport http.RoundTripper = util.NewBaseTransport()
 		transport = &RetryTransport{Base: transport}
@@ -122,7 +119,7 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
-		util.WarnIfProxied(os.Stderr)
+		util.WarnIfProxied(f.IOStreams.ErrOut)
 		opts = append(opts, lark.WithHttpClient(&http.Client{
 			Transport:     buildSDKTransport(),
 			CheckRedirect: safeRedirectPolicy,
@@ -142,7 +139,7 @@ func buildSDKTransport() http.RoundTripper {
 }
 
 type credentialDeps struct {
-	Keychain   keychain.KeychainAccess
+	Keychain   func() keychain.KeychainAccess
 	Profile    string
 	HttpClient func() (*http.Client, error)
 	ErrOut     io.Writer

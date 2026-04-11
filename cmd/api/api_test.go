@@ -180,6 +180,24 @@ func TestApiValidArgsFunction(t *testing.T) {
 	}
 }
 
+func TestNewCmdApi_StrictModeHidesAsFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu, SupportedIdentities: 2,
+	})
+
+	cmd := NewCmdApi(f, nil)
+	flag := cmd.Flags().Lookup("as")
+	if flag == nil {
+		t.Fatal("expected --as flag to be registered")
+	}
+	if !flag.Hidden {
+		t.Fatal("expected --as flag to be hidden in strict mode")
+	}
+	if got := flag.DefValue; got != "bot" {
+		t.Fatalf("default value = %q, want %q", got, "bot")
+	}
+}
+
 func TestApiCmd_PageLimitDefault(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,

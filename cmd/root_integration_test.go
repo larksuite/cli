@@ -135,7 +135,7 @@ func newStrictModeDefaultFactory(t *testing.T, profile string, mode core.StrictM
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	f := cmdutil.NewDefault(cmdutil.InvocationContext{Profile: profile})
+	f := cmdutil.NewDefault(nil, cmdutil.InvocationContext{Profile: profile})
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	f.IOStreams = &cmdutil.IOStreams{In: nil, Out: stdout, ErrOut: stderr}
