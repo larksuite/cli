@@ -5,6 +5,7 @@ package auth
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
@@ -36,5 +37,15 @@ func TestNewUATCallOptions(t *testing.T) {
 	}
 	if opts.ErrOut != errOut {
 		t.Error("ErrOut not set correctly")
+	}
+}
+
+func TestNewUATCallOptions_NilErrOutUsesDiscard(t *testing.T) {
+	cfg := &core.CliConfig{}
+
+	opts := NewUATCallOptions(cfg, nil)
+
+	if opts.ErrOut != io.Discard {
+		t.Fatalf("ErrOut = %v, want io.Discard", opts.ErrOut)
 	}
 }

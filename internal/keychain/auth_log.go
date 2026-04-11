@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -25,23 +25,7 @@ var (
 )
 
 func authLogDir() string {
-	if dir := os.Getenv("LARKSUITE_CLI_LOG_DIR"); dir != "" {
-		safeDir, err := validate.SafeEnvDirPath(dir, "LARKSUITE_CLI_LOG_DIR")
-		if err == nil {
-			return safeDir
-		}
-	}
-
-	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
-		return filepath.Join(dir, "logs")
-	}
-
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-
-	return filepath.Join(home, ".lark-cli", "logs")
+	return appdir.LogDir()
 }
 
 func initAuthLogger() {
@@ -52,13 +36,13 @@ func initAuthLogger() {
 
 		dir := authLogDir()
 		now := authResponseLogNow()
-		if err := vfs.MkdirAll(dir, 0700); err != nil {
+		if err := vfs.MkdirAll(dir, 0o700); err != nil {
 			return
 		}
 
 		logName := fmt.Sprintf("auth-%s.log", now.Format("2006-01-02"))
 		logPath := filepath.Join(dir, logName)
-		if f, err := vfs.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
+		if f, err := vfs.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
 			authResponseLogger = log.New(f, "", 0)
 			cleanupOldLogs(dir, now)
 		}

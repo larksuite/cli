@@ -73,7 +73,6 @@ func TestSafeOutputPath_ReturnsCanonicalAbsolutePath(t *testing.T) {
 
 	// WHEN: SafeOutputPath validates a relative path
 	got, err := SafeOutputPath("output/file.txt")
-
 	// THEN: returns the canonical absolute path for subsequent I/O
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -109,12 +108,13 @@ func TestSafeOutputPath_AllowsSymlinkWithinCWD(t *testing.T) {
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)
 	os.Chdir(dir)
-	os.MkdirAll(filepath.Join(dir, "real"), 0755)
+	if err := os.MkdirAll(filepath.Join(dir, "real"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 	os.Symlink(filepath.Join(dir, "real"), filepath.Join(dir, "link"))
 
 	// WHEN: SafeOutputPath validates a path through the internal symlink
 	got, err := SafeOutputPath("link/file.txt")
-
 	// THEN: allowed, resolved to the real path within CWD
 	if err != nil {
 		t.Fatalf("symlink within CWD should be allowed: %v", err)
@@ -156,7 +156,6 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 
 	// WHEN: SafeOutputPath validates "a/b/c/d/file.txt" (none of a/b/c/d exist)
 	got, err := SafeOutputPath("a/b/c/d/file.txt")
-
 	// THEN: allowed, resolved to canonical path under CWD
 	if err != nil {
 		t.Fatalf("deep non-existent path within CWD should be allowed: %v", err)
@@ -203,11 +202,12 @@ func TestSafeUploadPath_AcceptsRelativePath(t *testing.T) {
 	defer os.Chdir(orig)
 	os.Chdir(dir)
 
-	os.WriteFile(filepath.Join(dir, "upload.bin"), []byte("data"), 0600)
+	if err := os.WriteFile(filepath.Join(dir, "upload.bin"), []byte("data"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 
 	// WHEN: SafeUploadPath validates a relative path to an existing file
 	got, err := SafeInputPath("upload.bin")
-
 	// THEN: accepted and returned as absolute canonical path
 	if err != nil {
 		t.Fatalf("SafeUploadPath(relative) error = %v", err)
@@ -215,6 +215,40 @@ func TestSafeUploadPath_AcceptsRelativePath(t *testing.T) {
 	want := filepath.Join(dir, "upload.bin")
 	if got != want {
 		t.Errorf("SafeUploadPath(relative) = %q, want %q", got, want)
+	}
+}
+
+func TestSafeServiceName(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"valid simple name", "my-service", false},
+		{"valid with dots", "com.example.svc", false},
+		{"valid with underscores", "my_service", false},
+		{"valid alphanumeric", "svc123", false},
+
+		{"empty", "", true},
+		{"dot only", ".", true},
+		{"dot-dot", "..", true},
+		{"forward slash", "foo/bar", true},
+		{"backslash", `foo\bar`, true},
+		{"traversal with slash", "../etc", true},
+		{"null byte", "svc\x00name", true},
+		{"tab", "svc\tname", true},
+		{"newline", "svc\nname", true},
+		{"carriage return", "svc\rname", true},
+		{"control char", "svc\x07name", true},
+		{"bidi override", "svc\u202Ename", true},
+		{"zero width space", "svc\u200Bname", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := SafeServiceName(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SafeServiceName(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
 	}
 }
 

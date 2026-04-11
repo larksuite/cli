@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/appdir"
 )
 
 func newTestLock(t *testing.T) *LockFile {
@@ -139,19 +141,20 @@ func TestPath(t *testing.T) {
 
 func TestForSubscribe(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	t.Setenv("LARKSUITE_CLI_STATE_DIR", dir)
 
+	stateDir := appdir.StateDir()
 	l, err := ForSubscribe("cli_test123")
 	if err != nil {
 		t.Fatalf("ForSubscribe failed: %v", err)
 	}
 
-	expected := filepath.Join(dir, "locks", "subscribe_cli_test123.lock")
+	expected := filepath.Join(stateDir, "locks", "subscribe_cli_test123.lock")
 	if l.Path() != expected {
 		t.Errorf("Path() = %q, want %q", l.Path(), expected)
 	}
 
-	lockDir := filepath.Join(dir, "locks")
+	lockDir := filepath.Join(stateDir, "locks")
 	if _, err := os.Stat(lockDir); os.IsNotExist(err) {
 		t.Error("locks directory should be created by ForSubscribe")
 	}
@@ -159,7 +162,8 @@ func TestForSubscribe(t *testing.T) {
 
 func TestForSubscribe_SanitizesAppID(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	t.Setenv("LARKSUITE_CLI_STATE_DIR", dir)
+	stateDir := appdir.StateDir()
 
 	for _, tt := range []struct {
 		name     string
@@ -181,7 +185,7 @@ func TestForSubscribe_SanitizesAppID(t *testing.T) {
 				t.Errorf("Base(Path()) = %q, want %q", gotBase, tt.wantBase)
 			}
 			// Lock file must always be under the locks directory
-			locksDir := filepath.Join(dir, "locks")
+			locksDir := filepath.Join(stateDir, "locks")
 			if !strings.HasPrefix(l.Path(), locksDir) {
 				t.Errorf("path %q escapes locks dir %q", l.Path(), locksDir)
 			}

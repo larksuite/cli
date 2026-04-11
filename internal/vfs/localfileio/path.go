@@ -122,6 +122,28 @@ func isUnderDir(child, parent string) bool {
 	return !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".."
 }
 
+// SafeServiceName validates that a service name is a single, safe path
+// component. It rejects empty names, path traversal sequences, path
+// separators, and control/dangerous Unicode characters.
+func SafeServiceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("service name must not be empty")
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("service name %q is a path traversal sequence", name)
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("service name %q must not contain path separators", name)
+	}
+	if strings.ContainsAny(name, "\t\n\r") {
+		return fmt.Errorf("service name must not contain tabs or newlines")
+	}
+	if err := charcheck.RejectControlChars(name, "service name"); err != nil {
+		return err
+	}
+	return nil
+}
+
 // RejectControlChars delegates to charcheck.RejectControlChars.
 // Kept as a package-level alias for backward compatibility with callers
 // that import localfileio directly.

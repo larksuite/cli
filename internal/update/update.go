@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -144,7 +144,7 @@ func isRelease(version string) bool {
 // --- state file I/O ---
 
 func statePath() string {
-	return filepath.Join(core.GetConfigDir(), stateFile)
+	return filepath.Join(appdir.StateDir(), stateFile)
 }
 
 func loadState() (*updateState, error) {
@@ -160,15 +160,16 @@ func loadState() (*updateState, error) {
 }
 
 func saveState(s *updateState) error {
-	dir := core.GetConfigDir()
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
+	dir := appdir.StateDir()
+	path := filepath.Join(dir, stateFile)
+	if err := vfs.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	return validate.AtomicWrite(statePath(), data, 0644)
+	return validate.AtomicWrite(path, data, 0o644)
 }
 
 // FetchLatest queries the npm registry and returns the latest published version.

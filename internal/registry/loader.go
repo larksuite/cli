@@ -6,6 +6,7 @@ package registry
 import (
 	"embed"
 	"encoding/json"
+	"io"
 	"math"
 	"path/filepath"
 	"runtime"
@@ -32,15 +33,19 @@ var (
 // Init initializes the registry with default brand (feishu).
 // It is safe to call multiple times (sync.Once).
 func Init() {
-	InitWithBrand(core.BrandFeishu)
+	InitWithBrand(core.BrandFeishu, io.Discard)
 }
 
 // InitWithBrand initializes the registry by loading embedded data and optionally
 // overlaying cached remote data. The brand determines which remote API host to use.
+// errOut receives progress/warning output (typically IOStreams.ErrOut).
 // It is safe to call multiple times (sync.Once).
 // Remote fetch errors are silently ignored when embedded data is available.
 // If no embedded data exists and no cache is found, a synchronous fetch is attempted.
-func InitWithBrand(brand core.LarkBrand) {
+func InitWithBrand(brand core.LarkBrand, errOut io.Writer) {
+	if errOut == nil {
+		errOut = io.Discard
+	}
 	initOnce.Do(func() {
 		configuredBrand = brand
 		// 1. Load embedded meta_data.json as baseline (no-op if not compiled in)
@@ -58,7 +63,7 @@ func InitWithBrand(brand core.LarkBrand) {
 			}
 			if len(mergedServices) == 0 || brandChanged {
 				// No data at all or brand changed — must sync fetch
-				doSyncFetch()
+				doSyncFetch(errOut)
 			} else if shouldRefresh(meta) || metaErr != nil {
 				// Have embedded/cached data; refresh in background if TTL expired or first run
 				triggerBackgroundRefresh()
@@ -183,11 +188,13 @@ func ListFromMetaProjects() []string {
 // Higher score = more recommended. Unscored scopes get 0 (least preferred).
 const DefaultScopeScore = 0
 
-var cachedScopePriorities map[string]int
-var cachedAutoApproveSet map[string]bool
-var cachedPlatformAutoApprove map[string]bool // from scope_priorities.json only
-var cachedOverrideAutoAllow map[string]bool   // from scope_overrides.json allow only
-var cachedOverrideAutoDeny map[string]bool    // from scope_overrides.json deny only
+var (
+	cachedScopePriorities     map[string]int
+	cachedAutoApproveSet      map[string]bool
+	cachedPlatformAutoApprove map[string]bool // from scope_priorities.json only
+	cachedOverrideAutoAllow   map[string]bool // from scope_overrides.json allow only
+	cachedOverrideAutoDeny    map[string]bool // from scope_overrides.json deny only
+)
 
 // scopePriorityEntry is used to parse scope_priorities.json entries.
 type scopePriorityEntry struct {

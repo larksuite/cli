@@ -60,11 +60,7 @@ func ResolveOAuthEndpoints(brand core.LarkBrand) OAuthEndpoints {
 }
 
 // RequestDeviceAuthorization requests a device authorization code.
-func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, scope string, errOut io.Writer) (*DeviceAuthResponse, error) {
-	if errOut == nil {
-		errOut = io.Discard
-	}
-
+func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, scope string, _ io.Writer) (*DeviceAuthResponse, error) {
 	endpoints := ResolveOAuthEndpoints(brand)
 
 	if !strings.Contains(scope, "offline_access") {

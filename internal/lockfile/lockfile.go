@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -29,7 +29,7 @@ func New(path string) *LockFile {
 }
 
 // ForSubscribe returns a LockFile scoped to the event subscribe command for a given App ID.
-// Lock path: {configDir}/locks/subscribe_{appID}.lock
+// Lock path: {stateDir}/locks/subscribe_{appID}.lock
 //
 // The appID is sanitized to prevent path traversal: any character outside
 // [a-zA-Z0-9._-] is replaced with "_", and filepath.Base strips directory
@@ -39,8 +39,8 @@ func ForSubscribe(appID string) (*LockFile, error) {
 	if appID == "" {
 		return nil, fmt.Errorf("app ID must not be empty")
 	}
-	dir := filepath.Join(core.GetConfigDir(), "locks")
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
+	dir := filepath.Join(appdir.StateDir(), "locks")
+	if err := vfs.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create lock dir: %w", err)
 	}
 	safe := safeIDChars.ReplaceAllString(appID, "_")
@@ -57,7 +57,7 @@ func (l *LockFile) TryLock() error {
 	if l.file != nil {
 		return fmt.Errorf("lock already held: %s", l.path)
 	}
-	f, err := vfs.OpenFile(l.path, os.O_CREATE|os.O_RDWR, 0600)
+	f, err := vfs.OpenFile(l.path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return fmt.Errorf("open lock file: %w", err)
 	}

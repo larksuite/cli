@@ -12,10 +12,6 @@ import (
 	"sync"
 	"time"
 
-	lark "github.com/larksuite/oapi-sdk-go/v3"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-	"golang.org/x/term"
-
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
@@ -25,6 +21,9 @@ import (
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/util"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
+	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	"golang.org/x/term"
 )
 
 // NewDefault creates a production Factory with cached closures.
@@ -40,17 +39,17 @@ func NewDefault(inv InvocationContext) *Factory {
 		Invocation: inv,
 	}
 	f.IOStreams = &IOStreams{
-		In:         os.Stdin,
-		Out:        os.Stdout,
-		ErrOut:     os.Stderr,
-		IsTerminal: term.IsTerminal(int(os.Stdin.Fd())),
+		In:         os.Stdin,                            //nolint:forbidigo // production wiring point
+		Out:        os.Stdout,                           //nolint:forbidigo // production wiring point
+		ErrOut:     os.Stderr,                           //nolint:forbidigo // production wiring point
+		IsTerminal: term.IsTerminal(int(os.Stdin.Fd())), //nolint:forbidigo // production wiring point
 	}
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
 
 	// Phase 1: HttpClient (no credential dependency)
-	f.HttpClient = cachedHttpClientFunc()
+	f.HttpClient = cachedHttpClientFunc(f.IOStreams.ErrOut)
 
 	// Phase 2: Credential (sole data source)
 	f.Credential = buildCredentialProvider(credentialDeps{
@@ -67,7 +66,7 @@ func NewDefault(inv InvocationContext) *Factory {
 			return nil, err
 		}
 		cfg := acct.ToCliConfig()
-		registry.InitWithBrand(cfg.Brand)
+		registry.InitWithBrand(cfg.Brand, f.IOStreams.ErrOut)
 		return cfg, nil
 	})
 
@@ -93,9 +92,9 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func cachedHttpClientFunc() func() (*http.Client, error) {
+func cachedHttpClientFunc(errOut io.Writer) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		util.WarnIfProxied(os.Stderr)
+		util.WarnIfProxied(errOut)
 
 		var transport http.RoundTripper = util.NewBaseTransport()
 		transport = &RetryTransport{Base: transport}
@@ -122,7 +121,7 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
-		util.WarnIfProxied(os.Stderr)
+		util.WarnIfProxied(f.IOStreams.ErrOut)
 		opts = append(opts, lark.WithHttpClient(&http.Client{
 			Transport:     buildSDKTransport(),
 			CheckRedirect: safeRedirectPolicy,

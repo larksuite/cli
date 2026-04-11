@@ -7,11 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -177,19 +176,12 @@ func (c *CliConfig) CanBot() bool {
 // If the home directory cannot be determined, it falls back to a relative path
 // and prints a warning to stderr.
 func GetConfigDir() string {
-	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
-		return dir
-	}
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-	return filepath.Join(home, ".lark-cli")
+	return appdir.ConfigDir()
 }
 
 // GetConfigPath returns the config file path.
 func GetConfigPath() string {
-	return filepath.Join(GetConfigDir(), "config.json")
+	return appdir.ConfigPath()
 }
 
 // LoadMultiAppConfig loads multi-app config from disk.
@@ -212,14 +204,14 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 // SaveMultiAppConfig saves config to disk.
 func SaveMultiAppConfig(config *MultiAppConfig) error {
 	dir := GetConfigDir()
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
-	return validate.AtomicWrite(GetConfigPath(), append(data, '\n'), 0600)
+	return validate.AtomicWrite(GetConfigPath(), append(data, '\n'), 0o600)
 }
 
 // RequireConfig loads the single-app config using the default profile resolution.
@@ -251,9 +243,11 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	}
 
 	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
-		return nil, &ConfigError{Code: 2, Type: "config",
+		return nil, &ConfigError{
+			Code: 2, Type: "config",
 			Message: "appId and appSecret keychain key are out of sync",
-			Hint:    err.Error()}
+			Hint:    err.Error(),
+		}
 	}
 
 	secret, err := ResolveSecretInput(app.AppSecret, kc)

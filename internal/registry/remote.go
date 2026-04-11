@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/larksuite/cli/internal/appdir"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
@@ -95,7 +96,7 @@ func metaTTL() time.Duration {
 // --- cache path helpers ---
 
 func cacheDir() string {
-	return filepath.Join(core.GetConfigDir(), "cache")
+	return appdir.CacheDir()
 }
 
 func cachePath() string {
@@ -110,11 +111,11 @@ func cacheMetaPath() string {
 // Returns false if the directory cannot be created or written to.
 func cacheWritable() bool {
 	dir := cacheDir()
-	if err := vfs.MkdirAll(dir, 0700); err != nil {
+	if err := vfs.MkdirAll(dir, 0o700); err != nil {
 		return false
 	}
 	probe := filepath.Join(dir, ".probe")
-	if err := vfs.WriteFile(probe, []byte{}, 0644); err != nil {
+	if err := vfs.WriteFile(probe, []byte{}, 0o644); err != nil {
 		return false
 	}
 	vfs.Remove(probe)
@@ -136,14 +137,14 @@ func loadCacheMeta() (CacheMeta, error) {
 }
 
 func saveCacheMeta(meta CacheMeta) error {
-	if err := vfs.MkdirAll(cacheDir(), 0700); err != nil {
+	if err := vfs.MkdirAll(cacheDir(), 0o700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
-	return validate.AtomicWrite(cacheMetaPath(), data, 0644)
+	return validate.AtomicWrite(cacheMetaPath(), data, 0o644)
 }
 
 func loadCachedMerged() (*MergedRegistry, error) {
@@ -163,10 +164,10 @@ func loadCachedMerged() (*MergedRegistry, error) {
 }
 
 func saveCachedMerged(data []byte, meta CacheMeta) error {
-	if err := vfs.MkdirAll(cacheDir(), 0700); err != nil {
+	if err := vfs.MkdirAll(cacheDir(), 0o700); err != nil {
 		return err
 	}
-	if err := validate.AtomicWrite(cachePath(), data, 0644); err != nil {
+	if err := validate.AtomicWrite(cachePath(), data, 0o644); err != nil {
 		return err
 	}
 	return saveCacheMeta(meta)
@@ -233,8 +234,8 @@ func (e *httpError) Error() string {
 // --- sync fetch (no embedded, no cache) ---
 
 // doSyncFetch performs a blocking fetch for first-run without embedded data.
-func doSyncFetch() {
-	fmt.Fprintf(os.Stderr, "Fetching API metadata...\n")
+func doSyncFetch(errOut io.Writer) {
+	fmt.Fprintln(errOut, "Fetching API metadata...")
 	data, reg, err := fetchRemoteMerged(embeddedVersion)
 	if err != nil || reg == nil {
 		// Write meta even on failure so we don't retry every invocation within TTL

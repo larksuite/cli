@@ -66,20 +66,18 @@ func (t *SecurityPolicyTransport) RoundTrip(req *http.Request) (*http.Response, 
 
 	// Try to parse it as JSON
 	var result map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		return resp, nil
-	}
+	if json.Unmarshal(bodyBytes, &result) == nil {
+		// 1. Try to handle as MCP (JSON-RPC) format first
+		if err := t.tryHandleMCPResponse(result); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
 
-	// 1. Try to handle as MCP (JSON-RPC) format first
-	if err := t.tryHandleMCPResponse(result); err != nil {
-		resp.Body.Close()
-		return nil, err
-	}
-
-	// 2. Try to handle as OpenAPI error format
-	if err := t.tryHandleOAPIResponse(result); err != nil {
-		resp.Body.Close()
-		return nil, err
+		// 2. Try to handle as OpenAPI error format
+		if err := t.tryHandleOAPIResponse(result); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
 	}
 
 	return resp, nil

@@ -17,7 +17,10 @@ func TestStorageDir_UsesValidatedDataDirEnv(t *testing.T) {
 	base, _ = filepath.EvalSymlinks(base)
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", filepath.Join(base, "data", "..", "store"))
 
-	got := StorageDir("svc")
+	got, err := StorageDir("svc")
+	if err != nil {
+		t.Fatalf("StorageDir() error = %v", err)
+	}
 	want := filepath.Join(base, "store", "svc")
 	if got != want {
 		t.Fatalf("StorageDir() = %q, want %q", got, want)
@@ -28,12 +31,20 @@ func TestStorageDir_UsesValidatedDataDirEnv(t *testing.T) {
 // LARKSUITE_CLI_DATA_DIR falls back to the default per-service storage path.
 func TestStorageDir_InvalidDataDirFallsBackToDefault(t *testing.T) {
 	home := t.TempDir()
-	home, _ = filepath.EvalSymlinks(home)
+	var err error
+	home, err = filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", home, err)
+	}
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", "relative-data")
+	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("HOME", home)
 
-	got := StorageDir("svc")
-	want := filepath.Join(home, ".local", "share", "svc")
+	got, err := StorageDir("svc")
+	if err != nil {
+		t.Fatalf("StorageDir() error = %v", err)
+	}
+	want := filepath.Join(home, ".local", "share", "lark-cli", "svc")
 	if got != want {
 		t.Fatalf("StorageDir() = %q, want %q", got, want)
 	}
