@@ -239,8 +239,11 @@ func buildCreateBlockData(mediaType string, index int, fileViewType int) map[str
 		fileData := map[string]interface{}{}
 		// view_type can only be set at block creation time; the PATCH
 		// replace_file endpoint does not accept it, so if the caller wants
-		// preview/inline rendering we must wire it in here.
-		if fileViewType > 0 {
+		// preview/inline rendering we must wire it in here. Whitelist the
+		// concrete enum values so a stray positive int cannot produce a
+		// malformed payload if Validate is ever bypassed.
+		switch fileViewType {
+		case 1, 2, 3:
 			fileData["view_type"] = fileViewType
 		}
 		child["file"] = fileData
