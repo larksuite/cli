@@ -21,6 +21,7 @@ type initMsg struct {
 	DetectedLarkTenant string
 	AppCreated         string
 	ConfigSaved        string
+	BrowserOpened      string
 }
 
 var initMsgZh = &initMsg{
@@ -35,6 +36,7 @@ var initMsgZh = &initMsg{
 	DetectedLarkTenant: "[lark-cli] 检测到 Lark 租户，切换端点重试...",
 	AppCreated:         "应用配置成功! App ID: %s",
 	ConfigSaved:        "应用配置成功! App ID: %s",
+	BrowserOpened:      "已在浏览器中打开，如未跳转请手动复制上方链接",
 }
 
 var initMsgEn = &initMsg{
@@ -49,8 +51,10 @@ var initMsgEn = &initMsg{
 	DetectedLarkTenant: "[lark-cli] Detected Lark tenant, switching endpoint...",
 	AppCreated:         "App configured! App ID: %s",
 	ConfigSaved:        "App configured! App ID: %s",
+	BrowserOpened:      "Opened in browser. If it didn't work, copy the URL above.",
 }
 
+// getInitMsg returns the localized init message strings for the given language.
 func getInitMsg(lang string) *initMsg {
 	if lang == "en" {
 		return initMsgEn

@@ -185,6 +185,9 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 
 	fmt.Fprintf(f.IOStreams.ErrOut, "%s", msg.ScanOrOpenLink)
 	fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", verificationURL)
+	if cmdutil.OpenBrowser(verificationURL) {
+		fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.BrowserOpened)
+	}
 
 	// Step 3: Poll for result
 	fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.WaitingForScan)
