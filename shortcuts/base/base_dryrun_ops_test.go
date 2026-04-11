@@ -32,6 +32,52 @@ func TestDryRunTableOps(t *testing.T) {
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
 }
 
+func TestDryRunTableCreateIncludesFieldAndViewFollowUps(t *testing.T) {
+	ctx := context.Background()
+	rt := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"name":       "Orders",
+			"fields":     `[{"name":"Order ID","type":"text"},{"name":"Amount","type":"number"}]`,
+			"view":       `[{"name":"Main","type":"grid"}]`,
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(t,
+		dryRunTableCreate(ctx, rt),
+		"# create table",
+		`{"name":"Orders"}`,
+		"PUT /open-apis/base/v3/bases/app_x/tables/%3Ccreated-table-id%3E/fields/%3Cprimary-field-id%3E",
+		`{"name":"Order ID","type":"text"}`,
+		"POST /open-apis/base/v3/bases/app_x/tables/%3Ccreated-table-id%3E/fields",
+		`{"name":"Amount","type":"number"}`,
+		"POST /open-apis/base/v3/bases/app_x/tables/%3Ccreated-table-id%3E/views",
+		`{"name":"Main","type":"grid"}`,
+	)
+}
+
+func TestDryRunTableCreateKeepsPrimaryCallWhenFieldsPreviewFails(t *testing.T) {
+	ctx := context.Background()
+	rt := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"name":       "Orders",
+			"fields":     "{",
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(t,
+		dryRunTableCreate(ctx, rt),
+		"# create table (follow-up --fields preview unavailable:",
+		"POST /open-apis/base/v3/bases/app_x/tables",
+		`{"name":"Orders"}`,
+	)
+}
+
 func TestDryRunFieldOps(t *testing.T) {
 	ctx := context.Background()
 
