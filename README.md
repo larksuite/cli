@@ -195,7 +195,7 @@ Prefixed with `+`, designed to be friendly for both humans and AI, with smart de
 
 ```bash
 lark-cli calendar +agenda
-lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
+lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 lark-cli docs +create --title "Weekly Report" --markdown "# Progress\n- Completed feature X"
 ```
 
