@@ -4,6 +4,7 @@
 package cmdutil
 
 import (
+	"context"
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
@@ -14,7 +15,7 @@ func TestAddAPIIdentityFlag_NonStrictMode(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
-	AddAPIIdentityFlag(cmd, f, nil)
+	AddAPIIdentityFlag(context.Background(), cmd, f, nil)
 
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
@@ -34,7 +35,7 @@ func TestAddAPIIdentityFlag_StrictModeHidesFlagAndLocksDefault(t *testing.T) {
 	})
 	cmd := &cobra.Command{Use: "test"}
 
-	AddAPIIdentityFlag(cmd, f, nil)
+	AddAPIIdentityFlag(context.Background(), cmd, f, nil)
 
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
@@ -52,7 +53,7 @@ func TestAddShortcutIdentityFlag_UsesAuthTypes(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
-	AddShortcutIdentityFlag(cmd, f, []string{"bot"})
+	AddShortcutIdentityFlag(context.Background(), cmd, f, []string{"bot"})
 
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
