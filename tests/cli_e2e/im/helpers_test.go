@@ -5,9 +5,7 @@ package im
 
 import (
 	"context"
-	"fmt"
 	"testing"
-	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
@@ -59,10 +57,4 @@ func sendMessage(t *testing.T, parentT *testing.T, ctx context.Context, chatID s
 	require.NotEmpty(t, messageID, "message_id should not be empty")
 
 	return messageID
-}
-
-// generateSuffix generates a unique suffix based on current timestamp.
-func generateSuffix() string {
-	now := time.Now().UTC()
-	return fmt.Sprintf("%s-%09d", now.Format("20060102-150405"), now.Nanosecond())
 }

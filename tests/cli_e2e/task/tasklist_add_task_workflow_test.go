@@ -19,7 +19,7 @@ func TestTask_TasklistAddTaskWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := clie2e.GenerateSuffix()
 	tasklistName := "lark-cli-e2e-tasklist-add-" + suffix
 	taskSummary := "lark-cli-e2e-tasklist-add-task-" + suffix
 

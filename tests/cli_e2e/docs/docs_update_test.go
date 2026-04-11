@@ -16,36 +16,21 @@ import (
 
 // TestDocs_UpdateWorkflow tests the create, update, and verify lifecycle.
 func TestDocs_UpdateWorkflow(t *testing.T) {
-	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := clie2e.GenerateSuffix()
+	folderName := "lark-cli-e2e-update-folder-" + suffix
 	originalTitle := "lark-cli-e2e-update-" + suffix
 	updatedTitle := "lark-cli-e2e-update-updated-" + suffix
 	originalContent := "# Original\n\nThis is the original content."
 	updatedContent := "# Updated\n\nThis is the updated content."
 
+	folderToken := createDocsFolderWithRetry(t, ctx, folderName)
 	var docToken string
 
 	t.Run("create", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{
-				"docs", "+create",
-				"--title", originalTitle,
-				"--markdown", originalContent,
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-		docToken = gjson.Get(result.Stdout, "data.doc_id").String()
-		require.NotEmpty(t, docToken, "stdout:\n%s", result.Stdout)
-
-		parentT.Cleanup(func() {
-			// No docs delete command is currently available in lark-cli,
-			// so created docs are intentionally left in the test account.
-		})
+		docToken = createDocWithRetry(t, ctx, folderToken, originalTitle, originalContent)
 	})
 
 	t.Run("update-title-and-content", func(t *testing.T) {

@@ -18,7 +18,7 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := testSuffix()
+	suffix := clie2e.GenerateSuffix()
 	createdTitle := "lark-cli-e2e-wiki-create-" + suffix
 	copiedTitle := "lark-cli-e2e-wiki-copy-" + suffix
 
@@ -52,10 +52,6 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 		assert.Equal(t, "docx", node.Get("obj_type").String())
 	})
 
-	if createdNodeToken == "" || spaceID == "" {
-		t.Skip("requires bot wiki create capability")
-	}
-
 	t.Run("get created node", func(t *testing.T) {
 		require.NotEmpty(t, createdNodeToken, "node token should be created before get_node")
 
@@ -68,9 +64,6 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfWikiUnavailable(t, result, "requires bot wiki node read capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 
@@ -91,9 +84,6 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfWikiUnavailable(t, result, "requires bot wiki space get capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 
@@ -110,9 +100,6 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfWikiUnavailable(t, result, "requires bot wiki space list capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 
@@ -124,23 +111,7 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 		require.NotEmpty(t, spaceID, "space ID should be available before list")
 		require.NotEmpty(t, createdNodeToken, "node token should be available before list")
 
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"wiki", "nodes", "list"},
-			DefaultAs: "bot",
-			Params: map[string]any{
-				"space_id":  spaceID,
-				"page_size": 50,
-			},
-		})
-		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfWikiUnavailable(t, result, "requires bot wiki node list capability")
-		}
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-
-		nodeItem := gjson.Get(result.Stdout, `data.items.#(node_token=="`+createdNodeToken+`")`)
-		assert.True(t, nodeItem.Exists(), "stdout:\n%s", result.Stdout)
+		nodeItem := findWikiNodeByToken(t, ctx, spaceID, createdNodeToken)
 		assert.Equal(t, createdTitle, nodeItem.Get("title").String())
 		assert.Equal(t, createdObjToken, nodeItem.Get("obj_token").String())
 	})
@@ -173,23 +144,7 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 		require.NotEmpty(t, spaceID, "space ID should be available before second list")
 		require.NotEmpty(t, copiedNodeToken, "copied node token should be available before second list")
 
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"wiki", "nodes", "list"},
-			DefaultAs: "bot",
-			Params: map[string]any{
-				"space_id":  spaceID,
-				"page_size": 50,
-			},
-		})
-		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfWikiUnavailable(t, result, "requires bot wiki node list capability")
-		}
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-
-		nodeItem := gjson.Get(result.Stdout, `data.items.#(node_token=="`+copiedNodeToken+`")`)
-		assert.True(t, nodeItem.Exists(), "stdout:\n%s", result.Stdout)
+		nodeItem := findWikiNodeByToken(t, ctx, spaceID, copiedNodeToken)
 		assert.Equal(t, copiedTitle, nodeItem.Get("title").String())
 	})
 }

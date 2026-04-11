@@ -21,14 +21,14 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := clie2e.GenerateSuffix()
 	spreadsheetToken := ""
 	sheetID := ""
 
 	t.Run("create spreadsheet with initial data", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args: []string{"sheets", "+create", "--title", "lark-cli-e2e-sheets-filter-" + suffix},
-		})
+		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
@@ -74,6 +74,7 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 				"sheets", "+write",
 				"--spreadsheet-token", spreadsheetToken,
 				"--sheet-id", sheetID,
+				"--range", "A1:C5",
 				"--values", string(valuesJSON),
 			},
 		})

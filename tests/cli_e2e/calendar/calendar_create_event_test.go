@@ -19,28 +19,18 @@ func TestCalendar_CreateEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := clie2e.GenerateSuffix()
 	eventSummary := "lark-cli-e2e-event-" + suffix
+	eventDescription := "test event description"
 
-	startTime := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
-	endTime := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+	startAt := time.Now().UTC().Add(1 * time.Hour).Truncate(time.Minute)
+	endAt := startAt.Add(1 * time.Hour)
+	startTime := startAt.Format(time.RFC3339)
+	endTime := endAt.Format(time.RFC3339)
 
 	var eventID string
-	var calendarID string
+	calendarID := getPrimaryCalendarID(t, ctx)
 
-	// Step 1: Get primary calendar ID (prerequisite)
-	t.Run("get primary calendar", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"calendar", "calendars", "primary"},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-		calendarID = gjson.Get(result.Stdout, "data.calendars.0.calendar.calendar_id").String()
-		require.NotEmpty(t, calendarID)
-	})
-
-	// Step 2: Create event using +create shortcut
 	t.Run("create event with shortcut", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"calendar", "+create",
@@ -48,8 +38,9 @@ func TestCalendar_CreateEvent(t *testing.T) {
 				"--start", startTime,
 				"--end", endTime,
 				"--calendar-id", calendarID,
-				"--description", "test event description",
+				"--description", eventDescription,
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -59,11 +50,11 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		require.NotEmpty(t, eventID)
 	})
 
-	// Step 3: Verify event was created using events.get resource command
 	t.Run("verify event created", func(t *testing.T) {
 		require.NotEmpty(t, eventID)
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"calendar", "events", "get"},
+			Args:      []string{"calendar", "events", "get"},
+			DefaultAs: "bot",
 			Params: map[string]any{
 				"calendar_id": calendarID,
 				"event_id":    eventID,
@@ -73,14 +64,16 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 		assert.Equal(t, eventSummary, gjson.Get(result.Stdout, "data.event.summary").String())
-		assert.Equal(t, "test event description", gjson.Get(result.Stdout, "data.event.description").String())
+		assert.Equal(t, eventDescription, gjson.Get(result.Stdout, "data.event.description").String())
+		assert.Equal(t, unixSecondsRFC3339(startAt), gjson.Get(result.Stdout, "data.event.start_time.timestamp").String())
+		assert.Equal(t, unixSecondsRFC3339(endAt), gjson.Get(result.Stdout, "data.event.end_time.timestamp").String())
 	})
 
-	// Step 4: Delete event using events.delete resource command
 	t.Run("delete event", func(t *testing.T) {
 		require.NotEmpty(t, eventID)
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"calendar", "events", "delete"},
+			Args:      []string{"calendar", "events", "delete"},
+			DefaultAs: "bot",
 			Params: map[string]any{
 				"calendar_id": calendarID,
 				"event_id":    eventID,
@@ -90,5 +83,4 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
 	})
-
 }

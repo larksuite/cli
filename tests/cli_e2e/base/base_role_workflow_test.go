@@ -19,20 +19,35 @@ func TestBase_RoleWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
 
-	baseToken := createBase(t, ctx, "lark-cli-e2e-base-role-"+testSuffix())
+	baseToken := createBaseWithRetry(t, ctx, "lark-cli-e2e-base-role-"+clie2e.GenerateSuffix())
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args:      []string{"base", "+advperm-enable", "--base-token", baseToken},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
-	if result.ExitCode != 0 {
-		skipIfBaseUnavailable(t, result, "requires bot advanced permission enable capability")
-	}
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
 
-	roleName := "Reviewer-" + testSuffix()
-	roleID := createRole(t, parentT, ctx, baseToken, `{"role_name":"`+roleName+`","role_type":"custom_role"}`)
+	roleName := "Reviewer-" + clie2e.GenerateSuffix()
+	createRole(t, ctx, baseToken, `{"role_name":"`+roleName+`","role_type":"custom_role"}`)
+	roleID := ""
+
+	parentT.Cleanup(func() {
+		if roleID == "" {
+			return
+		}
+
+		cleanupCtx, cancel := cleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
+			Args:      []string{"base", "+role-delete", "--base-token", baseToken, "--role-id", roleID, "--yes"},
+			DefaultAs: "bot",
+		})
+		if deleteErr != nil || deleteResult.ExitCode != 0 {
+			reportCleanupFailure(parentT, "delete role "+roleID, deleteResult, deleteErr)
+		}
+	})
 
 	t.Run("list", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -40,9 +55,6 @@ func TestBase_RoleWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfBaseUnavailable(t, result, "requires bot role list capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
@@ -59,23 +71,24 @@ func TestBase_RoleWorkflow(t *testing.T) {
 			if !gjson.Valid(rolePayload) {
 				continue
 			}
-			if gjson.Get(rolePayload, "role_id").String() == roleID {
+			if gjson.Get(rolePayload, "role_name").String() == roleName {
+				roleID = gjson.Get(rolePayload, "role_id").String()
 				found = true
 				break
 			}
 		}
-		assert.True(t, found, "stdout:\n%s", result.Stdout)
+		require.True(t, found, "stdout:\n%s", result.Stdout)
+		require.NotEmpty(t, roleID, "stdout:\n%s", result.Stdout)
 	})
 
 	t.Run("get", func(t *testing.T) {
+		require.NotEmpty(t, roleID, "role ID should be resolved before get")
+
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+role-get", "--base-token", baseToken, "--role-id", roleID},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfBaseUnavailable(t, result, "requires bot role get capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
@@ -86,15 +99,14 @@ func TestBase_RoleWorkflow(t *testing.T) {
 	})
 
 	t.Run("update", func(t *testing.T) {
+		require.NotEmpty(t, roleID, "role ID should be resolved before update")
+
 		updatedRoleName := roleName + " Updated"
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+role-update", "--base-token", baseToken, "--role-id", roleID, "--json", `{"role_name":"` + updatedRoleName + `","role_type":"custom_role"}`, "--yes"},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfBaseUnavailable(t, result, "requires bot role update capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
@@ -103,9 +115,6 @@ func TestBase_RoleWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		if getResult.ExitCode != 0 {
-			skipIfBaseUnavailable(t, getResult, "requires bot role get capability")
-		}
 		getResult.AssertExitCode(t, 0)
 		getResult.AssertStdoutStatus(t, true)
 
@@ -115,16 +124,4 @@ func TestBase_RoleWorkflow(t *testing.T) {
 		assert.Equal(t, updatedRoleName, gjson.Get(rolePayload, "role_name").String())
 	})
 
-	t.Run("delete", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+role-delete", "--base-token", baseToken, "--role-id", roleID, "--yes"},
-			DefaultAs: "bot",
-		})
-		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfBaseUnavailable(t, result, "requires bot role delete capability")
-		}
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-	})
 }

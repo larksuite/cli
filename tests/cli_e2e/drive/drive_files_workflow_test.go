@@ -9,8 +9,6 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestDrive_FilesCreateFolderWorkflow tests the files create_folder resource command.
@@ -19,30 +17,13 @@ func TestDrive_FilesCreateFolderWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := clie2e.GenerateSuffix()
 	folderName := "lark-cli-e2e-drive-folder-" + suffix
 
-	var folderToken string
-
 	t.Run("create_folder", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"drive", "files", "create_folder"},
-			Data: map[string]any{
-				"name":         folderName,
-				"folder_token": "",
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-
-		folderToken = gjson.Get(result.Stdout, "data.token").String()
-		require.NotEmpty(t, folderToken, "folder token should be available, stdout:\n%s", result.Stdout)
-
-		parentT.Cleanup(func() {
-			clie2e.RunCmd(context.Background(), clie2e.Request{
-				Args:   []string{"drive", "files", "delete"},
-				Params: map[string]any{"file_token": folderToken, "type": "folder"},
-			})
-		})
+		folderToken := createDriveFolder(t, parentT, ctx, folderName)
+		if folderToken == "" {
+			t.Fatalf("folder token should be available")
+		}
 	})
 }

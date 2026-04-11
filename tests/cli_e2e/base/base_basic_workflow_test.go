@@ -19,8 +19,8 @@ func TestBase_BasicWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
 
-	baseName := "lark-cli-e2e-base-basic-" + testSuffix()
-	baseToken := createBase(t, ctx, baseName)
+	baseName := "lark-cli-e2e-base-basic-" + clie2e.GenerateSuffix()
+	baseToken := createBaseWithRetry(t, ctx, baseName)
 
 	t.Run("get base", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -28,9 +28,6 @@ func TestBase_BasicWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfBaseUnavailable(t, result, "requires bot base get capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 		returnedBaseToken := gjson.Get(result.Stdout, "data.base.app_token").String()
@@ -41,8 +38,8 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		assert.NotEmpty(t, gjson.Get(result.Stdout, "data.base.name").String(), "stdout:\n%s", result.Stdout)
 	})
 
-	tableName := "lark-cli-e2e-table-basic-" + testSuffix()
-	tableID, primaryFieldID, primaryViewID := createTable(
+	tableName := "lark-cli-e2e-table-basic-" + clie2e.GenerateSuffix()
+	tableID, primaryFieldID, primaryViewID := createTableWithRetry(
 		t,
 		parentT,
 		ctx,
@@ -58,9 +55,6 @@ func TestBase_BasicWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfBaseUnavailable(t, result, "requires bot table get capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 		assert.Equal(t, tableID, gjson.Get(result.Stdout, "data.table.id").String())
@@ -73,9 +67,6 @@ func TestBase_BasicWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		if result.ExitCode != 0 {
-			skipIfBaseUnavailable(t, result, "requires bot table list capability")
-		}
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 		assert.True(t, gjson.Get(result.Stdout, `data.tables.#(id=="`+tableID+`")`).Exists(), "stdout:\n%s", result.Stdout)
