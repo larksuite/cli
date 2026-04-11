@@ -167,6 +167,25 @@ Drive Folder (云空间文件夹)
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
 | `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet） |
 
+### 授权当前应用访问文档
+
+当需要将文档权限授予**当前应用（bot）自身**时，先通过 bot info 接口获取应用的 open_id，再调用权限接口授权：
+
+```bash
+# 1. 获取当前应用的 open_id
+lark-cli api GET /open-apis/bot/v3/info --as bot
+# 从返回值中取 bot.open_id
+
+# 2. 授权当前应用访问文档
+lark-cli drive permission.members create \
+  --params '{"token":"<doc_token>","type":"<resource_type>"}' \
+  --data '{"member_type":"openid","member_id":"<bot_open_id>","perm":"view","type":"user"}'
+```
+
+> **注意**：此方式仅适用于需要授权给**当前应用**的场景。授权给其他用户时，直接使用对方的 open_id 即可，无需调用 bot info 接口。
+
+`<resource_type>` 可选值：`doc`、`docx`、`sheet`、`bitable`、`file`、`folder`、`wiki`。
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）。有 Shortcut 的操作优先使用。
