@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -16,7 +17,7 @@ var DocsCreate = common.Shortcut{
 	Description: "Create a Lark document",
 	Risk:        "write",
 	AuthTypes:   []string{"user", "bot"},
-	Scopes:      []string{"docx:document:create"},
+	Scopes:      []string{"docx:document:create", "docx:document:readonly", "docx:document:write_only"},
 	Flags: []common.Flag{
 		{Name: "title", Desc: "document title"},
 		{Name: "markdown", Desc: "Markdown content (Lark-flavored)", Required: true, Input: []string{common.File, common.Stdin}},
@@ -61,6 +62,16 @@ var DocsCreate = common.Shortcut{
 		augmentDocsCreateResult(runtime, result)
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
+
+		if markdownLikelyContainsTable(runtime.Str("markdown")) {
+			// Post-process: auto-resize table column widths
+			docID := common.GetString(result, "doc_id")
+			if docID != "" {
+				if warn := autoResizeTableColumns(runtime, docID); warn != "" {
+					fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
+				}
+			}
+		}
 		runtime.Out(result, nil)
 		return nil
 	},
