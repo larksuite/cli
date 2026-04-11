@@ -17,7 +17,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// TestSlidesCreateBasic verifies that slides +create returns the presentation ID and title in user mode.
+// TestSlidesCreateBasic verifies that slides +create returns the presentation ID, title, and URL in user mode.
 func TestSlidesCreateBasic(t *testing.T) {
 	t.Parallel()
 
@@ -34,6 +34,7 @@ func TestSlidesCreateBasic(t *testing.T) {
 			},
 		},
 	})
+	registerBatchQueryStub(reg, "pres_abc123", "https://example.feishu.cn/slides/pres_abc123")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -50,6 +51,9 @@ func TestSlidesCreateBasic(t *testing.T) {
 	}
 	if data["title"] != "项目汇报" {
 		t.Fatalf("title = %v, want 项目汇报", data["title"])
+	}
+	if data["url"] != "https://example.feishu.cn/slides/pres_abc123" {
+		t.Fatalf("url = %v, want https://example.feishu.cn/slides/pres_abc123", data["url"])
 	}
 	if _, ok := data["permission_grant"]; ok {
 		t.Fatalf("did not expect permission_grant in user mode")
@@ -73,6 +77,7 @@ func TestSlidesCreateBotAutoGrant(t *testing.T) {
 			},
 		},
 	})
+	registerBatchQueryStub(reg, "pres_bot", "https://example.feishu.cn/slides/pres_bot")
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/permissions/pres_bot/members",
@@ -125,6 +130,7 @@ func TestSlidesCreateBotSkippedWithoutCurrentUser(t *testing.T) {
 			},
 		},
 	})
+	registerBatchQueryStub(reg, "pres_no_user", "https://example.feishu.cn/slides/pres_no_user")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -182,6 +188,7 @@ func TestSlidesCreateDefaultTitle(t *testing.T) {
 			},
 		},
 	})
+	registerBatchQueryStub(reg, "pres_default", "https://example.feishu.cn/slides/pres_default")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -244,6 +251,7 @@ func TestSlidesCreateWithSlides(t *testing.T) {
 			},
 		},
 	})
+	registerBatchQueryStub(reg, "pres_with_slides", "https://example.feishu.cn/slides/pres_with_slides")
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_with_slides/slide",
@@ -420,6 +428,7 @@ func TestSlidesCreateWithSlidesEmptyArray(t *testing.T) {
 			},
 		},
 	})
+	registerBatchQueryStub(reg, "pres_empty_slides", "https://example.feishu.cn/slides/pres_empty_slides")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -492,6 +501,7 @@ func TestSlidesCreateWithoutSlidesUnchanged(t *testing.T) {
 			},
 		},
 	})
+	registerBatchQueryStub(reg, "pres_no_slides", "https://example.feishu.cn/slides/pres_no_slides")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -517,6 +527,51 @@ func TestSlidesCreateWithoutSlidesUnchanged(t *testing.T) {
 	}
 	if _, ok := data["permission_grant"]; ok {
 		t.Fatalf("did not expect permission_grant in user mode")
+	}
+}
+
+// TestSlidesCreateURLFetchBestEffort verifies that the shortcut succeeds even when batch_query fails.
+func TestSlidesCreateURLFetchBestEffort(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"xml_presentation_id": "pres_no_url",
+				"revision_id":         1,
+			},
+		},
+	})
+	// batch_query returns an error — URL fetch should be silently skipped
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 99999,
+			"msg":  "no permission",
+		},
+	})
+
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "No URL",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSlidesCreateEnvelope(t, stdout)
+	if data["xml_presentation_id"] != "pres_no_url" {
+		t.Fatalf("xml_presentation_id = %v, want pres_no_url", data["xml_presentation_id"])
+	}
+	if _, ok := data["url"]; ok {
+		t.Fatalf("did not expect url when batch_query fails")
 	}
 }
 
@@ -565,6 +620,22 @@ func runSlidesCreateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buf
 		stdout.Reset()
 	}
 	return parent.Execute()
+}
+
+// registerBatchQueryStub registers a drive meta batch_query mock that returns the given URL.
+func registerBatchQueryStub(reg *httpmock.Registry, token, url string) {
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": token, "doc_type": "slides", "title": "", "url": url},
+				},
+			},
+		},
+	})
 }
 
 // decodeSlidesCreateEnvelope parses the JSON output and returns the data map.

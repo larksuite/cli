@@ -151,6 +151,31 @@ var SlidesCreate = common.Shortcut{
 			}
 		}
 
+		// Fetch presentation URL via drive meta (best-effort)
+		if metaData, err := runtime.CallAPI(
+			"POST",
+			"/open-apis/drive/v1/metas/batch_query",
+			nil,
+			map[string]interface{}{
+				"request_docs": []map[string]interface{}{
+					{
+						"doc_token": presentationID,
+						"doc_type":  "slides",
+					},
+				},
+				"with_url": true,
+			},
+		); err == nil {
+			metas := common.GetSlice(metaData, "metas")
+			if len(metas) > 0 {
+				if meta, ok := metas[0].(map[string]interface{}); ok {
+					if url := common.GetString(meta, "url"); url != "" {
+						result["url"] = url
+					}
+				}
+			}
+		}
+
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, presentationID, "slides"); grant != nil {
 			result["permission_grant"] = grant
 		}

@@ -30,6 +30,7 @@ lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
 
 - **`xml_presentation_id`**（string）：演示文稿的唯一标识符，后续添加页面时需要此 ID
 - **`title`**（string）：演示文稿标题
+- **`url`**（string，可选）：演示文稿的在线链接，如有返回则务必展示给用户（需要 drive 相关权限；若获取失败则不返回此字段）
 - **`revision_id`**（integer）：演示文稿版本号
 - **`slide_ids`**（string[]，可选）：仅传 `--slides` 时返回，成功添加的页面 ID 列表
 - **`slides_added`**（integer，可选）：仅传 `--slides` 时返回，成功添加的页面数量
