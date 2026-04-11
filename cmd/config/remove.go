@@ -48,6 +48,12 @@ func NewCmdConfigRemove(f *cmdutil.Factory, runF func(*ConfigRemoveOptions) erro
 }
 
 func configRemoveRun(opts *ConfigRemoveOptions) error {
+	if opts == nil || opts.Factory == nil ||
+		opts.LoadConfig == nil || opts.SaveConfig == nil ||
+		opts.RemoveSecret == nil || opts.RemoveStoredToken == nil {
+		return output.Errorf(output.ExitInternal, "internal", "config remove options not initialized")
+	}
+
 	f := opts.Factory
 
 	config, err := opts.LoadConfig()
@@ -55,13 +61,14 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 		return output.ErrValidation("not configured yet")
 	}
 
-	// Save empty config first so a write failure does not destroy the only recoverable state.
+	// Save empty config first. If this fails, keep secrets and tokens intact so the
+	// existing config can still be retried instead of ending up half-removed.
 	empty := &core.MultiAppConfig{Apps: []core.AppConfig{}}
 	if err := opts.SaveConfig(empty); err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 
-	// Clean up keychain entries for all apps after config has been cleared successfully.
+	// Clean up keychain entries for all apps after config is cleared.
 	for _, app := range config.Apps {
 		opts.RemoveSecret(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
@@ -70,6 +77,7 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 			}
 		}
 	}
+
 	output.PrintSuccess(f.IOStreams.ErrOut, "Configuration removed")
 	userCount := 0
 	for _, app := range config.Apps {
