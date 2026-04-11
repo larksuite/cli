@@ -107,13 +107,22 @@ func TestBuildCreateBlockDataForImageIgnoresFileViewType(t *testing.T) {
 func TestFileViewMapCoversDocumentedValues(t *testing.T) {
 	t.Parallel()
 
+	// Assert only the documented keys — leave room for future aliases
+	// (e.g. a "player" synonym for preview) without breaking this test.
 	want := map[string]int{
 		"card":    1,
 		"preview": 2,
 		"inline":  3,
 	}
-	if !reflect.DeepEqual(fileViewMap, want) {
-		t.Fatalf("fileViewMap = %#v, want %#v", fileViewMap, want)
+	for key, expected := range want {
+		got, ok := fileViewMap[key]
+		if !ok {
+			t.Errorf("fileViewMap missing required key %q", key)
+			continue
+		}
+		if got != expected {
+			t.Errorf("fileViewMap[%q] = %d, want %d", key, got, expected)
+		}
 	}
 }
 
