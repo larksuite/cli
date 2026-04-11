@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" height="540" width="960">
+    <title>制造端智能升级</title>
+    <theme>
+        <textStyles>
+            <headline fontColor="rgb(255,255,255)" fontFamily="思源黑体" fontSize="36"/>
+            <sub-headline fontColor="rgb(229,231,235)" fontFamily="思源黑体" fontSize="20"/>
+            <body fontColor="rgb(229,231,235)" fontFamily="思源黑体" fontSize="16"/>
+        </textStyles>
+    </theme>
+    <slide>
+        <style>
+            <fill>
+                <fillColor color="linear-gradient(180deg, rgb(47, 79, 79) 0%, rgb(26, 26, 26) 100%)"/>
+            </fill>
+        </style>
+        <data>
+            <shape height="36" rotation="0" topLeftX="48" topLeftY="40" type="text" width="300">
+                <content>
+                    <p>
+                        <strong>
+                            <span color="rgb(255, 215, 0)" fontFamily="黑体" fontSize="28">时代背景</span>
+                        </strong>
+                    </p>
+                </content>
+            </shape>
+            <shape height="200" rotation="0" topLeftX="48" topLeftY="85" type="rect" width="864">
+                <fill>
+                    <fillColor color="rgba(0,0,0,0.2)"/>
+                </fill>
+            </shape>
+            <img alpha="0.4" alt="十月革命场景" height="180" rotation="0" src="https://example.com/images/scene-1.png" topLeftX="48" topLeftY="95" width="288">
+                <crop type="rect"/>
+            </img>
+            <img alpha="0.4" alt="列宁演讲油画" height="180" rotation="0" src="https://example.com/images/scene-2.png" topLeftX="336" topLeftY="95" width="288">
+                <crop type="rect"/>
+            </img>
+            <img alpha="0.4" alt="十月革命战斗场面" height="180" rotation="0" src="https://example.com/images/scene-3.png" topLeftX="624" topLeftY="95" width="288">
+                <crop type="rect"/>
+            </img>
+            <shape height="2" rotation="0" topLeftX="90" topLeftY="180" type="rect" width="780">
+                <fill>
+                    <fillColor color="rgba(255, 215, 0, 0.3)"/>
+                </fill>
+            </shape>
+            <shape height="10" rotation="0" topLeftX="120" topLeftY="176" type="ellipse" width="10">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+                <border color="rgb(255, 215, 0)" width="1"/>
+            </shape>
+            <shape height="24" rotation="0" topLeftX="60" topLeftY="140" type="text" width="200">
+                <content>
+                    <p textAlign="center">
+                        <strong>
+                            <span color="rgb(255, 215, 0)" fontFamily="黑体" fontSize="20">1917</span>
+                        </strong>
+                    </p>
+                </content>
+            </shape>
+            <shape height="22" rotation="0" topLeftX="60" topLeftY="200" type="text" width="200">
+                <content>
+                    <p textAlign="center">
+                        <span color="rgb(230, 230, 230)" fontFamily="宋体" fontSize="16">十月革命</span>
+                    </p>
+                </content>
+            </shape>
+            <shape height="40" rotation="0" topLeftX="60" topLeftY="225" type="text" width="200">
+                <content verticalAlign="top">
+                    <p textAlign="center">
+                        <span color="rgb(156, 163, 175)" fontSize="12">沙皇专制终结，苏维埃政权建立</span>
+                    </p>
+                </content>
+            </shape>
+            <shape height="10" rotation="0" topLeftX="475" topLeftY="176" type="ellipse" width="10">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+                <border color="rgb(255, 215, 0)" width="1"/>
+            </shape>
+            <shape height="24" rotation="0" topLeftX="380" topLeftY="140" type="text" width="200">
+                <content>
+                    <p textAlign="center">
+                        <strong>
+                            <span color="rgb(255, 215, 0)" fontFamily="黑体" fontSize="20">1920s</span>
+                        </strong>
+                    </p>
+                </content>
+            </shape>
+            <shape height="22" rotation="0" topLeftX="380" topLeftY="200" type="text" width="200">
+                <content>
+                    <p textAlign="center">
+                        <span color="rgb(230, 230, 230)" fontFamily="宋体" fontSize="16">国内战争</span>
+                    </p>
+                </content>
+            </shape>
+            <shape height="40" rotation="0" topLeftX="380" topLeftY="225" type="text" width="200">
+                <content verticalAlign="top">
+                    <p textAlign="center">
+                        <span color="rgb(156, 163, 175)" fontSize="12">革命与反革命的残酷斗争</span>
+                    </p>
+                </content>
+            </shape>
+            <shape height="10" rotation="0" topLeftX="830" topLeftY="176" type="ellipse" width="10">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+                <border color="rgb(255, 215, 0)" width="1"/>
+            </shape>
+            <shape height="24" rotation="0" topLeftX="740" topLeftY="140" type="text" width="200">
+                <content>
+                    <p textAlign="center">
+                        <strong>
+                            <span color="rgb(255, 215, 0)" fontFamily="黑体" fontSize="20">1930s</span>
+                        </strong>
+                    </p>
+                </content>
+            </shape>
+            <shape height="22" rotation="0" topLeftX="740" topLeftY="200" type="text" width="200">
+                <content>
+                    <p textAlign="center">
+                        <span color="rgb(230, 230, 230)" fontFamily="宋体" fontSize="16">社会主义建设</span>
+                    </p>
+                </content>
+            </shape>
+            <shape height="40" rotation="0" topLeftX="740" topLeftY="225" type="text" width="200">
+                <content verticalAlign="top">
+                    <p textAlign="center">
+                        <span color="rgb(156, 163, 175)" fontSize="12">新经济政策与工业化探索</span>
+                    </p>
+                </content>
+            </shape>
+            <shape height="1" rotation="0" topLeftX="48" topLeftY="300" type="rect" width="864">
+                <fill>
+                    <fillColor color="rgba(255, 215, 0, 0.2)"/>
+                </fill>
+            </shape>
+            <shape height="24" rotation="0" topLeftX="48" topLeftY="320" type="text" width="280">
+                <content>
+                    <p>
+                        <span color="rgb(230, 230, 230)" fontFamily="宋体" fontSize="18">作者：奥斯特洛夫斯基</span>
+                    </p>
+                </content>
+            </shape>
+            <icon height="16" iconType="iconpark/Peoples/user.svg" topLeftX="52" topLeftY="360" width="16">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+            </icon>
+            <shape height="20" topLeftX="76" topLeftY="358" type="text" width="260">
+                <content verticalAlign="middle">
+                    <p>
+                        <span color="rgb(209, 213, 219)" fontSize="13">工人家庭出身，投身革命浪潮</span>
+                    </p>
+                </content>
+            </shape>
+            <icon height="16" iconType="iconpark/Sports/torch.svg" topLeftX="52" topLeftY="390" width="16">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+            </icon>
+            <shape height="20" topLeftX="76" topLeftY="388" type="text" width="260">
+                <content verticalAlign="middle">
+                    <p>
+                        <span color="rgb(209, 213, 219)" fontSize="13">战场负伤致残，生命陷入黑暗</span>
+                    </p>
+                </content>
+            </shape>
+            <icon height="16" iconType="iconpark/Health/first-aid-kit.svg" topLeftX="52" topLeftY="420" width="16">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+            </icon>
+            <shape height="20" topLeftX="76" topLeftY="418" type="text" width="260">
+                <content verticalAlign="middle">
+                    <p>
+                        <span color="rgb(209, 213, 219)" fontSize="13">全身瘫痪、双目失明</span>
+                    </p>
+                </content>
+            </shape>
+            <icon height="16" iconType="iconpark/Edit/edit.svg" topLeftX="52" topLeftY="450" width="16">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+            </icon>
+            <shape height="20" topLeftX="76" topLeftY="448" type="text" width="260">
+                <content verticalAlign="middle">
+                    <p>
+                        <span color="rgb(209, 213, 219)" fontSize="13">以文学为武器，口述完成创作</span>
+                    </p>
+                </content>
+            </shape>
+            <img alt="奥斯特洛夫斯基青年时期" height="213" rotation="0" src="https://example.com/images/ostrovsky.png" topLeftX="360" topLeftY="320" width="160">
+                <border color="rgba(255, 215, 0, 0.5)" width="2"/>
+                <crop type="rect"/>
+            </img>
+            <shape height="24" rotation="0" topLeftX="552" topLeftY="320" type="text" width="360">
+                <content>
+                    <p>
+                        <span color="rgb(230, 230, 230)" fontFamily="宋体" fontSize="18">创作动机</span>
+                    </p>
+                </content>
+            </shape>
+            <shape height="16" rotation="0" topLeftX="552" topLeftY="350" type="rect" width="2">
+                <fill>
+                    <fillColor color="rgb(196, 30, 58)"/>
+                </fill>
+            </shape>
+            <shape height="120" rotation="0" topLeftX="562" topLeftY="350" type="text" width="350">
+                <content lineSpacing="multiple:1.6" verticalAlign="top">
+                    <p>
+                        <span color="rgb(209, 213, 219)" fontSize="13">在双目失明、全身瘫痪的逆境中，奥斯特洛夫斯基以自身经历为蓝本，用顽强的意志口述完成了这部不朽巨著。他将文学创作视为生命的延续和战斗的武器，旨在通过保尔·柯察金的形象，向青年一代传递坚不可摧的革命信念和超越个人痛苦的崇高人生价值观。</span>
+                    </p>
+                </content>
+            </shape>
+        </data>
+        <note>
+            <content>
+                <p>各位好，这一页将我们带回《钢铁是怎样炼成的》这部巨著诞生的波澜壮阔的时代。</p>
+                <p>上半部分展示了从1917年十月革命到1930年代苏联社会主义建设的宏大历史画卷。这是一个充满剧烈社会变革和残酷斗争的年代，也是英雄主义和理想主义精神熊熊燃烧的年代。正是这样的背景，孕育了小说的灵魂。</p>
+                <p>下半部分，我们聚焦于作者奥斯特洛夫斯基的个人经历。他的一生，本身就是一部比小说更震撼人心的传奇。从投身革命的青年，到因伤致残的战士，再到与命运抗争的文学巨匠。他的创作动机源于自身不屈的战斗精神，他希望用保尔的故事激励后人，在任何困境中都不要放弃理想，要将有限的生命投入到无限的为人类解放而斗争的事业中去。</p>
+                <p>通过了解这段历史和作者的生平，我们能更深刻地理解《钢铁是怎样炼成的》这部作品的伟大之处。</p>
+            </content>
+        </note>
+    </slide>
+</presentation>

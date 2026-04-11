@@ -56,6 +56,9 @@ func TestIsNewer(t *testing.T) {
 		{"1.0.0", "9b933f1", true},                  // bare commit hash → assume outdated
 		{"", "1.0.0", false},                        // empty remote → false
 		{"1.1.0", "v1.0.0-12-g9b933f1-dirty", true}, // git describe: 1.1.0 > 1.0.0
+		{"1.0.0", "1.0.0-rc.1", true},               // stable release > prerelease
+		{"1.0.0-rc.2", "1.0.0-rc.1", true},          // prerelease identifiers are ordered
+		{"1.0.0-rc.1", "1.0.0", false},              // prerelease < stable release
 	}
 	for _, tt := range tests {
 		got := IsNewer(tt.a, tt.b)
@@ -74,6 +77,16 @@ func TestParseVersion(t *testing.T) {
 		{"v1.2.3", []int{1, 2, 3}},
 		{"0.0.1", []int{0, 0, 1}},
 		{"1.0.0-beta.1", []int{1, 0, 0}},
+		{"1.0.0-rc.1", []int{1, 0, 0}},
+		{"1.0.0-0", []int{1, 0, 0}},
+		{"1.0.0+build.123", []int{1, 0, 0}},
+		{"1.0.0-beta.1+build", []int{1, 0, 0}},
+		{"1.0.0-", nil},        // empty pre-release
+		{"1.0.0-01", nil},      // leading zero in numeric pre-release
+		{"1.0.0-beta..1", nil}, // empty identifier between dots
+		{"01.0.0", nil},        // leading zero in major
+		{"1.00.0", nil},        // leading zero in minor
+		{"1.0.00", nil},        // leading zero in patch
 		{"DEV", nil},
 		{"", nil},
 		{"1.2", nil},

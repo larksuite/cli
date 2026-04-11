@@ -956,6 +956,8 @@ func sleepBetweenBatches(index int, total int) {
 
 // ── Dashboard Block data_config normalization & validation ───────────
 
+// normalizeDataConfig normalizes data_config fields for dashboard blocks.
+// It converts series[].rollup to uppercase and group_by[].sort fields to lowercase.
 func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 	if cfg == nil {
 		return nil
@@ -997,8 +999,21 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 	return out
 }
 
+// validateBlockDataConfig validates data_config based on block type.
+// For text type, it checks for the presence of text field.
+// For chart types, it validates table_name, series/count_all, group_by, and filter fields.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
 	var errs []string
+
+	// text 类型特殊校验：只需要有 text 字段即可
+	if strings.ToLower(blockType) == "text" {
+		if txt, _ := cfg["text"].(string); strings.TrimSpace(txt) == "" {
+			errs = append(errs, "text 类型组件缺少必填字段 text")
+		}
+		return errs
+	}
+
+	// 图表类型通用校验
 	// table_name 必填
 	if tn, _ := cfg["table_name"].(string); strings.TrimSpace(tn) == "" {
 		errs = append(errs, "缺少必填字段 table_name")

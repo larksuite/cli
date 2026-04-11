@@ -38,9 +38,10 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 | `--description <text>` | 否 | 日程详细描述。提供会议议程、活动内容、注意事项或链接等。与 summary 配合使用，仅关注当前日程信息 |
 | `--attendee-ids <id_list>` | 否 | 参与人 ID 列表（逗号分隔）。支持用户（`ou_`）、群组（`oc_`）和会议室（`omm_`）。AI 提取时请务必保留对应前缀 |
 | `--calendar-id <id>` | 否 | 日历 ID（省略则使用主日历） |
-| `--rrule <rrule>` | 否 | 重复日程的重复性规则，规则设置方式参考rfc5545。注意：COUNT 和UNTIL 不支持同时出现。示例值："FREQ=DAILY;INTERVAL=1" |
+| `--rrule <rrule>` | 否 | 重复日程的重复性规则，规则设置方式参考rfc5545。**【⚠️注意：系统绝对不支持 COUNT，如需限制重复次数，必须转为 UNTIL】**。示例值："FREQ=DAILY;INTERVAL=1" |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
+> **⚠️ `rrule` 规则限制：飞书日历系统不支持 `COUNT` 参数。遇到限制重复次数的需求，必须根据开始时间和频率自行推算并转换成 `UNTIL=<具体日期>` 格式。**
 > 自动设置 `attendee_ability: "can_modify_event"`，参会人可查看彼此并编辑日程。
 > 自动设置 `free_busy_status: "busy"`，默认日程忙闲状态为忙碌。
 > 自动设置 `reminders: [{"minutes": 5}]`，默认日程开始前 5 分钟提醒。
@@ -105,4 +106,4 @@ lark-cli calendar events delete \
 
 - [lark-calendar](../SKILL.md) -- 日历全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数
-- [lark-calendar-suggestion](lark-calendar-suggestion.md) -- 智能推荐空闲时段
+- [lark-calendar-suggestion](lark-calendar-suggestion.md) -- 根据非明确时间或一段时间范围，推荐多个可用时间块方案

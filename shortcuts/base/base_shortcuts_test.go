@@ -132,7 +132,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
-		"+record-list", "+record-get", "+record-upsert", "+record-upload-attachment", "+record-delete",
+		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-upload-attachment", "+record-delete",
 		"+record-history-list",
 		"+base-get", "+base-copy", "+base-create",
 		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+advperm-enable", "+advperm-disable",
@@ -140,7 +140,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+data-query",
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
-		"+dashboard-list", "+dashboard-get", "+dashboard-create", "+dashboard-update", "+dashboard-delete",
+		"+dashboard-list", "+dashboard-get", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 	}
 	if len(shortcuts) != len(want) {
@@ -252,21 +252,19 @@ func TestBaseTableValidate(t *testing.T) {
 }
 
 func TestBaseRecordValidate(t *testing.T) {
-	ctx := context.Background()
 	if BaseRecordList.Validate != nil {
 		t.Fatalf("record list validate should be nil for repeatable --field-id")
+	}
+	if BaseRecordSearch.Validate != nil {
+		t.Fatalf("record search validate should be nil for API passthrough")
 	}
 	if BaseRecordGet.Validate != nil {
 		t.Fatalf("record get validate should be nil")
 	}
-	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"A"}`}, nil, nil)); err != nil {
-		t.Fatalf("upsert validate err=%v", err)
-	}
-	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": "{"}, nil, nil)); err != nil {
-		t.Fatalf("invalid record json should bypass CLI validate, err=%v", err)
+	if BaseRecordUpsert.Validate != nil {
+		t.Fatalf("record upsert validate should be nil for API passthrough")
 	}
 }
-
 func TestBaseViewValidate(t *testing.T) {
 	ctx := context.Background()
 	if err := BaseViewCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"name":"Main"}`}, nil, nil)); err != nil {

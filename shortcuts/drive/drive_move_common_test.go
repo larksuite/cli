@@ -102,91 +102,91 @@ func TestDriveMoveDryRunFolderIncludesTaskCheckParams(t *testing.T) {
 	}
 }
 
-func TestDriveMoveFolderSuccessUsesTaskCheckHelper(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/files/fld_src/move",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{"task_id": "task_123"},
+func TestDriveMoveFolderTaskCheckOutcomes(t *testing.T) {
+	tests := []struct {
+		name            string
+		taskCheckBody   map[string]interface{}
+		wantErrContains string
+		wantStdout      []string
+	}{
+		{
+			name: "success",
+			taskCheckBody: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"status": "success"},
+			},
+			wantStdout: []string{
+				`"task_id": "task_123"`,
+				`"ready": true`,
+			},
 		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/drive/v1/files/task_check",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{"status": "success"},
+		{
+			name: "timeout",
+			taskCheckBody: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"status": "pending"},
+			},
+			wantStdout: []string{
+				`"ready": false`,
+				`"timed_out": true`,
+				`"next_command": "lark-cli drive +task_result --scenario task_check --task-id task_123 --as bot"`,
+			},
 		},
-	})
-
-	prevAttempts, prevInterval := driveMovePollAttempts, driveMovePollInterval
-	driveMovePollAttempts, driveMovePollInterval = 1, 0
-	t.Cleanup(func() {
-		driveMovePollAttempts, driveMovePollInterval = prevAttempts, prevInterval
-	})
-
-	err := mountAndRunDrive(t, DriveMove, []string{
-		"+move",
-		"--file-token", "fld_src",
-		"--type", "folder",
-		"--folder-token", "fld_dst",
-		"--as", "bot",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"task_id": "task_123"`)) {
-		t.Fatalf("stdout missing task id: %s", stdout.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": true`)) {
-		t.Fatalf("stdout missing ready=true: %s", stdout.String())
-	}
-}
-
-func TestDriveMoveFolderTimeoutReturnsFollowUpCommand(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/files/fld_src/move",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{"task_id": "task_123"},
+		{
+			name: "all polls fail",
+			taskCheckBody: map[string]interface{}{
+				"code": 1061001,
+				"msg":  "internal error",
+			},
+			wantErrContains: "internal error",
 		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/drive/v1/files/task_check",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{"status": "pending"},
-		},
-	})
+	}
 
-	prevAttempts, prevInterval := driveMovePollAttempts, driveMovePollInterval
-	driveMovePollAttempts, driveMovePollInterval = 1, 0
-	t.Cleanup(func() {
-		driveMovePollAttempts, driveMovePollInterval = prevAttempts, prevInterval
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/files/fld_src/move",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"task_id": "task_123"},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/drive/v1/files/task_check",
+				Body:   tt.taskCheckBody,
+			})
 
-	err := mountAndRunDrive(t, DriveMove, []string{
-		"+move",
-		"--file-token", "fld_src",
-		"--type", "folder",
-		"--folder-token", "fld_dst",
-		"--as", "bot",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": false`)) {
-		t.Fatalf("stdout missing ready=false: %s", stdout.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"timed_out": true`)) {
-		t.Fatalf("stdout missing timed_out=true: %s", stdout.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli drive +task_result --scenario task_check --task-id task_123"`)) {
-		t.Fatalf("stdout missing follow-up command: %s", stdout.String())
+			withSingleDriveTaskCheckPoll(t)
+
+			err := mountAndRunDrive(t, DriveMove, []string{
+				"+move",
+				"--file-token", "fld_src",
+				"--type", "folder",
+				"--folder-token", "fld_dst",
+				"--as", "bot",
+			}, f, stdout)
+
+			if tt.wantErrContains != "" {
+				if err == nil {
+					t.Fatal("expected task_check polling error, got nil")
+				}
+				if !bytes.Contains([]byte(err.Error()), []byte(tt.wantErrContains)) {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, needle := range tt.wantStdout {
+				if !bytes.Contains(stdout.Bytes(), []byte(needle)) {
+					t.Fatalf("stdout missing %q: %s", needle, stdout.String())
+				}
+			}
+		})
 	}
 }

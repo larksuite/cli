@@ -41,6 +41,16 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 		Set("record_id", runtime.Str("record-id"))
 }
 
+func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	return common.NewDryRunAPI().
+		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/search").
+		Body(body).
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", baseTableID(runtime))
+}
+
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
 	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
@@ -54,6 +64,26 @@ func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *comm
 	}
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records").
+		Body(body).
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", baseTableID(runtime))
+}
+
+func dryRunRecordBatchCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	return common.NewDryRunAPI().
+		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_create").
+		Body(body).
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", baseTableID(runtime))
+}
+
+func dryRunRecordBatchUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	return common.NewDryRunAPI().
+		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_update").
 		Body(body).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
@@ -121,6 +151,20 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func executeRecordSearch(runtime *common.RuntimeContext) error {
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	if err != nil {
+		return err
+	}
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search"), nil, body)
+	if err != nil {
+		return err
+	}
+	runtime.Out(data, nil)
+	return nil
+}
+
 func executeRecordUpsert(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
 	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
@@ -142,6 +186,36 @@ func executeRecordUpsert(runtime *common.RuntimeContext) error {
 		return err
 	}
 	runtime.Out(map[string]interface{}{"record": data, "created": true}, nil)
+	return nil
+}
+
+func executeRecordBatchCreate(runtime *common.RuntimeContext) error {
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	if err != nil {
+		return err
+	}
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_create"), nil, body)
+	data, err := handleBaseAPIResult(result, err, "batch create records")
+	if err != nil {
+		return err
+	}
+	runtime.Out(data, nil)
+	return nil
+}
+
+func executeRecordBatchUpdate(runtime *common.RuntimeContext) error {
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	if err != nil {
+		return err
+	}
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_update"), nil, body)
+	data, err := handleBaseAPIResult(result, err, "batch update records")
+	if err != nil {
+		return err
+	}
+	runtime.Out(data, nil)
 	return nil
 }
 

@@ -12,6 +12,8 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+> **导入分流规则：** 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
+
 ## 快速决策
 
 - 用户要把本地 `.xlsx` / `.csv` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
@@ -154,6 +156,9 @@ Drive Folder (云空间文件夹)
 - 使用 `drive file.comments batch_query` 是**已知评论 ID 后**的批量查询，需要传入具体的评论 ID 列表。
 - 使用 `drive file.comments list` 用于分页获取评论列表，适合统计评论总数、遍历所有评论，或获取"最新/最后 N 条评论"等场景。
 
+#### Reaction 场景
+- 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](../../skills/lark-drive/references/lark-drive-reactions.md) 了解如何使用**。
+
 ### 典型错误与解决方案
 
 | 错误信息 | 原因 | 解决方案 |
@@ -161,6 +166,25 @@ Drive Folder (云空间文件夹)
 | `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
 | `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet） |
+
+### 授权当前应用访问文档
+
+当需要将文档权限授予**当前应用（bot）自身**时，先通过 bot info 接口获取应用的 open_id，再调用权限接口授权：
+
+```bash
+# 1. 获取当前应用的 open_id
+lark-cli api GET /open-apis/bot/v3/info --as bot
+# 从返回值中取 bot.open_id
+
+# 2. 授权当前应用访问文档
+lark-cli drive permission.members create \
+  --params '{"token":"<doc_token>","type":"<resource_type>"}' \
+  --data '{"member_type":"openid","member_id":"<bot_open_id>","perm":"view","type":"user"}'
+```
+
+> **注意**：此方式仅适用于需要授权给**当前应用**的场景。授权给其他用户时，直接使用对方的 open_id 即可，无需调用 bot info 接口。
+
+`<resource_type>` 可选值：`doc`、`docx`、`sheet`、`bitable`、`file`、`folder`、`wiki`。
 
 ## Shortcuts（推荐优先使用）
 
@@ -175,6 +199,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token |
 | [`+import`](references/lark-drive-import.md) | Import a local file to Drive as a cloud document (docx, sheet, bitable) |
 | [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive |
+| [`+delete`](references/lark-drive-delete.md) | Delete a Drive file or folder with limited polling for folder deletes |
 | [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
 
 ## API Resources
@@ -201,7 +226,7 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 
 ### file.comment.replys
 
-  - `create` — 
+  - `create` — 添加回复
   - `delete` — 删除回复
   - `list` — 获取回复
   - `update` — 更新回复
@@ -230,6 +255,10 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 
   - `list` — 获取文档的访问者记录
 
+### file.comment.reply.reactions
+
+  - `update_reaction` — 添加/删除 reaction
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -254,3 +283,4 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 | `user.subscription_status` | `docs:event:subscribe` |
 | `file.statistics.get` | `drive:drive.metadata:readonly` |
 | `file.view_records.list` | `drive:file:view_record:readonly` |
+| `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create` |

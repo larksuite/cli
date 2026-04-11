@@ -68,38 +68,52 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 | 输入参数 | 获取方式 |
 |---------|---------|
-| `meeting_id` | `vc +search` 搜索历史会议 → 结果中的 `id` 字段 |
-| `calendar_event_id` | `calendar +agenda` 查看日程 → 结果中的 `event_id` 字段 |
+| `meeting_id` | 使用 `lark-cli vc +search` 搜索历史会议，取结果中的 `id` 字段 |
+| `calendar_event_id` | 使用 `lark-cli calendar +agenda` 查看日程，取结果中的 `event_id` 字段 |
 
 ## Agent 组合场景
 
 ### 场景 1：知道 meeting_id，想下载录制
 
 ```bash
-vc +recording --meeting-ids xxx → minute_token
-minutes +download --minute-token <minute_token>
+# 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
+lark-cli vc +recording --meeting-ids xxx
+
+# 第 2 步：使用上一步返回的 minute_token 下载妙记文件
+lark-cli minutes +download --minute-token <minute_token>
 ```
 
 ### 场景 2：知道 meeting_id，想获取完整纪要（含 AI 产物）
 
 ```bash
-vc +recording --meeting-ids xxx → minute_token
-vc +notes --minute-tokens <minute_token>
+# 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
+lark-cli vc +recording --meeting-ids xxx
+
+# 第 2 步：使用上一步返回的 minute_token 获取完整纪要
+lark-cli vc +notes --minute-tokens <minute_token>
 ```
 
-### 场景 3：搜索会议 → 获取录制 → 下载
+### 场景 3：先搜索会议，再获取录制并下载
 
 ```bash
-vc +search --query "周会" --start yesterday → meeting_ids
-vc +recording --meeting-ids <ids> → minute_tokens
-minutes +download --minute-token <token>
+# 第 1 步：搜索历史会议，拿到 meeting_ids
+lark-cli vc +search --query "周会" --start yesterday
+
+# 第 2 步：使用上一步返回的 meeting_ids 查询录制，拿到 minute_tokens
+lark-cli vc +recording --meeting-ids <ids>
+
+# 第 3 步：使用其中一个 minute_token 下载妙记文件
+lark-cli minutes +download --minute-token <token>
 ```
 
 ### 场景 4：从日历事件获取录制
 
 ```bash
-vc +recording --calendar-event-ids <event_id> → minute_token
-minutes +download --minute-token <minute_token>
+# 第 1 步：通过日历 event_id 查询录制，拿到 minute_token
+lark-cli vc +recording --calendar-event-ids <event_id>
+
+# 第 2 步：使用上一步返回的 minute_token 下载妙记文件
+lark-cli minutes +download --minute-token <minute_token>
 ```
 
 ## 常见错误与排查

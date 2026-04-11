@@ -246,3 +246,34 @@ func TestDriveTaskResultTaskCheckIncludesReadyFlags(t *testing.T) {
 		t.Fatalf("stdout missing failed=false: %s", stdout.String())
 	}
 }
+
+func TestDriveTaskResultTaskCheckTreatsFailAsFailed(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files/task_check",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"status": "fail"},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveTaskResult, []string{
+		"+task_result",
+		"--scenario", "task_check",
+		"--task-id", "task_123",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"status": "fail"`)) {
+		t.Fatalf("stdout missing fail status: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"failed": true`)) {
+		t.Fatalf("stdout missing failed=true: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": false`)) {
+		t.Fatalf("stdout missing ready=false: %s", stdout.String())
+	}
+}
