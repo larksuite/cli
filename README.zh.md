@@ -63,6 +63,10 @@ npm install -g @larksuite/cli
 
 # 安装 CLI SKILL（必需）
 npx skills add larksuite/cli -y -g
+
+# 或者，安装 Claude Code SKILL
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 **方式二 — 从源码安装：**
@@ -76,6 +80,10 @@ make install
 
 # 安装 CLI SKILL（必需）
 npx skills add larksuite/cli -y -g
+
+# 或者，安装 Claude Code SKILL
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 #### 配置与使用
@@ -103,6 +111,10 @@ npm install -g @larksuite/cli
 
 # 安装 CLI SKILL（必需）
 npx skills add larksuite/cli -y -g
+
+# 如果你使用的是 Claude Code，可以通过以下命令安装插件：
+claude plugin marketplace add larksuite/cli
+claude plugin install larksuite/cli@larksuite-cli-marketplace
 ```
 
 **第 2 步 — 配置应用凭证**
