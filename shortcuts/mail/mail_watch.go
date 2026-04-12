@@ -95,7 +95,7 @@ var MailWatch = common.Shortcut{
 	Command:     "+watch",
 	Description: "Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output.",
 	Risk:        "read",
-	Scopes:      []string{"mail:event", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
+	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "format", Default: "data", Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
