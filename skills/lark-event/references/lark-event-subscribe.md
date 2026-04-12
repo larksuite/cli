@@ -17,7 +17,7 @@ Subscribe to Lark events via WebSocket long connection, outputting NDJSON to std
 ## Commands
 
 ```bash
-# Subscribe to all registered events (catch-all mode, 24 common event types)
+# Subscribe to all registered events (catch-all mode, 25 common event types)
 lark-cli event +subscribe
 
 # Subscribe to specific event types only
@@ -153,6 +153,7 @@ The following 24 event types are registered in catch-all mode (when `--event-typ
 | Event Type | Description | Required Scope |
 |-----------|-------------|---------------|
 | `task.task.update_tenant_v1` | Task updated (tenant) | `task:task:readonly` |
+| `task.task.update_user_access_v2` | Task updated (user access) | `task:task:readonly` |
 | `task.task.comment_updated_v1` | Task comment updated | `task:task:readonly` |
 
 ### Drive
