@@ -74,6 +74,7 @@ var commonEventTypes = []string{
 	"approval.approval.updated",
 	"application.application.visibility.added_v6",
 	"task.task.update_tenant_v1",
+	"task.task.update_user_access_v2",
 	"task.task.comment_updated_v1",
 	"drive.notice.comment_add_v1",
 }
