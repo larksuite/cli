@@ -105,8 +105,11 @@ func TestConfigRemoveRun_WarnsWhenTokenCleanupFails(t *testing.T) {
 	}
 
 	got := stderr.String()
-	if !strings.Contains(got, `warning: failed to remove stored token for app "cli_app" user "ou_123": keychain unavailable`) {
+	if !strings.Contains(got, `warning: failed to remove a stored token for app "cli_app": keychain unavailable`) {
 		t.Fatalf("expected token cleanup warning, got %q", got)
+	}
+	if strings.Contains(got, "ou_123") {
+		t.Fatalf("warning should not leak the user identifier, got %q", got)
 	}
 }
 
