@@ -126,6 +126,7 @@ lark-cli auth login --recommend
 ```bash
 lark-cli auth status
 ```
+
 ### 如何更新/升级（国内版）
 
 **第 1 步 — 设置国内 npm 镜像**
