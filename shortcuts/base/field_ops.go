@@ -220,8 +220,31 @@ func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 		"field_id":   fieldRef,
 		"field_name": fieldRef,
 		"keyword":    strings.TrimSpace(runtime.Str("keyword")),
-		"options":    options,
+		"options":    stripFieldOptionIDs(options),
 		"total":      total,
 	}, nil)
 	return nil
+}
+
+func stripFieldOptionIDs(options []interface{}) []interface{} {
+	if len(options) == 0 {
+		return options
+	}
+	normalized := make([]interface{}, 0, len(options))
+	for _, option := range options {
+		record, ok := option.(map[string]interface{})
+		if !ok {
+			normalized = append(normalized, option)
+			continue
+		}
+		copied := make(map[string]interface{}, len(record))
+		for key, value := range record {
+			if key == "id" {
+				continue
+			}
+			copied[key] = value
+		}
+		normalized = append(normalized, copied)
+	}
+	return normalized
 }
