@@ -12,12 +12,20 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 )
 
+// ErrorSink receives best-effort internal output formatting errors.
+// Tests and embedders may override it to capture these messages.
+var ErrorSink io.Writer = os.Stderr
+
+func writeInternalError(format string, args ...interface{}) {
+	fmt.Fprintf(ErrorSink, format, args...)
+}
+
 // PrintJson prints data as formatted JSON to w.
 func PrintJson(w io.Writer, data interface{}) {
 	injectNotice(data)
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		writeInternalError("json marshal error: %v\n", err)
 		return
 	}
 	fmt.Fprintln(w, string(b))
@@ -53,7 +61,7 @@ func PrintNdjson(w io.Writer, data interface{}) {
 	emit := func(item interface{}) {
 		b, err := json.Marshal(item)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
+			writeInternalError("ndjson marshal error: %v\n", err)
 			return
 		}
 		fmt.Fprintln(w, string(b))

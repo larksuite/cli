@@ -99,3 +99,37 @@ func TestPrintJson_NoNotice(t *testing.T) {
 		t.Error("expected no _notice when PendingNotice is nil")
 	}
 }
+
+func TestPrintJson_MarshalError_UsesErrorSink(t *testing.T) {
+	origSink := ErrorSink
+	var errBuf bytes.Buffer
+	ErrorSink = &errBuf
+	defer func() { ErrorSink = origSink }()
+
+	var out bytes.Buffer
+	PrintJson(&out, map[string]interface{}{"bad": make(chan int)})
+
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output on marshal error, got: %q", out.String())
+	}
+	if got := errBuf.String(); got == "" || !bytes.Contains(errBuf.Bytes(), []byte("json marshal error:")) {
+		t.Fatalf("expected json marshal error in ErrorSink, got: %q", got)
+	}
+}
+
+func TestPrintNdjson_MarshalError_UsesErrorSink(t *testing.T) {
+	origSink := ErrorSink
+	var errBuf bytes.Buffer
+	ErrorSink = &errBuf
+	defer func() { ErrorSink = origSink }()
+
+	var out bytes.Buffer
+	PrintNdjson(&out, map[string]interface{}{"bad": make(chan int)})
+
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output on marshal error, got: %q", out.String())
+	}
+	if got := errBuf.String(); got == "" || !bytes.Contains(errBuf.Bytes(), []byte("ndjson marshal error:")) {
+		t.Fatalf("expected ndjson marshal error in ErrorSink, got: %q", got)
+	}
+}
