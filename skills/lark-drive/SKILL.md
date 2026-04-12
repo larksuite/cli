@@ -194,6 +194,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 |----------|------|
 | [`+upload`](references/lark-drive-upload.md) | Upload a local file to Drive |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
+| [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder |
 | [`+add-comment`](references/lark-drive-add-comment.md) | Add a full-document comment, or a local comment to selected docx text (also supports wiki URL resolving to doc/docx) |
 | [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable to a local file with limited polling |
 | [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token |
