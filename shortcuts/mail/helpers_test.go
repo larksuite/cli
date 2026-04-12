@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -989,6 +990,153 @@ func TestValidateRecipientCount(t *testing.T) {
 			t.Fatalf("duplicates should be deduplicated, got error: %v", err)
 		}
 	})
+}
+
+// newScheduledSendRuntime creates a RuntimeContext for testing resolveScheduledSendTime.
+// Flags "send-time" and "send-after" are always registered; non-empty values are set.
+func newScheduledSendRuntime(t *testing.T, sendTime, sendAfter string) *common.RuntimeContext {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("send-time", "", "")
+	cmd.Flags().String("send-after", "", "")
+	_ = cmd.ParseFlags(nil)
+	if sendTime != "" {
+		_ = cmd.Flags().Set("send-time", sendTime)
+	}
+	if sendAfter != "" {
+		_ = cmd.Flags().Set("send-after", sendAfter)
+	}
+	f, _, _, _ := mailShortcutTestFactory(t)
+	return &common.RuntimeContext{Cmd: cmd, Factory: f}
+}
+
+func TestResolveScheduledSendTime_Empty(t *testing.T) {
+	rt := newScheduledSendRuntime(t, "", "")
+	ts, err := resolveScheduledSendTime(rt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ts != 0 {
+		t.Fatalf("expected 0 for immediate send, got %d", ts)
+	}
+}
+
+func TestResolveScheduledSendTime_Absolute(t *testing.T) {
+	tests := []struct {
+		name      string
+		sendTime  string
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name:     "valid future timestamp",
+			sendTime: fmt.Sprintf("%d", time.Now().Unix()+10*60),
+			wantErr:  false,
+		},
+		{
+			name:      "invalid non-numeric",
+			sendTime:  "not-a-number",
+			wantErr:   true,
+			errSubstr: "positive unix timestamp",
+		},
+		{
+			name:      "negative timestamp",
+			sendTime:  "-100",
+			wantErr:   true,
+			errSubstr: "positive unix timestamp",
+		},
+		{
+			name:      "too soon (less than 5 minutes)",
+			sendTime:  fmt.Sprintf("%d", time.Now().Unix()+60),
+			wantErr:   true,
+			errSubstr: "at least 5 minutes",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := newScheduledSendRuntime(t, tc.sendTime, "")
+			ts, err := resolveScheduledSendTime(rt)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tc.errSubstr)
+				}
+				if !strings.Contains(err.Error(), tc.errSubstr) {
+					t.Fatalf("expected error containing %q, got %v", tc.errSubstr, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if ts <= 0 {
+					t.Fatalf("expected positive timestamp, got %d", ts)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveScheduledSendTime_Relative(t *testing.T) {
+	tests := []struct {
+		name      string
+		sendAfter string
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name:      "10m succeeds",
+			sendAfter: "10m",
+			wantErr:   false,
+		},
+		{
+			name:      "30s fails (less than 5 minutes)",
+			sendAfter: "30s",
+			wantErr:   true,
+			errSubstr: "at least 5 minutes",
+		},
+		{
+			name:      "invalid duration string",
+			sendAfter: "bogus",
+			wantErr:   true,
+			errSubstr: "invalid duration",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := newScheduledSendRuntime(t, "", tc.sendAfter)
+			ts, err := resolveScheduledSendTime(rt)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tc.errSubstr)
+				}
+				if !strings.Contains(err.Error(), tc.errSubstr) {
+					t.Fatalf("expected error containing %q, got %v", tc.errSubstr, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if ts <= 0 {
+					t.Fatalf("expected positive timestamp, got %d", ts)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveScheduledSendTime_Conflict(t *testing.T) {
+	// When both --send-time and --send-after are given, --send-time wins.
+	futureTS := time.Now().Unix() + 10*60
+	rt := newScheduledSendRuntime(t, fmt.Sprintf("%d", futureTS), "20m")
+
+	ts, err := resolveScheduledSendTime(rt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ts != futureTS {
+		t.Fatalf("expected --send-time value %d, got %d", futureTS, ts)
+	}
 }
 
 func TestValidateComposeHasAtLeastOneRecipient_AlsoChecksCount(t *testing.T) {
