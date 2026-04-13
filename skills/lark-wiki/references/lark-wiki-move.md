@@ -169,7 +169,9 @@ lark-cli wiki +move \
 
 ## 权限说明
 
-CLI 会在执行前做本地 scope 预检查；当前 shortcut 声明的权限是 `wiki:node:move`。如果本地 token 已记录 scopes 且缺失该权限，命令会直接提示重新执行 `lark-cli auth login --scope ...`。
+CLI 会在执行前做本地 scope 预检查；当前 shortcut 声明的权限为 `wiki:node:move`、`wiki:node:read`、`wiki:space:read`（分别覆盖 move 写操作、节点解析读操作、以及异步任务轮询读操作）。如果本地 token 已记录 scopes 且缺失任一权限，命令会直接提示重新执行 `lark-cli auth login --scope ...`。
+
+当异步任务超时后，后续 `lark-cli drive +task_result --scenario wiki_move --task-id <TASK_ID>` 只需要 `wiki:space:read` 权限。
 
 > [!CAUTION]
 > `wiki +move` 是**写入操作**。执行前必须确认用户意图，以及目标节点 / 目标知识空间是否明确。

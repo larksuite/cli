@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -42,7 +43,7 @@ var WikiMove = common.Shortcut{
 	Command:     "+move",
 	Description: "Move a wiki node, or move a Drive document into Wiki",
 	Risk:        "write",
-	Scopes:      []string{"wiki:node:move"},
+	Scopes:      []string{"wiki:node:move", "wiki:node:read", "wiki:space:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "node-token", Desc: "wiki node token to move inside Wiki"},
@@ -60,6 +61,12 @@ var WikiMove = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := readWikiMoveSpec(runtime)
+		// `my_library` is a per-user personal-library alias; it has no meaning
+		// for a tenant_access_token (--as bot), so reject early with a clear
+		// hint instead of letting the API return a confusing error.
+		if runtime.As().IsBot() && spec.TargetSpaceID == wikiMyLibrarySpaceID {
+			return output.ErrValidation("--target-space-id my_library is a per-user personal library alias and cannot be used with --as bot; resolve it to a real space_id first via `lark-cli wiki spaces get --params '{\"space_id\":\"my_library\"}' --as user`")
+		}
 		return validateWikiMoveSpec(spec)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -164,16 +171,34 @@ func (s wikiMoveTaskStatus) FirstResult() *wikiMoveTaskResult {
 	return &s.MoveResults[0]
 }
 
+// primaryResult picks the most informative move_result for top-level status
+// surfacing: prefer a failing entry so multi-doc tasks don't mask failures
+// behind an earlier success, then a still-processing entry, and finally fall
+// back to the first entry.
+func (s wikiMoveTaskStatus) primaryResult() *wikiMoveTaskResult {
+	for i := range s.MoveResults {
+		if s.MoveResults[i].Status < 0 {
+			return &s.MoveResults[i]
+		}
+	}
+	for i := range s.MoveResults {
+		if s.MoveResults[i].Status > 0 {
+			return &s.MoveResults[i]
+		}
+	}
+	return s.FirstResult()
+}
+
 func (s wikiMoveTaskStatus) PrimaryStatusCode() int {
-	if first := s.FirstResult(); first != nil {
-		return first.Status
+	if r := s.primaryResult(); r != nil {
+		return r.Status
 	}
 	return 1
 }
 
 func (s wikiMoveTaskStatus) PrimaryStatusLabel() string {
-	if first := s.FirstResult(); first != nil {
-		if msg := strings.TrimSpace(first.StatusMsg); msg != "" {
+	if r := s.primaryResult(); r != nil {
+		if msg := strings.TrimSpace(r.StatusMsg); msg != "" {
 			return msg
 		}
 	}
@@ -389,7 +414,7 @@ func dryRunWikiMoveSourceSpaceID(spec wikiMoveSpec) string {
 
 func dryRunWikiMoveTargetSpaceID(spec wikiMoveSpec) string {
 	if spec.TargetSpaceID != "" {
-		return spec.TargetSpaceID
+		return validate.EncodePathSegment(spec.TargetSpaceID)
 	}
 	return "<target_space_id>"
 }
@@ -517,7 +542,7 @@ func runWikiDocsToWikiMove(ctx context.Context, client wikiMoveClient, runtime *
 			}
 		}
 		if !ready {
-			nextCommand := wikiMoveTaskResultCommand(response.TaskID)
+			nextCommand := wikiMoveTaskResultCommand(response.TaskID, runtime.As())
 			fmt.Fprintf(runtime.IO().ErrOut, "Wiki move task is still in progress. Continue with: %s\n", nextCommand)
 			out["timed_out"] = true
 			out["next_command"] = nextCommand
@@ -528,8 +553,12 @@ func runWikiDocsToWikiMove(ctx context.Context, client wikiMoveClient, runtime *
 	}
 }
 
-func wikiMoveTaskResultCommand(taskID string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario wiki_move --task-id %s", taskID)
+func wikiMoveTaskResultCommand(taskID string, identity core.Identity) string {
+	asFlag := string(identity)
+	if asFlag == "" {
+		asFlag = "user"
+	}
+	return fmt.Sprintf("lark-cli drive +task_result --scenario wiki_move --task-id %s --as %s", taskID, asFlag)
 }
 
 func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *common.RuntimeContext, taskID string) (wikiMoveTaskStatus, bool, error) {
@@ -570,7 +599,7 @@ func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *commo
 	}
 
 	if !hadSuccessfulPoll && lastErr != nil {
-		nextCommand := wikiMoveTaskResultCommand(taskID)
+		nextCommand := wikiMoveTaskResultCommand(taskID, runtime.As())
 		hint := fmt.Sprintf(
 			"the wiki move task was created but every status poll failed (task_id=%s)\nretry status lookup with: %s",
 			taskID,

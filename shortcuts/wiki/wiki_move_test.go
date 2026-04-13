@@ -245,8 +245,9 @@ func TestValidateWikiMoveSpecAcceptsValidModes(t *testing.T) {
 func TestWikiMoveDeclaredScopes(t *testing.T) {
 	t.Parallel()
 
-	if !reflect.DeepEqual(WikiMove.Scopes, []string{"wiki:node:move"}) {
-		t.Fatalf("WikiMove.Scopes = %v, want [wiki:node:move]", WikiMove.Scopes)
+	want := []string{"wiki:node:move", "wiki:node:read", "wiki:space:read"}
+	if !reflect.DeepEqual(WikiMove.Scopes, want) {
+		t.Fatalf("WikiMove.Scopes = %v, want %v", WikiMove.Scopes, want)
 	}
 }
 
@@ -285,6 +286,80 @@ func TestWikiMoveTaskStatusPendingAndFallbackLabels(t *testing.T) {
 	failed := wikiMoveTaskStatus{MoveResults: []wikiMoveTaskResult{{Status: -1}}}
 	if !failed.Failed() || failed.PrimaryStatusLabel() != "failure" {
 		t.Fatalf("failed status = %+v", failed)
+	}
+}
+
+func TestWikiMoveTaskStatusPrimarySurfacesFailureOverEarlierSuccess(t *testing.T) {
+	t.Parallel()
+
+	status := wikiMoveTaskStatus{
+		MoveResults: []wikiMoveTaskResult{
+			{Status: 0, StatusMsg: "success"},
+			{Status: -3, StatusMsg: "permission denied"},
+			{Status: 1, StatusMsg: "processing"},
+		},
+	}
+	if got := status.PrimaryStatusCode(); got != -3 {
+		t.Fatalf("PrimaryStatusCode = %d, want -3", got)
+	}
+	if got := status.PrimaryStatusLabel(); got != "permission denied" {
+		t.Fatalf("PrimaryStatusLabel = %q, want permission denied", got)
+	}
+	// FirstResult must keep its literal "first entry" semantics for callers
+	// that flatten node fields from the first move_result.
+	if first := status.FirstResult(); first == nil || first.StatusMsg != "success" {
+		t.Fatalf("FirstResult = %+v, want first success entry", first)
+	}
+}
+
+func TestWikiMoveTaskStatusPrimaryPrefersProcessingOverFirstSuccess(t *testing.T) {
+	t.Parallel()
+
+	status := wikiMoveTaskStatus{
+		MoveResults: []wikiMoveTaskResult{
+			{Status: 0, StatusMsg: "success"},
+			{Status: 1, StatusMsg: "processing"},
+		},
+	}
+	if got := status.PrimaryStatusCode(); got != 1 {
+		t.Fatalf("PrimaryStatusCode = %d, want 1", got)
+	}
+	if got := status.PrimaryStatusLabel(); got != "processing" {
+		t.Fatalf("PrimaryStatusLabel = %q, want processing", got)
+	}
+}
+
+func TestWikiMoveValidateRejectsBotMyLibrary(t *testing.T) {
+	cfg := wikiTestConfig()
+	factory, stdout, _, _ := cmdutil.TestFactory(t, cfg)
+
+	err := mountAndRunWiki(t, WikiMove, []string{
+		"+move",
+		"--obj-type", "docx",
+		"--obj-token", "doccnXXX",
+		"--target-space-id", "my_library",
+		"--as", "bot",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected validation error for bot + my_library, got nil")
+	}
+	if !strings.Contains(err.Error(), "my_library") || !strings.Contains(err.Error(), "--as bot") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWikiMoveValidateAllowsUserMyLibrary(t *testing.T) {
+	t.Parallel()
+
+	// Bot guard must not affect user identity. We only assert the my_library
+	// validation path doesn't trip; an empty obj-token still fails downstream
+	// for unrelated reasons, so we check the error does not mention my_library.
+	if err := validateWikiMoveSpec(wikiMoveSpec{
+		ObjType:       "docx",
+		ObjToken:      "doccnXXX",
+		TargetSpaceID: "my_library",
+	}); err != nil {
+		t.Fatalf("validateWikiMoveSpec(user my_library) = %v, want nil", err)
 	}
 }
 
@@ -599,7 +674,7 @@ func TestRunWikiDocsToWikiMoveAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runWikiDocsToWikiMove() error = %v", err)
 	}
-	if out["ready"] != false || out["timed_out"] != true || out["next_command"] != wikiMoveTaskResultCommand("task_123") {
+	if out["ready"] != false || out["timed_out"] != true || out["next_command"] != wikiMoveTaskResultCommand("task_123", core.AsUser) {
 		t.Fatalf("expected timeout response, got %#v", out)
 	}
 	if out["status_msg"] != "processing" {
@@ -779,7 +854,7 @@ func TestPollWikiMoveTaskWrapsRepeatedPollFailuresWithHint(t *testing.T) {
 	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
 		t.Fatalf("expected structured exit error, got %T %v", err, err)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "retry original") || !strings.Contains(exitErr.Detail.Hint, wikiMoveTaskResultCommand("task_123")) {
+	if !strings.Contains(exitErr.Detail.Hint, "retry original") || !strings.Contains(exitErr.Detail.Hint, wikiMoveTaskResultCommand("task_123", core.AsUser)) {
 		t.Fatalf("hint = %q, want original hint and resume command", exitErr.Detail.Hint)
 	}
 	if !strings.Contains(stderr.String(), "Wiki move status attempt 1/1 failed") {
