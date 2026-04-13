@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -211,11 +212,19 @@ var MailForward = common.Shortcut{
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
-			runtime.Out(map[string]interface{}{
+			out := map[string]interface{}{
 				"draft_id": draftID,
 				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID),
-			}, nil)
-			hintSendDraft(runtime, mailboxID, draftID)
+			}
+			addDraftPreviewURL(runtime, out, draftID)
+			runtime.OutFormat(out, nil, func(w io.Writer) {
+				fmt.Fprintln(w, "Draft saved.")
+				fmt.Fprintf(w, "draft_id: %s\n", draftID)
+				if previewURL, _ := out["preview_url"].(string); previewURL != "" {
+					fmt.Fprintf(w, "preview_url: %s\n", previewURL)
+				}
+				fmt.Fprintf(w, "%s\n", out["tip"])
+			})
 			return nil
 		}
 		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
