@@ -146,11 +146,20 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	return r
 }
 
-// RunSkillsUpdate executes npx -y skills add larksuite/cli -g -y.
+// RunSkillsUpdate installs skills, trying the .well-known source first and
+// falling back to the GitHub repo on failure or timeout.
 func (u *Updater) RunSkillsUpdate() *NpmResult {
 	if u.SkillsUpdateOverride != nil {
 		return u.SkillsUpdateOverride()
 	}
+	r := u.runSkillsAdd("https://open.feishu.cn")
+	if r.Err != nil {
+		r = u.runSkillsAdd("larksuite/cli")
+	}
+	return r
+}
+
+func (u *Updater) runSkillsAdd(source string) *NpmResult {
 	r := &NpmResult{}
 	npxPath, err := exec.LookPath("npx")
 	if err != nil {
@@ -159,7 +168,7 @@ func (u *Updater) RunSkillsUpdate() *NpmResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", "larksuite/cli", "-g", "-y")
+	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", source, "-g", "-y")
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()

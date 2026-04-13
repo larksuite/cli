@@ -27,7 +27,11 @@
   "license": "MIT",
   "files": [
     "scripts/install.js",
+    "scripts/install-wizard.js",
     "scripts/run.js",
     "CHANGELOG.md"
-  ]
+  ],
+  "dependencies": {
+    "@clack/prompts": "^1.2.0"
+  }
 }
