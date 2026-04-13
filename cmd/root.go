@@ -85,7 +85,11 @@ func Execute() int {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		return 1
 	}
-	f, rootCmd := buildInternal(context.Background(), inv)
+	f, rootCmd := buildInternal(
+		context.Background(), inv,
+		WithIO(os.Stdin, os.Stdout, os.Stderr),
+		HideProfile(isSingleAppMode()),
+	)
 
 	// --- Update check (non-blocking) ---
 	if !isCompletionCommand(os.Args) {
@@ -236,10 +240,19 @@ func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyErr
 }
 
 // installTipsHelpFunc wraps the default help function to append a TIPS section
-// when a command has tips set via cmdutil.SetTips.
+// when a command has tips set via cmdutil.SetTips. It also force-shows global
+// flags that are normally hidden in single-app mode (currently --profile)
+// when rendering the root command's own help, so users discovering the CLI
+// still see them at `lark-cli --help`.
 func installTipsHelpFunc(root *cobra.Command) {
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		if cmd == root {
+			if f := root.PersistentFlags().Lookup("profile"); f != nil && f.Hidden {
+				f.Hidden = false
+				defer func() { f.Hidden = true }()
+			}
+		}
 		defaultHelp(cmd, args)
 		tips := cmdutil.GetTips(cmd)
 		if len(tips) == 0 {

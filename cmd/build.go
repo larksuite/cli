@@ -32,9 +32,12 @@ type BuildOption func(*buildConfig)
 type buildConfig struct {
 	streams  *cmdutil.IOStreams
 	keychain keychain.KeychainAccess
+	globals  GlobalOptions
 }
 
-// WithIO sets the IO streams for the CLI. If not provided, os.Stdin/Stdout/Stderr are used.
+// WithIO sets the IO streams for the CLI by wrapping raw reader/writers.
+// Terminal detection is derived from the input's underlying *os.File, if any;
+// non-file readers (bytes.Buffer, strings.Reader, …) produce IsTerminal=false.
 func WithIO(in io.Reader, out, errOut io.Writer) BuildOption {
 	return func(c *buildConfig) {
 		isTerminal := false
@@ -52,6 +55,16 @@ func WithKeychain(kc keychain.KeychainAccess) BuildOption {
 	}
 }
 
+// HideProfile sets the visibility policy for the root-level --profile flag.
+// When hide is true the flag stays registered (so existing invocations still
+// parse) but is omitted from help and shell completion. Typically called as
+// HideProfile(isSingleAppMode()).
+func HideProfile(hide bool) BuildOption {
+	return func(c *buildConfig) {
+		c.globals.HideProfile = hide
+	}
+}
+
 // Build constructs the full command tree without executing.
 // Returns only the cobra.Command; Factory is internal.
 // Use Execute for the standard production entry point.
@@ -60,11 +73,17 @@ func Build(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOpti
 	return rootCmd
 }
 
-// buildInternal is the internal constructor that also returns Factory for error handling.
+// buildInternal is a pure assembly function: it wires the command tree from
+// inv and BuildOptions alone. Any state-dependent decision (disk, network,
+// env) belongs in the caller and must be threaded in via BuildOption.
+//
+// Callers must supply WithIO; buildInternal intentionally does not default
+// the streams so tests and alternative entry points can't silently inherit
+// os.Std*.
 func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) (*cmdutil.Factory, *cobra.Command) {
-	cfg := &buildConfig{
-		streams: cmdutil.SystemIO(),
-	}
+	// cfg.globals.Profile is left zero here; it's bound to the --profile
+	// flag in RegisterGlobalFlags and filled by cobra's parse step.
+	cfg := &buildConfig{}
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -73,8 +92,6 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	if cfg.keychain != nil {
 		f.Keychain = cfg.keychain
 	}
-
-	globals := &GlobalOptions{Profile: inv.Profile}
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
 		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
@@ -90,7 +107,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
 
-	RegisterGlobalFlags(rootCmd.PersistentFlags(), globals)
+	RegisterGlobalFlags(rootCmd.PersistentFlags(), &cfg.globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
 	}
