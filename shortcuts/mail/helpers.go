@@ -2037,14 +2037,11 @@ func draftPreviewURLForBrand(brand core.LarkBrand, draftID string) string {
 	return origin + "/mail?draftId=" + url.QueryEscape(draftID) + "&scene=send-preview"
 }
 
-// draftPreviewOriginForBrand returns the base URL origin for a given brand.
+// draftPreviewOriginForBrand returns the www base URL for the given brand,
+// derived from the Open API endpoint by replacing the "open." prefix with "www.".
 func draftPreviewOriginForBrand(brand core.LarkBrand) string {
-	switch brand {
-	case core.BrandLark:
-		return "https://www.larkoffice.com"
-	default:
-		return "https://www.feishu.cn"
-	}
+	open := core.ResolveOpenBaseURL(brand)
+	return strings.Replace(open, "open.", "www.", 1)
 }
 
 // addDraftPreviewURL adds a preview_url field to out if a valid preview URL can be generated.

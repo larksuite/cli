@@ -22,7 +22,7 @@ func TestDraftPreviewURLForBrand(t *testing.T) {
 			name:     "lark brand",
 			brand:    core.BrandLark,
 			draftID:  "d_abc123",
-			wantBase: "https://www.larkoffice.com",
+			wantBase: "https://www.larksuite.com",
 		},
 		{
 			name:     "feishu brand",
@@ -124,8 +124,8 @@ func TestDraftPreviewURL_UsesRuntimeBrand(t *testing.T) {
 }
 
 func TestDraftPreviewOriginForBrand(t *testing.T) {
-	if got := draftPreviewOriginForBrand(core.BrandLark); got != "https://www.larkoffice.com" {
-		t.Errorf("BrandLark = %q, want %q", got, "https://www.larkoffice.com")
+	if got := draftPreviewOriginForBrand(core.BrandLark); got != "https://www.larksuite.com" {
+		t.Errorf("BrandLark = %q, want %q", got, "https://www.larksuite.com")
 	}
 	if got := draftPreviewOriginForBrand(core.BrandFeishu); got != "https://www.feishu.cn" {
 		t.Errorf("BrandFeishu = %q, want %q", got, "https://www.feishu.cn")

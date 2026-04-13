@@ -191,7 +191,7 @@ var MailReplyAll = common.Shortcut{
 		if !confirmSend {
 			out := map[string]interface{}{
 				"draft_id": draftID,
-				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID),
+				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, sanitizeForTerminal(mailboxID), sanitizeForTerminal(draftID)),
 			}
 			addDraftPreviewURL(runtime, out, draftID)
 			runtime.OutFormat(out, nil, func(w io.Writer) {
@@ -202,6 +202,7 @@ var MailReplyAll = common.Shortcut{
 				}
 				fmt.Fprintf(w, "%s\n", out["tip"])
 			})
+			hintSendDraft(runtime, mailboxID, draftID)
 			return nil
 		}
 		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
