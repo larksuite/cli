@@ -131,6 +131,30 @@ lark-cli mail user_mailbox.messages send_status --params '{"user_mailbox_id":"me
 
 返回每个收件人的投递状态（`status`）：1=正在投递, 2=投递失败重试, 3=退信, 4=投递成功, 5=待审批, 6=审批拒绝。向用户简要报告结果，如有异常状态（退信/审批拒绝）需重点提示。
 
+### 撤回邮件
+
+发送成功后，若响应中包含 `recall_available: true`，说明该邮件支持撤回（24 小时内已投递的邮件）。
+
+**撤回操作：**
+```bash
+lark-cli mail user_mailbox.sent_messages recall --as user \
+  --params '{"user_mailbox_id":"me","message_id":"<message_id>"}'
+```
+
+- 返回 `recall_status: available` 表示撤回请求已受理（异步执行）
+- 返回 `recall_status: unavailable` 表示不可撤回，`recall_restriction_reason` 说明原因
+
+**查询撤回进度：**
+```bash
+lark-cli mail user_mailbox.sent_messages get_recall_detail --as user \
+  --params '{"user_mailbox_id":"me","message_id":"<message_id>"}'
+```
+
+- `recall_status: in_progress` — 撤回进行中，可稍后再查
+- `recall_status: done` — 撤回完成，查看 `recall_result`（`all_success` / `all_fail` / `some_fail`）和每个收件人的详情
+
+**注意：** 撤回是异步操作，`recall` 返回成功仅表示请求已受理，实际结果需通过 `get_recall_detail` 查询。若响应中无 `recall_available` 字段，说明该邮件或应用不支持撤回，不要主动提及撤回。
+
 ### 正文格式：优先使用 HTML
 
 撰写邮件正文时，**默认使用 HTML 格式**（body 内容会被自动检测）。仅当用户明确要求纯文本时，才使用 `--plain-text` 标志强制纯文本模式。
@@ -340,6 +364,11 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `modify` — 本接口提供修改邮件会话的能力，支持移动邮件会话的文件夹、给邮件会话添加和移除标签、标记邮件会话读和未读、移动邮件会话至垃圾邮件等能力。不支持移动邮件会话到已删除文件夹，如需，请使用删除邮件会话接口。至少填写add_label_ids、remove_label_ids、add_folder中的一个参数。
   - `trash` — 移动指定的邮件会话到已删除文件夹
 
+### user_mailbox.sent_messages
+
+  - `recall` — 撤回指定邮件。前置条件：邮件须已投递，且发送时间在 24 小时以内；搬家中的域名不支持撤回。返回说明：若用户或邮件不满足撤回条件，接口仍返回 200，响应体中 recall_status 为 unavailable，recall_restriction_reason 标明具体原因。返回成功仅表示撤回请求已受理，实际撤回结果请调用「查询邮件撤回进度」接口获取。
+  - `get_recall_detail` — 查询指定邮件的撤回结果详情，包括整体撤回进度、成功/失败/处理中的收件人数量，以及每个收件人的撤回状态和失败原因。
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -391,4 +420,6 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.sent_messages.recall` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.sent_messages.get_recall_detail` | `mail:user_mailbox.message:readonly` |
 

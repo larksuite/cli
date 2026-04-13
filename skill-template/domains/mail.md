@@ -117,6 +117,30 @@ lark-cli mail user_mailbox.messages send_status --params '{"user_mailbox_id":"me
 
 返回每个收件人的投递状态（`status`）：1=正在投递, 2=投递失败重试, 3=退信, 4=投递成功, 5=待审批, 6=审批拒绝。向用户简要报告结果，如有异常状态（退信/审批拒绝）需重点提示。
 
+### 撤回邮件
+
+发送成功后，若响应中包含 `recall_available: true`，说明该邮件支持撤回（24 小时内已投递的邮件）。
+
+**撤回操作：**
+```bash
+lark-cli mail user_mailbox.sent_messages recall --as user \
+  --params '{"user_mailbox_id":"me","message_id":"<message_id>"}'
+```
+
+- 返回 `recall_status: available` 表示撤回请求已受理（异步执行）
+- 返回 `recall_status: unavailable` 表示不可撤回，`recall_restriction_reason` 说明原因
+
+**查询撤回进度：**
+```bash
+lark-cli mail user_mailbox.sent_messages get_recall_detail --as user \
+  --params '{"user_mailbox_id":"me","message_id":"<message_id>"}'
+```
+
+- `recall_status: in_progress` — 撤回进行中，可稍后再查
+- `recall_status: done` — 撤回完成，查看 `recall_result`（`all_success` / `all_fail` / `some_fail`）和每个收件人的详情
+
+**注意：** 撤回是异步操作，`recall` 返回成功仅表示请求已受理，实际结果需通过 `get_recall_detail` 查询。若响应中无 `recall_available` 字段，说明该邮件或应用不支持撤回，不要主动提及撤回。
+
 ### 正文格式：优先使用 HTML
 
 撰写邮件正文时，**默认使用 HTML 格式**（body 内容会被自动检测）。仅当用户明确要求纯文本时，才使用 `--plain-text` 标志强制纯文本模式。
