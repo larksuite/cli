@@ -20,10 +20,11 @@ import (
 
 // configInitResult holds the result of the interactive config init flow.
 type configInitResult struct {
-	Mode      string // "create" or "existing"
-	Brand     core.LarkBrand
-	AppID     string
-	AppSecret string
+	Mode               string // "create" or "existing"
+	Brand              core.LarkBrand
+	AppID              string
+	AppSecret          string
+	UserTokenGetterUrl string
 }
 
 // runInteractiveConfigInit shows an interactive TUI for config init.
@@ -65,7 +66,7 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 		firstApp = existing.CurrentAppConfig("")
 	}
 
-	var appID, appSecret, brand string
+	var appID, appSecret, userTokenGetterUrl, brand string
 
 	appIDInput := huh.NewInput().
 		Title("App ID").
@@ -77,13 +78,22 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 	}
 
 	appSecretInput := huh.NewInput().
-		Title("App Secret").
+		Title("App Secret (App Secret or UserTokenGetterUrl, enter at least one)").
 		EchoMode(huh.EchoModePassword).
 		Value(&appSecret)
 	if firstApp != nil && !firstApp.AppSecret.IsZero() {
 		appSecretInput = appSecretInput.Placeholder("****")
 	} else {
 		appSecretInput = appSecretInput.Placeholder("xxxx")
+	}
+
+	userTokenGetterUrlInput := huh.NewInput().
+		Title("UserTokenGetterUrl (Optional, the url must get token and send token data to http://127.0.0.1:${state})").
+		Value(&userTokenGetterUrl)
+	if firstApp != nil && firstApp.UserTokenGetterUrl != "" {
+		userTokenGetterUrlInput = userTokenGetterUrlInput.Placeholder(firstApp.UserTokenGetterUrl)
+	} else {
+		userTokenGetterUrlInput = userTokenGetterUrlInput.Placeholder("http://...")
 	}
 
 	brand = "feishu"
@@ -95,6 +105,7 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 		huh.NewGroup(
 			appIDInput,
 			appSecretInput,
+			userTokenGetterUrlInput,
 			huh.NewSelect[string]().
 				Title(msg.Platform).
 				Options(
@@ -116,8 +127,8 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 	if appID == "" && firstApp != nil {
 		appID = firstApp.AppId
 	}
-	if appSecret == "" && firstApp != nil && !firstApp.AppSecret.IsZero() {
-		// Keep existing secret - caller will handle
+	if appSecret == "" && userTokenGetterUrl == "" && firstApp != nil && (!firstApp.AppSecret.IsZero() || firstApp.UserTokenGetterUrl != "") {
+		// Keep existing secret / url - caller will handle
 		return &configInitResult{
 			Mode:  "existing",
 			Brand: parseBrand(brand),
@@ -125,15 +136,19 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 		}, nil
 	}
 
-	if appID == "" || appSecret == "" {
-		return nil, output.ErrValidation("App ID and App Secret cannot be empty")
+	if appID == "" {
+		return nil, output.ErrValidation("App ID cannot be empty")
+	}
+	if appSecret == "" && userTokenGetterUrl == "" {
+		return nil, output.ErrValidation("App Secret and UserTokenGetterUrl cannot be both empty")
 	}
 
 	return &configInitResult{
-		Mode:      "existing",
-		Brand:     parseBrand(brand),
-		AppID:     appID,
-		AppSecret: appSecret,
+		Mode:               "existing",
+		Brand:              parseBrand(brand),
+		AppID:              appID,
+		AppSecret:          appSecret,
+		UserTokenGetterUrl: userTokenGetterUrl,
 	}, nil
 }
 

@@ -11,13 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
 	"os/exec"
-	"strconv"
-	"math/rand"
 	"runtime"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -340,6 +341,22 @@ func authLoginRun(opts *LoginOptions) error {
 	return nil
 }
 
+type UserTokenData struct {
+	AccessToken  *string `json:"access_token,omitempty"`  // user_access_token，用于获取用户资源
+	TokenType    *string `json:"token_type,omitempty"`    // token 类型
+	ExpiresIn    *int    `json:"expires_in,omitempty"`    // `access_token`的有效期，单位: 秒
+	Name         *string `json:"name,omitempty"`          // 用户姓名
+	EnName       *string `json:"en_name,omitempty"`       // 用户英文名称
+	AvatarUrl    *string `json:"avatar_url,omitempty"`    // 用户头像
+	AvatarThumb  *string `json:"avatar_thumb,omitempty"`  // 用户头像 72x72
+	AvatarMiddle *string `json:"avatar_middle,omitempty"` // 用户头像 240x240
+	AvatarBig    *string `json:"avatar_big,omitempty"`    // 用户头像 640x640
+	OpenId       *string `json:"open_id,omitempty"`       // 用户在应用内的唯一标识
+	UnionId      *string `json:"union_id,omitempty"`      // 用户统一ID
+	UserId       *string `json:"user_id,omitempty"`       // 用户 user_id
+	TenantKey    *string `json:"tenant_key,omitempty"`    // 当前企业标识
+}
+
 func authLoginViaGetter(opts *LoginOptions, config *core.CliConfig, finalScope string, msg *loginMsg, log func(string, ...interface{})) error {
 	f := opts.Factory
 	token, err := fetchTokenViaGetter(opts.Ctx, config.UserTokenGetterUrl, finalScope, log)
@@ -347,14 +364,7 @@ func authLoginViaGetter(opts *LoginOptions, config *core.CliConfig, finalScope s
 		return output.ErrAuth("failed to fetch user token via url: %v", err)
 	}
 
-	// 尝试解析返回的 token 结构
-	var gt struct {
-		AccessToken *string `json:"access_token,omitempty"` // user_access_token，用于获取用户资源
-		TokenType   *string `json:"token_type,omitempty"`   // token 类型
-		ExpiresIn   *int    `json:"expires_in,omitempty"`   // access_token 的有效期，单位: 秒
-		Name        *string `json:"name,omitempty"`         // 用户姓名
-		OpenId      *string `json:"open_id,omitempty"`      // 用户在应用内的唯一标识
-	}
+	var gt UserTokenData
 	if err := json.Unmarshal([]byte(token), &gt); err != nil {
 		return output.ErrAuth("failed to unmarshal token JSON: %v", err)
 	}
@@ -460,13 +470,24 @@ func fetchTokenViaGetter(ctx context.Context, getterURL string, scope string, lo
 			return
 		}
 
-		token := r.URL.Query().Get("token")
-		if token == "" {
+		var tokenData string
+		if r.Method == http.MethodPost {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "failed to read body", http.StatusBadRequest)
+				return
+			}
+			tokenData = string(body)
+		} else {
+			tokenData = r.URL.Query().Get("token")
+		}
+
+		if tokenData == "" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, "<html><body><h2>Failed</h2><p>Missing token parameter</p></body></html>")
+			fmt.Fprint(w, "<html><body><h2>Failed</h2><p>Missing token data</p></body></html>")
 			select {
-			case errCh <- fmt.Errorf("missing token parameter in callback request"):
+			case errCh <- fmt.Errorf("missing token data in callback request"):
 			default:
 			}
 			return
@@ -478,7 +499,7 @@ func fetchTokenViaGetter(ctx context.Context, getterURL string, scope string, lo
 <h2>✓ Success</h2><p>You can close this page and return to the terminal.</p></body></html>`)
 
 		select {
-		case tokenCh <- token:
+		case tokenCh <- tokenData:
 		default:
 		}
 	})

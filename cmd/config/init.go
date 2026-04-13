@@ -176,12 +176,9 @@ func findAppIndexByAppID(multi *core.MultiAppConfig, appID string) int {
 	}
 	return -1
 }
-
-func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileName, appID string, brand core.LarkBrand, lang, userTokenGetterUrl string) error {
+func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileName, appID string, brand core.LarkBrand, lang string, userTokenGetterUrl string) error {
 	if existing == nil {
-		if userTokenGetterUrl == "" {
-			return output.ErrValidation("App Secret cannot be empty for new configuration without user-token-getter-url")
-		}
+		return output.ErrValidation("App Secret cannot be empty for new configuration")
 	}
 
 	var app *core.AppConfig
@@ -189,28 +186,23 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 		if idx := findProfileIndexByName(existing, profileName); idx >= 0 {
 			app = &existing.Apps[idx]
 		} else {
-			if userTokenGetterUrl == "" {
-				return output.ErrValidation("App Secret cannot be empty for new profile without user-token-getter-url")
-			}
+			return output.ErrValidation("App Secret cannot be empty for new profile")
 		}
 	} else {
 		app = existing.CurrentAppConfig("")
 		if app == nil {
-			if userTokenGetterUrl == "" {
-				return output.ErrValidation("App Secret cannot be empty for new configuration without user-token-getter-url")
-			}
+			return output.ErrValidation("App Secret cannot be empty for new configuration")
 		}
 	}
 
-	if app != nil {
-		if app.AppId != appID {
-			if userTokenGetterUrl == "" {
-				return output.ErrValidation("App Secret cannot be empty when changing App ID without user-token-getter-url")
-			}
-		}
-		app.AppId = appID
-		app.Brand = brand
-		app.Lang = lang
+	if app.AppId != appID {
+		return output.ErrValidation("App Secret cannot be empty when changing App ID")
+	}
+
+	app.AppId = appID
+	app.Brand = brand
+	app.Lang = lang
+	if len(userTokenGetterUrl) > 0 {
 		app.UserTokenGetterUrl = userTokenGetterUrl
 	}
 	return core.SaveMultiAppConfig(existing)
@@ -261,7 +253,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 		}
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
-		
+
 		outputMap := map[string]interface{}{"appId": opts.AppID, "brand": brand}
 		if opts.appSecret != "" {
 			outputMap["appSecret"] = "****"
@@ -307,7 +299,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if err != nil {
 			return output.Errorf(output.ExitInternal, "internal", "%v", err)
 		}
-		if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, ""); err != nil {
+		if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, opts.UserTokenGetterUrl); err != nil {
 			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 		}
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
@@ -321,23 +313,23 @@ func configInitRun(opts *ConfigInitOptions) error {
 			return err
 		}
 		if result == nil {
-			return output.ErrValidation("App ID cannot be empty")
+			return output.ErrValidation("App ID cannot be empty, App Secret and UserTokenGetterUrl cannot be both empty")
 		}
 
 		existing, _ := core.LoadMultiAppConfig()
 
-		if result.AppSecret != "" {
+		if existing == nil {
 			// New secret provided (either from "create" or "existing" with input)
 			secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
 			if err != nil {
 				return output.Errorf(output.ExitInternal, "internal", "%v", err)
 			}
-			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, ""); err != nil {
+			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, result.UserTokenGetterUrl); err != nil {
 				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 			}
 		} else if result.Mode == "existing" && result.AppID != "" {
 			// Existing app with unchanged secret — update app ID and brand only
-			if err := updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang, ""); err != nil {
+			if err := updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang, result.UserTokenGetterUrl); err != nil {
 				var exitErr *output.ExitError
 				if errors.As(err, &exitErr) {
 					return err
@@ -407,6 +399,15 @@ func configInitRun(opts *ConfigInitOptions) error {
 		return output.ErrValidation("%s", err)
 	}
 
+	prompt = "UserTokenGetterUrl (Optional)"
+	if firstApp != nil && firstApp.UserTokenGetterUrl != "" {
+		prompt += fmt.Sprintf(" [%s]", firstApp.UserTokenGetterUrl)
+	}
+	getterUrlInput, err := readLine(prompt)
+	if err != nil {
+		return output.ErrValidation("%s", err)
+	}
+
 	resolvedAppId := appIdInput
 	if resolvedAppId == "" && firstApp != nil {
 		resolvedAppId = firstApp.AppId
@@ -425,18 +426,23 @@ func configInitRun(opts *ConfigInitOptions) error {
 		resolvedBrand = "feishu"
 	}
 
+	resolvedGetterUrl := getterUrlInput
+	if resolvedGetterUrl == "" && firstApp != nil {
+		resolvedGetterUrl = firstApp.UserTokenGetterUrl
+	}
+
 	if resolvedAppId == "" {
 		return output.ErrValidation("App ID cannot be empty")
 	}
-	if resolvedSecret.IsZero() && existing != nil && existing.CurrentAppConfig("") != nil && existing.CurrentAppConfig("").UserTokenGetterUrl == "" {
-		return output.ErrValidation("App Secret cannot be empty")
+	if resolvedSecret.IsZero() && resolvedGetterUrl == "" {
+		return output.ErrValidation("App Secret and UserTokenGetterUrl cannot be both empty")
 	}
 
 	storedSecret, err := core.ForStorage(resolvedAppId, resolvedSecret, f.Keychain)
 	if err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "%v", err)
 	}
-	if err := saveInitConfig(opts.ProfileName, existing, f, resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang, ""); err != nil {
+	if err := saveInitConfig(opts.ProfileName, existing, f, resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang, resolvedGetterUrl); err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
