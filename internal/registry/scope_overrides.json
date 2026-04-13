@@ -25,7 +25,6 @@
       "calendar:calendar:update",
       "contact:user.basic_profile:readonly",
       "mail:event",
-      "mail:user_mailbox.event.mail_address:read",
       "mail:user_mailbox.mail_contact:read",
       "mail:user_mailbox.mail_contact:write",
       "mail:user_mailbox.message.address:read",
