@@ -260,6 +260,11 @@ func authLoginRun(opts *LoginOptions) error {
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
+		if f.IOStreams.IsTerminal {
+			if cmdutil.OpenBrowser(authResp.VerificationUriComplete) {
+				fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.BrowserOpened)
+			}
+		}
 	}
 
 	// Step 3: Poll for token

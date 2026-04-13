@@ -31,6 +31,8 @@ type loginMsg struct {
 	MissingScopes      string
 	NoScopes           string
 	StatusHint         string
+  BrowserOpened      string
+
 
 	// Non-interactive hint (no flags)
 	HintHeader  string
@@ -55,7 +57,6 @@ var loginMsgZh = &loginMsg{
 	PermCommonLabel: "常用权限",
 	ErrNoDomain:     "请至少选择一个业务域",
 	ConfirmAuth:     "确认授权?",
-
 	OpenURL:            "在浏览器中打开以下链接进行认证:\n\n",
 	WaitingAuth:        "等待用户授权...",
 	AuthSuccess:        "授权成功，正在获取用户信息...",
@@ -67,13 +68,13 @@ var loginMsgZh = &loginMsg{
 	MissingScopes:      "  本次未授予 scopes: %s\n",
 	NoScopes:           "（空）",
 	StatusHint:         "可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
-
 	HintHeader:  "请指定要授权的权限:\n",
 	HintCommon1: "  --recommend                     授权推荐权限",
 	HintCommon2: "  --domain all                    授权所有已知域的权限",
 	HintCommon3: "  --domain calendar,task          授权日历和任务域的权限",
 	HintCommon4: "  --domain calendar --recommend   授权日历域的推荐权限",
 	HintFooter:  "  lark-cli auth login --help",
+  BrowserOpened:  "已在浏览器中打开，如未跳转请手动复制上方链接",
 }
 
 var loginMsgEn = &loginMsg{
@@ -90,7 +91,6 @@ var loginMsgEn = &loginMsg{
 	PermCommonLabel: "Common scopes",
 	ErrNoDomain:     "please select at least one domain",
 	ConfirmAuth:     "Confirm authorization?",
-
 	OpenURL:            "Open this URL in your browser to authenticate:\n\n",
 	WaitingAuth:        "Waiting for user authorization...",
 	AuthSuccess:        "Authorization successful, fetching user info...",
@@ -102,15 +102,16 @@ var loginMsgEn = &loginMsg{
 	MissingScopes:      "  Not granted scopes: %s\n",
 	NoScopes:           "(none)",
 	StatusHint:         "Run `lark-cli auth status` to inspect all scopes currently granted to the account.",
-
 	HintHeader:  "Please specify the scopes to authorize:\n",
 	HintCommon1: "  --recommend                     authorize recommended scopes",
 	HintCommon2: "  --domain all                    authorize all known domain scopes",
 	HintCommon3: "  --domain calendar,task          authorize calendar and task scopes",
 	HintCommon4: "  --domain calendar --recommend   authorize calendar recommended scopes",
 	HintFooter:  "  lark-cli auth login --help",
+  BrowserOpened:  "Opened in browser. If it didn't work, copy the URL above.",
 }
 
+// getLoginMsg returns the localized login message strings for the given language.
 func getLoginMsg(lang string) *loginMsg {
 	if lang == "en" {
 		return loginMsgEn
