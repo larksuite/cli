@@ -48,7 +48,7 @@ func NewSessionManager(config SessionManagerConfig) (*SessionManager, error) {
 	}
 
 	// Ensure base directory exists
-	if err := os.MkdirAll(config.BaseDir, 0755); err != nil {
+	if err := os.MkdirAll(config.BaseDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create sessions directory: %w", err)
 	}
 
