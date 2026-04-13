@@ -5,6 +5,33 @@
 
 将文件或文件夹移动到用户云空间的其他位置。
 
+## 与 `wiki +move` 的区别
+
+- `drive +move` 只处理 **Drive 文件夹树内部** 的位置调整，目标位置用 `--folder-token` 表示
+- `wiki +move` 处理的是 **Wiki 知识空间 / 页面层级**：要么移动已有 Wiki 节点，要么把 Drive 文档迁入 Wiki
+- 如果用户说“移动到某个文件夹”“移动到我的空间根目录”，应使用 `drive +move`
+- 如果用户说“移动到某个知识库 / 页面下”“迁入 Wiki / 知识空间”，应使用 `wiki +move`
+- 如果用户说“移动到我的文档库 / 我的知识库 / 个人知识库 / my_library”，不要使用 `drive +move`；先按 Wiki 目标处理
+- `我的文档库` 不是 Drive root folder，也不是 `--folder-token` 省略后的默认目的地
+- `drive +move` 不支持 wiki 文档；如果目标是 Wiki，不要尝试用 `drive +move` 代替
+
+## 不要误用到 `我的文档库`
+
+下面几种说法都**不应该**触发 `drive +move`：
+
+- `移动到我的文档库`
+- `放到我的知识库`
+- `迁入个人知识库`
+- `move to My Document Library`
+
+这些目标都应该先走 Wiki 解析流程：
+
+```bash
+lark-cli wiki spaces get --params '{"space_id":"my_library"}'
+```
+
+拿到真实 `space_id` 后，再改用 `wiki +move`。不要因为 `drive +move` 可以省略 `--folder-token` 就把它当作“我的文档库”的近似目标。
+
 ## 命令
 
 ```bash
@@ -60,6 +87,7 @@ lark-cli drive +move \
 - **轮询超时不是失败**：文件夹移动内置最多轮询 30 次、每次间隔 2 秒；如果轮询结束任务仍未完成，会返回 `task_id`、`status`、`ready=false`、`timed_out=true` 和 `next_command`
 - **继续查询**：当看到 `next_command` 时，改用 `lark-cli drive +task_result --scenario task_check --task-id <TASK_ID>` 继续查询
 - **目标文件夹**：如果不指定 `--folder-token`，文件将被移动到用户的根文件夹（"我的空间"）
+- **不要混淆产品概念**：这里的“根文件夹 / 我的空间”仅属于 Drive 文件夹树，不等于 Wiki 的“我的文档库”
 - **权限要求**：需要被移动文件的可管理权限、被移动文件所在位置的编辑权限、目标位置的编辑权限
 
 ## 推荐续跑方式

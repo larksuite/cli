@@ -54,6 +54,13 @@ func TestDriveTaskResultValidateErrorsByScenario(t *testing.T) {
 			},
 			wantErr: "--task-id is required",
 		},
+		{
+			name: "wiki move missing task id",
+			flags: map[string]string{
+				"scenario": "wiki_move",
+			},
+			wantErr: "--task-id is required",
+		},
 	}
 
 	for _, tt := range tests {

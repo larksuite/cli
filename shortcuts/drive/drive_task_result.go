@@ -18,14 +18,16 @@ import (
 var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
 	Command:     "+task_result",
-	Description: "Poll async task result for import, export, move, or delete operations",
+	Description: "Poll async task result for import, export, drive move/delete, or wiki move operations",
 	Risk:        "read",
-	Scopes:      []string{"drive:drive.metadata:readonly"},
-	AuthTypes:   []string{"user", "bot"},
+	// This shortcut multiplexes multiple backend APIs with different scope
+	// requirements, so scenario-specific prechecks are handled in Validate.
+	Scopes:    []string{},
+	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "ticket", Desc: "async task ticket (for import/export tasks)", Required: false},
-		{Name: "task-id", Desc: "async task ID (for move/delete folder tasks)", Required: false},
-		{Name: "scenario", Desc: "task scenario: import, export, or task_check", Required: true},
+		{Name: "task-id", Desc: "async task ID (for drive task_check or wiki_move tasks)", Required: false},
+		{Name: "scenario", Desc: "task scenario: import, export, task_check, or wiki_move", Required: true},
 		{Name: "file-token", Desc: "source document token used for export task status lookup", Required: false},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -34,9 +36,10 @@ var DriveTaskResult = common.Shortcut{
 			"import":     true,
 			"export":     true,
 			"task_check": true,
+			"wiki_move":  true,
 		}
 		if !validScenarios[scenario] {
-			return output.ErrValidation("unsupported scenario: %s. Supported scenarios: import, export, task_check", scenario)
+			return output.ErrValidation("unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move", scenario)
 		}
 
 		// Validate required params based on scenario
@@ -55,6 +58,13 @@ var DriveTaskResult = common.Shortcut{
 			if err := validate.ResourceName(runtime.Str("task-id"), "--task-id"); err != nil {
 				return output.ErrValidation("%s", err)
 			}
+		case "wiki_move":
+			if runtime.Str("task-id") == "" {
+				return output.ErrValidation("--task-id is required for wiki_move scenario")
+			}
+			if err := validate.ResourceName(runtime.Str("task-id"), "--task-id"); err != nil {
+				return output.ErrValidation("%s", err)
+			}
 		}
 
 		// For export scenario, file-token is required
@@ -67,7 +77,7 @@ var DriveTaskResult = common.Shortcut{
 			}
 		}
 
-		return nil
+		return validateDriveTaskResultScopes(ctx, runtime, scenario)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		scenario := strings.ToLower(runtime.Str("scenario"))
@@ -92,6 +102,11 @@ var DriveTaskResult = common.Shortcut{
 			dry.GET("/open-apis/drive/v1/files/task_check").
 				Desc("[1] Query move/delete folder task status").
 				Params(driveTaskCheckParams(taskID))
+		case "wiki_move":
+			dry.GET("/open-apis/wiki/v2/tasks/:task_id").
+				Desc("[1] Query wiki move task result").
+				Set("task_id", taskID).
+				Params(map[string]interface{}{"task_type": "move"})
 		}
 
 		return dry
@@ -116,6 +131,8 @@ var DriveTaskResult = common.Shortcut{
 			result, err = queryExportTask(runtime, ticket, fileToken)
 		case "task_check":
 			result, err = queryTaskCheck(runtime, taskID)
+		case "wiki_move":
+			result, err = queryWikiMoveTask(runtime, taskID)
 		}
 
 		if err != nil {
