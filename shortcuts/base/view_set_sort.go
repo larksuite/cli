@@ -20,7 +20,11 @@ var BaseViewSetSort = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "sort JSON object/array", Required: true},
+		{Name: "json", Desc: "sort_config JSON object", Required: true},
+	},
+	Tips: []string{
+		`Example: --json '{"sort_config":[{"field":"fldPriority","desc":true}]}'`,
+		"Agent hint: use the lark-base skill's view-set-sort guide for usage and limits.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONValue(runtime)

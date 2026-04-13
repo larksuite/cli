@@ -44,7 +44,8 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 | `--to <emails>` | 否 | 完整收件人列表，多个用逗号分隔。支持 `Alice <alice@example.com>` 格式。省略时草稿不带收件人（之后可通过 `+draft-edit` 添加） |
 | `--subject <text>` | 是 | 草稿主题 |
 | `--body <text>` | 是 | 邮件正文。推荐使用 HTML 获得富文本排版；也支持纯文本（自动检测）。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径） |
-| `--from <email>` | 否 | 发件人邮箱地址（作为邮箱选择器）。省略时使用当前登录用户的主邮箱地址 |
+| `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。省略时使用邮箱主地址 |
+| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用，如通过别名或 send_as 地址发信。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--cc <emails>` | 否 | 完整抄送列表，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 完整密送列表，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |

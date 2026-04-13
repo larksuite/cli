@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
 package vfs
 
 import (
@@ -26,4 +29,8 @@ type FS interface {
 	ReadDir(name string) ([]os.DirEntry, error)
 	Remove(name string) error
 	Rename(oldpath, newpath string) error
+
+	// Path resolution
+	EvalSymlinks(path string) (string, error)
+	Executable() (string, error)
 }

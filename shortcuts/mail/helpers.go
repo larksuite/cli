@@ -6,6 +6,7 @@ package mail
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -17,10 +18,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -195,9 +196,14 @@ func resolveMailboxID(runtime *common.RuntimeContext) string {
 	return id
 }
 
-// resolveComposeMailboxID returns the mailbox ID for compose shortcuts,
-// derived from --from flag. Falls back to "me" when --from is not specified.
+// resolveComposeMailboxID returns the mailbox ID for compose shortcuts.
+// Priority: --mailbox > --from > "me".
+// When sending via an alias (send_as), use --mailbox for the owning mailbox
+// and --from for the alias sender address.
 func resolveComposeMailboxID(runtime *common.RuntimeContext) string {
+	if mb := runtime.Str("mailbox"); mb != "" {
+		return mb
+	}
 	if from := runtime.Str("from"); from != "" {
 		return from
 	}
@@ -251,23 +257,38 @@ func extractPrimaryEmail(data map[string]interface{}) string {
 	return ""
 }
 
-// fetchCurrentUserEmail retrieves the current mailbox primary email.
-func fetchCurrentUserEmail(runtime *common.RuntimeContext) string {
+// resolveComposeSenderEmail determines the sender email for compose shortcuts.
+// Priority: --from > --mailbox > profile("me").
+// The profile API only supports "me", so when --mailbox is set to a non-"me"
+// address (e.g. a shared mailbox), its value is used directly as the sender.
+func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
+	if from := runtime.Str("from"); from != "" {
+		return from
+	}
+	if mb := runtime.Str("mailbox"); mb != "" && mb != "me" {
+		return mb
+	}
 	email, _ := fetchMailboxPrimaryEmail(runtime, "me")
 	return email
 }
 
-// fetchSelfEmailSet returns a set containing the primary email of the given
-// mailbox for reply-all exclusion. Pass the resolved mailboxID (from
-// resolveComposeMailboxID) so that when --from selects a different mailbox,
-// only that mailbox's own address is excluded — not the "me" primary email.
+// fetchSelfEmailSet returns a set of addresses to exclude as "self" in
+// reply-all. It always tries profile("me"); when mailboxID or senderEmail
+// differ from "me", those are added to the set as well so that shared-
+// mailbox and alias addresses are also excluded.
 func fetchSelfEmailSet(runtime *common.RuntimeContext, mailboxID string) map[string]bool {
-	if mailboxID == "" {
-		mailboxID = "me"
-	}
 	set := make(map[string]bool)
-	if email, _ := fetchMailboxPrimaryEmail(runtime, mailboxID); email != "" {
+	// Always include the "me" primary email.
+	if email, _ := fetchMailboxPrimaryEmail(runtime, "me"); email != "" {
 		set[strings.ToLower(email)] = true
+	}
+	// Include mailboxID itself (covers shared mailbox addresses).
+	if mailboxID != "" && mailboxID != "me" {
+		set[strings.ToLower(mailboxID)] = true
+	}
+	// Include --from alias address so it's excluded from reply-all recipients.
+	if from := runtime.Str("from"); from != "" {
+		set[strings.ToLower(from)] = true
 	}
 	return set
 }
@@ -1858,7 +1879,7 @@ func inlineSpecFilePaths(specs []InlineSpec) []string {
 // MaxAttachmentCount or the combined size exceeds MaxAttachmentBytes.
 // filePaths are read via os.Stat (no full read); extraBytes / extraCount account for
 // already-loaded content (e.g. downloaded original attachments in +forward).
-func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount ...int) error {
+func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes int64, extraCount ...int) error {
 	extra := 0
 	for _, c := range extraCount {
 		extra += c
@@ -1869,12 +1890,11 @@ func checkAttachmentSizeLimit(filePaths []string, extraBytes int64, extraCount .
 	}
 	totalBytes := extraBytes
 	for _, p := range filePaths {
-		safePath, err := validate.SafeInputPath(p)
+		info, err := fio.Stat(p)
 		if err != nil {
-			return fmt.Errorf("unsafe attachment path %s: %w", p, err)
-		}
-		info, err := vfs.Stat(safePath)
-		if err != nil {
+			if errors.Is(err, fileio.ErrPathValidation) {
+				return fmt.Errorf("unsafe attachment path %s: %w", p, err)
+			}
 			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
 		}
 		totalBytes += info.Size()
@@ -1976,7 +1996,7 @@ func validateRecipientCount(to, cc, bcc string) error {
 	return nil
 }
 
-func validateComposeInlineAndAttachments(attachFlag, inlineFlag string, plainText bool, body string) error {
+func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
 			return fmt.Errorf("--inline is not supported with --plain-text (inline images require HTML body)")
@@ -1994,5 +2014,5 @@ func validateComposeInlineAndAttachments(attachFlag, inlineFlag string, plainTex
 		return err
 	}
 	allFiles := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
-	return checkAttachmentSizeLimit(allFiles, 0)
+	return checkAttachmentSizeLimit(fio, allFiles, 0)
 }

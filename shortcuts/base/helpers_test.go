@@ -10,7 +10,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
+
+var testPC = &parseCtx{fio: &localfileio.LocalFileIO{}}
 
 func TestParseHelpers(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -30,36 +34,36 @@ func TestParseHelpers(t *testing.T) {
 		t.Fatalf("write temp file err=%v", err)
 	}
 	_ = tmp.Close()
-	obj, err := parseJSONObject(`{"name":"demo"}`, "json")
+	obj, err := parseJSONObject(testPC, `{"name":"demo"}`, "json")
 	if err != nil || obj["name"] != "demo" {
 		t.Fatalf("obj=%v err=%v", obj, err)
 	}
-	if _, err := parseJSONObject(`[1]`, "json"); err == nil || !strings.Contains(err.Error(), "invalid JSON object") {
+	if _, err := parseJSONObject(testPC, `[1]`, "json"); err == nil || !strings.Contains(err.Error(), "invalid JSON object") {
 		t.Fatalf("err=%v", err)
 	}
-	obj, err = parseJSONObject("@"+tmp.Name(), "json")
+	obj, err = parseJSONObject(testPC, "@"+tmp.Name(), "json")
 	if err != nil || obj["name"] != "from-file" {
 		t.Fatalf("file obj=%v err=%v", obj, err)
 	}
-	arr, err := parseJSONArray(`[1,2]`, "items")
+	arr, err := parseJSONArray(testPC, `[1,2]`, "items")
 	if err != nil || len(arr) != 2 {
 		t.Fatalf("arr=%v err=%v", arr, err)
 	}
-	if _, err := parseJSONArray(`{"a":1}`, "items"); err == nil || !strings.Contains(err.Error(), "invalid JSON array") {
+	if _, err := parseJSONArray(testPC, `{"a":1}`, "items"); err == nil || !strings.Contains(err.Error(), "invalid JSON array") {
 		t.Fatalf("err=%v", err)
 	}
-	list, err := parseStringListFlexible("a, b, ,c", "fields")
+	list, err := parseStringListFlexible(testPC, "a, b, ,c", "fields")
 	if err != nil || !reflect.DeepEqual(list, []string{"a", "b", "c"}) {
 		t.Fatalf("list=%v err=%v", list, err)
 	}
-	list, err = parseStringListFlexible(`["x","y"]`, "fields")
+	list, err = parseStringListFlexible(testPC, `["x","y"]`, "fields")
 	if err != nil || !reflect.DeepEqual(list, []string{"x", "y"}) {
 		t.Fatalf("list=%v err=%v", list, err)
 	}
-	if _, err := parseStringListFlexible(`[1]`, "fields"); err == nil || !strings.Contains(err.Error(), "invalid JSON string array") {
+	if _, err := parseStringListFlexible(testPC, `[1]`, "fields"); err == nil || !strings.Contains(err.Error(), "invalid JSON string array") {
 		t.Fatalf("err=%v", err)
 	}
-	if _, err := parseJSONValue("{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a JSON object/array directly") {
+	if _, err := parseJSONValue(testPC, "{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a JSON object/array directly") {
 		t.Fatalf("err=%v", err)
 	}
 	if !reflect.DeepEqual(parseStringList("m,n"), []string{"m", "n"}) {
@@ -194,7 +198,7 @@ func TestRecordAndChunkHelpers(t *testing.T) {
 	}
 }
 
-func TestResolveAndSimplifyHelpers(t *testing.T) {
+func TestResolveHelpers(t *testing.T) {
 	fields := []map[string]interface{}{{"id": "fld_1", "name": "Name", "type": "text"}, {"field_id": "fld_2", "field_name": "Age", "type": "number", "multiple": true}}
 	tables := []map[string]interface{}{{"id": "tbl_1", "name": "Orders"}}
 	views := []map[string]interface{}{{"id": "vew_1", "name": "Main", "type": "grid"}}
@@ -209,14 +213,6 @@ func TestResolveAndSimplifyHelpers(t *testing.T) {
 	}
 	if _, err := resolveViewRef(views, "Missing"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("err=%v", err)
-	}
-	simplifiedFields := simplifyFields(fields)
-	if len(simplifiedFields) != 2 {
-		t.Fatalf("simplifiedFields=%v", simplifiedFields)
-	}
-	simplifiedViews := simplifyViews(views)
-	if len(simplifiedViews) != 1 {
-		t.Fatalf("simplifiedViews=%v", simplifiedViews)
 	}
 }
 
@@ -262,10 +258,10 @@ func TestFilterAndSortHelpers(t *testing.T) {
 }
 
 func TestJSONInputHelpers(t *testing.T) {
-	if got, err := loadJSONInput(`{"name":"demo"}`, "json"); err != nil || got != `{"name":"demo"}` {
+	if got, err := loadJSONInput(testPC, `{"name":"demo"}`, "json"); err != nil || got != `{"name":"demo"}` {
 		t.Fatalf("got=%q err=%v", got, err)
 	}
-	if _, err := loadJSONInput("@", "json"); err == nil || !strings.Contains(err.Error(), "file path cannot be empty") {
+	if _, err := loadJSONInput(testPC, "@", "json"); err == nil || !strings.Contains(err.Error(), "file path cannot be empty") {
 		t.Fatalf("err=%v", err)
 	}
 	tmp := t.TempDir()
@@ -281,7 +277,7 @@ func TestJSONInputHelpers(t *testing.T) {
 	if err := os.WriteFile(emptyPath, []byte("  \n"), 0o644); err != nil {
 		t.Fatalf("write empty file err=%v", err)
 	}
-	if _, err := loadJSONInput("@"+emptyPath, "json"); err == nil || !strings.Contains(err.Error(), "is empty") {
+	if _, err := loadJSONInput(testPC, "@"+emptyPath, "json"); err == nil || !strings.Contains(err.Error(), "is empty") {
 		t.Fatalf("err=%v", err)
 	}
 	syntaxErr := formatJSONError("json", "object", &json.SyntaxError{Offset: 7})
@@ -309,9 +305,6 @@ func TestIdentifierAndValueHelpers(t *testing.T) {
 	}
 	if viewName(map[string]interface{}{"view_name": "Main"}) != "Main" {
 		t.Fatalf("viewName alt key failed")
-	}
-	if viewType(map[string]interface{}{"view_type": "grid"}) != "grid" {
-		t.Fatalf("viewType alt key failed")
 	}
 	if !valueEmpty(nil) || !valueEmpty("  ") || !valueEmpty([]interface{}{}) || !valueEmpty(map[string]interface{}{}) {
 		t.Fatalf("valueEmpty empty cases failed")

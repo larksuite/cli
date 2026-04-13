@@ -9,12 +9,14 @@ import "github.com/larksuite/cli/shortcuts/common"
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		DriveUpload,
+		DriveCreateShortcut,
 		DriveDownload,
 		DriveAddComment,
 		DriveExport,
 		DriveExportDownload,
 		DriveImport,
 		DriveMove,
+		DriveDelete,
 		DriveTaskResult,
 	}
 }

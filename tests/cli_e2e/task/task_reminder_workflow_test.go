@@ -19,7 +19,7 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := clie2e.GenerateSuffix()
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
 		Args: []string{"task", "+create"},
 		Data: map[string]any{
@@ -57,9 +57,9 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 	})
 
 	t.Run("remove reminder", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args: []string{"task", "+reminder", "--task-id", taskGUID, "--remove"},
-		})
+		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)

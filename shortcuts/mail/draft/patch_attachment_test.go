@@ -25,9 +25,10 @@ func TestAddAttachmentToNilBodyCreatesRoot(t *testing.T) {
 			{Name: "From", Value: "alice@example.com"},
 		},
 	}
+	dctx := &DraftCtx{FIO: testFIO}
 	// Apply manually with a minimal patch (bypass Patch validation since we
 	// have no body part to detect)
-	err := addAttachment(snapshot, "file.txt")
+	err := addAttachment(dctx, snapshot, "file.txt")
 	if err != nil {
 		t.Fatalf("addAttachment() error = %v", err)
 	}
@@ -51,7 +52,7 @@ func TestAddAttachmentToExistingMultipartMixed(t *testing.T) {
 	}
 	snapshot := mustParseFixtureDraft(t, fixtureData)
 	originalChildren := len(snapshot.Body.Children)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "add_attachment", Path: "second.txt"}},
 	})
 	if err != nil {
@@ -84,7 +85,7 @@ func TestAddAttachmentBlockedExtensionViaApply(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, fixtureData)
 	for _, name := range blocked {
 		t.Run(name, func(t *testing.T) {
-			err := Apply(snapshot, Patch{
+			err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 				Ops: []PatchOp{{Op: "add_attachment", Path: name}},
 			})
 			if err == nil {
@@ -111,7 +112,7 @@ func TestAddAttachmentAllowedExtensionViaApply(t *testing.T) {
 	for _, name := range allowed {
 		t.Run(name, func(t *testing.T) {
 			snapshot := mustParseFixtureDraft(t, fixtureData)
-			err := Apply(snapshot, Patch{
+			err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 				Ops: []PatchOp{{Op: "add_attachment", Path: name}},
 			})
 			if err != nil {
@@ -142,7 +143,7 @@ Content-Type: text/html; charset=UTF-8
 `)
 	for _, name := range []string{"icon.svg", "evil.png"} {
 		t.Run(name, func(t *testing.T) {
-			err := Apply(snapshot, Patch{
+			err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 				Ops: []PatchOp{{Op: "add_inline", Path: name, CID: "img1"}},
 			})
 			if err == nil {
@@ -167,7 +168,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>hello<img src="cid:img1"></div>
 `)
-			err := Apply(snapshot, Patch{
+			err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 				Ops: []PatchOp{{Op: "add_inline", Path: name, CID: "img1"}},
 			})
 			if err != nil {
@@ -194,7 +195,7 @@ Content-Type: text/html; charset=UTF-8
 <div>hello<img src="cid:img1"></div>
 `)
 	// User passes a spoofed content_type; it should be ignored in favor of detected type.
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "add_inline", Path: "logo.png", CID: "img1", ContentType: "application/octet-stream"}},
 	})
 	if err != nil {
@@ -234,7 +235,7 @@ PHN2Zz48L3N2Zz4=
 	// The old part has image/svg+xml. Replace with a PNG file; the filename
 	// falls back to the path ("new.png") since the old part's name is "icon.svg"
 	// which would fail the extension whitelist, so we pass an explicit filename.
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:       "replace_inline",
 			Target:   AttachmentTarget{PartID: "1.2"},
@@ -257,7 +258,7 @@ PHN2Zz48L3N2Zz4=
 
 func TestRemoveAttachmentRejectsInlinePart(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/html_inline_draft.eml"))
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_attachment", Target: AttachmentTarget{PartID: "1.2"}}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "use remove_inline") {
@@ -280,7 +281,7 @@ Content-Transfer-Encoding: base64
 
 YQ==
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_attachment", Target: AttachmentTarget{PartID: "1"}}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "cannot remove root") {
@@ -301,7 +302,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_attachment", Target: AttachmentTarget{PartID: "99"}}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
@@ -316,7 +317,7 @@ hello
 func TestRemoveInlineRejectsNonInlinePart(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/forward_draft.eml"))
 	// 1.2 is an attachment in forward_draft, not an inline
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_inline", Target: AttachmentTarget{PartID: "1.2"}}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "not an inline") {
@@ -340,7 +341,7 @@ Content-Transfer-Encoding: base64
 
 cG5n
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_inline", Target: AttachmentTarget{PartID: "1"}}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "cannot remove root") {
@@ -361,7 +362,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_inline", Target: AttachmentTarget{PartID: "99"}}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
@@ -376,7 +377,7 @@ hello
 func TestResolveTargetByCID(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/html_inline_draft.eml"))
 	// Remove via CID target
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:     "replace_inline",
 			Target: AttachmentTarget{CID: "logo"},
@@ -397,7 +398,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_inline", Target: AttachmentTarget{CID: "nonexistent"}}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "no part with cid") {
@@ -433,7 +434,7 @@ func TestReplaceInlineRejectsNonInlinePart(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := mustParseFixtureDraft(t, fixtureData)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:     "replace_inline",
 			Target: AttachmentTarget{PartID: "1.2"},
@@ -462,7 +463,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:     "replace_inline",
 			Target: AttachmentTarget{PartID: "99"},

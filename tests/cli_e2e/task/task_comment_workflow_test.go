@@ -19,7 +19,7 @@ func TestTask_CommentWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	suffix := time.Now().UTC().Format("20060102-150405")
+	suffix := clie2e.GenerateSuffix()
 	commentContent := "lark-cli-e2e-comment-" + suffix
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
 		Args: []string{"task", "+create"},

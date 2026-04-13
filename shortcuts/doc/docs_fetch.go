@@ -61,6 +61,10 @@ var DocsFetch = common.Shortcut{
 			return err
 		}
 
+		if md, ok := result["markdown"].(string); ok {
+			result["markdown"] = fixExportedMarkdown(md)
+		}
+
 		runtime.OutFormat(result, nil, func(w io.Writer) {
 			if title, ok := result["title"].(string); ok && title != "" {
 				fmt.Fprintf(w, "# %s\n\n", title)

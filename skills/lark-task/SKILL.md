@@ -83,6 +83,15 @@ lark-cli task <resource> <method> [flags] # 调用 API
   - `add` — 添加任务成员
   - `remove` — 移除任务成员
 
+### sections
+
+  - `create` — 创建自定义分组
+  - `delete` — 删除自定义分组
+  - `get` — 获取自定义分组详情
+  - `list` — 获取自定义分组列表
+  - `patch` — 更新自定义分组
+  - `tasks` — 获取自定义分组任务列表
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -104,3 +113,9 @@ lark-cli task <resource> <method> [flags] # 调用 API
 | `subtasks.list` | `task:task:read` |
 | `members.add` | `task:task:write` |
 | `members.remove` | `task:task:write` |
+| `sections.create` | `task:section:write` |
+| `sections.delete` | `task:section:write` |
+| `sections.get` | `task:section:read` |
+| `sections.list` | `task:section:read` |
+| `sections.patch` | `task:section:write` |
+| `sections.tasks` | `task:section:read` |

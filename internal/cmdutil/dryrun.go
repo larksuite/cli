@@ -215,6 +215,51 @@ func encodeParams(params map[string]interface{}) string {
 	return vals.Encode()
 }
 
+// PrintDryRunWithFile outputs a dry-run summary for file upload requests.
+// Instead of serializing the Formdata body, it shows file metadata.
+func PrintDryRunWithFile(w io.Writer, request client.RawApiRequest, config *core.CliConfig, format, fileField, filePath string, formFields any) error {
+	dr := NewDryRunAPI()
+	switch request.Method {
+	case "POST":
+		dr.POST(request.URL)
+	case "PUT":
+		dr.PUT(request.URL)
+	case "PATCH":
+		dr.PATCH(request.URL)
+	case "DELETE":
+		dr.DELETE(request.URL)
+	default:
+		dr.GET(request.URL)
+	}
+	if len(request.Params) > 0 {
+		dr.Params(request.Params)
+	}
+	filePathDisplay := filePath
+	if filePathDisplay == "" {
+		filePathDisplay = "<stdin>"
+	}
+	fileInfo := map[string]any{
+		"file": map[string]string{"field": fileField, "path": filePathDisplay},
+	}
+	if formFields != nil {
+		fileInfo["form_fields"] = formFields
+	}
+	fileInfo["options"] = []string{"WithFileUpload"}
+	dr.Body(fileInfo)
+	dr.Set("as", string(request.As))
+	dr.Set("appId", config.AppID)
+	if config.UserOpenId != "" {
+		dr.Set("userOpenId", config.UserOpenId)
+	}
+	fmt.Fprintln(w, "=== Dry Run ===")
+	if format == "pretty" {
+		fmt.Fprint(w, dr.Format())
+	} else {
+		output.PrintJson(w, dr)
+	}
+	return nil
+}
+
 // PrintDryRun outputs a standardised dry-run summary using DryRunAPI.
 // When format is "pretty", outputs human-readable text; otherwise JSON.
 func PrintDryRun(w io.Writer, request client.RawApiRequest, config *core.CliConfig, format string) error {

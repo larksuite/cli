@@ -18,9 +18,16 @@ import (
 )
 
 func newBaseTestRuntime(stringFlags map[string]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
+	return newBaseTestRuntimeWithArrays(stringFlags, nil, boolFlags, intFlags)
+}
+
+func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "test"}
 	for name := range stringFlags {
 		cmd.Flags().String(name, "", "")
+	}
+	for name := range stringArrayFlags {
+		cmd.Flags().StringArray(name, nil, "")
 	}
 	for name := range boolFlags {
 		cmd.Flags().Bool(name, false, "")
@@ -31,6 +38,11 @@ func newBaseTestRuntime(stringFlags map[string]string, boolFlags map[string]bool
 	_ = cmd.ParseFlags(nil)
 	for name, value := range stringFlags {
 		_ = cmd.Flags().Set(name, value)
+	}
+	for name, values := range stringArrayFlags {
+		for _, value := range values {
+			_ = cmd.Flags().Set(name, value)
+		}
 	}
 	for name, value := range boolFlags {
 		if value {
@@ -70,22 +82,22 @@ func TestBaseAction(t *testing.T) {
 }
 
 func TestParseObjectList(t *testing.T) {
-	items, err := parseObjectList("", "view")
+	items, err := parseObjectList(testPC, "", "view")
 	if err != nil || items != nil {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	items, err = parseObjectList(`{"name":"grid"}`, "view")
+	items, err = parseObjectList(testPC, `{"name":"grid"}`, "view")
 	if err != nil || len(items) != 1 || items[0]["name"] != "grid" {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	items, err = parseObjectList(`[{"name":"grid"}]`, "view")
+	items, err = parseObjectList(testPC, `[{"name":"grid"}]`, "view")
 	if err != nil || len(items) != 1 || items[0]["name"] != "grid" {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
 
-	_, err = parseObjectList(`[1]`, "view")
+	_, err = parseObjectList(testPC, `[1]`, "view")
 	if err == nil || !strings.Contains(err.Error(), "must be an object") {
 		t.Fatalf("err=%v", err)
 	}
@@ -108,13 +120,19 @@ func TestWrapViewPropertyBody(t *testing.T) {
 	}
 }
 
+func TestViewSetVisibleFieldsNoValidateHook(t *testing.T) {
+	if BaseViewSetVisibleFields.Validate != nil {
+		t.Fatalf("expected no validate hook, got non-nil")
+	}
+}
+
 func TestShortcutsCatalog(t *testing.T) {
 	shortcuts := Shortcuts()
 	want := []string{
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
-		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
-		"+record-list", "+record-get", "+record-upsert", "+record-upload-attachment", "+record-delete",
+		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
+		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-upload-attachment", "+record-delete",
 		"+record-history-list",
 		"+base-get", "+base-copy", "+base-create",
 		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+advperm-enable", "+advperm-disable",
@@ -122,7 +140,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+data-query",
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
-		"+dashboard-list", "+dashboard-get", "+dashboard-create", "+dashboard-update", "+dashboard-delete",
+		"+dashboard-list", "+dashboard-get", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 	}
 	if len(shortcuts) != len(want) {
@@ -234,21 +252,19 @@ func TestBaseTableValidate(t *testing.T) {
 }
 
 func TestBaseRecordValidate(t *testing.T) {
-	ctx := context.Background()
 	if BaseRecordList.Validate != nil {
-		t.Fatalf("record list validate should be nil after removing --fields")
+		t.Fatalf("record list validate should be nil for repeatable --field-id")
+	}
+	if BaseRecordSearch.Validate != nil {
+		t.Fatalf("record search validate should be nil for API passthrough")
 	}
 	if BaseRecordGet.Validate != nil {
-		t.Fatalf("record get validate should be nil after removing --fields")
+		t.Fatalf("record get validate should be nil")
 	}
-	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"A"}`}, nil, nil)); err != nil {
-		t.Fatalf("upsert validate err=%v", err)
-	}
-	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": "{"}, nil, nil)); err != nil {
-		t.Fatalf("invalid record json should bypass CLI validate, err=%v", err)
+	if BaseRecordUpsert.Validate != nil {
+		t.Fatalf("record upsert validate should be nil for API passthrough")
 	}
 }
-
 func TestBaseViewValidate(t *testing.T) {
 	ctx := context.Background()
 	if err := BaseViewCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"name":"Main"}`}, nil, nil)); err != nil {

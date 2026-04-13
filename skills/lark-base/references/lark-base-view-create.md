@@ -71,6 +71,8 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/views
 
 
 1. 多视图批量创建时，优先用数组一次提交，减少重复调用。
+2. 如果用户要“查看视图字段顺序”或“查看可见字段”，使用 `+view-get-visible-fields` 读取当前 `visible_fields`。
+3. 如果用户同时要求“视图字段顺序”或“可见字段”，创建完成后必须继续调用 `+view-set-visible-fields` 设置 `visible_fields`；`+view-create` 本身不负责字段顺序/可见性配置。
 
 ## 坑点
 

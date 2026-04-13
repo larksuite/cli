@@ -1,7 +1,7 @@
 ---
 name: lark-calendar
 version: 1.0.0
-description: "飞书日历（calendar）：提供日历与日程（会议）的全面管理能力。核心场景包括：查看/搜索日程、创建/更新日程、管理参会人、查询忙闲状态及推荐空闲时段。高频操作请优先使用 Shortcuts：+agenda（快速概览今日/近期行程）、+create（创建日程并按需邀请参会人）、+freebusy（查询用户主日历的忙闲信息和rsvp的状态）、+rsvp（回复日程邀请）、+suggestion（针对时间未确定的预约日程需求，提供多个时间推荐方案）。"
+description: "飞书日历（calendar）：提供日历与日程（会议）的全面管理能力。核心场景包括：查看/搜索日程、创建/更新日程、管理参会人、查询忙闲状态及推荐空闲时段、查询/搜索与预定会议室。注意：涉及【预约日程/会议】或【查询/预定会议室】时，必须先读取 references/lark-calendar-schedule-meeting.md 工作流！高频操作请优先使用 Shortcuts：+agenda（快速概览今日/近期行程）、+create（创建日程并按需邀请参会人及预定会议室）、+freebusy（查询用户主日历的忙闲信息和rsvp的状态）、+rsvp（回复日程邀请）"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -12,15 +12,9 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 **CRITICAL — 所有的 Shortcuts 在执行之前，务必先使用 Read 工具读取其对应的说明文档，禁止直接盲目调用命令。**
-## 核心场景
+**CRITICAL — 凡涉及【预约日程/会议】或【查询/搜索会议室】，第一步 MUST 强制使用 Read 工具读取 [`references/lark-calendar-schedule-meeting.md`](references/lark-calendar-schedule-meeting.md)。禁止跳过此步直接调用 API 或 Shortcut！**
+**CRITICAL — 术语约束：用户日常表达中常说的“帮我约个日历”、“查一下今天的日历”等，其实际意图通常是针对 日程（Event） 的创建或查询，而非操作 日历（Calendar） 容器本身。请自动将口语化的“日历”意图映射为“日程”操作（如 `+create`, `+agenda`）。**
 
-日历技能包含以下核心场景：
-
-### 1. 预约日程
-
-这是日历技能最核心的场景，核心是让用户低成本地实现日程预约。
-
-> **💡 核心原则：做智能助理，提供辅助决策，而不是表单填写机或替用户做主。**
 
 **时间与日期推断规范：**
 为确保准确性，在涉及时间推断时，请严格遵循以下规则：
@@ -28,27 +22,16 @@ metadata:
 - **一天的范围**：当用户提到`明天`、`今天`等泛指某一天时，时间范围应默认覆盖整天时间范围。**切勿**自行缩减查询范围，以免遗漏晚上的时间安排。
 - **历史时间约束**：不能预约已经完全过去的时间。唯一的例外情况是“跨越当前时间”的日程，即日程的开始时间在过去，但结束时间在未来。
 
-**预约日程的工作流：**
+## 核心场景
 
-1. **智能推断默认值**
-   - 标题，参与人，时长均存在默认值，无需频繁的和用户确认。
-   - **参会人**：如未明确指定其他人，默认参会人仅为**用户自己**。当搜索特定参与人（人、群、会议室）出现多个结果无法唯一确定时，必须询问用户进行选择确认，并将该偏好记录为长期记忆，以便后续自动识别。
-   - **会议室**：目前不支持主动预定会议室，除非当前上下文中已经存在对应的会议室ID(omm_ 前缀) 且需要添加到日程中。
-   - **标题**：根据对话上下文自动生成（例如“沟通对齐”或“需求讨论”），如无法推断则默认为“会议”。
-   - **时长**：基于会议类型和上下文动态推断（例如：“评审/汇报”推断为 60 分钟等），如无法推断，则默认为 30 分钟。
-
-2. **时间建议与辅助决策（核心体验）**
-   - **有明确时间点**（如`明早10点`）：调用相关工具（如 `lark-cli calendar +freebusy` [lark-calendar-freebusy](references/lark-calendar-freebusy.md)）先查询该时间段参会人的忙闲状态（注：若参会人已有日程的 RSVP 状态为拒绝，则认为该时段为空闲）。若均无冲突，直接进入下一步确认并创建；若有冲突，提示用户冲突情况并询问是否继续创建或重新选择时间。
-   - **有时间区间**（如`明天`、`下午`、`本周`）：调用相关工具（如 `lark-cli calendar +suggestion` [lark-calendar-suggestion](references/lark-calendar-suggestion.md)）获取该区间内所有参会人的**多个时间推荐方案**供用户选择。**必须在用户确认方案后**，才能执行创建日程操作；且用户一旦选择了推荐的方案，**无需再次查询忙闲信息**。
-   - **无任何时间信息**：默认推断一个合理区间（如“今天”或“近两天”），并同样获取**多个时间推荐方案**供用户快速选择。
-   - **生活类需求**（如健身、游泳、遛弯、约饭、奶茶等，注意“约咖啡”算工作场景）：预期**不调用** `suggestion` 工具。应自行推断合适的非工作时间给到用户确认。如果无法推断，请尝试主动询问用户，并在用户给出反馈后形成记忆，以便后续直接应用。
-   - **模糊语义消解与长期记忆构建 (Aha Moment)**：针对用户专属的时间表达习惯（如“上班后”、“下班前”）或存在歧义的时间场景（如未指明上下午的12小时制），严禁主观臆断。应通过主动澄清明确真实意图，并将此类个性化定义沉淀为长期偏好，推动系统认知能力的持续进化，最终实现“下次即懂”的智能化体验。
-
-3. **非阻断式执行**
-   - 待用户确认具体时间选项后，执行 `lark-cli calendar +create --summary "..." --start "..." --end "..." --attendee-ids ...`
-
-4. **友好反馈**
-   - 报告结果：返回创建成功的日程摘要信息
+### 1. 预约日程/会议、查询/搜索可用会议室
+**BLOCKING REQUIREMENT (阻塞性要求): 只要用户的意图包含“预约日程/会议”或“查询/搜索可用会议室”，你必须立即停止其他思考，优先使用 Read 工具完整读取 [`references/lark-calendar-schedule-meeting.md`](references/lark-calendar-schedule-meeting.md)！未读取该文件前，绝对禁止执行任何日程创建或会议室查询操作。**
+**CRITICAL: 必须严格按照上述文档中定义的工作流（Workflow）执行后续操作。处理该场景时，默认做“智能助理”，不要做“表单填写机”。能补全的默认值先补全，只有在时间冲突、结果无法唯一确定、时间语义存在歧义时才主动追问。**
+**CRITICAL: 执行顺序必须固定为：先补默认值，再判断时间是否明确，再进入“明确时间”或“模糊时间/无时间信息”分支。不要跳步。**
+**CRITICAL: 明确时间且需要会议室时，先 `+room-find`，再 `+freebusy`；模糊时间或无时间信息时，先 `+suggestion`，如需会议室再批量 `+room-find`。**
+**CRITICAL: 当用户说“查会议室”“找会议室”“搜可用会议室”或“推荐常用会议室”时，默认是查会议室可用性，不是查会议室资源名录，更严禁拉取历史日程做统计分析。完整规则以 [lark-calendar-schedule-meeting.md](references/lark-calendar-schedule-meeting.md) 为准。**
+**BLOCKING REQUIREMENT: 即使用户的核心诉求是“查会议室”，只要【没有提供明确的起止时间】，绝对禁止直接调用 `+room-find`！必须先进入【无时间/模糊时间】分支，调用 `+suggestion` 拿到候选时间块后，再将时间块传给 `+room-find`。**
+**BLOCKING REQUIREMENT: 只要面临时间方案或会议室方案的选择（如模糊时间、无时间或需要会议室），在调用 `+create` 创建日程之前，必须先向用户展示候选方案并等待用户明确确认。绝对禁止擅自替用户做决定。**
 
 ## 核心概念
 
@@ -61,6 +44,8 @@ metadata:
 - **参会人（Attendee）**：日程的参与者，可以是用户、群、会议室资源、外部邮箱地址等。每个参与人有独立的RSVP状态。
 - **响应状态（RSVP）**：参与人对日程邀请的回复状态（接受/拒绝/待定）。
 - **忙闲时间（FreeBusy）**：查询用户在指定时间段的忙闲状态，用于会议时间协调。
+- **会议室（Room）**：“room”不是“房间”，是“会议室”。请在理解和处理意图时将“room”和“房间”准确映射为“会议室”及其相关操作。
+- **时间块（Time Slot / Time Block）**：指一个**具体且确定**的连续时间段（如 `14:00~15:00`）。在文档中，它与泛指的“时间范围/区间”（如“今天下午”、“下周”）有严格区别。在调用预定、查询可用会议室等确切操作时，必须基于确定的“时间块”而非模糊的“时间范围”。
 
 ## 资源关系
 
@@ -80,14 +65,16 @@ Shortcut 是对常用操作的高级封装（`lark-cli calendar +<verb> [flags]`
 | [`+agenda`](references/lark-calendar-agenda.md) | 查看日程安排（默认今天） |
 | [`+create`](references/lark-calendar-create.md) | 创建日程并邀请参会人（ISO 8601 时间） |
 | [`+freebusy`](references/lark-calendar-freebusy.md) | 查询用户主日历的忙闲信息和rsvp的状态 |
+| [`+room-find`](references/lark-calendar-room-find.md) | 针对一个或多个**明确的**时间块查找可用会议室（**无明确时间时禁止直接调用，需先走 +suggestion**） |
 | [`+rsvp`](references/lark-calendar-rsvp.md) | 回复日程（接受/拒绝/待定） |
-| [`+suggestion`](references/lark-calendar-suggestion.md) | 针对时间未确定的预约日程需求，提供多个时间推荐方案 |
+| [`+suggestion`](references/lark-calendar-suggestion.md) | 根据非明确时间或一段时间范围，推荐多个可用时间块方案 |
 
-## +suggestion 使用
-在调用 `+suggestion` 之前，务必读取 [lark-calendar-suggestion](references/lark-calendar-suggestion.md) 中的使用说明，禁止直接调用命令。
-```bash
-lark-cli calendar +suggestion --start "2026-03-10T00:00:00+08:00" --end "2026-03-10T11:00:00+08:00" --attendee-ids "ou_xxx,oc_yyy" --duration-minutes 30 # 为用户ou_xxx和群组oc_yyy里的成员推荐空闲时段
-`````
+## 会议室相关规则
+
+- **会议室是日程的一种参与人（resource attendee），不能脱离日程单独存在或单独预定。**
+- **凡是用户意图是“预定/查询/搜索可用会议室”时，都必须进入 `references/lark-calendar-schedule-meeting.md` 工作流处理。**
+- `+room-find` 的时间输入必须是**确定时间块**，不能是时间区间搜索。
+- **强制约束：如果用户仅要求“查询会议室”但未提供明确时间，必须先调用 `+suggestion` 获取可用时间块，然后再将时间块交给 `+room-find` 批量查询。严禁直接猜测时间并盲目调用 `+room-find`。**
 
 ## API Resources
 

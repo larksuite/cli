@@ -903,3 +903,37 @@ func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
+	domains := allKnownDomains()
+	if domains["whiteboard"] {
+		t.Error("whiteboard should not appear in known auth domains (it has auth_domain=docs)")
+	}
+	if !domains["docs"] {
+		t.Error("docs should still be a known auth domain")
+	}
+}
+
+func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
+	scopes := collectScopesForDomains([]string{"docs"}, "user")
+	// docs domain should include whiteboard shortcut scopes (board:whiteboard:*)
+	found := false
+	for _, s := range scopes {
+		if strings.HasPrefix(s, "board:whiteboard:") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("collectScopesForDomains([docs]) should include whiteboard scopes (board:whiteboard:*)")
+	}
+}
+
+func TestGetDomainMetadata_ExcludesAuthDomainChildren(t *testing.T) {
+	domains := getDomainMetadata("zh")
+	for _, dm := range domains {
+		if dm.Name == "whiteboard" {
+			t.Error("whiteboard should not appear in interactive domain list (has auth_domain=docs)")
+		}
+	}
+}
