@@ -39,6 +39,10 @@
     "en": { "title": "Minutes", "description": "Minutes content and metadata retrieval" },
     "zh": { "title": "妙记", "description": "妙记信息获取、内容查询" }
   },
+  "okr": {
+    "en": { "title": "OKR", "description": "OKR objectives, key results, periods, progress, and review management" },
+    "zh": { "title": "OKR", "description": "OKR 目标、关键结果、周期、进展、复盘管理" }
+  },
   "sheets": {
     "en": { "title": "Sheets", "description": "Spreadsheet operations" },
     "zh": { "title": "电子表格", "description": "电子表格操作" }
