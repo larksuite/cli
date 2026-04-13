@@ -127,3 +127,37 @@ lark-cli sheets spreadsheet.sheet.filters update \
 **常见错误：**
 - `Wrong Filter Value`：筛选已存在，需要先 delete 再 create
 - `Excess Limit`：update 时重复添加同一列条件
+
+### 单元格数据类型
+
+接受二维数组的 shortcut（`+write`/`+append` 的 `--values`、`+create` 的 `--data`）中，每个单元格值支持以下类型。**公式、带文本链接、@人、@文档、下拉列表必须使用对象格式**，直接传字符串会被当作纯文本存储。
+
+| 类型 | 写入格式 | 示例 |
+|------|---------|------|
+| 字符串 | `"文本"` | `"hello"` |
+| 数字 | `数字` | `123`、`3.14` |
+| 日期 | `数字`（自 1899-12-30 起的天数，需先设单元格日期格式） | `42101` |
+| 链接（纯 URL） | `"URL 字符串"` | `"https://example.com"` |
+| 链接（带文本） | `{"type":"url","text":"显示文本","link":"URL"}` | `{"type":"url","text":"飞书","link":"https://www.feishu.cn"}` |
+| 邮箱 | `"邮箱字符串"` | `"user@example.com"` |
+| **公式** | `{"type":"formula","text":"=公式"}` | `{"type":"formula","text":"=SUM(A1:A10)"}` |
+| @人 | `{"type":"mention","text":"标识","textType":"email\|openId\|unionId","notify":false}` | `{"type":"mention","text":"user@example.com","textType":"email","notify":false}`（notify 可选，默认 false；仅在用户明确要求通知时设为 true） |
+| @文档 | `{"type":"mention","textType":"fileToken","text":"token","objType":"类型"}` | `{"type":"mention","textType":"fileToken","text":"shtXXX","objType":"sheet"}` |
+| 下拉列表 | `{"type":"multipleValue","values":[值1,值2]}` | `{"type":"multipleValue","values":["选项A","选项B"]}` |
+
+**写入公式示例**：
+
+```bash
+# ✅ 正确：使用对象格式
+lark-cli sheets +write --url "URL" --sheet-id "sheetId" --range "C6" \
+  --values '[[{"type":"formula","text":"=SUM(C2:C5)"}]]'
+
+# ❌ 错误：直接传字符串，会被存为纯文本
+lark-cli sheets +write --url "URL" --sheet-id "sheetId" --range "C6" \
+  --values '[["=SUM(C2:C5)"]]'
+```
+
+**限制**：
+- 公式不支持跨表引用（IMPORTRANGE）
+- @人仅支持同租户用户，单次最多 50 人
+- 下拉列表需先调用设置下拉列表接口，值中的字符串不能包含逗号
