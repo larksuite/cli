@@ -16,11 +16,16 @@ type initMsg struct {
 	Platform           string
 	SelectPlatform     string
 	Feishu             string
-	ScanOrOpenLink     string
-	WaitingForScan     string
-	DetectedLarkTenant string
-	AppCreated         string
-	ConfigSaved        string
+	// TTY (interactive) variants
+	ScanQRCode     string // header shown above QR code
+	ScanOrOpenLink string // post-QR alt link prompt ("or open...")
+	WaitingForScan string // active polling indicator
+	// Non-TTY (AI / non-interactive) variants — preserve original copy
+	OpenLinkNonTTY       string // primary link prompt
+	WaitingForScanNonTTY string // passive waiting indicator
+	DetectedLarkTenant   string
+	AppCreated           string
+	ConfigSaved          string
 }
 
 var initMsgZh = &initMsg{
@@ -29,12 +34,15 @@ var initMsgZh = &initMsg{
 	ConfigExistingApp:  "手动输入应用凭证",
 	Platform:           "平台",
 	SelectPlatform:     "选择平台",
-	Feishu:             "飞书",
-	ScanOrOpenLink:     "\n打开以下链接配置应用:\n\n",
-	WaitingForScan:     "等待配置应用...",
-	DetectedLarkTenant: "[lark-cli] 检测到 Lark 租户，切换端点重试...",
-	AppCreated:         "应用配置成功! App ID: %s",
-	ConfigSaved:        "应用配置成功! App ID: %s",
+	Feishu:               "飞书",
+	ScanQRCode:           "\n使用飞书 / Lark 扫码配置应用：\n\n",
+	ScanOrOpenLink:       "\n或打开以下链接完成配置：\n",
+	WaitingForScan:       "正在获取你的应用配置结果...",
+	OpenLinkNonTTY:       "\n打开以下链接配置应用:\n\n",
+	WaitingForScanNonTTY: "等待配置应用...",
+	DetectedLarkTenant:   "[lark-cli] 检测到 Lark 租户，切换端点重试...",
+	AppCreated:           "应用配置成功! App ID: %s",
+	ConfigSaved:          "应用配置成功! App ID: %s",
 }
 
 var initMsgEn = &initMsg{
@@ -43,12 +51,15 @@ var initMsgEn = &initMsg{
 	ConfigExistingApp:  "Enter app credentials yourself",
 	Platform:           "Platform",
 	SelectPlatform:     "Select platform",
-	Feishu:             "Feishu",
-	ScanOrOpenLink:     "\nOpen the link below to configure app:\n\n",
-	WaitingForScan:     "Waiting for app configuration...",
-	DetectedLarkTenant: "[lark-cli] Detected Lark tenant, switching endpoint...",
-	AppCreated:         "App configured! App ID: %s",
-	ConfigSaved:        "App configured! App ID: %s",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nScan the QR code with Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nOr open the link below in your browser:\n",
+	WaitingForScan:       "Fetching configuration results...",
+	OpenLinkNonTTY:       "\nOpen the link below to configure app:\n\n",
+	WaitingForScanNonTTY: "Waiting for app configuration...",
+	DetectedLarkTenant:   "[lark-cli] Detected Lark tenant, switching endpoint...",
+	AppCreated:           "App configured! App ID: %s",
+	ConfigSaved:          "App configured! App ID: %s",
 }
 
 func getInitMsg(lang string) *initMsg {
