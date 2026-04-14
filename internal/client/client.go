@@ -20,6 +20,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/debug"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -92,10 +93,25 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 // This is the shared auth+execute path used by both DoAPI (generic API calls via RawApiRequest)
 // and shortcut RuntimeContext.DoAPI (direct larkcore.ApiReq calls).
 func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as core.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	// Log request if debug is enabled
+	logger := debug.GetLogger()
+	if logger.Enabled() {
+		logger.Debug("api", "Request: %s %s", req.HttpMethod, req.ApiPath)
+		if len(req.QueryParams) > 0 {
+			logger.Debug("api", "Query params: %v", req.QueryParams)
+		}
+		if req.Body != nil {
+			logger.Debug("api", "Request body: %v", req.Body)
+		}
+	}
+
 	var opts []larkcore.RequestOptionFunc
 
 	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
+		if logger.Enabled() {
+			logger.Error("api", "Failed to resolve access token for %s: %v", as, err)
+		}
 		return nil, err
 	}
 	if as.IsBot() {
@@ -107,7 +123,16 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 	}
 
 	opts = append(opts, extraOpts...)
-	return c.SDK.Do(ctx, req, opts...)
+	resp, err := c.SDK.Do(ctx, req, opts...)
+
+	// Log response if debug is enabled
+	if logger.Enabled() {
+		if resp != nil {
+			logger.Debug("api", "Response status: %d", resp.StatusCode)
+		}
+	}
+
+	return resp, err
 }
 
 // DoStream executes a streaming HTTP request against the Lark OpenAPI endpoint.
