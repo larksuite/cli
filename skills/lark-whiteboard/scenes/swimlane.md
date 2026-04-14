@@ -27,9 +27,9 @@
 
 1. **网格对齐是第一优先级**：跨泳道同一阶段必须严格对齐（水平对齐 x；垂直对齐 y）。对齐通过“共享阶段标尺（stage ruler / stage slots）”实现，不靠肉眼估算，也不靠逐节点随意手写坐标
 2. **只生成真实节点**：为保证跨泳道阶段严格对齐，所有阶段统一保留透明的 **stage cell**；仅在真实阶段的 cell 内生成卡片节点，并按阶段索引映射到对应槽位
-3. **泳道容器禁止使用背景色**：每条泳道是一个可见的分组容器，只能使用边框表达分组（建议统一使用浅灰色细虚线 `borderDash: "dashed"`，`borderWidth: 1`，`borderColor: "#DEE0E3"`），**不得使用任何有色背景作为泳道底色**，以降低视觉噪音。必须显式声明 `fillColor: "transparent"`，保持视觉透明
+3. **泳道底色**：为了增强层级感同时保持界面整洁，**强烈建议所有泳道容器统一使用极浅灰色背景**（如 `fillColor: "#F8F9FA"` 或 `"#FCFCFC"`）。边框使用浅灰色细虚线（`borderDash: "dashed"`, `borderWidth: 1`, `borderColor: "#DEE0E3"`）以明确边界。
 4. **步骤卡片**：使用 `rect`。为建立清晰的视觉层级，卡片**必须填充浅色背景**（参考 `references/style.md` 中的浅色板，如极浅的主题色），边框使用对应的主题主色（`borderWidth: 1-2`），文字使用深色（如 `#1F2329`）以确保可读性。统一圆角；宽高以可读为先，避免过窄导致换行过多
-5. **间距**：只要存在 connector 连线，卡片之间的主轴间距必须满足 `gap >= 40`；如果连线包含文字（`label`），主轴间距必须 `gap >= 64`，以提供充足的阅读空间。
+5. **间距**：只要存在 connector 连线，卡片之间的主轴间距必须满足 `gap >= 40`
 
 ### 子节点对齐
 
@@ -51,7 +51,7 @@
 ### 跨泳道间距（lanesGap）
 
 - 根容器承载所有泳道：水平泳道用 `layout: "vertical"`，垂直泳道用 `layout: "horizontal"`
-- 固定跨泳道主轴间距 `lanesGap`（建议 `64-80`），更宽的间距能让跨泳道连线（特别是带文字时）有更多留白，降低重叠感
+- 缩减跨泳道主轴间距 `lanesGap`（建议 `16-24`），以保持整体图表的紧凑性。避免 `lanesGap` 设置为 `0` 导致边框重叠变粗，也避免间距过大导致视觉涣散。
 - 每条泳道作为根容器的子 frame，内部再使用上述 Flex 栅格的 stage cell 布局
 - `lanesGap` 与 `lanePadding/stackGap` 独立；lane 内容增减不应影响跨泳道间距
 - 4px 基线对齐：`lanesGap`、`lanePadding`、cell 尺寸建议按 4 的倍数对齐
@@ -72,7 +72,7 @@
   - lane body：`layout: "vertical"`，包含完整的阶段 **stage cell** 数组；cell 高度固定为 `slotHeight`，相邻 cell 间 `gap` 统一；空阶段 cell 透明但保留
   - 内容居中对齐：stage cell 建议 `alignItems: "center"` + `justifyContent: "center"`，让卡片在每个 cell 内水平/垂直居中；卡片宽度不超过 `slotWidth`（或固定宽度），避免被 `"fill-container"` 拉伸导致“看起来不居中”
 - 步骤卡片：推荐统一卡片高度或统一 `slotHeight / gap`，保证跨泳道阶段严格 y 对齐
-- 泳道外层容器必须显式写 `fillColor: "transparent"`、`borderDash: "dashed"`、`borderWidth: 1`、`borderColor: "#DEE0E3"`（统一浅灰色），否则会被编译为虚拟 frame 导致不渲染
+- 泳道外层容器必须显式写 `fillColor: "#F8F9FA"`（极浅灰）、`borderDash: "dashed"`、`borderWidth: 1`、`borderColor: "#DEE0E3"`（统一浅灰色），否则会被编译为虚拟 frame 导致不渲染
 - 统一高度（Flex 自适应，可选）：根容器使用 `alignItems: "stretch"`，每个泳道外层 frame 使用 `height: "fill-container"`；泳道内部仍保持 lane label + lane body 的结构
 
 示例：
@@ -86,7 +86,7 @@
       "id": "lanes-root",
       "x": 40, "y": 40,
       "layout": "horizontal",
-      "gap": 64,
+      "gap": 16,
       "alignItems": "stretch",
       "children": [
         {
@@ -95,7 +95,7 @@
           "layout": "vertical",
           "width": "fit-content",
           "height": "fill-container",
-          "fillColor": "transparent",
+          "fillColor": "#F8F9FA",
           "borderDash": "dashed",
           "borderWidth": 1,
           "borderColor": "#DEE0E3",
@@ -106,7 +106,7 @@
                   "textAlign": "center", "verticalAlign": "middle", "fontSize": 18, "fontWeight": "bold", "textColor": "#5178C6" }
               ] },
             { "type": "frame", "id": "lane-left-body", "layout": "vertical",
-              "gap": 64, "padding": 16,
+              "gap": 40, "padding": 16,
               "children": [
                 { "type": "frame", "id": "stage-1-cell-left", "layout": "vertical", "width": 220, "height": 80, "alignItems": "center", "justifyContent": "center",
                   "children": [{ "type": "rect", "id": "c-s1", "width": 200, "height": "fit-content", "fillColor": "#E1EAFA", "borderColor": "#5178C6", "borderWidth": 2, "borderRadius": 8 }] },
@@ -120,7 +120,7 @@
           "layout": "vertical",
           "width": "fit-content",
           "height": "fill-container",
-          "fillColor": "transparent",
+          "fillColor": "#F8F9FA",
           "borderDash": "dashed",
           "borderWidth": 1,
           "borderColor": "#DEE0E3",
@@ -131,7 +131,7 @@
                   "textAlign": "center", "verticalAlign": "middle", "fontSize": 18, "fontWeight": "bold", "textColor": "#8569CB" }
               ] },
             { "type": "frame", "id": "lane-right-body", "layout": "vertical",
-              "gap": 64, "padding": 16,
+              "gap": 40, "padding": 16,
               "children": [
                 { "type": "frame", "id": "stage-1-cell-right", "layout": "vertical", "width": 220, "height": 80, "alignItems": "center", "justifyContent": "center", "children": [] },
                 { "type": "frame", "id": "stage-2-cell-right", "layout": "vertical", "width": 220, "height": 80, "alignItems": "center", "justifyContent": "center",
@@ -142,13 +142,14 @@
       ]
     },
     { "type": "connector", "connector": { "from": "c-s1", "to": "d-s2",
-      "lineShape": "polyline", "lineColor": "#BBBFC4", "lineWidth": 2, "endArrow": "arrow" } }
+          "lineShape": "polyline", "lineColor": "#BBBFC4", "lineWidth": 2, "endArrow": "arrow" } }
   ]
 }
 ```
 
 ### 泳道配色（默认色板）
 
+- **泳道背景**：所有泳道容器统一使用极浅灰色（如 `fillColor: "#F8F9FA"` 或 `"#FCFCFC"`），以增强物理容器的层级感，并突出内部的彩色卡片。
 - **泳道边框**：所有泳道外层容器统一使用浅灰色细虚线（`borderColor: "#DEE0E3"`, `borderWidth: 1`, `borderDash: "dashed"`）。
 - **泳道标题**：按 `references/style.md` 经典色板为每条泳道分配不同的主题色，泳道 title 的 `textColor` 使用该主题色。
 - **内容节点（rect）**：采用“浅色底 + 主题色边框”策略。`fillColor` 使用与该泳道主题色对应的极浅色（如浅蓝、浅紫等），`borderColor` 使用对应的主题色，文字 `textColor` 统一使用深色 `#1F2329`。
@@ -188,7 +189,7 @@
       "x": 40,
       "y": 40,
       "layout": "vertical",
-      "gap": 64,
+      "gap": 16,
       "alignItems": "stretch",
       "padding": 0,
       "width": "fit-content",
@@ -198,11 +199,11 @@
           "type": "frame",
           "id": "lane-a",
           "layout": "horizontal",
-          "gap": 64,
+          "gap": 40,
           "padding": 16,
           "width": "fit-content",
           "height": "fill-container",
-      "fillColor": "transparent",
+      "fillColor": "#F8F9FA",
       "borderDash": "dashed",
       "borderWidth": 1,
       "borderColor": "#DEE0E3",
@@ -267,11 +268,11 @@
           "type": "frame",
           "id": "lane-b",
           "layout": "horizontal",
-          "gap": 64,
+          "gap": 40,
           "padding": 16,
           "width": "fit-content",
           "height": "fill-container",
-      "fillColor": "transparent",
+      "fillColor": "#F8F9FA",
       "borderDash": "dashed",
       "borderWidth": 1,
       "borderColor": "#DEE0E3",
