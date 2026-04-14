@@ -9,7 +9,7 @@
 
 ## Layout 选型
 
-- **脚本生成坐标**（必须）：用 .js 脚本极坐标计算阶段标签位置、SVG 圆环切割，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
+- **脚本生成坐标**（必须）：用 .cjs 脚本极坐标计算阶段标签位置、SVG 圆环切割，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
 
 ## Layout 规则
 
@@ -51,7 +51,7 @@ nodes 数组中的图层顺序（必须严格遵守）：
 
 ## 骨架示例
 
-此场景必须用 .js 脚本生成。Agent 使用时只需修改 `stages` 数组和 `centerTitle`/`centerSubtitle`，其余坐标全自动计算。
+此场景必须用 .cjs 脚本生成。Agent 使用时只需修改 `stages` 数组和 `centerTitle`/`centerSubtitle`，其余坐标全自动计算。
 
 ```javascript
 const { writeFileSync } = require('fs');
