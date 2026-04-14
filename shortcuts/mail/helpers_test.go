@@ -11,15 +11,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -561,58 +558,6 @@ func TestToOriginalMessageForCompose_EmptyReferences(t *testing.T) {
 	orig := toOriginalMessageForCompose(out)
 	if orig.references != "" {
 		t.Errorf("references should be empty, got: %q", orig.references)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// checkAttachmentSizeLimit
-// ---------------------------------------------------------------------------
-
-func TestCheckAttachmentSizeLimit_NoFiles(t *testing.T) {
-	if err := checkAttachmentSizeLimit(nil, nil, 0); err != nil { //nolint:staticcheck // fio nil ok: no files
-		t.Fatalf("unexpected error for empty: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_CountExceeded(t *testing.T) {
-	err := checkAttachmentSizeLimit(nil, nil, 0, MaxAttachmentCount+1)
-	if err == nil {
-		t.Fatal("expected error for count exceeded")
-	}
-	if !strings.Contains(err.Error(), "count") {
-		t.Errorf("error should mention count: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_SizeExceeded(t *testing.T) {
-	// extraBytes alone exceeds the limit
-	err := checkAttachmentSizeLimit(nil, nil, MaxAttachmentBytes+1)
-	if err == nil {
-		t.Fatal("expected error for size exceeded")
-	}
-	if !strings.Contains(err.Error(), "25 MB") {
-		t.Errorf("error should mention 25 MB limit: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_WithFiles(t *testing.T) {
-	// Create a small temp file to exercise the file stat path
-	dir := t.TempDir()
-	f := filepath.Join(dir, "small.txt")
-	if err := os.WriteFile(f, []byte("hello"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	// Use the temp dir as the CWD so the relative path works
-	oldWd, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(oldWd)
-
-	fio := &localfileio.LocalFileIO{}
-	err := checkAttachmentSizeLimit(fio, []string{"./small.txt"}, 0)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

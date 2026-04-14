@@ -39,6 +39,10 @@ type largeAttachmentResult struct {
 	FileToken string
 }
 
+// MaxLargeAttachmentSize is the maximum allowed size for a single large
+// attachment, aligned with the desktop client (3 GB).
+const MaxLargeAttachmentSize = 3 * 1024 * 1024 * 1024 // 3 GB
+
 // estimateBase64EMLSize estimates the EML byte cost of embedding a raw file.
 // base64 inflates 3 bytes → 4 chars, plus ~200 bytes for MIME part headers.
 const base64MIMEOverhead = 200
@@ -316,6 +320,14 @@ func processLargeAttachments(
 	files, err := statAttachmentFiles(runtime.FileIO(), attachPaths)
 	if err != nil {
 		return bld, err
+	}
+
+	// Single file size limit (3 GB), aligned with desktop client.
+	for _, f := range files {
+		if f.Size > MaxLargeAttachmentSize {
+			return bld, fmt.Errorf("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+				f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
+		}
 	}
 
 	classified := classifyAttachments(files, extraEMLBytes)

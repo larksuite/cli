@@ -141,13 +141,11 @@ var MailSend = common.Shortcut{
 		} else {
 			bld = bld.TextBody([]byte(body))
 		}
-		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
+		bld, err = processLargeAttachments(ctx, runtime, bld, splitByComma(attachFlag), emlBase, 0)
+		if err != nil {
 			return err
-		}
-
-		for _, path := range splitByComma(attachFlag) {
-			bld = bld.AddFileAttachment(path)
 		}
 
 		rawEML, err := bld.BuildBase64URL()

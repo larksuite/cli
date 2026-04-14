@@ -6,7 +6,6 @@ package mail
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -1876,36 +1875,6 @@ func inlineSpecFilePaths(specs []InlineSpec) []string {
 	return paths
 }
 
-// checkAttachmentSizeLimit returns an error if the combined attachment count exceeds
-// MaxAttachmentCount or the combined size exceeds MaxAttachmentBytes.
-// filePaths are read via os.Stat (no full read); extraBytes / extraCount account for
-// already-loaded content (e.g. downloaded original attachments in +forward).
-func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes int64, extraCount ...int) error {
-	extra := 0
-	for _, c := range extraCount {
-		extra += c
-	}
-	total := extra + len(filePaths)
-	if total > MaxAttachmentCount {
-		return fmt.Errorf("attachment count %d exceeds the limit of %d", total, MaxAttachmentCount)
-	}
-	totalBytes := extraBytes
-	for _, p := range filePaths {
-		info, err := fio.Stat(p)
-		if err != nil {
-			if errors.Is(err, fileio.ErrPathValidation) {
-				return fmt.Errorf("unsafe attachment path %s: %w", p, err)
-			}
-			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
-		}
-		totalBytes += info.Size()
-	}
-	if totalBytes > MaxAttachmentBytes {
-		return fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB limit",
-			float64(totalBytes)/1024/1024)
-	}
-	return nil
-}
 
 // validateSendTime checks that --send-time, if provided, requires --confirm-send,
 // is a valid Unix timestamp in seconds, and is at least 5 minutes in the future.
@@ -2044,14 +2013,9 @@ func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFl
 			return fmt.Errorf("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
 		}
 	}
-	// Validate explicitly provided files (--attach + --inline) early so that
-	// dry-run and reply/forward can catch local errors before Execute.
-	// Auto-resolved local images are only known at Execute time, so Execute
-	// performs a second, complete size check that includes them.
-	inlineSpecs, err := parseInlineSpecs(inlineFlag)
-	if err != nil {
-		return err
-	}
-	allFiles := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
-	return checkAttachmentSizeLimit(fio, allFiles, 0)
+	// Validate inline specs format early (before Execute).
+	// Size checks are handled in Execute by processLargeAttachments, which
+	// automatically uploads oversized files as large attachments.
+	_, err := parseInlineSpecs(inlineFlag)
+	return err
 }
