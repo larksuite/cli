@@ -123,10 +123,10 @@ func fixBlockquoteHardBreaks(md string) string {
 //
 // Both fixes skip inline code spans to avoid modifying literal code content.
 var (
-	boldLeadingSpaceRe    = regexp.MustCompile(`(\*\*)\s+([^*\n].*?)(\*\*)`)
+	boldLeadingSpaceRe    = regexp.MustCompile(`(\*\*)\s+([^*\n](?:[^*\n]*[^*\s\n])?)(\*\*)`)
 	boldTrailingSpaceRe   = regexp.MustCompile(`(\*\*\S[^*]*?)\s+(\*\*)`)
-	italicLeadingSpaceRe  = regexp.MustCompile(`(\*)\s+([^*\n].*?)(\*)`)
-	italicTrailingSpaceRe = regexp.MustCompile(`(\*\S[^*]*?)\s+(\*)`)
+	italicLeadingSpaceRe  = regexp.MustCompile(`(^|[^*])(\*)\s+([^*\n](?:[^*\n]*[^*\s\n])?)(\*)([^*]|$)`)
+	italicTrailingSpaceRe = regexp.MustCompile(`(^|[^*])(\*\S[^*]*?)\s+(\*)([^*]|$)`)
 	// headingBoldRe uses [^*]+ (no asterisks) to avoid mismatching headings
 	// that contain multiple disjoint bold spans such as "# **foo** and **bar**".
 	headingBoldRe = regexp.MustCompile(`(?m)^(#{1,6})\s+\*\*([^*]+)\*\*\s*$`)
@@ -199,8 +199,8 @@ func fixBoldSpacingLine(line string) string {
 	if len(spans) == 0 {
 		line = boldLeadingSpaceRe.ReplaceAllString(line, "$1$2$3")
 		line = boldTrailingSpaceRe.ReplaceAllString(line, "$1$2")
-		line = italicLeadingSpaceRe.ReplaceAllString(line, "$1$2$3")
-		line = italicTrailingSpaceRe.ReplaceAllString(line, "$1$2")
+		line = italicLeadingSpaceRe.ReplaceAllString(line, "$1$2$3$4$5")
+		line = italicTrailingSpaceRe.ReplaceAllString(line, "$1$2$3$4")
 		return line
 	}
 	var sb strings.Builder
@@ -210,8 +210,8 @@ func fixBoldSpacingLine(line string) string {
 		seg := line[pos:loc[0]]
 		seg = boldLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
 		seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-		seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
-		seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
+		seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3$4$5")
+		seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2$3$4")
 		sb.WriteString(seg)
 		// Preserve inline code span as-is.
 		sb.WriteString(line[loc[0]:loc[1]])
@@ -221,8 +221,8 @@ func fixBoldSpacingLine(line string) string {
 	seg := line[pos:]
 	seg = boldLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
 	seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-	seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
-	seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
+	seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3$4$5")
+	seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2$3$4")
 	sb.WriteString(seg)
 	return sb.String()
 }
@@ -318,6 +318,9 @@ func normalizeNestedListIndentation(md string) string {
 		if len(matches) != 3 {
 			continue
 		}
+		if !hasPreviousNonBlankListItem(lines, i) {
+			continue
+		}
 		indent := matches[1]
 		if len(indent)%2 != 0 {
 			continue
@@ -326,6 +329,17 @@ func normalizeNestedListIndentation(md string) string {
 		lines[i] = tabs + line[len(indent):]
 	}
 	return strings.Join(lines, "\n")
+}
+
+func hasPreviousNonBlankListItem(lines []string, index int) bool {
+	for i := index - 1; i >= 0; i-- {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			continue
+		}
+		return listItemRe.MatchString(lines[i])
+	}
+	return false
 }
 
 // isListItemOrContinuation returns true for lines that are part of a list:
