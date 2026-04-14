@@ -599,6 +599,44 @@ func TestDownloadIMResourceToPathHTTPClientError(t *testing.T) {
 	}
 }
 
+func TestParseTotalSize(t *testing.T) {
+	tests := []struct {
+		name         string
+		contentRange string
+		want         int64
+		wantErr      string
+	}{
+		{name: "normal", contentRange: "bytes 0-131071/104857600", want: 104857600},
+		{name: "single probe chunk", contentRange: "bytes 0-131071/131072", want: 131072},
+		{name: "single small chunk", contentRange: "bytes 0-15/16", want: 16},
+		{name: "empty", contentRange: "", wantErr: "content-range is empty"},
+		{name: "invalid prefix", contentRange: "items 0-15/16", wantErr: `unsupported content-range: "items 0-15/16"`},
+		{name: "missing total", contentRange: "bytes 0-15/", wantErr: `unsupported content-range: "bytes 0-15/"`},
+		{name: "wildcard", contentRange: "bytes */16", wantErr: `unsupported content-range: "bytes */16"`},
+		{name: "unknown total size", contentRange: "bytes 0-99/*", wantErr: `unknown total size in content-range: "bytes 0-99/*"`},
+		{name: "invalid total", contentRange: "bytes 0-15/not-a-number", wantErr: "parse total size:"},
+		{name: "zero total size", contentRange: "bytes 0-0/0", wantErr: "invalid total size: 0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTotalSize(tt.contentRange)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("parseTotalSize() error = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseTotalSize() unexpected error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("parseTotalSize() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestShortcuts(t *testing.T) {
 	var commands []string
 	for _, shortcut := range Shortcuts() {

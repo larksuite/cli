@@ -8,6 +8,9 @@
 - 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
 - `lark-base` 只负责导入完成后的 Base 内部操作（表、字段、记录、视图），不要在“本地文件 -> Base”这一步提前切到 `lark-base`。
 
+## 修改标题
+- 使用 `drive files patch` 命令，通过new_title字段可以修改标题，支持 docx、sheet、bitable、file、wiki、folder 类型
+
 ## 核心概念
 
 ### 文档类型与 Token

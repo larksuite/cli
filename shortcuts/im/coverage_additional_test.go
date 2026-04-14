@@ -273,7 +273,7 @@ func TestResolveChatIDForMessagesList(t *testing.T) {
 	})
 
 	t.Run("user resolved through p2p lookup", func(t *testing.T) {
-		runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		runtime := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/chat_p2p/batch_query"):
 				return shortcutJSONResponse(200, map[string]interface{}{
@@ -301,6 +301,23 @@ func TestResolveChatIDForMessagesList(t *testing.T) {
 		}
 		if got != "oc_resolved" {
 			t.Fatalf("resolveChatIDForMessagesList() = %q, want %q", got, "oc_resolved")
+		}
+	})
+
+	t.Run("user target rejected for bot identity", func(t *testing.T) {
+		runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}))
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("user-id", "", "")
+		if err := cmd.Flags().Set("user-id", "ou_123"); err != nil {
+			t.Fatalf("Flags().Set() error = %v", err)
+		}
+		runtime.Cmd = cmd
+
+		_, err := resolveChatIDForMessagesList(runtime, false)
+		if err == nil || !strings.Contains(err.Error(), "requires user identity") {
+			t.Fatalf("resolveChatIDForMessagesList() error = %v, want requires user identity", err)
 		}
 	})
 }

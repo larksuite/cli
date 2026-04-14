@@ -865,6 +865,157 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("upload attachment uses multipart for large file", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+
+		tmpFile, err := os.CreateTemp(t.TempDir(), "base-attachment-large-*.bin")
+		if err != nil {
+			t.Fatalf("CreateTemp() err=%v", err)
+		}
+		if err := tmpFile.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
+			t.Fatalf("Truncate() err=%v", err)
+		}
+		if err := tmpFile.Close(); err != nil {
+			t.Fatalf("Close() err=%v", err)
+		}
+		withBaseWorkingDir(t, filepath.Dir(tmpFile.Name()))
+
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_att",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_att", "name": "附件", "type": "attachment"},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id": "rec_x",
+					"fields":    map[string]interface{}{},
+				},
+			},
+		})
+
+		prepareStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/medias/upload_prepare",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"upload_id":  "upload_big_1",
+					"block_size": float64(8 * 1024 * 1024),
+					"block_num":  float64(3),
+				},
+			},
+		}
+		reg.Register(prepareStub)
+
+		partStubs := make([]*httpmock.Stub, 0, 3)
+		for i := 0; i < 3; i++ {
+			stub := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/medias/upload_part",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+				},
+			}
+			partStubs = append(partStubs, stub)
+			reg.Register(stub)
+		}
+
+		finishStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/medias/upload_finish",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"file_token": "file_tok_big"},
+			},
+		}
+		reg.Register(finishStub)
+
+		updateStub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id": "rec_x",
+					"fields": map[string]interface{}{
+						"附件": []interface{}{
+							map[string]interface{}{
+								"file_token":                "file_tok_big",
+								"name":                      "large-report.bin",
+								"deprecated_set_attachment": true,
+							},
+						},
+					},
+				},
+			},
+		}
+		reg.Register(updateStub)
+
+		if err := runShortcut(t, BaseRecordUploadAttachment, []string{
+			"+record-upload-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--field-id", "fld_att",
+			"--file", "./" + filepath.Base(tmpFile.Name()),
+			"--name", "large-report.bin",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		if got := stdout.String(); !strings.Contains(got, `"updated": true`) || !strings.Contains(got, `"file_tok_big"`) || !strings.Contains(got, `"large-report.bin"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+
+		prepareBody := string(prepareStub.CapturedBody)
+		if !strings.Contains(prepareBody, `"file_name":"large-report.bin"`) ||
+			!strings.Contains(prepareBody, `"parent_type":"bitable_file"`) ||
+			!strings.Contains(prepareBody, `"parent_node":"app_x"`) ||
+			!strings.Contains(prepareBody, `"size":20971521`) {
+			t.Fatalf("prepare body=%s", prepareBody)
+		}
+
+		firstPartBody := string(partStubs[0].CapturedBody)
+		if !strings.Contains(firstPartBody, `name="upload_id"`) ||
+			!strings.Contains(firstPartBody, "upload_big_1") ||
+			!strings.Contains(firstPartBody, `name="seq"`) ||
+			!strings.Contains(firstPartBody, "\r\n0\r\n") ||
+			!strings.Contains(firstPartBody, `name="size"`) ||
+			!strings.Contains(firstPartBody, "8388608") {
+			t.Fatalf("first part body=%s", firstPartBody)
+		}
+
+		lastPartBody := string(partStubs[2].CapturedBody)
+		if !strings.Contains(lastPartBody, `name="seq"`) ||
+			!strings.Contains(lastPartBody, "\r\n2\r\n") ||
+			!strings.Contains(lastPartBody, `name="size"`) ||
+			!strings.Contains(lastPartBody, "4194305") {
+			t.Fatalf("last part body=%s", lastPartBody)
+		}
+
+		finishBody := string(finishStub.CapturedBody)
+		if !strings.Contains(finishBody, `"upload_id":"upload_big_1"`) ||
+			!strings.Contains(finishBody, `"block_num":3`) {
+			t.Fatalf("finish body=%s", finishBody)
+		}
+
+		updateBody := string(updateStub.CapturedBody)
+		if !strings.Contains(updateBody, `"附件"`) ||
+			!strings.Contains(updateBody, `"file_token":"file_tok_big"`) ||
+			!strings.Contains(updateBody, `"name":"large-report.bin"`) ||
+			!strings.Contains(updateBody, `"deprecated_set_attachment":true`) {
+			t.Fatalf("update body=%s", updateBody)
+		}
+	})
+
 	t.Run("upload attachment rejects non-attachment field", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 
@@ -901,6 +1052,37 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			t.Fatal("expected validation error, got nil")
 		}
 		if !strings.Contains(err.Error(), "expected attachment") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("upload attachment rejects file larger than 2GB", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+
+		tmpFile, err := os.CreateTemp(t.TempDir(), "base-too-large-*.bin")
+		if err != nil {
+			t.Fatalf("CreateTemp() err=%v", err)
+		}
+		if err := tmpFile.Truncate(2*1024*1024*1024 + 1); err != nil {
+			t.Fatalf("Truncate() err=%v", err)
+		}
+		if err := tmpFile.Close(); err != nil {
+			t.Fatalf("Close() err=%v", err)
+		}
+		withBaseWorkingDir(t, filepath.Dir(tmpFile.Name()))
+
+		err = runShortcut(t, BaseRecordUploadAttachment, []string{
+			"+record-upload-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--field-id", "fld_att",
+			"--file", "./" + filepath.Base(tmpFile.Name()),
+		}, factory, stdout)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "exceeds 2GB limit") {
 			t.Fatalf("err=%v", err)
 		}
 	})

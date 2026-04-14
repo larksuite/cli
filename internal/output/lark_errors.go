@@ -33,6 +33,11 @@ const (
 	LarkErrRefreshRevoked     = 20064 // refresh_token revoked
 	LarkErrRefreshAlreadyUsed = 20073 // refresh_token already consumed (single-use rotation)
 	LarkErrRefreshServerError = 20050 // refresh endpoint server-side error, retryable
+
+	// Drive shortcut / cross-space constraints.
+	LarkErrDriveResourceContention = 1061045 // resource contention occurred, please retry
+	LarkErrDriveCrossTenantUnit    = 1064510 // cross tenant and unit not support
+	LarkErrDriveCrossBrand         = 1064511 // cross brand not support
 )
 
 // ClassifyLarkError maps a Lark API error code + message to (exitCode, errType, hint).
@@ -60,6 +65,14 @@ func ClassifyLarkError(code int, msg string) (int, string, string) {
 	// rate limit
 	case LarkErrRateLimit:
 		return ExitAPI, "rate_limit", "please try again later"
+
+	// drive-specific constraints that benefit from actionable hints
+	case LarkErrDriveResourceContention:
+		return ExitAPI, "conflict", "please retry later and avoid concurrent duplicate requests"
+	case LarkErrDriveCrossTenantUnit:
+		return ExitAPI, "cross_tenant_unit", "operate on source and target within the same tenant and region/unit"
+	case LarkErrDriveCrossBrand:
+		return ExitAPI, "cross_brand", "operate on source and target within the same brand environment"
 	}
 
 	return ExitAPI, "api_error", ""

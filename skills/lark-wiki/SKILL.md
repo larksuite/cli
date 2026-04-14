@@ -1,7 +1,7 @@
 ---
 name: lark-wiki
 version: 1.0.0
-description: "飞书知识库：管理知识空间和文档节点。创建和查询知识空间、管理节点层级结构、在知识库中组织文档和快捷方式。当用户需要在知识库中查找或创建文档、浏览知识空间结构、移动或复制节点时使用。"
+description: "飞书知识库：管理知识空间、空间成员和文档节点。创建和查询知识空间、查看和管理空间成员、管理节点层级结构、在知识库中组织文档和快捷方式。当用户需要在知识库中查找或创建文档、浏览知识空间结构、查看或管理空间成员、移动或复制节点时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -12,17 +12,46 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+> **成员管理硬限制：**
+> - 如果目标是“部门”，先判断身份，再决定是否继续。
+> - `--as bot` 对应 `tenant_access_token`。官方限制：这种身份下不能使用部门 ID (`opendepartmentid`) 添加知识空间成员。
+> - 遇到“部门 + --as bot”时，禁止先调用 `lark-cli wiki members create` 试错；直接说明该路径不可行。
+> - 如果用户明确要求“以 bot 身份运行”，且目标是部门，必须停下说明 bot 路径无法完成，不要静默切到 `--as user`。
+
+## 快速决策
+
+- 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark-cli wiki spaces get_node --params '{"token":"<wiki_token>"}'` 获取 `space_id`，后续成员接口统一使用 `space_id`。
+- 用户说“给知识库添加成员/管理员”：先把目标解析成“用户 / 群 / 部门”三类之一，再决定 `member_type`，不要先调 `wiki members create` 再根据报错反推类型。
+- 用户说“部门 + bot”：这是已知不支持路径。不要继续尝试 `wiki members create --as bot`；直接提示必须改成 `--as user`，或明确告知当前要求无法完成。
+- 用户说“用户 / 群 + 添加成员”：先解析对应 ID，再执行 `wiki members create`。
+
+## 成员添加流程
+
+- 调用 `lark-cli wiki members create` 前，先把自然语言里的“人 / 群 / 部门”解析成正确的 `member_id`，不要猜格式。
+- 用户场景默认优先 `member_type=openid`：用 `lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --format json` 获取 `open_id`。
+- 群组场景使用 `member_type=openchat`：用 `lark-cli im +chat-search --query "<群名关键词>" --format json` 获取 `chat_id`。
+- `userid` / `unionid` 只在下游明确要求时才使用；先拿到 `open_id`，再调用 `lark-cli api GET /open-apis/contact/v3/users/<open_id> --params '{"user_id_type":"open_id"}' --format json` 读取 `user_id` / `union_id`。
+- 部门场景使用 `member_type=opendepartmentid`：当前 CLI 没有 shortcut，需调用 `lark-cli api POST /open-apis/contact/v3/departments/search --as user --params '{"department_id_type":"open_department_id"}' --data '{"query":"<部门名>"}'` 获取 `open_department_id`。
+- 只有在目标类型和身份都已确认可行后，才调用 `lark-cli wiki members create`。对于部门场景，这意味着必须是 `--as user`。
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli wiki +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
 | Shortcut | 说明 |
 |----------|------|
+| [`+move`](references/lark-wiki-move.md) | Move a wiki node, or move a Drive document into Wiki |
 | [`+node-create`](references/lark-wiki-node-create.md) | Create a wiki node with automatic space resolution |
 | [`+space-list`](references/lark-wiki-space-list.md) | List all wiki spaces accessible to the caller |
 | [`+node-list`](references/lark-wiki-node-list.md) | List wiki nodes in a space or under a parent node (supports pagination) |
 | [`+node-copy`](references/lark-wiki-node-copy.md) | Copy a wiki node to a target space or parent node |
-| [`+node-move`](references/lark-wiki-node-move.md) | Move a wiki node (and subtree) to a target space or parent node |
+
+## 目标语义约束
+
+- `我的文档库` / `My Document Library` / `我的知识库` / `个人知识库` / `my_library` 都应视为 **Wiki personal library**，不是 Drive 根目录
+- 处理这类目标时，先解析 `my_library` 对应的真实 `space_id`，再执行 `wiki +move`、`wiki +node-create` 或其他 Wiki 写操作
+- 不要因为缺少显式 `space_id` 就退化成 `drive +move`
+- 如果用户明确说的是 Drive 文件夹、云空间根目录、`我的空间`，才进入 Drive 域处理
 
 ## API Resources
 
@@ -39,6 +68,12 @@ lark-cli wiki <resource> <method> [flags] # 调用 API
 - `get_node` — 获取知识空间节点信息
 - `list` — 获取知识空间列表
 
+### members
+
+- `create` — 添加知识空间成员
+- `delete` — 删除知识空间成员
+- `list` — 获取知识空间成员列表
+
 ### nodes
 
 - `copy` — 创建知识空间节点副本
@@ -52,7 +87,9 @@ lark-cli wiki <resource> <method> [flags] # 调用 API
 | `spaces.get` | `wiki:space:read` |
 | `spaces.get_node` | `wiki:node:read` |
 | `spaces.list` | `wiki:space:retrieve` |
+| `members.create` | `wiki:member:create` |
+| `members.delete` | `wiki:member:update` |
+| `members.list` | `wiki:member:retrieve` |
 | `nodes.copy` | `wiki:node:copy` |
-| `nodes.move` | `wiki:node:move` |
 | `nodes.create` | `wiki:node:create` |
 | `nodes.list` | `wiki:node:retrieve` |

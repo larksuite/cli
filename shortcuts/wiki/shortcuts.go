@@ -8,10 +8,10 @@ import "github.com/larksuite/cli/shortcuts/common"
 // Shortcuts returns all wiki shortcuts.
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
+		WikiMove,
 		WikiNodeCreate,
 		WikiSpaceList,
 		WikiNodeList,
 		WikiNodeCopy,
-		WikiNodeMove,
 	}
 }
