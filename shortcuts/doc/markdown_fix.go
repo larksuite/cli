@@ -31,12 +31,21 @@ import (
 //  5. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
 //     actual Unicode emoji characters that create-doc understands. Applied only
 //     outside fenced code blocks.
+//
+// prepareMarkdownForCreate applies fixes that should run on any Markdown before
+// it is sent to the create-doc / update-doc MCP tools, regardless of whether
+// the content originated from a Lark export or was written by hand.
+func prepareMarkdownForCreate(md string) string {
+	return applyOutsideCodeFences(md, fixCalloutType)
+}
+
 func fixExportedMarkdown(md string) string {
 	md = applyOutsideCodeFences(md, fixBoldSpacing)
 	md = applyOutsideCodeFences(md, fixSetextAmbiguity)
 	md = applyOutsideCodeFences(md, fixBlockquoteHardBreaks)
 	md = fixTopLevelSoftbreaks(md)
 	md = applyOutsideCodeFences(md, fixCalloutEmoji)
+	md = applyOutsideCodeFences(md, fixCalloutType)
 	// Collapse runs of 3+ consecutive newlines into exactly 2 (one blank line),
 	// but only outside fenced code blocks to preserve intentional blank lines in code.
 	md = applyOutsideCodeFences(md, func(s string) string {
@@ -218,6 +227,60 @@ var setextRe = regexp.MustCompile(`(?m)^([^\n]+)\n(-{3,}\s*$)`)
 
 func fixSetextAmbiguity(md string) string {
 	return setextRe.ReplaceAllString(md, "$1\n\n$2")
+}
+
+// calloutTypeColors maps callout type="<name>" to a [background-color, border-color] pair.
+// When a callout tag has type= but no background-color=, these defaults are applied.
+var calloutTypeColors = map[string][2]string{
+	"warning":   {"light-yellow", "yellow"},
+	"caution":   {"light-orange", "orange"},
+	"note":      {"light-blue", "blue"},
+	"info":      {"light-blue", "blue"},
+	"tip":       {"light-green", "green"},
+	"success":   {"light-green", "green"},
+	"check":     {"light-green", "green"},
+	"error":     {"light-red", "red"},
+	"danger":    {"light-red", "red"},
+	"important": {"light-purple", "purple"},
+}
+
+// calloutTypeRe matches a <callout …> opening tag so individual attributes can
+// be inspected and patched.
+var calloutTypeRe = regexp.MustCompile(`<callout(\s[^>]*)?>`)
+
+// fixCalloutType expands the semantic type="<name>" shorthand on callout tags
+// into explicit background-color= (and border-color= when absent).  When a
+// background-color is already present the tag is left unchanged so that an
+// explicit color always wins.
+func fixCalloutType(md string) string {
+	return calloutTypeRe.ReplaceAllStringFunc(md, func(tag string) string {
+		attrs := ""
+		if m := calloutTypeRe.FindStringSubmatch(tag); len(m) == 2 {
+			attrs = m[1]
+		}
+		// Extract type value.
+		typeRe := regexp.MustCompile(`\btype="([^"]*)"`)
+		typeParts := typeRe.FindStringSubmatch(attrs)
+		if len(typeParts) != 2 {
+			return tag // no type= attribute
+		}
+		typeName := typeParts[1]
+		colors, ok := calloutTypeColors[typeName]
+		if !ok {
+			return tag // unknown type — leave as-is
+		}
+		// Only inject background-color when it is absent.
+		if strings.Contains(attrs, "background-color=") {
+			return tag
+		}
+		// Inject background-color (and border-color when absent) before the
+		// closing >.
+		extra := ` background-color="` + colors[0] + `"`
+		if !strings.Contains(attrs, "border-color=") {
+			extra += ` border-color="` + colors[1] + `"`
+		}
+		return tag[:len(tag)-1] + extra + ">"
+	})
 }
 
 // calloutEmojiAliases maps named emoji strings that fetch-doc emits to actual

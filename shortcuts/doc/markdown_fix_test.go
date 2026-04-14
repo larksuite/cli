@@ -252,6 +252,78 @@ func TestFixExportedMarkdown(t *testing.T) {
 	}
 }
 
+func TestFixCalloutType(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "warning type gets light-yellow background and border",
+			input: `<callout type="warning" emoji="📝">`,
+			want:  `<callout type="warning" emoji="📝" background-color="light-yellow" border-color="yellow">`,
+		},
+		{
+			name:  "info type gets light-blue",
+			input: `<callout type="info" emoji="ℹ️">`,
+			want:  `<callout type="info" emoji="ℹ️" background-color="light-blue" border-color="blue">`,
+		},
+		{
+			name:  "tip type gets light-green",
+			input: `<callout type="tip" emoji="💡">`,
+			want:  `<callout type="tip" emoji="💡" background-color="light-green" border-color="green">`,
+		},
+		{
+			name:  "error type gets light-red",
+			input: `<callout type="error" emoji="❌">`,
+			want:  `<callout type="error" emoji="❌" background-color="light-red" border-color="red">`,
+		},
+		{
+			name:  "important type gets light-purple",
+			input: `<callout type="important" emoji="❗">`,
+			want:  `<callout type="important" emoji="❗" background-color="light-purple" border-color="purple">`,
+		},
+		{
+			name:  "caution type gets light-orange",
+			input: `<callout type="caution" emoji="⚠️">`,
+			want:  `<callout type="caution" emoji="⚠️" background-color="light-orange" border-color="orange">`,
+		},
+		{
+			name:  "explicit background-color is preserved",
+			input: `<callout type="warning" emoji="📝" background-color="light-red">`,
+			want:  `<callout type="warning" emoji="📝" background-color="light-red">`,
+		},
+		{
+			name:  "explicit border-color is preserved when background-color absent",
+			input: `<callout type="info" emoji="ℹ️" border-color="red">`,
+			want:  `<callout type="info" emoji="ℹ️" border-color="red" background-color="light-blue">`,
+		},
+		{
+			name:  "unknown type left unchanged",
+			input: `<callout type="custom" emoji="🔥">`,
+			want:  `<callout type="custom" emoji="🔥">`,
+		},
+		{
+			name:  "no type attribute left unchanged",
+			input: `<callout emoji="💡" background-color="light-green">`,
+			want:  `<callout emoji="💡" background-color="light-green">`,
+		},
+		{
+			name:  "non-callout tag unchanged",
+			input: `<div type="warning">`,
+			want:  `<div type="warning">`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fixCalloutType(tt.input)
+			if got != tt.want {
+				t.Errorf("fixCalloutType(%q)\n  got  %q\n  want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFixCalloutEmoji(t *testing.T) {
 	tests := []struct {
 		name  string
