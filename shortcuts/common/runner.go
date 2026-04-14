@@ -181,6 +181,12 @@ func (ctx *RuntimeContext) StrArray(name string) []string {
 	return v
 }
 
+// StrSlice returns a string-slice flag value (supports CSV splitting and repeated flags).
+func (ctx *RuntimeContext) StrSlice(name string) []string {
+	v, _ := ctx.Cmd.Flags().GetStringSlice(name)
+	return v
+}
+
 // ── API helpers ──
 
 //	CallAPI uses an internal HTTP wrapper with limited control over request/response.
@@ -849,6 +855,8 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 			cmd.Flags().Int(fl.Name, d, desc)
 		case "string_array":
 			cmd.Flags().StringArray(fl.Name, nil, desc)
+		case "string_slice":
+			cmd.Flags().StringSlice(fl.Name, nil, desc)
 		default:
 			cmd.Flags().String(fl.Name, fl.Default, desc)
 		}
