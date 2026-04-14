@@ -109,15 +109,17 @@ func Execute() int {
 	rootCmd.SilenceErrors = true
 
 	RegisterGlobalFlags(rootCmd.PersistentFlags(), globals)
-	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
+
+		// Initialize debug logger after flags are parsed
+		debugEnabled := globals.Debug || os.Getenv("LARK_CLI_DEBUG") == "1"
+		if err := debug.Initialize(debugEnabled, globals.DebugFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to initialize debug logger: %v\n", err)
+		}
+		return nil
 	}
 
-	// Initialize debug logger before executing any commands
-	debugEnabled := globals.Debug || os.Getenv("LARK_CLI_DEBUG") == "1"
-	if err := debug.Initialize(debugEnabled, globals.DebugFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to initialize debug logger: %v\n", err)
-	}
 	defer debug.Close()
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))

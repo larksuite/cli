@@ -9,6 +9,9 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/larksuite/cli/internal/charcheck"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // Log levels
@@ -52,7 +55,14 @@ func Initialize(enabled bool, filePath string) error {
 	}
 
 	if filePath != "" {
-		file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		// Validate file path for security (reject dangerous characters)
+		if err := charcheck.RejectControlChars(filePath, "--debug-file"); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: invalid debug file path: %v\n", err)
+			// Don't return error; fall back to stderr-only mode
+			return nil
+		}
+
+		file, err := vfs.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to open debug file %s: %v\n", filePath, err)
 			// Don't return error; fall back to stderr-only mode
@@ -126,17 +136,30 @@ func maskSensitiveData(message string) string {
 	// Mask API keys in JSON
 	message = regexp.MustCompile(`"api_key"\s*:\s*"[^"]*"`).ReplaceAllString(message, `"api_key": "***"`)
 
-	// Mask access tokens
+	// Mask access tokens (quoted JSON format)
 	message = regexp.MustCompile(`"access_token"\s*:\s*"[^"]*"`).ReplaceAllString(message, `"access_token": "***"`)
 
-	// Mask refresh tokens
+	// Mask access tokens (unquoted map/struct format: map[access_token:[...]] or {access_token:...})
+	message = regexp.MustCompile(`(map\[)?access_token\s*:\s*\[[^\]]*\]`).ReplaceAllString(message, "${1}access_token: [***]")
+	message = regexp.MustCompile(`access_token:\s*[^\s,}]+`).ReplaceAllString(message, "access_token: ***")
+
+	// Mask refresh tokens (quoted JSON format)
 	message = regexp.MustCompile(`"refresh_token"\s*:\s*"[^"]*"`).ReplaceAllString(message, `"refresh_token": "***"`)
 
-	// Mask passwords
+	// Mask refresh tokens (unquoted format)
+	message = regexp.MustCompile(`refresh_token\s*:\s*[^\s,}]+`).ReplaceAllString(message, "refresh_token: ***")
+
+	// Mask passwords (quoted JSON format)
 	message = regexp.MustCompile(`"password"\s*:\s*"[^"]*"`).ReplaceAllString(message, `"password": "***"`)
 
-	// Mask credentials
+	// Mask passwords (unquoted struct format: Password:secret or Password: secret)
+	message = regexp.MustCompile(`Password\s*:\s*[^\s,}]+`).ReplaceAllString(message, "Password: ***")
+
+	// Mask credentials (quoted JSON format)
 	message = regexp.MustCompile(`"credential"\s*:\s*"[^"]*"`).ReplaceAllString(message, `"credential": "***"`)
+
+	// Mask credentials (unquoted format)
+	message = regexp.MustCompile(`credential\s*:\s*[^\s,}]+`).ReplaceAllString(message, "credential: ***")
 
 	return message
 }

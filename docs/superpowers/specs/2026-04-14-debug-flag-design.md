@@ -23,7 +23,7 @@ Add a global `--debug` flag to lark-cli that enables comprehensive debugging out
 
 Create a new package with a global singleton `DebugLogger`:
 
-```
+```text
 internal/debug/
 ├── logger.go          # Core DebugLogger (singleton)
 └── logger_test.go     # Unit tests
@@ -146,12 +146,12 @@ func (l *DebugLogger) Enabled() bool
 
 ## Log Format
 
-```
+```text
 [2026-04-14T10:30:45.123Z] [module] [LEVEL] message
 ```
 
 Example outputs:
-```
+```text
 [2026-04-14T10:30:45.123Z] [api] [DEBUG] GET /open-apis/calendar/v4/calendars
 [2026-04-14T10:30:45.124Z] [api] [DEBUG] request_headers: Authorization: Bearer ***
 [2026-04-14T10:30:45.145Z] [api] [DEBUG] response_status: 200 (21ms)

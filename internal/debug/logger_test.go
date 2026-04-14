@@ -234,8 +234,9 @@ func TestHandleUnwritableFilePath(t *testing.T) {
 	globalLogger = nil
 	loggerOnce = sync.Once{}
 
-	// Try to create a debug file in a non-writable directory
-	err := Initialize(true, "/root/forbidden.log")
+	// Try to create a debug file in a non-existent parent directory
+	// This will fail consistently across different environments
+	err := Initialize(true, filepath.Join(t.TempDir(), "nonexistent", "subdir", "debug.log"))
 
 	// Should not return an error (graceful degradation)
 	if err != nil {
