@@ -27,6 +27,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/debug"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/update"
@@ -111,6 +112,13 @@ func Execute() int {
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
 	}
+
+	// Initialize debug logger before executing any commands
+	debugEnabled := globals.Debug || os.Getenv("LARK_CLI_DEBUG") == "1"
+	if err := debug.Initialize(debugEnabled, globals.DebugFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to initialize debug logger: %v\n", err)
+	}
+	defer debug.Close()
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
