@@ -55,6 +55,12 @@ var DocsTableUpdate = common.Shortcut{
 			if runtime.Str("row") == "" || runtime.Str("col") == "" {
 				return common.FlagErrorf("--action update-cell requires --row and --col")
 			}
+			if _, err := parseNonNegativeInt(runtime.Str("row"), "row"); err != nil {
+				return err
+			}
+			if _, err := parseNonNegativeInt(runtime.Str("col"), "col"); err != nil {
+				return err
+			}
 			if runtime.Str("markdown") == "" {
 				return common.FlagErrorf("--action update-cell requires --markdown")
 			}
@@ -62,9 +68,23 @@ var DocsTableUpdate = common.Shortcut{
 			if runtime.Str("at") == "" {
 				return common.FlagErrorf("--action %s requires --at", action)
 			}
+			if _, err := parseNonNegativeInt(runtime.Str("at"), "at"); err != nil {
+				return err
+			}
 		case "delete-rows", "delete-cols":
 			if runtime.Str("from") == "" || runtime.Str("to") == "" {
 				return common.FlagErrorf("--action %s requires --from and --to", action)
+			}
+			from, err := parseNonNegativeInt(runtime.Str("from"), "from")
+			if err != nil {
+				return err
+			}
+			to, err := parseNonNegativeInt(runtime.Str("to"), "to")
+			if err != nil {
+				return err
+			}
+			if from >= to {
+				return common.FlagErrorf("--from (%d) must be less than --to (%d)", from, to)
 			}
 		}
 		return nil
@@ -75,12 +95,20 @@ var DocsTableUpdate = common.Shortcut{
 			return err
 		}
 
+		// Only docx documents support block-level table operations.
+		if ref.Kind == "doc" {
+			return output.ErrValidation("legacy /doc/ documents are not supported; only /docx/ (new-format) documents can use +table-update")
+		}
+
 		docID := ref.Token
-		// For wiki URLs, resolve the actual document ID first.
+		// For wiki URLs, resolve the actual document ID and verify it's a docx.
 		if ref.Kind == "wiki" {
-			resolved, err := resolveWikiToDocID(runtime, ref.Token)
+			resolved, objType, err := resolveWikiNode(runtime, ref.Token)
 			if err != nil {
 				return err
+			}
+			if objType != "docx" {
+				return output.ErrValidation("wiki node is type %q, but +table-update only supports docx documents", objType)
 			}
 			docID = resolved
 		}
@@ -117,20 +145,33 @@ var DocsTableUpdate = common.Shortcut{
 	},
 }
 
-// resolveWikiToDocID calls the wiki API to get the real document token.
-func resolveWikiToDocID(runtime *common.RuntimeContext, wikiToken string) (string, error) {
+// resolveWikiNode calls the wiki API to get the real document token and type.
+func resolveWikiNode(runtime *common.RuntimeContext, wikiToken string) (objToken string, objType string, err error) {
 	data, err := runtime.CallAPI(http.MethodGet,
 		fmt.Sprintf("/open-apis/wiki/v2/spaces/get_node?token=%s", wikiToken),
 		nil, nil)
 	if err != nil {
-		return "", fmt.Errorf("resolve wiki token: %w", err)
+		return "", "", fmt.Errorf("resolve wiki token: %w", err)
 	}
 	node := common.GetMap(data, "node")
-	objToken := common.GetString(node, "obj_token")
+	objToken = common.GetString(node, "obj_token")
 	if objToken == "" {
-		return "", output.ErrValidation("wiki node has no obj_token")
+		return "", "", output.ErrValidation("wiki node has no obj_token")
 	}
-	return objToken, nil
+	objType = common.GetString(node, "obj_type")
+	return objToken, objType, nil
+}
+
+// parseNonNegativeInt parses a string flag as a non-negative integer.
+func parseNonNegativeInt(s, flagName string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, common.FlagErrorf("--%s must be a valid integer, got %q", flagName, s)
+	}
+	if n < 0 {
+		return 0, common.FlagErrorf("--%s must be non-negative, got %d", flagName, n)
+	}
+	return n, nil
 }
 
 // findTableBlockID lists document blocks and returns the block_id of the N-th table.
@@ -221,8 +262,8 @@ func getTableInfo(runtime *common.RuntimeContext, docID, tableBlockID string) (r
 
 // execUpdateCell updates a single cell's content via MCP.
 func execUpdateCell(runtime *common.RuntimeContext, docID, tableBlockID string) error {
-	row, _ := strconv.Atoi(runtime.Str("row"))
-	col, _ := strconv.Atoi(runtime.Str("col"))
+	row, _ := parseNonNegativeInt(runtime.Str("row"), "row")   // validated in Validate
+	col, _ := parseNonNegativeInt(runtime.Str("col"), "col")   // validated in Validate
 	markdown := runtime.Str("markdown")
 
 	rows, cols, cells, err := getTableInfo(runtime, docID, tableBlockID)
@@ -351,7 +392,7 @@ func createCellContent(runtime *common.RuntimeContext, docID, cellBlockID, markd
 
 // execInsertRow inserts a row at the specified index.
 func execInsertRow(runtime *common.RuntimeContext, docID, tableBlockID string) error {
-	at, _ := strconv.Atoi(runtime.Str("at"))
+	at, _ := parseNonNegativeInt(runtime.Str("at"), "at") // validated in Validate
 
 	body := map[string]interface{}{
 		"insert_table_row": map[string]interface{}{
@@ -375,8 +416,8 @@ func execInsertRow(runtime *common.RuntimeContext, docID, tableBlockID string) e
 
 // execDeleteRows deletes rows in [from, to) range.
 func execDeleteRows(runtime *common.RuntimeContext, docID, tableBlockID string) error {
-	from, _ := strconv.Atoi(runtime.Str("from"))
-	to, _ := strconv.Atoi(runtime.Str("to"))
+	from, _ := parseNonNegativeInt(runtime.Str("from"), "from") // validated in Validate
+	to, _ := parseNonNegativeInt(runtime.Str("to"), "to")       // validated in Validate
 
 	body := map[string]interface{}{
 		"delete_table_rows": map[string]interface{}{
@@ -402,7 +443,7 @@ func execDeleteRows(runtime *common.RuntimeContext, docID, tableBlockID string) 
 
 // execInsertCol inserts a column at the specified index.
 func execInsertCol(runtime *common.RuntimeContext, docID, tableBlockID string) error {
-	at, _ := strconv.Atoi(runtime.Str("at"))
+	at, _ := parseNonNegativeInt(runtime.Str("at"), "at") // validated in Validate
 
 	body := map[string]interface{}{
 		"insert_table_column": map[string]interface{}{
@@ -426,8 +467,8 @@ func execInsertCol(runtime *common.RuntimeContext, docID, tableBlockID string) e
 
 // execDeleteCols deletes columns in [from, to) range.
 func execDeleteCols(runtime *common.RuntimeContext, docID, tableBlockID string) error {
-	from, _ := strconv.Atoi(runtime.Str("from"))
-	to, _ := strconv.Atoi(runtime.Str("to"))
+	from, _ := parseNonNegativeInt(runtime.Str("from"), "from") // validated in Validate
+	to, _ := parseNonNegativeInt(runtime.Str("to"), "to")       // validated in Validate
 
 	body := map[string]interface{}{
 		"delete_table_columns": map[string]interface{}{

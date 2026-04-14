@@ -8,26 +8,28 @@
 ## 重要说明
 
 > **⚠️ 本命令直接操作文档 block 结构，修改单元格时会先清空再写入，请确保操作正确。**
+> 
+> **所有索引参数（`--row`、`--col`、`--at`、`--from`、`--to`、`--table-index`）均为 0-based。**
 
 ## 命令
 
 ```bash
-# 修改单元格内容（第1个表格的第2行第1列）
+# 修改单元格内容（索引从 0 开始：第 1 个表格、第 3 行、第 2 列）
 lark-cli docs +table-update --doc "<doc_id_or_url>" --table-index 0 --action update-cell --row 2 --col 1 --markdown "新内容"
 
-# 插入一行（在第3行位置插入）
+# 插入一行（在索引 3 的位置插入，即原第 4 行之前）
 lark-cli docs +table-update --doc "<doc_id>" --table-index 0 --action insert-row --at 3
 
-# 删除行（删除第2~3行，不含第3行）
+# 删除行（删除索引 [2, 3) 即第 3 行）
 lark-cli docs +table-update --doc "<doc_id>" --table-index 0 --action delete-rows --from 2 --to 3
 
-# 插入一列（在第2列位置插入）
+# 插入一列（在索引 2 的位置插入，即原第 3 列之前）
 lark-cli docs +table-update --doc "<doc_id>" --table-index 0 --action insert-col --at 2
 
-# 删除列（删除第1~2列，不含第2列）
+# 删除列（删除索引 [1, 2) 即第 2 列）
 lark-cli docs +table-update --doc "<doc_id>" --table-index 0 --action delete-cols --from 1 --to 2
 
-# 直接指定表格 block_id（跳过查找）
+# 直接指定表格 block_id（跳过查找），修改第 1 行第 1 列（索引 0,0）
 lark-cli docs +table-update --doc "<doc_id>" --table-id "blk_xxxxx" --action update-cell --row 0 --col 0 --markdown "标题"
 ```
 
