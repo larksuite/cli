@@ -1,6 +1,6 @@
 module github.com/larksuite/cli
 
-go 1.23.0
+go 1.23
 
 require (
 	github.com/charmbracelet/huh v1.0.0
