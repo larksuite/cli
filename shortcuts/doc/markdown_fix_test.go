@@ -25,6 +25,16 @@ func TestFixBoldSpacing(t *testing.T) {
 			want:  "*hello*",
 		},
 		{
+			name:  "ambiguous italic span stays literal",
+			input: "2 * x * y",
+			want:  "2 * x * y",
+		},
+		{
+			name:  "ambiguous bold span stays literal",
+			input: "2 ** x ** y",
+			want:  "2 ** x ** y",
+		},
+		{
 			name:  "trailing space before closing bold",
 			input: "**hello **",
 			want:  "**hello**",
@@ -257,6 +267,11 @@ func TestNormalizeNestedListIndentation(t *testing.T) {
 			name:  "top-level list unchanged",
 			input: "1. parent\n2. sibling",
 			want:  "1. parent\n2. sibling",
+		},
+		{
+			name:  "indented top-level marker without parent list stays unchanged",
+			input: "paragraph\n\n  1. item",
+			want:  "paragraph\n\n  1. item",
 		},
 	}
 	for _, tt := range tests {
