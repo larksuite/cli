@@ -88,11 +88,14 @@ func (l *DebugLogger) Log(level, module, format string, args ...interface{}) {
 	defer l.mu.Unlock()
 
 	// Format: [2026-04-14T10:30:45.123Z] [module] [LEVEL] message
-	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z07:00")
+	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	message := fmt.Sprintf(format, args...)
 
 	// Mask sensitive data
 	message = maskSensitiveData(message)
+
+	// Truncate large responses
+	message = truncateResponse(message)
 
 	logLine := fmt.Sprintf("[%s] [%s] [%s] %s\n", timestamp, module, level, message)
 
