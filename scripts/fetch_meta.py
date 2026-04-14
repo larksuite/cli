@@ -49,11 +49,7 @@ def fetch_remote(brand):
 
     print(f"fetch-meta: GET {url}", file=sys.stderr)
     req = urllib.request.Request(url)
-    import ssl
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    resp = urllib.request.urlopen(req, timeout=TIMEOUT, context=ctx)
+    resp = urllib.request.urlopen(req, timeout=TIMEOUT)
     body = resp.read()
 
     envelope = json.loads(body)
