@@ -51,9 +51,9 @@ lark-cli wiki +node-list --space-id source_space_id
 
 # 2. Copy each node to the target space
 lark-cli wiki +node-copy \
-  --space-id source_space_id \
-  --node-token wikcnSource \
-  --target-space-id target_space_id
+  --space-id <source_space_id> \
+  --node-token wikcn_EXAMPLE_TOKEN \
+  --target-space-id <target_space_id>
 ```
 
 ## Notes

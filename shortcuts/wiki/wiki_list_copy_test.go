@@ -237,6 +237,20 @@ func TestWikiNodeCopyRequiresTargetSpaceOrParent(t *testing.T) {
 	}
 }
 
+func TestWikiNodeCopyRejectsBothTargetFlags(t *testing.T) {
+	t.Parallel()
+
+	factory, _, _, _ := cmdutil.TestFactory(t, wikiTestConfig())
+	err := mountAndRunWiki(t, WikiNodeCopy, []string{
+		"+node-copy", "--space-id", "space_123", "--node-token", "wik_src",
+		"--target-space-id", "space_dst", "--target-parent-node-token", "wik_parent",
+		"--as", "bot",
+	}, factory, nil)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected mutually exclusive error, got %v", err)
+	}
+}
+
 func TestWikiNodeCopyCopiesNodeToTargetSpace(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 

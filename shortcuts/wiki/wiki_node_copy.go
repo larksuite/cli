@@ -44,6 +44,9 @@ var WikiNodeCopy = common.Shortcut{
 		if targetSpaceID == "" && targetParent == "" {
 			return output.ErrValidation("at least one of --target-space-id or --target-parent-node-token is required")
 		}
+		if targetSpaceID != "" && targetParent != "" {
+			return output.ErrValidation("--target-space-id and --target-parent-node-token are mutually exclusive; provide only one")
+		}
 		if err := validateOptionalResourceName(targetSpaceID, "--target-space-id"); err != nil {
 			return err
 		}

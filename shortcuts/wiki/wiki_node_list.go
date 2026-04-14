@@ -21,12 +21,12 @@ var WikiNodeList = common.Shortcut{
 	Scopes:      []string{"wiki:node:retrieve"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "space-id", Desc: "wiki space ID; use my_library for personal document library", Required: true},
+		{Name: "space-id", Desc: "wiki space ID; use +space-list to discover available space IDs", Required: true},
 		{Name: "parent-node-token", Desc: "parent node token; if omitted, lists the root-level nodes of the space"},
 	},
 	Tips: []string{
 		"Use --parent-node-token to drill into a sub-directory.",
-		"--space-id my_library lists the root of your personal document library.",
+		"Run +space-list first to discover your space IDs, including the personal document library.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spaceID := strings.TrimSpace(runtime.Str("space-id"))
