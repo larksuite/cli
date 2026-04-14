@@ -111,6 +111,12 @@ var MailDraftEdit = common.Shortcut{
 				}
 			}
 		}
+		// Pre-process add_attachment ops for large attachment support:
+		// extract oversized files, upload them, inject HTML into the snapshot body.
+		patch, err = preprocessLargeAttachmentsForDraftEdit(ctx, runtime, snapshot, patch)
+		if err != nil {
+			return err
+		}
 		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
 		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
 			return output.ErrValidation("apply draft patch failed: %v", err)

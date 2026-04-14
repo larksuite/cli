@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/shortcuts/common"
+	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
 
@@ -236,6 +237,22 @@ func buildLargeAttachmentHTML(brand core.LarkBrand, results []largeAttachmentRes
 	return buf.String()
 }
 
+// insertBeforeQuoteOrAppend inserts block into html before the quote block
+// (identified by id starting with "lark-mail-quote"), or appends it to the
+// end if no quote block is found. This matches the desktop client's
+// exportLargeFileArea placement logic (mail-editor/src/plugins/bigAttachment/export.ts:64-70).
+func insertBeforeQuoteOrAppend(html, block string) string {
+	idx := strings.Index(html, `id="lark-mail-quote`)
+	if idx < 0 {
+		return html + block
+	}
+	tagStart := strings.LastIndex(html[:idx], "<")
+	if tagStart < 0 {
+		return html + block
+	}
+	return html[:tagStart] + block + html[tagStart:]
+}
+
 // fileTypeIcon returns the CDN icon filename for a given attachment filename,
 // matching desktop's AttachmentIconPath (mail-editor/src/plugins/bigAttachment/utils.ts).
 func fileTypeIcon(filename string) string {
@@ -284,7 +301,7 @@ func fileTypeIcon(filename string) string {
 }
 
 // processLargeAttachments is the unified entry point for large attachment
-// handling across all mail compose shortcuts (draft-create, reply, forward).
+// handling across all mail compose shortcuts (draft-create, reply, forward, send).
 //
 // It replaces the previous pattern of:
 //   checkAttachmentSizeLimit → AddFileAttachment loop
@@ -292,9 +309,13 @@ func fileTypeIcon(filename string) string {
 // with:
 //   processLargeAttachments → add normal via AddFileAttachment + inject HTML for oversized
 //
+// The large attachment HTML card is inserted before the quote block (if present)
+// in the HTML body, matching the desktop client's exportLargeFileArea placement.
+//
 // Parameters:
 //   - runtime: shortcut runtime context
 //   - bld: the EML builder (with body and inline images already set)
+//   - htmlBody: the current HTML body string (for quote-aware insertion)
 //   - attachPaths: user-specified attachment file paths (from --attach flag)
 //   - extraEMLBytes: EML bytes already accounted for (e.g. downloaded original
 //     attachments in forward, estimated body+header size). Callers should
@@ -307,6 +328,7 @@ func processLargeAttachments(
 	ctx context.Context,
 	runtime *common.RuntimeContext,
 	bld emlbuilder.Builder,
+	htmlBody string,
 	attachPaths []string,
 	extraEMLBytes int64,
 	extraAttachCount int,
@@ -359,9 +381,10 @@ func processLargeAttachments(
 		return bld, err
 	}
 
-	// Generate and inject the large attachment HTML block
-	html := buildLargeAttachmentHTML(runtime.Config.Brand, results)
-	bld = bld.LargeAttachmentHTML(html)
+	// Generate the large attachment HTML block and insert it before the
+	// quote block (if present), matching desktop's exportLargeFileArea.
+	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, results)
+	bld = bld.HTMLBody([]byte(insertBeforeQuoteOrAppend(htmlBody, largeHTML)))
 
 	// Register large attachment tokens via X-Lms-Large-Attachment-Ids header,
 	// so the mail server associates them with this draft.
@@ -388,4 +411,159 @@ func processLargeAttachments(
 	fmt.Fprintf(runtime.IO().ErrOut, "  %d large attachment(s) uploaded (download links in body)\n", len(classified.Oversized))
 
 	return bld, nil
+}
+
+// preprocessLargeAttachmentsForDraftEdit scans a draft-edit patch for
+// add_attachment ops, classifies the files (normal vs oversized based on
+// the snapshot's current EML size), uploads oversized files, injects the
+// large attachment HTML card into the snapshot's HTML body, and returns
+// the patch with oversized ops removed (normal ops stay for draft.Apply).
+func preprocessLargeAttachmentsForDraftEdit(
+	ctx context.Context,
+	runtime *common.RuntimeContext,
+	snapshot *draftpkg.DraftSnapshot,
+	patch draftpkg.Patch,
+) (draftpkg.Patch, error) {
+	// Collect add_attachment ops and their indices.
+	type attachOp struct {
+		index int
+		path  string
+	}
+	var attachOps []attachOp
+	for i, op := range patch.Ops {
+		if op.Op == "add_attachment" {
+			attachOps = append(attachOps, attachOp{index: i, path: op.Path})
+		}
+	}
+	if len(attachOps) == 0 {
+		return patch, nil
+	}
+
+	// Stat all attachment files.
+	paths := make([]string, len(attachOps))
+	for i, ao := range attachOps {
+		paths[i] = ao.path
+	}
+	files, err := statAttachmentFiles(runtime.FileIO(), paths)
+	if err != nil {
+		return patch, err
+	}
+
+	// Check 3GB single file limit.
+	for _, f := range files {
+		if f.Size > MaxLargeAttachmentSize {
+			return patch, fmt.Errorf("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+				f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
+		}
+	}
+
+	// Calculate the snapshot's current EML base size.
+	emlBaseSize := snapshotEMLBaseSize(snapshot)
+
+	// Classify files.
+	classified := classifyAttachments(files, emlBaseSize)
+	if len(classified.Oversized) == 0 {
+		return patch, nil // all fit, let draft.Apply handle them
+	}
+
+	// Guard: need user identity for upload.
+	if runtime.Config == nil || runtime.UserOpenId() == "" {
+		var totalBytes int64
+		for _, f := range files {
+			totalBytes += f.Size
+		}
+		return patch, fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
+			"large attachment upload requires user identity (--as user)",
+			float64(totalBytes)/1024/1024)
+	}
+
+	// Upload oversized files.
+	results, err := uploadLargeAttachments(ctx, runtime, classified.Oversized)
+	if err != nil {
+		return patch, err
+	}
+
+	// Inject large attachment HTML into the snapshot's HTML body part.
+	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, results)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+
+	// Remove oversized ops from the patch (keep normal ones for draft.Apply).
+	oversizedPaths := make(map[string]bool, len(classified.Oversized))
+	for _, f := range classified.Oversized {
+		oversizedPaths[f.Path] = true
+	}
+	var filteredOps []draftpkg.PatchOp
+	for _, op := range patch.Ops {
+		if op.Op == "add_attachment" && oversizedPaths[op.Path] {
+			continue // skip oversized, already uploaded
+		}
+		filteredOps = append(filteredOps, op)
+	}
+	patch.Ops = filteredOps
+
+	fmt.Fprintf(runtime.IO().ErrOut, "  %d normal attachment(s) in patch\n", len(classified.Normal))
+	fmt.Fprintf(runtime.IO().ErrOut, "  %d large attachment(s) uploaded (download links in body)\n", len(classified.Oversized))
+
+	return patch, nil
+}
+
+// snapshotEMLBaseSize estimates the current EML size of a draft snapshot by
+// summing all part bodies (base64 encoded) plus a header overhead.
+func snapshotEMLBaseSize(snapshot *draftpkg.DraftSnapshot) int64 {
+	const headerOverhead = 2048
+	var total int64 = headerOverhead
+	for _, p := range flattenSnapshotParts(snapshot.Body) {
+		total += estimateBase64EMLSize(int64(len(p.Body)))
+	}
+	return total
+}
+
+// flattenSnapshotParts recursively collects all parts in the MIME tree.
+func flattenSnapshotParts(root *draftpkg.Part) []*draftpkg.Part {
+	if root == nil {
+		return nil
+	}
+	out := []*draftpkg.Part{root}
+	for _, child := range root.Children {
+		out = append(out, flattenSnapshotParts(child)...)
+	}
+	return out
+}
+
+// injectLargeAttachmentHTMLIntoSnapshot finds the HTML body part in the
+// snapshot and inserts the large attachment HTML before the quote block
+// (or appends to the end if no quote).
+func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, largeHTML string) {
+	htmlPart := findHTMLBodyPart(snapshot.Body)
+	if htmlPart == nil {
+		// No HTML body — create one from the large attachment HTML alone.
+		// This shouldn't normally happen (drafts usually have a body).
+		if snapshot.Body != nil {
+			return // don't overwrite existing non-HTML body
+		}
+		snapshot.Body = &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte(largeHTML),
+			Dirty:     true,
+		}
+		return
+	}
+	htmlPart.Body = []byte(insertBeforeQuoteOrAppend(string(htmlPart.Body), largeHTML))
+	htmlPart.Dirty = true
+}
+
+// findHTMLBodyPart walks the MIME tree to find the text/html body part.
+func findHTMLBodyPart(root *draftpkg.Part) *draftpkg.Part {
+	if root == nil {
+		return nil
+	}
+	if strings.EqualFold(root.MediaType, "text/html") {
+		return root
+	}
+	for _, child := range root.Children {
+		if found := findHTMLBodyPart(child); found != nil {
+			return found
+		}
+	}
+	return nil
 }

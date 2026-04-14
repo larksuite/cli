@@ -152,7 +152,11 @@ var MailSend = common.Shortcut{
 		bld = applyPriority(bld, priority)
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
-		bld, err = processLargeAttachments(ctx, runtime, bld, splitByComma(attachFlag), emlBase, 0)
+		htmlBody := body
+		if !bodyIsHTML(htmlBody) {
+			htmlBody = ""
+		}
+		bld, err = processLargeAttachments(ctx, runtime, bld, htmlBody, splitByComma(attachFlag), emlBase, 0)
 		if err != nil {
 			return err
 		}

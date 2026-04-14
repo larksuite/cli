@@ -88,12 +88,11 @@ type Builder struct {
 	textBody            []byte
 	htmlBody            []byte
 	calendarBody        []byte
-	attachments          []attachment
-	inlines              []inline
-	extraHeaders         [][2]string // ordered list of [name, value] pairs
-	allowNoRecipients    bool        // when true, Build() skips the recipient check (for drafts)
-	largeAttachmentHTML  string      // HTML block for large attachments; appended to htmlBody in Build()
-	err                  error
+	attachments       []attachment
+	inlines           []inline
+	extraHeaders      [][2]string // ordered list of [name, value] pairs
+	allowNoRecipients bool        // when true, Build() skips the recipient check (for drafts)
+	err               error
 }
 
 // WithFileIO returns a copy of b with the given FileIO.
@@ -588,14 +587,6 @@ func (b Builder) Header(name, value string) Builder {
 	return cp
 }
 
-// LargeAttachmentHTML sets an HTML block for large attachments (files too large
-// to embed in the EML). The block is appended to the HTML body during Build().
-// If the message has no HTML body, a minimal HTML body is created to hold it.
-func (b Builder) LargeAttachmentHTML(html string) Builder {
-	b.largeAttachmentHTML = html
-	return b
-}
-
 // Error returns any stored error (e.g. from AddFileAttachment), or nil.
 func (b Builder) Error() error {
 	return b.err
@@ -634,15 +625,6 @@ func (b Builder) Build() ([]byte, error) {
 	}
 	if !b.allowNoRecipients && len(b.to)+len(b.cc)+len(b.bcc) == 0 {
 		return nil, fmt.Errorf("emlbuilder: at least one recipient (To/CC/BCC) is required")
-	}
-
-	// Append large attachment HTML block to the HTML body if present.
-	if b.largeAttachmentHTML != "" {
-		if len(b.htmlBody) > 0 {
-			b.htmlBody = append(b.htmlBody, []byte(b.largeAttachmentHTML)...)
-		} else {
-			b.htmlBody = []byte(b.largeAttachmentHTML)
-		}
 	}
 
 	date := b.date

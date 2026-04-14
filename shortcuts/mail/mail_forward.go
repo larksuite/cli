@@ -145,6 +145,7 @@ var MailForward = common.Shortcut{
 			return err
 		}
 		var autoResolvedPaths []string
+		var composedHTMLBody string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("forward blocked: %w", err)
@@ -164,8 +165,8 @@ var MailForward = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
-			fullHTML := bodyWithSig + forwardQuote
-			bld = bld.HTMLBody([]byte(fullHTML))
+			composedHTMLBody = bodyWithSig + forwardQuote
+			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var userCIDs []string
 			for _, ref := range refs {
@@ -228,7 +229,7 @@ var MailForward = common.Shortcut{
 			origAttEMLBytes += estimateBase64EMLSize(int64(len(att.content)))
 		}
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, origAttEMLBytes)
-		bld, err = processLargeAttachments(ctx, runtime, bld, splitByComma(attachFlag), emlBase, len(origAtts))
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, len(origAtts))
 		if err != nil {
 			return err
 		}

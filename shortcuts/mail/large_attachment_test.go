@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
 
 func TestEstimateBase64EMLSize(t *testing.T) {
@@ -164,39 +163,39 @@ func TestBuildLargeAttachmentHTML_EscapesSpecialChars(t *testing.T) {
 	}
 }
 
-func TestLargeAttachmentHTML_InBuilder(t *testing.T) {
-	raw, err := emlbuilder.New().
-		From("", "test@example.com").
-		To("", "bob@example.com").
-		Subject("Test").
-		HTMLBody([]byte("<p>Hello</p>")).
-		LargeAttachmentHTML(`<div id="lark-mail-large-file-container">large file block</div>`).
-		Build()
-	if err != nil {
-		t.Fatalf("Build() error: %v", err)
+func TestInsertBeforeQuoteOrAppend_WithQuote(t *testing.T) {
+	body := `<p>Hello</p><div id="lark-mail-quote-cli123" class="history-quote-wrapper"><div>quoted content</div></div>`
+	block := `<div id="lark-mail-large-file-container">CARD</div>`
+	result := insertBeforeQuoteOrAppend(body, block)
+
+	// Block should appear before the quote
+	cardIdx := strings.Index(result, "CARD")
+	quoteIdx := strings.Index(result, "lark-mail-quote-cli123")
+	if cardIdx < 0 || quoteIdx < 0 {
+		t.Fatalf("missing card or quote in result: %s", result)
 	}
-	eml := string(raw)
-	if !strings.Contains(eml, "large file block") {
-		t.Error("large attachment HTML not found in built EML")
+	if cardIdx > quoteIdx {
+		t.Errorf("card should be before quote, but card@%d > quote@%d", cardIdx, quoteIdx)
+	}
+	// Original body text should still be before the card
+	helloIdx := strings.Index(result, "Hello")
+	if helloIdx > cardIdx {
+		t.Errorf("body text should be before card, but hello@%d > card@%d", helloIdx, cardIdx)
 	}
 }
 
-func TestLargeAttachmentHTML_WithoutHTMLBody(t *testing.T) {
-	// When there's no existing HTML body, the large attachment HTML becomes the body.
-	raw, err := emlbuilder.New().
-		From("", "test@example.com").
-		To("", "bob@example.com").
-		Subject("Test").
-		LargeAttachmentHTML(`<div>large file</div>`).
-		Build()
-	if err != nil {
-		t.Fatalf("Build() error: %v", err)
+func TestInsertBeforeQuoteOrAppend_NoQuote(t *testing.T) {
+	body := `<p>Hello world</p>`
+	block := `<div>CARD</div>`
+	result := insertBeforeQuoteOrAppend(body, block)
+	if !strings.HasSuffix(result, block) {
+		t.Errorf("without quote, block should be appended to end, got: %s", result)
 	}
-	eml := string(raw)
-	if !strings.Contains(eml, "text/html") {
-		t.Error("expected text/html content type when large attachment HTML is set")
-	}
-	if !strings.Contains(eml, "large file") {
-		t.Error("large attachment HTML not found in built EML")
+}
+
+func TestInsertBeforeQuoteOrAppend_EmptyBody(t *testing.T) {
+	result := insertBeforeQuoteOrAppend("", "<div>CARD</div>")
+	if result != "<div>CARD</div>" {
+		t.Errorf("empty body should just return block, got: %s", result)
 	}
 }

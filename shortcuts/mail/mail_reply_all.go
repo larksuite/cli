@@ -162,6 +162,7 @@ var MailReplyAll = common.Shortcut{
 			bld = bld.LMSReplyToMessageID(messageId)
 		}
 		var autoResolvedPaths []string
+		var composedHTMLBody string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply-all blocked: %w", err)
@@ -179,8 +180,8 @@ var MailReplyAll = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
-			fullHTML := bodyWithSig + quoted
-			bld = bld.HTMLBody([]byte(fullHTML))
+			composedHTMLBody = bodyWithSig + quoted
+			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var userCIDs []string
 			for _, ref := range refs {
@@ -201,7 +202,7 @@ var MailReplyAll = common.Shortcut{
 		bld = applyPriority(bld, priority)
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
-		bld, err = processLargeAttachments(ctx, runtime, bld, splitByComma(attachFlag), emlBase, 0)
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, 0)
 		if err != nil {
 			return err
 		}
