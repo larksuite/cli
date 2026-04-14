@@ -66,7 +66,17 @@ npm install -g @larksuite/cli
 npx skills add larksuite/cli -y -g
 ```
 
-**Option 2 — From source:**
+**Option 2 — Install via Claude Code Marketplace:**
+
+If you are using [Claude Code](https://docs.anthropic.com/en/docs/claude-code), you can install directly from the marketplace:
+
+```bash
+# In Claude Code terminal
+claude plugin marketplace add larksuite/cli
+claude plugin install lark-cli@larksuite-cli
+```
+
+**Option 3 — From source:**
 
 Requires Go `v1.23`+ and Python 3.
 
@@ -102,8 +112,11 @@ lark-cli calendar +agenda
 # Install CLI
 npm install -g @larksuite/cli
 
-# Install CLI SKILL (required)
+# Install CLI SKILL (required, choose one)
+# Option A: via npx skills
 npx skills add larksuite/cli -y -g
+# Option B: via Claude Code Marketplace
+claude plugin marketplace add larksuite/cli && claude plugin install lark-cli@larksuite-cli
 ```
 
 **Step 2 — Configure app credentials**
