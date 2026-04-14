@@ -87,6 +87,14 @@ func TestClassifyAttachments_PreservesOrder(t *testing.T) {
 	}
 }
 
+func TestMaxLargeAttachmentSize(t *testing.T) {
+	// 3GB constant should match desktop client
+	expected := int64(3 * 1024 * 1024 * 1024)
+	if MaxLargeAttachmentSize != expected {
+		t.Errorf("MaxLargeAttachmentSize = %d, want %d (3 GB)", MaxLargeAttachmentSize, expected)
+	}
+}
+
 func TestBuildLargeAttachmentPreviewURL(t *testing.T) {
 	tests := []struct {
 		brand core.LarkBrand
