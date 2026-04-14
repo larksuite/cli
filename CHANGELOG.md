@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.11] - 2026-04-14
+
+### Features
+
+- **sheets**: Add dropdown shortcuts for data validation management (`+set-dropdown`, `+update-dropdown`, `+get-dropdown`, `+delete-dropdown`) (#461)
+- **task**: Add task search, tasklist search, related-task, set-ancestor, and subscribe-event shortcuts (#377)
+- Streamline interactive login by removing the extra auth confirmation step (#451)
+
+### Bug Fixes
+
+- **base**: Validate JSON object inputs for base shortcuts and reject `null` objects (#458)
+
+### Documentation
+
+- **sheets**: Document value formats for formulas and special field types (#456)
+- **readme**: Add Attendance to the features table (#460)
+
 ## [v1.0.10] - 2026-04-13
 
 ### Features
@@ -328,6 +345,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.11]: https://github.com/larksuite/cli/releases/tag/v1.0.11
 [v1.0.10]: https://github.com/larksuite/cli/releases/tag/v1.0.10
 [v1.0.9]: https://github.com/larksuite/cli/releases/tag/v1.0.9
 [v1.0.8]: https://github.com/larksuite/cli/releases/tag/v1.0.8
