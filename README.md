@@ -36,6 +36,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
 | 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
 | 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                                                                        |
+| 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 
 ## Installation & Quick Start
