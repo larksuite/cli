@@ -209,15 +209,18 @@ var MailForward = common.Shortcut{
 			}
 			bld = bld.Header("X-Lms-Large-Attachment-Ids", base64.StdEncoding.EncodeToString(idsJSON))
 		}
-		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, origAttBytes, len(origAtts)); err != nil {
-			return err
-		}
 		for _, att := range origAtts {
 			bld = bld.AddAttachment(att.content, att.contentType, att.filename)
 		}
-		for _, path := range splitByComma(attachFlag) {
-			bld = bld.AddFileAttachment(path)
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		origAttEMLBytes := int64(0)
+		for _, att := range origAtts {
+			origAttEMLBytes += estimateBase64EMLSize(int64(len(att.content)))
+		}
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, origAttEMLBytes)
+		bld, err = processLargeAttachments(ctx, runtime, bld, splitByComma(attachFlag), emlBase, len(origAtts))
+		if err != nil {
+			return err
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {

@@ -88,11 +88,12 @@ type Builder struct {
 	textBody            []byte
 	htmlBody            []byte
 	calendarBody        []byte
-	attachments         []attachment
-	inlines             []inline
-	extraHeaders        [][2]string // ordered list of [name, value] pairs
-	allowNoRecipients   bool        // when true, Build() skips the recipient check (for drafts)
-	err                 error
+	attachments          []attachment
+	inlines              []inline
+	extraHeaders         [][2]string // ordered list of [name, value] pairs
+	allowNoRecipients    bool        // when true, Build() skips the recipient check (for drafts)
+	largeAttachmentHTML  string      // HTML block for large attachments; appended to htmlBody in Build()
+	err                  error
 }
 
 // WithFileIO returns a copy of b with the given FileIO.
@@ -587,6 +588,14 @@ func (b Builder) Header(name, value string) Builder {
 	return cp
 }
 
+// LargeAttachmentHTML sets an HTML block for large attachments (files too large
+// to embed in the EML). The block is appended to the HTML body during Build().
+// If the message has no HTML body, a minimal HTML body is created to hold it.
+func (b Builder) LargeAttachmentHTML(html string) Builder {
+	b.largeAttachmentHTML = html
+	return b
+}
+
 // Error returns any stored error (e.g. from AddFileAttachment), or nil.
 func (b Builder) Error() error {
 	return b.err
@@ -625,6 +634,15 @@ func (b Builder) Build() ([]byte, error) {
 	}
 	if !b.allowNoRecipients && len(b.to)+len(b.cc)+len(b.bcc) == 0 {
 		return nil, fmt.Errorf("emlbuilder: at least one recipient (To/CC/BCC) is required")
+	}
+
+	// Append large attachment HTML block to the HTML body if present.
+	if b.largeAttachmentHTML != "" {
+		if len(b.htmlBody) > 0 {
+			b.htmlBody = append(b.htmlBody, []byte(b.largeAttachmentHTML)...)
+		} else {
+			b.htmlBody = []byte(b.largeAttachmentHTML)
+		}
 	}
 
 	date := b.date
@@ -879,12 +897,24 @@ func encodeBodyContent(body []byte, cte string) string {
 	return string(body)
 }
 
-// writeFoldedBody writes the encoded part body with fixed-width line wrapping.
-// RFC 2045 recommends 76 characters per encoded line; we apply the same width
-// to all body parts for consistent MIME output.
+// lineWidthForCTE returns the appropriate line width for the given CTE.
+// RFC 2045: base64 and quoted-printable lines MUST NOT exceed 76 characters.
+// RFC 5322: 7bit/8bit lines MUST NOT exceed 998 characters.
+func lineWidthForCTE(cte string) int {
+	switch cte {
+	case "base64", "quoted-printable":
+		return 76
+	default: // 7bit, 8bit
+		return 998
+	}
+}
+
+// writeFoldedBody writes the encoded part body with line wrapping.
+// The width limit depends on the Content-Transfer-Encoding:
+// base64/quoted-printable use 76 chars (RFC 2045), 7bit uses 998 (RFC 5322).
 func writeFoldedBody(buf *bytes.Buffer, encoded string, width int) {
 	if width <= 0 {
-		width = 76
+		width = 998
 	}
 	for _, line := range strings.Split(encoded, "\n") {
 		for len(line) > width {
@@ -910,7 +940,7 @@ func writeBodyPart(buf *bytes.Buffer, boundary, ct string, body []byte) {
 	cte := selectCTE(body)
 	fmt.Fprintf(buf, "Content-Type: %s; charset=UTF-8\n", ct)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
-	writeFoldedBody(buf, encodeBodyContent(body, cte), 76)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
 }
 
 // writeSingleBodyPartHeaders writes the Content-Type / CTE headers and body
@@ -920,7 +950,7 @@ func writeSingleBodyPartHeaders(buf *bytes.Buffer, ct string, body []byte) {
 	cte := selectCTE(body)
 	fmt.Fprintf(buf, "Content-Type: %s; charset=UTF-8\n", ct)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
-	writeFoldedBody(buf, encodeBodyContent(body, cte), 76)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
 }
 
 // writeAttachmentPart writes a MIME attachment part.

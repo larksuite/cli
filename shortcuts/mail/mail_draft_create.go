@@ -91,7 +91,7 @@ var MailDraftCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		rawEML, err := buildRawEMLForDraftCreate(runtime, input, sigResult)
+		rawEML, err := buildRawEMLForDraftCreate(ctx, runtime, input, sigResult)
 		if err != nil {
 			return err
 		}
@@ -129,7 +129,7 @@ func parseDraftCreateInput(runtime *common.RuntimeContext) (draftCreateInput, er
 	return input, nil
 }
 
-func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput, sigResult *signatureResult) (string, error) {
+func buildRawEMLForDraftCreate(ctx context.Context, runtime *common.RuntimeContext, input draftCreateInput, sigResult *signatureResult) (string, error) {
 	senderEmail := resolveComposeSenderEmail(runtime)
 	if senderEmail == "" {
 		return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
@@ -190,12 +190,11 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 	} else {
 		bld = bld.TextBody([]byte(input.Body))
 	}
-	allFilePaths := append(append(splitByComma(input.Attach), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-	if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
+	allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+	emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(input.Body)), allInlinePaths, 0)
+	bld, err = processLargeAttachments(ctx, runtime, bld, splitByComma(input.Attach), emlBase, 0)
+	if err != nil {
 		return "", err
-	}
-	for _, path := range splitByComma(input.Attach) {
-		bld = bld.AddFileAttachment(path)
 	}
 	rawEML, err := bld.BuildBase64URL()
 	if err != nil {
