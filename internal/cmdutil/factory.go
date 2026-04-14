@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/debug"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -58,18 +59,28 @@ func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 // If the user explicitly passed --as, use that value; otherwise use the configured default.
 // When the value is "auto" (or unset), auto-detect based on credential hints.
 func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core.Identity) core.Identity {
+	logger := debug.GetLogger()
 	f.IdentityAutoDetected = false
 
 	// Strict mode: force identity regardless of flags or config.
 	if forced := f.ResolveStrictMode(ctx).ForcedIdentity(); forced != "" {
+		if logger.Enabled() {
+			logger.Debug("auth", "Identity forced by strict mode: %s", forced)
+		}
 		f.ResolvedIdentity = forced
 		return forced
 	}
 
 	if cmd != nil && cmd.Flags().Changed("as") {
 		if flagAs != "auto" {
+			if logger.Enabled() {
+				logger.Debug("auth", "Identity from --as flag: %s", flagAs)
+			}
 			f.ResolvedIdentity = flagAs
 			return flagAs
+		}
+		if logger.Enabled() {
+			logger.Debug("auth", "Auto-detecting identity from configuration")
 		}
 		// --as auto: fall through to auto-detect
 	}
@@ -77,6 +88,9 @@ func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core
 	hint := f.resolveIdentityHint(ctx)
 	if cmd == nil || !cmd.Flags().Changed("as") {
 		if defaultAs := resolveDefaultAsFromHint(hint); defaultAs != "" && defaultAs != core.AsAuto {
+			if logger.Enabled() {
+				logger.Debug("auth", "Using default identity from config: %s", defaultAs)
+			}
 			f.ResolvedIdentity = defaultAs
 			return f.ResolvedIdentity
 		}
