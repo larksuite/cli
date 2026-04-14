@@ -29,6 +29,7 @@ type fakeWikiNodeCreateClient struct {
 	spaces        map[string]*wikiSpaceRecord
 	nodes         map[string]*wikiNodeRecord
 	createNode    *wikiNodeRecord
+	returnNilNode bool
 	createErr     error
 	getSpaceErr   error
 	getNodeErr    error
@@ -65,6 +66,9 @@ func (fake *fakeWikiNodeCreateClient) CreateNode(ctx context.Context, spaceID st
 	if fake.createErr != nil {
 		return nil, fake.createErr
 	}
+	if fake.returnNilNode {
+		return nil, nil
+	}
 	if fake.createNode != nil {
 		return fake.createNode, nil
 	}
@@ -78,6 +82,15 @@ func wikiTestConfig() *core.CliConfig {
 		AppID:     fmt.Sprintf("wiki-test-app-%d", wikiTestConfigSeq.Add(1)),
 		AppSecret: "test-secret",
 		Brand:     core.BrandFeishu,
+	}
+}
+
+func wikiPermissionTestConfig(userOpenID string) *core.CliConfig {
+	return &core.CliConfig{
+		AppID:      fmt.Sprintf("wiki-permission-test-app-%d", wikiTestConfigSeq.Add(1)),
+		AppSecret:  "test-secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: userOpenID,
 	}
 }
 
@@ -265,6 +278,26 @@ func TestRunWikiNodeCreateCreatesNodeInResolvedSpace(t *testing.T) {
 	}
 	if execution.ResolvedSpace.ResolvedBy != wikiResolvedByMyLibrary {
 		t.Fatalf("resolved_by = %q, want %q", execution.ResolvedSpace.ResolvedBy, wikiResolvedByMyLibrary)
+	}
+}
+
+func TestRunWikiNodeCreateRejectsNilCreatedNode(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library", SpaceType: "my_library"},
+		},
+		returnNilNode: true,
+	}
+
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	})
+	if err == nil || !strings.Contains(err.Error(), "wiki node create returned no node") {
+		t.Fatalf("expected missing node error, got %v", err)
 	}
 }
 
@@ -482,5 +515,128 @@ func TestWikiNodeCreateMountedExecuteWithExplicitSpaceID(t *testing.T) {
 	}
 	if got := stderr.String(); !strings.Contains(got, "Created wiki node in space space_123 via explicit_space_id.") {
 		t.Fatalf("stderr = %q, want completed creation message", got)
+	}
+}
+
+func TestWikiNodeCreateBotAutoGrantSuccess(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiPermissionTestConfig("ou_current_user"))
+
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"space_id":   "space_123",
+					"node_token": "wik_created",
+					"obj_token":  "docx_created",
+					"obj_type":   "docx",
+					"node_type":  "origin",
+					"title":      "Wiki Node",
+					"has_child":  false,
+				},
+			},
+			"msg": "success",
+		},
+	}
+	reg.Register(createStub)
+
+	permStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/wik_created/members",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+		},
+	}
+	reg.Register(permStub)
+
+	err := mountAndRunWiki(t, WikiNodeCreate, []string{
+		"+node-create",
+		"--space-id", "space_123",
+		"--title", "Wiki Node",
+		"--as", "bot",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("mountAndRunWiki() error = %v", err)
+	}
+
+	data := decodeWikiEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantGranted {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantGranted)
+	}
+	if grant["user_open_id"] != "ou_current_user" {
+		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
+	}
+	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new wiki node." {
+		t.Fatalf("permission_grant.message = %#v", grant["message"])
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(permStub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal permission body: %v", err)
+	}
+	if body["member_type"] != "openid" || body["member_id"] != "ou_current_user" || body["perm"] != "full_access" || body["type"] != "user" {
+		t.Fatalf("unexpected permission request body: %#v", body)
+	}
+	if body["perm_type"] != "container" {
+		t.Fatalf("perm_type = %#v, want %q", body["perm_type"], "container")
+	}
+}
+
+func TestWikiNodeCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiPermissionTestConfig("ou_current_user"))
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"space_id":   "space_123",
+					"node_token": "wik_created",
+					"obj_token":  "docx_created",
+					"obj_type":   "docx",
+					"node_type":  "origin",
+					"title":      "Wiki Node",
+					"has_child":  false,
+				},
+			},
+			"msg": "success",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiNodeCreate, []string{
+		"+node-create",
+		"--space-id", "space_123",
+		"--title", "Wiki Node",
+		"--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("mountAndRunWiki() error = %v", err)
+	}
+
+	data := decodeWikiEnvelope(t, stdout)
+	if _, ok := data["permission_grant"]; ok {
+		t.Fatalf("did not expect permission_grant in user mode output: %#v", data)
+	}
+}
+
+func TestAugmentWikiNodeCreateOutputReturnsEmptyMapForNilInput(t *testing.T) {
+	t.Parallel()
+
+	if got := augmentWikiNodeCreateOutput(nil, nil); len(got) != 0 {
+		t.Fatalf("augmentWikiNodeCreateOutput(nil, nil) = %#v, want empty map", got)
+	}
+
+	if got := augmentWikiNodeCreateOutput(nil, &wikiNodeCreateExecution{}); len(got) != 0 {
+		t.Fatalf("augmentWikiNodeCreateOutput(nil, empty execution) = %#v, want empty map", got)
 	}
 }

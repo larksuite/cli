@@ -45,6 +45,31 @@ lark-cli wiki +node-create \
   --dry-run
 ```
 
+## 返回值
+
+成功后会返回一个 JSON 对象，常见字段包括：
+
+- `resolved_space_id`：最终用于创建的真实知识空间 ID
+- `resolved_by`：空间解析来源，可能是 `explicit_space_id`、`parent_node_token`、`my_library`
+- `node_token`：新建知识库节点 token
+- `obj_token`：节点关联对象 token
+- `obj_type`：节点关联对象类型
+- `node_type`：节点类型
+- `title`：节点标题
+- `permission_grant`（可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
+
+> [!IMPORTANT]
+> 如果节点是**以应用身份（bot）创建**的，如 `lark-cli wiki +node-create --as bot`，在创建成功后 CLI 会**尝试为当前 CLI 用户自动授予该知识库节点的 `full_access`（可管理权限）**。
+>
+> 以应用身份创建时，结果里会额外返回 `permission_grant` 字段，明确说明授权结果：
+> - `status = granted`：当前 CLI 用户已获得该知识库节点的可管理权限
+> - `status = skipped`：本地没有可用的当前用户 `open_id`，因此不会自动授权；可提示用户先完成 `lark-cli auth login`，再让 AI / agent 继续使用应用身份（bot）授予当前用户权限
+> - `status = failed`：节点已创建成功，但自动授权用户失败；会带上失败原因，并提示稍后重试或继续使用 bot 身份处理该节点
+>
+> `permission_grant.perm = full_access` 表示该资源已授予“可管理权限”
+>
+> **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
+
 ## 参数
 
 | 参数 | 必填 | 说明 |
@@ -84,6 +109,7 @@ lark-cli wiki +node-create \
   - 仅传 `--title`：会展示 `my_library` 解析 + 创建节点 两步调用
   - 仅传 `--parent-node-token`：会展示“查询父节点 -> 创建节点”两步调用
   - 同时需要 `my_library` 和父节点时：会展示三步调用链
+- **bot 自动授权**：若使用 `--as bot`，结果还会额外带上 `permission_grant`，用于说明是否已自动为当前 CLI 用户授予新建节点的可管理权限
 - **输出结果**：成功后会返回 `resolved_space_id`、`resolved_by`、`node_token`、`obj_token`、`obj_type`、`node_type`、`title` 等字段，便于后续继续操作
 
 ## 推荐场景

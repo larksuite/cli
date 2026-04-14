@@ -21,6 +21,7 @@ metadata:
 ## 快速决策
 
 - 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark-cli wiki spaces get_node --params '{"token":"<wiki_token>"}'` 获取 `space_id`，后续成员接口统一使用 `space_id`。
+- 用户要在知识库中创建新节点，优先使用 `lark-cli wiki +node-create`。
 - 用户说“给知识库添加成员/管理员”：先把目标解析成“用户 / 群 / 部门”三类之一，再决定 `member_type`，不要先调 `wiki members create` 再根据报错反推类型。
 - 用户说“部门 + bot”：这是已知不支持路径。不要继续尝试 `wiki members create --as bot`；直接提示必须改成 `--as user`，或明确告知当前要求无法完成。
 - 用户说“用户 / 群 + 添加成员”：先解析对应 ID，再执行 `wiki members create`。
