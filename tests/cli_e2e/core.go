@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/tidwall/gjson"
@@ -55,6 +56,15 @@ type Result struct {
 	Stdout     string
 	Stderr     string
 	RunErr     error
+}
+
+// RetryOptions configures retry behavior for flaky external API calls.
+type RetryOptions struct {
+	Attempts        int
+	InitialDelay    time.Duration
+	MaxDelay        time.Duration
+	BackoffMultiple int
+	ShouldRetry     func(*Result) bool
 }
 
 // RunCmd executes lark-cli and captures stdout/stderr/exit code.
@@ -97,6 +107,63 @@ func RunCmd(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	return result, nil
+}
+
+// RunCmdWithRetry reruns a command when the result matches the configured retry condition.
+func RunCmdWithRetry(ctx context.Context, req Request, opts RetryOptions) (*Result, error) {
+	if opts.Attempts <= 0 {
+		opts.Attempts = 4
+	}
+	if opts.InitialDelay <= 0 {
+		opts.InitialDelay = 1 * time.Second
+	}
+	if opts.MaxDelay <= 0 {
+		opts.MaxDelay = 6 * time.Second
+	}
+	if opts.BackoffMultiple <= 1 {
+		opts.BackoffMultiple = 2
+	}
+	if opts.ShouldRetry == nil {
+		opts.ShouldRetry = func(result *Result) bool {
+			return result != nil && result.ExitCode != 0
+		}
+	}
+
+	delay := opts.InitialDelay
+	var lastResult *Result
+	for attempt := 1; attempt <= opts.Attempts; attempt++ {
+		result, err := RunCmd(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		lastResult = result
+		if attempt == opts.Attempts || !opts.ShouldRetry(result) {
+			return result, nil
+		}
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return lastResult, nil
+		case <-timer.C:
+		}
+
+		nextDelay := delay * time.Duration(opts.BackoffMultiple)
+		if nextDelay > opts.MaxDelay {
+			delay = opts.MaxDelay
+		} else {
+			delay = nextDelay
+		}
+	}
+
+	return lastResult, nil
+}
+
+// GenerateSuffix returns a high-entropy UTC timestamp suffix suitable for remote test resource names.
+func GenerateSuffix() string {
+	now := time.Now().UTC()
+	return fmt.Sprintf("%s-%09d", now.Format("20060102-150405"), now.Nanosecond())
 }
 
 // ResolveBinaryPath finds the CLI binary path using request, env, then PATH.

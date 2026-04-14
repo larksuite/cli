@@ -25,6 +25,8 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  checks: write
 
 jobs:
   cli-e2e:
@@ -65,71 +67,17 @@ jobs:
             echo "No CLI E2E packages to test after exclusions."
             exit 1
           fi
-          go run gotest.tools/gotestsum@v1.12.3 --format testname --junitfile cli-e2e-report.xml -- -count=1 -v $packages
+          # gotestsum requires --packages when --rerun-fails is combined with go test args after --.
+          packages_arg=$(printf '%s\n' "$packages" | paste -sd' ' -)
+          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages_arg" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
 
-      - name: Summarize CLI E2E test report
+      - name: Publish CLI E2E test report
         if: ${{ !cancelled() }}
-        run: |
-          python3 - <<'PY'
-          import os
-          import xml.etree.ElementTree as ET
-
-          report_path = "cli-e2e-report.xml"
-          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
-
-          root = ET.parse(report_path).getroot()
-          suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
-
-          tests = failures = errors = skipped = 0
-          failed_cases = []
-          skipped_cases = []
-
-          for suite in suites:
-            tests += int(suite.attrib.get("tests", 0))
-            failures += int(suite.attrib.get("failures", 0))
-            errors += int(suite.attrib.get("errors", 0))
-            skipped += int(suite.attrib.get("skipped", 0))
-
-            for case in suite.findall("testcase"):
-              classname = case.attrib.get("classname", "")
-              name = case.attrib.get("name", "")
-              label = f"{classname}.{name}" if classname else name
-
-              failure = case.find("failure")
-              error = case.find("error")
-              skipped_node = case.find("skipped")
-
-              if failure is not None or error is not None:
-                message = ""
-                node = failure if failure is not None else error
-                if node is not None:
-                  message = node.attrib.get("message", "") or (node.text or "").strip()
-                failed_cases.append((label, message))
-              elif skipped_node is not None:
-                message = skipped_node.attrib.get("message", "") or (skipped_node.text or "").strip()
-                skipped_cases.append((label, message))
-
-          passed = tests - failures - errors - skipped
-
-          with open(summary_path, "a", encoding="utf-8") as f:
-            f.write("## CLI E2E Test Report\n\n")
-            f.write(f"- Total: {tests}\n")
-            f.write(f"- Passed: {passed}\n")
-            f.write(f"- Failed: {failures}\n")
-            f.write(f"- Errors: {errors}\n")
-            f.write(f"- Skipped: {skipped}\n\n")
-
-            if failed_cases:
-              f.write("### Failed Tests\n\n")
-              for label, message in failed_cases:
-                detail = f" - {message}" if message else ""
-                f.write(f"- `{label}`{detail}\n")
-              f.write("\n")
-
-            if skipped_cases:
-              f.write("### Skipped Tests\n\n")
-              for label, message in skipped_cases:
-                detail = f" - {message}" if message else ""
-                f.write(f"- `{label}`{detail}\n")
-              f.write("\n")
-          PY
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+        with:
+          name: CLI E2E Tests
+          path: cli-e2e-report.xml
+          reporter: java-junit
+          use-actions-summary: true
+          list-suites: all
+          list-tests: all

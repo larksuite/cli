@@ -30,6 +30,7 @@ var AddTaskToTasklist = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "tasklist-id", Desc: "tasklist id", Required: true},
 		{Name: "task-id", Desc: "task id (comma-separated for multiple)", Required: true},
+		{Name: "section-guid", Desc: "section guid"},
 	},
 
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -38,6 +39,10 @@ var AddTaskToTasklist = common.Shortcut{
 
 		body := map[string]interface{}{
 			"tasklist_guid": extractTasklistGuid(runtime.Str("tasklist-id")),
+		}
+
+		if sectionGuid := strings.TrimSpace(runtime.Str("section-guid")); sectionGuid != "" {
+			body["section_guid"] = sectionGuid
 		}
 
 		return common.NewDryRunAPI().
@@ -55,6 +60,10 @@ var AddTaskToTasklist = common.Shortcut{
 
 		body := map[string]interface{}{
 			"tasklist_guid": tasklistGuid,
+		}
+
+		if sectionGuid := strings.TrimSpace(runtime.Str("section-guid")); sectionGuid != "" {
+			body["section_guid"] = sectionGuid
 		}
 
 		var successful []map[string]interface{}

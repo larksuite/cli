@@ -95,7 +95,7 @@ var MailWatch = common.Shortcut{
 	Command:     "+watch",
 	Description: "Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output.",
 	Risk:        "read",
-	Scopes:      []string{"mail:event", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
+	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "format", Default: "data", Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
@@ -192,36 +192,23 @@ var MailWatch = common.Shortcut{
 		msgFormat := runtime.Str("msg-format")
 		outputDir := runtime.Str("output-dir")
 		if outputDir != "" {
-			if outputDir == "~" || strings.HasPrefix(outputDir, "~/") {
-				home, err := vfs.UserHomeDir()
-				if err != nil {
-					return fmt.Errorf("cannot expand ~: %w", err)
-				}
-				if outputDir == "~" {
-					outputDir = home
-				} else {
-					outputDir = filepath.Join(home, outputDir[2:])
-				}
-			} else if filepath.IsAbs(outputDir) {
-				outputDir = filepath.Clean(outputDir)
-			} else {
-				safePath, err := validate.SafeOutputPath(outputDir)
-				if err != nil {
-					return err
-				}
-				outputDir = safePath
+			// Reject all tilde-prefixed paths — SafeOutputPath treats "~/x" as a
+			// literal relative path (creating a directory named "~"), which is
+			// confusing. This also covers ~user/path forms.
+			if strings.HasPrefix(outputDir, "~") {
+				return output.ErrValidation("--output-dir does not support ~ expansion; use a relative path like ./output instead")
 			}
-			// Resolve symlinks on the output directory so all writes use the real
-			// filesystem path. This prevents a symlink from redirecting writes to
-			// an unintended location (TOCTOU mitigation).
+			// Enforce CWD containment: reject absolute paths, path traversal,
+			// and symlink escapes. SafeOutputPath returns a resolved absolute path
+			// under CWD, preventing writes to arbitrary system directories.
+			safePath, err := validate.SafeOutputPath(outputDir)
+			if err != nil {
+				return err
+			}
+			outputDir = safePath
 			if err := vfs.MkdirAll(outputDir, 0700); err != nil {
 				return fmt.Errorf("cannot create output directory %q: %w", outputDir, err)
 			}
-			resolved, err := filepath.EvalSymlinks(outputDir)
-			if err != nil {
-				return fmt.Errorf("cannot resolve output directory: %w", err)
-			}
-			outputDir = resolved
 		}
 		labelIDsInput := runtime.Str("label-ids")
 		folderIDsInput := runtime.Str("folder-ids")
