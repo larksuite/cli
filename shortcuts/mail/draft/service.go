@@ -59,12 +59,8 @@ func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML st
 	return err
 }
 
-func Send(runtime *common.RuntimeContext, mailboxID, draftID, sendTime string) (map[string]interface{}, error) {
-	var bodyParams map[string]interface{}
-	if sendTime != "" {
-		bodyParams = map[string]interface{}{"send_time": sendTime}
-	}
-	return runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, bodyParams)
+func Send(runtime *common.RuntimeContext, mailboxID, draftID string) (map[string]interface{}, error) {
+	return runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, nil)
 }
 
 func extractDraftID(data map[string]interface{}) string {

@@ -56,7 +56,7 @@ metadata:
 4. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
 5. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
 6. **新邮件** — `+send` 存草稿（默认），加 `--confirm-send` 发送
-7. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
+7. **确认投递** — 发送后用 `send_status` 查询投递状态，向用户报告结果
 8. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
 
 ### CRITICAL — 首次使用任何命令前先查 `-h`
@@ -118,17 +118,15 @@ lark-cli mail multi_entity search --as user --data '{"query":"<关键词>"}'
 
 ### 命令选择：先判断邮件类型，再决定草稿还是发送
 
-| 邮件类型 | 存草稿（不发送） | 直接发送 | 定时发送 |
-|----------|-----------------|---------|----------|
-| **新邮件** | `+send` 或 `+draft-create` | `+send --confirm-send` | `+send --confirm-send --send-time <unix_timestamp>` |
-| **回复** | `+reply` 或 `+reply-all` | `+reply --confirm-send` 或 `+reply-all --confirm-send` | `+reply --confirm-send --send-time <unix_timestamp>` 或 `+reply-all --confirm-send --send-time <unix_timestamp>` |
-| **转发** | `+forward` | `+forward --confirm-send` | `+forward --confirm-send --send-time <unix_timestamp>` |
+| 邮件类型 | 存草稿（不发送） | 直接发送 |
+|----------|-----------------|---------|
+| **新邮件** | `+send` 或 `+draft-create` | `+send --confirm-send` |
+| **回复** | `+reply` 或 `+reply-all` | `+reply --confirm-send` 或 `+reply-all --confirm-send` |
+| **转发** | `+forward` | `+forward --confirm-send` |
 
 - 有原邮件上下文 → 用 `+reply` / `+reply-all` / `+forward`（默认即草稿），**不要用 `+draft-create`**
 - **发送前必须向用户确认收件人和内容，用户明确同意后才可加 `--confirm-send`**
-- **立即发送后必须调用 `send_status` 确认投递状态**；定时发送（`--send-time`）在预定发送时间后再查询，取消定时发送用 `cancel_scheduled_send`（详见下方说明）
-
-> **定时发送注意事项**：`--send-time` 必须与 `--confirm-send` 配合使用，不能单独使用。`send_time` 为 Unix 时间戳（秒），需至少为当前时间 + 5 分钟。
+- **发送后必须调用 `send_status` 确认投递状态**（详见下方说明）
 
 ### 使用公共邮箱或别名（send_as）发信
 
@@ -167,21 +165,13 @@ lark-cli mail +send --mailbox me --from alias@example.com \
 
 ### 发送后确认投递状态
 
-**立即发送（无 `--send-time`）**：邮件发送成功后（收到 `message_id`），**必须**调用 `send_status` API 查询投递状态并向用户报告：
+邮件发送成功后（收到 `message_id`），**必须**调用 `send_status` API 查询投递状态并向用户报告：
 
 ```bash
 lark-cli mail user_mailbox.messages send_status --params '{"user_mailbox_id":"me","message_id":"<发送返回的 message_id>"}'
 ```
 
 返回每个收件人的投递状态（`status`）：1=正在投递, 2=投递失败重试, 3=退信, 4=投递成功, 5=待审批, 6=审批拒绝。向用户简要报告结果，如有异常状态（退信/审批拒绝）需重点提示。
-
-**定时发送（指定了 `--send-time`）**：定时发送不会立即产生 `message_id`，`send_status` 在定时发送成功后会返回"待发送"状态，**不建议在定时发送后立即查询**。可在预定发送时间后再查询。如需取消定时发送：
-
-```bash
-lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
-```
-
-**取消后邮件会变回草稿**，可继续编辑或在之后重新发送。
 
 ### 撤回邮件
 
@@ -345,7 +335,6 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 
 ### user_mailbox.drafts
 
-  - `cancel_scheduled_send` — 取消定时发送
   - `create` — 创建草稿
   - `delete` — 删除指定邮箱账户下的单份邮件草稿。注意：对于草稿状态的邮件，只能使用本接口删除，禁止使用 trash_message；被删除的草稿数据无法恢复，请谨慎使用。
   - `get` — 获取草稿详情
@@ -431,7 +420,6 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailboxes.accessible_mailboxes` | `mail:user_mailbox:readonly` |
 | `user_mailboxes.profile` | `mail:user_mailbox:readonly` |
 | `user_mailboxes.search` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.drafts.cancel_scheduled_send` | `mail:user_mailbox.message:send` |
 | `user_mailbox.drafts.create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.drafts.delete` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.drafts.get` | `mail:user_mailbox.message:readonly` |

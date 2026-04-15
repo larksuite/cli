@@ -34,7 +34,6 @@ var MailForward = common.Shortcut{
 		{Name: "attach", Desc: "Attachment file path(s), comma-separated, appended after original attachments (relative path only)"},
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the forward immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
-		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
 		signatureFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
@@ -60,9 +59,6 @@ var MailForward = common.Shortcut{
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
 		}
-		if err := validateSendTime(runtime); err != nil {
-			return err
-		}
 		if runtime.Bool("confirm-send") {
 			if err := validateComposeHasAtLeastOneRecipient(runtime.Str("to"), runtime.Str("cc"), runtime.Str("bcc")); err != nil {
 				return err
@@ -83,7 +79,6 @@ var MailForward = common.Shortcut{
 		attachFlag := runtime.Str("attach")
 		inlineFlag := runtime.Str("inline")
 		confirmSend := runtime.Bool("confirm-send")
-		sendTime := runtime.Str("send-time")
 
 		signatureID := runtime.Str("signature-id")
 		mailboxID := resolveComposeMailboxID(runtime)
@@ -236,7 +231,7 @@ var MailForward = common.Shortcut{
 			hintSendDraft(runtime, mailboxID, draftID)
 			return nil
 		}
-		resData, err := draftpkg.Send(runtime, mailboxID, draftID, sendTime)
+		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
 		if err != nil {
 			return fmt.Errorf("failed to send forward (draft %s created but not sent): %w", draftID, err)
 		}
