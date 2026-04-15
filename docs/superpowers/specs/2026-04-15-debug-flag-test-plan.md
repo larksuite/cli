@@ -74,15 +74,14 @@
 
 ## 负面场景（错误处理）
 
-### 错误场景1：--debug 放在命令后面（不是全局标志）
+### 场景：--debug 放在命令后面（全局标志位置兼容性）
 
 - 命令：`lark-cli +calendar --debug agenda`
 - 断言：
-  - `--debug` 被解释为 `agenda` 命令的参数
-  - 不启用全局调试模式
-  - 可能出现 "unknown flag" 错误或被忽略
+  - 全局调试模式被启用（bootstrap 在命令执行前已从 argv 解析全局标志，`SetInterspersed(true)` 允许标志出现在任意位置）
+  - 不应出现与 `--debug` 相关的 "unknown flag" 错误
 
-### 错误场景2：--debug 与无效的命令组合
+### 错误场景：--debug 与无效的命令组合
 
 - 命令：`lark-cli --debug invalid-command`
 - 断言：
