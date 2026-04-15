@@ -132,7 +132,7 @@ cat parts.json | lark-cli slides +replace-slide --as user --presentation "$PID" 
 | `failed_part_index=i`, `failed_reason` 提示 block 未找到 | `parts[i].block_id` 在当前页不存在 | 重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
 | HTTP 400/409，信息含 revision | `revision_id` 冲突 | 重读拿最新 `revision_id`；或用 `-1` 强制覆盖 |
 | `<img>` 不显示 / 显示破图 | `src` 写了外链 URL | 换成通过 `+media-upload` 拿到的 `file_token` |
-| 3350001（block_replace 返回） | 正常情况下 CLI 已自动注入 `id`；如果仍报错，确认 `replacement` 是合法单根 XML（不是多根 / 无根片段） | — |
+| 3350001（block_replace 返回） | 正常情况下 CLI 已自动注入 `id` 和 `<content/>`；如果仍报错，确认 `block_id` 在当前页存在（重新 `slide.get`），检查 XML 结构是否合法；注意混合 `block_replace`+`block_insert` 不支持，需拆分为同 action 批次 | — |
 
 ## 相关文档
 

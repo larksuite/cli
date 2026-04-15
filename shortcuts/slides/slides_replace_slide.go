@@ -6,6 +6,7 @@ package slides
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,8 +20,8 @@ import (
 // with a clear message instead of a 400 from the backend.
 const maxReplaceParts = 200
 
-// SlidesReplaceSlide wraps slides.xml_presentation.slide.replace with two
-// specific value-adds over the raw auto-generated command:
+// SlidesReplaceSlide wraps slides.xml_presentation.slide.replace with specific
+// value-adds over the raw auto-generated command:
 //
 //  1. It accepts --presentation as token / slides URL / wiki URL (and resolves
 //     wiki tokens), same as other slides shortcuts.
@@ -29,6 +30,11 @@ const maxReplaceParts = 200
 //     fragment's root carry that id and returns 3350001 otherwise; the
 //     requirement is undocumented and catches callers repeatedly, so we fix it
 //     at the CLI layer.
+//  3. For `<shape>` elements it auto-injects `<content/>` when missing. The
+//     SML 2.0 schema requires every shape to carry a content child; omitting
+//     it triggers 3350001.
+//  4. On 3350001 errors it enriches the hint with context-specific guidance
+//     so AI agents can self-correct.
 //
 // `str_replace` is intentionally NOT exposed: product direction is that
 // slide edits go through structural (block-level) operations only. The backend
@@ -36,7 +42,7 @@ const maxReplaceParts = 200
 var SlidesReplaceSlide = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-slide",
-	Description: "Replace elements on a slide via block_replace / block_insert parts (auto-injects id on block_replace replacement roots)",
+	Description: "Replace elements on a slide via block_replace / block_insert parts (auto-injects id + <content/> on shape elements)",
 	Risk:        "write",
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only", "wiki:node:read"},
 	AuthTypes:   []string{"user", "bot"},
@@ -150,7 +156,7 @@ var SlidesReplaceSlide = common.Shortcut{
 		)
 		data, err := runtime.CallAPI("POST", url, query, body)
 		if err != nil {
-			return err
+			return enrichSlidesReplaceError(err, parts)
 		}
 
 		result := map[string]interface{}{
@@ -243,6 +249,46 @@ func parseReplaceParts(raw string) ([]replacePart, error) {
 	return out, nil
 }
 
+const larkCodeSlidesInvalidParam = 3350001
+
+// enrichSlidesReplaceError inspects a slides replace API error and, for the
+// common 3350001 (invalid param) code, appends a context-aware hint that helps
+// AI agents and humans pinpoint the root cause. Without this, 3350001 is a
+// catch-all for many distinct failures and the raw error gives no direction.
+func enrichSlidesReplaceError(err error, parts []replacePart) error {
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Code != larkCodeSlidesInvalidParam {
+		return err
+	}
+	hint := buildSlides3350001Hint(parts)
+	if hint == "" {
+		return err
+	}
+	exitErr.Detail.Hint = hint
+	return exitErr
+}
+
+// buildSlides3350001Hint produces a context-aware hint for 3350001 based on
+// the parts that were submitted. It checks for known patterns that cause this
+// error and returns specific guidance; if nothing matches, it returns a
+// generic checklist.
+func buildSlides3350001Hint(parts []replacePart) string {
+	hasBlockReplace := false
+	hasBlockInsert := false
+	for _, p := range parts {
+		if p.Action == "block_replace" {
+			hasBlockReplace = true
+		}
+		if p.Action == "block_insert" {
+			hasBlockInsert = true
+		}
+	}
+	if hasBlockReplace && hasBlockInsert {
+		return "mixed block_replace+block_insert in a single batch is not supported — split into separate calls with same-action parts"
+	}
+	return "common causes: (1) block_id not found in current slide — re-run slide.get for latest XML; (2) invalid XML structure or unsupported element; (3) element coordinates exceed slide bounds (960×540)"
+}
+
 // validateReplaceParts enforces CLI-level invariants:
 //   - size is within [1, 200]
 //   - action is one of the exposed actions (block_replace / block_insert)
@@ -298,10 +344,11 @@ func injectBlockReplaceIDs(parts []replacePart) ([]map[string]interface{}, error
 			if err != nil {
 				return nil, output.ErrValidation("--parts[%d].replacement: %v", i, err)
 			}
+			fixed = ensureShapeHasContent(fixed)
 			m["block_id"] = *p.BlockID
 			m["replacement"] = fixed
 		case "block_insert":
-			m["insertion"] = *p.Insertion
+			m["insertion"] = ensureShapeHasContent(*p.Insertion)
 			if p.InsertBeforeBlockID != nil {
 				m["insert_before_block_id"] = *p.InsertBeforeBlockID
 			}

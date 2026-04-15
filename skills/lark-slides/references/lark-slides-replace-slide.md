@@ -4,10 +4,12 @@
 
 对指定 slide 做块级替换或插入。编辑已有 PPT 的主路径——`slide_id` 不变、页序不动、只影响被指定的块。
 
-相比直接调 `xml_presentation.slide.replace`，这个 shortcut 的两个额外价值：
+相比直接调 `xml_presentation.slide.replace`，这个 shortcut 的四个额外价值：
 
 1. `--presentation` 接受 `xml_presentation_id` / `/slides/` URL / `/wiki/` URL（wiki 自动解析）；
-2. `block_replace` 的 `replacement` 根元素 `id="<block_id>"` 由 CLI 自动注入——底层 API 的硬约束（不注入返回 3350001），自己写 XML 时不用记这个。
+2. `block_replace` 的 `replacement` 根元素 `id="<block_id>"` 由 CLI 自动注入——底层 API 的硬约束（不注入返回 3350001），自己写 XML 时不用记这个；
+3. `<shape>` 元素缺少 `<content/>` 子元素时由 CLI 自动注入——SML 2.0 schema 要求每个 `<shape>` 必须有 `<content/>` 子元素，缺失同样触发 3350001；
+4. 3350001 错误时提供上下文感知的 hint，帮助 AI agent 和用户快速定位原因。
 
 ## 命令
 
@@ -160,7 +162,7 @@ lark-cli slides +replace-slide --as user \
 | `--parts contains N items, exceeds maximum of 200` | 一次提交 parts 太多 | 拆多次调用 |
 | `--parts[i] (block_replace) requires non-empty block_id` / `replacement` | 字段缺失 | 按 parts 元素结构补齐 |
 | `<img>` 不显示 / 显示破图 | `src` 写了外链 URL | 换成通过 [`+media-upload`](lark-slides-media-upload.md) 拿到的 `file_token` |
-| 3350001（极少见） | `replacement` 不是合法单根 XML 片段 | 确认 `replacement` 就是一个完整的根元素（`<shape>...</shape>` / `<img .../>`），不是多根或无根 |
+| 3350001 | `replacement` 不是合法单根 XML 片段，或 `block_id` 不存在 | CLI 已自动注入 `id` 和 `<content/>`；如果仍报错，重新 `slide.get` 拿最新 XML 确认 `block_id` 存在；检查 XML 结构是否合法；注意混合 `block_replace`+`block_insert` 不支持，需拆分 |
 | 403 | 权限不足 | 需要 `slides:presentation:update` 或 `slides:presentation:write_only`；wiki URL 还需要 `wiki:node:read` |
 
 ## 相关命令

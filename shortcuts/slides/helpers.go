@@ -218,6 +218,46 @@ func ensureXMLRootID(xmlFragment, want string) (string, error) {
 	return prefix + "<" + tagName + injected + closer + rest, nil
 }
 
+// ensureShapeHasContent ensures that a <shape> root element has a <content/>
+// child. The SML 2.0 schema requires every <shape> to carry <content/>; a
+// self-closing <shape .../> or an open <shape> without <content> causes the
+// backend to return 3350001 (invalid param). Auto-injecting here mirrors the
+// id-injection done by ensureXMLRootID — users write natural XML and the CLI
+// patches in the required boilerplate.
+//
+// Only <shape> elements are affected; <img>, <table>, <chart> etc. are left
+// untouched because they have different child-element schemas.
+func ensureShapeHasContent(xmlFragment string) string {
+	m := xmlRootOpenTagRegex.FindStringSubmatchIndex(xmlFragment)
+	if m == nil {
+		return xmlFragment
+	}
+	tagName := xmlFragment[m[4]:m[5]]
+	if tagName != "shape" {
+		return xmlFragment
+	}
+	closer := xmlFragment[m[8]:m[9]]
+
+	if closer == "/>" {
+		prefix := xmlFragment[m[2]:m[3]]
+		attrs := xmlFragment[m[6]:m[7]]
+		trimmed := strings.TrimRight(attrs, " \t\n\r")
+		return prefix + "<" + tagName + trimmed + "><content/></" + tagName + ">"
+	}
+
+	afterOpen := xmlFragment[m[1]:]
+	if strings.Contains(afterOpen, "<content") {
+		return xmlFragment
+	}
+
+	closeTag := "</" + tagName + ">"
+	idx := strings.LastIndex(afterOpen, closeTag)
+	if idx < 0 {
+		return xmlFragment
+	}
+	return xmlFragment[:m[1]] + "<content/>" + afterOpen[:]
+}
+
 // replaceImagePlaceholders rewrites <img src="@path"> occurrences in the input
 // XML by looking up each path in tokens. Paths missing from the map are left
 // untouched (callers should ensure the map is complete).

@@ -57,6 +57,87 @@ func TestParsePresentationRef(t *testing.T) {
 	}
 }
 
+func TestEnsureShapeHasContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "self-closing shape gets content injected",
+			in:   `<shape type="rect" width="100" height="50"/>`,
+			want: `<shape type="rect" width="100" height="50"><content/></shape>`,
+		},
+		{
+			name: "self-closing shape with id already injected",
+			in:   `<shape type="rect" width="100" height="50" id="bUn"/>`,
+			want: `<shape type="rect" width="100" height="50" id="bUn"><content/></shape>`,
+		},
+		{
+			name: "open shape without content gets content injected",
+			in:   `<shape type="text"><p>hello</p></shape>`,
+			want: `<shape type="text"><content/><p>hello</p></shape>`,
+		},
+		{
+			name: "shape with content already present is unchanged",
+			in:   `<shape type="text"><content><p>hi</p></content></shape>`,
+			want: `<shape type="text"><content><p>hi</p></content></shape>`,
+		},
+		{
+			name: "shape with self-closing content is unchanged",
+			in:   `<shape type="rect"><content/></shape>`,
+			want: `<shape type="rect"><content/></shape>`,
+		},
+		{
+			name: "img self-closing is not touched",
+			in:   `<img src="tok_abc" width="100" height="80"/>`,
+			want: `<img src="tok_abc" width="100" height="80"/>`,
+		},
+		{
+			name: "img open tag is not touched",
+			in:   `<img src="tok_abc" width="100" height="80"><crop/></img>`,
+			want: `<img src="tok_abc" width="100" height="80"><crop/></img>`,
+		},
+		{
+			name: "table is not touched",
+			in:   `<table rows="3" cols="3"/>`,
+			want: `<table rows="3" cols="3"/>`,
+		},
+		{
+			name: "bare self-closing shape",
+			in:   `<shape/>`,
+			want: `<shape><content/></shape>`,
+		},
+		{
+			name: "shape with trailing space before self-close",
+			in:   `<shape type="rect" />`,
+			want: `<shape type="rect"><content/></shape>`,
+		},
+		{
+			name: "malformed input returned as-is",
+			in:   `not xml at all`,
+			want: `not xml at all`,
+		},
+		{
+			name: "empty string returned as-is",
+			in:   ``,
+			want: ``,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := ensureShapeHasContent(tt.in)
+			if got != tt.want {
+				t.Fatalf("got  %q\nwant %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtractImagePlaceholderPaths(t *testing.T) {
 	t.Parallel()
 

@@ -5,12 +5,14 @@ package slides
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 )
 
 // TestReplaceSlideBlockReplaceInjectsID is the core regression: users write
@@ -112,8 +114,8 @@ func TestReplaceSlideBlockReplacePreservesMatchingID(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if body.Parts[0].Replacement != `<shape id="bab" type="text"/>` {
-		t.Fatalf("replacement = %q, want unchanged", body.Parts[0].Replacement)
+	if body.Parts[0].Replacement != `<shape id="bab" type="text"><content/></shape>` {
+		t.Fatalf("replacement = %q, want <content/> auto-injected", body.Parts[0].Replacement)
 	}
 }
 
@@ -191,7 +193,7 @@ func TestReplaceSlideBlockInsertPassthrough(t *testing.T) {
 	if got["action"] != "block_insert" {
 		t.Fatalf("action = %v", got["action"])
 	}
-	if got["insertion"] != `<shape type="rect"/>` {
+	if got["insertion"] != `<shape type="rect"><content/></shape>` {
 		t.Fatalf("insertion mutated: %v", got["insertion"])
 	}
 	if got["insert_before_block_id"] != "baa" {
@@ -461,5 +463,106 @@ func TestReplaceSlidePassThroughFailureFields(t *testing.T) {
 	}
 	if data["failed_reason"] != "block not found" {
 		t.Fatalf("failed_reason = %v", data["failed_reason"])
+	}
+}
+
+func TestReplaceSlide3350001ErrorEnrichment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		parts    string
+		wantHint string
+	}{
+		{
+			name:     "block_replace with non-existent block_id gets generic hint",
+			parts:    `[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"rect\" width=\"100\"/>"}]`,
+			wantHint: "common causes",
+		},
+		{
+			name:     "mixed actions gets specific hint",
+			parts:    `[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"rect\"><content/></shape>"},{"action":"block_insert","insertion":"<shape type=\"rect\"><content/></shape>"}]`,
+			wantHint: "mixed block_replace+block_insert",
+		},
+		{
+			name:     "block_insert only gets generic hint",
+			parts:    `[{"action":"block_insert","insertion":"<shape type=\"text\"><content/></shape>"}]`,
+			wantHint: "common causes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, _, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/slide/replace",
+				Body: map[string]interface{}{
+					"code": 3350001,
+					"msg":  "invalid param",
+					"data": map[string]interface{}{},
+				},
+			})
+
+			err := runSlidesShortcut(t, f, nil, SlidesReplaceSlide, []string{
+				"+replace-slide",
+				"--presentation", "pres_abc",
+				"--slide-id", "s",
+				"--parts", tt.parts,
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatal("expected error for 3350001")
+			}
+			var exitErr *output.ExitError
+			if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+				t.Fatalf("expected ExitError with Detail, got %v", err)
+			}
+			if exitErr.Detail.Code != 3350001 {
+				t.Fatalf("expected code 3350001, got %d", exitErr.Detail.Code)
+			}
+			if !strings.Contains(exitErr.Detail.Hint, tt.wantHint) {
+				t.Fatalf("hint = %q, want substring %q", exitErr.Detail.Hint, tt.wantHint)
+			}
+		})
+	}
+}
+
+func TestReplaceSlideNon3350001ErrorNotEnriched(t *testing.T) {
+	t.Parallel()
+
+	f, _, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/slide/replace",
+		Body: map[string]interface{}{
+			"code": 99991672,
+			"msg":  "scope not enabled",
+			"data": map[string]interface{}{},
+		},
+	})
+
+	parts := `[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"rect\"/>"}]`
+	err := runSlidesShortcut(t, f, nil, SlidesReplaceSlide, []string{
+		"+replace-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "s",
+		"--parts", parts,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if exitErr.Detail.Code != 99991672 {
+		t.Fatalf("expected code 99991672, got %d", exitErr.Detail.Code)
+	}
+	if strings.Contains(exitErr.Detail.Hint, "missing <content/>") {
+		t.Fatalf("non-3350001 error should not get slides-specific hint, got %q", exitErr.Detail.Hint)
 	}
 }
