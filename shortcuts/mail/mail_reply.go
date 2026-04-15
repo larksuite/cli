@@ -33,7 +33,7 @@ var MailReply = common.Shortcut{
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the reply immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
-	},
+		signatureFlag,	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		confirmSend := runtime.Bool("confirm-send")
@@ -60,6 +60,8 @@ var MailReply = common.Shortcut{
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
+		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {			return err
+		}
 		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -79,7 +81,12 @@ var MailReply = common.Shortcut{
 			return err
 		}
 
+		signatureID := runtime.Str("signature-id")
 		mailboxID := resolveComposeMailboxID(runtime)
+		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID)
+		if sigErr != nil {
+			return sigErr
+		}
 		sourceMsg, err := fetchComposeSourceMessage(runtime, mailboxID, messageId)
 		if err != nil {
 			return fmt.Errorf("failed to fetch original message: %w", err)
@@ -97,7 +104,7 @@ var MailReply = common.Shortcut{
 		}
 		replyTo = mergeAddrLists(replyTo, toFlag)
 
-		useHTML := !plainText && (bodyIsHTML(body) || bodyIsHTML(orig.bodyRaw))
+		useHTML := !plainText && (bodyIsHTML(body) || bodyIsHTML(orig.bodyRaw) || sigResult != nil)
 		if strings.TrimSpace(inlineFlag) != "" && !useHTML {
 			return fmt.Errorf("--inline requires HTML mode, but neither the new body nor the original message contains HTML")
 		}
@@ -144,8 +151,13 @@ var MailReply = common.Shortcut{
 			if resolveErr != nil {
 				return resolveErr
 			}
-			fullHTML := resolved + quoted
+			bodyWithSig := resolved
+			if sigResult != nil {
+				bodyWithSig += buildSignatureSpacing() + buildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
+			}
+			fullHTML := bodyWithSig + quoted
 			bld = bld.HTMLBody([]byte(fullHTML))
+			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var userCIDs []string
 			for _, ref := range refs {
 				bld = bld.AddFileInline(ref.FilePath, ref.CID)
@@ -156,7 +168,7 @@ var MailReply = common.Shortcut{
 				bld = bld.AddFileInline(spec.FilePath, spec.CID)
 				userCIDs = append(userCIDs, spec.CID)
 			}
-			if err := validateInlineCIDs(resolved, userCIDs, srcCIDs); err != nil {
+			if err := validateInlineCIDs(bodyWithSig, append(userCIDs, signatureCIDs(sigResult)...), srcCIDs); err != nil {
 				return err
 			}
 		} else {

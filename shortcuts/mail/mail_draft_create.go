@@ -46,6 +46,7 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
 		{Name: "attach", Desc: "Optional. Regular attachment file paths (relative path only). Separate multiple paths with commas. Each path must point to a readable local file."},
 		{Name: "inline", Desc: "Optional. Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		signatureFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		input, err := parseDraftCreateInput(runtime)
@@ -72,6 +73,9 @@ var MailDraftCreate = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("body")) == "" {
 			return output.ErrValidation("--body is required; pass the full email body")
 		}
+		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+			return err
+		}
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
 			return err
 		}
@@ -82,11 +86,15 @@ var MailDraftCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		rawEML, err := buildRawEMLForDraftCreate(runtime, input)
+		mailboxID := resolveComposeMailboxID(runtime)
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, runtime.Str("signature-id"))
 		if err != nil {
 			return err
 		}
-		mailboxID := resolveComposeMailboxID(runtime)
+		rawEML, err := buildRawEMLForDraftCreate(runtime, input, sigResult)
+		if err != nil {
+			return err
+		}
 		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("create draft failed: %w", err)
@@ -121,7 +129,7 @@ func parseDraftCreateInput(runtime *common.RuntimeContext) (draftCreateInput, er
 	return input, nil
 }
 
-func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput) (string, error) {
+func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput, sigResult *signatureResult) (string, error) {
 	senderEmail := resolveComposeSenderEmail(runtime)
 	if senderEmail == "" {
 		return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
@@ -153,12 +161,18 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 	var autoResolvedPaths []string
 	if input.PlainText {
 		bld = bld.TextBody([]byte(input.Body))
-	} else if bodyIsHTML(input.Body) {
-		resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(input.Body)
+	} else if bodyIsHTML(input.Body) || sigResult != nil {
+		htmlBody := input.Body
+		if !bodyIsHTML(input.Body) {
+			htmlBody = buildBodyDiv(input.Body, false)
+		}
+		resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(htmlBody)
 		if resolveErr != nil {
 			return "", resolveErr
 		}
+		resolved = injectSignatureIntoBody(resolved, sigResult)
 		bld = bld.HTMLBody([]byte(resolved))
+		bld = addSignatureImagesToBuilder(bld, sigResult)
 		var allCIDs []string
 		for _, ref := range refs {
 			bld = bld.AddFileInline(ref.FilePath, ref.CID)
@@ -169,6 +183,7 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 			bld = bld.AddFileInline(spec.FilePath, spec.CID)
 			allCIDs = append(allCIDs, spec.CID)
 		}
+		allCIDs = append(allCIDs, signatureCIDs(sigResult)...)
 		if err := validateInlineCIDs(resolved, allCIDs, nil); err != nil {
 			return "", err
 		}

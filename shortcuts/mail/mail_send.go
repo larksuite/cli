@@ -33,7 +33,7 @@ var MailSend = common.Shortcut{
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the email immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
-	},
+		signatureFlag,	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
@@ -66,6 +66,8 @@ var MailSend = common.Shortcut{
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
+		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {			return err
+		}
 		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -81,6 +83,13 @@ var MailSend = common.Shortcut{
 		sendTime := runtime.Str("send-time")
 
 		senderEmail := resolveComposeSenderEmail(runtime)
+		signatureID := runtime.Str("signature-id")
+
+		mailboxID := resolveComposeMailboxID(runtime)
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID)
+		if err != nil {
+			return err
+		}
 
 		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(subject).
@@ -101,12 +110,19 @@ var MailSend = common.Shortcut{
 		var autoResolvedPaths []string
 		if plainText {
 			bld = bld.TextBody([]byte(body))
-		} else if bodyIsHTML(body) {
-			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(body)
+		} else if bodyIsHTML(body) || sigResult != nil {
+			// If signature is requested on plain-text body, auto-upgrade to HTML.
+			htmlBody := body
+			if !bodyIsHTML(body) {
+				htmlBody = buildBodyDiv(body, false)
+			}
+			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(htmlBody)
 			if resolveErr != nil {
 				return resolveErr
 			}
+			resolved = injectSignatureIntoBody(resolved, sigResult)
 			bld = bld.HTMLBody([]byte(resolved))
+			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var allCIDs []string
 			for _, ref := range refs {
 				bld = bld.AddFileInline(ref.FilePath, ref.CID)
@@ -117,6 +133,7 @@ var MailSend = common.Shortcut{
 				bld = bld.AddFileInline(spec.FilePath, spec.CID)
 				allCIDs = append(allCIDs, spec.CID)
 			}
+			allCIDs = append(allCIDs, signatureCIDs(sigResult)...)
 			if err := validateInlineCIDs(resolved, allCIDs, nil); err != nil {
 				return err
 			}
@@ -137,7 +154,6 @@ var MailSend = common.Shortcut{
 			return fmt.Errorf("failed to build EML: %w", err)
 		}
 
-		mailboxID := resolveComposeMailboxID(runtime)
 		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
