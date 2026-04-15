@@ -87,7 +87,7 @@ var MailDraftEdit = common.Shortcut{
 		// Pre-process insert_signature ops: resolve signature, interpolate, download images.
 		for i := range patch.Ops {
 			if patch.Ops[i].Op == "insert_signature" {
-				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID)
+				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, "")
 				if sigErr != nil {
 					return sigErr
 				}

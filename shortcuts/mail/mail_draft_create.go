@@ -87,7 +87,7 @@ var MailDraftCreate = common.Shortcut{
 			return err
 		}
 		mailboxID := resolveComposeMailboxID(runtime)
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, runtime.Str("signature-id"))
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, runtime.Str("signature-id"), runtime.Str("from"))
 		if err != nil {
 			return err
 		}

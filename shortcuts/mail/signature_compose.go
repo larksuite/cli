@@ -34,7 +34,10 @@ type signatureResult struct {
 
 // resolveSignature fetches, interpolates, and downloads images for a signature.
 // Returns nil if signatureID is empty.
-func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID string) (*signatureResult, error) {
+// resolveSignature fetches, interpolates, and downloads images for a signature.
+// fromEmail is the --from address (may be an alias); used to match the correct
+// sender identity for template interpolation. Pass "" to use the primary address.
+func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string) (*signatureResult, error) {
 	if signatureID == "" {
 		return nil, nil
 	}
@@ -46,7 +49,7 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 
 	// Resolve sender info for template interpolation.
 	lang := resolveLang(runtime)
-	senderName, senderEmail := resolveSenderInfo(runtime, mailboxID)
+	senderName, senderEmail := resolveSenderInfo(runtime, mailboxID, fromEmail)
 	rendered := signature.InterpolateTemplate(sig, lang, senderName, senderEmail)
 
 	// Download signature inline images. The file_key field contains a
@@ -100,7 +103,11 @@ func addSignatureImagesToBuilder(bld emlbuilder.Builder, sig *signatureResult) e
 }
 
 // resolveSenderInfo fetches senderName and senderEmail via the send_as API.
-func resolveSenderInfo(runtime *common.RuntimeContext, mailboxID string) (name, email string) {
+// resolveSenderInfo fetches send_as addresses and returns the name/email
+// for signature interpolation. If fromEmail is non-empty, it matches
+// that address in the sendable list (for alias/send_as scenarios);
+// otherwise falls back to the first (primary) address.
+func resolveSenderInfo(runtime *common.RuntimeContext, mailboxID, fromEmail string) (name, email string) {
 	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
 	if err != nil {
 		return "", ""
@@ -109,7 +116,21 @@ func resolveSenderInfo(runtime *common.RuntimeContext, mailboxID string) (name, 
 	if !ok || len(addrs) == 0 {
 		return "", ""
 	}
-	// Use the first sendable address (primary).
+	// If fromEmail is specified, find the matching address.
+	if fromEmail != "" {
+		for _, a := range addrs {
+			m, ok := a.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			e, _ := m["email_address"].(string)
+			if strings.EqualFold(e, fromEmail) {
+				n, _ := m["name"].(string)
+				return n, e
+			}
+		}
+	}
+	// Fall back to the first sendable address (primary).
 	first, ok := addrs[0].(map[string]interface{})
 	if !ok {
 		return "", ""

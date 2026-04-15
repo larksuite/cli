@@ -83,7 +83,7 @@ var MailReply = common.Shortcut{
 
 		signatureID := runtime.Str("signature-id")
 		mailboxID := resolveComposeMailboxID(runtime)
-		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID)
+		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, runtime.Str("from"))
 		if sigErr != nil {
 			return sigErr
 		}

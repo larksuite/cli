@@ -86,7 +86,7 @@ var MailSend = common.Shortcut{
 		signatureID := runtime.Str("signature-id")
 
 		mailboxID := resolveComposeMailboxID(runtime)
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID)
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
 		if err != nil {
 			return err
 		}
