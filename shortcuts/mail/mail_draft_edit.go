@@ -100,19 +100,22 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("serialize draft failed: %v", err)
 		}
-		if err := draftpkg.UpdateWithRaw(runtime, mailboxID, draftID, serialized); err != nil {
+		updateResult, err := draftpkg.UpdateWithRaw(runtime, mailboxID, draftID, serialized)
+		if err != nil {
 			return fmt.Errorf("update draft failed: %w", err)
 		}
 		projection := draftpkg.Project(snapshot)
 		out := map[string]interface{}{
-			"draft_id":   draftID,
+			"draft_id":   updateResult.DraftID,
 			"warning":    "This edit flow has no optimistic locking. If the same draft is changed concurrently, the last writer wins.",
 			"projection": projection,
 		}
-		addDraftPreviewURL(runtime, out, draftID)
+		if updateResult.PreviewURL != "" {
+			out["preview_url"] = updateResult.PreviewURL
+		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft updated.")
-			fmt.Fprintf(w, "draft_id: %s\n", draftID)
+			fmt.Fprintf(w, "draft_id: %s\n", updateResult.DraftID)
 			if previewURL, _ := out["preview_url"].(string); previewURL != "" {
 				fmt.Fprintf(w, "preview_url: %s\n", previewURL)
 			}
@@ -157,7 +160,9 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 		"draft_id":   draftID,
 		"projection": projection,
 	}
-	addDraftPreviewURL(runtime, out, draftID)
+	if rawDraft.PreviewURL != "" {
+		out["preview_url"] = rawDraft.PreviewURL
+	}
 	runtime.OutFormat(out, nil, func(w io.Writer) {
 		fmt.Fprintln(w, "Draft inspection (read-only, no changes applied).")
 		fmt.Fprintf(w, "draft_id: %s\n", draftID)

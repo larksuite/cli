@@ -184,19 +184,21 @@ var MailReplyAll = common.Shortcut{
 			return fmt.Errorf("failed to build EML: %w", err)
 		}
 
-		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
 			out := map[string]interface{}{
-				"draft_id": draftID,
-				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID),
+				"draft_id": draftResult.DraftID,
+				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftResult.DraftID),
 			}
-			addDraftPreviewURL(runtime, out, draftID)
+			if draftResult.PreviewURL != "" {
+				out["preview_url"] = draftResult.PreviewURL
+			}
 			runtime.OutFormat(out, nil, func(w io.Writer) {
 				fmt.Fprintln(w, "Draft saved.")
-				fmt.Fprintf(w, "draft_id: %s\n", draftID)
+				fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
 				if previewURL, _ := out["preview_url"].(string); previewURL != "" {
 					fmt.Fprintf(w, "preview_url: %s\n", previewURL)
 				}
@@ -204,9 +206,9 @@ var MailReplyAll = common.Shortcut{
 			})
 			return nil
 		}
-		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
+		resData, err := draftpkg.Send(runtime, mailboxID, draftResult.DraftID)
 		if err != nil {
-			return fmt.Errorf("failed to send reply-all (draft %s created but not sent): %w", draftID, err)
+			return fmt.Errorf("failed to send reply-all (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
 		runtime.Out(map[string]interface{}{
 			"message_id": resData["message_id"],

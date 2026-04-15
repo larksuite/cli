@@ -6,6 +6,7 @@ package mail
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -133,21 +134,32 @@ var MailSend = common.Shortcut{
 		}
 
 		mailboxID := resolveComposeMailboxID(runtime)
-		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
-			runtime.Out(map[string]interface{}{
-				"draft_id": draftID,
-				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID),
-			}, nil)
-			hintSendDraft(runtime, mailboxID, draftID)
+			out := map[string]interface{}{
+				"draft_id": draftResult.DraftID,
+				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftResult.DraftID),
+			}
+			if draftResult.PreviewURL != "" {
+				out["preview_url"] = draftResult.PreviewURL
+			}
+			runtime.OutFormat(out, nil, func(w io.Writer) {
+				fmt.Fprintln(w, "Draft saved.")
+				fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
+				if previewURL, _ := out["preview_url"].(string); previewURL != "" {
+					fmt.Fprintf(w, "preview_url: %s\n", previewURL)
+				}
+				fmt.Fprintf(w, "%s\n", out["tip"])
+			})
+			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
-		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
+		resData, err := draftpkg.Send(runtime, mailboxID, draftResult.DraftID)
 		if err != nil {
-			return fmt.Errorf("failed to send email (draft %s created but not sent): %w", draftID, err)
+			return fmt.Errorf("failed to send email (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
 		runtime.Out(map[string]interface{}{
 			"message_id": resData["message_id"],
