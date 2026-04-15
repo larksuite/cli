@@ -204,7 +204,7 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 // Debugf writes debug output to stderr if debug mode is enabled.
 // Each debug message is prefixed with [DEBUG] to distinguish it from regular output.
 func (f *Factory) Debugf(format string, args ...interface{}) {
-	if f == nil || !f.DebugEnabled || f.IOStreams == nil {
+	if f == nil || !f.DebugEnabled || f.IOStreams == nil || f.IOStreams.ErrOut == nil {
 		return
 	}
 	msg := fmt.Sprintf("[DEBUG] "+format, args...)
