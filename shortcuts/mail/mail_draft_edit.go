@@ -117,8 +117,10 @@ var MailDraftEdit = common.Shortcut{
 			return err
 		}
 		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
-		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
-			return output.ErrValidation("apply draft patch failed: %v", err)
+		if len(patch.Ops) > 0 {
+			if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
+				return output.ErrValidation("apply draft patch failed: %v", err)
+			}
 		}
 		serialized, err := draftpkg.Serialize(snapshot)
 		if err != nil {
