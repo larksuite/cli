@@ -4,6 +4,8 @@
 package doc
 
 import (
+	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -31,21 +33,12 @@ import (
 //  5. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
 //     actual Unicode emoji characters that create-doc understands. Applied only
 //     outside fenced code blocks.
-//
-// prepareMarkdownForCreate applies fixes that should run on any Markdown before
-// it is sent to the create-doc / update-doc MCP tools, regardless of whether
-// the content originated from a Lark export or was written by hand.
-func prepareMarkdownForCreate(md string) string {
-	return applyOutsideCodeFences(md, fixCalloutType)
-}
-
 func fixExportedMarkdown(md string) string {
 	md = applyOutsideCodeFences(md, fixBoldSpacing)
 	md = applyOutsideCodeFences(md, fixSetextAmbiguity)
 	md = applyOutsideCodeFences(md, fixBlockquoteHardBreaks)
 	md = fixTopLevelSoftbreaks(md)
 	md = applyOutsideCodeFences(md, fixCalloutEmoji)
-	md = applyOutsideCodeFences(md, fixCalloutType)
 	// Collapse runs of 3+ consecutive newlines into exactly 2 (one blank line),
 	// but only outside fenced code blocks to preserve intentional blank lines in code.
 	md = applyOutsideCodeFences(md, func(s string) string {
@@ -229,8 +222,9 @@ func fixSetextAmbiguity(md string) string {
 	return setextRe.ReplaceAllString(md, "$1\n\n$2")
 }
 
-// calloutTypeColors maps callout type="<name>" to a [background-color, border-color] pair.
-// When a callout tag has type= but no background-color=, these defaults are applied.
+// calloutTypeColors maps the semantic type= shorthand to a recommended
+// [background-color, border-color] pair for Feishu callout blocks.
+// Used only for hint messages — the Markdown itself is never rewritten.
 var calloutTypeColors = map[string][2]string{
 	"warning":   {"light-yellow", "yellow"},
 	"caution":   {"light-orange", "orange"},
@@ -244,42 +238,47 @@ var calloutTypeColors = map[string][2]string{
 	"important": {"light-purple", "purple"},
 }
 
-// calloutTypeRe matches a <callout …> opening tag so individual attributes can
-// be inspected and patched.
-var calloutTypeRe = regexp.MustCompile(`<callout(\s[^>]*)?>`)
+// calloutOpenTagRe matches a <callout …> opening tag.
+var calloutOpenTagRe = regexp.MustCompile(`<callout(\s[^>]*)?>`)
 
-// fixCalloutType expands the semantic type="<name>" shorthand on callout tags
-// into explicit background-color= (and border-color= when absent).  When a
-// background-color is already present the tag is left unchanged so that an
-// explicit color always wins.
-func fixCalloutType(md string) string {
-	return calloutTypeRe.ReplaceAllStringFunc(md, func(tag string) string {
+// calloutTypeAttrRe extracts the value of a type= attribute (single or double
+// quoted) from a callout opening tag's attribute string.
+var calloutTypeAttrRe = regexp.MustCompile(`\btype=(?:"([^"]*)"|'([^']*)')`)
+
+// WarnCalloutType scans md for callout tags that carry a type= attribute but
+// no background-color= attribute, then writes a hint line to w for each one
+// suggesting the explicit Feishu color attributes to use instead.
+//
+// The Markdown is not modified — the caller is responsible for acting on the
+// hints or ignoring them. This keeps the create/update path transparent: user
+// input reaches create-doc exactly as written.
+func WarnCalloutType(md string, w io.Writer) {
+	calloutOpenTagRe.ReplaceAllStringFunc(md, func(tag string) string {
 		attrs := ""
-		if m := calloutTypeRe.FindStringSubmatch(tag); len(m) == 2 {
+		if m := calloutOpenTagRe.FindStringSubmatch(tag); len(m) == 2 {
 			attrs = m[1]
 		}
-		// Extract type value.
-		typeRe := regexp.MustCompile(`\btype="([^"]*)"`)
-		typeParts := typeRe.FindStringSubmatch(attrs)
-		if len(typeParts) != 2 {
-			return tag // no type= attribute
-		}
-		typeName := typeParts[1]
-		colors, ok := calloutTypeColors[typeName]
-		if !ok {
-			return tag // unknown type — leave as-is
-		}
-		// Only inject background-color when it is absent.
+		// Skip tags that already carry an explicit background-color.
 		if strings.Contains(attrs, "background-color=") {
 			return tag
 		}
-		// Inject background-color (and border-color when absent) before the
-		// closing >.
-		extra := ` background-color="` + colors[0] + `"`
-		if !strings.Contains(attrs, "border-color=") {
-			extra += ` border-color="` + colors[1] + `"`
+		parts := calloutTypeAttrRe.FindStringSubmatch(attrs)
+		if len(parts) < 2 {
+			return tag // no type= attribute
 		}
-		return tag[:len(tag)-1] + extra + ">"
+		// parts[1] is the double-quoted capture, parts[2] is single-quoted.
+		typeName := parts[1]
+		if typeName == "" {
+			typeName = parts[2]
+		}
+		colors, ok := calloutTypeColors[typeName]
+		if !ok {
+			return tag // unknown type — no hint to give
+		}
+		fmt.Fprintf(w,
+			"hint: callout type=%q has no background-color; consider: background-color=%q border-color=%q\n",
+			typeName, colors[0], colors[1])
+		return tag
 	})
 }
 

@@ -252,73 +252,75 @@ func TestFixExportedMarkdown(t *testing.T) {
 	}
 }
 
-func TestFixCalloutType(t *testing.T) {
+func TestWarnCalloutType(t *testing.T) {
 	tests := []struct {
-		name  string
-		input string
-		want  string
+		name         string
+		input        string
+		wantHint     bool   // whether a hint line is expected
+		hintContains string // substring the hint must contain
 	}{
 		{
-			name:  "warning type gets light-yellow background and border",
-			input: `<callout type="warning" emoji="📝">`,
-			want:  `<callout type="warning" emoji="📝" background-color="light-yellow" border-color="yellow">`,
+			name:         "warning type without background-color emits hint",
+			input:        `<callout type="warning" emoji="📝">`,
+			wantHint:     true,
+			hintContains: `background-color="light-yellow"`,
 		},
 		{
-			name:  "info type gets light-blue",
-			input: `<callout type="info" emoji="ℹ️">`,
-			want:  `<callout type="info" emoji="ℹ️" background-color="light-blue" border-color="blue">`,
+			name:         "info type without background-color emits hint",
+			input:        `<callout type="info" emoji="ℹ️">`,
+			wantHint:     true,
+			hintContains: `background-color="light-blue"`,
 		},
 		{
-			name:  "tip type gets light-green",
-			input: `<callout type="tip" emoji="💡">`,
-			want:  `<callout type="tip" emoji="💡" background-color="light-green" border-color="green">`,
+			name:         "single-quoted type attribute emits hint",
+			input:        `<callout type='warning' emoji="📝">`,
+			wantHint:     true,
+			hintContains: `background-color="light-yellow"`,
 		},
 		{
-			name:  "error type gets light-red",
-			input: `<callout type="error" emoji="❌">`,
-			want:  `<callout type="error" emoji="❌" background-color="light-red" border-color="red">`,
+			name:     "explicit background-color suppresses hint",
+			input:    `<callout type="warning" emoji="📝" background-color="light-red">`,
+			wantHint: false,
 		},
 		{
-			name:  "important type gets light-purple",
-			input: `<callout type="important" emoji="❗">`,
-			want:  `<callout type="important" emoji="❗" background-color="light-purple" border-color="purple">`,
+			name:     "unknown type emits no hint",
+			input:    `<callout type="custom" emoji="🔥">`,
+			wantHint: false,
 		},
 		{
-			name:  "caution type gets light-orange",
-			input: `<callout type="caution" emoji="⚠️">`,
-			want:  `<callout type="caution" emoji="⚠️" background-color="light-orange" border-color="orange">`,
+			name:     "no type attribute emits no hint",
+			input:    `<callout emoji="💡" background-color="light-green">`,
+			wantHint: false,
 		},
 		{
-			name:  "explicit background-color is preserved",
-			input: `<callout type="warning" emoji="📝" background-color="light-red">`,
-			want:  `<callout type="warning" emoji="📝" background-color="light-red">`,
+			name:     "non-callout tag emits no hint",
+			input:    `<div type="warning">`,
+			wantHint: false,
 		},
 		{
-			name:  "explicit border-color is preserved when background-color absent",
-			input: `<callout type="info" emoji="ℹ️" border-color="red">`,
-			want:  `<callout type="info" emoji="ℹ️" border-color="red" background-color="light-blue">`,
-		},
-		{
-			name:  "unknown type left unchanged",
-			input: `<callout type="custom" emoji="🔥">`,
-			want:  `<callout type="custom" emoji="🔥">`,
-		},
-		{
-			name:  "no type attribute left unchanged",
-			input: `<callout emoji="💡" background-color="light-green">`,
-			want:  `<callout emoji="💡" background-color="light-green">`,
-		},
-		{
-			name:  "non-callout tag unchanged",
-			input: `<div type="warning">`,
-			want:  `<div type="warning">`,
+			name:         "hint includes border-color suggestion",
+			input:        `<callout type="error" emoji="❌">`,
+			wantHint:     true,
+			hintContains: `border-color="red"`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := fixCalloutType(tt.input)
-			if got != tt.want {
-				t.Errorf("fixCalloutType(%q)\n  got  %q\n  want %q", tt.input, got, tt.want)
+			var buf strings.Builder
+			WarnCalloutType(tt.input, &buf)
+			got := buf.String()
+			if tt.wantHint {
+				if got == "" {
+					t.Errorf("WarnCalloutType(%q): expected hint, got no output", tt.input)
+					return
+				}
+				if tt.hintContains != "" && !strings.Contains(got, tt.hintContains) {
+					t.Errorf("WarnCalloutType(%q): hint %q missing %q", tt.input, got, tt.hintContains)
+				}
+			} else {
+				if got != "" {
+					t.Errorf("WarnCalloutType(%q): expected no output, got %q", tt.input, got)
+				}
 			}
 		})
 	}
