@@ -64,7 +64,7 @@ var MailCancelScheduledSend = common.Shortcut{
 			)
 		}
 
-		result := map[string]interface{}{
+		result := map[string]any{
 			"message_id":        messageID,
 			"status":            "cancelled",
 			"restored_as_draft": true,
