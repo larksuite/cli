@@ -40,5 +40,11 @@ func Shortcuts() []common.Shortcut {
 		SheetUpdateDropdown,
 		SheetGetDropdown,
 		SheetDeleteDropdown,
+		SheetMediaUpload,
+		SheetCreateFloatImage,
+		SheetUpdateFloatImage,
+		SheetGetFloatImage,
+		SheetListFloatImages,
+		SheetDeleteFloatImage,
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
@@ -122,9 +123,22 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 	// Add top-level JSON keys as text form fields.
 	if m, ok := dataJSON.(map[string]any); ok {
 		for k, v := range m {
-			fd.AddField(k, fmt.Sprintf("%v", v))
+			fd.AddField(k, formatFormFieldValue(v))
 		}
 	}
 
 	return fd, nil
+}
+
+// formatFormFieldValue renders a JSON-unmarshalled value as a multipart form
+// field string. float64 is handled specially: fmt's default %v/%g switches to
+// scientific notation for values >= ~1e6 (e.g. "1.185356e+06"), which some
+// backends reject when parsing the field as an integer. Use decimal notation
+// instead so size / block_num / offset-style numeric fields round-trip cleanly.
+// All other types fall through to %v.
+func formatFormFieldValue(v any) string {
+	if n, ok := v.(float64); ok {
+		return strconv.FormatFloat(n, 'f', -1, 64)
+	}
+	return fmt.Sprintf("%v", v)
 }
