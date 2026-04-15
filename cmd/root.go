@@ -32,6 +32,7 @@ import (
 	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 const rootLong = `lark-cli — Lark/Feishu CLI tool.
@@ -97,7 +98,17 @@ func Execute() int {
 	}
 	f := cmdutil.NewDefault(inv)
 
+	// Parse global flags, particularly --debug
 	globals := &GlobalOptions{Profile: inv.Profile}
+	{
+		fs := pflag.NewFlagSet("global", pflag.ContinueOnError)
+		fs.ParseErrorsAllowlist.UnknownFlags = true
+		fs.SetOutput(io.Discard)
+		RegisterGlobalFlags(fs, globals)
+		fs.Parse(os.Args[1:])
+		f.DebugEnabled = globals.Debug
+	}
+
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
 		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
