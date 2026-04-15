@@ -33,7 +33,8 @@ var MailSend = common.Shortcut{
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the email immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
-		signatureFlag},
+		signatureFlag,
+		priorityFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
@@ -85,6 +86,10 @@ var MailSend = common.Shortcut{
 
 		senderEmail := resolveComposeSenderEmail(runtime)
 		signatureID := runtime.Str("signature-id")
+		priority, err := parsePriority(runtime.Str("priority"))
+		if err != nil {
+			return err
+		}
 
 		mailboxID := resolveComposeMailboxID(runtime)
 		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
@@ -141,6 +146,7 @@ var MailSend = common.Shortcut{
 		} else {
 			bld = bld.TextBody([]byte(body))
 		}
+		bld = applyPriority(bld, priority)
 		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
 		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
 			return err
