@@ -159,6 +159,12 @@ func executeUpdateV1(_ context.Context, runtime *common.RuntimeContext) error {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
 	}
 
+	// Surface callout type= hint so users know to switch to background-color/
+	// border-color when they want a colored callout. Non-blocking, advisory.
+	if md := runtime.Str("markdown"); md != "" {
+		WarnCalloutType(md, runtime.IO().ErrOut)
+	}
+
 	args := buildUpdateArgsV1(runtime)
 
 	result, err := common.CallMCPTool(runtime, "update-doc", args)
@@ -177,7 +183,7 @@ func buildUpdateArgsV1(runtime *common.RuntimeContext) map[string]interface{} {
 		"mode":   runtime.Str("mode"),
 	}
 	if v := runtime.Str("markdown"); v != "" {
-		args["markdown"] = prepareMarkdownForCreate(v)
+		args["markdown"] = v
 	}
 	if v := runtime.Str("selection-with-ellipsis"); v != "" {
 		args["selection_with_ellipsis"] = v

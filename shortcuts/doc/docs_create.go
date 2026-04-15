@@ -110,6 +110,11 @@ func dryRunCreateV1(_ context.Context, runtime *common.RuntimeContext) *common.D
 
 func executeCreateV1(_ context.Context, runtime *common.RuntimeContext) error {
 	warnDeprecatedV1(runtime, "+create")
+	// Surface callout type= hint so users know to switch to background-color/
+	// border-color when they want a colored callout. Non-blocking, advisory.
+	if md := runtime.Str("markdown"); md != "" {
+		WarnCalloutType(md, runtime.IO().ErrOut)
+	}
 	args := buildCreateArgsV1(runtime)
 	result, err := common.CallMCPTool(runtime, "create-doc", args)
 	if err != nil {
@@ -122,8 +127,9 @@ func executeCreateV1(_ context.Context, runtime *common.RuntimeContext) error {
 }
 
 func buildCreateArgsV1(runtime *common.RuntimeContext) map[string]interface{} {
+	md := runtime.Str("markdown")
 	args := map[string]interface{}{
-		"markdown": prepareMarkdownForCreate(runtime.Str("markdown")),
+		"markdown": md,
 	}
 	if v := runtime.Str("title"); v != "" {
 		args["title"] = v
