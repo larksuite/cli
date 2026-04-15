@@ -89,7 +89,12 @@ func (m *MultiAppConfig) CurrentAppConfig(profileOverride string) *AppConfig {
 // FindApp looks up an app by name, then by appId. Returns nil if not found.
 // Name match takes priority: if profile A has Name "X" and profile B has AppId "X",
 // FindApp("X") returns profile A.
+// Special case: "default" refers to the currently active app config.
 func (m *MultiAppConfig) FindApp(name string) *AppConfig {
+	// Special case: "default" refers to the currently active app
+	if name == "default" {
+		return m.CurrentAppConfig("")
+	}
 	// First pass: match by Name
 	for i := range m.Apps {
 		if m.Apps[i].Name != "" && m.Apps[i].Name == name {
