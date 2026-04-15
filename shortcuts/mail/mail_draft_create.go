@@ -159,6 +159,7 @@ func buildRawEMLForDraftCreate(ctx context.Context, runtime *common.RuntimeConte
 		return "", output.ErrValidation("%v", err)
 	}
 	var autoResolvedPaths []string
+	var composedHTMLBody string
 	if input.PlainText {
 		bld = bld.TextBody([]byte(input.Body))
 	} else if bodyIsHTML(input.Body) || sigResult != nil {
@@ -171,7 +172,8 @@ func buildRawEMLForDraftCreate(ctx context.Context, runtime *common.RuntimeConte
 			return "", resolveErr
 		}
 		resolved = injectSignatureIntoBody(resolved, sigResult)
-		bld = bld.HTMLBody([]byte(resolved))
+		composedHTMLBody = resolved
+		bld = bld.HTMLBody([]byte(composedHTMLBody))
 		bld = addSignatureImagesToBuilder(bld, sigResult)
 		var allCIDs []string
 		for _, ref := range refs {
@@ -192,11 +194,7 @@ func buildRawEMLForDraftCreate(ctx context.Context, runtime *common.RuntimeConte
 	}
 	allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 	emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(input.Body)), allInlinePaths, 0)
-	htmlBody := input.Body
-	if !bodyIsHTML(htmlBody) {
-		htmlBody = ""
-	}
-	bld, err = processLargeAttachments(ctx, runtime, bld, htmlBody, splitByComma(input.Attach), emlBase, 0)
+	bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(input.Attach), emlBase, 0)
 	if err != nil {
 		return "", err
 	}
