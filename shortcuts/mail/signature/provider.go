@@ -68,4 +68,3 @@ func Get(runtime *common.RuntimeContext, mailboxID, signatureID string) (*Signat
 	}
 	return nil, fmt.Errorf("signature not found: %s", signatureID)
 }
-

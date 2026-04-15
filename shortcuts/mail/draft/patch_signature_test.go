@@ -23,9 +23,9 @@ Content-Type: text/html; charset=UTF-8
 
 	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
-			Op:                     "insert_signature",
-			SignatureID:            "sig-123",
-			RenderedSignatureHTML:  "<div>-- My Signature</div>",
+			Op:                    "insert_signature",
+			SignatureID:           "sig-123",
+			RenderedSignatureHTML: "<div>-- My Signature</div>",
 		}},
 	})
 	if err != nil {
@@ -65,9 +65,9 @@ Content-Type: text/html; charset=UTF-8
 
 	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
-			Op:                     "insert_signature",
-			SignatureID:            "sig-456",
-			RenderedSignatureHTML:  "<div>-- Reply Sig</div>",
+			Op:                    "insert_signature",
+			SignatureID:           "sig-456",
+			RenderedSignatureHTML: "<div>-- Reply Sig</div>",
 		}},
 	})
 	if err != nil {
@@ -100,9 +100,9 @@ Content-Type: text/html; charset=UTF-8
 
 	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
-			Op:                     "insert_signature",
-			SignatureID:            "new-sig",
-			RenderedSignatureHTML:  "<div>-- New Sig</div>",
+			Op:                    "insert_signature",
+			SignatureID:           "new-sig",
+			RenderedSignatureHTML: "<div>-- New Sig</div>",
 		}},
 	})
 	if err != nil {
@@ -133,9 +133,9 @@ Just plain text`)
 
 	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
-			Op:                     "insert_signature",
-			SignatureID:            "sig-x",
-			RenderedSignatureHTML:  "<div>sig</div>",
+			Op:                    "insert_signature",
+			SignatureID:           "sig-x",
+			RenderedSignatureHTML: "<div>sig</div>",
 		}},
 	})
 	if err == nil {

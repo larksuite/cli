@@ -33,12 +33,12 @@ var protectedHeaders = map[string]bool{
 // bodyChangingOps lists patch operations that modify the HTML body content,
 // which is the trigger for running local image path resolution.
 var bodyChangingOps = map[string]bool{
-	"set_body":          true,
-	"set_reply_body":    true,
-	"replace_body":      true,
-	"append_body":       true,
-	"insert_signature":  true,
-	"remove_signature":  true,
+	"set_body":         true,
+	"set_reply_body":   true,
+	"replace_body":     true,
+	"append_body":      true,
+	"insert_signature": true,
+	"remove_signature": true,
 }
 
 func Apply(dctx *DraftCtx, snapshot *DraftSnapshot, patch Patch) error {

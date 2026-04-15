@@ -79,12 +79,17 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 }
 
 // injectSignatureIntoBody inserts signature HTML into the body, before the quote block.
+// It removes any existing signature first, then places the new signature between
+// the user-authored content and the quote block (if any).
 // Returns the new full HTML body.
 func injectSignatureIntoBody(bodyHTML string, sig *signatureResult) string {
 	if sig == nil {
 		return bodyHTML
 	}
-	return insertSignatureIntoBody(bodyHTML, sig.ID, sig.RenderedContent)
+	cleaned := draftpkg.RemoveSignatureHTML(bodyHTML)
+	userContent, quote := draftpkg.SplitAtQuote(cleaned)
+	sigBlock := draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sig.ID, sig.RenderedContent)
+	return userContent + sigBlock + quote
 }
 
 // addSignatureImagesToBuilder adds signature inline images to the EML builder.
@@ -195,7 +200,6 @@ func downloadSignatureImage(runtime *common.RuntimeContext, downloadURL, filenam
 
 	return data, ct, nil
 }
-
 
 func contentTypeFromFilename(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))

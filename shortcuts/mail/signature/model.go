@@ -48,14 +48,14 @@ func (v UserFieldValue) Resolve(lang string) string {
 
 // Signature represents a single mail signature returned by the API.
 type Signature struct {
-	ID              string                    `json:"id"`
-	Name            string                    `json:"name"`
-	SignatureType   SignatureType             `json:"signature_type"`
-	SignatureDevice SignatureDevice           `json:"signature_device"`
-	Content         string                    `json:"content"`
-	Images          []SignatureImage           `json:"images,omitempty"`
-	TemplateJSONKeys []string                 `json:"template_json_keys,omitempty"`
-	UserFields      map[string]UserFieldValue `json:"user_fields,omitempty"`
+	ID               string                    `json:"id"`
+	Name             string                    `json:"name"`
+	SignatureType    SignatureType             `json:"signature_type"`
+	SignatureDevice  SignatureDevice           `json:"signature_device"`
+	Content          string                    `json:"content"`
+	Images           []SignatureImage          `json:"images,omitempty"`
+	TemplateJSONKeys []string                  `json:"template_json_keys,omitempty"`
+	UserFields       map[string]UserFieldValue `json:"user_fields,omitempty"`
 }
 
 // IsTenant returns true if this is a tenant/corporate signature with template variables.
@@ -77,6 +77,6 @@ type SignatureUsage struct {
 
 // GetSignaturesResponse is the parsed response from the get_signatures API.
 type GetSignaturesResponse struct {
-	Signatures []Signature     `json:"signatures"`
+	Signatures []Signature      `json:"signatures"`
 	Usages     []SignatureUsage `json:"usages"`
 }
