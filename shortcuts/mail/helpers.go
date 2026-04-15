@@ -20,6 +20,7 @@ import (
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -2015,4 +2016,41 @@ func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFl
 	}
 	allFiles := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
 	return checkAttachmentSizeLimit(fio, allFiles, 0)
+}
+
+// draftPreviewURL returns the send-preview URL for a draft, based on the runtime brand.
+// Returns empty string if draftID is blank.
+func draftPreviewURL(runtime *common.RuntimeContext, draftID string) string {
+	if strings.TrimSpace(draftID) == "" {
+		return ""
+	}
+	brand := core.BrandFeishu
+	if runtime != nil && runtime.Config != nil && runtime.Config.Brand != "" {
+		brand = runtime.Config.Brand
+	}
+	return draftPreviewURLForBrand(brand, draftID)
+}
+
+// draftPreviewURLForBrand returns the send-preview URL for a draft using the given brand.
+func draftPreviewURLForBrand(brand core.LarkBrand, draftID string) string {
+	origin := draftPreviewOriginForBrand(brand)
+	return origin + "/mail?draftId=" + url.QueryEscape(draftID) + "&scene=send-preview"
+}
+
+// draftPreviewOriginForBrand returns the www base URL for the given brand,
+// derived from the Open API endpoint by replacing the "open." prefix with "www.".
+func draftPreviewOriginForBrand(brand core.LarkBrand) string {
+	open := core.ResolveOpenBaseURL(brand)
+	return strings.Replace(open, "open.", "www.", 1)
+}
+
+// addDraftPreviewURL adds a preview_url field to out if a valid preview URL can be generated.
+// Does nothing if out is nil or draftID is blank.
+func addDraftPreviewURL(runtime *common.RuntimeContext, out map[string]interface{}, draftID string) {
+	if out == nil {
+		return
+	}
+	if previewURL := draftPreviewURL(runtime, draftID); previewURL != "" {
+		out["preview_url"] = previewURL
+	}
 }
