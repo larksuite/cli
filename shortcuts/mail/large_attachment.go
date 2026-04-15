@@ -185,56 +185,62 @@ func buildLargeAttachmentPreviewURL(brand core.LarkBrand, fileToken string) stri
 // matching the desktop client's exportLargeFileArea style.
 //
 // Reference: mail-editor/src/plugins/bigAttachment/export.ts
+// Large attachment HTML templates, matching desktop's exportLargeFileArea
+// (mail-editor/src/plugins/bigAttachment/export.ts).
+//
+// IDs: container = "large-file-area-{9-digit-timestamp}", item = "large-file-item"
+// Colors: title bg = rgb(224, 233, 255), link = rgb(20, 86, 240)
+// Layout: float (not flexbox) for email client compatibility
+const (
+	largeAttContainerTpl = `<div id="large-file-area-%s" style="border: 1px solid #DEE0E3; margin-bottom: 20px;max-width: 400px; min-width: 160px; border-radius: 8px;">` +
+		`<div style="font-weight: 500; font-size: 16px;line-height: 24px; padding: 8px 16px;background-color: rgb(224, 233, 255); border-top-left-radius: 8px;border-top-right-radius: 8px;">Attachments from Lark Mail</div>` +
+		`%s` + // items
+		`</div>`
+
+	largeAttItemTpl = `<div style="border-top: solid 1px #DEE0E3;padding: 12px;box-sizing: border-box;clear: both;overflow: hidden;display: flex;" id="large-file-item">` +
+		`<div style="float: left; margin-right: 8px; margin-top: 1px; margin-bottom: 1px;">` +
+		`<img src="%s" height="40" width="40" style="height: 40px;width: 40px;"/>` + // icon URL
+		`</div>` +
+		`<div style="overflow: hidden;text-overflow: ellipsis;display: inline-block;width: 290px;float:left; margin-right: 10px;">` +
+		`<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;font-size: 14px;line-height: 22px;color: #1f2329">%s</div>` + // filename
+		`<div style="font-size: 12px; line-height: 20px; color: #8f959e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">` +
+		`<span style="color: #8f959e;vertical-align: middle;">%s</span>` + // file size
+		`</div>` +
+		`</div>` +
+		`<a href="%s" data-mail-token="%s" style="margin: 10px; text-decoration: none; color: rgb(20, 86, 240); white-space: nowrap; cursor: pointer; line-height: 1.5; float: right; text-align: right; font-size: 14px;">Download</a>` + // preview link, token
+		`</div>`
+
+	iconCDNCN = "https://lf-larkemail.bytetos.com/obj/eden-cn/aultojhaah_npi_spht_ryhs/ljhwZthlaukjlkulzlp/"
+	iconCDNEN = "https://sf16-sg.tiktokcdn.com/obj/eden-sg/aultojhaah_npi_spht_ryhs/ljhwZthlaukjlkulzlp/"
+)
+
 func buildLargeAttachmentHTML(brand core.LarkBrand, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
 	}
 
 	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
-	if len(timestamp) > 10 {
-		timestamp = timestamp[:10]
+	if len(timestamp) > 9 {
+		timestamp = timestamp[:9]
 	}
 
-	// HTML template matches desktop's exportLargeFileArea (mail-editor/src/plugins/bigAttachment/export.ts).
-	// Colors: primary-content-default = rgb(20, 86, 240), primary-fill-solid-02 = rgb(224, 233, 255).
-	// Icon CDN: lf-larkemail.bytetos.com (CN) / sf16-sg.tiktokcdn.com (overseas).
-	// Layout uses float (not flexbox) for email client compatibility.
-	isOversea := brand == core.BrandLark
-	iconCDN := "https://lf-larkemail.bytetos.com/obj/eden-cn/aultojhaah_npi_spht_ryhs/ljhwZthlaukjlkulzlp/"
-	if isOversea {
-		iconCDN = "https://sf16-sg.tiktokcdn.com/obj/eden-sg/aultojhaah_npi_spht_ryhs/ljhwZthlaukjlkulzlp/"
+	iconCDN := iconCDNCN
+	if brand == core.BrandLark {
+		iconCDN = iconCDNEN
 	}
 
 	var items strings.Builder
 	for _, att := range results {
-		previewLink := buildLargeAttachmentPreviewURL(brand, att.FileToken)
-		sizeText := common.FormatSize(att.FileSize)
-		iconURL := iconCDN + fileTypeIcon(att.FileName)
-
-		// Each item — matches desktop template structure exactly
-		fmt.Fprintf(&items, `<div style="border-top: solid 1px #DEE0E3;padding: 12px;box-sizing: border-box;clear: both;overflow: hidden;display: flex;" id="lark-mail-large-file-item">`)
-		fmt.Fprintf(&items, `<div style="float: left; margin-right: 8px; margin-top: 1px; margin-bottom: 1px;">`)
-		fmt.Fprintf(&items, `<img src="%s" height="40" width="40" style="height: 40px;width: 40px;"/>`, htmlEscape(iconURL))
-		fmt.Fprintf(&items, `</div>`)
-		fmt.Fprintf(&items, `<div style="overflow: hidden;text-overflow: ellipsis;display: inline-block;width: 290px;float:left; margin-right: 10px;">`)
-		fmt.Fprintf(&items, `<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;font-size: 14px;line-height: 22px;color: #1f2329">%s</div>`, htmlEscape(att.FileName))
-		fmt.Fprintf(&items, `<div style="font-size: 12px; line-height: 20px; color: #8f959e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">`)
-		fmt.Fprintf(&items, `<span style="color: #8f959e;vertical-align: middle;">%s</span>`, htmlEscape(sizeText))
-		fmt.Fprintf(&items, `</div>`)
-		fmt.Fprintf(&items, `</div>`)
-		fmt.Fprintf(&items, `<a href="%s" data-mail-token="%s" style="margin: 10px; text-decoration: none; color: rgb(20, 86, 240); white-space: nowrap; cursor: pointer; line-height: 1.5; float: right; text-align: right; font-size: 14px;">Download</a>`,
-			htmlEscape(previewLink), htmlEscape(att.FileToken))
-		fmt.Fprintf(&items, `</div>`)
+		fmt.Fprintf(&items, largeAttItemTpl,
+			htmlEscape(iconCDN+fileTypeIcon(att.FileName)),
+			htmlEscape(att.FileName),
+			htmlEscape(common.FormatSize(att.FileSize)),
+			htmlEscape(buildLargeAttachmentPreviewURL(brand, att.FileToken)),
+			htmlEscape(att.FileToken),
+		)
 	}
 
-	var buf strings.Builder
-	fmt.Fprintf(&buf, `<div id="lark-mail-large-file-container-%s" style="border: 1px solid #DEE0E3; margin-bottom: 20px;max-width: 400px; min-width: 160px; border-radius: 8px;">`, timestamp)
-	fmt.Fprintf(&buf, `<div style="font-weight: 500; font-size: 16px;line-height: 24px; padding: 8px 16px;background-color: rgb(224, 233, 255); border-top-left-radius: 8px;border-top-right-radius: 8px;">`)
-	buf.WriteString("Attachments from Lark Mail")
-	buf.WriteString(`</div>`)
-	buf.WriteString(items.String())
-	buf.WriteString(`</div>`)
-	return buf.String()
+	return fmt.Sprintf(largeAttContainerTpl, timestamp, items.String())
 }
 
 // insertBeforeQuoteOrAppend inserts block into html before the quote block

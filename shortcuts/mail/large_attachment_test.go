@@ -119,7 +119,7 @@ func TestBuildLargeAttachmentHTML(t *testing.T) {
 	html := buildLargeAttachmentHTML(core.BrandFeishu, results)
 
 	// Check it contains the container ID prefix
-	if !strings.Contains(html, "lark-mail-large-file-container-") {
+	if !strings.Contains(html, "large-file-area-") {
 		t.Error("missing container ID")
 	}
 	// Check file names are present
