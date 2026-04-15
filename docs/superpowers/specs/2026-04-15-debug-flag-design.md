@@ -50,9 +50,11 @@ func RegisterGlobalFlags(fs *pflag.FlagSet, opts *GlobalOptions) {
 
 ```go
 func (f *Factory) Debugf(format string, args ...interface{}) {
-    if f.DebugEnabled {
-        fmt.Fprintf(f.IOStreams.ErrOut, "[DEBUG] " + format + "\n", args...)
+    if f == nil || !f.DebugEnabled || f.IOStreams == nil || f.IOStreams.ErrOut == nil {
+        return
     }
+    msg := fmt.Sprintf("[DEBUG] "+format, args...)
+    fmt.Fprintln(f.IOStreams.ErrOut, msg)
 }
 ```
 
@@ -109,7 +111,7 @@ func (f *Factory) Debugf(format string, args ...interface{}) {
 **为什么使用 [DEBUG] 前缀？**
 - 清楚地标识调试消息
 - 易于在输出中识别
-- 便于脚本过滤（例如 `grep [DEBUG]`）
+- 便于脚本过滤（例如 `grep -F "[DEBUG]"`）
 
 ---
 
