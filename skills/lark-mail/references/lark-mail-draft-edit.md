@@ -179,7 +179,7 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 
 返回的 `projection.attachments_summary` 和 `projection.inline_summary` 列出了每个部分的 `part_id`、`cid`、`filename` 和 `content_type`。在 `remove_attachment` / `remove_inline` / `replace_inline` 操作中使用这些值。
 
-`add_attachment`
+`add_attachment` — 当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（通过下载链接卡片呈现），单个文件上限 3 GB。
 
 ```json
 { "op": "add_attachment", "path": "./report.pdf" }
