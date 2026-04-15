@@ -100,15 +100,17 @@ var MailDraftCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("create draft failed: %w", err)
 		}
-		out := map[string]interface{}{"draft_id": draftID}
-		addDraftPreviewURL(runtime, out, draftID)
+		out := map[string]interface{}{"draft_id": draftResult.DraftID}
+		if draftResult.PreviewURL != "" {
+			out["preview_url"] = draftResult.PreviewURL
+		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft created.")
-			fmt.Fprintf(w, "draft_id: %s\n", draftID)
+			fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
 			if previewURL, _ := out["preview_url"].(string); previewURL != "" {
 				fmt.Fprintf(w, "preview_url: %s\n", previewURL)
 			}
