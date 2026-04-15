@@ -4,6 +4,7 @@
 package shortcuts
 
 import (
+	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -45,6 +46,7 @@ func init() {
 	allShortcuts = append(allShortcuts, vc.Shortcuts()...)
 	allShortcuts = append(allShortcuts, whiteboard.Shortcuts()...)
 	allShortcuts = append(allShortcuts, wiki.Shortcuts()...)
+	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
 }
 
 // AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).

@@ -63,5 +63,9 @@
   "wiki": {
     "en": { "title": "Wiki", "description": "Wiki space and node management" },
     "zh": { "title": "知识库", "description": "知识空间、节点管理" }
+  },
+  "okr": {
+    "en": { "title": "OKR", "description": "Lark OKR objectives, key results, alignments, indicators" },
+    "zh": { "title": "OKR", "description": "飞书 OKR 目标、关键结果、对齐、量化指标" }
   }
 }
