@@ -204,18 +204,10 @@ var MailReplyAll = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send reply-all (draft %s created but not sent): %w", draftID, err)
 		}
-		result := map[string]interface{}{
+		runtime.Out(map[string]interface{}{
 			"message_id": resData["message_id"],
 			"thread_id":  resData["thread_id"],
-		}
-		if sendTime != "" {
-			result["draft_id"] = draftID
-			result["scheduled_send_time"] = sendTime
-			result["cancel_tip"] = fmt.Sprintf(
-				`To cancel scheduled send: lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`,
-				mailboxID, draftID)
-		}
-		runtime.Out(result, nil)
+		}, nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},
