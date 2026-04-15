@@ -93,7 +93,14 @@ func (m *MultiAppConfig) CurrentAppConfig(profileOverride string) *AppConfig {
 func (m *MultiAppConfig) FindApp(name string) *AppConfig {
 	// Special case: "default" refers to the currently active app
 	if name == "default" {
-		return m.CurrentAppConfig("")
+		// Return CurrentApp if set (and not "default" to avoid recursion), otherwise first app
+		if m.CurrentApp != "" && m.CurrentApp != "default" {
+			return m.FindApp(m.CurrentApp)
+		}
+		if len(m.Apps) > 0 {
+			return &m.Apps[0]
+		}
+		return nil
 	}
 	// First pass: match by Name
 	for i := range m.Apps {
