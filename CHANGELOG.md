@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.12] - 2026-04-15
+
+### Features
+
+- Add guided npm install flow that installs or upgrades the CLI, installs AI skills, and walks through app config and auth login (#464)
+- **mail**: Add email signature support with `+signature`, `--signature-id` compose flags, and draft signature edit operations (#485)
+- **mail**: Return recall hints for sent emails when recall is available (#481)
+- **slides**: Add `+media-upload` and support `@path` image placeholders in `+create --slides` (#450)
+
+### Documentation
+
+- **mail**: Add recipient search guidance to the mail skill workflow (#437)
+- **calendar/vc**: Route past meeting queries to `lark-vc` and clarify historical date matching in skills (#482, #480)
+
 ## [v1.0.11] - 2026-04-14
 
 ### Features
@@ -345,6 +359,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.12]: https://github.com/larksuite/cli/releases/tag/v1.0.12
 [v1.0.11]: https://github.com/larksuite/cli/releases/tag/v1.0.11
 [v1.0.10]: https://github.com/larksuite/cli/releases/tag/v1.0.10
 [v1.0.9]: https://github.com/larksuite/cli/releases/tag/v1.0.9
