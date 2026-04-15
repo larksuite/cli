@@ -60,12 +60,12 @@ func (f *Factory) Debugf(format string, args ...interface{}) {
 
 ### 数据流
 
-```
+```text
 1. 用户运行：lark-cli --debug +calendar agenda
                            ↓
 2. Cobra 解析 --debug 标志到 GlobalOptions.Debug = true
                            ↓
-3. cmd/root.go 创建 Factory，设置 f.DebugEnabled = opts.Debug
+3. cmd/root.go 创建 Factory，设置 f.DebugEnabled = globals.Debug
                            ↓
 4. 命令执行时可调用 f.Debugf("message")
                            ↓

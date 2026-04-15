@@ -85,7 +85,7 @@
 ### 错误场景2：--debug 与无效的命令组合
 
 - 命令：`lark-cli --debug invalid-command`
-- 断assert：
+- 断言：
   - 返回非零 exit code
   - 显示 "unknown command" 错误
 
