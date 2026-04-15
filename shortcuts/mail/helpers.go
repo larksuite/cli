@@ -1907,12 +1907,15 @@ func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes 
 	return nil
 }
 
-// validateSendTime checks that --send-time, if provided, is a valid Unix
-// timestamp in seconds and is at least 5 minutes in the future.
+// validateSendTime checks that --send-time, if provided, requires --confirm-send,
+// is a valid Unix timestamp in seconds, and is at least 5 minutes in the future.
 func validateSendTime(runtime *common.RuntimeContext) error {
 	sendTime := runtime.Str("send-time")
 	if sendTime == "" {
 		return nil
+	}
+	if !runtime.Bool("confirm-send") {
+		return fmt.Errorf("--send-time requires --confirm-send to be set")
 	}
 	ts, err := strconv.ParseInt(sendTime, 10, 64)
 	if err != nil {
