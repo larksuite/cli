@@ -19,5 +19,6 @@ func Shortcuts() []common.Shortcut {
 		MailDraftCreate,
 		MailDraftEdit,
 		MailForward,
+		MailSignature,
 	}
 }

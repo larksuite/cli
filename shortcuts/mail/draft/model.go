@@ -144,6 +144,8 @@ type DraftProjection struct {
 	BodyText           string        `json:"body_text,omitempty"`
 	BodyHTMLSummary    string        `json:"body_html_summary,omitempty"`
 	HasQuotedContent   bool          `json:"has_quoted_content,omitempty"`
+	HasSignature       bool          `json:"has_signature,omitempty"`
+	SignatureID        string        `json:"signature_id,omitempty"`
 	AttachmentsSummary []PartSummary `json:"attachments_summary,omitempty"`
 	InlineSummary      []PartSummary `json:"inline_summary,omitempty"`
 	Warnings           []string      `json:"warnings,omitempty"`
@@ -182,6 +184,22 @@ type PatchOp struct {
 	FileName    string           `json:"filename,omitempty"`
 	ContentType string           `json:"content_type,omitempty"`
 	Target      AttachmentTarget `json:"target,omitempty"`
+	SignatureID string           `json:"signature_id,omitempty"`
+
+	// RenderedSignatureHTML is set by the shortcut layer (not from JSON) after
+	// fetching and interpolating the signature. The patch layer uses this
+	// pre-rendered content for insert_signature ops.
+	RenderedSignatureHTML string           `json:"-"`
+	SignatureImages       []SignatureImage `json:"-"`
+}
+
+// SignatureImage holds pre-downloaded image data for signature inline images.
+// Populated by the shortcut layer, consumed by the patch layer.
+type SignatureImage struct {
+	CID         string
+	ContentType string
+	FileName    string
+	Data        []byte
 }
 
 func (p Patch) Validate() error {
@@ -274,6 +292,12 @@ func (op PatchOp) Validate() error {
 		if !op.Target.hasKey() {
 			return fmt.Errorf("remove_inline requires target with at least one of part_id or cid")
 		}
+	case "insert_signature":
+		if strings.TrimSpace(op.SignatureID) == "" {
+			return fmt.Errorf("insert_signature requires signature_id")
+		}
+	case "remove_signature":
+		// No required fields.
 	default:
 		return fmt.Errorf("unsupported op %q", op.Op)
 	}
