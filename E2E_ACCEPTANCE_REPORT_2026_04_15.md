@@ -4,7 +4,7 @@
 - 测试时间：2026-04-15 16:00 UTC+8
 - Spec：docs/superpowers/specs/2026-04-15-debug-flag-design.md
 - Test Plan：docs/superpowers/specs/2026-04-15-debug-flag-test-plan.md
-- 项目目录：/Users/bytedance/work/cli-heyumeng154-alt
+- 项目目录：<project-root>
 - 当前分支：feat/add-debug-flag
 - 环境状态：正常（配置有效，凭证可用）
 - 构建状态：成功（使用已编译的二进制：lark-cli）
