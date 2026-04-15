@@ -34,7 +34,7 @@ var MailForward = common.Shortcut{
 		{Name: "attach", Desc: "Attachment file path(s), comma-separated, appended after original attachments (relative path only)"},
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the forward immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
-		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds (e.g. 1744608000). Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
+		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
@@ -58,6 +58,9 @@ var MailForward = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateConfirmSendScope(runtime); err != nil {
+			return err
+		}
+		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
 		if runtime.Bool("confirm-send") {

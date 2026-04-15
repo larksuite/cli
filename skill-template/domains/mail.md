@@ -72,7 +72,7 @@ lark-cli mail user_mailbox.messages -h
 - **发送前必须向用户确认收件人和内容，用户明确同意后才可加 `--confirm-send`**
 - **立即发送后必须调用 `send_status` 确认投递状态**；定时发送（`--send-time`）在预定发送时间后再查询，取消定时发送用 `cancel_scheduled_send`（详见下方说明）
 
-> **定时发送注意事项**：`--send-time` 必须与 `--confirm-send` 配合使用，不能单独使用。`send_time` 为 Unix 时间戳（秒），如 `1744608000`，需至少为当前时间 + 5 分钟。
+> **定时发送注意事项**：`--send-time` 必须与 `--confirm-send` 配合使用，不能单独使用。`send_time` 为 Unix 时间戳（秒），需至少为当前时间 + 5 分钟。
 
 ### 使用公共邮箱或别名（send_as）发信
 

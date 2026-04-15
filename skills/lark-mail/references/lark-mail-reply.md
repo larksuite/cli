@@ -74,7 +74,7 @@ lark-cli mail +reply --message-id <邮件ID> --body '<p>测试</p>' --dry-run
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径 |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
 | `--confirm-send` | 否 | 确认发送回复（默认只保存草稿）。仅在用户明确确认后使用 |
-| `--send-time <timestamp>` | 否 | 定时发送时间，Unix 时间戳（秒），如 `1744608000`。需至少为当前时间 + 5 分钟。配合 `--confirm-send` 使用可定时发送邮件 |
+| `--send-time <timestamp>` | 否 | 定时发送时间，Unix 时间戳（秒）。需至少为当前时间 + 5 分钟。配合 `--confirm-send` 使用可定时发送邮件 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 
 ## 返回值
@@ -130,7 +130,7 @@ lark-cli mail +reply --message-id <邮件ID> --body '<p>已处理，谢谢。</p
 # Step 2: 向用户确认 "回复草稿已创建：回复给 alice@example.com，内容「已处理，谢谢。」定时 2026-04-14 15:00 发送。确认吗？"
 
 # Step 3: 用户确认后定时发送（send_time 为 Unix 时间戳，需至少当前时间 + 5 分钟）
-lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}' --data '{"send_time":1744608000}'
+lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}' --data '{"send_time":"<unix_timestamp>"}'
 ```
 
 ### 场景 4：用户说"等等，先不回复了"（取消定时发送）
