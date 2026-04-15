@@ -9,9 +9,11 @@ import "github.com/spf13/pflag"
 // actual Cobra command tree.
 type GlobalOptions struct {
 	Profile string
+	Debug   bool
 }
 
 // RegisterGlobalFlags registers the root-level persistent flags.
 func RegisterGlobalFlags(fs *pflag.FlagSet, opts *GlobalOptions) {
 	fs.StringVar(&opts.Profile, "profile", "", "use a specific profile")
+	fs.BoolVar(&opts.Debug, "debug", false, "enable debug logging")
 }
