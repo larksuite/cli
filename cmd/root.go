@@ -103,6 +103,7 @@ func Execute() int {
 	{
 		fs := pflag.NewFlagSet("global", pflag.ContinueOnError)
 		fs.ParseErrorsAllowlist.UnknownFlags = true
+		fs.SetInterspersed(true)
 		fs.SetOutput(io.Discard)
 		RegisterGlobalFlags(fs, globals)
 		fs.Parse(os.Args[1:])
