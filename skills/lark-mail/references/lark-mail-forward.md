@@ -120,7 +120,7 @@ lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_
 lark-cli mail +forward --message-id <邮件ID> --to bob@example.com --body '<p>FYI，请查收。</p>'
 # → 返回 draft_id
 
-# Step 2: 向用户确认 "转发草稿已创建：收件人 bob@example.com，定时 2026-04-14 15:00 发送。确认吗？"
+# Step 2: 向用户确认 "转发草稿已创建：收件人 bob@example.com，定时 <目标时间> 发送。确认吗？"
 
 # Step 3: 用户确认后定时发送（send_time 为 Unix 时间戳，需至少当前时间 + 5 分钟）
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}' --data '{"send_time":"<unix_timestamp>"}'
