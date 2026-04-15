@@ -70,6 +70,7 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--set-to <emails>` | 否 | 用此处提供的地址替换整个 To 收件人列表 |
 | `--set-cc <emails>` | 否 | 用此处提供的地址替换整个 Cc 抄送列表 |
 | `--set-bcc <emails>` | 否 | 用此处提供的地址替换整个 Bcc 密送列表 |
+| `--set-priority <level>` | 否 | 设置邮件优先级：`high`、`normal`、`low`。设为 `normal` 会清除已有优先级 |
 | `--patch-file <path>` | 否 | 所有正文编辑、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `--print-patch-template` 查看 JSON 结构 |
 | `--print-patch-template` | 否 | 打印 `--patch-file` 的 JSON 模板和支持的操作。建议在生成补丁文件前先运行此命令。不会读取或写入草稿 |
 | `--inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（含每个附件的 `part_id`、`cid`、`filename`）和 `inline_summary` 的草稿投影 |
