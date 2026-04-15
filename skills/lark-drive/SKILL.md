@@ -1,7 +1,7 @@
 ---
 name: lark-drive
 version: 1.0.0
-description: "飞书云空间：管理云空间中的文件和文件夹。上传和下载文件、创建文件夹、复制/移动/删除文件、查看文件元数据、管理文档评论、管理文档权限、订阅用户评论变更事件；也负责把本地 Word/Markdown/Excel/CSV 导入为飞书在线云文档（docx、sheet、bitable）。当用户需要上传或下载文件、整理云空间目录、查看文件详情、管理评论、管理文档权限、订阅用户评论变更事件，或要把本地文件导入成新版文档、电子表格、多维表格/Base 时使用。"
+description: "飞书云空间：管理云空间中的文件和文件夹。上传和下载文件、创建文件夹、复制/移动/删除文件、查看文件元数据、管理文档评论、管理文档权限、订阅用户评论变更事件、修改文件标题（docx、sheet、bitable、file、folder、wiki）；也负责把本地 Word/Markdown/Excel/CSV 导入为飞书在线云文档（docx、sheet、bitable）。当用户需要上传或下载文件、整理云空间目录、查看文件详情、管理评论、管理文档权限、修改文件标题、订阅用户评论变更事件，或要把本地文件导入成新版文档、电子表格、多维表格/Base 时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -20,6 +20,9 @@ metadata:
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
 - `lark-base` 只负责导入完成后的 Base 内部操作（表、字段、记录、视图），不要在“本地文件 -> Base”这一步提前切到 `lark-base`。
+
+## 修改标题
+- 使用 `drive files patch` 命令，通过new_title字段可以修改标题，支持 docx、sheet、bitable、file、wiki、folder 类型
 
 ## 核心概念
 
@@ -156,7 +159,7 @@ Drive Folder (云空间文件夹)
 - 使用 `drive file.comments batch_query` 是**已知评论 ID 后**的批量查询，需要传入具体的评论 ID 列表。
 - 使用 `drive file.comments list` 用于分页获取评论列表，适合统计评论总数、遍历所有评论，或获取"最新/最后 N 条评论"等场景。
 
-#### Reaction 场景
+#### Reaction / 表情场景
 - 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](../../skills/lark-drive/references/lark-drive-reactions.md) 了解如何使用**。
 
 ### 典型错误与解决方案
@@ -194,6 +197,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 |----------|------|
 | [`+upload`](references/lark-drive-upload.md) | Upload a local file to Drive |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
+| [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder |
 | [`+add-comment`](references/lark-drive-add-comment.md) | Add a full-document comment, or a local comment to selected docx text (also supports wiki URL resolving to doc/docx) |
 | [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable to a local file with limited polling |
 | [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token |
@@ -216,6 +220,7 @@ lark-cli drive <resource> <method> [flags] # 调用 API
   - `copy` — 复制文件
   - `create_folder` — 新建文件夹
   - `list` — 获取文件夹下的清单
+  - `patch` — 修改文件标题
 
 ### file.comments
 
@@ -266,6 +271,7 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 | `files.copy` | `docs:document:copy` |
 | `files.create_folder` | `space:folder:create` |
 | `files.list` | `space:document:retrieve` |
+| `files.patch` | `docx:document:write_only` |
 | `file.comments.batch_query` | `docs:document.comment:read` |
 | `file.comments.create_v2` | `docs:document.comment:create` |
 | `file.comments.list` | `docs:document.comment:read` |

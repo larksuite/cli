@@ -26,6 +26,9 @@ var BaseViewSetVisibleFields = common.Shortcut{
 		`Example: --json '{"visible_fields":["fldXXX"]}'`,
 		"Agent hint: use the lark-base skill's view-set-visible-fields guide for usage and limits.",
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateViewJSONObject(runtime)
+	},
 	DryRun: dryRunViewSetVisibleFields,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeViewSetVisibleFields(runtime)

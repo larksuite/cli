@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.11] - 2026-04-14
+
+### Features
+
+- **sheets**: Add dropdown shortcuts for data validation management (`+set-dropdown`, `+update-dropdown`, `+get-dropdown`, `+delete-dropdown`) (#461)
+- **task**: Add task search, tasklist search, related-task, set-ancestor, and subscribe-event shortcuts (#377)
+- Streamline interactive login by removing the extra auth confirmation step (#451)
+
+### Bug Fixes
+
+- **base**: Validate JSON object inputs for base shortcuts and reject `null` objects (#458)
+
+### Documentation
+
+- **sheets**: Document value formats for formulas and special field types (#456)
+- **readme**: Add Attendance to the features table (#460)
+
+## [v1.0.10] - 2026-04-13
+
+### Features
+
+- **im**: Support im oapi range download for large files (#283)
+- **sheets**: Add filter view and condition shortcuts (#422)
+- **wiki**: Add wiki move shortcut with async task polling (#436)
+- **drive**: Add drive `+create-shortcut` shortcut (#432)
+- **drive**: Add drive files patch metadata API (#444)
+- **task**: Support `--section-guid` flag in tasklist-task-add shortcut (#430)
+
+### Bug Fixes
+
+- **base**: Support large base attachment uploads (#441)
+- **config**: Clarify init copy for TTY, preserve original for AI (#448)
+- **im**: Reject `--user-id` under bot identity for chat-messages-list (#340)
+- **mail**: Add missing scopes for mail `+watch` shortcut (#357)
+- **mail**: Restrict `--output-dir` to current working directory (#376)
+
+### Documentation
+
+- **wiki**: Add wiki member operations to lark-wiki skill (#417)
+- **task**: Document sections API resources, permissions, and URL parsing (#430)
+- **doc**: Clarify when markdown escaping is needed (#312)
+
 ## [v1.0.9] - 2026-04-11
 
 ### Features
@@ -303,6 +345,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.11]: https://github.com/larksuite/cli/releases/tag/v1.0.11
+[v1.0.10]: https://github.com/larksuite/cli/releases/tag/v1.0.10
 [v1.0.9]: https://github.com/larksuite/cli/releases/tag/v1.0.9
 [v1.0.8]: https://github.com/larksuite/cli/releases/tag/v1.0.8
 [v1.0.7]: https://github.com/larksuite/cli/releases/tag/v1.0.7

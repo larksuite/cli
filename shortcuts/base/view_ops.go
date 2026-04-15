@@ -138,15 +138,15 @@ func wrapViewPropertyBody(raw interface{}, key string) interface{} {
 }
 
 func validateViewCreate(runtime *common.RuntimeContext) error {
-	return nil
+	pc := newParseCtx(runtime)
+	_, err := parseObjectList(pc, runtime.Str("json"), "json")
+	return err
 }
 
 func validateViewJSONObject(runtime *common.RuntimeContext) error {
-	return nil
-}
-
-func validateViewJSONValue(runtime *common.RuntimeContext) error {
-	return nil
+	pc := newParseCtx(runtime)
+	_, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	return err
 }
 
 func executeViewList(runtime *common.RuntimeContext) error {

@@ -377,6 +377,9 @@ func mediaFallbackOrError(originalValue, mediaType string, uploadErr error) (str
 
 // resolveP2PChatID resolves user open_id to P2P chat_id.
 func resolveP2PChatID(runtime *common.RuntimeContext, openID string) (string, error) {
+	if runtime.IsBot() {
+		return "", output.Errorf(output.ExitValidation, "validation", "--user-id requires user identity (--as user); use --chat-id when calling with bot identity")
+	}
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/chat_p2p/batch_query",

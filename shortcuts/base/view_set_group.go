@@ -27,7 +27,7 @@ var BaseViewSetGroup = common.Shortcut{
 		"Agent hint: use the lark-base skill's view-set-group guide for usage and limits.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateViewJSONValue(runtime)
+		return validateViewJSONObject(runtime)
 	},
 	DryRun: dryRunViewSetGroup,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

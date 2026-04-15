@@ -27,7 +27,7 @@ var BaseViewSetSort = common.Shortcut{
 		"Agent hint: use the lark-base skill's view-set-sort guide for usage and limits.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateViewJSONValue(runtime)
+		return validateViewJSONObject(runtime)
 	},
 	DryRun: dryRunViewSetSort,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

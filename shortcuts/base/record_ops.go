@@ -113,7 +113,9 @@ func dryRunRecordHistoryList(_ context.Context, runtime *common.RuntimeContext) 
 }
 
 func validateRecordJSON(runtime *common.RuntimeContext) error {
-	return nil
+	pc := newParseCtx(runtime)
+	_, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	return err
 }
 
 func recordListFields(runtime *common.RuntimeContext) []string {

@@ -25,6 +25,9 @@ var BaseRecordSearch = common.Shortcut{
 		`Example: --json '{"keyword":"Alice","search_fields":["Name"]}'`,
 		"Agent hint: use the lark-base skill's record-search guide for usage and limits.",
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateRecordJSON(runtime)
+	},
 	DryRun: dryRunRecordSearch,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeRecordSearch(runtime)

@@ -5,12 +5,14 @@ package drive
 
 import "testing"
 
+// TestShortcutsIncludesExpectedCommands verifies the drive shortcut registry contains the expected commands.
 func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 	t.Parallel()
 
 	got := Shortcuts()
 	want := []string{
 		"+upload",
+		"+create-shortcut",
 		"+download",
 		"+add-comment",
 		"+export",

@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-Download image or file resources from a message. Resources are identified by the combination of `message_id` + `file_key`, both of which come directly from message content returned by `im +chat-messages-list`.
+Download image or file resources from a message. Supports **automatic chunked download for large files** using HTTP Range requests. Resources are identified by the combination of `message_id` + `file_key`, both of which come directly from message content returned by `im +chat-messages-list`.
 
 > **Note:** read-only message commands render resource keys in message content, but they do not download binaries automatically. Use this command whenever you need to fetch the actual image/file bytes or save them to a specific path.
 
@@ -34,9 +34,25 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 | `--message-id <id>` | Yes | Message ID (`om_xxx` format) |
 | `--file-key <key>` | Yes | Resource key (`img_xxx` or `file_xxx`) |
 | `--type <type>` | Yes | Resource type: `image` or `file` |
-| `--output <path>` | No | Output path (relative paths only; `..` traversal is not allowed; defaults to `file_key` as the file name) |
+| `--output <path>` | No | Output path (relative paths only; `..` traversal is not allowed; defaults to `file_key` as the file name). File extension is automatically added based on Content-Type if not provided |
 | `--as <identity>` | No | Identity type: `user` (default) or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
+
+## Large File Download (Auto Chunking)
+
+When downloading large files, the command automatically uses **HTTP Range requests** for reliable chunked downloading:
+
+| Behavior | Details |
+|----------|---------|
+| Probe chunk | First 128 KB to detect file size and Content-Type |
+| Chunk size | 8 MB per subsequent request |
+| Workers | Single-threaded sequential download (ensures reliability) |
+| Retries | Up to 2 retries for transient request failures, with exponential backoff |
+
+**Benefits:**
+- Reduces the impact of transient request failures during large downloads
+- Automatically detects and appends correct file extension from Content-Type
+- Validates file size integrity after download completion
 
 ## `file_key` Sources
 
@@ -69,7 +85,8 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 | Download failed | `file_key` does not match the `message_id` | Make sure the `file_key` came from that message's content |
 | Hit error code 234002 or 14005 | No permission, **not** missing API scope | no access to this chat or file was deleted — do not retry, return the error to the user |
 | Permission denied | `im:message:readonly` is not authorized | Run `auth login --scope "im:message:readonly"` |
-| File too large | Over the 100 MB limit | This is a Feishu API limitation and cannot be bypassed with this endpoint |
+| File size mismatch | Chunked download integrity check failed | Network instability during download; retry the command |
+| Content-Range error | Server returned invalid range header | Transient API issue; retry the command |
 
 ## References
 

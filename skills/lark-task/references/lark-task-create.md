@@ -38,7 +38,7 @@ lark-cli task +create --summary "Test Task" --dry-run
 ## Workflow
 
 1. Confirm with the user: task summary, due date, assignee, and tasklist if necessary.
-   - **Crucial Rule for Assignee**: If the user explicitly or implicitly says "create a task for me" (给我创建一个任务), or "help me create a task" (帮我新建/创建一个任务), you MUST assign the task to the current logged-in user. You can get the current user's `open_id` by executing `lark-cli auth status --json` or `lark-cli contact +get-user` first, extracting the `userOpenId` or `open_id`, and then passing it to the `--assignee` parameter.
+   - **Crucial Rule for Assignee**: If the user explicitly or implicitly says "create a task for me" (给我创建一个任务), or "help me create a task" (帮我新建/创建一个任务), you MUST assign the task to the current logged-in user. You can get the current user's `open_id` by executing `lark-cli auth status` (it already outputs JSON by default, so do not add `--json`) or `lark-cli contact +get-user` first, extracting the `userOpenId` or `open_id`, and then passing it to the `--assignee` parameter.
 2. Execute `lark-cli task +create --summary "..." ...`
 3. Report the result: task ID and summary.
 

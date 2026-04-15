@@ -38,7 +38,10 @@ func TestParseHelpers(t *testing.T) {
 	if err != nil || obj["name"] != "demo" {
 		t.Fatalf("obj=%v err=%v", obj, err)
 	}
-	if _, err := parseJSONObject(testPC, `[1]`, "json"); err == nil || !strings.Contains(err.Error(), "invalid JSON object") {
+	if _, err := parseJSONObject(testPC, `[1]`, "json"); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") || !strings.Contains(err.Error(), "lark-base skill") || strings.Contains(err.Error(), "array") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := parseJSONObject(testPC, `null`, "json"); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
 		t.Fatalf("err=%v", err)
 	}
 	obj, err = parseJSONObject(testPC, "@"+tmp.Name(), "json")
@@ -63,7 +66,7 @@ func TestParseHelpers(t *testing.T) {
 	if _, err := parseStringListFlexible(testPC, `[1]`, "fields"); err == nil || !strings.Contains(err.Error(), "invalid JSON string array") {
 		t.Fatalf("err=%v", err)
 	}
-	if _, err := parseJSONValue(testPC, "{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a JSON object/array directly") {
+	if _, err := parseJSONValue(testPC, "{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a valid JSON directly") || !strings.Contains(err.Error(), "@file.json") || !strings.Contains(err.Error(), "lark-base skill") {
 		t.Fatalf("err=%v", err)
 	}
 	if !reflect.DeepEqual(parseStringList("m,n"), []string{"m", "n"}) {
@@ -281,11 +284,11 @@ func TestJSONInputHelpers(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 	syntaxErr := formatJSONError("json", "object", &json.SyntaxError{Offset: 7})
-	if !strings.Contains(syntaxErr.Error(), "near byte 7") || !strings.Contains(syntaxErr.Error(), "tip: pass a JSON object/array directly") {
+	if !strings.Contains(syntaxErr.Error(), "near byte 7") || !strings.Contains(syntaxErr.Error(), "tip: pass a valid JSON directly") || !strings.Contains(syntaxErr.Error(), "@file.json") || !strings.Contains(syntaxErr.Error(), "lark-base skill") {
 		t.Fatalf("syntaxErr=%v", syntaxErr)
 	}
 	typeErr := formatJSONError("json", "object", &json.UnmarshalTypeError{Field: "filter_info"})
-	if !strings.Contains(typeErr.Error(), `field "filter_info"`) {
+	if !strings.Contains(typeErr.Error(), `field "filter_info"`) || !strings.Contains(typeErr.Error(), "tip: pass a valid JSON directly") || !strings.Contains(typeErr.Error(), "@file.json") || !strings.Contains(typeErr.Error(), "lark-base skill") {
 		t.Fatalf("typeErr=%v", typeErr)
 	}
 }

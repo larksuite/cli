@@ -81,16 +81,7 @@ func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext)
 
 func validateFieldJSON(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	pc := newParseCtx(runtime)
-	raw, _ := loadJSONInput(pc, runtime.Str("json"), "json")
-	if raw == "" {
-		return nil, nil
-	}
-	var body map[string]interface{}
-	_ = common.ParseJSON([]byte(raw), &body)
-	if body == nil {
-		return nil, nil
-	}
-	return body, nil
+	return parseJSONObject(pc, runtime.Str("json"), "json")
 }
 
 func validateFormulaLookupGuideAck(runtime *common.RuntimeContext, command string, body map[string]interface{}) error {

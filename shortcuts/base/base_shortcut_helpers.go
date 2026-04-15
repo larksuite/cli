@@ -63,7 +63,7 @@ func loadJSONInput(pc *parseCtx, raw string, flagName string) (string, error) {
 }
 
 func jsonInputTip(flagName string) string {
-	return fmt.Sprintf("tip: pass a JSON object/array directly, or use --%s @path/to/file.json", flagName)
+	return fmt.Sprintf("tip: pass a valid JSON directly, or use --%s @file.json; use the lark-base skill or this command's reference to find the expected body", flagName)
 }
 
 func formatJSONError(flagName string, target string, err error) error {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -392,6 +393,28 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}, nil)
 		if err := ImChatMessageList.Validate(context.Background(), runtime); err != nil {
 			t.Fatalf("ImChatMessageList.Validate() unexpected error = %v", err)
+		}
+	})
+
+	t.Run("ImChatMessageList rejects both targets", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "oc_abc",
+			"user-id": "ou_123",
+		}, nil)
+		err := ImChatMessageList.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("ImChatMessageList.Validate() error = %v, want mutually exclusive", err)
+		}
+	})
+
+	t.Run("ImChatMessageList rejects user target for bot identity", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"user-id": "ou_123",
+		}, nil)
+		setRuntimeField(t, runtime, "resolvedAs", core.AsBot)
+		err := ImChatMessageList.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "requires user identity") {
+			t.Fatalf("ImChatMessageList.Validate() error = %v, want requires user identity", err)
 		}
 	})
 

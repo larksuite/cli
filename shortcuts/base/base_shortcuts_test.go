@@ -120,9 +120,9 @@ func TestWrapViewPropertyBody(t *testing.T) {
 	}
 }
 
-func TestViewSetVisibleFieldsNoValidateHook(t *testing.T) {
-	if BaseViewSetVisibleFields.Validate != nil {
-		t.Fatalf("expected no validate hook, got non-nil")
+func TestViewSetVisibleFieldsValidateHook(t *testing.T) {
+	if BaseViewSetVisibleFields.Validate == nil {
+		t.Fatal("expected validate hook")
 	}
 }
 
@@ -212,8 +212,8 @@ func TestBaseFieldUpdateHelpHidesReadGuideFlag(t *testing.T) {
 
 func TestBaseFieldValidate(t *testing.T) {
 	ctx := context.Background()
-	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": "{"}, nil, nil)); err != nil {
-		t.Fatalf("invalid json should bypass CLI validate, err=%v", err)
+	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
+		t.Fatalf("err=%v", err)
 	}
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `{"name":"f1","type":"formula"}`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--i-have-read-guide is required") {
 		t.Fatalf("err=%v", err)
@@ -255,22 +255,29 @@ func TestBaseRecordValidate(t *testing.T) {
 	if BaseRecordList.Validate != nil {
 		t.Fatalf("record list validate should be nil for repeatable --field-id")
 	}
-	if BaseRecordSearch.Validate != nil {
-		t.Fatalf("record search validate should be nil for API passthrough")
+	if BaseRecordSearch.Validate == nil {
+		t.Fatalf("record search validate should reject invalid JSON before dry-run")
 	}
 	if BaseRecordGet.Validate != nil {
 		t.Fatalf("record get validate should be nil")
 	}
-	if BaseRecordUpsert.Validate != nil {
-		t.Fatalf("record upsert validate should be nil for API passthrough")
+	if BaseRecordUpsert.Validate == nil {
+		t.Fatalf("record upsert validate should reject invalid JSON before dry-run")
 	}
 }
+
 func TestBaseViewValidate(t *testing.T) {
 	ctx := context.Background()
 	if err := BaseViewCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"name":"Main"}`}, nil, nil)); err != nil {
 		t.Fatalf("create validate err=%v", err)
 	}
-	if err := BaseViewSetTimebar.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": "{"}, nil, nil)); err != nil {
-		t.Fatalf("invalid view json should bypass CLI validate, err=%v", err)
+	if err := BaseViewSetGroup.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": `[{"field":"fld_1"}]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseViewSetSort.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": `[{"field":"fld_1"}]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseViewSetTimebar.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
+		t.Fatalf("err=%v", err)
 	}
 }
