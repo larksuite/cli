@@ -39,6 +39,7 @@ type Factory struct {
 	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)
 	IdentityAutoDetected bool                    // set by ResolveAs when identity was auto-detected
 	ResolvedIdentity     core.Identity           // identity resolved by the last ResolveAs call
+	DebugEnabled         bool                    // debug mode enabled via --debug flag
 
 	Credential *credential.CredentialProvider
 
@@ -198,4 +199,14 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 		ErrOut:     errOut,
 		Credential: f.Credential,
 	}, nil
+}
+
+// Debugf writes debug output to stderr if debug mode is enabled.
+// Each debug message is prefixed with [DEBUG] to distinguish it from regular output.
+func (f *Factory) Debugf(format string, args ...interface{}) {
+	if f == nil || !f.DebugEnabled || f.IOStreams == nil {
+		return
+	}
+	msg := fmt.Sprintf("[DEBUG] "+format, args...)
+	fmt.Fprintln(f.IOStreams.ErrOut, msg)
 }
