@@ -84,10 +84,23 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// Pre-process insert_signature ops: resolve signature, interpolate, download images.
+		rawDraft, err := draftpkg.GetRaw(runtime, mailboxID, draftID)
+		if err != nil {
+			return fmt.Errorf("read draft raw EML failed: %w", err)
+		}
+		snapshot, err := draftpkg.Parse(rawDraft)
+		if err != nil {
+			return output.ErrValidation("parse draft raw EML failed: %v", err)
+		}
+		// Pre-process insert_signature ops: resolve signature using the draft's
+		// From address so alias/shared-mailbox senders get correct template vars.
+		var draftFromEmail string
+		if len(snapshot.From) > 0 {
+			draftFromEmail = snapshot.From[0].Address
+		}
 		for i := range patch.Ops {
 			if patch.Ops[i].Op == "insert_signature" {
-				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, "")
+				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, draftFromEmail)
 				if sigErr != nil {
 					return sigErr
 				}
@@ -96,14 +109,6 @@ var MailDraftEdit = common.Shortcut{
 					patch.Ops[i].SignatureImages = sigResult.Images
 				}
 			}
-		}
-		rawDraft, err := draftpkg.GetRaw(runtime, mailboxID, draftID)
-		if err != nil {
-			return fmt.Errorf("read draft raw EML failed: %w", err)
-		}
-		snapshot, err := draftpkg.Parse(rawDraft)
-		if err != nil {
-			return output.ErrValidation("parse draft raw EML failed: %v", err)
 		}
 		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
 		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
