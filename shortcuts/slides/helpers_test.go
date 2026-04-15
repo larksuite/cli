@@ -189,3 +189,116 @@ func TestReplaceImagePlaceholders(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureXMLRootID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      string
+		want    string
+		wantOut string
+		wantErr string
+	}{
+		{
+			name:    "injects id when absent on self-closing tag",
+			in:      `<shape type="rect" width="100" height="50"/>`,
+			want:    "bUn",
+			wantOut: `<shape type="rect" width="100" height="50" id="bUn"/>`,
+		},
+		{
+			name:    "injects id when absent on open tag",
+			in:      `<shape type="text"><content><p>hi</p></content></shape>`,
+			want:    "bUn",
+			wantOut: `<shape type="text" id="bUn"><content><p>hi</p></content></shape>`,
+		},
+		{
+			name:    "leaves id alone when already matching",
+			in:      `<shape id="bUn" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape id="bUn" type="rect"/>`,
+		},
+		{
+			name:    "overrides mismatched id value preserving quotes and attrs",
+			in:      `<shape id="xxx" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape id="bUn" type="rect"/>`,
+		},
+		{
+			name:    "overrides single-quoted id",
+			in:      `<shape id='xxx' type='rect'/>`,
+			want:    "bUn",
+			wantOut: `<shape id='bUn' type='rect'/>`,
+		},
+		{
+			name:    "tolerates whitespace around equals",
+			in:      `<shape id = "xxx" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape id = "bUn" type="rect"/>`,
+		},
+		{
+			name:    "tolerates leading whitespace and XML declaration",
+			in:      `<?xml version="1.0"?><shape type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<?xml version="1.0"?><shape type="rect" id="bUn"/>`,
+		},
+		{
+			name:    "does not touch nested element id",
+			in:      `<shape type="rect"><inner id="keepme"/></shape>`,
+			want:    "bUn",
+			wantOut: `<shape type="rect" id="bUn"><inner id="keepme"/></shape>`,
+		},
+		{
+			name:    "no duplicate space before injected attr",
+			in:      `<shape  type="rect" />`,
+			want:    "bUn",
+			wantOut: `<shape  type="rect" id="bUn" />`,
+		},
+		{
+			name:    "bare tag gets id injected",
+			in:      `<shape/>`,
+			want:    "bUn",
+			wantOut: `<shape id="bUn"/>`,
+		},
+		{
+			name:    "empty string errors",
+			in:      ``,
+			want:    "bUn",
+			wantErr: "no root element",
+		},
+		{
+			name:    "whitespace-only errors",
+			in:      "  \n\t  ",
+			want:    "bUn",
+			wantErr: "no root element",
+		},
+		{
+			name:    "malformed no closing angle errors",
+			in:      `<shape type="rect"`,
+			want:    "bUn",
+			wantErr: "no root element",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ensureXMLRootID(tt.in, tt.want)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("want error %q, got nil; out=%q", tt.wantErr, got)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("want error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if got != tt.wantOut {
+				t.Fatalf("got  %q\nwant %q", got, tt.wantOut)
+			}
+		})
+	}
+}

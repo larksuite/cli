@@ -12,6 +12,8 @@
 - [示例 4: 在指定页面前插入新幻灯片](#示例-4-在指定页面前插入新幻灯片)
 - [示例 5: 删除幻灯片](#示例-5-删除幻灯片)
 - [示例 6: 从文件读取 XML 后添加页面](#示例-6-从文件读取-xml-后添加页面)
+- [示例 7: +replace-slide + block_insert 给已有页加图](#示例-7-replace-slide--block_insert-给已有页加图)
+- [示例 8: +replace-slide + block_replace 替换一个块](#示例-8-replace-slide--block_replace-替换一个块)
 
 ## 示例 1: 使用 Shortcut 创建空白演示文稿
 
@@ -139,6 +141,68 @@ lark-cli slides xml_presentation.slide create --as user \
   --params "{\"xml_presentation_id\":\"$PRESENTATION_ID\"}" \
   --data "$(jq -n --arg content "$(cat slide.xml)" '{slide:{content:$content}}')"
 ```
+
+## 示例 7: +replace-slide + block_insert 给已有页加图
+
+只想在已有页上加一张图、不动其他元素——走 shortcut `+replace-slide`，`block_insert` 追加到页末（或用 `insert_before_block_id` 指定位置）。
+
+```bash
+PID="slides_example_presentation_id"
+SID="slide_example_id"
+
+# 1. 上传图片拿 file_token
+TOKEN=$(lark-cli slides +media-upload --file ./pic.png --presentation "$PID" --as user \
+  | jq -r '.data.file_token')
+
+# 2. block_insert 到页面末尾（省略 insert_before_block_id）
+lark-cli slides +replace-slide --as user \
+  --presentation "$PID" --slide-id "$SID" \
+  --parts "$(jq -n --arg token "$TOKEN" \
+    '[{action:"block_insert",insertion:("<img src=\""+$token+"\" topLeftX=\"500\" topLeftY=\"100\" width=\"200\" height=\"150\"/>")}]')"
+```
+
+预期返回：
+
+```json
+{
+  "xml_presentation_id": "slides_example_presentation_id",
+  "slide_id": "slide_example_id",
+  "parts_count": 1,
+  "revision_id": 102
+}
+```
+
+## 示例 8: +replace-slide + block_replace 替换一个块
+
+已知某块的 3 位 short element ID（从 `slide.get` 返回 XML 里读），整块换掉。`replacement` 根元素的 `id` 会由 CLI 自动注入为 `block_id`，无需手写。
+
+```bash
+lark-cli slides +replace-slide --as user \
+  --presentation slides_example_presentation_id \
+  --slide-id slide_example_id \
+  --parts '[
+    {
+      "action": "block_replace",
+      "block_id": "bab",
+      "replacement": "<shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>新标题</p></content></shape>"
+    }
+  ]' \
+  --comment "替换标题块"
+```
+
+失败时（例如 `block_id` 未命中，服务端把详情放进响应而不是抛错）：
+
+```json
+{
+  "xml_presentation_id": "slides_example_presentation_id",
+  "slide_id": "slide_example_id",
+  "parts_count": 1,
+  "failed_part_index": 0,
+  "failed_reason": "block not found"
+}
+```
+
+整批作为原子事务，任一 part 失败则整批不生效；按 `failed_part_index` 定位修正后重发。
 
 ## 常见处理技巧
 

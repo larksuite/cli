@@ -148,6 +148,76 @@ func extractImagePlaceholderPaths(slideXMLs []string) []string {
 	return paths
 }
 
+// xmlRootOpenTagRegex matches the first opening tag of an XML fragment:
+// skipping leading whitespace, XML declaration (<?...?>), and comments
+// (<!-- ... -->).
+//
+// Match groups:
+//
+//	1: leading prefix (whitespace / decl / comments) — preserved on rewrite
+//	2: tag name
+//	3: attributes span (may be empty; leading whitespace included)
+//	4: closing marker — "/>" (self-closing) or ">" (open tag)
+//
+// Regex is (?s) so "." crosses newlines; we anchor with \A so the opener
+// really is the fragment's root, not any nested <el> later in the string.
+var xmlRootOpenTagRegex = regexp.MustCompile(`(?s)\A(\s*(?:<\?[^?]*(?:\?[^>][^?]*)*\?>\s*)?(?:<!--.*?-->\s*)*)<([A-Za-z_][\w.-]*)((?:\s[^>]*?)?)(/?>)`)
+
+// xmlIdAttrRegex matches an `id="..."` or `id='...'` attribute (with
+// optional whitespace around `=`). Group 1 is the quote char, group 2 the
+// value. Case-sensitive: XML attribute names are case-sensitive and the
+// SML 2.0 schema uses lowercase `id`.
+var xmlIdAttrRegex = regexp.MustCompile(`(?s)\bid\s*=\s*(["'])(.*?)(["'])`)
+
+// ensureXMLRootID parses xmlFragment as XML, locates the root element's
+// opening tag, and ensures it carries id="want". Behavior:
+//
+//   - root has no id → inject ` id="want"` into the attributes span
+//   - root has id and value == want → returned unchanged
+//   - root has id but value != want → value overridden with want
+//
+// Whitespace, surrounding attributes, and self-closing form are preserved.
+// Nested elements are never touched. Returns an error when no root element
+// can be found (empty/malformed fragment).
+//
+// The regex approach matches the pattern used by imgSrcPlaceholderRegex
+// elsewhere in this package: preserve caller formatting instead of round-
+// tripping through encoding/xml (which reformats whitespace and loses
+// attribute order).
+func ensureXMLRootID(xmlFragment, want string) (string, error) {
+	m := xmlRootOpenTagRegex.FindStringSubmatchIndex(xmlFragment)
+	if m == nil {
+		return "", fmt.Errorf("no root element found in XML fragment")
+	}
+	prefix := xmlFragment[m[2]:m[3]]
+	tagName := xmlFragment[m[4]:m[5]]
+	attrs := xmlFragment[m[6]:m[7]]
+	closer := xmlFragment[m[8]:m[9]]
+	rest := xmlFragment[m[1]:]
+
+	// Check for existing id in the attrs span.
+	if sub := xmlIdAttrRegex.FindStringSubmatchIndex(attrs); sub != nil {
+		gotQuote := attrs[sub[2]:sub[3]]
+		gotValue := attrs[sub[4]:sub[5]]
+		if gotValue == want {
+			return xmlFragment, nil
+		}
+		// Override: replace only the value between the existing quotes.
+		newAttrs := attrs[:sub[4]] + want + attrs[sub[5]:]
+		_ = gotQuote // quote style preserved by slicing between [sub[2]:sub[3]] and [sub[5]:sub[6]]
+		return prefix + "<" + tagName + newAttrs + closer + rest, nil
+	}
+
+	// No id → inject ` id="want"` at the end of the attrs span, preserving
+	// any pre-closer whitespace (e.g. the " " in `<shape  type="rect" />`
+	// before `/>`). We split the span into (content, trailing-ws), append
+	// our attr to the content side, then put the trailing whitespace back.
+	trimmed := strings.TrimRight(attrs, " \t\n\r")
+	trailing := attrs[len(trimmed):]
+	injected := trimmed + fmt.Sprintf(` id="%s"`, want) + trailing
+	return prefix + "<" + tagName + injected + closer + rest, nil
+}
+
 // replaceImagePlaceholders rewrites <img src="@path"> occurrences in the input
 // XML by looking up each path in tokens. Paths missing from the map are left
 // untouched (callers should ensure the map is complete).
