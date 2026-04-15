@@ -84,6 +84,19 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		// Pre-process insert_signature ops: resolve signature, interpolate, download images.
+		for i := range patch.Ops {
+			if patch.Ops[i].Op == "insert_signature" {
+				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID)
+				if sigErr != nil {
+					return sigErr
+				}
+				if sigResult != nil {
+					patch.Ops[i].RenderedSignatureHTML = sigResult.RenderedContent
+					patch.Ops[i].SignatureImages = sigResult.Images
+				}
+			}
+		}
 		rawDraft, err := draftpkg.GetRaw(runtime, mailboxID, draftID)
 		if err != nil {
 			return fmt.Errorf("read draft raw EML failed: %w", err)
@@ -313,6 +326,8 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
 			{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 			{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
+			{"op": "insert_signature", "shape": map[string]interface{}{"signature_id": "string (run mail +signature to list IDs)"}},
+			{"op": "remove_signature", "shape": map[string]interface{}{}, "note": "removes existing signature from the HTML body"},
 		},
 		"supported_ops_by_group": []map[string]interface{}{
 			{
@@ -346,6 +361,13 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 					{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
 					{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 					{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
+				},
+			},
+			{
+				"group": "signature",
+				"ops": []map[string]interface{}{
+					{"op": "insert_signature", "shape": map[string]interface{}{"signature_id": "string (run mail +signature to list IDs)"}},
+					{"op": "remove_signature", "shape": map[string]interface{}{}, "note": "removes existing signature and its preceding spacing from the HTML body"},
 				},
 			},
 		},

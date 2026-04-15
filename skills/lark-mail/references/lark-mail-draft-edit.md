@@ -219,6 +219,22 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 { "op": "remove_inline", "target": { "cid": "logo" } }
 ```
 
+`insert_signature`
+
+```json
+{ "op": "insert_signature", "signature_id": "<签名ID>" }
+```
+
+插入签名到正文末尾（引用块之前）。如已有签名则先移除再插入。运行 `mail +signature` 获取可用签名 ID。签名中的模板变量会自动替换，内联图片自动下载嵌入。
+
+`remove_signature`
+
+```json
+{ "op": "remove_signature" }
+```
+
+移除草稿中的现有签名（含签名前的空行间距）。如签名包含内联图片且正文不再引用这些图片，对应的 MIME part 也会一并移除。
+
 注意事项：
 
 - `ops` 按顺序执行
@@ -228,6 +244,7 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 - **`set_body` 是完整替换** — 它替换整个正文内容（包括引用区）
 - **`set_reply_body` 仅替换引用区前面的用户撰写部分** — 引用区自动重新拼接；value 只传用户撰写内容，不要包含引用区；如果用户要修改引用区内容，用 `set_body` 全量覆盖
 - 通过 `--inspect` 返回的 `has_quoted_content` 字段可判断草稿是否包含引用区
+- 通过 `--inspect` 返回的 `has_signature` / `signature_id` 字段可判断草稿是否包含签名
 
 ## 返回值
 
