@@ -44,7 +44,7 @@ jobs:
           go test -race -coverprofile=coverage.txt -covermode=atomic $packages
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67af1571263c2de # v5
+        uses: codecov/codecov-action@3f20e214133d0983f9a10f3d63b0faf9241a3daa # v6
         with:
           files: coverage.txt
           token: ${{ secrets.CODECOV_TOKEN }}
