@@ -133,24 +133,33 @@ lark-cli slides xml_presentation.slide replace --as user --params '{
 
 ```json
 {
-  "revision_id": 105
+  "code": 0,
+  "data": {
+    "revision_id": 105
+  },
+  "msg": "success"
 }
 ```
 
 ### 失败（任一 part 失败，整批不生效）
 
+失败时返回非零错误码（如 3350001）。若后端能定位失败的 part，`data` 中可能附带：
+
 ```json
 {
-  "failed_part_index": 0,
-  "failed_reason": "block not found"
+  "code": 3350001,
+  "data": {
+    "failed_part_index": 0,
+    "failed_reason": "block not found"
+  }
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `revision_id` | integer | 成功时返回更新后最新版本号 |
-| `failed_part_index` | integer | 失败的 part 在 `parts` 数组中的索引（从 0 起） |
-| `failed_reason` | string | 失败原因 |
+| `data.revision_id` | integer | 成功时返回更新后最新版本号 |
+| `data.failed_part_index` | integer | 失败的 part 在 `parts` 数组中的索引（从 0 起） |
+| `data.failed_reason` | string | 失败原因 |
 
 ## 常见错误
 

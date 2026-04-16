@@ -61,7 +61,11 @@ lark-cli slides xml_presentation.slide delete --as user --params '{"xml_presenta
 
 ```json
 {
-  "revision_id": 100
+  "code": 0,
+  "data": {
+    "revision_id": 100
+  },
+  "msg": "success"
 }
 ```
 
@@ -69,7 +73,7 @@ lark-cli slides xml_presentation.slide delete --as user --params '{"xml_presenta
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `revision_id` | integer | 删除后的最新版本号 |
+| `data.revision_id` | integer | 删除后的最新版本号 |
 
 ## 常见错误
 
