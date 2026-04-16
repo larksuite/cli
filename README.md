@@ -66,17 +66,7 @@ npm install -g @larksuite/cli
 npx skills add larksuite/cli -y -g
 ```
 
-**Option 2 — Install via Claude Code Marketplace:**
-
-If you are using [Claude Code](https://docs.anthropic.com/en/docs/claude-code), you can install directly from the marketplace:
-
-```bash
-# In Claude Code terminal
-claude plugin marketplace add larksuite/cli
-claude plugin install lark-cli@larksuite-cli
-```
-
-**Option 3 — From source:**
+**Option 2 — From source:**
 
 Requires Go `v1.23`+ and Python 3.
 
@@ -87,6 +77,16 @@ make install
 
 # Install CLI SKILL (required)
 npx skills add larksuite/cli -y -g
+```
+
+**Option 3 — Install via Claude Code Marketplace:**
+
+If you are using [Claude Code](https://docs.anthropic.com/en/docs/claude-code), you can install directly from the marketplace:
+
+```bash
+# In Claude Code terminal
+claude plugin marketplace add larksuite/cli
+claude plugin install lark-cli@larksuite-cli
 ```
 
 #### Configure & Use

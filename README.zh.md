@@ -66,17 +66,7 @@ npm install -g @larksuite/cli
 npx skills add larksuite/cli -y -g
 ```
 
-**方式二 — 通过 Claude Code Marketplace 安装：**
-
-如果你正在使用 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)，可以直接从 Marketplace 安装：
-
-```bash
-# 在 Claude Code 终端中执行
-claude plugin marketplace add larksuite/cli
-claude plugin install lark-cli@larksuite-cli
-```
-
-**方式三 — 从源码安装：**
+**方式二 — 从源码安装：**
 
 需要 Go `v1.23`+ 和 Python 3。
 
@@ -87,6 +77,16 @@ make install
 
 # 安装 CLI SKILL（必需）
 npx skills add larksuite/cli -y -g
+```
+
+**方式三 — 通过 Claude Code Marketplace 安装：**
+
+如果你正在使用 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)，可以直接从 Marketplace 安装：
+
+```bash
+# 在 Claude Code 终端中执行
+claude plugin marketplace add larksuite/cli
+claude plugin install lark-cli@larksuite-cli
 ```
 
 #### 配置与使用
