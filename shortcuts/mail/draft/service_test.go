@@ -3,67 +3,30 @@
 
 package draft
 
-import (
-	"errors"
-	"testing"
+import "testing"
 
-	"github.com/larksuite/cli/internal/output"
-)
+func TestExtractReference(t *testing.T) {
+	t.Run("top-level reference", func(t *testing.T) {
+		data := map[string]interface{}{"reference": "https://example.com/draft/1"}
+		if got := extractReference(data); got != "https://example.com/draft/1" {
+			t.Fatalf("extractReference() = %q, want %q", got, "https://example.com/draft/1")
+		}
+	})
 
-func TestExtractAPIDataAndMeta(t *testing.T) {
-	result := map[string]interface{}{
-		"code": 0,
-		"data": map[string]interface{}{
-			"draft_id": "d_123",
-		},
-		"meta": map[string]interface{}{"source": "test"},
-	}
+	t.Run("nested draft reference", func(t *testing.T) {
+		data := map[string]interface{}{
+			"draft": map[string]interface{}{
+				"reference": "https://example.com/draft/2",
+			},
+		}
+		if got := extractReference(data); got != "https://example.com/draft/2" {
+			t.Fatalf("extractReference() = %q, want %q", got, "https://example.com/draft/2")
+		}
+	})
 
-	data, meta, err := extractAPIDataAndMeta(result, nil, "draft api")
-	if err != nil {
-		t.Fatalf("extractAPIDataAndMeta() error = %v", err)
-	}
-	if got := extractDraftID(data); got != "d_123" {
-		t.Fatalf("draft id = %q, want %q", got, "d_123")
-	}
-	if meta["source"] != "test" {
-		t.Fatalf("meta.source = %#v", meta["source"])
-	}
-}
-
-func TestExtractAPIDataAndMeta_MetaNestedUnderData(t *testing.T) {
-	result := map[string]interface{}{
-		"code": 0,
-		"data": map[string]interface{}{
-			"draft_id": "d_456",
-			"meta":     map[string]interface{}{"source": "nested"},
-		},
-	}
-
-	_, meta, err := extractAPIDataAndMeta(result, nil, "draft api")
-	if err != nil {
-		t.Fatalf("extractAPIDataAndMeta() error = %v", err)
-	}
-	if meta["source"] != "nested" {
-		t.Fatalf("meta.source = %#v", meta["source"])
-	}
-}
-
-func TestExtractAPIDataAndMeta_APIError(t *testing.T) {
-	result := map[string]interface{}{
-		"code": 999,
-		"msg":  "boom",
-	}
-
-	_, _, err := extractAPIDataAndMeta(result, nil, "draft api")
-	if err == nil {
-		t.Fatal("extractAPIDataAndMeta() error = nil, want non-nil")
-	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error should unwrap to ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAPI)
-	}
+	t.Run("missing reference", func(t *testing.T) {
+		if got := extractReference(nil); got != "" {
+			t.Fatalf("extractReference(nil) = %q, want empty string", got)
+		}
+	})
 }
