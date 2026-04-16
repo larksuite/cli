@@ -6,3 +6,6 @@ coverage:
     patch:
       default:
         target: 60%
+
+github_checks:
+  annotations: true

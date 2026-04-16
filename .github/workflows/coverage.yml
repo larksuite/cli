@@ -43,6 +43,12 @@ jobs:
           packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '^github.com/larksuite/cli/tests/cli_e2e/')
           go test -race -coverprofile=coverage.txt -covermode=atomic $packages
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@3f20e214133d0983f9a10f3d63b0faf9241a3daa # v6
+        with:
+          files: coverage.txt
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Generate coverage report
         run: |
           total=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}')

@@ -12,6 +12,15 @@ func TruncateStr(s string, n int) string {
 	return string(r[:n])
 }
 
+// ReverseStr reverses a string, safe for multi-byte (e.g. CJK) characters.
+func ReverseStr(s string) string {
+	r := []rune(s)
+	for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {
+		r[i], r[j] = r[j], r[i]
+	}
+	return string(r)
+}
+
 // TruncateStrWithEllipsis truncates s to at most n runes (including "..." suffix).
 func TruncateStrWithEllipsis(s string, n int) string {
 	r := []rune(s)
