@@ -35,16 +35,7 @@
 导出     npx -y @larksuite/whiteboard-cli@^0.2.0 -i <dir>/diagram.svg -f svg --to openapi --format json > <dir>/diagram.json
 ```
 
-`--check` 检测 `text-overflow`（error，必须修）和 `node-overlap`（warning，装饰性堆叠可忽略）。
-
-**用 Read 工具打开 PNG** 目视验收——这是质量的主要判断。问自己：这张图拿出去，是让人觉得专业的，还是觉得随便画的？
-
-### 4. 迭代
-
-- `--check` errors > 0 → 修容器宽度
-- 内容 / 布局 / 视觉不满意 → 改
-- **连续 2 轮仍有严重问题（errors 未清除 或 目视出现文字溢出/元素重叠/布局崩溃/属性错位）→ 回退 DSL**：丢弃当前所有文件，读 `routes/dsl.md`，在同一产物目录下从 Step 1 重画，不修补 SVG。
-- 满意 → 交付（`diagram.svg` / `diagram.png` / `diagram.json`）
+`npx -y @larksuite/whiteboard-cli@^0.2.0 --check` 检测 `text-overflow` 和 `node-overlap`, 并结合视觉效果(查看 PNG)进行调整
 
 ## 画板怎么处理 SVG
 

@@ -20,19 +20,7 @@ metadata:
 
 ---
 
-## 先确认你的角色
-
-> [!CAUTION]
-> **[SubAgent] 被主 Agent 委派，已持有 board_token 和内容要求**
-> → 跳过以下全部内容，直接跳至 **[§ 渲染 & 写入画板](#渲染--写入画板)** 章节执行。
-> → 执行完毕后返回 `{ "board_token": "xxx", "status": "ok" }` 或 `{ ..., "status": "failed", "error": "原因" }`。
-
-> **[主 Agent] 直接收到用户请求**
-> → 继续往下读。
-
----
-
-## 快速决策（主 Agent）
+## 快速决策
 
 | 用户需求 | 行动 |
 |---|---|
@@ -41,8 +29,8 @@ metadata:
 | 检查画板是否由代码绘制 | [`+query --output_as code`](references/lark-whiteboard-query.md) |
 | 修改节点文字/颜色（简单改动）| `+query --output_as raw` → 手动改 JSON → `+update --input_format raw` |
 | 用户**已提供** Mermaid/PlantUML 代码，或明确指定用该格式 | 自己生成/使用代码 → [`+update --input_format mermaid/plantuml`](references/lark-whiteboard-update.md) |
-| 绘制复杂图表（架构/流程/组织等）| → **[§ 创作 Workflow](#创作-workflow主-agent单个画板)** |
-| 修改/重绘已有复杂画板 | → **[§ 修改 Workflow](#修改-workflow主-agent)** |
+| 绘制复杂图表（架构/流程/组织等）| → **[§ 创作 Workflow](#创作-workflow)** |
+| 修改/重绘已有复杂画板 | → **[§ 修改 Workflow](#修改-workflow)** |
 
 > **⚠️ 强制规范（通过 stdin 更新）**：
 > 数据来源于本地文件时，**必须**使用 `--source - --input_format <格式>`。
@@ -57,10 +45,10 @@ metadata:
 
 ---
 
-## 创作 Workflow（主 Agent，单个画板）
+## 创作 Workflow
 
-> 此 workflow 用于**独立创作一个画板**（主 Agent 自己执行，无需开 subAgent）。
-> 需要在文档中批量创建多个画板时，由 lark-doc 负责调度，见 [`lark-doc references/lark-doc-whiteboard.md`](../lark-doc/references/lark-doc-whiteboard.md)。
+> 此 workflow 用于**独立创作一个画板**。
+> 需要在文档中批量创建多个画板时，由 lark-doc 负责调度，见 `lark-doc` 技能的 `references/lark-doc-whiteboard.md`。
 
 **Step 1：获取 board_token**
 
@@ -76,7 +64,7 @@ metadata:
 
 ---
 
-## 修改 Workflow（主 Agent）
+## 修改 Workflow
 
 **Step 1：获取 board_token**（同创作 Workflow Step 1）
 
@@ -95,10 +83,6 @@ metadata:
 ---
 
 ## 渲染 & 写入画板
-
-> [!NOTE]
-> **[SubAgent] 从这里开始执行。**
-> **[主 Agent 创作 Workflow Step 2] 也在这里继续。**
 
 ### 渲染路由
 
@@ -131,11 +115,7 @@ metadata:
 
 ### 产物规范
 
-| 场景 | 产物目录 |
-|---|---|
-| 主 Agent 独立执行 | `./diagrams/YYYY-MM-DDTHHMMSS/`（本地时间，不含冒号和时区后缀） |
-| SubAgent 被委派执行 | `./diagrams/board_{n}/`（n 由委派方传入，保证多个并行 subAgent 产物不冲突） |
-| 用户指定路径 | 以用户为准 |
+产物目录：`./diagrams/YYYY-MM-DDTHHMMSS/`（本地时间，不含冒号和时区后缀）。如用户指定路径，以用户为准。
 
 目录内固定文件名：
 
@@ -169,9 +149,5 @@ npx -y @larksuite/whiteboard-cli@^0.2.0 -i <产物文件> --to openapi --format 
     --yes --as user
 ```
 
-> `--idempotent-token` 最少 10 字符，建议用时间戳+标识拼接（如 `1744800000-board-2`），SubAgent 并行时用 board_n 区分，避免重试导致重复写入。
+> `--idempotent-token` 最少 10 字符，建议用时间戳+标识拼接（如 `1744800000-board-1`），避免重试导致重复写入。
 > 如需应用身份上传，将 `--as user` 替换为 `--as bot`。
-
-**SubAgent 完成后返回**：
-- 成功：`{ "board_token": "<token>", "status": "ok" }`
-- 失败：`{ "board_token": "<token>", "status": "failed", "error": "<原因>" }`
