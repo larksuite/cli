@@ -84,7 +84,10 @@ var SlidesReplaceSlide = common.Shortcut{
 		}
 		// Apply the same id-injection the real Execute does, so dry-run body
 		// shows what will actually be sent.
-		injected, _ := injectBlockReplaceIDs(parts)
+		injected, err := injectBlockReplaceIDs(parts)
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
 
 		slideID := runtime.Str("slide-id")
 		query := map[string]interface{}{

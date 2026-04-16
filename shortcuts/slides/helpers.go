@@ -251,11 +251,10 @@ func ensureShapeHasContent(xmlFragment string) string {
 	}
 
 	closeTag := "</" + tagName + ">"
-	idx := strings.LastIndex(afterOpen, closeTag)
-	if idx < 0 {
+	if !strings.Contains(afterOpen, closeTag) {
 		return xmlFragment
 	}
-	return xmlFragment[:m[1]] + "<content/>" + afterOpen[:]
+	return xmlFragment[:m[1]] + "<content/>" + afterOpen
 }
 
 // replaceImagePlaceholders rewrites <img src="@path"> occurrences in the input
