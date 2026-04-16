@@ -4,8 +4,17 @@
 package doc
 
 import (
+	"context"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestBuildCreateBlockDataUsesConcreteAppendIndex(t *testing.T) {
@@ -109,7 +118,7 @@ func TestExtractAppendTargetUsesRootChildrenCount(t *testing.T) {
 		},
 	}
 
-	blockID, index, err := extractAppendTarget(rootData, "fallback")
+	blockID, index, children, err := extractAppendTarget(rootData, "fallback")
 	if err != nil {
 		t.Fatalf("extractAppendTarget() unexpected error: %v", err)
 	}
@@ -118,6 +127,298 @@ func TestExtractAppendTargetUsesRootChildrenCount(t *testing.T) {
 	}
 	if index != 3 {
 		t.Fatalf("extractAppendTarget() index = %d, want 3", index)
+	}
+	if len(children) != 3 {
+		t.Fatalf("extractAppendTarget() children len = %d, want 3", len(children))
+	}
+}
+
+// buildLocateDocMCPResponse builds a JSON-RPC 2.0 response for a locate-doc MCP call.
+func buildLocateDocMCPResponse(matches []map[string]interface{}) map[string]interface{} {
+	resultJSON, _ := json.Marshal(map[string]interface{}{"matches": matches})
+	return map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "test-id",
+		"result": map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": string(resultJSON),
+				},
+			},
+		},
+	}
+}
+
+func registerInsertWithSelectionStubs(reg interface {
+	Register(*httpmock.Stub)
+}, docID, anchorBlockID, parentBlockID string) {
+	// Root block
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": docID,
+					"children": []interface{}{"blk_a", "blk_b"},
+				},
+			},
+		},
+	})
+	// MCP locate-doc
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "mcp.feishu.cn/mcp",
+		Body: buildLocateDocMCPResponse([]map[string]interface{}{
+			{"anchor_block_id": anchorBlockID, "parent_block_id": parentBlockID},
+		}),
+	})
+	// Create block
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID + "/children",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"children": []interface{}{
+					map[string]interface{}{"block_id": "blk_new", "block_type": 27, "image": map[string]interface{}{}},
+				},
+			},
+		},
+	})
+	// Upload
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "ftok_test"},
+		},
+	})
+	// Batch update
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/batch_update",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	})
+}
+
+// TestLocateInsertIndexAfterModeViaExecute verifies that --selection-with-ellipsis
+// inserts after the matched root-level block (index = root index + 1).
+func TestLocateInsertIndexAfterModeViaExecute(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-after-app"))
+	registerInsertWithSelectionStubs(reg, "doxcnSEL", "blk_a", "doxcnSEL")
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "doxcnSEL",
+		"--file", "img.png",
+		"--selection-with-ellipsis", "Introduction",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+}
+
+// TestLocateInsertIndexBeforeModeViaExecute verifies that --before inserts before
+// the matched root-level block.
+func TestLocateInsertIndexBeforeModeViaExecute(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-before-app"))
+	registerInsertWithSelectionStubs(reg, "doxcnSEL2", "blk_b", "doxcnSEL2")
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "doxcnSEL2",
+		"--file", "img.png",
+		"--selection-with-ellipsis", "Architecture",
+		"--before",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+}
+
+// TestLocateInsertIndexNestedBlockViaExecute verifies that a nested block's
+// parent_block_id hint is used to walk to the root-level ancestor.
+func TestLocateInsertIndexNestedBlockViaExecute(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-nested-app"))
+
+	docID := "doxcnNESTED"
+	// Root block with blk_section and blk_other as children
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": docID,
+					"children": []interface{}{"blk_section", "blk_other"},
+				},
+			},
+		},
+	})
+	// MCP locate-doc returns blk_child nested under blk_section
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "mcp.feishu.cn/mcp",
+		Body: buildLocateDocMCPResponse([]map[string]interface{}{
+			{"anchor_block_id": "blk_child", "parent_block_id": "blk_section"},
+		}),
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID + "/children",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"children": []interface{}{
+					map[string]interface{}{"block_id": "blk_new", "block_type": 27, "image": map[string]interface{}{}},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "ftok_nested"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/batch_update",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", docID,
+		"--file", "img.png",
+		"--selection-with-ellipsis", "nested content",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+}
+
+// TestLocateInsertIndexNoMatchReturnsError verifies that when locate-doc returns
+// no matches, Execute returns a descriptive error.
+func TestLocateInsertIndexNoMatchReturnsError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-nomatch-app"))
+
+	docID := "doxcnNOMATCH"
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": docID,
+					"children": []interface{}{"blk_a"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "mcp.feishu.cn/mcp",
+		Body:   buildLocateDocMCPResponse([]map[string]interface{}{}),
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	writeSizedDocTestFile(t, "img.png", 100)
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", docID,
+		"--file", "img.png",
+		"--selection-with-ellipsis", "nonexistent text",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected no-match error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no_match") && !strings.Contains(err.Error(), "did not find") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestLocateInsertIndexDryRunIncludesMCPStep verifies that the dry-run output
+// includes a locate-doc MCP step when --selection-with-ellipsis is provided.
+func TestLocateInsertIndexDryRunIncludesMCPStep(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "docs +media-insert"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("doc", "", "")
+	cmd.Flags().String("type", "image", "")
+	cmd.Flags().String("align", "", "")
+	cmd.Flags().String("caption", "", "")
+	cmd.Flags().String("selection-with-ellipsis", "", "")
+	cmd.Flags().Bool("before", false, "")
+	_ = cmd.Flags().Set("file", "img.png")
+	_ = cmd.Flags().Set("doc", "doxcnABCDEF")
+	_ = cmd.Flags().Set("selection-with-ellipsis", "Introduction")
+
+	rt := common.TestNewRuntimeContext(cmd, docsTestConfigWithAppID("dry-run-app"))
+	dryAPI := DocMediaInsert.DryRun(context.Background(), rt)
+	raw, _ := json.Marshal(dryAPI)
+
+	var dry struct {
+		Description string `json:"description"`
+		API         []struct {
+			Desc string                 `json:"desc"`
+			URL  string                 `json:"url"`
+			Body map[string]interface{} `json:"body"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(raw, &dry); err != nil {
+		t.Fatalf("decode dry-run: %v", err)
+	}
+
+	foundMCP := false
+	for _, step := range dry.API {
+		if strings.Contains(step.Desc, "locate-doc") {
+			foundMCP = true
+		}
+	}
+	if !foundMCP {
+		t.Fatalf("dry-run should include a locate-doc step, got: %+v", dry.API)
+	}
+	if !strings.Contains(dry.Description, "locate-doc") {
+		t.Fatalf("dry-run description should mention 'locate-doc', got: %s", dry.Description)
+	}
+
+	// Verify create-block step shows <locate_index> not <children_len>
+	for _, step := range dry.API {
+		if strings.Contains(step.URL, "/children") && step.Body != nil {
+			if idx, ok := step.Body["index"]; ok {
+				if idx != "<locate_index>" {
+					t.Fatalf("create-block index in selection mode = %q, want <locate_index>", idx)
+				}
+			}
+		}
 	}
 }
 

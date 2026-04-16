@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
@@ -23,7 +24,7 @@ var alignMap = map[string]int{
 var DocMediaInsert = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-insert",
-	Description: "Insert a local image or file at the end of a Lark document (4-step orchestration + auto-rollback)",
+	Description: "Insert a local image or file into a Lark document (4-step orchestration + auto-rollback); appends to end by default, or inserts relative to a text selection with --selection-with-ellipsis",
 	Risk:        "write",
 	Scopes:      []string{"docs:document.media:upload", "docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
@@ -33,6 +34,8 @@ var DocMediaInsert = common.Shortcut{
 		{Name: "type", Default: "image", Desc: "type: image | file"},
 		{Name: "align", Desc: "alignment: left | center | right"},
 		{Name: "caption", Desc: "image caption text"},
+		{Name: "selection-with-ellipsis", Desc: "plain text (or 'start...end') that identifies the target block; the media is inserted after that block by default"},
+		{Name: "before", Type: "bool", Desc: "insert before the matched block instead of after (requires --selection-with-ellipsis)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		docRef, err := parseDocumentRef(runtime.Str("doc"))
@@ -41,6 +44,9 @@ var DocMediaInsert = common.Shortcut{
 		}
 		if docRef.Kind == "doc" {
 			return output.ErrValidation("docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx")
+		}
+		if runtime.Bool("before") && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) == "" {
+			return output.ErrValidation("--before requires --selection-with-ellipsis")
 		}
 		return nil
 	},
@@ -55,29 +61,70 @@ var DocMediaInsert = common.Shortcut{
 		filePath := runtime.Str("file")
 		mediaType := runtime.Str("type")
 		caption := runtime.Str("caption")
+		selection := strings.TrimSpace(runtime.Str("selection-with-ellipsis"))
+		hasSelection := selection != ""
 
 		parentType := parentTypeForMediaType(mediaType)
 		createBlockData := buildCreateBlockData(mediaType, 0)
-		createBlockData["index"] = "<children_len>"
+		if hasSelection {
+			createBlockData["index"] = "<locate_index>"
+		} else {
+			createBlockData["index"] = "<children_len>"
+		}
 		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption)
 
 		d := common.NewDryRunAPI()
+		totalSteps := 4
+		if docRef.Kind == "wiki" {
+			totalSteps++
+		}
+		if hasSelection {
+			totalSteps++
+		}
+
+		positionLabel := map[bool]string{true: "before", false: "after"}[runtime.Bool("before")]
+
 		if docRef.Kind == "wiki" {
 			documentID = "<resolved_docx_token>"
 			stepBase = 2
-			d.Desc("5-step orchestration: resolve wiki → query root → create block → upload file → bind to block (auto-rollback on failure)").
+			d.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → query root →%s create block → upload file → bind to block (auto-rollback on failure)",
+				totalSteps, map[bool]string{true: " locate-doc →", false: ""}[hasSelection])).
 				GET("/open-apis/wiki/v2/spaces/get_node").
 				Desc("[1] Resolve wiki node to docx document").
 				Params(map[string]interface{}{"token": docRef.Token})
 		} else {
-			d.Desc("4-step orchestration: query root → create block → upload file → bind to block (auto-rollback on failure)")
+			d.Desc(fmt.Sprintf("%d-step orchestration: query root →%s create block → upload file → bind to block (auto-rollback on failure)",
+				totalSteps, map[bool]string{true: " locate-doc →", false: ""}[hasSelection]))
 		}
 
 		d.
 			GET("/open-apis/docx/v1/documents/:document_id/blocks/:document_id").
-			Desc(fmt.Sprintf("[%d] Get document root block", stepBase)).
+			Desc(fmt.Sprintf("[%d] Get document root block", stepBase))
+
+		if hasSelection {
+			mcpEndpoint := common.MCPEndpoint(runtime.Config.Brand)
+			mcpArgs := map[string]interface{}{
+				"doc_id":                  documentID,
+				"selection_with_ellipsis": selection,
+				"limit":                   1,
+			}
+			d.POST(mcpEndpoint).
+				Desc(fmt.Sprintf("[%d] MCP locate-doc: find block matching selection (%s)", stepBase+1, positionLabel)).
+				Body(map[string]interface{}{
+					"method": "tools/call",
+					"params": map[string]interface{}{
+						"name":      "locate-doc",
+						"arguments": mcpArgs,
+					},
+				}).
+				Set("mcp_tool", "locate-doc").
+				Set("args", mcpArgs)
+			stepBase++
+		}
+
+		d.
 			POST("/open-apis/docx/v1/documents/:document_id/blocks/:document_id/children").
-			Desc(fmt.Sprintf("[%d] Create empty block at document end", stepBase+1)).
+			Desc(fmt.Sprintf("[%d] Create empty block at target position", stepBase+1)).
 			Body(createBlockData)
 		appendDocMediaInsertUploadDryRun(d, runtime.FileIO(), filePath, parentType, stepBase+2)
 		d.PATCH("/open-apis/docx/v1/documents/:document_id/blocks/batch_update").
@@ -121,13 +168,29 @@ var DocMediaInsert = common.Shortcut{
 			return err
 		}
 
-		parentBlockID, insertIndex, err := extractAppendTarget(rootData, documentID)
+		parentBlockID, insertIndex, rootChildren, err := extractAppendTarget(rootData, documentID)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(runtime.IO().ErrOut, "Root block ready: %s (%d children)\n", parentBlockID, insertIndex)
 
-		// Step 2: Create an empty block at the end of the document
+		selection := strings.TrimSpace(runtime.Str("selection-with-ellipsis"))
+		if selection != "" {
+			before := runtime.Bool("before")
+			fmt.Fprintf(runtime.IO().ErrOut, "Locating block matching selection: %q\n", selection)
+			idx, err := locateInsertIndex(runtime, documentID, selection, rootChildren, before)
+			if err != nil {
+				return err
+			}
+			insertIndex = idx
+			posLabel := "after"
+			if before {
+				posLabel = "before"
+			}
+			fmt.Fprintf(runtime.IO().ErrOut, "locate-doc matched: inserting %s at index %d\n", posLabel, insertIndex)
+		}
+
+		// Step 2: Create an empty block at the target position
 		fmt.Fprintf(runtime.IO().ErrOut, "Creating block at index %d\n", insertIndex)
 
 		createData, err := runtime.CallAPI("POST",
@@ -299,19 +362,116 @@ func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption strin
 	}
 }
 
-func extractAppendTarget(rootData map[string]interface{}, fallbackBlockID string) (string, int, error) {
+func extractAppendTarget(rootData map[string]interface{}, fallbackBlockID string) (parentBlockID string, insertIndex int, children []interface{}, err error) {
 	block, _ := rootData["block"].(map[string]interface{})
 	if len(block) == 0 {
-		return "", 0, output.Errorf(output.ExitAPI, "api_error", "failed to query document root block")
+		return "", 0, nil, output.Errorf(output.ExitAPI, "api_error", "failed to query document root block")
 	}
 
-	parentBlockID := fallbackBlockID
+	parentBlockID = fallbackBlockID
 	if blockID, _ := block["block_id"].(string); blockID != "" {
 		parentBlockID = blockID
 	}
 
-	children, _ := block["children"].([]interface{})
-	return parentBlockID, len(children), nil
+	children, _ = block["children"].([]interface{})
+	return parentBlockID, len(children), children, nil
+}
+
+// locateInsertIndex uses the MCP locate-doc tool to find the root-level index
+// at which to insert relative to the block matching selection. It walks the
+// parent_id chain (using single-block GET calls when needed) to resolve nested
+// blocks to their top-level ancestor in rootChildren.
+func locateInsertIndex(runtime *common.RuntimeContext, documentID string, selection string, rootChildren []interface{}, before bool) (int, error) {
+	args := map[string]interface{}{
+		"doc_id":                  documentID,
+		"selection_with_ellipsis": selection,
+		"limit":                   1,
+	}
+	result, err := common.CallMCPTool(runtime, "locate-doc", args)
+	if err != nil {
+		return 0, err
+	}
+
+	matches := common.GetSlice(result, "matches")
+	if len(matches) == 0 {
+		return 0, output.ErrWithHint(
+			output.ExitValidation,
+			"no_match",
+			fmt.Sprintf("locate-doc did not find any block matching selection %q", selection),
+			"check spelling or use 'start...end' syntax to narrow the selection",
+		)
+	}
+
+	matchMap, _ := matches[0].(map[string]interface{})
+	anchorBlockID := common.GetString(matchMap, "anchor_block_id")
+	if anchorBlockID == "" {
+		// Fall back to first block entry if anchor_block_id is absent.
+		blocks := common.GetSlice(matchMap, "blocks")
+		if len(blocks) > 0 {
+			if b, ok := blocks[0].(map[string]interface{}); ok {
+				anchorBlockID = common.GetString(b, "block_id")
+			}
+		}
+	}
+	if anchorBlockID == "" {
+		return 0, output.Errorf(output.ExitAPI, "api_error", "locate-doc response missing anchor_block_id")
+	}
+	parentBlockID := common.GetString(matchMap, "parent_block_id")
+
+	// Build root children set for O(1) lookup.
+	rootSet := make(map[string]int, len(rootChildren))
+	for i, c := range rootChildren {
+		if id, ok := c.(string); ok {
+			rootSet[id] = i
+		}
+	}
+
+	// Walk up the parent chain. locate-doc already gives us one level of parent,
+	// so most cases need zero extra API calls.
+	cur := anchorBlockID
+	nextParent := parentBlockID
+	visited := map[string]bool{}
+	const maxDepth = 8
+	for depth := 0; depth < maxDepth; depth++ {
+		if visited[cur] {
+			break
+		}
+		visited[cur] = true
+
+		if idx, ok := rootSet[cur]; ok {
+			if before {
+				return idx, nil
+			}
+			return idx + 1, nil
+		}
+
+		// Advance: use the parent hint we already have, or fetch from API.
+		parent := nextParent
+		nextParent = "" // clear hint after first use
+		if parent == "" || parent == cur {
+			// Need to fetch this block to find its parent.
+			data, err := runtime.CallAPI("GET",
+				fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s",
+					validate.EncodePathSegment(documentID), validate.EncodePathSegment(cur)),
+				nil, nil)
+			if err != nil {
+				return 0, err
+			}
+			block := common.GetMap(data, "block")
+			parent = common.GetString(block, "parent_id")
+		}
+		if parent == "" || parent == cur {
+			break
+		}
+		cur = parent
+	}
+
+	return 0, output.ErrWithHint(
+		output.ExitValidation,
+		"block_not_reachable",
+		fmt.Sprintf("block matching selection %q is not reachable from document root", selection),
+		"try a top-level heading or paragraph as the selection",
+	)
 }
 
 func extractCreatedBlockTargets(createData map[string]interface{}, mediaType string) (blockID, uploadParentNode, replaceBlockID string) {
