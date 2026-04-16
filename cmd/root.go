@@ -325,7 +325,7 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	}
 
 	// Build admin console URL with the recommended scope
-	host := "open.feishu.cn"
+	host := "open.feishu-pre.cn"
 	if cfg.Brand == "lark" {
 		host = "open.larksuite.com"
 	}
