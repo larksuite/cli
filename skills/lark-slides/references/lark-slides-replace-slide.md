@@ -55,7 +55,7 @@ lark-cli slides +replace-slide --as user \
 
 ## parts 元素结构
 
-> **限制**：单次 `--parts` 中所有条目必须是同一种 action（全 `block_replace` 或全 `block_insert`），混合会触发 3350001，需拆为两次调用。最多 200 条。**其他 action（含 `str_replace`）CLI 会直接报错拒绝**。
+> **限制**：最多 200 条；`block_replace` 和 `block_insert` 可以在同一批次混用。**其他 action（含 `str_replace`）CLI 会直接报错拒绝**。
 
 每条 part 按 `action` 取不同字段：
 
@@ -129,23 +129,17 @@ lark-cli slides +replace-slide --as user \
   --parts '[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>新标题</p></content></shape>"}]'
 ```
 
-### 批量同类 action：一次替换多个块
+### 批量：一次换标题 + 追加装饰图
 
-同类 action 可以放进一个 `--parts` 批量执行（原子事务）。**不同 action 不能混用**——例如"换标题（`block_replace`）+ 加图（`block_insert`）"需要拆成两次调用。
+`block_replace` 和 `block_insert` 可以在同一个 `--parts` 里混用，整批原子执行。
 
 ```bash
-# 同一批次只做 block_replace：一次替换标题块 + 正文块
 lark-cli slides +replace-slide --as user \
   --presentation "$PID" --slide-id "$SID" \
   --parts '[
     {"action":"block_replace","block_id":"bab","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>新标题</p></content></shape>"},
-    {"action":"block_replace","block_id":"bac","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"220\" width=\"800\" height=\"120\"><content textType=\"body\"><p>副标题</p></content></shape>"}
+    {"action":"block_insert","insertion":"<img src=\"<file_token>\" topLeftX=\"700\" topLeftY=\"400\" width=\"180\" height=\"100\"/>"}
   ]'
-
-# 若还需追加图片，再单独发一次 block_insert
-lark-cli slides +replace-slide --as user \
-  --presentation "$PID" --slide-id "$SID" \
-  --parts '[{"action":"block_insert","insertion":"<img src=\"<file_token>\" topLeftX=\"700\" topLeftY=\"400\" width=\"180\" height=\"100\"/>"}]'
 ```
 
 ### 乐观锁
@@ -172,7 +166,7 @@ lark-cli slides +replace-slide --as user \
 | `--parts contains N items, exceeds maximum of 200` | 一次提交 parts 太多 | 拆多次调用 |
 | `--parts[i] (block_replace) requires non-empty block_id` / `replacement` | 字段缺失 | 按 parts 元素结构补齐 |
 | `<img>` 不显示 / 显示破图 | `src` 写了外链 URL | 换成通过 [`+media-upload`](lark-slides-media-upload.md) 拿到的 `file_token` |
-| 3350001 | `replacement` 不是合法单根 XML 片段，或 `block_id` 不存在 | CLI 已自动注入 `id` 和 `<content/>`；如果仍报错，重新 `slide.get` 拿最新 XML 确认 `block_id` 存在；检查 XML 结构是否合法；注意混合 `block_replace`+`block_insert` 不支持，需拆分 |
+| 3350001 | `replacement` 不是合法单根 XML 片段，或 `block_id` 不存在 | CLI 已自动注入 `id` 和 `<content/>`；如果仍报错，重新 `slide.get` 拿最新 XML 确认 `block_id` 存在；检查 XML 结构是否合法；坐标是否超出 960×540 |
 | 403 | 权限不足 | 需要 `slides:presentation:update` 或 `slides:presentation:write_only`；wiki URL 还需要 `wiki:node:read` |
 
 ## 相关命令

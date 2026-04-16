@@ -480,9 +480,12 @@ func TestReplaceSlide3350001ErrorEnrichment(t *testing.T) {
 			wantHint: "common causes",
 		},
 		{
-			name:     "mixed actions gets specific hint",
+			// Mixed block_replace+block_insert is supported by the backend
+			// (empirically verified). A 3350001 in a mixed batch means something
+			// else went wrong (bad block_id, invalid XML, etc.) — use generic hint.
+			name:     "mixed actions gets generic hint",
 			parts:    `[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"rect\"><content/></shape>"},{"action":"block_insert","insertion":"<shape type=\"rect\"><content/></shape>"}]`,
-			wantHint: "mixed block_replace+block_insert",
+			wantHint: "common causes",
 		},
 		{
 			name:     "block_insert only gets generic hint",

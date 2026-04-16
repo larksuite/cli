@@ -272,23 +272,12 @@ func enrichSlidesReplaceError(err error, parts []replacePart) error {
 }
 
 // buildSlides3350001Hint produces a context-aware hint for 3350001 based on
-// the parts that were submitted. It checks for known patterns that cause this
-// error and returns specific guidance; if nothing matches, it returns a
-// generic checklist.
+// the parts that were submitted. It returns a generic checklist covering the
+// most common root causes of this error.
+//
+// Note: mixed block_replace+block_insert batches are supported by the backend
+// and do NOT cause 3350001 by themselves, so we no longer hint to split them.
 func buildSlides3350001Hint(parts []replacePart) string {
-	hasBlockReplace := false
-	hasBlockInsert := false
-	for _, p := range parts {
-		if p.Action == "block_replace" {
-			hasBlockReplace = true
-		}
-		if p.Action == "block_insert" {
-			hasBlockInsert = true
-		}
-	}
-	if hasBlockReplace && hasBlockInsert {
-		return "mixed block_replace+block_insert in a single batch is not supported — split into separate calls with same-action parts"
-	}
 	return "common causes: (1) block_id not found in current slide — re-run slide.get for latest XML; (2) invalid XML structure or unsupported element; (3) element coordinates exceed slide bounds (960×540)"
 }
 

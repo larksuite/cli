@@ -136,7 +136,7 @@ SKILL.md 做了大幅精简重组，把原来内嵌的 Workflow / 布局建议 /
 |---|------|----------------|
 | 22 | 单纯 `block_replace` 触发 3350001 | `common causes`（block_id 不存在 / 坐标越界等） |
 | 23 | 单纯 `block_insert` 触发 3350001 | `common causes` |
-| 24 | mixed `block_replace` + `block_insert` 触发 3350001 | `mixed block_replace+block_insert` |
+| 24 | mixed `block_replace` + `block_insert`（block_id 无效）触发 3350001 | `common causes`（后端支持混用，3350001 仅因 block_id / XML 无效触发，hint 与纯 block_replace 相同） |
 | 25 | 其他错误码（非 3350001） | 不附加 slides 专属 hint |
 
 ### 4.7 dry-run
