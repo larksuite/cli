@@ -94,8 +94,12 @@ lark-cli slides xml_presentation.slide create --as user --params '{
 
 ```json
 {
-  "slide_id": "slide_example_id",
-  "revision_id": 100
+  "code": 0,
+  "data": {
+    "slide_id": "slide_example_id",
+    "revision_id": 100
+  },
+  "msg": "success"
 }
 ```
 
@@ -112,7 +116,11 @@ lark-cli slides xml_presentation.slide delete --as user --params '{
 
 ```json
 {
-  "revision_id": 101
+  "code": 0,
+  "data": {
+    "revision_id": 101
+  },
+  "msg": "success"
 }
 ```
 
@@ -170,10 +178,13 @@ lark-cli slides +replace-slide --as user \
 
 ```json
 {
-  "xml_presentation_id": "slides_example_presentation_id",
-  "slide_id": "slide_example_id",
-  "parts_count": 1,
-  "revision_id": 102
+  "ok": true,
+  "data": {
+    "xml_presentation_id": "slides_example_presentation_id",
+    "slide_id": "slide_example_id",
+    "parts_count": 1,
+    "revision_id": 102
+  }
 }
 ```
 
@@ -196,15 +207,17 @@ lark-cli slides +replace-slide --as user \
 # CLI 实际发送的 replacement 根元素会带 id="bab"，即使手写时省略了
 ```
 
-失败时（例如 `block_id` 未命中，服务端把详情放进响应而不是抛错）：
+失败时（3350001 错误，CLI 在 error 字段中给出 hint）：
 
 ```json
 {
-  "xml_presentation_id": "slides_example_presentation_id",
-  "slide_id": "slide_example_id",
-  "parts_count": 1,
-  "failed_part_index": 0,
-  "failed_reason": "block not found"
+  "ok": false,
+  "error": {
+    "type": "api_error",
+    "code": 3350001,
+    "message": "API error: [3350001] invalid param",
+    "hint": "common causes: (1) block_id not found in current slide ..."
+  }
 }
 ```
 
