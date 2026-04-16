@@ -242,31 +242,59 @@ $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
 	return data, nil
 }
 
+// pngMagic is the 8-byte PNG signature used to validate clipboard output from
+// tools that cannot negotiate MIME types (e.g. xsel).
+var pngMagic = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+
+func hasPNGMagic(b []byte) bool {
+	return len(b) >= len(pngMagic) && string(b[:len(pngMagic)]) == string(pngMagic)
+}
+
 // readClipboardLinux tries xclip (X11), wl-paste (Wayland), and xsel (X11)
 // in order, returning the PNG bytes from the first available tool.
+//
+// xclip and wl-paste request the image/png MIME type directly; xsel cannot
+// negotiate MIME types so its output is validated against the PNG magic header.
+// If a tool is present but fails or returns non-PNG data, the error is
+// preserved so users see a meaningful message instead of "no tool found".
 func readClipboardLinux() ([]byte, error) {
 	type tool struct {
-		name string
-		args []string
+		name        string
+		args        []string
+		validatePNG bool // true when the tool cannot request image/png by MIME
 	}
 	tools := []tool{
-		{"xclip", []string{"-selection", "clipboard", "-t", "image/png", "-o"}},
-		{"wl-paste", []string{"--type", "image/png"}},
-		{"xsel", []string{"--clipboard", "--output"}},
+		{"xclip", []string{"-selection", "clipboard", "-t", "image/png", "-o"}, false},
+		{"wl-paste", []string{"--type", "image/png"}, false},
+		{"xsel", []string{"--clipboard", "--output"}, true},
 	}
 
+	var lastErr error
+	foundTool := false
 	for _, t := range tools {
 		if _, lookErr := exec.LookPath(t.name); lookErr != nil {
 			continue
 		}
+		foundTool = true
 		out, err := exec.Command(t.name, t.args...).Output()
-		if err != nil || len(out) == 0 {
-			// Tool found but returned nothing — try the next one.
+		if err != nil {
+			lastErr = fmt.Errorf("clipboard image read failed via %s: %w", t.name, err)
+			continue
+		}
+		if len(out) == 0 {
+			lastErr = fmt.Errorf("clipboard contains no image data (%s returned empty output)", t.name)
+			continue
+		}
+		if t.validatePNG && !hasPNGMagic(out) {
+			lastErr = fmt.Errorf("clipboard contains no PNG image data (%s output is not a PNG)", t.name)
 			continue
 		}
 		return out, nil
 	}
 
+	if foundTool && lastErr != nil {
+		return nil, lastErr
+	}
 	return nil, fmt.Errorf(
 		"clipboard image read failed: no supported tool found\n" +
 			"  X11:    sudo apt install xclip   (or: sudo yum install xclip)\n" +

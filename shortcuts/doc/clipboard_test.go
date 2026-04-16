@@ -144,6 +144,25 @@ func TestReBase64DataURI_Match(t *testing.T) {
 	}
 }
 
+func TestReBase64DataURI_URLSafeMatch(t *testing.T) {
+	// URL-safe base64 uses '-' and '_' instead of '+' and '/'.
+	// Construct a payload that contains both characters.
+	// base64url of 0xFB 0xFF 0xFE → "-__-" in URL-safe alphabet.
+	urlSafePayload := "-__-"
+	html := `<img src="data:image/jpeg;base64,` + urlSafePayload + `">`
+
+	m := reBase64DataURI.FindSubmatch([]byte(html))
+	if m == nil {
+		t.Fatal("expected regex to match URL-safe base64 data URI")
+	}
+	if string(m[1]) != "image/jpeg" {
+		t.Errorf("mime type = %q, want %q", m[1], "image/jpeg")
+	}
+	if string(m[2]) != urlSafePayload {
+		t.Errorf("URL-safe base64 payload = %q, want %q", m[2], urlSafePayload)
+	}
+}
+
 func TestReBase64DataURI_NoMatch(t *testing.T) {
 	if reBase64DataURI.Match([]byte("no image here")) {
 		t.Error("expected no match for plain text")

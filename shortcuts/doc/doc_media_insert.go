@@ -30,7 +30,7 @@ var DocMediaInsert = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)"},
-		{Name: "from-clipboard", Type: "bool", Desc: "read image from system clipboard instead of a local file (macOS/Windows built-in; Linux requires xclip or wl-paste)"},
+		{Name: "from-clipboard", Type: "bool", Desc: "read image from system clipboard instead of a local file (macOS/Windows built-in; Linux requires xclip, xsel or wl-paste)"},
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: "image", Desc: "type: image | file"},
 		{Name: "align", Desc: "alignment: left | center | right"},
