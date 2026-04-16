@@ -296,7 +296,7 @@ metadata:
 - 删除记录 / 字段 / 表时，如果用户已经明确说要删除，且目标明确，`+record-delete / +field-delete / +table-delete` 可直接执行，并带 `--yes`。
 - 删除目标仍有歧义时，先用 `+record-get / +field-get / +table-get` 或相应 list 命令确认。
 - `+base-create / +base-copy` 成功后，回复中必须主动返回新 Base 的标识信息；若结果带可访问链接，也应一并返回。
-- 若 Base 由 bot 身份创建且当前 CLI 存在可用 user 身份，优先继续补授当前 user 为 `full_access`；owner 转移必须单独确认，禁止擅自执行。
+- 若 Base 由 bot 身份创建或复制，shortcut 会自动尝试为当前 CLI 用户补授 `full_access`，并在输出中返回 `permission_grant`；agent 不需要再手动编排单独授权。owner 转移必须单独确认，禁止擅自执行。
 
 ## 5. 常见错误与恢复
 

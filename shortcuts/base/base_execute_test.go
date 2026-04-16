@@ -6,6 +6,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,12 +20,16 @@ import (
 )
 
 func newExecuteFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *httpmock.Registry) {
+	return newExecuteFactoryWithUserOpenID(t, "ou_testuser")
+}
+
+func newExecuteFactoryWithUserOpenID(t *testing.T, userOpenID string) (*cmdutil.Factory, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	config := &core.CliConfig{
 		AppID:      "test-app-" + strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-"),
 		AppSecret:  "test-secret",
 		Brand:      core.BrandFeishu,
-		UserOpenId: "ou_testuser",
+		UserOpenId: userOpenID,
 	}
 	factory, stdout, _, reg := cmdutil.TestFactory(t, config)
 	return factory, stdout, reg
@@ -48,7 +53,14 @@ func withBaseWorkingDir(t *testing.T, dir string) {
 
 func runShortcut(t *testing.T, shortcut common.Shortcut, args []string, factory *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
-	shortcut.AuthTypes = []string{"bot"}
+	return runShortcutWithAuthTypes(t, shortcut, []string{"bot"}, args, factory, stdout)
+}
+
+func runShortcutWithAuthTypes(t *testing.T, shortcut common.Shortcut, authTypes []string, args []string, factory *cmdutil.Factory, stdout *bytes.Buffer) error {
+	t.Helper()
+	if authTypes != nil {
+		shortcut.AuthTypes = authTypes
+	}
 	parent := &cobra.Command{Use: "base"}
 	shortcut.Mount(parent, factory)
 	parent.SetArgs(args)
@@ -60,6 +72,14 @@ func runShortcut(t *testing.T, shortcut common.Shortcut, args []string, factory 
 
 func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
+	permStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/app_x/members",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+		},
+	}
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases",
@@ -68,11 +88,32 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
 		},
 	})
+	reg.Register(permStub)
 	if err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo Base", "--folder-token", "fld_x", "--time-zone", "Asia/Shanghai"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"app_token": "app_x"`) {
-		t.Fatalf("stdout=%s", got)
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true {
+		t.Fatalf("created = %#v, want true", data["created"])
+	}
+	base, _ := data["base"].(map[string]interface{})
+	if got := common.GetString(base, "app_token"); got != "app_x" {
+		t.Fatalf("base.app_token = %q, want %q", got, "app_x")
+	}
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantGranted {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantGranted)
+	}
+	if grant["user_open_id"] != "ou_testuser" {
+		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_testuser")
+	}
+	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new base." {
+		t.Fatalf("permission_grant.message = %#v", grant["message"])
+	}
+
+	body := decodeCapturedJSONBody(t, permStub)
+	if body["member_type"] != "openid" || body["member_id"] != "ou_testuser" || body["perm"] != "full_access" || body["type"] != "user" {
+		t.Fatalf("unexpected permission request body: %#v", body)
 	}
 }
 
@@ -97,6 +138,14 @@ func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 
 	t.Run("copy", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
+		permStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/permissions/app_new/members",
+			Body: map[string]interface{}{
+				"code": 0,
+				"msg":  "ok",
+			},
+		}
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_src/copy",
@@ -105,14 +154,243 @@ func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 				"data": map[string]interface{}{"base_token": "app_new", "name": "Copied Base", "url": "https://example.com/base/app_new"},
 			},
 		})
+		reg.Register(permStub)
 		args := []string{"+base-copy", "--base-token", "app_src", "--name", "Copied Base", "--folder-token", "fld_x", "--time-zone", "Asia/Shanghai", "--without-content"}
 		if err := runShortcut(t, BaseBaseCopy, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"copied": true`) || !strings.Contains(got, `"app_new"`) {
+		data := decodeBaseEnvelope(t, stdout)
+		if data["copied"] != true {
+			t.Fatalf("copied = %#v, want true", data["copied"])
+		}
+		base, _ := data["base"].(map[string]interface{})
+		if got := common.GetString(base, "base_token"); got != "app_new" {
+			t.Fatalf("base.base_token = %q, want %q", got, "app_new")
+		}
+		grant, _ := data["permission_grant"].(map[string]interface{})
+		if grant["status"] != common.PermissionGrantGranted {
+			t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantGranted)
+		}
+		if grant["user_open_id"] != "ou_testuser" {
+			t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_testuser")
+		}
+
+		body := decodeCapturedJSONBody(t, permStub)
+		if body["member_type"] != "openid" || body["member_id"] != "ou_testuser" || body["perm"] != "full_access" || body["type"] != "user" {
+			t.Fatalf("unexpected permission request body: %#v", body)
+		}
+	})
+}
+
+func TestBaseWorkspaceExecuteCreateBotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
+	factory, stdout, reg := newExecuteFactoryWithUserOpenID(t, "")
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
+		},
+	})
+
+	if err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo Base"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantSkipped {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
+	}
+	if _, ok := grant["user_open_id"]; ok {
+		t.Fatalf("did not expect user_open_id when current user is missing: %#v", grant)
+	}
+}
+
+func TestBaseWorkspaceExecuteCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/app_x/members",
+		Body: map[string]interface{}{
+			"code": 230001,
+			"msg":  "no permission",
+		},
+	})
+
+	if err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo Base"}, factory, stdout); err != nil {
+		t.Fatalf("Base creation should still succeed when auto-grant fails, got: %v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantFailed {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
+	}
+	if !strings.Contains(grant["message"].(string), "full_access (可管理权限)") {
+		t.Fatalf("permission_grant.message = %q, want permission hint", grant["message"])
+	}
+	if !strings.Contains(grant["message"].(string), "retry later") {
+		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
+	}
+}
+
+func TestBaseWorkspaceExecuteCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
+		},
+	})
+
+	if err := runShortcutWithAuthTypes(t, BaseBaseCreate, authTypes(), []string{"+base-create", "--name", "Demo Base", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	if _, ok := data["permission_grant"]; ok {
+		t.Fatalf("did not expect permission_grant in user mode output: %#v", data)
+	}
+}
+
+func TestBaseWorkspaceExecuteCopyBotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
+	factory, stdout, reg := newExecuteFactoryWithUserOpenID(t, "")
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_src/copy",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"base_token": "app_new", "name": "Copied Base"},
+		},
+	})
+
+	if err := runShortcut(t, BaseBaseCopy, []string{"+base-copy", "--base-token", "app_src"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantSkipped {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
+	}
+}
+
+func TestBaseWorkspaceExecuteCopyBotAutoGrantFailureDoesNotFailCopy(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_src/copy",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_new", "name": "Copied Base"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/app_new/members",
+		Body: map[string]interface{}{
+			"code": 230001,
+			"msg":  "no permission",
+		},
+	})
+
+	if err := runShortcut(t, BaseBaseCopy, []string{"+base-copy", "--base-token", "app_src"}, factory, stdout); err != nil {
+		t.Fatalf("Base copy should still succeed when auto-grant fails, got: %v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantFailed {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
+	}
+}
+
+func TestBaseWorkspaceExecuteCopyUserSkipsPermissionGrantAugmentation(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_src/copy",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"base_token": "app_new", "name": "Copied Base"},
+		},
+	})
+
+	if err := runShortcutWithAuthTypes(t, BaseBaseCopy, authTypes(), []string{"+base-copy", "--base-token", "app_src", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	if _, ok := data["permission_grant"]; ok {
+		t.Fatalf("did not expect permission_grant in user mode output: %#v", data)
+	}
+}
+
+func TestBaseWorkspaceDryRunCreateAndCopyPermissionGrantHints(t *testing.T) {
+	t.Run("create bot", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		if err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo Base", "--dry-run"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, "grant the current CLI user full_access (可管理权限)") {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
+
+	t.Run("copy bot", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		if err := runShortcut(t, BaseBaseCopy, []string{"+base-copy", "--base-token", "app_src", "--dry-run"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, "grant the current CLI user full_access (可管理权限)") {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("create user", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		if err := runShortcutWithAuthTypes(t, BaseBaseCreate, authTypes(), []string{"+base-create", "--name", "Demo Base", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); strings.Contains(got, "grant the current CLI user full_access (可管理权限)") {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+}
+
+func decodeBaseEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
+	t.Helper()
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("failed to decode output: %v\nraw=%s", err, stdout.String())
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	if data == nil {
+		t.Fatalf("missing data in output envelope: %#v", envelope)
+	}
+	return data
+}
+
+func decodeCapturedJSONBody(t *testing.T, stub *httpmock.Stub) map[string]interface{} {
+	t.Helper()
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("failed to decode captured request body: %v\nraw=%s", err, string(stub.CapturedBody))
+	}
+	return body
 }
 
 func TestBaseHistoryExecute(t *testing.T) {
