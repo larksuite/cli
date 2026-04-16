@@ -152,13 +152,16 @@ jobs:
       - name: Dead code check (incremental)
         run: |
           # Analyze current HEAD (strip line:col for stable diff across line shifts)
+          # Filter "go: downloading ..." lines to avoid false diffs from module cache state
           go run golang.org/x/tools/cmd/deadcode@v0.31.0 ./... 2>&1 | \
+            grep -v '^go: ' | \
             sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-head.txt
 
           # Analyze base branch via worktree
           git worktree add -q /tmp/dc-base "origin/${{ github.base_ref }}"
           (cd /tmp/dc-base && python3 scripts/fetch_meta.py && \
            go run golang.org/x/tools/cmd/deadcode@v0.31.0 ./... 2>&1 | \
+            grep -v '^go: ' | \
             sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-base.txt) || {
             echo "::warning::Failed to analyze base branch — skipping incremental dead code check"
             git worktree remove -f /tmp/dc-base 2>/dev/null || true
