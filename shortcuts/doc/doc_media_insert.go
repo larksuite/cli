@@ -28,13 +28,23 @@ var DocMediaInsert = common.Shortcut{
 	Scopes:      []string{"docs:document.media:upload", "docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
+		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)"},
+		{Name: "from-clipboard", Type: "bool", Desc: "read image from system clipboard instead of a local file (macOS/Windows built-in; Linux requires xclip or wl-paste)"},
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: "image", Desc: "type: image | file"},
 		{Name: "align", Desc: "alignment: left | center | right"},
 		{Name: "caption", Desc: "image caption text"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		filePath := runtime.Str("file")
+		fromClipboard := runtime.Bool("from-clipboard")
+		if filePath == "" && !fromClipboard {
+			return common.FlagErrorf("one of --file or --from-clipboard is required")
+		}
+		if filePath != "" && fromClipboard {
+			return common.FlagErrorf("--file and --from-clipboard are mutually exclusive")
+		}
+
 		docRef, err := parseDocumentRef(runtime.Str("doc"))
 		if err != nil {
 			return err
@@ -53,6 +63,9 @@ var DocMediaInsert = common.Shortcut{
 		documentID := docRef.Token
 		stepBase := 1
 		filePath := runtime.Str("file")
+		if runtime.Bool("from-clipboard") {
+			filePath = "<clipboard image>"
+		}
 		mediaType := runtime.Str("type")
 		caption := runtime.Str("caption")
 
@@ -93,6 +106,17 @@ var DocMediaInsert = common.Shortcut{
 		alignStr := runtime.Str("align")
 		caption := runtime.Str("caption")
 
+		// Resolve clipboard to a temp file if requested.
+		if runtime.Bool("from-clipboard") {
+			fmt.Fprintf(runtime.IO().ErrOut, "Reading image from clipboard...\n")
+			tmpPath, cleanup, err := readClipboardToTempFile()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			filePath = tmpPath
+		}
+
 		documentID, err := resolveDocxDocumentID(runtime, docInput)
 		if err != nil {
 			return err
@@ -108,6 +132,9 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		fileName := filepath.Base(filePath)
+		if runtime.Bool("from-clipboard") {
+			fileName = "clipboard.png"
+		}
 		fmt.Fprintf(runtime.IO().ErrOut, "Inserting: %s -> document %s\n", fileName, common.MaskToken(documentID))
 		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
@@ -168,7 +195,7 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Step 3: Upload media file
-		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentTypeForMediaType(mediaType), uploadParentNode, documentID)
+		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentTypeForMediaType(mediaType), uploadParentNode, documentID) //nolint:lll
 		if err != nil {
 			return withRollbackWarning(err)
 		}
