@@ -33,6 +33,9 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(NewCmdAuthScopes(f, nil))
 	cmd.AddCommand(NewCmdAuthList(f, nil))
 	cmd.AddCommand(NewCmdAuthCheck(f, nil))
+	if proxyCmd := NewCmdAuthProxy(f); proxyCmd != nil {
+		cmd.AddCommand(proxyCmd)
+	}
 	return cmd
 }
 
