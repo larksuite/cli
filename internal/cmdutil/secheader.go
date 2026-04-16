@@ -20,6 +20,11 @@ const (
 	SourceValue = "lark-cli"
 
 	HeaderUserAgent = "User-Agent"
+
+	// HeaderTtEnv pins requests to a specific BOE test environment.
+	// BOE-only override — do NOT merge to main.
+	HeaderTtEnv = "x-tt-env"
+	TtEnvValue  = "boe_slide_new"
 )
 
 // UserAgentValue returns the User-Agent value: "lark-cli/{version}".
@@ -33,6 +38,7 @@ func BaseSecurityHeaders() http.Header {
 	h.Set(HeaderSource, SourceValue)
 	h.Set(HeaderVersion, build.Version)
 	h.Set(HeaderUserAgent, UserAgentValue())
+	h.Set(HeaderTtEnv, TtEnvValue)
 	return h
 }
 
