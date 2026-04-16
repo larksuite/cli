@@ -14,7 +14,7 @@ var BaseBaseCreate = common.Shortcut{
 	Command:     "+base-create",
 	Description: "Create a new base resource",
 	Risk:        "write",
-	Scopes:      []string{"base:app:create"},
+	Scopes:      []string{"base:app:create", "docs:permission.member:create"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		{Name: "name", Desc: "base name", Required: true},

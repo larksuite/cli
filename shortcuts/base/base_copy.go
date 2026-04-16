@@ -14,7 +14,7 @@ var BaseBaseCopy = common.Shortcut{
 	Command:     "+base-copy",
 	Description: "Copy a base resource",
 	Risk:        "write",
-	Scopes:      []string{"base:app:copy"},
+	Scopes:      []string{"base:app:copy", "docs:permission.member:create"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
