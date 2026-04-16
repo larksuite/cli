@@ -1,0 +1,116 @@
+name: Architecture Audit
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Monday 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+
+      - name: Dead code detection
+        run: |
+          echo "## Dead Code" >> report.md
+          go run golang.org/x/tools/cmd/deadcode@v0.31.0 -test ./... 2>&1 | tee deadcode.txt
+          count=$(wc -l < deadcode.txt | tr -d ' ')
+          echo "Found **$count** unreachable functions" >> report.md
+          echo '```' >> report.md
+          cat deadcode.txt >> report.md
+          echo '```' >> report.md
+
+      - name: Package complexity
+        run: |
+          echo "## Package Complexity" >> report.md
+          echo "" >> report.md
+          echo "Packages exceeding 2 000 lines or 20 files:" >> report.md
+          echo "" >> report.md
+          echo "| Package | Files | Lines | Deps |" >> report.md
+          echo "|---------|-------|-------|------|" >> report.md
+          found=0
+          for pkg in $(go list ./cmd/... ./internal/... ./shortcuts/...); do
+            dir=$(go list -f '{{.Dir}}' "$pkg")
+            files=$(find "$dir" -maxdepth 1 -name '*.go' ! -name '*_test.go' | wc -l | tr -d ' ')
+            lines=$(find "$dir" -maxdepth 1 -name '*.go' ! -name '*_test.go' -exec cat {} + 2>/dev/null | wc -l | tr -d ' ')
+            deps=$(go list -f '{{len .Imports}}' "$pkg")
+            if [ "$lines" -gt 2000 ] || [ "$files" -gt 20 ]; then
+              echo "| **$pkg** | **$files** | **$lines** | **$deps** |" >> report.md
+              found=1
+            fi
+          done
+          if [ "$found" = "0" ]; then
+            echo "| _(none)_ | | | |" >> report.md
+          fi
+
+      - name: Dependency freshness
+        run: |
+          echo "## Outdated Dependencies" >> report.md
+          echo '```' >> report.md
+          go list -m -u all 2>/dev/null | grep '\[' >> report.md || echo "All dependencies up to date" >> report.md
+          echo '```' >> report.md
+
+      - name: Circular dependency check
+        run: |
+          echo "## Circular Dependencies" >> report.md
+          go list -f '{{.ImportPath}} {{join .Imports " "}}' ./... | \
+            go run golang.org/x/tools/cmd/digraph@v0.31.0 scc 2>&1 | tee cycles.txt
+          if [ -s cycles.txt ]; then
+            echo '```' >> report.md
+            cat cycles.txt >> report.md
+            echo '```' >> report.md
+          else
+            echo "No circular dependencies detected." >> report.md
+          fi
+
+      - name: E2E coverage gaps
+        run: |
+          echo "## E2E Coverage Gaps" >> report.md
+          echo "" >> report.md
+          echo "Shortcut domains without E2E tests:" >> report.md
+          echo "" >> report.md
+          found=0
+          for domain in $(ls -d shortcuts/*/); do
+            name=$(basename "$domain")
+            if [ "$name" = "common" ]; then continue; fi
+            if [ ! -d "tests/cli_e2e/$name" ]; then
+              echo "- **$name** (no tests/cli_e2e/$name/)" >> report.md
+              found=1
+            fi
+          done
+          if [ "$found" = "0" ]; then
+            echo "All shortcut domains have E2E test directories." >> report.md
+          fi
+
+      - name: Coverage
+        run: |
+          echo "## Coverage" >> report.md
+          packages=$(go list ./... | grep -v 'tests/cli_e2e')
+          go test -coverprofile=coverage.txt -covermode=atomic $packages 2>/dev/null || true
+          total=$(go tool cover -func=coverage.txt 2>/dev/null | grep total | awk '{print $3}')
+          echo "Current total coverage: **${total:-n/a}**" >> report.md
+
+      - name: Publish report
+        run: |
+          echo "# Architecture Audit Report — $(date +%Y-%m-%d)" > $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arch-audit-${{ github.run_number }}
+          path: report.md
+          retention-days: 90
