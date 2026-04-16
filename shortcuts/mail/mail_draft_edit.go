@@ -110,9 +110,15 @@ var MailDraftEdit = common.Shortcut{
 			"warning":    "This edit flow has no optimistic locking. If the same draft is changed concurrently, the last writer wins.",
 			"projection": projection,
 		}
+		if updateResult.Reference != "" {
+			out["reference"] = updateResult.Reference
+		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft updated.")
 			fmt.Fprintf(w, "draft_id: %s\n", updateResult.DraftID)
+			if reference, _ := out["reference"].(string); reference != "" {
+				fmt.Fprintf(w, "reference: %s\n", reference)
+			}
 			if projection.Subject != "" {
 				fmt.Fprintf(w, "subject: %s\n", sanitizeForTerminal(projection.Subject))
 			}

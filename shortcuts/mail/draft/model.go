@@ -19,7 +19,8 @@ type DraftRaw struct {
 }
 
 type DraftResult struct {
-	DraftID string
+	DraftID   string
+	Reference string
 }
 
 type Header struct {

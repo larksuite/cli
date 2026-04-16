@@ -92,9 +92,15 @@ var MailDraftCreate = common.Shortcut{
 			return fmt.Errorf("create draft failed: %w", err)
 		}
 		out := map[string]interface{}{"draft_id": draftResult.DraftID}
+		if draftResult.Reference != "" {
+			out["reference"] = draftResult.Reference
+		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft created.")
 			fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
+			if reference, _ := out["reference"].(string); reference != "" {
+				fmt.Fprintf(w, "reference: %s\n", reference)
+			}
 		})
 		return nil
 	},
