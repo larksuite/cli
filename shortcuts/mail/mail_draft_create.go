@@ -92,15 +92,9 @@ var MailDraftCreate = common.Shortcut{
 			return fmt.Errorf("create draft failed: %w", err)
 		}
 		out := map[string]interface{}{"draft_id": draftResult.DraftID}
-		if draftResult.PreviewURL != "" {
-			out["preview_url"] = draftResult.PreviewURL
-		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft created.")
 			fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
-			if previewURL, _ := out["preview_url"].(string); previewURL != "" {
-				fmt.Fprintf(w, "preview_url: %s\n", previewURL)
-			}
 		})
 		return nil
 	},

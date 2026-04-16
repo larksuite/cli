@@ -1782,6 +1782,19 @@ func normalizeMessageID(id string) string {
 	return strings.TrimSpace(trimmed)
 }
 
+func buildDraftSendOutput(resData map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{
+		"message_id": resData["message_id"],
+		"thread_id":  resData["thread_id"],
+	}
+	for _, key := range []string{"recall_status", "automation_send_disable"} {
+		if value, ok := resData[key]; ok {
+			out[key] = value
+		}
+	}
+	return out
+}
+
 func normalizeInlineCID(cid string) string {
 	trimmed := strings.TrimSpace(cid)
 	if len(trimmed) >= 4 && strings.EqualFold(trimmed[:4], "cid:") {

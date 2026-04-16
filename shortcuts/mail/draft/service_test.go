@@ -10,41 +10,13 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-func TestExtractPreviewURL(t *testing.T) {
-	t.Run("top-level preview_url", func(t *testing.T) {
-		meta := map[string]interface{}{"preview_url": "https://example.com/preview"}
-		if got := extractPreviewURL(meta); got != "https://example.com/preview" {
-			t.Fatalf("extractPreviewURL() = %q, want %q", got, "https://example.com/preview")
-		}
-	})
-
-	t.Run("nested previewUrl", func(t *testing.T) {
-		meta := map[string]interface{}{
-			"links": map[string]interface{}{
-				"previewUrl": "https://example.com/nested",
-			},
-		}
-		if got := extractPreviewURL(meta); got != "https://example.com/nested" {
-			t.Fatalf("extractPreviewURL() = %q, want %q", got, "https://example.com/nested")
-		}
-	})
-
-	t.Run("missing preview url", func(t *testing.T) {
-		if got := extractPreviewURL(nil); got != "" {
-			t.Fatalf("extractPreviewURL(nil) = %q, want empty string", got)
-		}
-	})
-}
-
 func TestExtractAPIDataAndMeta(t *testing.T) {
 	result := map[string]interface{}{
 		"code": 0,
 		"data": map[string]interface{}{
 			"draft_id": "d_123",
 		},
-		"meta": map[string]interface{}{
-			"preview_url": "https://example.com/preview",
-		},
+		"meta": map[string]interface{}{"source": "test"},
 	}
 
 	data, meta, err := extractAPIDataAndMeta(result, nil, "draft api")
@@ -54,8 +26,8 @@ func TestExtractAPIDataAndMeta(t *testing.T) {
 	if got := extractDraftID(data); got != "d_123" {
 		t.Fatalf("draft id = %q, want %q", got, "d_123")
 	}
-	if got := extractPreviewURL(meta); got != "https://example.com/preview" {
-		t.Fatalf("preview url = %q, want %q", got, "https://example.com/preview")
+	if meta["source"] != "test" {
+		t.Fatalf("meta.source = %#v", meta["source"])
 	}
 }
 
@@ -64,9 +36,7 @@ func TestExtractAPIDataAndMeta_MetaNestedUnderData(t *testing.T) {
 		"code": 0,
 		"data": map[string]interface{}{
 			"draft_id": "d_456",
-			"meta": map[string]interface{}{
-				"preview_url": "https://example.com/from-data",
-			},
+			"meta":     map[string]interface{}{"source": "nested"},
 		},
 	}
 
@@ -74,8 +44,8 @@ func TestExtractAPIDataAndMeta_MetaNestedUnderData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extractAPIDataAndMeta() error = %v", err)
 	}
-	if got := extractPreviewURL(meta); got != "https://example.com/from-data" {
-		t.Fatalf("preview url = %q, want %q", got, "https://example.com/from-data")
+	if meta["source"] != "nested" {
+		t.Fatalf("meta.source = %#v", meta["source"])
 	}
 }
 
