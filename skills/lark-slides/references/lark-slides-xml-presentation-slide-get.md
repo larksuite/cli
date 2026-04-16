@@ -48,7 +48,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 ```bash
 lark-cli slides xml_presentation.slide get --as user \
   --params '{"xml_presentation_id":"slides_example_presentation_id","slide_id":"slide_example_id"}' \
-  | jq -r '.slide.content'
+  | jq -r '.data.slide.content'
 ```
 
 ### 读指定历史版本
@@ -65,19 +65,23 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 
 ```json
 {
-  "slide": {
-    "slide_id": "slide_example_id",
-    "content": "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\">...</slide>"
+  "code": 0,
+  "data": {
+    "slide": {
+      "slide_id": "slide_example_id",
+      "content": "<slide id=\"slide_example_id\"><style/><data>...</data></slide>"
+    },
+    "revision_id": 100
   },
-  "revision_id": 100
+  "msg": "success"
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `slide.slide_id` | string | 页面唯一标识 |
-| `slide.content` | string | 页面完整 XML（`<slide>` 根节点）|
-| `revision_id` | integer | 此次读到的版本号，可用于后续 update/replace 的乐观锁 |
+| `data.slide.slide_id` | string | 页面唯一标识 |
+| `data.slide.content` | string | 页面完整 XML（`<slide>` 根节点，不含 xmlns）|
+| `data.revision_id` | integer | 此次读到的版本号，可用于后续 replace 的乐观锁 |
 
 ## 常见错误
 
@@ -90,13 +94,12 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 ## 注意事项
 
 1. **执行前必做**：`lark-cli schema slides.xml_presentation.slide.get` 查看最新参数结构
-2. **XML 命名空间**：返回的 `slide.content` 里带 `xmlns="http://www.larkoffice.com/sml/2.0"`，后续 replace 时如果本地改完要重新拼接，保留这个 xmlns
-3. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。用以下命令列出当前页所有 block_id：
+2. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。用以下命令列出当前页所有 block_id：
 
    ```bash
    lark-cli slides xml_presentation.slide get --as user \
      --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
-     | jq -r '.slide.content' | grep -oP 'id="\K[^"]+'
+     | jq -r '.data.slide.content' | grep -oE 'id="[^"]+"' | sed 's/id="//;s/"//'
    ```
 
 ## 相关命令

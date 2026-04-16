@@ -40,7 +40,7 @@ lark-cli slides +replace-slide --as user \
 # 读时拿当前 revision_id
 REV=$(lark-cli slides xml_presentation.slide get --as user \
   --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
-  | jq -r '.revision_id')
+  | jq '.data.revision_id')
 
 # 写时传该版本号，服务端以此为 base
 lark-cli slides +replace-slide --as user \

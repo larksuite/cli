@@ -58,18 +58,22 @@ lark-cli slides xml_presentations get --as user --params '{
 ```bash
 lark-cli slides xml_presentations get --as user --params '{
   "xml_presentation_id": "slides_example_presentation_id"
-}' | jq -r '.xml_presentation.content'
+}' | jq -r '.data.xml_presentation.content'
 ```
 
 预期返回结构：
 
 ```json
 {
-  "xml_presentation": {
-    "presentation_id": "slides_example_presentation_id",
-    "revision_id": 3,
-    "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
-  }
+  "code": 0,
+  "data": {
+    "xml_presentation": {
+      "presentation_id": "slides_example_presentation_id",
+      "revision_id": 3,
+      "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
+    }
+  },
+  "msg": "success"
 }
 ```
 
@@ -213,7 +217,7 @@ lark-cli slides +replace-slide --as user \
 ```bash
 lark-cli slides xml_presentations get --as user --params '{
   "xml_presentation_id": "slides_example_presentation_id"
-}' | jq -r '.xml_presentation.revision_id'
+}' | jq '.data.xml_presentation.revision_id'
 ```
 
 ### 批量插入多页

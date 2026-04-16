@@ -49,7 +49,7 @@ lark-cli slides xml_presentation.slide delete --as user --params '{
 
 ```bash
 # 先读取 XML 内容，确认待删除页面
-lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id":"slides_example_presentation_id"}' | jq -r '.xml_presentation.content'
+lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id":"slides_example_presentation_id"}' | jq -r '.data.xml_presentation.content'
 
 # 然后按已知 slide_id 删除
 lark-cli slides xml_presentation.slide delete --as user --params '{"xml_presentation_id":"slides_example_presentation_id","slide_id":"slide_example_id"}'

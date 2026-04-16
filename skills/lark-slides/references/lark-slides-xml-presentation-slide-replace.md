@@ -98,7 +98,7 @@ lark-cli slides xml_presentation.slide replace --as user --params '{
 
 ```bash
 # 先拿 file_token
-TOKEN=$(lark-cli slides +media-upload --file ./pic.png --presentation "$PID" --as user | jq -r '.file_token')
+TOKEN=$(lark-cli slides +media-upload --file ./pic.png --presentation "$PID" --as user | jq -r '.data.file_token')
 
 lark-cli slides xml_presentation.slide replace --as user --params "{
   \"xml_presentation_id\": \"$PID\",
