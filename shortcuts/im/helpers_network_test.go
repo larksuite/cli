@@ -892,3 +892,38 @@ func TestResolveLocalMediaFile(t *testing.T) {
 		t.Fatalf("resolveLocalMedia(file) = %q, want %q", got, "file_via_resolve")
 	}
 }
+
+// TestUploadFileToIMPreservesLocalFileName locks in that local uploads keep
+// the basename of the caller-supplied path as the multipart file_name, so the
+// URL-side fix for mediaBuffer cannot silently regress the local branch later.
+func TestUploadFileToIMPreservesLocalFileName(t *testing.T) {
+	var gotBody string
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Path, "/open-apis/im/v1/files") {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				return nil, err
+			}
+			gotBody = string(body)
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"file_key": "file_uploaded"},
+			}), nil
+		}
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+
+	localName := "Q1-meeting-notes.pdf"
+	if err := os.WriteFile(localName, []byte("pdfdata"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, err := uploadFileToIM(context.Background(), runtime, "./"+localName, "pdf", ""); err != nil {
+		t.Fatalf("uploadFileToIM() error = %v", err)
+	}
+	if !strings.Contains(gotBody, `name="file_name"`) || !strings.Contains(gotBody, localName) {
+		t.Fatalf("upload body missing local filename %q; got: %q", localName, gotBody)
+	}
+}
