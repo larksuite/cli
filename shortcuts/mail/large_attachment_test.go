@@ -116,7 +116,7 @@ func TestBuildLargeAttachmentHTML(t *testing.T) {
 		{FileName: "report.pdf", FileSize: 50 * 1024 * 1024, FileToken: "tok_abc"},
 		{FileName: "data.zip", FileSize: 100 * 1024 * 1024, FileToken: "tok_xyz"},
 	}
-	html := buildLargeAttachmentHTML(core.BrandFeishu, results)
+	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", results)
 
 	// Check it contains the container ID prefix
 	if !strings.Contains(html, "large-file-area-") {
@@ -137,14 +137,26 @@ func TestBuildLargeAttachmentHTML(t *testing.T) {
 	if !strings.Contains(html, "www.feishu.cn/mail/page/attachment?token=tok_abc") {
 		t.Error("missing download link for tok_abc")
 	}
-	// Check title
-	if !strings.Contains(html, "Attachments from Lark Mail") {
-		t.Error("missing title")
+	// Check English title and download text
+	if !strings.Contains(html, "Large file from Lark Mail") {
+		t.Error("missing English title")
+	}
+	if !strings.Contains(html, ">Download<") {
+		t.Error("missing English download text")
+	}
+
+	// Check Chinese i18n
+	htmlZh := buildLargeAttachmentHTML(core.BrandFeishu, "zh_cn", results)
+	if !strings.Contains(htmlZh, "来自Lark邮箱的超大附件") {
+		t.Error("missing Chinese title")
+	}
+	if !strings.Contains(htmlZh, ">下载<") {
+		t.Error("missing Chinese download text")
 	}
 }
 
 func TestBuildLargeAttachmentHTML_Empty(t *testing.T) {
-	html := buildLargeAttachmentHTML(core.BrandFeishu, nil)
+	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", nil)
 	if html != "" {
 		t.Errorf("expected empty string for nil results, got %q", html)
 	}
@@ -154,7 +166,7 @@ func TestBuildLargeAttachmentHTML_EscapesSpecialChars(t *testing.T) {
 	results := []largeAttachmentResult{
 		{FileName: `file<script>alert("xss")</script>.txt`, FileSize: 100, FileToken: "tok"},
 	}
-	html := buildLargeAttachmentHTML(core.BrandFeishu, results)
+	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", results)
 	if strings.Contains(html, "<script>") {
 		t.Error("HTML injection: <script> not escaped")
 	}
