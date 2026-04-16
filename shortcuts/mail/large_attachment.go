@@ -44,6 +44,15 @@ type largeAttachmentResult struct {
 // attachment, aligned with the desktop client (3 GB).
 const MaxLargeAttachmentSize = 3 * 1024 * 1024 * 1024 // 3 GB
 
+// largeAttachmentIDsHeader is the EML header that registers large attachment
+// tokens with the mail server so it can associate them with the draft.
+const largeAttachmentIDsHeader = "X-Lms-Large-Attachment-Ids"
+
+// largeAttID is the JSON element inside the X-Lms-Large-Attachment-Ids header.
+type largeAttID struct {
+	ID string `json:"id"`
+}
+
 // estimateBase64EMLSize estimates the EML byte cost of embedding a raw file.
 // base64 inflates 3 bytes → 4 chars, plus ~200 bytes for MIME part headers.
 const base64MIMEOverhead = 200
@@ -392,11 +401,8 @@ func processLargeAttachments(
 	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, results)
 	bld = bld.HTMLBody([]byte(insertBeforeQuoteOrAppend(htmlBody, largeHTML)))
 
-	// Register large attachment tokens via X-Lms-Large-Attachment-Ids header,
-	// so the mail server associates them with this draft.
-	type largeAttID struct {
-		ID string `json:"id"`
-	}
+	// Register large attachment tokens so the mail server associates them
+	// with this draft.
 	ids := make([]largeAttID, len(results))
 	for i, r := range results {
 		ids[i] = largeAttID{ID: r.FileToken}
@@ -405,7 +411,7 @@ func processLargeAttachments(
 	if err != nil {
 		return bld, fmt.Errorf("failed to encode large attachment IDs: %w", err)
 	}
-	bld = bld.Header("X-Lms-Large-Attachment-Ids", base64.StdEncoding.EncodeToString(idsJSON))
+	bld = bld.Header(largeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
 
 	// Embed normal files
 	for _, f := range classified.Normal {
@@ -492,6 +498,37 @@ func preprocessLargeAttachmentsForDraftEdit(
 	// Inject large attachment HTML into the snapshot's HTML body part.
 	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, results)
 	injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+
+	// Register large attachment tokens, merging with any existing IDs already
+	// present in the snapshot (from a previous draft-create or draft-edit).
+	var existingIDs []largeAttID
+	existingIdx := -1
+	for i, h := range snapshot.Headers {
+		if strings.EqualFold(h.Name, largeAttachmentIDsHeader) {
+			existingIdx = i
+			if decoded, err := base64.StdEncoding.DecodeString(h.Value); err == nil {
+				_ = json.Unmarshal(decoded, &existingIDs)
+			}
+			break
+		}
+	}
+	merged := existingIDs
+	for _, r := range results {
+		merged = append(merged, largeAttID{ID: r.FileToken})
+	}
+	idsJSON, err := json.Marshal(merged)
+	if err != nil {
+		return patch, fmt.Errorf("failed to encode large attachment IDs: %w", err)
+	}
+	headerValue := base64.StdEncoding.EncodeToString(idsJSON)
+	if existingIdx >= 0 {
+		snapshot.Headers[existingIdx].Value = headerValue
+	} else {
+		snapshot.Headers = append(snapshot.Headers, draftpkg.Header{
+			Name:  largeAttachmentIDsHeader,
+			Value: headerValue,
+		})
+	}
 
 	// Remove oversized ops from the patch (keep normal ones for draft.Apply).
 	oversizedPaths := make(map[string]bool, len(classified.Oversized))
