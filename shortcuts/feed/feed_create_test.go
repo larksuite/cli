@@ -147,6 +147,16 @@ func TestFeedCreate_SuccessWithOptionalFields(t *testing.T) {
 	}
 }
 
+func TestFeedShortcuts(t *testing.T) {
+	shortcuts := Shortcuts()
+	if len(shortcuts) != 1 {
+		t.Fatalf("Shortcuts() len = %d, want 1", len(shortcuts))
+	}
+	if shortcuts[0].Command != "+create" {
+		t.Errorf("Shortcuts()[0].Command = %q, want +create", shortcuts[0].Command)
+	}
+}
+
 func TestFeedCreate_Validate(t *testing.T) {
 	tests := []struct {
 		name    string

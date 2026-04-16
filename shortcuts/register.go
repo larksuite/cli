@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/doc"
 	"github.com/larksuite/cli/shortcuts/drive"
 	"github.com/larksuite/cli/shortcuts/event"
+	"github.com/larksuite/cli/shortcuts/feed"
 	"github.com/larksuite/cli/shortcuts/im"
 	"github.com/larksuite/cli/shortcuts/mail"
 	"github.com/larksuite/cli/shortcuts/minutes"
@@ -38,6 +39,7 @@ func init() {
 	allShortcuts = append(allShortcuts, sheets.Shortcuts()...)
 	allShortcuts = append(allShortcuts, base.Shortcuts()...)
 	allShortcuts = append(allShortcuts, event.Shortcuts()...)
+	allShortcuts = append(allShortcuts, feed.Shortcuts()...)
 	allShortcuts = append(allShortcuts, mail.Shortcuts()...)
 	allShortcuts = append(allShortcuts, slides.Shortcuts()...)
 	allShortcuts = append(allShortcuts, minutes.Shortcuts()...)
