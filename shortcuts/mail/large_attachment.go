@@ -201,11 +201,13 @@ func buildLargeAttachmentPreviewURL(brand core.LarkBrand, fileToken string) stri
 // Colors: title bg = rgb(224, 233, 255), link = rgb(20, 86, 240)
 // Layout: float (not flexbox) for email client compatibility
 const (
+	// %s order: timestamp, title, items
 	largeAttContainerTpl = `<div id="large-file-area-%s" style="border: 1px solid #DEE0E3; margin-bottom: 20px;max-width: 400px; min-width: 160px; border-radius: 8px;">` +
-		`<div style="font-weight: 500; font-size: 16px;line-height: 24px; padding: 8px 16px;background-color: rgb(224, 233, 255); border-top-left-radius: 8px;border-top-right-radius: 8px;">Attachments from Lark Mail</div>` +
+		`<div style="font-weight: 500; font-size: 16px;line-height: 24px; padding: 8px 16px;background-color: rgb(224, 233, 255); border-top-left-radius: 8px;border-top-right-radius: 8px;">%s</div>` +
 		`%s` + // items
 		`</div>`
 
+	// %s order: icon URL, filename, file size, preview link, token, download text
 	largeAttItemTpl = `<div style="border-top: solid 1px #DEE0E3;padding: 12px;box-sizing: border-box;clear: both;overflow: hidden;display: flex;" id="large-file-item">` +
 		`<div style="float: left; margin-right: 8px; margin-top: 1px; margin-bottom: 1px;">` +
 		`<img src="%s" height="40" width="40" style="height: 40px;width: 40px;"/>` + // icon URL
@@ -216,16 +218,25 @@ const (
 		`<span style="color: #8f959e;vertical-align: middle;">%s</span>` + // file size
 		`</div>` +
 		`</div>` +
-		`<a href="%s" data-mail-token="%s" style="margin: 10px; text-decoration: none; color: rgb(20, 86, 240); white-space: nowrap; cursor: pointer; line-height: 1.5; float: right; text-align: right; font-size: 14px;">Download</a>` + // preview link, token
+		`<a href="%s" data-mail-token="%s" style="margin: 10px; text-decoration: none; color: rgb(20, 86, 240); white-space: nowrap; cursor: pointer; line-height: 1.5; float: right; text-align: right; font-size: 14px;">%s</a>` + // preview link, token, download text
 		`</div>`
 
 	iconCDNCN = "https://lf-larkemail.bytetos.com/obj/eden-cn/aultojhaah_npi_spht_ryhs/ljhwZthlaukjlkulzlp/"
 	iconCDNEN = "https://sf16-sg.tiktokcdn.com/obj/eden-sg/aultojhaah_npi_spht_ryhs/ljhwZthlaukjlkulzlp/"
 )
 
-func buildLargeAttachmentHTML(brand core.LarkBrand, results []largeAttachmentResult) string {
+func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
+	}
+
+	// i18n text aligned with desktop's Mail_Attachment_AttachmentFromFeishuMail
+	// and Mail_Attachment_Download.
+	title := "Large file from Lark Mail"
+	downloadText := "Download"
+	if strings.HasPrefix(lang, "zh") {
+		title = "来自Lark邮箱的超大附件"
+		downloadText = "下载"
 	}
 
 	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
@@ -246,10 +257,11 @@ func buildLargeAttachmentHTML(brand core.LarkBrand, results []largeAttachmentRes
 			htmlEscape(common.FormatSize(att.FileSize)),
 			htmlEscape(buildLargeAttachmentPreviewURL(brand, att.FileToken)),
 			htmlEscape(att.FileToken),
+			downloadText,
 		)
 	}
 
-	return fmt.Sprintf(largeAttContainerTpl, timestamp, items.String())
+	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, items.String())
 }
 
 // insertBeforeQuoteOrAppend inserts block into html before the quote block
@@ -398,7 +410,7 @@ func processLargeAttachments(
 
 	// Generate the large attachment HTML block and insert it before the
 	// quote block (if present), matching desktop's exportLargeFileArea.
-	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, results)
+	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
 	bld = bld.HTMLBody([]byte(insertBeforeQuoteOrAppend(htmlBody, largeHTML)))
 
 	// Register large attachment tokens so the mail server associates them
@@ -496,7 +508,7 @@ func preprocessLargeAttachmentsForDraftEdit(
 	}
 
 	// Inject large attachment HTML into the snapshot's HTML body part.
-	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, results)
+	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
 	injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
 
 	// Register large attachment tokens, merging with any existing IDs already
