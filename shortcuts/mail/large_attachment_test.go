@@ -196,6 +196,35 @@ func TestInsertBeforeQuoteOrAppend_WithQuote(t *testing.T) {
 	}
 }
 
+func TestInsertBeforeQuoteOrAppend_NestedQuoteIDs(t *testing.T) {
+	// Simulate a reply to a multi-reply thread: the outermost wrapper has
+	// class="history-quote-wrapper" but the inner quoted content contains
+	// deeper lark-mail-quote IDs from the original thread.
+	body := `<p>My reply</p>` +
+		`<div class="history-quote-wrapper"><div data-html-block="quote">` +
+		`<div><div><div id="lark-mail-quote-aaa">` +
+		`previous reply` +
+		`<div id="lark-mail-quote-bbb">original message</div>` +
+		`</div></div></div></div></div>`
+	block := `<div id="large-file-area-123">CARD</div>`
+	result := insertBeforeQuoteOrAppend(body, block)
+
+	cardIdx := strings.Index(result, "CARD")
+	wrapperIdx := strings.Index(result, "history-quote-wrapper")
+	replyIdx := strings.Index(result, "My reply")
+	if cardIdx < 0 || wrapperIdx < 0 {
+		t.Fatalf("missing card or wrapper in result: %s", result)
+	}
+	// Card should be BEFORE the wrapper, not inside it
+	if cardIdx > wrapperIdx {
+		t.Errorf("card should be before quote wrapper, but card@%d > wrapper@%d", cardIdx, wrapperIdx)
+	}
+	// Body text should be before the card
+	if replyIdx > cardIdx {
+		t.Errorf("body text should be before card, but reply@%d > card@%d", replyIdx, cardIdx)
+	}
+}
+
 func TestInsertBeforeQuoteOrAppend_NoQuote(t *testing.T) {
 	body := `<p>Hello world</p>`
 	block := `<div>CARD</div>`
