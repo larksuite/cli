@@ -257,7 +257,7 @@ metadata:
 - **`--as user`（推荐）**：以当前登录用户身份操作其有权访问的 Base。执行前先完成用户授权：
 
 ```bash
-lark-cli auth login --domain bitable
+lark-cli auth login --domain base
 ```
 
 - **`--as bot`（降级）**：仅当 user 身份权限不足、且 bot 身份确实拥有目标 Base 的访问权限时，才降级使用。bot 看不到用户私有资源，行为以应用身份执行。
@@ -270,7 +270,7 @@ lark-cli auth login --domain bitable
    - **有提权引导**：按 `lark-shared` 权限不足处理流程，先引导用户完成 user 身份提权（`auth login --scope`）；确认提权成功后，以 `--as user` 重试。
    - **无提权引导**（如资源级无访问权限、非 scope 不足）：切换到 `--as bot` 重试**一次**。
 4. 若 bot 身份仍然返回权限错误，**立即停止重试**，根据错误响应按 `lark-shared` 流程引导用户解决（引导去开发者后台开通 scope 或确认资源访问权限）。
-5. 只有在用户明确要求"用应用身份 / bot 身份操作"，或当前工作流就是 bot 创建资源后再做协作授权时，才跳过 user 直接使用 `--as bot`。
+5. 只有在用户明确要求"用应用身份 / bot 身份操作"，才跳过 user 直接使用 `--as bot`。
 
 **补充说明**：
 
