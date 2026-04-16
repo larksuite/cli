@@ -46,8 +46,7 @@ func authCheckRun(opts *CheckOptions) error {
 
 	required := strings.Fields(opts.Scope)
 	if len(required) == 0 {
-		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"ok": true, "granted": []string{}, "missing": []string{}})
-		return nil
+		return output.ErrValidation("--scope cannot be empty")
 	}
 
 	config, err := f.Config()
