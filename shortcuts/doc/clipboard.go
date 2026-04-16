@@ -6,59 +6,46 @@ package doc
 import (
 	"encoding/base64"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
-// readClipboardToTempFile reads the current clipboard image and saves it to a
-// temporary PNG file. The caller must call the returned cleanup function to
-// remove the temp file when done, regardless of any subsequent errors.
+// readClipboardImageBytes reads the current clipboard image and returns the
+// raw PNG bytes in memory. No temporary files are created by the caller;
+// any intermediate files required by platform tools (e.g. sips on macOS) are
+// created via vfs and cleaned up before returning.
 //
 // Platform support:
 //
-//	macOS   — osascript (built-in, no extra deps)
-//	Windows — powershell + System.Windows.Forms (built-in)
+//	macOS   — osascript (built-in, no extra deps); sips for TIFF→PNG conversion
+//	Windows — powershell + System.Windows.Forms (built-in), output as base64
 //	Linux   — xclip (X11), wl-paste (Wayland), or xsel (X11 fallback),
 //	          tried in that order; returns a clear error if none is found.
-func readClipboardToTempFile() (path string, cleanup func(), err error) {
-	// Create the temp file in the current directory so it passes the FileIO
-	// relative-path validation used by the upload pipeline.
-	f, err := os.CreateTemp(".", "lark-clipboard-*.png")
-	if err != nil {
-		return "", func() {}, fmt.Errorf("clipboard: create temp file: %w", err)
-	}
-	path = f.Name()
-	f.Close()
-
-	cleanup = func() { os.Remove(path) }
+func readClipboardImageBytes() ([]byte, error) {
+	var data []byte
+	var err error
 
 	switch runtime.GOOS {
 	case "darwin":
-		err = readClipboardDarwin(path)
+		data, err = readClipboardDarwin()
 	case "windows":
-		err = readClipboardWindows(path)
+		data, err = readClipboardWindows()
 	case "linux":
-		err = readClipboardLinux(path)
+		data, err = readClipboardLinux()
 	default:
-		err = fmt.Errorf("clipboard image upload is not supported on %s", runtime.GOOS)
+		return nil, fmt.Errorf("clipboard image upload is not supported on %s", runtime.GOOS)
 	}
-
 	if err != nil {
-		cleanup()
-		return "", func() {}, err
+		return nil, err
 	}
-
-	// Verify the file has content (empty = no image in clipboard)
-	info, statErr := os.Stat(path)
-	if statErr != nil || info.Size() == 0 {
-		cleanup()
-		return "", func() {}, fmt.Errorf("clipboard contains no image data")
+	if len(data) == 0 {
+		return nil, fmt.Errorf("clipboard contains no image data")
 	}
-
-	return path, cleanup, nil
+	return data, nil
 }
 
 // reBase64DataURI matches a data URI image embedded in clipboard text content,
@@ -66,53 +53,74 @@ func readClipboardToTempFile() (path string, cleanup func(), err error) {
 // The character class covers both standard (+/) and URL-safe (-_) base64 alphabets.
 var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+/\-_]+=*)`)
 
-// readClipboardDarwin reads the clipboard image on macOS.
+// readClipboardDarwin reads the clipboard image on macOS and returns PNG bytes.
 //
 // Strategy:
-//  1. Try to coerce the clipboard to PNG via osascript.
-//  2. If that fails (e.g. screenshot is stored as TIFF), fall back to TIFF,
-//     then convert to PNG using sips (Scriptable Image Processing System),
-//     which is a macOS built-in at /usr/bin/sips.
+//  1. Ask osascript for the clipboard as PNG (hex literal on stdout) → decode.
+//  2. Ask osascript for the clipboard as TIFF (hex literal on stdout) → decode →
+//     convert to PNG with sips (built-in macOS tool) via vfs temp files.
 //  3. Scan all text-based clipboard formats (HTML, RTF, plain text) for an
 //     embedded base64 data URI image (e.g. images copied from Feishu / browsers).
 //
 // No external dependencies required — osascript and sips ship with macOS.
-func readClipboardDarwin(destPath string) error {
-	// Attempt 1: PNG (works when image was copied from browser / app)
-	pngScript := fmt.Sprintf(
-		`set f to open for access POSIX file %q with write permission
-write (the clipboard as «class PNGf») to f
-close access f`, destPath)
-	if out, err := exec.Command("osascript", "-e", pngScript).CombinedOutput(); err == nil {
-		_ = out
-		return nil
+func readClipboardDarwin() ([]byte, error) {
+	// Attempt 1: PNG via osascript hex literal on stdout.
+	out, err := exec.Command("osascript", "-e", "get the clipboard as «class PNGf»").CombinedOutput()
+	if err == nil && len(out) > 0 {
+		if data, decErr := decodeOsascriptData(strings.TrimSpace(string(out))); decErr == nil && len(data) > 0 {
+			return data, nil
+		}
 	}
 
-	// Attempt 2: TIFF (default for macOS screenshots) → convert to PNG via sips
-	tiffPath := destPath + ".tiff"
-	tiffScript := fmt.Sprintf(
-		`set f to open for access POSIX file %q with write permission
-write (the clipboard as «class TIFF») to f
-close access f`, tiffPath)
-	if out, err := exec.Command("osascript", "-e", tiffScript).CombinedOutput(); err == nil {
-		_ = out
-		defer os.Remove(tiffPath)
-		// Convert TIFF → PNG using sips (built-in macOS tool)
-		if out2, err2 := exec.Command("sips", "-s", "format", "png", tiffPath, "--out", destPath).CombinedOutput(); err2 != nil {
-			msg := strings.TrimSpace(string(out2))
-			return fmt.Errorf("clipboard image conversion failed (sips: %s)", msg)
+	// Attempt 2: TIFF via osascript hex literal → decode → convert to PNG with sips.
+	out, err = exec.Command("osascript", "-e", "get the clipboard as «class TIFF»").CombinedOutput()
+	if err == nil && len(out) > 0 {
+		tiffData, decErr := decodeOsascriptData(strings.TrimSpace(string(out)))
+		if decErr == nil && len(tiffData) > 0 {
+			if pngData, convErr := convertTIFFToPNGViaSips(tiffData); convErr == nil {
+				return pngData, nil
+			}
 		}
-		return nil
 	}
 
 	// Attempt 3: scan text-based clipboard formats for an embedded base64 data URI.
 	// Covers HTML (Feishu, Chrome, Safari), RTF, and plain text — tried in order.
-	// Any format that contains a "data:<mime>;base64,<data>" pattern is accepted.
 	if imgData := extractBase64ImageFromClipboard(); imgData != nil {
-		return os.WriteFile(destPath, imgData, 0600)
+		return imgData, nil
 	}
 
-	return fmt.Errorf("clipboard contains no image data")
+	return nil, fmt.Errorf("clipboard contains no image data")
+}
+
+// convertTIFFToPNGViaSips writes tiffData to a vfs temp file, runs sips to
+// convert it to PNG in a second temp file, reads the result, and cleans up.
+func convertTIFFToPNGViaSips(tiffData []byte) ([]byte, error) {
+	tiffFile, err := vfs.CreateTemp("", "lark-clip-*.tiff")
+	if err != nil {
+		return nil, fmt.Errorf("clipboard: create tiff temp: %w", err)
+	}
+	tiffPath := tiffFile.Name()
+	tiffFile.Close()
+	defer vfs.Remove(tiffPath) //nolint:errcheck
+
+	if err = vfs.WriteFile(tiffPath, tiffData, 0600); err != nil {
+		return nil, fmt.Errorf("clipboard: write tiff temp: %w", err)
+	}
+
+	pngFile, err := vfs.CreateTemp("", "lark-clip-*.png")
+	if err != nil {
+		return nil, fmt.Errorf("clipboard: create png temp: %w", err)
+	}
+	pngPath := pngFile.Name()
+	pngFile.Close()
+	defer vfs.Remove(pngPath) //nolint:errcheck
+
+	if out, sipsErr := exec.Command("sips", "-s", "format", "png", tiffPath, "--out", pngPath).CombinedOutput(); sipsErr != nil {
+		msg := strings.TrimSpace(string(out))
+		return nil, fmt.Errorf("clipboard image conversion failed (sips: %s)", msg)
+	}
+
+	return vfs.ReadFile(pngPath)
 }
 
 // clipboardTextFormats lists the osascript type coercions to try when looking
@@ -206,32 +214,37 @@ func hexVal(c byte) int {
 	return -1
 }
 
-// readClipboardWindows uses PowerShell's System.Windows.Forms.Clipboard
-// (built-in on all modern Windows) to export the clipboard image as PNG.
-func readClipboardWindows(destPath string) error {
-	// Single-quoted path avoids most escaping issues; backslashes are fine here.
-	script := fmt.Sprintf(`
+// readClipboardWindows uses PowerShell to export the clipboard image as PNG,
+// writing it as base64 to stdout and decoding in Go (no temp files).
+func readClipboardWindows() ([]byte, error) {
+	script := `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $img = [System.Windows.Forms.Clipboard]::GetImage()
 if ($img -eq $null) { Write-Error 'clipboard contains no image data'; exit 1 }
-$img.Save('%s', [System.Drawing.Imaging.ImageFormat]::Png)
-`, destPath)
-
+$ms = New-Object System.IO.MemoryStream
+$img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+[Convert]::ToBase64String($ms.ToArray())
+`
 	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg == "" {
 			msg = err.Error()
 		}
-		return fmt.Errorf("clipboard read failed (%s)", msg)
+		return nil, fmt.Errorf("clipboard read failed (%s)", msg)
 	}
-	return nil
+	b64 := strings.TrimSpace(string(out))
+	data, decErr := base64.StdEncoding.DecodeString(b64)
+	if decErr != nil {
+		return nil, fmt.Errorf("clipboard image decode failed: %w", decErr)
+	}
+	return data, nil
 }
 
 // readClipboardLinux tries xclip (X11), wl-paste (Wayland), and xsel (X11)
-// in order, using the first available tool.
-func readClipboardLinux(destPath string) error {
+// in order, returning the PNG bytes from the first available tool.
+func readClipboardLinux() ([]byte, error) {
 	type tool struct {
 		name string
 		args []string
@@ -251,10 +264,10 @@ func readClipboardLinux(destPath string) error {
 			// Tool found but returned nothing — try the next one.
 			continue
 		}
-		return os.WriteFile(destPath, out, 0600)
+		return out, nil
 	}
 
-	return fmt.Errorf(
+	return nil, fmt.Errorf(
 		"clipboard image read failed: no supported tool found\n" +
 			"  X11:    sudo apt install xclip   (or: sudo yum install xclip)\n" +
 			"  Wayland: sudo apt install wl-clipboard")

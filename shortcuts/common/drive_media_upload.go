@@ -32,6 +32,7 @@ type DriveMediaMultipartUploadSession struct {
 
 type DriveMediaUploadAllConfig struct {
 	FilePath   string
+	Content    io.Reader // alternative to FilePath; used for in-memory uploads (e.g. clipboard)
 	FileName   string
 	FileSize   int64
 	ParentType string
@@ -41,6 +42,7 @@ type DriveMediaUploadAllConfig struct {
 
 type DriveMediaMultipartUploadConfig struct {
 	FilePath   string
+	Content    io.Reader // alternative to FilePath; used for in-memory uploads (e.g. clipboard)
 	FileName   string
 	FileSize   int64
 	ParentType string
@@ -49,11 +51,17 @@ type DriveMediaMultipartUploadConfig struct {
 }
 
 func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig) (string, error) {
-	f, err := runtime.FileIO().Open(cfg.FilePath)
-	if err != nil {
-		return "", WrapInputStatError(err)
+	var r io.Reader
+	if cfg.Content != nil {
+		r = cfg.Content
+	} else {
+		f, err := runtime.FileIO().Open(cfg.FilePath)
+		if err != nil {
+			return "", WrapInputStatError(err)
+		}
+		defer f.Close()
+		r = f
 	}
-	defer f.Close()
 
 	fd := larkcore.NewFormdata()
 	fd.AddField("file_name", cfg.FileName)
@@ -65,7 +73,7 @@ func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig)
 	if cfg.Extra != "" {
 		fd.AddField("extra", cfg.Extra)
 	}
-	fd.AddFile("file", f)
+	fd.AddFile("file", r)
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
@@ -108,7 +116,7 @@ func UploadDriveMediaMultipart(runtime *RuntimeContext, cfg DriveMediaMultipartU
 	}
 	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", session.BlockNum, FormatSize(session.BlockSize))
 
-	if err = uploadDriveMediaMultipartParts(runtime, cfg.FilePath, cfg.FileSize, session); err != nil {
+	if err = uploadDriveMediaMultipartParts(runtime, cfg, session); err != nil {
 		return "", err
 	}
 
@@ -166,12 +174,18 @@ func ExtractDriveMediaUploadFileToken(data map[string]interface{}, action string
 	return fileToken, nil
 }
 
-func uploadDriveMediaMultipartParts(runtime *RuntimeContext, filePath string, fileSize int64, session DriveMediaMultipartUploadSession) error {
-	f, err := runtime.FileIO().Open(filePath)
-	if err != nil {
-		return WrapInputStatError(err)
+func uploadDriveMediaMultipartParts(runtime *RuntimeContext, cfg DriveMediaMultipartUploadConfig, session DriveMediaMultipartUploadSession) error {
+	var r io.Reader
+	if cfg.Content != nil {
+		r = cfg.Content
+	} else {
+		f, err := runtime.FileIO().Open(cfg.FilePath)
+		if err != nil {
+			return WrapInputStatError(err)
+		}
+		defer f.Close()
+		r = f
 	}
-	defer f.Close()
 
 	maxInt := int64(^uint(0) >> 1)
 	bufferSize := session.BlockSize
@@ -179,7 +193,7 @@ func uploadDriveMediaMultipartParts(runtime *RuntimeContext, filePath string, fi
 		return output.Errorf(output.ExitAPI, "api_error", "upload prepare failed: invalid block_size returned")
 	}
 	buffer := make([]byte, int(bufferSize))
-	remaining := fileSize
+	remaining := cfg.FileSize
 	// Follow the server-declared block plan exactly; upload_finish expects the
 	// same block count returned by upload_prepare.
 	for seq := 0; seq < session.BlockNum; seq++ {
@@ -188,12 +202,12 @@ func uploadDriveMediaMultipartParts(runtime *RuntimeContext, filePath string, fi
 			chunkSize = remaining
 		}
 
-		n, readErr := io.ReadFull(f, buffer[:int(chunkSize)])
+		n, readErr := io.ReadFull(r, buffer[:int(chunkSize)])
 		if readErr != nil {
 			return output.ErrValidation("cannot read file: %s", readErr)
 		}
 
-		if err = uploadDriveMediaMultipartPart(runtime, session.UploadID, seq, buffer[:n]); err != nil {
+		if err := uploadDriveMediaMultipartPart(runtime, session.UploadID, seq, buffer[:n]); err != nil {
 			return err
 		}
 		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, session.BlockNum, FormatSize(int64(n)))

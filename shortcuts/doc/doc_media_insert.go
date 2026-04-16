@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -106,15 +107,15 @@ var DocMediaInsert = common.Shortcut{
 		alignStr := runtime.Str("align")
 		caption := runtime.Str("caption")
 
-		// Resolve clipboard to a temp file if requested.
+		// Clipboard path: read image bytes into memory, bypassing FileIO path validation.
+		var clipboardContent []byte
 		if runtime.Bool("from-clipboard") {
 			fmt.Fprintf(runtime.IO().ErrOut, "Reading image from clipboard...\n")
-			tmpPath, cleanup, err := readClipboardToTempFile()
+			var err error
+			clipboardContent, err = readClipboardImageBytes()
 			if err != nil {
 				return err
 			}
-			defer cleanup()
-			filePath = tmpPath
 		}
 
 		documentID, err := resolveDocxDocumentID(runtime, docInput)
@@ -122,21 +123,26 @@ var DocMediaInsert = common.Shortcut{
 			return err
 		}
 
-		// Validate file
-		stat, err := runtime.FileIO().Stat(filePath)
-		if err != nil {
-			return common.WrapInputStatError(err, "file not found")
-		}
-		if !stat.Mode().IsRegular() {
-			return output.ErrValidation("file must be a regular file: %s", filePath)
+		// Determine file size and name.
+		var fileSize int64
+		var fileName string
+		if clipboardContent != nil {
+			fileSize = int64(len(clipboardContent))
+			fileName = "clipboard.png"
+		} else {
+			stat, err := runtime.FileIO().Stat(filePath)
+			if err != nil {
+				return common.WrapInputStatError(err, "file not found")
+			}
+			if !stat.Mode().IsRegular() {
+				return output.ErrValidation("file must be a regular file: %s", filePath)
+			}
+			fileSize = stat.Size()
+			fileName = filepath.Base(filePath)
 		}
 
-		fileName := filepath.Base(filePath)
-		if runtime.Bool("from-clipboard") {
-			fileName = "clipboard.png"
-		}
 		fmt.Fprintf(runtime.IO().ErrOut, "Inserting: %s -> document %s\n", fileName, common.MaskToken(documentID))
-		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
+		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 		}
 
@@ -195,7 +201,11 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Step 3: Upload media file
-		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentTypeForMediaType(mediaType), uploadParentNode, documentID) //nolint:lll
+		var clipboardReader *bytes.Reader
+		if clipboardContent != nil {
+			clipboardReader = bytes.NewReader(clipboardContent)
+		}
+		fileToken, err := uploadDocMediaFile(runtime, filePath, clipboardReader, fileName, fileSize, parentTypeForMediaType(mediaType), uploadParentNode, documentID) //nolint:lll
 		if err != nil {
 			return withRollbackWarning(err)
 		}

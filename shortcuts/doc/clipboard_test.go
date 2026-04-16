@@ -62,7 +62,7 @@ func TestReadClipboardLinux_NoToolsReturnsError(t *testing.T) {
 	t.Cleanup(func() { os.Setenv("PATH", orig) })
 	os.Setenv("PATH", "")
 
-	err := readClipboardLinux("/dev/null")
+	_, err := readClipboardLinux()
 	if err == nil {
 		t.Fatal("expected error when no clipboard tool is available, got nil")
 	}
@@ -169,15 +169,14 @@ func TestExtractBase64ImageFromClipboard_WithFakeOsascript(t *testing.T) {
 	fakeOutput := "\xc2\xab" + "data HTML" + hexStr + "\xc2\xbb"
 
 	// Write a fake osascript that prints fakeOutput and exits 0.
+	// Use a pre-written output file to avoid shell-escaping issues with binary data.
 	tmpDir := t.TempDir()
-	fakeScript := tmpDir + "/osascript"
-	scriptBody := "#!/bin/sh\nprintf '%s'\n"
-	// Use printf with the exact bytes via a pre-written file to avoid shell escaping.
 	outputFile := tmpDir + "/output.txt"
 	if err := os.WriteFile(outputFile, []byte(fakeOutput), 0600); err != nil {
 		t.Fatalf("write output file: %v", err)
 	}
-	scriptBody = "#!/bin/sh\ncat " + outputFile + "\n"
+	fakeScript := tmpDir + "/osascript"
+	scriptBody := "#!/bin/sh\ncat " + outputFile + "\n"
 	if err := os.WriteFile(fakeScript, []byte(scriptBody), 0755); err != nil {
 		t.Fatalf("write fake osascript: %v", err)
 	}
