@@ -5,9 +5,11 @@ package doc
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 type documentRef struct {
@@ -15,6 +17,7 @@ type documentRef struct {
 	Token string
 }
 
+// parseDocumentRef classifies a user-supplied document reference as wiki, docx, or legacy doc.
 func parseDocumentRef(input string) (documentRef, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
@@ -40,6 +43,7 @@ func parseDocumentRef(input string) (documentRef, error) {
 	return documentRef{Kind: "docx", Token: raw}, nil
 }
 
+// extractDocumentToken pulls the token that follows a known path marker from a URL-like input.
 func extractDocumentToken(raw, marker string) (string, bool) {
 	idx := strings.Index(raw, marker)
 	if idx < 0 {
@@ -56,10 +60,52 @@ func extractDocumentToken(raw, marker string) (string, bool) {
 	return token, true
 }
 
+// buildDriveRouteExtra marshals the drive upload routing metadata expected by the media upload API.
 func buildDriveRouteExtra(docID string) (string, error) {
 	extra, err := json.Marshal(map[string]string{"drive_route_token": docID})
 	if err != nil {
 		return "", output.Errorf(output.ExitInternal, "internal_error", "failed to marshal upload extra data: %v", err)
 	}
 	return string(extra), nil
+}
+
+// resolveDocxDocumentID resolves docx and wiki inputs to a concrete docx document token.
+func resolveDocxDocumentID(runtime *common.RuntimeContext, input, operation string) (string, error) {
+	docRef, err := parseDocumentRef(input)
+	if err != nil {
+		return "", err
+	}
+
+	switch docRef.Kind {
+	case "docx":
+		return docRef.Token, nil
+	case "doc":
+		return "", output.ErrValidation("%s only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx", operation)
+	case "wiki":
+		fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
+		data, err := runtime.CallAPI(
+			"GET",
+			"/open-apis/wiki/v2/spaces/get_node",
+			map[string]interface{}{"token": docRef.Token},
+			nil,
+		)
+		if err != nil {
+			return "", err
+		}
+
+		node := common.GetMap(data, "node")
+		objType := common.GetString(node, "obj_type")
+		objToken := common.GetString(node, "obj_token")
+		if objType == "" || objToken == "" {
+			return "", output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data")
+		}
+		if objType != "docx" {
+			return "", output.ErrValidation("wiki resolved to %q, but %s only supports docx documents", objType, operation)
+		}
+
+		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to docx: %s\n", common.MaskToken(objToken))
+		return objToken, nil
+	default:
+		return "", output.ErrValidation("%s only supports docx documents", operation)
+	}
 }

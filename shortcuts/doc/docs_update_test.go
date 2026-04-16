@@ -4,6 +4,7 @@ package doc
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -75,4 +76,121 @@ func TestNormalizeDocsUpdateResult(t *testing.T) {
 			t.Fatalf("did not expect board_tokens for non-whiteboard markdown")
 		}
 	})
+}
+
+func TestShouldAutoResizeAfterUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		mode     string
+		markdown string
+		want     bool
+	}{
+		{
+			name:     "append markdown table",
+			mode:     "append",
+			markdown: "| A | B |\n| --- | --- |\n| 1 | 2 |",
+			want:     true,
+		},
+		{
+			name:     "replace range html table",
+			mode:     "replace_range",
+			markdown: "<table><tr><td>A</td></tr></table>",
+			want:     true,
+		},
+		{
+			name:     "plain markdown",
+			mode:     "append",
+			markdown: "## plain text",
+			want:     false,
+		},
+		{
+			name:     "delete range",
+			mode:     "delete_range",
+			markdown: "| A |",
+			want:     false,
+		},
+		{
+			name:     "pipe command not mistaken for table",
+			mode:     "append",
+			markdown: "run cmd1 | grep foo | wc -l",
+			want:     false,
+		},
+		{
+			name:     "borderless markdown table",
+			mode:     "append",
+			markdown: "A | B | C\n--|--|--\n1 | 2 | 3",
+			want:     true,
+		},
+		{
+			name:     "two column borderless markdown table",
+			mode:     "append",
+			markdown: "A | B\n--|--\n1 | 2",
+			want:     true,
+		},
+		{
+			name:     "pipe command still not mistaken for table",
+			mode:     "append",
+			markdown: "run cmd1 | grep foo | wc -l",
+			want:     false,
+		},
+		{
+			name:     "table inside fenced code block",
+			mode:     "append",
+			markdown: "```md\nA | B\n--|--\n1 | 2\n```",
+			want:     false,
+		},
+		{
+			name:     "html table inside fenced code block",
+			mode:     "append",
+			markdown: "~~~html\n<table><tr><td>A</td></tr></table>\n~~~",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldAutoResizeAfterUpdate(tt.mode, tt.markdown); got != tt.want {
+				t.Fatalf("shouldAutoResizeAfterUpdate(%q, %q) = %v, want %v", tt.mode, tt.markdown, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripFencedCodeBlocks(t *testing.T) {
+	markdown := strings.Join([]string{
+		"before",
+		"```md",
+		"A | B",
+		"--|--",
+		"```",
+		"after",
+		"~~~html",
+		"<table><tr><td>x</td></tr></table>",
+		"~~~",
+	}, "\n")
+
+	got := stripFencedCodeBlocks(markdown)
+	if got != "before\nafter" {
+		t.Fatalf("stripFencedCodeBlocks() = %q, want %q", got, "before\nafter")
+	}
+}
+
+func TestFencedCodeMarker(t *testing.T) {
+	tests := []struct {
+		line string
+		want string
+		ok   bool
+	}{
+		{line: "```go", want: "```", ok: true},
+		{line: "````markdown", want: "````", ok: true},
+		{line: "~~~~html", want: "~~~~", ok: true},
+		{line: "plain text", want: "", ok: false},
+	}
+
+	for _, tt := range tests {
+		got, ok := fencedCodeMarker(tt.line)
+		if got != tt.want || ok != tt.ok {
+			t.Fatalf("fencedCodeMarker(%q) = (%q, %v), want (%q, %v)", tt.line, got, ok, tt.want, tt.ok)
+		}
+	}
 }
