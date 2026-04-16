@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -63,7 +64,7 @@ const (
 var DriveAddComment = common.Shortcut{
 	Service:     "drive",
 	Command:     "+add-comment",
-	Description: "Add a full-document comment, or a local comment to selected docx text (also supports wiki URL resolving to doc/docx)",
+	Description: "Add a full-document or local comment to doc/docx/sheet, also supports wiki URL resolving to doc/docx/sheet",
 	Risk:        "write",
 	Scopes: []string{
 		"docx:document:readonly",
@@ -72,20 +73,36 @@ var DriveAddComment = common.Shortcut{
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "doc", Desc: "document URL/token, or wiki URL that resolves to doc/docx", Required: true},
+		{Name: "doc", Desc: "document URL/token, sheet URL, or wiki URL that resolves to doc/docx/sheet", Required: true},
+		{Name: "type", Desc: "document type: doc, docx, sheet (required when --doc is a bare token; auto-detected for URLs)", Enum: []string{"doc", "docx", "sheet"}},
 		{Name: "content", Desc: "reply_elements JSON string", Required: true},
 		{Name: "full-comment", Type: "bool", Desc: "create a full-document comment; also the default when no location is provided"},
 		{Name: "selection-with-ellipsis", Desc: "target content locator (plain text or 'start...end')"},
-		{Name: "block-id", Desc: "anchor block ID (skip MCP locate-doc if already known)"},
+		{Name: "block-id", Desc: "for docx: anchor block ID; for sheet: <sheetId>!<cell> (e.g. a281f9!D6)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		docRef, err := parseCommentDocRef(runtime.Str("doc"))
+		docRef, err := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
 		if err != nil {
 			return err
 		}
 
 		if _, err := parseCommentReplyElements(runtime.Str("content")); err != nil {
 			return err
+		}
+
+		// Sheet comment validation.
+		if docRef.Kind == "sheet" {
+			blockID := strings.TrimSpace(runtime.Str("block-id"))
+			if blockID == "" {
+				return output.ErrValidation("--block-id is required for sheet comments (format: <sheetId>!<cell>, e.g. a281f9!D6)")
+			}
+			if _, err := parseSheetCellRef(blockID); err != nil {
+				return err
+			}
+			if runtime.Bool("full-comment") || strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
+				return output.ErrValidation("--full-comment and --selection-with-ellipsis are not applicable for sheet comments; use --block-id with <sheetId>!<cell> format")
+			}
+			return nil
 		}
 
 		selection := runtime.Str("selection-with-ellipsis")
@@ -99,37 +116,69 @@ var DriveAddComment = common.Shortcut{
 
 		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
 		if mode == commentModeLocal && docRef.Kind == "doc" {
-			return output.ErrValidation("local comments only support docx documents; use --full-comment or omit location flags for a whole-document comment")
+			return output.ErrValidation("local comments only support docx and sheet; old doc format only supports full comments")
 		}
 
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		docRef, _ := parseCommentDocRef(runtime.Str("doc"))
+		docRef, _ := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
 		replyElements, _ := parseCommentReplyElements(runtime.Str("content"))
-		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
+
+		// For wiki URLs, resolve the actual target type via API so dry-run
+		// matches real execution behavior instead of guessing from --block-id.
+		resolvedKind := docRef.Kind
+		resolvedToken := docRef.Token
+		isWiki := false
+		if docRef.Kind == "wiki" {
+			isWiki = true
+			target, err := resolveCommentTarget(ctx, runtime, runtime.Str("doc"), commentModeFull)
+			if err == nil {
+				resolvedKind = target.FileType
+				resolvedToken = target.FileToken
+			}
+		}
+
+		// Sheet comment dry-run.
+		if resolvedKind == "sheet" {
+			anchor, _ := parseSheetCellRef(blockID)
+			if anchor == nil {
+				anchor = &sheetAnchor{SheetID: "<sheetId>", Col: 0, Row: 0}
+			}
+			commentBody := buildCommentCreateV2Request("sheet", "", replyElements, anchor)
+			desc := "1-step request: create sheet comment"
+			if isWiki {
+				desc = "2-step orchestration: resolve wiki -> create sheet comment"
+			}
+			return common.NewDryRunAPI().
+				Desc(desc).
+				POST("/open-apis/drive/v1/files/:file_token/new_comments").
+				Body(commentBody).
+				Set("file_token", resolvedToken)
+		}
+
+		// Doc/docx comment dry-run.
+		selection := runtime.Str("selection-with-ellipsis")
 		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
 
-		targetToken, targetFileType, resolvedBy := dryRunResolvedCommentTarget(docRef, mode)
-
 		createPath := "/open-apis/drive/v1/files/:file_token/new_comments"
-		commentBody := buildCommentCreateV2Request(targetFileType, "", replyElements)
+		commentBody := buildCommentCreateV2Request(resolvedKind, "", replyElements, nil)
 		if mode == commentModeLocal {
-			commentBody = buildCommentCreateV2Request(targetFileType, anchorBlockIDForDryRun(blockID), replyElements)
+			commentBody = buildCommentCreateV2Request(resolvedKind, anchorBlockIDForDryRun(blockID), replyElements, nil)
 		}
 
 		mcpEndpoint := common.MCPEndpoint(runtime.Config.Brand)
 
 		dry := common.NewDryRunAPI()
 		switch {
-		case mode == commentModeFull && resolvedBy == "wiki":
+		case mode == commentModeFull && isWiki:
 			dry.Desc("2-step orchestration: resolve wiki -> create full comment")
 		case mode == commentModeFull:
 			dry.Desc("1-step request: create full comment")
-		case resolvedBy == "wiki" && strings.TrimSpace(selection) != "":
+		case isWiki && strings.TrimSpace(selection) != "":
 			dry.Desc("3-step orchestration: resolve wiki -> locate block -> create local comment")
-		case resolvedBy == "wiki":
+		case isWiki:
 			dry.Desc("2-step orchestration: resolve wiki -> create local comment")
 		case strings.TrimSpace(selection) != "":
 			dry.Desc("2-step orchestration: locate block -> create local comment")
@@ -137,19 +186,17 @@ var DriveAddComment = common.Shortcut{
 			dry.Desc("1-step request: create local comment with explicit block ID")
 		}
 
-		if resolvedBy == "wiki" {
-			dry.GET("/open-apis/wiki/v2/spaces/get_node").
-				Desc("[1] Resolve wiki node to target document").
-				Params(map[string]interface{}{"token": docRef.Token})
-		}
-
 		if mode == commentModeLocal && strings.TrimSpace(selection) != "" {
 			step := "[1]"
-			if resolvedBy == "wiki" {
+			if isWiki {
 				step = "[2]"
 			}
+			docID := resolvedToken
+			if isWiki && resolvedToken == docRef.Token {
+				docID = "<resolved_docx_token>"
+			}
 			mcpArgs := map[string]interface{}{
-				"doc_id":                  dryRunLocateDocRef(docRef),
+				"doc_id":                  docID,
 				"limit":                   defaultLocateDocLimit,
 				"selection_with_ellipsis": selection,
 			}
@@ -171,23 +218,29 @@ var DriveAddComment = common.Shortcut{
 		if mode == commentModeLocal {
 			createDesc = "Create local comment"
 			step = "[2]"
-			if resolvedBy == "wiki" && strings.TrimSpace(selection) != "" {
+			if isWiki && strings.TrimSpace(selection) != "" {
 				step = "[3]"
-			} else if resolvedBy == "wiki" || strings.TrimSpace(selection) != "" {
+			} else if isWiki || strings.TrimSpace(selection) != "" {
 				step = "[2]"
 			} else {
 				step = "[1]"
 			}
-		} else if resolvedBy == "wiki" {
+		} else if isWiki {
 			step = "[2]"
 		}
 
 		return dry.POST(createPath).
 			Desc(step+" "+createDesc).
 			Body(commentBody).
-			Set("file_token", targetToken)
+			Set("file_token", resolvedToken)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		// Sheet comment: direct URL or token fast path.
+		docRef, _ := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
+		if docRef.Kind == "sheet" {
+			return executeSheetComment(runtime, docRef)
+		}
+
 		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
 		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
@@ -195,6 +248,11 @@ var DriveAddComment = common.Shortcut{
 		target, err := resolveCommentTarget(ctx, runtime, runtime.Str("doc"), mode)
 		if err != nil {
 			return err
+		}
+
+		// Wiki resolved to sheet: redirect to sheet comment path.
+		if target.FileType == "sheet" {
+			return executeSheetComment(runtime, commentDocRef{Kind: "sheet", Token: target.FileToken})
 		}
 
 		replyElements, err := parseCommentReplyElements(runtime.Str("content"))
@@ -225,9 +283,9 @@ var DriveAddComment = common.Shortcut{
 		}
 
 		requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
-		requestBody := buildCommentCreateV2Request(target.FileType, "", replyElements)
+		requestBody := buildCommentCreateV2Request(target.FileType, "", replyElements, nil)
 		if mode == commentModeLocal {
-			requestBody = buildCommentCreateV2Request(target.FileType, blockID, replyElements)
+			requestBody = buildCommentCreateV2Request(target.FileType, blockID, replyElements, nil)
 		}
 
 		if mode == commentModeLocal {
@@ -288,7 +346,7 @@ func resolveCommentMode(explicitFullComment bool, selection, blockID string) com
 	return commentModeLocal
 }
 
-func parseCommentDocRef(input string) (commentDocRef, error) {
+func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
 		return commentDocRef{}, output.ErrValidation("--doc cannot be empty")
@@ -297,6 +355,9 @@ func parseCommentDocRef(input string) (commentDocRef, error) {
 	if token, ok := extractURLToken(raw, "/wiki/"); ok {
 		return commentDocRef{Kind: "wiki", Token: token}, nil
 	}
+	if token, ok := extractURLToken(raw, "/sheets/"); ok {
+		return commentDocRef{Kind: "sheet", Token: token}, nil
+	}
 	if token, ok := extractURLToken(raw, "/docx/"); ok {
 		return commentDocRef{Kind: "docx", Token: token}, nil
 	}
@@ -304,40 +365,29 @@ func parseCommentDocRef(input string) (commentDocRef, error) {
 		return commentDocRef{Kind: "doc", Token: token}, nil
 	}
 	if strings.Contains(raw, "://") {
-		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a doc/docx URL, a docx token, or a wiki URL that resolves to doc/docx", raw)
+		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a doc/docx/sheet URL, a token with --type, or a wiki URL that resolves to doc/docx/sheet", raw)
 	}
 	if strings.ContainsAny(raw, "/?#") {
-		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a docx token or a wiki URL", raw)
+		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a token with --type, or a wiki URL", raw)
 	}
 
-	return commentDocRef{Kind: "docx", Token: raw}, nil
-}
-
-func dryRunResolvedCommentTarget(docRef commentDocRef, mode commentMode) (token, fileType, resolvedBy string) {
-	switch docRef.Kind {
-	case "docx":
-		return docRef.Token, "docx", "docx"
-	case "doc":
-		return docRef.Token, "doc", "doc"
-	case "wiki":
-		if mode == commentModeFull {
-			return "<resolved_file_token>", "<resolved_file_type>", "wiki"
-		}
-		return "<resolved_docx_token>", "docx", "wiki"
-	default:
-		return "<resolved_docx_token>", "docx", "docx"
+	// Bare token: --type is required.
+	docType = strings.TrimSpace(docType)
+	if docType == "" {
+		return commentDocRef{}, output.ErrValidation("--type is required when --doc is a bare token (allowed values: doc, docx, sheet)")
 	}
+	return commentDocRef{Kind: docType, Token: raw}, nil
 }
 
 func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, input string, mode commentMode) (resolvedCommentTarget, error) {
-	docRef, err := parseCommentDocRef(input)
+	docRef, err := parseCommentDocRef(input, runtime.Str("type"))
 	if err != nil {
 		return resolvedCommentTarget{}, err
 	}
 
-	if docRef.Kind == "docx" || docRef.Kind == "doc" {
-		if mode == commentModeLocal && docRef.Kind != "docx" {
-			return resolvedCommentTarget{}, output.ErrValidation("local comments only support docx documents")
+	if docRef.Kind == "docx" || docRef.Kind == "doc" || docRef.Kind == "sheet" {
+		if mode == commentModeLocal && docRef.Kind != "docx" && docRef.Kind != "sheet" {
+			return resolvedCommentTarget{}, output.ErrValidation("local comments only support docx and sheet; old doc format only supports full comments")
 		}
 		return resolvedCommentTarget{
 			DocID:      docRef.Token,
@@ -364,11 +414,22 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	if objType == "" || objToken == "" {
 		return resolvedCommentTarget{}, output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data")
 	}
+	if objType == "sheet" {
+		// Sheet comments are handled via the sheet fast path in Execute.
+		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
+		return resolvedCommentTarget{
+			DocID:      objToken,
+			FileToken:  objToken,
+			FileType:   "sheet",
+			ResolvedBy: "wiki",
+			WikiToken:  docRef.Token,
+		}, nil
+	}
 	if mode == commentModeLocal && objType != "docx" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but local comments currently only support docx documents", objType)
+		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but local comments only support docx and sheet; for sheet use --block-id <sheetId>!<cell>", objType)
 	}
 	if mode == commentModeFull && objType != "docx" && objType != "doc" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but full comments only support doc/docx documents", objType)
+		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but comments only support doc/docx/sheet", objType)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
@@ -531,12 +592,24 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 	return replyElements, nil
 }
 
-func buildCommentCreateV2Request(fileType, blockID string, replyElements []map[string]interface{}) map[string]interface{} {
+type sheetAnchor struct {
+	SheetID string
+	Col     int
+	Row     int
+}
+
+func buildCommentCreateV2Request(fileType, blockID string, replyElements []map[string]interface{}, sheet *sheetAnchor) map[string]interface{} {
 	body := map[string]interface{}{
 		"file_type":      fileType,
 		"reply_elements": replyElements,
 	}
-	if strings.TrimSpace(blockID) != "" {
+	if sheet != nil {
+		body["anchor"] = map[string]interface{}{
+			"block_id":  sheet.SheetID,
+			"sheet_col": sheet.Col,
+			"sheet_row": sheet.Row,
+		}
+	} else if strings.TrimSpace(blockID) != "" {
 		body["anchor"] = map[string]interface{}{
 			"block_id": blockID,
 		}
@@ -549,13 +622,6 @@ func anchorBlockIDForDryRun(blockID string) string {
 		return strings.TrimSpace(blockID)
 	}
 	return "<anchor_block_id>"
-}
-
-func dryRunLocateDocRef(docRef commentDocRef) string {
-	if docRef.Kind == "wiki" {
-		return "<resolved_docx_token>"
-	}
-	return docRef.Token
 }
 
 func firstNonEmptyString(values ...string) string {
@@ -573,6 +639,83 @@ func firstPresentValue(m map[string]interface{}, keys ...string) interface{} {
 			return value
 		}
 	}
+	return nil
+}
+
+// parseSheetCellRef parses "<sheetId>!<cell>" (e.g. "a281f9!D6") into a sheetAnchor.
+// Column is converted from letter to 0-based index (A=0), row from 1-based to 0-based.
+func parseSheetCellRef(input string) (*sheetAnchor, error) {
+	parts := strings.SplitN(input, "!", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, output.ErrValidation("--block-id for sheet must be <sheetId>!<cell> (e.g. a281f9!D6), got %q", input)
+	}
+	sheetID := parts[0]
+	cell := strings.TrimSpace(parts[1])
+
+	// Parse cell reference like "D6" into col letter + row number.
+	i := 0
+	for i < len(cell) && ((cell[i] >= 'A' && cell[i] <= 'Z') || (cell[i] >= 'a' && cell[i] <= 'z')) {
+		i++
+	}
+	if i == 0 || i >= len(cell) {
+		return nil, output.ErrValidation("--block-id cell reference %q is invalid (expected e.g. D6)", cell)
+	}
+	colStr := strings.ToUpper(cell[:i])
+	rowStr := cell[i:]
+
+	// Column letter to 0-based index: A=0, B=1, ..., Z=25, AA=26.
+	col := 0
+	for _, ch := range colStr {
+		col = col*26 + int(ch-'A'+1)
+	}
+	col-- // convert to 0-based
+
+	row, err := strconv.Atoi(rowStr)
+	if err != nil || row < 1 {
+		return nil, output.ErrValidation("--block-id row %q is invalid (must be >= 1)", rowStr)
+	}
+	row-- // convert to 0-based
+
+	return &sheetAnchor{SheetID: sheetID, Col: col, Row: row}, nil
+}
+
+func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) error {
+	replyElements, err := parseCommentReplyElements(runtime.Str("content"))
+	if err != nil {
+		return err
+	}
+
+	blockID := strings.TrimSpace(runtime.Str("block-id"))
+	if blockID == "" {
+		return output.ErrValidation("--block-id is required for sheet comments (format: <sheetId>!<cell>, e.g. a281f9!D6)")
+	}
+	anchor, err := parseSheetCellRef(blockID)
+	if err != nil {
+		return err
+	}
+
+	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(docRef.Token))
+	requestBody := buildCommentCreateV2Request("sheet", "", replyElements, anchor)
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Creating sheet comment in %s (sheet=%s, col=%d, row=%d)\n",
+		common.MaskToken(docRef.Token), anchor.SheetID, anchor.Col, anchor.Row)
+
+	data, err := runtime.CallAPI("POST", requestPath, nil, requestBody)
+	if err != nil {
+		return err
+	}
+
+	out := map[string]interface{}{
+		"comment_id":   data["comment_id"],
+		"file_token":   docRef.Token,
+		"file_type":    "sheet",
+		"comment_mode": "sheet",
+		"block_id":     blockID,
+	}
+	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
+		out["created_at"] = createdAt
+	}
+	runtime.Out(out, nil)
 	return nil
 }
 
