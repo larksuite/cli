@@ -216,9 +216,9 @@ func TestDebugFlag_Integration(t *testing.T) {
 	t.Cleanup(cancel)
 
 	t.Run("debug_with_format_json", func(t *testing.T) {
-		// Test --debug combined with --format flag
+		// Test --debug (global) combined with --format (local to api subcommand)
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"--debug", "--format", "json", "api", "GET", "/open-apis/contact/v3/users"},
+			Args: []string{"--debug", "api", "GET", "/open-apis/contact/v3/users", "--format", "json"},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -229,9 +229,9 @@ func TestDebugFlag_Integration(t *testing.T) {
 	})
 
 	t.Run("debug_format_order", func(t *testing.T) {
-		// Test different flag order: --format before --debug
+		// Test --format (local) placed right after api subcommand, before positional args
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"--format", "json", "--debug", "api", "GET", "/open-apis/contact/v3/users"},
+			Args: []string{"--debug", "api", "--format", "json", "GET", "/open-apis/contact/v3/users"},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -241,9 +241,9 @@ func TestDebugFlag_Integration(t *testing.T) {
 	})
 
 	t.Run("multiple_global_flags", func(t *testing.T) {
-		// Test --debug, --profile, and --format all together
+		// Test --debug and --profile (global) with --format (local to api)
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"--debug", "--profile", "default", "--format", "json", "api", "GET", "/open-apis/contact/v3/users"},
+			Args: []string{"--debug", "--profile", "default", "api", "GET", "/open-apis/contact/v3/users", "--format", "json"},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
