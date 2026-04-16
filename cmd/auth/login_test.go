@@ -392,7 +392,7 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	if strings.Contains(got, "最终已授权 scopes:") {
 		t.Fatalf("stderr should not contain final granted scopes, got:\n%s", got)
 	}
-	if strings.Contains(got, "登录成功") {
+	if strings.Contains(got, "授权成功") {
 		t.Fatalf("stderr should not contain success wording, got:\n%s", got)
 	}
 }
@@ -469,7 +469,7 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 				Granted:        []string{"im:message:send", "im:message:reply"},
 			},
 			expectedPresent: []string{
-				"登录成功! 用户: tester (ou_user)",
+				"授权成功! 用户: tester (ou_user)",
 				"本次请求 scopes: im:message:send im:message:reply",
 				"本次新授予 scopes: im:message:send",
 				"本次未授予 scopes: （空）",
@@ -619,7 +619,7 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
+		"OK: 授权成功! 用户: tester (ou_user)",
 		"授权完成，但以下请求 scopes 未被授予: im:message:send",
 		"本次请求 scopes: im:message:send",
 		"本次未授予 scopes: im:message:send",
@@ -743,7 +743,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
+		"OK: 授权成功! 用户: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次新授予 scopes: im:message:send",
 		"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
@@ -771,7 +771,7 @@ func TestWriteLoginSuccess_TextOutputEnglishIncludesStatusHintWhenNoMissingScope
 
 	got := stderr.String()
 	for _, want := range []string{
-		"Login successful! User: tester (ou_user)",
+		"Authorization successful! User: tester (ou_user)",
 		"Requested scopes: im:message:send",
 		"Newly granted scopes: im:message:send",
 		"Not granted scopes: (none)",
