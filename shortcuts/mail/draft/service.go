@@ -60,7 +60,21 @@ func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML st
 }
 
 func Send(runtime *common.RuntimeContext, mailboxID, draftID string) (map[string]interface{}, error) {
-	return runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, nil)
+	return SendWithTime(runtime, mailboxID, draftID, "")
+}
+
+// SendWithTime sends a draft immediately or schedules it if sendTime is set.
+func SendWithTime(runtime *common.RuntimeContext, mailboxID, draftID, sendTime string) (map[string]interface{}, error) {
+	var body map[string]interface{}
+	if strings.TrimSpace(sendTime) != "" {
+		body = map[string]interface{}{"send_time": sendTime}
+	}
+	return runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, body)
+}
+
+// CancelScheduledSend cancels a scheduled send for a message and restores the draft.
+func CancelScheduledSend(runtime *common.RuntimeContext, mailboxID, messageID string) (map[string]interface{}, error) {
+	return runtime.CallAPI("POST", mailboxPath(mailboxID, "messages", messageID, "cancel_scheduled_send"), nil, nil)
 }
 
 func extractDraftID(data map[string]interface{}) string {

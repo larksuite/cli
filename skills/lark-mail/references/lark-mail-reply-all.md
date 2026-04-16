@@ -21,6 +21,8 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '<回复正文>'
 ```
 → 返回 `draft_id`
 
+如果需要定时发送，请在 Step 1 使用 `--confirm-send --send-time <RFC3339>`。
+
 **Step 2** — 向用户展示回复摘要（目标邮件、回复内容、完整收件人列表 To/Cc），请求确认发送
 
 **Step 3** — 用户明确同意后，发送该草稿：
@@ -51,6 +53,10 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '收到，已处理。'
 # 确认发送（用户明确确认后才可使用）
 lark-cli mail +reply-all --message-id <邮件ID> --body '<p>收到，已处理。</p>' --confirm-send
 
+# 定时发送（用户明确确认后才可使用）
+lark-cli mail +reply-all --message-id <邮件ID> --body '<p>收到，已处理。</p>' \
+  --confirm-send --send-time '2026-04-14T09:00:00+08:00'
+
 # Dry Run（仅打印请求，不发送）
 lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 ```
@@ -70,6 +76,7 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 | `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用 |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径 |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
+| `--send-time <RFC3339>` | 否 | 定时发送时间。仅在 `--confirm-send` 下生效；如果未提供时区，默认按 UTC 处理。必须至少比当前时间晚 5 分钟 |
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到回复正文与引用块之间。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
 | `--confirm-send` | 否 | 确认发送回复（默认只保存草稿）。仅在用户明确确认后使用 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |

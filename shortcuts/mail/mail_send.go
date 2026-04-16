@@ -16,7 +16,7 @@ import (
 var MailSend = common.Shortcut{
 	Service:     "mail",
 	Command:     "+send",
-	Description: "Compose a new email and save as draft (default). Use --confirm-send to send immediately after user confirmation.",
+	Description: "Compose a new email and save as draft (default). Use --confirm-send to send immediately after user confirmation, or pair --confirm-send with --send-time to schedule a future send.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:send", "mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
@@ -31,12 +31,14 @@ var MailSend = common.Shortcut{
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
 		{Name: "attach", Desc: "Attachment file path(s), comma-separated (relative path only)"},
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		{Name: "send-time", Desc: "Scheduled send time in RFC3339 format. Use with --confirm-send to schedule a future send. If the timezone is omitted, UTC is assumed; the time must be at least 5 minutes in the future."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the email immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		signatureFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
 		confirmSend := runtime.Bool("confirm-send")
+		sendTime := runtime.Str("send-time")
 		mailboxID := resolveComposeMailboxID(runtime)
 		desc := "Compose email → save as draft"
 		if confirmSend {
@@ -55,12 +57,20 @@ var MailSend = common.Shortcut{
 			})
 		if confirmSend {
 			api = api.POST(mailboxPath(mailboxID, "drafts", "<draft_id>", "send"))
+			if sendTime != "" {
+				api = api.Body(map[string]interface{}{"send_time": sendTime})
+			}
 		}
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateComposeHasAtLeastOneRecipient(runtime.Str("to"), runtime.Str("cc"), runtime.Str("bcc")); err != nil {
 			return err
+		}
+		if sendTimeStr := runtime.Str("send-time"); sendTimeStr != "" {
+			if _, err := parseAndValidateSendTime(sendTimeStr); err != nil {
+				return err
+			}
 		}
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
 			return err
@@ -77,6 +87,7 @@ var MailSend = common.Shortcut{
 		attachFlag := runtime.Str("attach")
 		inlineFlag := runtime.Str("inline")
 		confirmSend := runtime.Bool("confirm-send")
+		sendTime := runtime.Str("send-time")
 
 		senderEmail := resolveComposeSenderEmail(runtime)
 		signatureID := runtime.Str("signature-id")
@@ -155,18 +166,29 @@ var MailSend = common.Shortcut{
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
+			tip := fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID)
+			if strings.TrimSpace(sendTime) != "" {
+				tip = fmt.Sprintf("draft saved. To schedule send, rerun with --confirm-send and --send-time %q", sendTime)
+			}
 			runtime.Out(map[string]interface{}{
 				"draft_id": draftID,
-				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID),
+				"tip":      tip,
 			}, nil)
 			hintSendDraft(runtime, mailboxID, draftID)
 			return nil
 		}
-		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
+		var validatedSendTime string
+		if strings.TrimSpace(sendTime) != "" {
+			validatedSendTime, err = parseAndValidateSendTime(sendTime)
+			if err != nil {
+				return err
+			}
+		}
+		resData, err := draftpkg.SendWithTime(runtime, mailboxID, draftID, validatedSendTime)
 		if err != nil {
 			return fmt.Errorf("failed to send email (draft %s created but not sent): %w", draftID, err)
 		}
-		runtime.Out(buildSendResult(resData, mailboxID), nil)
+		runtime.Out(buildSendResult(resData, mailboxID, validatedSendTime), nil)
 		return nil
 	},
 }

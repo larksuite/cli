@@ -1935,10 +1935,14 @@ func validateConfirmSendScope(runtime *common.RuntimeContext) error {
 
 // buildSendResult builds the output map for a successful send, including
 // recall tip if the backend indicates the message is recallable.
-func buildSendResult(resData map[string]interface{}, mailboxID string) map[string]interface{} {
+func buildSendResult(resData map[string]interface{}, mailboxID string, sendTime ...string) map[string]interface{} {
 	result := map[string]interface{}{
 		"message_id": resData["message_id"],
 		"thread_id":  resData["thread_id"],
+	}
+	if len(sendTime) > 0 && strings.TrimSpace(sendTime[0]) != "" {
+		result["scheduled_send_time"] = sendTime[0]
+		result["scheduled_send_time_human"] = formatScheduledTimeHuman(sendTime[0])
 	}
 	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
 		messageID, _ := resData["message_id"].(string)
