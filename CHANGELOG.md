@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.13] - 2026-04-16
+
+### Features
+
+- **im**: Support user access token for file, image, audio, and video upload, aligning upload and send identity with `--as` flag (#474)
+- **drive**: Add `drive +create-folder` shortcut with root-folder fallback and bot-mode auto-grant (#470)
+- **wiki**: Add bot-mode auto-grant support to `wiki +node-create` (#470)
+- **doc**: Default `skip_task_detail` in `docs +fetch` to reduce unnecessary task detail expansion (#471)
+
+### Bug Fixes
+
+- **im**: Preserve original URL filename for uploaded file messages instead of generic `media.ext` names (#514)
+- **whiteboard**: Use atomic overwrite API parameter for `whiteboard +update`, replacing read-then-delete approach (#483)
+
+### Documentation
+
+- **base**: Unify record batch write limit to 200 and enforce serial writes for continuous operations (#499)
+- **base**: Remove redundant reference documentation and command grouping chapters from SKILL.md (#500)
+
+### CI
+
+- Consolidate workflows into layered CI pyramid with single `results` gate (#510)
+
 ## [v1.0.12] - 2026-04-15
 
 ### Features
@@ -359,6 +382,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.13]: https://github.com/larksuite/cli/releases/tag/v1.0.13
 [v1.0.12]: https://github.com/larksuite/cli/releases/tag/v1.0.12
 [v1.0.11]: https://github.com/larksuite/cli/releases/tag/v1.0.11
 [v1.0.10]: https://github.com/larksuite/cli/releases/tag/v1.0.10
