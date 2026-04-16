@@ -72,8 +72,8 @@ var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+
 //  2. If that fails (e.g. screenshot is stored as TIFF), fall back to TIFF,
 //     then convert to PNG using sips (Scriptable Image Processing System),
 //     which is a macOS built-in at /usr/bin/sips.
-//  3. If neither native image format is present, try to extract a base64-encoded
-//     image from the HTML clipboard (e.g. images copied from Feishu / browsers).
+//  3. Scan all text-based clipboard formats (HTML, RTF, plain text) for an
+//     embedded base64 data URI image (e.g. images copied from Feishu / browsers).
 //
 // No external dependencies required — osascript and sips ship with macOS.
 func readClipboardDarwin(destPath string) error {
@@ -104,27 +104,56 @@ close access f`, tiffPath)
 		return nil
 	}
 
-	// Attempt 3: HTML clipboard with embedded base64 data URI
-	// (e.g. images copied from Feishu docs, Chrome, Safari)
-	htmlOut, err := exec.Command("osascript", "-e", "get the clipboard as «class HTML»").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("clipboard contains no image data")
+	// Attempt 3: scan text-based clipboard formats for an embedded base64 data URI.
+	// Covers HTML (Feishu, Chrome, Safari), RTF, and plain text — tried in order.
+	// Any format that contains a "data:<mime>;base64,<data>" pattern is accepted.
+	if imgData := extractBase64ImageFromClipboard(); imgData != nil {
+		return os.WriteFile(destPath, imgData, 0600)
 	}
-	// osascript returns the raw bytes as a hex «data HTML...» literal; decode it.
-	raw := strings.TrimSpace(string(htmlOut))
-	htmlBytes, err := decodeOsascriptData(raw)
-	if err != nil || len(htmlBytes) == 0 {
-		return fmt.Errorf("clipboard contains no image data")
+
+	return fmt.Errorf("clipboard contains no image data")
+}
+
+// clipboardTextFormats lists the osascript type coercions to try when looking
+// for an embedded base64 data-URI image in text-based clipboard formats.
+// Ordered by likelihood of containing an embedded image.
+var clipboardTextFormats = []struct {
+	classCode string // 4-char OSType used in «class XXXX»
+	asExpr    string // AppleScript coercion expression
+}{
+	{"HTML", "get the clipboard as «class HTML»"},
+	{"RTF ", "get the clipboard as «class RTF »"},
+	{"utf8", "get the clipboard as «class utf8»"},
+	{"TEXT", "get the clipboard as string"},
+}
+
+// extractBase64ImageFromClipboard iterates text clipboard formats and returns
+// the first decoded image payload found, or nil if none contains image data.
+func extractBase64ImageFromClipboard() []byte {
+	for _, f := range clipboardTextFormats {
+		out, err := exec.Command("osascript", "-e", f.asExpr).CombinedOutput()
+		if err != nil || len(out) == 0 {
+			continue
+		}
+		raw := strings.TrimSpace(string(out))
+		decoded, err := decodeOsascriptData(raw)
+		if err != nil || len(decoded) == 0 {
+			continue
+		}
+		m := reBase64DataURI.FindSubmatch(decoded)
+		if m == nil {
+			continue
+		}
+		// Accept both standard and URL-safe base64 (some apps emit URL-safe).
+		imgData, err := base64.StdEncoding.DecodeString(string(m[2]))
+		if err != nil {
+			imgData, err = base64.URLEncoding.DecodeString(string(m[2]))
+		}
+		if err == nil && len(imgData) > 0 {
+			return imgData
+		}
 	}
-	m := reBase64DataURI.FindSubmatch(htmlBytes)
-	if m == nil {
-		return fmt.Errorf("clipboard contains no image data (HTML clipboard has no embedded image)")
-	}
-	imgData, err := base64.StdEncoding.DecodeString(string(m[2]))
-	if err != nil {
-		return fmt.Errorf("clipboard image decode failed: %w", err)
-	}
-	return os.WriteFile(destPath, imgData, 0600)
+	return nil
 }
 
 // decodeOsascriptData converts the «data XXXX<hex>» literal that osascript
