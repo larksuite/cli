@@ -50,7 +50,7 @@ lark-cli slides +replace-slide --as user \
 | `--slide-id` | 是 | 页面 ID（`xml_presentation.slide.get` / `xml_presentations.get` 都能拿到） |
 | `--parts` | 是 | JSON 数组（`[{...}, ...]`），单次最多 200 条。支持 `@<file>` 和 `-`（stdin）读取 |
 | `--comment` | 否 | 操作备注（出现在版本历史） |
-| `--revision-id` | 否 | 乐观锁；默认 `-1` 表示基于最新版执行，传具体版本号则期间有变更会冲突 |
+| `--revision-id` | 否 | 基础版本号；默认 `-1` 表示基于最新版执行；传具体版本号时，服务端以该版本为 base 执行；**传不存在的版本号（超过当前 revision）返回 3350002** |
 | `--tid` | 否 | 并发事务 ID；多人协作长事务才用，单次单人调用留空 |
 
 ## parts 元素结构
@@ -160,8 +160,8 @@ lark-cli slides +replace-slide --as user \
 
 | 现象 | 原因 | 对策 |
 |------|------|------|
-| `failed_part_index=i`, `block not found` | `parts[i].block_id` 在当前页不存在 | 重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
-| HTTP 400/409，信息含 revision | `--revision-id` 冲突 | 重读拿最新 `revision_id`；或用 `-1` 强制 |
+| 3350001 + hint "block_id not found" | `parts[i].block_id` 在当前页不存在 | 重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
+| 3350002 not found | `--revision-id` 传了不存在的版本号（超过当前 revision） | 用 `-1` 或用 `slide.get` 拿到的有效 `revision_id` |
 | `--parts[i] action "str_replace" is not supported` | CLI 不暴露 `str_replace` | 把替换需求改写成 `block_replace` / `block_insert` |
 | `--parts contains N items, exceeds maximum of 200` | 一次提交 parts 太多 | 拆多次调用 |
 | `--parts[i] (block_replace) requires non-empty block_id` / `replacement` | 字段缺失 | 按 parts 元素结构补齐 |

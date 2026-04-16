@@ -156,9 +156,9 @@ lark-cli slides xml_presentation.slide replace --as user --params '{
 
 | 错误码 | 含义 | 解决方案 |
 |--------|------|----------|
-| 400 | `failed_part_index` + `block not found` | 对应 `parts[i].block_id` 在当前页不存在——重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
+| 3350001 | `block_id` 在当前页不存在，或 XML 格式 / 结构错误 | 重新 `slide.get` 拿最新 XML，确认 `block_id` 存在；检查 `replacement` / `insertion` 是否合法 XML |
 | 400 | `parts` 长度超过 200 | 拆多次调用 |
-| 400/409 | `revision_id` 冲突 | 重新 `get` 拿最新 `revision_id`；或用 `-1` 基于最新版执行 |
+| 3350002 | `revision_id` 不存在（超过当前版本号） | 用 `-1` 或实际存在的 `revision_id` |
 | 400 | XML 格式错误 | `replacement` / `insertion` 必须是合法 XML 片段，标签闭合 + 属性引号 |
 | 403 | 权限不足 | 需要 `slides:presentation:update` 或 `slides:presentation:write_only` |
 

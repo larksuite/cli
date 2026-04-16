@@ -32,9 +32,9 @@ lark-cli slides +replace-slide --as user \
 
 `slide_id` / 页序不会变。`block_replace` 的 `replacement` 根元素 `id` 会自动注入为 `block_id`，用户手写 XML 时不需要自己加。
 
-## `revision_id` 乐观锁
+## `revision_id` 参数
 
-`--revision-id` 默认 `-1`，表示"强制覆盖当前最新版"。做乐观锁并发控制：
+`--revision-id` 默认 `-1`，表示基于当前最新版执行。传具体版本号时，服务端以该版本为 base 应用变更：
 
 ```bash
 # 读时拿当前 revision_id
@@ -42,13 +42,13 @@ REV=$(lark-cli slides xml_presentation.slide get --as user \
   --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
   | jq -r '.revision_id')
 
-# 写时传该版本号；如果期间有人改过，服务端拒绝
+# 写时传该版本号，服务端以此为 base
 lark-cli slides +replace-slide --as user \
   --presentation "$PID" --slide-id "$SID" --revision-id "$REV" \
   --parts '[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"rect\" topLeftX=\"100\" topLeftY=\"100\" width=\"200\" height=\"100\"/>"}]'
 ```
 
-冲突时重读 `get` 拿最新 `revision_id` 再试——或直接用 `-1` 强制基于最新版执行（会覆盖中间变更，谨慎使用）。
+注意：传不存在的版本号（超过当前 revision）会返回 3350002 not found；不确定时用 `-1` 即可。
 
 ## `--tid` 事务锁
 
@@ -109,7 +109,7 @@ lark-cli slides +replace-slide --as user \
   ]'
 ```
 
-整批作为原子事务：任一条失败整批不生效，服务端通过响应的 `failed_part_index` / `failed_reason` 告诉你是哪条。
+整批作为原子事务：任一条失败整批不生效。失败时后端通常返回 3350001；若响应中带 `failed_part_index` / `failed_reason` 字段，shortcut 会原样透传。
 
 ## 大 --parts 用 jq 或 stdin 组装
 
@@ -129,8 +129,8 @@ cat parts.json | lark-cli slides +replace-slide --as user --presentation "$PID" 
 
 | 现象 | 原因 | 对策 |
 |------|------|------|
-| `failed_part_index=i`, `failed_reason` 提示 block 未找到 | `parts[i].block_id` 在当前页不存在 | 重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
-| HTTP 400/409，信息含 revision | `revision_id` 冲突 | 重读拿最新 `revision_id`；或用 `-1` 强制覆盖 |
+| 3350001，hint 含 "block_id not found" | `parts[i].block_id` 在当前页不存在 | 重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
+| 3350002 not found | `--revision-id` 传了不存在的版本号 | 用 `-1` 或实际存在的 `revision_id` |
 | `<img>` 不显示 / 显示破图 | `src` 写了外链 URL | 换成通过 `+media-upload` 拿到的 `file_token` |
 | 3350001（block_replace 返回） | 正常情况下 CLI 已自动注入 `id` 和 `<content/>`；如果仍报错，确认 `block_id` 在当前页存在（重新 `slide.get`），检查 XML 结构是否合法；坐标是否超出 960×540 范围 | — |
 
