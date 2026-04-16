@@ -14,14 +14,12 @@ import (
 )
 
 type DraftRaw struct {
-	DraftID    string
-	RawEML     string
-	PreviewURL string
+	DraftID string
+	RawEML  string
 }
 
 type DraftResult struct {
-	DraftID    string
-	PreviewURL string
+	DraftID string
 }
 
 type Header struct {

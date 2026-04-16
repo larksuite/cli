@@ -26,7 +26,7 @@ func mailboxPath(mailboxID string, segments ...string) string {
 }
 
 func GetRaw(runtime *common.RuntimeContext, mailboxID, draftID string) (DraftRaw, error) {
-	data, meta, err := callDraftAPI(runtime, "GET", mailboxPath(mailboxID, "drafts", draftID), map[string]interface{}{"format": "raw"}, nil)
+	data, _, err := callDraftAPI(runtime, "GET", mailboxPath(mailboxID, "drafts", draftID), map[string]interface{}{"format": "raw"}, nil)
 	if err != nil {
 		return DraftRaw{}, err
 	}
@@ -39,14 +39,13 @@ func GetRaw(runtime *common.RuntimeContext, mailboxID, draftID string) (DraftRaw
 		gotDraftID = draftID
 	}
 	return DraftRaw{
-		DraftID:    gotDraftID,
-		RawEML:     raw,
-		PreviewURL: extractPreviewURL(meta),
+		DraftID: gotDraftID,
+		RawEML:  raw,
 	}, nil
 }
 
 func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (DraftResult, error) {
-	data, meta, err := callDraftAPI(runtime, "POST", mailboxPath(mailboxID, "drafts"), nil, map[string]interface{}{"raw": rawEML})
+	data, _, err := callDraftAPI(runtime, "POST", mailboxPath(mailboxID, "drafts"), nil, map[string]interface{}{"raw": rawEML})
 	if err != nil {
 		return DraftResult{}, err
 	}
@@ -54,14 +53,11 @@ func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (Dr
 	if draftID == "" {
 		return DraftResult{}, fmt.Errorf("API response missing draft_id")
 	}
-	return DraftResult{
-		DraftID:    draftID,
-		PreviewURL: extractPreviewURL(meta),
-	}, nil
+	return DraftResult{DraftID: draftID}, nil
 }
 
 func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML string) (DraftResult, error) {
-	data, meta, err := callDraftAPI(runtime, "PUT", mailboxPath(mailboxID, "drafts", draftID), nil, map[string]interface{}{"raw": rawEML})
+	data, _, err := callDraftAPI(runtime, "PUT", mailboxPath(mailboxID, "drafts", draftID), nil, map[string]interface{}{"raw": rawEML})
 	if err != nil {
 		return DraftResult{}, err
 	}
@@ -69,10 +65,7 @@ func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML st
 	if gotDraftID == "" {
 		gotDraftID = draftID
 	}
-	return DraftResult{
-		DraftID:    gotDraftID,
-		PreviewURL: extractPreviewURL(meta),
-	}, nil
+	return DraftResult{DraftID: gotDraftID}, nil
 }
 
 func Send(runtime *common.RuntimeContext, mailboxID, draftID string) (map[string]interface{}, error) {
@@ -133,28 +126,4 @@ func extractAPIDataAndMeta(result interface{}, err error, action string) (map[st
 		meta, _ = data["meta"].(map[string]interface{})
 	}
 	return data, meta, nil
-}
-
-func extractPreviewURL(meta map[string]interface{}) string {
-	if meta == nil {
-		return ""
-	}
-	return extractPreviewURLValue(meta)
-}
-
-func extractPreviewURLValue(data map[string]interface{}) string {
-	for _, key := range []string{"preview_url", "previewUrl"} {
-		if value, ok := data[key].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	for _, value := range data {
-		switch typed := value.(type) {
-		case map[string]interface{}:
-			if previewURL := extractPreviewURLValue(typed); previewURL != "" {
-				return previewURL
-			}
-		}
-	}
-	return ""
 }

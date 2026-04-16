@@ -193,15 +193,9 @@ var MailReplyAll = common.Shortcut{
 				"draft_id": draftResult.DraftID,
 				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftResult.DraftID),
 			}
-			if draftResult.PreviewURL != "" {
-				out["preview_url"] = draftResult.PreviewURL
-			}
 			runtime.OutFormat(out, nil, func(w io.Writer) {
 				fmt.Fprintln(w, "Draft saved.")
 				fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
-				if previewURL, _ := out["preview_url"].(string); previewURL != "" {
-					fmt.Fprintf(w, "preview_url: %s\n", previewURL)
-				}
 				fmt.Fprintf(w, "%s\n", out["tip"])
 			})
 			return nil
@@ -210,10 +204,7 @@ var MailReplyAll = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send reply-all (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(map[string]interface{}{
-			"message_id": resData["message_id"],
-			"thread_id":  resData["thread_id"],
-		}, nil)
+		runtime.Out(buildDraftSendOutput(resData), nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

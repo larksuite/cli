@@ -110,15 +110,9 @@ var MailDraftEdit = common.Shortcut{
 			"warning":    "This edit flow has no optimistic locking. If the same draft is changed concurrently, the last writer wins.",
 			"projection": projection,
 		}
-		if updateResult.PreviewURL != "" {
-			out["preview_url"] = updateResult.PreviewURL
-		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft updated.")
 			fmt.Fprintf(w, "draft_id: %s\n", updateResult.DraftID)
-			if previewURL, _ := out["preview_url"].(string); previewURL != "" {
-				fmt.Fprintf(w, "preview_url: %s\n", previewURL)
-			}
 			if projection.Subject != "" {
 				fmt.Fprintf(w, "subject: %s\n", sanitizeForTerminal(projection.Subject))
 			}
@@ -160,15 +154,9 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 		"draft_id":   draftID,
 		"projection": projection,
 	}
-	if rawDraft.PreviewURL != "" {
-		out["preview_url"] = rawDraft.PreviewURL
-	}
 	runtime.OutFormat(out, nil, func(w io.Writer) {
 		fmt.Fprintln(w, "Draft inspection (read-only, no changes applied).")
 		fmt.Fprintf(w, "draft_id: %s\n", draftID)
-		if previewURL, _ := out["preview_url"].(string); previewURL != "" {
-			fmt.Fprintf(w, "preview_url: %s\n", previewURL)
-		}
 		if projection.Subject != "" {
 			fmt.Fprintf(w, "subject: %s\n", sanitizeForTerminal(projection.Subject))
 		}
