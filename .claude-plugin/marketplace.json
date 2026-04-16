@@ -1,17 +1,20 @@
 {
   "name": "larksuite-cli",
-  "publisher": {
-    "name": "larksuite",
-    "url": "https://github.com/larksuite"
+  "owner": {
+    "name": "larksuite"
   },
-  "description": "Official Lark/Feishu CLI skills for Claude Code — 22 AI Agent Skills covering Calendar, Messenger, Docs, Base, Sheets, Tasks, Mail, and more.",
+  "metadata": {
+    "description": "Official Lark/Feishu CLI skills for Claude Code — 22 AI Agent Skills covering Calendar, Messenger, Docs, Base, Sheets, Tasks, Mail, and more."
+  },
   "plugins": [
     {
       "name": "lark-cli",
       "source": ".",
       "description": "The official Lark/Feishu CLI tool with 22 structured AI Agent Skills covering 14 business domains.",
-      "skills": "./skills/",
-      "version": "1.0.10"
+      "version": "1.0.10",
+      "license": "MIT",
+      "repository": "https://github.com/larksuite/cli",
+      "keywords": ["lark", "feishu", "calendar", "messenger", "docs", "sheets", "base", "tasks", "mail"]
     }
   ]
 }
