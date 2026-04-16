@@ -116,6 +116,14 @@ func TestEnsureShapeHasContent(t *testing.T) {
 			want: `<shape type="rect"><content/></shape>`,
 		},
 		{
+			// Regression: strings.Contains("<content") would false-match tags
+			// like <contention/> that merely start with "content". The regex
+			// now requires the char after "content" to be \s, / or >.
+			name: "shape with contention child still gets content injected",
+			in:   `<shape type="text"><contention/></shape>`,
+			want: `<shape type="text"><content/><contention/></shape>`,
+		},
+		{
 			name: "malformed input returned as-is",
 			in:   `not xml at all`,
 			want: `not xml at all`,
@@ -358,6 +366,14 @@ func TestEnsureXMLRootID(t *testing.T) {
 			in:      `<shape type="rect"`,
 			want:    "bUn",
 			wantErr: "no root element",
+		},
+		{
+			// Regression: \bid matches the "id" suffix in data-id / xml:id.
+			// The regex now uses (?:^|\s) so only a standalone id attribute fires.
+			name:    "does not confuse data-id with id — injects fresh id",
+			in:      `<shape data-id="old" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape data-id="old" type="rect" id="bUn"/>`,
 		},
 	}
 

@@ -10,7 +10,8 @@
 |------|------------|------|
 | 已知某块的 `block_id`，要换这块内容（改标题、换图、挪坐标） | `block_replace` | 精准替换，原子性好；`replacement` 根 `id` 由 CLI 自动注入为 `block_id` |
 | 只加 1~N 个元素、不动现有布局 | `block_insert` | 新增不覆盖，可选 `insert_before_block_id` 指定位置 |
-| 一次动多个元素（如：换标题 + 加图） | 单次 `--parts` 里拼多条 | 整批作为原子事务，任一失败整批不生效 |
+| 一次动多个同类元素（如：同时替换两个块） | 单次 `--parts` 拼多条（同类 action） | 原子事务；**所有条目必须是同一种 action**，全 `block_replace` 或全 `block_insert` |
+| 既要替换又要插入（如：换标题 + 加图） | 两次独立调用 | `block_replace` + `block_insert` 混用会触发 3350001；先发一次纯 `block_replace`，再发一次纯 `block_insert` |
 
 > **没有字段级 patch**：即便只想改一个 `shape` 的 `topLeftX`，也得把整个块的新 XML 写出来用 `block_replace`。这不是"微调"，是块级重写。
 
@@ -98,15 +99,21 @@ lark-cli slides +replace-slide --as user \
 
 ### 批量 parts
 
-一次 `--parts` 最多 200 条，按数组顺序串行执行。举例：一次性把标题块替换、然后在末尾追加一个装饰图。
+一次 `--parts` 最多 200 条，按数组顺序串行执行。**同一批次内所有条目必须是同一种 action**（全 `block_replace` 或全 `block_insert`）；混合会触发 3350001，需拆为两次调用。
 
 ```bash
+# 同类 action 可在一批：一次替换多个块
 lark-cli slides +replace-slide --as user \
   --presentation "$PID" --slide-id "$SID" \
   --parts '[
     {"action":"block_replace","block_id":"bab","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>新标题</p></content></shape>"},
-    {"action":"block_insert","insertion":"<img src=\"<file_token>\" topLeftX=\"700\" topLeftY=\"400\" width=\"180\" height=\"100\"/>"}
+    {"action":"block_replace","block_id":"bac","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"220\" width=\"800\" height=\"120\"><content textType=\"body\"><p>副标题</p></content></shape>"}
   ]'
+
+# 需要追加图片时，另起一次 block_insert 调用
+lark-cli slides +replace-slide --as user \
+  --presentation "$PID" --slide-id "$SID" \
+  --parts '[{"action":"block_insert","insertion":"<img src=\"<file_token>\" topLeftX=\"700\" topLeftY=\"400\" width=\"180\" height=\"100\"/>"}]'
 ```
 
 整批作为原子事务：任一条失败整批不生效，服务端通过响应的 `failed_part_index` / `failed_reason` 告诉你是哪条。

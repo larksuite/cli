@@ -129,15 +129,23 @@ lark-cli slides +replace-slide --as user \
   --parts '[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>新标题</p></content></shape>"}]'
 ```
 
-### 批量：一次换标题 + 追加装饰图
+### 批量同类 action：一次替换多个块
+
+同类 action 可以放进一个 `--parts` 批量执行（原子事务）。**不同 action 不能混用**——例如"换标题（`block_replace`）+ 加图（`block_insert`）"需要拆成两次调用。
 
 ```bash
+# 同一批次只做 block_replace：一次替换标题块 + 正文块
 lark-cli slides +replace-slide --as user \
   --presentation "$PID" --slide-id "$SID" \
   --parts '[
     {"action":"block_replace","block_id":"bab","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>新标题</p></content></shape>"},
-    {"action":"block_insert","insertion":"<img src=\"<file_token>\" topLeftX=\"700\" topLeftY=\"400\" width=\"180\" height=\"100\"/>"}
+    {"action":"block_replace","block_id":"bac","replacement":"<shape type=\"text\" topLeftX=\"80\" topLeftY=\"220\" width=\"800\" height=\"120\"><content textType=\"body\"><p>副标题</p></content></shape>"}
   ]'
+
+# 若还需追加图片，再单独发一次 block_insert
+lark-cli slides +replace-slide --as user \
+  --presentation "$PID" --slide-id "$SID" \
+  --parts '[{"action":"block_insert","insertion":"<img src=\"<file_token>\" topLeftX=\"700\" topLeftY=\"400\" width=\"180\" height=\"100\"/>"}]'
 ```
 
 ### 乐观锁

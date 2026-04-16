@@ -163,11 +163,15 @@ func extractImagePlaceholderPaths(slideXMLs []string) []string {
 // really is the fragment's root, not any nested <el> later in the string.
 var xmlRootOpenTagRegex = regexp.MustCompile(`(?s)\A(\s*(?:<\?[^?]*(?:\?[^>][^?]*)*\?>\s*)?(?:<!--.*?-->\s*)*)<([A-Za-z_][\w.-]*)((?:\s[^>]*?)?)(/?>)`)
 
-// xmlIdAttrRegex matches an `id="..."` or `id='...'` attribute (with
-// optional whitespace around `=`). Group 1 is the quote char, group 2 the
-// value. Case-sensitive: XML attribute names are case-sensitive and the
+// xmlIdAttrRegex matches a standalone `id="..."` or `id='...'` attribute
+// (with optional whitespace around `=`). Group 1 is the quote char, group 2
+// the value. Case-sensitive: XML attribute names are case-sensitive and the
 // SML 2.0 schema uses lowercase `id`.
-var xmlIdAttrRegex = regexp.MustCompile(`(?s)\bid\s*=\s*(["'])(.*?)(["'])`)
+//
+// Uses (?:^|\s) instead of \b so that attributes whose names merely contain
+// "id" as a suffix (e.g. data-id, xml:id) are not accidentally matched —
+// \b treats the '-' / ':' before "id" as a word boundary and would fire.
+var xmlIdAttrRegex = regexp.MustCompile(`(?s)(?:^|\s)id\s*=\s*(["'])(.*?)(["'])`)
 
 // ensureXMLRootID parses xmlFragment as XML, locates the root element's
 // opening tag, and ensures it carries id="want". Behavior:
@@ -218,6 +222,12 @@ func ensureXMLRootID(xmlFragment, want string) (string, error) {
 	return prefix + "<" + tagName + injected + closer + rest, nil
 }
 
+// xmlContentTagRegex matches a <content> opening tag in its various valid
+// forms (open tag, self-closing, or with attributes). The character after
+// "content" must be whitespace, '/', or '>' — this ensures that tags whose
+// names merely start with "content" (e.g. <contention/>) are not matched.
+var xmlContentTagRegex = regexp.MustCompile(`<content(?:\s|/|>)`)
+
 // ensureShapeHasContent ensures that a <shape> root element has a <content/>
 // child. The SML 2.0 schema requires every <shape> to carry <content/>; a
 // self-closing <shape .../> or an open <shape> without <content> causes the
@@ -246,7 +256,7 @@ func ensureShapeHasContent(xmlFragment string) string {
 	}
 
 	afterOpen := xmlFragment[m[1]:]
-	if strings.Contains(afterOpen, "<content") {
+	if xmlContentTagRegex.MatchString(afterOpen) {
 		return xmlFragment
 	}
 
