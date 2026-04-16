@@ -114,6 +114,52 @@ func TestApiCmd_InvalidParamsJSON(t *testing.T) {
 	}
 }
 
+func TestBuildAPIRequest_BodyAlias(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	req, fileMeta, err := buildAPIRequest(&APIOptions{
+		Factory: f,
+		Method:  "POST",
+		Path:    "/open-apis/test",
+		Body:    `{"name":"alice"}`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fileMeta != nil {
+		t.Fatalf("expected no file metadata, got %#v", fileMeta)
+	}
+	body, ok := req.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected JSON body map, got %T", req.Data)
+	}
+	if got := body["name"]; got != "alice" {
+		t.Fatalf("expected name=alice, got %#v", got)
+	}
+}
+
+func TestBuildAPIRequest_DataAndBodyConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	_, _, err := buildAPIRequest(&APIOptions{
+		Factory: f,
+		Method:  "POST",
+		Path:    "/open-apis/test",
+		Data:    `{"name":"alice"}`,
+		Body:    `{"name":"bob"}`,
+	})
+	if err == nil {
+		t.Fatal("expected conflict error for --data and --body")
+	}
+	if !strings.Contains(err.Error(), "--data and --body") {
+		t.Fatalf("expected conflict error to mention both flags, got %v", err)
+	}
+}
+
 func TestApiValidArgsFunction(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
