@@ -61,9 +61,10 @@ func readClipboardToTempFile() (path string, cleanup func(), err error) {
 	return path, cleanup, nil
 }
 
-// reBase64DataURI matches a data URI image embedded in HTML clipboard content,
+// reBase64DataURI matches a data URI image embedded in clipboard text content,
 // e.g. data:image/jpeg;base64,/9j/4AAQ...
-var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+/]+=*)`)
+// The character class covers both standard (+/) and URL-safe (-_) base64 alphabets.
+var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+/\-_]+=*)`)
 
 // readClipboardDarwin reads the clipboard image on macOS.
 //
@@ -247,7 +248,8 @@ func readClipboardLinux(destPath string) error {
 		}
 		out, err := exec.Command(t.name, t.args...).Output()
 		if err != nil || len(out) == 0 {
-			return fmt.Errorf("clipboard contains no image data (%s returned empty output)", t.name)
+			// Tool found but returned nothing — try the next one.
+			continue
 		}
 		return os.WriteFile(destPath, out, 0600)
 	}

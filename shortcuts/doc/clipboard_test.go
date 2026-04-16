@@ -6,6 +6,7 @@ package doc
 import (
 	"encoding/base64"
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -150,6 +151,9 @@ func TestReBase64DataURI_NoMatch(t *testing.T) {
 }
 
 func TestExtractBase64ImageFromClipboard_WithFakeOsascript(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("fake osascript test only runs on macOS")
+	}
 	// Build a minimal PNG (1x1 transparent) as base64 to embed in fake HTML output.
 	pngBytes := []byte{
 		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
@@ -181,7 +185,7 @@ func TestExtractBase64ImageFromClipboard_WithFakeOsascript(t *testing.T) {
 	// Prepend tmpDir to PATH so our fake osascript is found first.
 	orig := os.Getenv("PATH")
 	t.Cleanup(func() { os.Setenv("PATH", orig) })
-	os.Setenv("PATH", tmpDir+":"+orig)
+	os.Setenv("PATH", tmpDir+string(os.PathListSeparator)+orig)
 
 	got := extractBase64ImageFromClipboard()
 	if got == nil {
