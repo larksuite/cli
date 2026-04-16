@@ -6,6 +6,7 @@ package feed
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -115,7 +116,7 @@ func TestFeedCreate_SuccessWithOptionalFields(t *testing.T) {
 	f, stdout, _, reg := feedShortcutTestFactory(t)
 	warmTenantToken(t, f, reg)
 
-	reg.Register(&httpmock.Stub{
+	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/im/v2/app_feed_card",
 		Body: map[string]interface{}{
@@ -125,7 +126,8 @@ func TestFeedCreate_SuccessWithOptionalFields(t *testing.T) {
 				"failed_cards": []interface{}{},
 			},
 		},
-	})
+	}
+	reg.Register(stub)
 
 	args := []string{
 		"+create",
@@ -144,6 +146,25 @@ func TestFeedCreate_SuccessWithOptionalFields(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "biz-optional-456") {
 		t.Errorf("expected biz_id value in output, got: %s", out)
+	}
+
+	// Verify the request payload includes optional fields
+	if len(stub.CapturedBody) == 0 {
+		t.Fatal("expected CapturedBody to be populated")
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("failed to unmarshal captured body: %v", err)
+	}
+	appFeedCard, ok := body["app_feed_card"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected app_feed_card in body, got %T", body["app_feed_card"])
+	}
+	if appFeedCard["preview"] != "这是预览文字" {
+		t.Errorf("expected preview '这是预览文字', got %v", appFeedCard["preview"])
+	}
+	if appFeedCard["time_sensitive"] != true {
+		t.Errorf("expected time_sensitive true, got %v", appFeedCard["time_sensitive"])
 	}
 }
 

@@ -145,15 +145,14 @@ func TestFeed_CreateInvalidUserIDFormat(t *testing.T) {
 }
 
 // TestFeed_CreateDryRun covers Scenario 6: --dry-run outputs the correct API path.
+// Uses a static test user ID since dry-run doesn't actually call the API.
 func TestFeed_CreateDryRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	recipientOpenID := discoverFeedRecipientOpenID(t, ctx)
-
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{"feed", "+create",
-			"--user-ids", recipientOpenID,
+			"--user-ids", "ou_test_dry_run_static",
 			"--title", "测试",
 			"--link", "https://www.feishu.cn/",
 			"--dry-run",

@@ -78,7 +78,7 @@ lark-cli feed +create \
 - `biz_id`: system-assigned business ID for this card
 - `failed_cards`: list of users for whom delivery failed (each item has `user_id` and `reason`)
 
-## DryRun
+## Dry Run
 
 Use `--dry-run` to preview the API call without sending:
 ```bash

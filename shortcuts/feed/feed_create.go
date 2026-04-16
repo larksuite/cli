@@ -5,7 +5,6 @@ package feed
 
 import (
 	"context"
-	"net/http"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
@@ -31,7 +30,7 @@ var FeedCreate = common.Shortcut{
 		body := buildFeedCreateBody(runtime)
 		return common.NewDryRunAPI().
 			POST("/open-apis/im/v2/app_feed_card").
-			Params(map[string]interface{}{"user_id_type": "open_id"}).
+			Params(map[string]any{"user_id_type": "open_id"}).
 			Body(body)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -63,18 +62,18 @@ var FeedCreate = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildFeedCreateBody(runtime)
-		resData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v2/app_feed_card",
+		resData, err := runtime.DoAPIJSON("POST", "/open-apis/im/v2/app_feed_card",
 			larkcore.QueryParams{"user_id_type": []string{"open_id"}}, body)
 		if err != nil {
 			return err
 		}
 
-		failedCards, _ := resData["failed_cards"].([]interface{})
+		failedCards, _ := resData["failed_cards"].([]any)
 		if failedCards == nil {
-			failedCards = []interface{}{}
+			failedCards = []any{}
 		}
 
-		runtime.Out(map[string]interface{}{
+		runtime.Out(map[string]any{
 			"biz_id":       resData["biz_id"],
 			"failed_cards": failedCards,
 		}, nil)
@@ -82,10 +81,17 @@ var FeedCreate = common.Shortcut{
 	},
 }
 
-func buildFeedCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
-	card := map[string]interface{}{
+func buildFeedCreateBody(runtime *common.RuntimeContext) map[string]any {
+	// Normalize user IDs by trimming whitespace
+	userIDs := runtime.StrArray("user-ids")
+	normalizedIDs := make([]string, 0, len(userIDs))
+	for _, id := range userIDs {
+		normalizedIDs = append(normalizedIDs, strings.TrimSpace(id))
+	}
+
+	card := map[string]any{
 		"title": runtime.Str("title"),
-		"link":  map[string]interface{}{"link": runtime.Str("link")},
+		"link":  map[string]any{"link": runtime.Str("link")},
 	}
 	if preview := runtime.Str("preview"); preview != "" {
 		card["preview"] = preview
@@ -93,8 +99,8 @@ func buildFeedCreateBody(runtime *common.RuntimeContext) map[string]interface{} 
 	if runtime.Bool("time-sensitive") {
 		card["time_sensitive"] = true
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"app_feed_card": card,
-		"user_ids":      runtime.StrArray("user-ids"),
+		"user_ids":      normalizedIDs,
 	}
 }
