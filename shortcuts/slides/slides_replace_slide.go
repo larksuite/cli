@@ -360,4 +360,3 @@ func injectBlockReplaceIDs(parts []replacePart) ([]map[string]interface{}, error
 	}
 	return out, nil
 }
-
