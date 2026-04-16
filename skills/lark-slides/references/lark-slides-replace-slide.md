@@ -7,8 +7,8 @@
 相比直接调 `xml_presentation.slide.replace`，这个 shortcut 的四个额外价值：
 
 1. `--presentation` 接受 `xml_presentation_id` / `/slides/` URL / `/wiki/` URL（wiki 自动解析）；
-2. `block_replace` 的 `replacement` 根元素 `id="<block_id>"` 由 CLI 自动注入——底层 API 的硬约束（不注入返回 3350001），自己写 XML 时不用记这个；
-3. `<shape>` 元素缺少 `<content/>` 子元素时由 CLI 自动注入——SML 2.0 schema 要求每个 `<shape>` 必须有 `<content/>` 子元素，缺失同样触发 3350001；
+2. `block_replace` 的 `replacement` 根元素 `id="<block_id>"` 由 CLI 自动注入——底层 API 的硬约束（不注入返回 3350001）；直接调原生 API 需自己加，用 Shortcut 则自动注入；
+3. `<shape>` 元素缺少 `<content/>` 子元素时由 CLI 自动注入——SML 2.0 schema 要求每个 `<shape>` 必须有 `<content/>` 子元素，缺失同样触发 3350001；自闭合的 `<shape .../>` 也会被自动展开为 `<shape ...><content/></shape>`；
 4. 3350001 错误时提供上下文感知的 hint，帮助 AI agent 和用户快速定位原因。
 
 ## 命令
@@ -55,7 +55,9 @@ lark-cli slides +replace-slide --as user \
 
 ## parts 元素结构
 
-每条 part 按 `action` 取不同字段。**其他 action（含 `str_replace`）都不支持**，CLI 会报错。
+> **限制**：单次 `--parts` 中所有条目必须是同一种 action（全 `block_replace` 或全 `block_insert`），混合会触发 3350001，需拆为两次调用。最多 200 条。**其他 action（含 `str_replace`）CLI 会直接报错拒绝**。
+
+每条 part 按 `action` 取不同字段：
 
 ### action = `block_replace`
 
@@ -71,7 +73,7 @@ lark-cli slides +replace-slide --as user \
 |------|------|------|
 | `action` | 是 | `"block_insert"` |
 | `insertion` | 是 | 要插入的 XML 片段 |
-| `insert_before_block_id` | 否 | 插到这个块之前；省略或空串则追加到页末 |
+| `insert_before_block_id` | 否 | 插到这个块之前；省略（不提供此字段）则追加到页末 |
 
 ## 返回值
 

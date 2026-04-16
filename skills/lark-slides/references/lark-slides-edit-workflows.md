@@ -48,7 +48,7 @@ lark-cli slides +replace-slide --as user \
   --parts '[{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"rect\" topLeftX=\"100\" topLeftY=\"100\" width=\"200\" height=\"100\"/>"}]'
 ```
 
-冲突时重读 `get` 拿最新 `revision_id` 再试——或直接让一步用 `-1` 覆盖（会抹掉中间变更）。
+冲突时重读 `get` 拿最新 `revision_id` 再试——或直接用 `-1` 强制基于最新版执行（会覆盖中间变更，谨慎使用）。
 
 ## `--tid` 事务锁
 
@@ -92,7 +92,7 @@ lark-cli slides +replace-slide --as user \
 |------|------|------|
 | `action` | 是 | 固定为 `block_insert` |
 | `insertion` | 是 | 要插入的完整 XML 片段 |
-| `insert_before_block_id` | 否 | 插到这个块之前；省略则追加到页面末尾 |
+| `insert_before_block_id` | 否 | 插到这个块之前；省略（不提供此字段）则追加到页面末尾 |
 
 > **`<img>` 必须用 `file_token`**，不能用外链 URL——先 `slides +media-upload --file ./pic.png --presentation $PID` 拿 token。
 

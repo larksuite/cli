@@ -4,6 +4,8 @@
 
 对单页做**块级局部替换**：不覆盖整页，按 patch 列表做 `block_replace`（整块替换）或 `block_insert`（整块插入）。适合"只想加 / 换一个元素、不动其他元素"的场景。
 
+> **推荐**：优先使用 [`+replace-slide`](lark-slides-replace-slide.md) Shortcut——它会自动注入 `id` 和 `<content/>`，直接调本 API 需自己处理这两个约束（见注意事项 5、6）。
+
 ## 命令
 
 ```bash

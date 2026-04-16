@@ -91,7 +91,13 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 
 1. **执行前必做**：`lark-cli schema slides.xml_presentation.slide.get` 查看最新参数结构
 2. **XML 命名空间**：返回的 `slide.content` 里带 `xmlns="http://www.larkoffice.com/sml/2.0"`，后续 replace 时如果本地改完要重新拼接，保留这个 xmlns
-3. **block short ID**：想做 `replace` + `block_replace` / `block_insert`，需要从返回的 XML 里读每个块的 3 位 short element ID
+3. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。用以下命令列出当前页所有 block_id：
+
+   ```bash
+   lark-cli slides xml_presentation.slide get --as user \
+     --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
+     | jq -r '.slide.content' | grep -oP 'id="\K[^"]+'
+   ```
 
 ## 相关命令
 

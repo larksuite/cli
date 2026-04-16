@@ -12,6 +12,8 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+**编辑已有幻灯片页面**：优先用 [`+replace-slide`](references/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；选择 action 和完整读-改-写流程见 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`）。有 Shortcut 的操作优先使用。
@@ -56,5 +58,6 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 
 | 文档 | 说明 |
 |------|------|
+| [lark-slides-edit-workflows.md](references/lark-slides-edit-workflows.md) | 编辑已有页面的读-改-写流程与 action 决策树 |
 | [slide-templates.md](references/slide-templates.md) | 可复制的 Slide XML 模板（封面页、内容页、数据卡片页、结尾页） |
 

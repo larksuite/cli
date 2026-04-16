@@ -155,6 +155,7 @@ TOKEN=$(lark-cli slides +media-upload --file ./pic.png --presentation "$PID" --a
   | jq -r '.data.file_token')
 
 # 2. block_insert 到页面末尾（省略 insert_before_block_id）
+# 注：<img .../> 是自闭合标签，CLI 不会展开（只有 <shape/> 会被补 <content/>）
 lark-cli slides +replace-slide --as user \
   --presentation "$PID" --slide-id "$SID" \
   --parts "$(jq -n --arg token "$TOKEN" \
@@ -174,7 +175,7 @@ lark-cli slides +replace-slide --as user \
 
 ## 示例 8: +replace-slide + block_replace 替换一个块
 
-已知某块的 3 位 short element ID（从 `slide.get` 返回 XML 里读），整块换掉。`replacement` 根元素的 `id` 会由 CLI 自动注入为 `block_id`，无需手写。
+已知某块的 3 位 short element ID（从 `slide.get` 返回 XML 里读），整块换掉。`replacement` 根元素的 `id` 会由 CLI 自动注入为 `block_id`，无需手写；若写了 `<shape/>` 自闭合形式，CLI 也会自动补 `<content/>`。
 
 ```bash
 lark-cli slides +replace-slide --as user \
@@ -188,6 +189,7 @@ lark-cli slides +replace-slide --as user \
     }
   ]' \
   --comment "替换标题块"
+# CLI 实际发送的 replacement 根元素会带 id="bab"，即使手写时省略了
 ```
 
 失败时（例如 `block_id` 未命中，服务端把详情放进响应而不是抛错）：
