@@ -153,10 +153,13 @@ func extractBase64ImageFromClipboard() []byte {
 		if m == nil {
 			continue
 		}
+		// HTML/RTF clipboard content often line-wraps base64 at 76 chars; strip
+		// all ASCII whitespace before decoding so wrapped payloads are not missed.
 		// Accept both standard and URL-safe base64 (some apps emit URL-safe).
-		imgData, err := base64.StdEncoding.DecodeString(string(m[2]))
+		b64 := strings.Join(strings.Fields(string(m[2])), "")
+		imgData, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
-			imgData, err = base64.URLEncoding.DecodeString(string(m[2]))
+			imgData, err = base64.URLEncoding.DecodeString(b64)
 		}
 		if err == nil && len(imgData) > 0 {
 			return imgData
