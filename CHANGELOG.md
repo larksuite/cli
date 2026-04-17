@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.14] - 2026-04-17
+
+### Features
+
+- **mail**: Add email priority support for compose and read (#538)
+- **mail**: Support scheduled send (#534)
+- **drive**: Support sheet cell comments in `+add-comment` (#518)
+- **doc**: Add `--file-view` flag to `+media-insert` (#419)
+- **base**: Auto grant current user for bot create and copy (#497)
+- **base**: Add identity priority strategy and error handling (#505)
+- **auth**: Improve login scope handling and messages (#523)
+- Add OKR business domain (#522)
+
+### Documentation
+
+- **wiki**: Improve wiki skill docs and add wiki domain template (#512)
+- **task**: Document `custom_fields` and `custom_field_options` API resources and permissions (#524)
+
+### Refactor
+
+- **skills**: Introduce `lark-doc-whiteboard.md` and streamline whiteboard workflow (#502)
+
 ## [v1.0.13] - 2026-04-16
 
 ### Features
@@ -382,6 +404,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.14]: https://github.com/larksuite/cli/releases/tag/v1.0.14
 [v1.0.13]: https://github.com/larksuite/cli/releases/tag/v1.0.13
 [v1.0.12]: https://github.com/larksuite/cli/releases/tag/v1.0.12
 [v1.0.11]: https://github.com/larksuite/cli/releases/tag/v1.0.11
