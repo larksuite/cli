@@ -10,18 +10,15 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-
-	"github.com/larksuite/cli/internal/vfs"
 )
 
 // readClipboardImageBytes reads the current clipboard image and returns the
-// raw PNG bytes in memory. No temporary files are created by the caller;
-// any intermediate files required by platform tools (e.g. sips on macOS) are
-// created via vfs and cleaned up before returning.
+// raw PNG bytes in memory. No temporary files are created on any platform;
+// all platform tools emit image bytes (or an encoded form) on stdout.
 //
 // Platform support:
 //
-//	macOS   — osascript (built-in, no extra deps); sips for TIFF→PNG conversion
+//	macOS   — osascript (built-in, no extra deps)
 //	Windows — powershell + System.Windows.Forms (built-in), output as base64
 //	Linux   — xclip (X11), wl-paste (Wayland), or xsel (X11 fallback),
 //	          tried in that order; returns a clear error if none is found.
@@ -57,12 +54,12 @@ var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+
 //
 // Strategy:
 //  1. Ask osascript for the clipboard as PNG (hex literal on stdout) → decode.
-//  2. Ask osascript for the clipboard as TIFF (hex literal on stdout) → decode →
-//     convert to PNG with sips (built-in macOS tool) via vfs temp files.
-//  3. Scan all text-based clipboard formats (HTML, RTF, plain text) for an
+//     Native macOS screenshots and most image-producing apps place PNG on the
+//     pasteboard directly.
+//  2. Scan all text-based clipboard formats (HTML, RTF, plain text) for an
 //     embedded base64 data URI image (e.g. images copied from Feishu / browsers).
 //
-// No external dependencies required — osascript and sips ship with macOS.
+// No external dependencies required — osascript ships with macOS.
 func readClipboardDarwin() ([]byte, error) {
 	// Attempt 1: PNG via osascript hex literal on stdout.
 	out, err := exec.Command("osascript", "-e", "get the clipboard as «class PNGf»").CombinedOutput()
@@ -72,55 +69,13 @@ func readClipboardDarwin() ([]byte, error) {
 		}
 	}
 
-	// Attempt 2: TIFF via osascript hex literal → decode → convert to PNG with sips.
-	out, err = exec.Command("osascript", "-e", "get the clipboard as «class TIFF»").CombinedOutput()
-	if err == nil && len(out) > 0 {
-		tiffData, decErr := decodeOsascriptData(strings.TrimSpace(string(out)))
-		if decErr == nil && len(tiffData) > 0 {
-			if pngData, convErr := convertTIFFToPNGViaSips(tiffData); convErr == nil {
-				return pngData, nil
-			}
-		}
-	}
-
-	// Attempt 3: scan text-based clipboard formats for an embedded base64 data URI.
+	// Attempt 2: scan text-based clipboard formats for an embedded base64 data URI.
 	// Covers HTML (Feishu, Chrome, Safari), RTF, and plain text — tried in order.
 	if imgData := extractBase64ImageFromClipboard(); imgData != nil {
 		return imgData, nil
 	}
 
 	return nil, fmt.Errorf("clipboard contains no image data")
-}
-
-// convertTIFFToPNGViaSips writes tiffData to a vfs temp file, runs sips to
-// convert it to PNG in a second temp file, reads the result, and cleans up.
-func convertTIFFToPNGViaSips(tiffData []byte) ([]byte, error) {
-	tiffFile, err := vfs.CreateTemp("", "lark-clip-*.tiff")
-	if err != nil {
-		return nil, fmt.Errorf("clipboard: create tiff temp: %w", err)
-	}
-	tiffPath := tiffFile.Name()
-	tiffFile.Close()
-	defer vfs.Remove(tiffPath) //nolint:errcheck
-
-	if err = vfs.WriteFile(tiffPath, tiffData, 0600); err != nil {
-		return nil, fmt.Errorf("clipboard: write tiff temp: %w", err)
-	}
-
-	pngFile, err := vfs.CreateTemp("", "lark-clip-*.png")
-	if err != nil {
-		return nil, fmt.Errorf("clipboard: create png temp: %w", err)
-	}
-	pngPath := pngFile.Name()
-	pngFile.Close()
-	defer vfs.Remove(pngPath) //nolint:errcheck
-
-	if out, sipsErr := exec.Command("sips", "-s", "format", "png", tiffPath, "--out", pngPath).CombinedOutput(); sipsErr != nil {
-		msg := strings.TrimSpace(string(out))
-		return nil, fmt.Errorf("clipboard image conversion failed (sips: %s)", msg)
-	}
-
-	return vfs.ReadFile(pngPath)
 }
 
 // clipboardTextFormats lists the osascript type coercions to try when looking
