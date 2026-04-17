@@ -1163,6 +1163,7 @@ func buildMessageOutput(msg map[string]interface{}, html bool) map[string]interf
 	out["date_formatted"] = normalized.DateFormatted
 	out["message_state_text"] = normalized.MessageStateText
 	if normalized.PriorityType != "" {
+		out["priority_type"] = normalized.PriorityType
 		out["priority_type_text"] = normalized.PriorityTypeText
 	}
 	out["body_plain_text"] = normalized.BodyPlainText

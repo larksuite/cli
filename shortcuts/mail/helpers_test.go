@@ -1141,6 +1141,10 @@ func TestBuildMessageOutput_PriorityFromLabels(t *testing.T) {
 			if gotText != tc.wantText {
 				t.Errorf("priority_type_text = %q, want %q", gotText, tc.wantText)
 			}
+			gotType, _ := out["priority_type"].(string)
+			if gotType != tc.wantType {
+				t.Errorf("priority_type = %q, want %q", gotType, tc.wantType)
+			}
 		})
 	}
 }
