@@ -165,6 +165,7 @@ func runProxy(ctx context.Context, opts *ProxyOptions) error {
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(sigCh)
 		select {
 		case <-sigCh:
 		case <-ctx.Done():
@@ -172,7 +173,9 @@ func runProxy(ctx context.Context, opts *ProxyOptions) error {
 		auditLogger.Println("shutting down...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			auditLogger.Printf("shutdown error: %v", err)
+		}
 	}()
 
 	// Print startup info
@@ -367,6 +370,14 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			forwardReq.Header.Add(k, v)
 		}
 	}
+
+	// Strip any client-supplied auth headers. The sidecar is the sole source
+	// of authentication material on the forwarded request; a client could
+	// otherwise smuggle an extra Authorization/MCP token alongside the one
+	// the sidecar injects below.
+	forwardReq.Header.Del("Authorization")
+	forwardReq.Header.Del(sidecar.HeaderMCPUAT)
+	forwardReq.Header.Del(sidecar.HeaderMCPTAT)
 
 	// 7. Inject real token into the header specified by the client.
 	// Standard OpenAPI uses "Authorization: Bearer <token>".

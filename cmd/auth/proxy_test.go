@@ -7,6 +7,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -16,9 +17,24 @@ import (
 	"strings"
 	"testing"
 
+	extcred "github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/sidecar"
 )
+
+// fakeExtProvider is a stub extcred.Provider for tests that returns a fixed token.
+type fakeExtProvider struct {
+	token string
+}
+
+func (f *fakeExtProvider) Name() string { return "fake" }
+func (f *fakeExtProvider) ResolveAccount(ctx context.Context) (*extcred.Account, error) {
+	return nil, nil
+}
+func (f *fakeExtProvider) ResolveToken(ctx context.Context, req extcred.TokenSpec) (*extcred.Token, error) {
+	return &extcred.Token{Value: f.token, Source: "fake"}, nil
+}
 
 func discardLogger() *log.Logger {
 	return log.New(io.Discard, "", 0)
@@ -32,7 +48,7 @@ func newTestHandler(key []byte) *proxyHandler {
 		allowedHosts: map[string]bool{
 			"open.feishu.cn":     true,
 			"accounts.feishu.cn": true,
-			"mcp.feishu.cn":     true,
+			"mcp.feishu.cn":      true,
 		},
 		allowedIDs: map[string]bool{
 			sidecar.IdentityUser: true,
@@ -45,8 +61,8 @@ func newTestHandler(key []byte) *proxyHandler {
 func signedReq(t *testing.T, key []byte, method, target, path string, body []byte) *http.Request {
 	t.Helper()
 	targetHost := target
-	if idx := len("https://"); len(target) > idx {
-		targetHost = target[idx:]
+	if idx := strings.Index(target, "://"); idx >= 0 {
+		targetHost = target[idx+3:]
 	}
 	bodySHA := sidecar.BodySHA256(body)
 	ts := sidecar.Timestamp()
@@ -220,6 +236,108 @@ func TestForwardClient_RedirectStripsMCPHeaders(t *testing.T) {
 	resp.Body.Close()
 }
 
+// TestProxyHandler_StripsClientSuppliedAuthHeaders verifies that the sidecar
+// is the sole source of auth headers on the forwarded request. A malicious
+// sandbox client must not be able to smuggle an Authorization/MCP header that
+// rides along with the sidecar-injected real token.
+func TestProxyHandler_StripsClientSuppliedAuthHeaders(t *testing.T) {
+	const realToken = "real-tenant-access-token"
+
+	// Capture what the upstream receives after sidecar forwarding.
+	var captured http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	// Strip "http://" prefix to get host:port (matches what the handler sees).
+	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
+
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{token: realToken}},
+		nil, nil, nil,
+	)
+
+	key := []byte("test-key")
+	h := &proxyHandler{
+		key:          key,
+		cred:         cred,
+		appID:        "cli_test",
+		logger:       discardLogger(),
+		forwardCl:    &http.Client{},
+		allowedHosts: map[string]bool{upstreamHost: true},
+		allowedIDs:   map[string]bool{sidecar.IdentityUser: true, sidecar.IdentityBot: true},
+	}
+
+	cases := []struct {
+		name                string
+		proxyAuthHeader     string // which header sidecar should inject into
+		wantInjectedHeader  string // the header the real token ends up in
+		wantInjectedValue   string
+		wantStrippedHeaders []string
+	}{
+		{
+			name:                "inject Authorization, strip MCP attacker headers",
+			proxyAuthHeader:     "Authorization",
+			wantInjectedHeader:  "Authorization",
+			wantInjectedValue:   "Bearer " + realToken,
+			wantStrippedHeaders: []string{sidecar.HeaderMCPUAT, sidecar.HeaderMCPTAT},
+		},
+		{
+			name:                "inject MCP UAT, strip Authorization attacker header",
+			proxyAuthHeader:     sidecar.HeaderMCPUAT,
+			wantInjectedHeader:  sidecar.HeaderMCPUAT,
+			wantInjectedValue:   realToken,
+			wantStrippedHeaders: []string{"Authorization", sidecar.HeaderMCPTAT},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			captured = nil
+
+			req := signedReq(t, key, "GET", "http://"+upstreamHost, "/open-apis/test", nil)
+			req.Header.Set(sidecar.HeaderProxyAuthHeader, tc.proxyAuthHeader)
+
+			// Attacker smuggles all three possible auth headers with bogus values.
+			req.Header.Set("Authorization", "Bearer attacker-token")
+			req.Header.Set(sidecar.HeaderMCPUAT, "attacker-uat")
+			req.Header.Set(sidecar.HeaderMCPTAT, "attacker-tat")
+
+			// Non-auth headers should still pass through.
+			req.Header.Set("X-Custom-Header", "keep-me")
+
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200 from upstream, got %d; body=%s", w.Code, w.Body.String())
+			}
+			if captured == nil {
+				t.Fatal("upstream handler was not invoked")
+			}
+
+			// Injected header contains the real token (not the attacker value).
+			if got := captured.Get(tc.wantInjectedHeader); got != tc.wantInjectedValue {
+				t.Errorf("%s = %q, want %q", tc.wantInjectedHeader, got, tc.wantInjectedValue)
+			}
+
+			// All other auth headers must be stripped.
+			for _, h := range tc.wantStrippedHeaders {
+				if got := captured.Get(h); got != "" {
+					t.Errorf("%s should be stripped, got %q", h, got)
+				}
+			}
+
+			// Non-auth headers still forwarded.
+			if got := captured.Get("X-Custom-Header"); got != "keep-me" {
+				t.Errorf("X-Custom-Header = %q, want %q", got, "keep-me")
+			}
+		})
+	}
+}
+
 func TestBuildAllowedHosts(t *testing.T) {
 	feishu := struct{ Open, Accounts, MCP string }{
 		"https://open.feishu.cn", "https://accounts.feishu.cn", "https://mcp.feishu.cn",
@@ -272,11 +390,11 @@ func TestLooksLikeID(t *testing.T) {
 		want bool
 	}{
 		{"doxcnABCD1234", true},     // doc token
-		{"oc_abcdef12345678", true},  // chat ID
-		{"v1", false},                // API version
-		{"messages", false},          // route keyword
-		{"open-apis", false},         // route prefix
-		{"ab1", false},               // too short
+		{"oc_abcdef12345678", true}, // chat ID
+		{"v1", false},               // API version
+		{"messages", false},         // route keyword
+		{"open-apis", false},        // route prefix
+		{"ab1", false},              // too short
 	}
 	for _, tt := range tests {
 		if got := looksLikeID(tt.seg); got != tt.want {

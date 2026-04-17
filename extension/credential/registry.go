@@ -16,7 +16,7 @@ var (
 // Register registers a credential Provider.
 // Providers are consulted in priority order (lowest value first).
 // Providers that implement Priority() int are sorted accordingly;
-// those that do not default to priority 0.
+// those that do not default to priority 10.
 // Typically called from init() via blank import.
 func Register(p Provider) {
 	mu.Lock()
@@ -29,7 +29,7 @@ func Register(p Provider) {
 
 // providerPriority returns the priority of a provider.
 // If the provider implements interface{ Priority() int }, that value is used;
-// otherwise 100 is returned as the default priority.
+// otherwise 10 is returned as the default priority.
 // Lower values are consulted first.
 func providerPriority(p Provider) int {
 	if pp, ok := p.(interface{ Priority() int }); ok {

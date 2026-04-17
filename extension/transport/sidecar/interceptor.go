@@ -31,14 +31,18 @@ type Provider struct{}
 func (p *Provider) Name() string { return "sidecar" }
 
 // ResolveInterceptor returns a SidecarInterceptor when sidecar mode is active.
+// Returns nil when sidecar mode is disabled or the proxy address is invalid;
+// in the latter case a warning is emitted to stderr and requests fall back to
+// the non-sidecar transport path (where the credential layer will typically
+// block them for lack of a valid account).
 func (p *Provider) ResolveInterceptor(ctx context.Context) transport.Interceptor {
 	proxyAddr := os.Getenv(envvars.CliAuthProxy)
 	if proxyAddr == "" {
 		return nil
 	}
 	if err := sidecar.ValidateProxyAddr(proxyAddr); err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "WARNING: invalid %s, sidecar interceptor disabled: %v\n", envvars.CliAuthProxy, err)
+		return nil
 	}
 	key := os.Getenv(envvars.CliProxyKey)
 	return &Interceptor{
