@@ -1113,6 +1113,38 @@ func TestParsePriority(t *testing.T) {
 	}
 }
 
+func TestBuildMessageOutput_PriorityFromLabels(t *testing.T) {
+	cases := []struct {
+		name         string
+		labels       []interface{}
+		priorityType string
+		wantType     string
+		wantText     string
+	}{
+		{"high from label", []interface{}{"UNREAD", "HIGH_PRIORITY"}, "", "1", "high"},
+		{"low from label", []interface{}{"LOW_PRIORITY"}, "", "5", "low"},
+		{"no priority label", []interface{}{"UNREAD"}, "", "", ""},
+		{"label overrides priority_type field", []interface{}{"HIGH_PRIORITY"}, "5", "1", "high"},
+		{"priority_type fallback when no label", []interface{}{"UNREAD"}, "1", "1", "high"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := map[string]interface{}{
+				"message_id": "m1",
+				"label_ids":  tc.labels,
+			}
+			if tc.priorityType != "" {
+				msg["priority_type"] = tc.priorityType
+			}
+			out := buildMessageOutput(msg, false)
+			gotText, _ := out["priority_type_text"].(string)
+			if gotText != tc.wantText {
+				t.Errorf("priority_type_text = %q, want %q", gotText, tc.wantText)
+			}
+		})
+	}
+}
+
 func TestApplyPriority(t *testing.T) {
 	// Empty priority: EML must not contain X-Cli-Priority header.
 	emptyBld := emlbuilder.New().
