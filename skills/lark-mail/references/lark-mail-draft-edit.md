@@ -18,16 +18,18 @@
 
 | 情况 | op | 行为 |
 |------|-----|------|
-| 普通草稿（无引用区） | `set_body` | 替换整个正文 |
-| 回复/转发草稿，编辑用户撰写部分 | `set_reply_body` | **仅替换引用区前面的用户撰写部分**，自动重新拼接引用区。传入的 value 只包含新的用户撰写内容，**不要包含引用区** |
-| 回复/转发草稿，编辑引用区内容 | `set_body` | 全量替换整个正文（含引用区），需自行传入完整的 HTML |
-| 用户明确要去掉引用区 | `set_body` | 全量替换，不包含引用区即可 |
+| 普通草稿（无引用区） | `set_body` | 替换用户撰写内容 |
+| 回复/转发草稿，编辑用户撰写部分 | `set_reply_body` | 替换用户撰写部分，自动重新拼接引用区。传入的 value 只包含新的用户撰写内容，**不要包含引用区** |
+| 回复/转发草稿，编辑引用区内容 | `set_body` | 传入含完整引用区的 HTML 进行替换 |
+| 用户明确要去掉引用区 | `set_body` | 不包含引用区即可 |
 
 **判断方法：** 运行 `--inspect`，若返回 `has_quoted_content: true`，说明草稿包含引用区（由 `+reply` 或 `+forward` 生成）。
 
 **关键区别：**
 - `set_reply_body` 的 value = **纯用户撰写内容**（不含引用区），引用区会自动重新拼接
-- `set_body` 的 value = **完整正文**（含或不含引用区均可），是全量替换
+- `set_body` 的 value = 可含可不含引用区
+
+**系统托管元素自动保留（两个 op 通用）：** 签名块（`lark-mail-signature`）和超大附件卡片（`large-file-area-*`）不属于用户撰写内容，是由 `insert_signature` / `add_attachment` 等 op 管理的草稿级元素。`set_body` 和 `set_reply_body` 都会自动保留它们（普通附件 MIME part 也一样不受正文编辑影响）。若 value 里显式包含相应元素，则尊重用户的显式指定，不再自动注入。删除签名/附件请用对应的专用 op（`remove_signature` / `remove_attachment`）。
 
 ### 正文编辑：plain+HTML 耦合草稿
 
@@ -115,21 +117,21 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 { "op": "set_subject", "value": "更新后的主题" }
 ```
 
-`set_body` — 全量替换整个正文
+`set_body` — 替换用户撰写内容
 
 ```json
 { "op": "set_body", "value": "<p>全新的正文内容</p>" }
 ```
 
-> **注意：** `set_body` 替换整个正文，**包括引用区**。对于回复/转发草稿，如果只需修改用户撰写部分而保留引用区，请使用 `set_reply_body`。
+> **注意：** `set_body` 不自动保留引用区（用户要保留引用区可以在 value 里自带，或改用 `set_reply_body`）。系统托管元素（签名、超大附件卡片、普通附件）会自动保留。
 
-`set_reply_body` — 仅替换用户撰写部分，自动保留引用区
+`set_reply_body` — 替换用户撰写内容，自动保留引用区
 
 ```json
 { "op": "set_reply_body", "value": "<p>新的回复内容</p>" }
 ```
 
-> **value 只传用户撰写的内容，不要包含引用区。** 引用区会自动从原草稿中提取并重新拼接到 value 后面。
+> **value 只传用户撰写的内容，不要包含引用区。** 引用区会自动从原草稿中提取并重新拼接到 value 后面。签名、超大附件卡片、普通附件也会自动保留。
 >
 > 如果用户要修改引用区里的内容（如修正引用中的错误），必须用 `set_body` 全量传入完整 HTML（含修改后的引用区）。
 >
@@ -245,9 +247,9 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 - `target` 接受 `part_id` 或 `cid`；优先级：`part_id` > `cid`
 - **所有文件路径（`--patch-file` 及 ops 中的 `path`）必须为相对路径**
 - **正文编辑没有 flag，必须通过 `--patch-file`**
-- **`set_body` 是完整替换** — 它替换整个正文内容（包括引用区）；**不影响附件**，普通附件（MIME part）和超大附件（HTML 卡片 + header）都会自动保留
-- **`set_reply_body` 仅替换引用区前面的用户撰写部分** — 引用区和超大附件卡片都自动保留；value 只传用户撰写内容，不要包含引用区和超大附件卡片；如果用户要修改引用区内容，用 `set_body` 全量覆盖
-- **删除附件**不能通过 `set_body` 清空正文实现 — 必须用 `remove_attachment`（按 `part_id` / `cid` 或 `token` 定位）
+- **`set_body` 替换用户撰写内容** — 不保留旧的引用区（用户要保留需在 value 里带上，或改用 `set_reply_body`）；自动保留签名、超大附件卡片、普通附件
+- **`set_reply_body` 替换用户撰写内容** — 自动保留引用区、签名、超大附件卡片、普通附件；value 只传用户撰写的部分，不要包含引用区/签名/附件卡片；如果用户要修改引用区内容，用 `set_body` 并在 value 里带上修改后的引用区
+- **删除签名 / 附件**不能通过 `set_body` 清空实现 — 必须用对应的专用 op：`remove_signature`、`remove_attachment`（按 `part_id` / `cid` / `token` 定位）
 - 通过 `--inspect` 返回的 `has_quoted_content` 字段可判断草稿是否包含引用区
 - 通过 `--inspect` 返回的 `has_signature` / `signature_id` 字段可判断草稿是否包含签名
 

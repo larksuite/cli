@@ -22,11 +22,27 @@ func buildSnapshotWithCard(userContent, card, quote string) *DraftSnapshot {
 	}
 }
 
+// buildSnapshotFromHTML wraps arbitrary HTML into a minimal snapshot.
+func buildSnapshotFromHTML(html string) *DraftSnapshot {
+	return &DraftSnapshot{
+		PrimaryHTMLPartID: "1",
+		Body: &Part{
+			PartID:    "1",
+			MediaType: "text/html",
+			Body:      []byte(html),
+		},
+	}
+}
+
 const testLargeCard = `<div id="large-file-area-123"><div>Title</div>` +
 	`<div id="large-file-item"><div>a.pdf</div><div><span>25.0 MB</span></div>` +
 	`<a data-mail-token="tokA">D</a></div></div>`
 
 const testQuoteBlock = `<div class="history-quote-wrapper"><p>original msg</p></div>`
+
+// testSigBlock mirrors what BuildSignatureHTML would produce, including
+// the preceding SignatureSpacing.
+var testSigBlock = SignatureSpacing() + `<div id="sig-abc" class="lark-mail-signature" style="padding-top:6px;padding-bottom:6px"><div>-- My Sig</div></div>`
 
 func TestSetBody_PreservesLargeAttachmentCard(t *testing.T) {
 	snap := buildSnapshotWithCard(`<p>old user content</p>`, testLargeCard, "")
@@ -243,6 +259,151 @@ func TestSplitAtLargeAttachment(t *testing.T) {
 				t.Errorf("after: got %q, want %q", after, tc.wantAfter)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// set_body / set_reply_body: signature auto-preservation
+// ---------------------------------------------------------------------------
+
+func TestSetBody_PreservesSignature(t *testing.T) {
+	snap := buildSnapshotFromHTML(`<p>old user</p>` + testSigBlock)
+
+	if err := setBody(snap, `<p>new user</p>`, PatchOptions{}); err != nil {
+		t.Fatalf("setBody: %v", err)
+	}
+	newHTML := string(snap.Body.Body)
+	if !strings.Contains(newHTML, "new user") {
+		t.Errorf("missing new content: %s", newHTML)
+	}
+	if !strings.Contains(newHTML, `class="lark-mail-signature"`) {
+		t.Errorf("signature should be preserved: %s", newHTML)
+	}
+	if !strings.Contains(newHTML, "My Sig") {
+		t.Errorf("signature content should be preserved: %s", newHTML)
+	}
+	// Order: new user content < signature
+	newIdx := strings.Index(newHTML, "new user")
+	sigIdx := strings.Index(newHTML, "lark-mail-signature")
+	if newIdx > sigIdx {
+		t.Errorf("signature should come after new content: new@%d sig@%d", newIdx, sigIdx)
+	}
+}
+
+func TestSetBody_PreservesSignatureAndCard(t *testing.T) {
+	snap := buildSnapshotFromHTML(`<p>old</p>` + testSigBlock + testLargeCard)
+
+	if err := setBody(snap, `<p>new</p>`, PatchOptions{}); err != nil {
+		t.Fatalf("setBody: %v", err)
+	}
+	newHTML := string(snap.Body.Body)
+
+	newIdx := strings.Index(newHTML, "new")
+	sigIdx := strings.Index(newHTML, "lark-mail-signature")
+	cardIdx := strings.Index(newHTML, "large-file-area-123")
+	if newIdx < 0 || sigIdx < 0 || cardIdx < 0 {
+		t.Fatalf("missing parts: %s", newHTML)
+	}
+	if !(newIdx < sigIdx && sigIdx < cardIdx) {
+		t.Errorf("expected order [new][sig][card], got new@%d sig@%d card@%d",
+			newIdx, sigIdx, cardIdx)
+	}
+}
+
+func TestSetBody_RespectsUserSuppliedSignature(t *testing.T) {
+	snap := buildSnapshotFromHTML(`<p>old</p>` + testSigBlock)
+
+	userSig := `<div id="user-sig" class="lark-mail-signature"><div>-- User Sig</div></div>`
+	if err := setBody(snap, `<p>new</p>`+userSig, PatchOptions{}); err != nil {
+		t.Fatalf("setBody: %v", err)
+	}
+	newHTML := string(snap.Body.Body)
+
+	if !strings.Contains(newHTML, "User Sig") {
+		t.Errorf("user-supplied sig should be present: %s", newHTML)
+	}
+	if strings.Contains(newHTML, "My Sig") {
+		t.Errorf("old signature should be gone when user supplied their own: %s", newHTML)
+	}
+	// Only one signature wrapper
+	if strings.Count(newHTML, "lark-mail-signature") != 1 {
+		t.Errorf("expected exactly one signature wrapper, got %d",
+			strings.Count(newHTML, "lark-mail-signature"))
+	}
+}
+
+func TestSetReplyBody_PreservesSignatureAndQuote(t *testing.T) {
+	snap := buildSnapshotFromHTML(`<p>old user</p>` + testSigBlock + testQuoteBlock)
+
+	if err := setReplyBody(snap, `<p>new user</p>`, PatchOptions{}); err != nil {
+		t.Fatalf("setReplyBody: %v", err)
+	}
+	newHTML := string(snap.Body.Body)
+
+	newIdx := strings.Index(newHTML, "new user")
+	sigIdx := strings.Index(newHTML, "lark-mail-signature")
+	quoteIdx := strings.Index(newHTML, "history-quote-wrapper")
+	if !(newIdx < sigIdx && sigIdx < quoteIdx) {
+		t.Errorf("expected [new user][sig][quote], got new@%d sig@%d quote@%d",
+			newIdx, sigIdx, quoteIdx)
+	}
+}
+
+func TestSetReplyBody_PreservesAllThreeRegions(t *testing.T) {
+	snap := buildSnapshotFromHTML(`<p>old user</p>` + testSigBlock + testLargeCard + testQuoteBlock)
+
+	if err := setReplyBody(snap, `<p>new user</p>`, PatchOptions{}); err != nil {
+		t.Fatalf("setReplyBody: %v", err)
+	}
+	newHTML := string(snap.Body.Body)
+
+	newIdx := strings.Index(newHTML, "new user")
+	sigIdx := strings.Index(newHTML, "lark-mail-signature")
+	cardIdx := strings.Index(newHTML, "large-file-area-123")
+	quoteIdx := strings.Index(newHTML, "history-quote-wrapper")
+	if !(newIdx < sigIdx && sigIdx < cardIdx && cardIdx < quoteIdx) {
+		t.Errorf("expected [new][sig][card][quote], got new@%d sig@%d card@%d quote@%d",
+			newIdx, sigIdx, cardIdx, quoteIdx)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ExtractSignatureBlock: symmetric with RemoveSignatureHTML
+// ---------------------------------------------------------------------------
+
+func TestExtractSignatureBlock_Symmetry(t *testing.T) {
+	cases := []string{
+		`<p>user</p>` + testSigBlock,
+		`<p>user</p>` + testSigBlock + testQuoteBlock,
+		`<p>user</p>` + testSigBlock + testLargeCard + testQuoteBlock,
+	}
+	for _, html := range cases {
+		extracted := ExtractSignatureBlock(html)
+		cleaned := RemoveSignatureHTML(html)
+		if extracted == "" {
+			t.Errorf("extract returned empty for: %s", html)
+			continue
+		}
+		// The concatenation of cleaned + extracted (inserted back at the
+		// right spot) should reconstitute the original. Since we don't
+		// know the position, verify extract contains "lark-mail-signature"
+		// and cleaned doesn't.
+		if !strings.Contains(extracted, "lark-mail-signature") {
+			t.Errorf("extract missing signature class: %s", extracted)
+		}
+		if strings.Contains(cleaned, "lark-mail-signature") {
+			t.Errorf("clean still has signature: %s", cleaned)
+		}
+		// Length invariant: original == cleaned + extracted (bytes)
+		if len(html) != len(cleaned)+len(extracted) {
+			t.Errorf("length mismatch: %d != %d + %d", len(html), len(cleaned), len(extracted))
+		}
+	}
+}
+
+func TestExtractSignatureBlock_NoSignature(t *testing.T) {
+	if got := ExtractSignatureBlock(`<p>just text</p>`); got != "" {
+		t.Errorf("expected empty, got %q", got)
 	}
 }
 

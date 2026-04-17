@@ -361,20 +361,43 @@ func FindMatchingCloseDiv(html string, startPos int) int {
 // RemoveSignatureHTML removes the signature block and its preceding spacing from HTML.
 // Returns the HTML unchanged if no signature is found.
 func RemoveSignatureHTML(html string) string {
+	start, end, ok := locateSignatureBlock(html)
+	if !ok {
+		return html
+	}
+	return html[:start] + html[end:]
+}
+
+// ExtractSignatureBlock returns the signature block (including any
+// preceding spacing that would be removed by RemoveSignatureHTML) from
+// html. Returns "" when html has no signature.
+//
+// Symmetric to RemoveSignatureHTML: RemoveSignatureHTML(html) +
+// ExtractSignatureBlock(html) reconstitutes the original html.
+func ExtractSignatureBlock(html string) string {
+	start, end, ok := locateSignatureBlock(html)
+	if !ok {
+		return ""
+	}
+	return html[start:end]
+}
+
+// locateSignatureBlock returns the start and end offsets of the
+// signature block (including any preceding spacing) in html. ok=false
+// when no signature is present.
+func locateSignatureBlock(html string) (start, end int, ok bool) {
 	loc := signatureWrapperRe.FindStringIndex(html)
 	if loc == nil {
-		return html
+		return 0, 0, false
 	}
 	sigStart := loc[0]
 	sigEnd := FindMatchingCloseDiv(html, sigStart)
-
 	// Extend backward to include preceding spacing.
 	beforeSig := html[:sigStart]
 	if spacingLoc := signatureSpacingRe.FindStringIndex(beforeSig); spacingLoc != nil {
 		sigStart = spacingLoc[0]
 	}
-
-	return html[:sigStart] + html[sigEnd:]
+	return sigStart, sigEnd, true
 }
 
 func summarizeHTML(html string) string {
