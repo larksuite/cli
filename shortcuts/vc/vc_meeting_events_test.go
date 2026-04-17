@@ -71,6 +71,15 @@ func participantJoinedEvent() map[string]interface{} {
 	}
 }
 
+func participantJoinedEventOngoing() map[string]interface{} {
+	event := participantJoinedEvent()
+	payload := common.GetMap(event, "payload")
+	meeting := common.GetMap(payload, "meeting")
+	meeting["start_time"] = "1776410100"
+	meeting["end_time"] = "1776410100"
+	return event
+}
+
 func chatReceivedEvent() map[string]interface{} {
 	return map[string]interface{}{
 		"event_id":   "event-2",
@@ -120,7 +129,7 @@ func multiChatReceivedEvent() map[string]interface{} {
 			},
 			"chat_received_items": []interface{}{
 				map[string]interface{}{
-					"content":      "第一条",
+					"content":      "第一条\n第二行",
 					"message_type": 3,
 					"send_time":    "1776408061000",
 					"operator": map[string]interface{}{
@@ -135,6 +144,37 @@ func multiChatReceivedEvent() map[string]interface{} {
 					"operator": map[string]interface{}{
 						"id":        "u1",
 						"user_name": "Alice",
+					},
+				},
+			},
+		},
+	}
+}
+
+func magicShareStartedEvent() map[string]interface{} {
+	return map[string]interface{}{
+		"event_id":   "event-4",
+		"event_type": "magic_share_started",
+		"event_time": "2026-04-17T08:07:00Z",
+		"payload": map[string]interface{}{
+			"activity_event_type": "magic_share_started",
+			"meeting": map[string]interface{}{
+				"id":         "7628568141510692381",
+				"topic":      "项目例会",
+				"meeting_no": "724939760",
+				"start_time": "1776407700",
+				"end_time":   "1776411300",
+			},
+			"magic_share_started_items": []interface{}{
+				map[string]interface{}{
+					"time": "1776408123000",
+					"operator": map[string]interface{}{
+						"id":        "u2",
+						"user_name": "Bob",
+					},
+					"share_doc": map[string]interface{}{
+						"title": "共享文档",
+						"url":   "https://example.com/doc",
 					},
 				},
 			},
@@ -498,7 +538,7 @@ func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
 
 func TestMeetingEvents_ExecutePretty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent(), multiChatReceivedEvent()}, true, "1710000000000000000"))
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEventOngoing(), multiChatReceivedEvent(), magicShareStartedEvent()}, true, "1710000000000000000"))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
@@ -514,15 +554,23 @@ func TestMeetingEvents_ExecutePretty(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"会议主题：项目例会",
-		"会议时间：",
+		"会议时间：2026-04-17 15:15:00（进行中）",
 		"Demo Bot(bot_001) 加入了会议",
-		"Alice(u1): 第一条",
-		"Alice(u1): 第二条",
+		"Alice(u1): [reaction] 第一条\\n第二行",
+		"Alice(u1): [reaction] 第二条",
+		"Bob(u2) 开始共享「共享文档」",
+		"URL: https://example.com/doc",
 		"page_token: 1710000000000000000",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("pretty output missing %q: %s", want, out)
 		}
+	}
+	if strings.Contains(out, "第二条\n\n[") {
+		t.Fatalf("pretty output should not insert blank lines between event entries: %s", out)
+	}
+	if !strings.Contains(out, "第二条\n[") {
+		t.Fatalf("pretty output should keep event entries contiguous: %s", out)
 	}
 }
 
