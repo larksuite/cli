@@ -169,7 +169,7 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 - 使用 EML 构建器生成完整 MIME 邮件并 base64url 编码后发送。
 - `--attach` 作为普通附件添加。相对路径。
 - `--inline` 接受 JSON 数组，每项需提供 `cid`（唯一标识符，可用随机十六进制字符串）和 `file_path`（相对路径），作为 inline part 嵌入邮件。
-- **超大附件**：当附件导致 EML 总大小（headers + body + inline images + attachments，base64 编码后）超过 25 MB 时，超出的文件自动通过 `medias/upload_*` API 上传到云端，邮件正文中插入与飞书客户端一致的下载卡片 HTML。单个文件上限 3 GB，总附件数量上限 100 个。
+- **超大附件**：当附件导致 EML 总大小（headers + body + inline images + attachments，base64 编码后）超过 25 MB 时，超出的文件自动通过 `medias/upload_*` API 上传到云端，邮件正文中插入与飞书客户端一致的下载卡片 HTML。单个文件上限 3 GB，总附件数量上限 250 个。
 
 ## 相关命令
 

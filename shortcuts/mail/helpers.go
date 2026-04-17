@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -2003,7 +2002,7 @@ func validateRecipientCount(to, cc, bcc string) error {
 	return nil
 }
 
-func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
+func validateComposeInlineAndAttachments(inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
 			return fmt.Errorf("--inline is not supported with --plain-text (inline images require HTML body)")

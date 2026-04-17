@@ -305,7 +305,7 @@ func removeLargeFileItemFromHTML(htmlBody, token string) (string, bool) {
 	if err := xhtml.Render(&buf, doc); err != nil {
 		return htmlBody, false
 	}
-	return buf.String(), true
+	return stripHTMLEnvelope(buf.String()), true
 }
 
 func findLargeFileItemByToken(n *xhtml.Node, token string) *xhtml.Node {
@@ -360,4 +360,12 @@ func hasLargeFileItemChild(n *xhtml.Node) bool {
 		}
 	}
 	return false
+}
+
+// stripHTMLEnvelope removes the <html><head></head><body>...</body></html>
+// wrapper that xhtml.Parse + xhtml.Render adds around HTML fragments.
+func stripHTMLEnvelope(s string) string {
+	s = strings.TrimPrefix(s, "<html><head></head><body>")
+	s = strings.TrimSuffix(s, "</body></html>")
+	return s
 }

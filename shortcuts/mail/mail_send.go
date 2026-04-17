@@ -69,7 +69,7 @@ var MailSend = common.Shortcut{
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
 			return err
 		}
-		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
+		return validateComposeInlineAndAttachments(runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		to := runtime.Str("to")

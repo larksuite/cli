@@ -76,7 +76,7 @@ var MailDraftCreate = common.Shortcut{
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
 			return err
 		}
 		return nil
