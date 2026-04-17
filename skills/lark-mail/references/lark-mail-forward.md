@@ -13,22 +13,24 @@
 
 ## CRITICAL — 发送工作流（必须遵循）
 
-此命令默认**只保存草稿**，不会发送邮件。转发会将原邮件内容发送给新收件人，需要发送时**必须**按以下步骤操作：
+此命令默认**只保存草稿**，不会发送邮件。转发会将原邮件内容发送给新收件人，需要发送时有两种合规方式：
 
-**Step 1** — 创建转发草稿（不带 `--confirm-send`）：
+**方式 A（推荐）** — 创建转发草稿（不带 `--confirm-send`）：
 ```bash
 lark-cli mail +forward --message-id <邮件ID> --to <收件人>
 ```
 → 返回 `draft_id`
 
-**Step 2** — 向用户展示转发摘要（被转发邮件、收件人、附加说明），请求确认发送
+向用户展示转发摘要（被转发邮件、收件人、附加说明）；如果用户想先看效果，可引导其去飞书邮件里查看草稿。
 
-**Step 3** — 用户明确同意后，发送该草稿：
+用户明确同意后，发送该草稿：
 ```bash
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<Step 1 返回的 draft_id>"}'
 ```
 
-**禁止跳过 Step 1 直接使用 `--confirm-send`。禁止在用户未明确同意的情况下执行 Step 3。**
+**方式 B（允许）** — 用户已经明确确认收件人和内容时，可直接使用 `--confirm-send` 立即发送。
+
+**禁止在用户未明确同意的情况下执行发送，无论是发送草稿还是直接使用 `--confirm-send`。**
 
 ## 命令
 
@@ -103,14 +105,17 @@ lark-cli mail +forward --message-id <邮件ID> --to bob@example.com --body '<p>F
 
 ### 场景 2：用户说"转发给 Bob 并发送"（需要发送）
 ```bash
-# Step 1: 创建转发草稿
+# 方式 A: 创建转发草稿
 lark-cli mail +forward --message-id <邮件ID> --to bob@example.com --body '<p>FYI，请查收。</p>'
 # → 返回 draft_id
 
-# Step 2: 向用户确认 "转发草稿已创建：收件人 bob@example.com。确认发送吗？"
+# 向用户确认 "收件人 bob@example.com。如果你想先看效果，也可以先去飞书邮件里查看草稿。确认发送吗？"
 
-# Step 3: 用户确认后发送
+# 用户确认后发送
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
+
+# 方式 B: 用户已明确确认时，直接发送
+lark-cli mail +forward --message-id <邮件ID> --to bob@example.com --body '<p>FYI，请查收。</p>' --confirm-send
 ```
 
 ## 转发整个会话
