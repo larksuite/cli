@@ -361,4 +361,3 @@ func hasLargeFileItemChild(n *xhtml.Node) bool {
 	}
 	return false
 }
-

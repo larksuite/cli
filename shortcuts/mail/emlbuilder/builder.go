@@ -88,11 +88,11 @@ type Builder struct {
 	textBody            []byte
 	htmlBody            []byte
 	calendarBody        []byte
-	attachments       []attachment
-	inlines           []inline
-	extraHeaders      [][2]string // ordered list of [name, value] pairs
-	allowNoRecipients bool        // when true, Build() skips the recipient check (for drafts)
-	err               error
+	attachments         []attachment
+	inlines             []inline
+	extraHeaders        [][2]string // ordered list of [name, value] pairs
+	allowNoRecipients   bool        // when true, Build() skips the recipient check (for drafts)
+	err                 error
 }
 
 // WithFileIO returns a copy of b with the given FileIO.

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -29,8 +29,8 @@ type attachmentFile struct {
 
 // classifiedAttachments is the result of classifyAttachments.
 type classifiedAttachments struct {
-	Normal   []attachmentFile    // to be embedded in the EML
-	Oversized []attachmentFile   // to be uploaded as large attachments
+	Normal    []attachmentFile // to be embedded in the EML
+	Oversized []attachmentFile // to be uploaded as large attachments
 }
 
 // largeAttachmentResult holds the upload result for a single large attachment.
@@ -280,7 +280,6 @@ func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []large
 	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, items.String())
 }
 
-
 // fileTypeIcon returns the CDN icon filename for a given attachment filename,
 // matching desktop's AttachmentIconPath (mail-editor/src/plugins/bigAttachment/utils.ts).
 func fileTypeIcon(filename string) string {
@@ -332,10 +331,12 @@ func fileTypeIcon(filename string) string {
 // handling across all mail compose shortcuts (draft-create, reply, forward, send).
 //
 // It replaces the previous pattern of:
-//   checkAttachmentSizeLimit → AddFileAttachment loop
+//
+//	checkAttachmentSizeLimit → AddFileAttachment loop
 //
 // with:
-//   processLargeAttachments → add normal via AddFileAttachment + inject HTML for oversized
+//
+//	processLargeAttachments → add normal via AddFileAttachment + inject HTML for oversized
 //
 // The large attachment HTML card is inserted before the quote block (if present)
 // in the HTML body, matching the desktop client's exportLargeFileArea placement.

@@ -1929,7 +1929,6 @@ func inlineSpecFilePaths(specs []InlineSpec) []string {
 	return paths
 }
 
-
 // validateSendTime checks that --send-time, if provided, requires --confirm-send,
 // is a valid Unix timestamp in seconds, and is at least 5 minutes in the future.
 func validateSendTime(runtime *common.RuntimeContext) error {

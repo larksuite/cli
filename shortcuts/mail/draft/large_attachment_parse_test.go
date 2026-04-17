@@ -99,8 +99,8 @@ func TestParseSizeDisplay(t *testing.T) {
 		{"25.0 mb", 26214400},     // case-insensitive
 		{"garbage", 0},
 		{"", 0},
-		{"25", 0},      // no unit
-		{"25 XB", 0},   // invalid unit
+		{"25", 0},    // no unit
+		{"25 XB", 0}, // invalid unit
 	}
 	for _, tc := range cases {
 		if got := parseSizeDisplay(tc.in); got != tc.want {

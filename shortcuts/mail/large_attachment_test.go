@@ -43,7 +43,7 @@ func TestClassifyAttachments_Overflow(t *testing.T) {
 	// emlBaseSize = 24MB, first file 500KB fits, second 2MB overflows
 	emlBase := int64(24 * 1024 * 1024)
 	files := []attachmentFile{
-		{Path: "small.txt", FileName: "small.txt", Size: 500 * 1024},     // ~667KB base64, fits
+		{Path: "small.txt", FileName: "small.txt", Size: 500 * 1024},        // ~667KB base64, fits
 		{Path: "medium.txt", FileName: "medium.txt", Size: 2 * 1024 * 1024}, // ~2.67MB base64, overflows
 	}
 	result := classifyAttachments(files, emlBase)
@@ -59,8 +59,8 @@ func TestClassifyAttachments_SubsequentAlsoOversized(t *testing.T) {
 	// Once overflow triggers, all subsequent files are oversized even if they'd individually fit.
 	emlBase := int64(24 * 1024 * 1024)
 	files := []attachmentFile{
-		{Path: "big.bin", FileName: "big.bin", Size: 2 * 1024 * 1024},   // overflows
-		{Path: "tiny.txt", FileName: "tiny.txt", Size: 100},             // would fit alone, but comes after overflow
+		{Path: "big.bin", FileName: "big.bin", Size: 2 * 1024 * 1024}, // overflows
+		{Path: "tiny.txt", FileName: "tiny.txt", Size: 100},           // would fit alone, but comes after overflow
 	}
 	result := classifyAttachments(files, emlBase)
 	if len(result.Normal) != 0 {
