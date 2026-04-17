@@ -142,6 +142,40 @@ func TestBuildRawEMLForDraftCreate_MissingCIDRefError(t *testing.T) {
 	}
 }
 
+func TestBuildRawEMLForDraftCreate_WithPriority(t *testing.T) {
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		Subject: "priority test",
+		Body:    `<p>Hello</p>`,
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "1")
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+	if !strings.Contains(eml, "X-Cli-Priority: 1") {
+		t.Errorf("expected X-Cli-Priority: 1 in EML, got:\n%s", eml)
+	}
+}
+
+func TestBuildRawEMLForDraftCreate_NoPriority(t *testing.T) {
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		Subject: "no priority",
+		Body:    `<p>Hello</p>`,
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+	if strings.Contains(eml, "X-Cli-Priority") {
+		t.Errorf("expected no X-Cli-Priority header when priority is empty, got:\n%s", eml)
+	}
+}
+
 func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 	chdirTemp(t)
 	os.WriteFile("img.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644)
