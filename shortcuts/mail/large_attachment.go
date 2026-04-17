@@ -391,6 +391,12 @@ func processLargeAttachments(
 		return bld, nil
 	}
 
+	if htmlBody == "" {
+		return bld, fmt.Errorf("large attachments require an HTML body; " +
+			"plain-text messages cannot include the download card " +
+			"(remove --plain-text or reduce attachment size below 25 MB)")
+	}
+
 	// Guard: large attachment upload requires user identity. When unavailable
 	// (e.g. bot identity), fall back to the traditional size-limit error so
 	// callers get a clear, actionable message.

@@ -192,7 +192,7 @@ func TestBuildLargeAttachmentHTML_Empty(t *testing.T) {
 
 func TestBuildLargeAttachmentHTML_EscapesSpecialChars(t *testing.T) {
 	results := []largeAttachmentResult{
-		{FileName: `file<script>alert("xss")</script>.txt`, FileSize: 100, FileToken: "tok"},
+		{FileName: `file<script>alert("xss")</script>.txt`, FileSize: 100, FileToken: `tok"inject`},
 	}
 	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", results)
 	if strings.Contains(html, "<script>") {
@@ -200,6 +200,12 @@ func TestBuildLargeAttachmentHTML_EscapesSpecialChars(t *testing.T) {
 	}
 	if !strings.Contains(html, "&lt;script&gt;") {
 		t.Error("expected escaped <script> tag")
+	}
+	if strings.Contains(html, `data-mail-token="tok"inject"`) {
+		t.Error("token attribute injection: quote not escaped")
+	}
+	if !strings.Contains(html, `data-mail-token="tok&quot;inject"`) {
+		t.Error("expected escaped quote in token attribute")
 	}
 }
 

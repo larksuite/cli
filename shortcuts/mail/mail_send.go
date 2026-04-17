@@ -70,10 +70,10 @@ var MailSend = common.Shortcut{
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
 			return err
 		}
-		if err := validatePriorityFlag(runtime); err != nil {
+		if err := validateComposeInlineAndAttachments(runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
 			return err
 		}
-		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
+		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		to := runtime.Str("to")
