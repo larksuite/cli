@@ -136,3 +136,48 @@ func TestMailSendConfirmSendOutputsAutomationDisable(t *testing.T) {
 		t.Fatalf("automation_send_disable.reason = %v", automation["reason"])
 	}
 }
+
+func TestMailSendSaveDraftOutputsReference(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	grantMailSendScope(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/profile",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"primary_email_address": "me@example.com",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"draft_id":  "draft_001",
+				"reference": "https://www.feishu.cn/mail?draftId=draft_001",
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--to", "alice@example.com",
+		"--subject", "hello",
+		"--body", "world",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("save draft failed: %v", err)
+	}
+
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["draft_id"] != "draft_001" {
+		t.Fatalf("draft_id = %v", data["draft_id"])
+	}
+	if data["reference"] != "https://www.feishu.cn/mail?draftId=draft_001" {
+		t.Fatalf("reference = %v", data["reference"])
+	}
+}
