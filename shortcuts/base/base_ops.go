@@ -97,7 +97,7 @@ func buildBaseCreateBody(runtime *common.RuntimeContext) map[string]interface{} 
 }
 
 func augmentBasePermissionGrant(runtime *common.RuntimeContext, out, base map[string]interface{}) {
-	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, extractBasePermissionToken(base), "base"); grant != nil {
+	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, extractBasePermissionToken(base), "bitable"); grant != nil {
 		out["permission_grant"] = grant
 	}
 }

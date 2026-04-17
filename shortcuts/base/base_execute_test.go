@@ -74,7 +74,7 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	permStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/drive/v1/permissions/app_x/members",
+		URL:    "/open-apis/drive/v1/permissions/app_x/members?need_notification=false&type=bitable",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
@@ -140,7 +140,7 @@ func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		permStub := &httpmock.Stub{
 			Method: "POST",
-			URL:    "/open-apis/drive/v1/permissions/app_new/members",
+			URL:    "/open-apis/drive/v1/permissions/app_new/members?need_notification=false&type=bitable",
 			Body: map[string]interface{}{
 				"code": 0,
 				"msg":  "ok",
@@ -219,7 +219,7 @@ func TestBaseWorkspaceExecuteCreateBotAutoGrantFailureDoesNotFailCreate(t *testi
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/drive/v1/permissions/app_x/members",
+		URL:    "/open-apis/drive/v1/permissions/app_x/members?need_notification=false&type=bitable",
 		Body: map[string]interface{}{
 			"code": 230001,
 			"msg":  "no permission",
@@ -298,7 +298,7 @@ func TestBaseWorkspaceExecuteCopyBotAutoGrantFailureDoesNotFailCopy(t *testing.T
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/drive/v1/permissions/app_new/members",
+		URL:    "/open-apis/drive/v1/permissions/app_new/members?need_notification=false&type=bitable",
 		Body: map[string]interface{}{
 			"code": 230001,
 			"msg":  "no permission",
