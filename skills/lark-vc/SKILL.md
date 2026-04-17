@@ -1,7 +1,7 @@
 ---
 name: lark-vc
 version: 1.0.0
-description: "飞书视频会议：查询会议记录、获取会议纪要产物（总结、待办、章节、逐字稿），以及通过会议号加入/离开正在进行的会议。1. 查询已经结束的会议数量或详情时使用本技能(如历史日期｜ 昨天 | 上周 | 今天已经开过的会议等场景)，查询未开始的会议日程使用 lark-calendar 技能。2. 支持通过关键词、时间范围、组织者、参与者、会议室等筛选条件搜索会议记录。3. 获取或整理会议纪要时使用本技能。4. Agent 需要真实入会/离会（如会中助手、参会机器人）时使用本技能的 +meeting-join / +meeting-leave。"
+description: "飞书视频会议：查询会议记录、获取会议纪要产物（总结、待办、章节、逐字稿），查询 bot 在会中的事件列表，以及通过会议号加入/离开正在进行的会议。1. 查询已经结束的会议数量或详情时使用本技能(如历史日期｜ 昨天 | 上周 | 今天已经开过的会议等场景)，查询未开始的会议日程使用 lark-calendar 技能。2. 支持通过关键词、时间范围、组织者、参与者、会议室等筛选条件搜索会议记录。3. 获取或整理会议纪要时使用本技能。4. Agent 需要真实入会/离会（如会中助手、参会机器人）时使用本技能的 +meeting-join / +meeting-leave。5. Agent 需要查看会中发生了什么（入会、离会、聊天、共享、转写等事件）时，使用 +meeting-events。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -73,6 +73,13 @@ lark-cli drive metas batch_query --data '{"request_docs": [{"doc_type": "docx", 
 lark-cli docs +fetch --doc <doc_token>
 ```
 
+### 5. 查询会中事件列表（读操作）
+1. 用户要求查看“会议里发生了什么”“谁加入/离开了会议”“聊天记录事件”“共享开始/结束”“转写事件”等会中时间线时，优先使用 `+meeting-events`。
+2. `+meeting-events` 的输入是 **meeting_id**（长数字 ID），不是 9 位会议号。
+3. 该命令是**读操作**，但后端要求当前 bot 仍在会中；若 bot 已离会，接口会报 `bot is not in meeting`。
+4. `+meeting-events` 默认查 1 页；需要自动翻页时可使用 `--page-limit` 或 `--page-all`。
+5. 默认 pretty 输出会按会议主题、会议时间和时间线逐行展示事件；需要完整原始结构时使用 `--format json`。
+
 ## 资源关系
 
 ```
@@ -106,12 +113,14 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | [`+search`](references/lark-vc-search.md) | Search meeting records (requires at least one filter) |
 | [`+notes`](references/lark-vc-notes.md) | Query meeting notes (via meeting-ids, minute-tokens, or calendar-event-ids) |
 | [`+recording`](references/lark-vc-recording.md) | Query minute_token from meeting-ids or calendar-event-ids |
+| [`+meeting-events`](references/lark-vc-meeting-events.md) | List bot meeting events by meeting_id (read) |
 | [`+meeting-join`](references/lark-vc-meeting-join.md) | Join an in-progress meeting by 9-digit meeting number (write) |
 | [`+meeting-leave`](references/lark-vc-meeting-leave.md) | Leave a meeting by meeting_id (write) |
 
 - 使用 `+search` 命令时，必须阅读 [references/lark-vc-search.md](references/lark-vc-search.md)，了解搜索参数和返回值结构。
 - 使用 `+notes` 命令时，必须阅读 [references/lark-vc-notes.md](references/lark-vc-notes.md)，了解查询参数、产物类型和返回值结构。
 - 使用 `+recording` 命令时，必须阅读 [references/lark-vc-recording.md](references/lark-vc-recording.md)，了解查询参数和返回值结构。
+- 使用 `+meeting-events` 命令时，必须阅读 [references/lark-vc-meeting-events.md](references/lark-vc-meeting-events.md)，了解 `meeting_id` 的来源、分页方式，以及“bot 仍在会中”的限制。
 - 使用 `+meeting-join` 命令时，必须阅读 [references/lark-vc-meeting-join.md](references/lark-vc-meeting-join.md)，了解入参格式与写操作风险。
 - 使用 `+meeting-leave` 命令时，必须阅读 [references/lark-vc-meeting-leave.md](references/lark-vc-meeting-leave.md)，了解 `meeting_id` 的来源与写操作风险。
 
@@ -153,6 +162,7 @@ lark-cli vc meeting get --params '{"meeting_id": "<meeting_id>", "with_participa
 | `+recording --meeting-ids` | `vc:record:readonly` |
 | `+recording --calendar-event-ids` | `vc:record:readonly`、`calendar:calendar:read`、`calendar:calendar.event:read` |
 | `+search` | `vc:meeting.search:read` |
+| `+meeting-events` | `vc:meeting.meetingevent:read` |
 | `+meeting-join` | `vc:meeting.bot.join:write` |
 | `+meeting-leave` | `vc:meeting.bot.join:write` |
 | `meeting.get` | `vc:meeting.meetingevent:read` |
