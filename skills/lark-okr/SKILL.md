@@ -49,7 +49,9 @@ lark-cli okr <resource> <method> [flags] # 调用 API
 
 - `list` — 批量获取用户周期
 - `objectives_position` — 更新用户周期下全部目标的位置
+  - 请求中必须同时修改对应周期下全部目标的位置，且不允许位置重叠，否则会参数校验失败。
 - `objectives_weight` — 更新用户周期下全部目标的权重
+  - 请求中必须同时修改对应周期下全部目标的权重，且所有权重值的和必须等于 1 ，否则会参数校验失败。
 
 ### cycle.objectives
 
@@ -75,12 +77,15 @@ lark-cli okr <resource> <method> [flags] # 调用 API
 - `delete` — 删除目标
 - `get` — 获取目标
 - `key_results_position` — 更新全部关键结果的位置
+  - 请求中必须同时修改对应目标下全部关键结果的位置，且不允许位置重叠，否则会参数校验失败。
 - `key_results_weight` — 更新全部关键结果的权重
+  - 请求中必须同时修改对应目标下全部关键结果的权重，且所有权重值的和必须等于 1 ，否则会参数校验失败。
 - `patch` — 更新目标
 
 ### objective.alignments
 
 - `create` — 创建对齐关系
+  - 对齐不允许对齐自己的目标，且发起对齐的目标和被对齐的目标所在周期时间上必须有重叠，否则会参数校验失败。
 - `list` — 批量获取目标下的对齐关系
 
 ### objective.indicators
