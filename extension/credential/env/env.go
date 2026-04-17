@@ -18,11 +18,6 @@ type Provider struct{}
 func (p *Provider) Name() string { return "env" }
 
 func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, error) {
-	// When sidecar mode is active, yield to the sidecar credential provider.
-	if os.Getenv(envvars.CliAuthProxy) != "" {
-		return nil, nil
-	}
-
 	appID := os.Getenv(envvars.CliAppID)
 	appSecret := os.Getenv(envvars.CliAppSecret)
 	hasUAT := os.Getenv(envvars.CliUserAccessToken) != ""
