@@ -347,8 +347,8 @@ func TestDocMediaInsertValidateFileView(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		tt := tt
+	for _, ttTemp := range tests {
+		tt := ttTemp
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
