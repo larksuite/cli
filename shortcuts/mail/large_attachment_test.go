@@ -138,21 +138,48 @@ func TestBuildLargeAttachmentHTML(t *testing.T) {
 	if !strings.Contains(html, "www.feishu.cn/mail/page/attachment?token=tok_abc") {
 		t.Error("missing download link for tok_abc")
 	}
-	// Check English title and download text
-	if !strings.Contains(html, "Large file from Lark Mail") {
-		t.Error("missing English title")
-	}
 	if !strings.Contains(html, ">Download<") {
 		t.Error("missing English download text")
 	}
+}
 
-	// Check Chinese i18n
-	htmlZh := buildLargeAttachmentHTML(core.BrandFeishu, "zh_cn", results)
-	if !strings.Contains(htmlZh, "来自Lark邮箱的超大附件") {
-		t.Error("missing Chinese title")
+func TestBuildLargeAttachmentHTML_BrandAwareTitle(t *testing.T) {
+	results := []largeAttachmentResult{{FileName: "a.pdf", FileSize: 1024, FileToken: "tok"}}
+
+	cases := []struct {
+		brand     core.LarkBrand
+		lang      string
+		wantTitle string
+	}{
+		{core.BrandFeishu, "zh_cn", "来自飞书邮箱的超大附件"},
+		{core.BrandFeishu, "en_us", "Large file from Feishu Mail"},
+		{core.BrandLark, "zh_cn", "来自Lark邮箱的超大附件"},
+		{core.BrandLark, "en_us", "Large file from Lark Mail"},
 	}
-	if !strings.Contains(htmlZh, ">下载<") {
-		t.Error("missing Chinese download text")
+	for _, tc := range cases {
+		html := buildLargeAttachmentHTML(tc.brand, tc.lang, results)
+		if !strings.Contains(html, tc.wantTitle) {
+			t.Errorf("brand=%s lang=%s: missing title %q\nhtml: %s", tc.brand, tc.lang, tc.wantTitle, html)
+		}
+	}
+}
+
+func TestBrandDisplayName(t *testing.T) {
+	cases := []struct {
+		brand core.LarkBrand
+		lang  string
+		want  string
+	}{
+		{core.BrandFeishu, "zh_cn", "飞书"},
+		{core.BrandFeishu, "en_us", "Feishu"},
+		{core.BrandFeishu, "", "Feishu"},
+		{core.BrandLark, "zh_cn", "Lark"},
+		{core.BrandLark, "en_us", "Lark"},
+	}
+	for _, tc := range cases {
+		if got := brandDisplayName(tc.brand, tc.lang); got != tc.want {
+			t.Errorf("brandDisplayName(%s, %q) = %q, want %q", tc.brand, tc.lang, got, tc.want)
+		}
 	}
 }
 

@@ -222,17 +222,36 @@ const (
 	iconCDNEN = "https://sf16-sg.tiktokcdn.com/obj/eden-sg/aultojhaah_npi_spht_ryhs/ljhwZthlaukjlkulzlp/"
 )
 
+// brandDisplayName returns the product display name used in mail HTML
+// text, aligning with the desktop client's APP_DISPLAY_NAME i18n
+// substitution.
+//
+//   - BrandLark    → "Lark" (same in English and Chinese)
+//   - BrandFeishu  → "飞书" for zh languages, "Feishu" for others
+func brandDisplayName(brand core.LarkBrand, lang string) string {
+	if brand == core.BrandLark {
+		return "Lark"
+	}
+	if strings.HasPrefix(lang, "zh") {
+		return "飞书"
+	}
+	return "Feishu"
+}
+
 func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
 	}
 
 	// i18n text aligned with desktop's Mail_Attachment_AttachmentFromFeishuMail
-	// and Mail_Attachment_Download.
-	title := "Large file from Lark Mail"
+	// (title with APP_DISPLAY_NAME placeholder) and Mail_Attachment_Download.
+	// APP_DISPLAY_NAME is brand-dependent: Feishu/飞书 for domestic, Lark for
+	// international.
+	appName := brandDisplayName(brand, lang)
+	title := "Large file from " + appName + " Mail"
 	downloadText := "Download"
 	if strings.HasPrefix(lang, "zh") {
-		title = "来自Lark邮箱的超大附件"
+		title = "来自" + appName + "邮箱的超大附件"
 		downloadText = "下载"
 	}
 
