@@ -210,6 +210,19 @@ func TestRunCmd(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		assert.Equal(t, "hello from stdin\n", result.Stdout)
 	})
+
+	t.Run("injects user token env only for user commands", func(t *testing.T) {
+		t.Setenv("TEST_BOT1_APP_ID", "cli_app_test")
+		t.Setenv("TEST_USER_ACCESS_TOKEN", "uat_test")
+
+		env := buildCommandEnv(Request{DefaultAs: "user"})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
+		assert.Contains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+
+		env = buildCommandEnv(Request{DefaultAs: "bot"})
+		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+	})
 }
 
 type fakeCLI struct {

@@ -230,8 +230,6 @@ jobs:
       - name: Run CLI E2E tests
         env:
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
-          LARKSUITE_CLI_APP_ID: ${{ env.TEST_BOT1_APP_ID }}
-          LARKSUITE_CLI_USER_ACCESS_TOKEN: ${{ env.TEST_USER_ACCESS_TOKEN }}
         run: |
           packages=$(go list ./tests/cli_e2e/... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '/demo$')
           if [ -z "$packages" ]; then
