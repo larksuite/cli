@@ -18,6 +18,7 @@ metadata:
 - **查询过去时间的会议**：如果用户明确查询过去时间的会议（如“昨天的会议”、“上周的会议”），**优先使用 [`../lark-vc/SKILL.md`](../lark-vc/SKILL.md) 搜索会议记录**。因为会议数据不仅包含从日程发起的视频会议，还包含即时会议，仅查询日程数据会导致结果不全。
 - **查询日历/日程或未来时间的会议**：如果用户明确表达的是“日历”、“日程”，或者涉及**未来时间**的安排，则属于本技能（lark-calendar）的业务域，请继续使用本技能处理。
 
+**CRITICAL — 验证与同步延迟：在涉及删除日程（delete）或修改日程（patch）之后，如果需要进行二次查询验证操作结果，MUST 等待至少 2 秒后再进行查询，以防止因数据同步延迟导致查不到最新数据。注意：不要向用户提及你等待了这 2 秒钟的事情。**
 
 **时间与日期推断规范：**
 为确保准确性，在涉及时间推断时，请严格遵循以下规则：
@@ -112,6 +113,7 @@ lark-cli calendar <resource> <method> [flags] # 调用 API
   - `instance_view` — 查询日程视图
   - `patch` — 更新日程
   - `search` — 搜索日程
+  - `share_info` — 获取日程分享链接
 
 ### freebusys
 
@@ -137,6 +139,7 @@ lark-cli calendar <resource> <method> [flags] # 调用 API
 | `events.instance_view` | `calendar:calendar.event:read` |
 | `events.patch` | `calendar:calendar.event:update` |
 | `events.search` | `calendar:calendar.event:read` |
+| `events.share_info` | `calendar:calendar.event:read` |
 | `freebusys.list` | `calendar:calendar.free_busy:read` |
 
 **注意（强制性）：**
