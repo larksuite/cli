@@ -131,6 +131,7 @@ var MailForward = common.Shortcut{
 			return err
 		}
 		var autoResolvedPaths []string
+		var composedHTMLBody string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("forward blocked: %w", err)
@@ -150,8 +151,8 @@ var MailForward = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
-			fullHTML := bodyWithSig + forwardQuote
-			bld = bld.HTMLBody([]byte(fullHTML))
+			composedHTMLBody = bodyWithSig + forwardQuote
+			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var userCIDs []string
 			for _, ref := range refs {
@@ -202,17 +203,20 @@ var MailForward = common.Shortcut{
 			if err != nil {
 				return fmt.Errorf("failed to encode large attachment IDs: %w", err)
 			}
-			bld = bld.Header("X-Lms-Large-Attachment-Ids", base64.StdEncoding.EncodeToString(idsJSON))
-		}
-		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, origAttBytes, len(origAtts)); err != nil {
-			return err
+			bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
 		}
 		for _, att := range origAtts {
 			bld = bld.AddAttachment(att.content, att.contentType, att.filename)
 		}
-		for _, path := range splitByComma(attachFlag) {
-			bld = bld.AddFileAttachment(path)
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		origAttEMLBytes := int64(0)
+		for _, att := range origAtts {
+			origAttEMLBytes += estimateBase64EMLSize(int64(len(att.content)))
+		}
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, origAttEMLBytes)
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, len(origAtts))
+		if err != nil {
+			return err
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {

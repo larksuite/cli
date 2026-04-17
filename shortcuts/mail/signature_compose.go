@@ -78,18 +78,20 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 	}, nil
 }
 
-// injectSignatureIntoBody inserts signature HTML into the body, before the quote block.
-// It removes any existing signature first, then places the new signature between
-// the user-authored content and the quote block (if any).
-// Returns the new full HTML body.
+// injectSignatureIntoBody inserts signature HTML into the body, placing
+// it right after the user-authored region and before any system-managed
+// tail (large attachment card or quote block). Any existing signature is
+// removed first. Returns the new full HTML body.
+//
+// Delegates to draftpkg.PlaceSignatureBeforeSystemTail for the actual
+// placement, sharing a single source of truth with the edit-time
+// insert_signature op so both paths yield identical structure.
 func injectSignatureIntoBody(bodyHTML string, sig *signatureResult) string {
 	if sig == nil {
 		return bodyHTML
 	}
-	cleaned := draftpkg.RemoveSignatureHTML(bodyHTML)
-	userContent, quote := draftpkg.SplitAtQuote(cleaned)
 	sigBlock := draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sig.ID, sig.RenderedContent)
-	return userContent + sigBlock + quote
+	return draftpkg.PlaceSignatureBeforeSystemTail(bodyHTML, sigBlock)
 }
 
 // addSignatureImagesToBuilder adds signature inline images to the EML builder.

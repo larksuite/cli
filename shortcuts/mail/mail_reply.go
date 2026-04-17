@@ -134,6 +134,7 @@ var MailReply = common.Shortcut{
 			bld = bld.LMSReplyToMessageID(messageId)
 		}
 		var autoResolvedPaths []string
+		var composedHTMLBody string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply blocked: %w", err)
@@ -151,8 +152,8 @@ var MailReply = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
-			fullHTML := bodyWithSig + quoted
-			bld = bld.HTMLBody([]byte(fullHTML))
+			composedHTMLBody = bodyWithSig + quoted
+			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var userCIDs []string
 			for _, ref := range refs {
@@ -170,12 +171,11 @@ var MailReply = common.Shortcut{
 		} else {
 			bld = bld.TextBody([]byte(bodyStr + quoted))
 		}
-		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, 0)
+		if err != nil {
 			return err
-		}
-		for _, path := range splitByComma(attachFlag) {
-			bld = bld.AddFileAttachment(path)
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {

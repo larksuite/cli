@@ -104,6 +104,7 @@ var MailSend = common.Shortcut{
 			return err
 		}
 		var autoResolvedPaths []string
+		var composedHTMLBody string
 		if plainText {
 			bld = bld.TextBody([]byte(body))
 		} else if bodyIsHTML(body) || sigResult != nil {
@@ -117,7 +118,8 @@ var MailSend = common.Shortcut{
 				return resolveErr
 			}
 			resolved = injectSignatureIntoBody(resolved, sigResult)
-			bld = bld.HTMLBody([]byte(resolved))
+			composedHTMLBody = resolved
+			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var allCIDs []string
 			for _, ref := range refs {
@@ -136,13 +138,11 @@ var MailSend = common.Shortcut{
 		} else {
 			bld = bld.TextBody([]byte(body))
 		}
-		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, 0)
+		if err != nil {
 			return err
-		}
-
-		for _, path := range splitByComma(attachFlag) {
-			bld = bld.AddFileAttachment(path)
 		}
 
 		rawEML, err := bld.BuildBase64URL()
