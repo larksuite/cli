@@ -79,7 +79,6 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 
 	form := url.Values{}
 	form.Set("client_id", appId)
-	form.Set("client_secret", appSecret)
 	form.Set("scope", scope)
 
 	req, err := http.NewRequest("POST", endpoints.DeviceAuthorization, strings.NewReader(form.Encode()))

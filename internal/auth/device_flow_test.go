@@ -109,36 +109,6 @@ func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 	}
 }
 
-// TestRequestDeviceAuthorization_ClientSecretInBody checks that client_secret is sent in the form body.
-func TestRequestDeviceAuthorization_ClientSecretInBody(t *testing.T) {
-	reg := &httpmock.Registry{}
-	t.Cleanup(func() { reg.Verify(t) })
-
-	stub := &httpmock.Stub{
-		Method: "POST",
-		URL:    PathDeviceAuthorization,
-		Body: map[string]interface{}{
-			"device_code":               "dc",
-			"user_code":                 "uc",
-			"verification_uri":          "https://example.com/verify",
-			"verification_uri_complete": "https://example.com/verify?code=123",
-			"expires_in":                240,
-			"interval":                  5,
-		},
-	}
-	reg.Register(stub)
-
-	_, err := RequestDeviceAuthorization(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
-	if err != nil {
-		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
-	}
-
-	body := string(stub.CapturedBody)
-	if !strings.Contains(body, "client_secret=secret_b") {
-		t.Errorf("expected client_secret in form body, got %q", body)
-	}
-}
-
 // TestLogAuthResponse_IgnoresTypedNilHTTPResponse tests that a typed nil HTTP response is ignored gracefully.
 func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 	var buf bytes.Buffer
