@@ -68,6 +68,58 @@ func TestReadClipboardLinux_NoToolsReturnsError(t *testing.T) {
 	}
 }
 
+func TestReadClipboardLinux_XselRejectsNonPNG(t *testing.T) {
+	// Fake xsel that returns plain text (non-PNG) — should be rejected by the
+	// PNG-magic validation so the user does not upload text as an "image".
+	tmpDir := t.TempDir()
+	fakeXsel := tmpDir + "/xsel"
+	if err := os.WriteFile(fakeXsel, []byte("#!/bin/sh\nprintf 'not a png'\n"), 0755); err != nil {
+		t.Fatalf("write fake xsel: %v", err)
+	}
+
+	orig := os.Getenv("PATH")
+	t.Cleanup(func() { os.Setenv("PATH", orig) })
+	os.Setenv("PATH", tmpDir) // no xclip, no wl-paste; only our fake xsel
+
+	_, err := readClipboardLinux()
+	if err == nil {
+		t.Fatal("expected error when xsel returns non-PNG bytes, got nil")
+	}
+}
+
+func TestHasPNGMagic(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []byte
+		want bool
+	}{
+		{"exact PNG signature", []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}, true},
+		{"PNG signature plus payload", []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xde, 0xad}, true},
+		{"plain text", []byte("not a png"), false},
+		{"empty", []byte{}, false},
+		{"too short", []byte{0x89, 0x50, 0x4e, 0x47}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hasPNGMagic(tt.in); got != tt.want {
+				t.Errorf("hasPNGMagic(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadClipboardImageBytes_UnsupportedPlatform(t *testing.T) {
+	// The dispatcher returns a clear error on platforms we do not support.
+	// We cannot flip runtime.GOOS, but we can cover the shared post-processing
+	// by invoking the function on any platform and asserting the non-error
+	// contract holds: either it returns data (unlikely in CI) or an error —
+	// never both zero values.
+	data, err := readClipboardImageBytes()
+	if err == nil && len(data) == 0 {
+		t.Fatal("readClipboardImageBytes returned (nil, nil); must return error when data is empty")
+	}
+}
+
 func TestDecodeHex(t *testing.T) {
 	tests := []struct {
 		name    string
