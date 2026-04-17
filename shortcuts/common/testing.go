@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -36,4 +37,17 @@ func TestNewRuntimeContextWithBotInfo(cmd *cobra.Command, cfg *core.CliConfig, i
 		return info, nil
 	})
 	return rctx
+}
+
+// TestNewRuntimeContextForAPI creates a RuntimeContext ready for HTTP tests:
+// sets Cmd, Config, Factory, context, and bot identity so callers can invoke
+// DoAPI / CallAPI directly without wiring through a cobra parent command.
+func TestNewRuntimeContextForAPI(ctx context.Context, cmd *cobra.Command, cfg *core.CliConfig, f *cmdutil.Factory) *RuntimeContext {
+	return &RuntimeContext{
+		ctx:        ctx,
+		Cmd:        cmd,
+		Config:     cfg,
+		Factory:    f,
+		resolvedAs: core.AsBot,
+	}
 }
