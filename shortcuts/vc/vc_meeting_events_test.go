@@ -51,6 +51,13 @@ func participantJoinedEvent() map[string]interface{} {
 		"event_time": "2026-04-17T08:00:00Z",
 		"payload": map[string]interface{}{
 			"activity_event_type": "participant_joined",
+			"meeting": map[string]interface{}{
+				"id":         "7628568141510692381",
+				"topic":      "项目例会",
+				"meeting_no": "724939760",
+				"start_time": "1776407700",
+				"end_time":   "1776411300",
+			},
 			"participant_joined_items": []interface{}{
 				map[string]interface{}{
 					"participant": map[string]interface{}{
@@ -70,7 +77,14 @@ func chatReceivedEvent() map[string]interface{} {
 		"event_type": "chat_received",
 		"event_time": "2026-04-17T08:05:00Z",
 		"payload": map[string]interface{}{
-			"activity_event_type":       "chat_received",
+			"activity_event_type": "chat_received",
+			"meeting": map[string]interface{}{
+				"id":         "7628568141510692381",
+				"topic":      "项目例会",
+				"meeting_no": "724939760",
+				"start_time": "1776407700",
+				"end_time":   "1776411300",
+			},
 			"participant_joined_items":  []interface{}{},
 			"participant_left_items":    []interface{}{},
 			"transcript_received_items": []interface{}{},
@@ -80,6 +94,44 @@ func chatReceivedEvent() map[string]interface{} {
 				map[string]interface{}{
 					"content":      "hello",
 					"message_type": 3,
+					"operator": map[string]interface{}{
+						"id":        "u1",
+						"user_name": "Alice",
+					},
+				},
+			},
+		},
+	}
+}
+
+func multiChatReceivedEvent() map[string]interface{} {
+	return map[string]interface{}{
+		"event_id":   "event-3",
+		"event_type": "chat_received",
+		"event_time": "2026-04-17T08:06:00Z",
+		"payload": map[string]interface{}{
+			"activity_event_type": "chat_received",
+			"meeting": map[string]interface{}{
+				"id":         "7628568141510692381",
+				"topic":      "项目例会",
+				"meeting_no": "724939760",
+				"start_time": "1776407700",
+				"end_time":   "1776411300",
+			},
+			"chat_received_items": []interface{}{
+				map[string]interface{}{
+					"content":      "第一条",
+					"message_type": 3,
+					"send_time":    "1776408061000",
+					"operator": map[string]interface{}{
+						"id":        "u1",
+						"user_name": "Alice",
+					},
+				},
+				map[string]interface{}{
+					"content":      "第二条",
+					"message_type": 3,
+					"send_time":    "1776408062000",
 					"operator": map[string]interface{}{
 						"id":        "u1",
 						"user_name": "Alice",
@@ -446,7 +498,7 @@ func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
 
 func TestMeetingEvents_ExecutePretty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "1710000000000000000"))
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent(), multiChatReceivedEvent()}, true, "1710000000000000000"))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
@@ -461,8 +513,11 @@ func TestMeetingEvents_ExecutePretty(t *testing.T) {
 
 	out := stdout.String()
 	for _, want := range []string{
-		"participant_joined",
-		"participant bot_001 (Demo Bot) joined",
+		"会议主题：项目例会",
+		"会议时间：",
+		"Demo Bot(bot_001) 加入了会议",
+		"Alice(u1): 第一条",
+		"Alice(u1): 第二条",
 		"page_token: 1710000000000000000",
 	} {
 		if !strings.Contains(out, want) {

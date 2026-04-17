@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -102,7 +104,6 @@ var VCMeetingEvents = common.Shortcut{
 			return err
 		}
 		events = compactMeetingEvents(events)
-		rows := buildMeetingEventRows(events)
 		outData := map[string]interface{}{
 			"events":     events,
 			"total":      data["total"],
@@ -110,12 +111,13 @@ var VCMeetingEvents = common.Shortcut{
 			"page_token": data["page_token"],
 		}
 
-		runtime.OutFormat(outData, &output.Meta{Count: len(rows)}, func(w io.Writer) {
-			if len(rows) == 0 {
+		timeline := buildMeetingEventTimeline(events)
+		runtime.OutFormat(outData, &output.Meta{Count: len(timeline.entries)}, func(w io.Writer) {
+			if len(timeline.entries) == 0 {
 				fmt.Fprintln(w, "No meeting events.")
 				return
 			}
-			output.PrintTable(w, rows)
+			io.WriteString(w, renderMeetingEventsPretty(timeline))
 		})
 		if hasMore && runtime.Format != "json" && runtime.Format != "" {
 			fmt.Fprintf(runtime.IO().Out, "\n(more available, page_token: %s)\n", pageToken)
@@ -358,6 +360,386 @@ func buildMeetingEventRows(events []interface{}) []map[string]interface{} {
 		})
 	}
 	return rows
+}
+
+type meetingTimeline struct {
+	topic     string
+	startTime time.Time
+	hasStart  bool
+	endTime   time.Time
+	hasEnd    bool
+	entries   []meetingTimelineEntry
+}
+
+type meetingTimelineEntry struct {
+	when        time.Time
+	hasWhen     bool
+	sequence    int
+	subject     string
+	description string
+}
+
+func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
+	timeline := meetingTimeline{}
+	var sequence int
+	for _, raw := range events {
+		event, _ := raw.(map[string]interface{})
+		if event == nil {
+			continue
+		}
+		payload := common.GetMap(event, "payload")
+		if payload == nil {
+			continue
+		}
+		if timeline.topic == "" || !timeline.hasStart || !timeline.hasEnd {
+			populateMeetingHeader(&timeline, common.GetMap(payload, "meeting"))
+		}
+		for _, entry := range buildTimelineEntriesForEvent(event, &sequence) {
+			timeline.entries = append(timeline.entries, entry)
+		}
+	}
+	sort.SliceStable(timeline.entries, func(i, j int) bool {
+		left := timeline.entries[i]
+		right := timeline.entries[j]
+		switch {
+		case left.hasWhen && right.hasWhen:
+			if left.when.Equal(right.when) {
+				return left.sequence < right.sequence
+			}
+			return left.when.Before(right.when)
+		case left.hasWhen:
+			return true
+		case right.hasWhen:
+			return false
+		default:
+			return left.sequence < right.sequence
+		}
+	})
+	return timeline
+}
+
+func populateMeetingHeader(timeline *meetingTimeline, meeting map[string]interface{}) {
+	if timeline == nil || meeting == nil {
+		return
+	}
+	if timeline.topic == "" {
+		timeline.topic = common.GetString(meeting, "topic")
+	}
+	if !timeline.hasStart {
+		if parsed, ok := parseFlexibleTime(common.GetString(meeting, "start_time")); ok {
+			timeline.startTime = parsed
+			timeline.hasStart = true
+		}
+	}
+	if !timeline.hasEnd {
+		if parsed, ok := parseFlexibleTime(common.GetString(meeting, "end_time")); ok {
+			timeline.endTime = parsed
+			timeline.hasEnd = true
+		}
+	}
+}
+
+func buildTimelineEntriesForEvent(event map[string]interface{}, sequence *int) []meetingTimelineEntry {
+	payload := common.GetMap(event, "payload")
+	if payload == nil {
+		return nil
+	}
+	eventType := meetingEventType(event)
+	eventTime, eventTimeOK := parseFlexibleTime(common.GetString(event, "event_time"))
+	switch eventType {
+	case "participant_joined":
+		return participantJoinedEntries(payload, eventTime, eventTimeOK, sequence)
+	case "participant_left":
+		return participantLeftEntries(payload, eventTime, eventTimeOK, sequence)
+	case "transcript_received":
+		return transcriptEntries(payload, eventTime, eventTimeOK, sequence)
+	case "chat_received":
+		return chatEntries(payload, eventTime, eventTimeOK, sequence)
+	case "magic_share_started":
+		return magicShareStartedEntries(payload, eventTime, eventTimeOK, sequence)
+	case "magic_share_ended":
+		return magicShareEndedEntries(payload, eventTime, eventTimeOK, sequence)
+	default:
+		return []meetingTimelineEntry{newTimelineEntry(eventTime, eventTimeOK, sequence, meetingEventUserDisplayName(nil), meetingEventSummary(event))}
+	}
+}
+
+func participantJoinedEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "participant_joined_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "加入了会议")}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		when, ok := parseFlexibleTime(common.GetString(item, "join_time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "participant"))
+		if subject == "" {
+			subject = "未知参会人"
+		}
+		entries = append(entries, newTimelineEntry(when, ok, sequence, subject, "加入了会议"))
+	}
+	return entries
+}
+
+func participantLeftEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "participant_left_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "离开了会议")}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		when, ok := parseFlexibleTime(common.GetString(item, "leave_time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "participant"))
+		if subject == "" {
+			subject = "未知参会人"
+		}
+		entries = append(entries, newTimelineEntry(when, ok, sequence, subject, leaveAction(item)))
+	}
+	return entries
+}
+
+func transcriptEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "transcript_received_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "产生了转写")}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		when, ok := parseFlexibleTime(common.GetString(item, "start_time_ms"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "speaker"))
+		if subject == "" {
+			subject = "未知发言人"
+		}
+		text := strings.TrimSpace(common.GetString(item, "text"))
+		description := "产生了转写"
+		if text != "" {
+			description = text
+		}
+		entries = append(entries, newTimelineEntry(when, ok, sequence, subject, description))
+	}
+	return entries
+}
+
+func chatEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "chat_received_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "发送了消息")}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		when, ok := parseFlexibleTime(common.GetString(item, "send_time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "operator"))
+		if subject == "" {
+			subject = "未知发送者"
+		}
+		description := strings.TrimSpace(common.GetString(item, "content"))
+		if description == "" {
+			description = "发送了消息"
+		}
+		entries = append(entries, newTimelineEntry(when, ok, sequence, subject, description))
+	}
+	return entries
+}
+
+func magicShareStartedEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "magic_share_started_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "开始共享内容")}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		when, ok := parseFlexibleTime(common.GetString(item, "time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "operator"))
+		if subject == "" {
+			subject = "未知用户"
+		}
+		title := strings.TrimSpace(common.GetString(common.GetMap(item, "share_doc"), "title"))
+		description := "开始共享内容"
+		if title != "" {
+			description = fmt.Sprintf("开始共享「%s」", title)
+		}
+		entries = append(entries, newTimelineEntry(when, ok, sequence, subject, description))
+	}
+	return entries
+}
+
+func magicShareEndedEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "magic_share_ended_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "结束共享")}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		when, ok := parseFlexibleTime(common.GetString(item, "time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "operator"))
+		if subject == "" {
+			subject = "未知用户"
+		}
+		entries = append(entries, newTimelineEntry(when, ok, sequence, subject, "结束共享"))
+	}
+	return entries
+}
+
+func newTimelineEntry(when time.Time, hasWhen bool, sequence *int, subject, description string) meetingTimelineEntry {
+	entry := meetingTimelineEntry{
+		when:        when,
+		hasWhen:     hasWhen,
+		sequence:    *sequence,
+		subject:     subject,
+		description: description,
+	}
+	*sequence = *sequence + 1
+	return entry
+}
+
+func parseFlexibleTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	if ts, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		switch {
+		case ts > 1_000_000_000_000:
+			return time.UnixMilli(ts), true
+		case ts > 0:
+			return time.Unix(ts, 0), true
+		}
+	}
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		return parsed, true
+	}
+	return time.Time{}, false
+}
+
+func renderMeetingEventsPretty(timeline meetingTimeline) string {
+	var b strings.Builder
+	if timeline.topic != "" {
+		fmt.Fprintf(&b, "会议主题：%s\n", timeline.topic)
+	}
+	if timeline.hasStart || timeline.hasEnd {
+		fmt.Fprintf(&b, "会议时间：%s\n", formatMeetingWindow(timeline.startTime, timeline.hasStart, timeline.endTime, timeline.hasEnd))
+	}
+	if b.Len() > 0 {
+		b.WriteString("\n")
+	}
+	for _, entry := range timeline.entries {
+		fmt.Fprintf(&b, "[%s] ", formatTimelineOffset(entry.when, entry.hasWhen, timeline.startTime, timeline.hasStart))
+		if entry.subject != "" {
+			if entry.description == "" {
+				fmt.Fprintln(&b, entry.subject)
+				continue
+			}
+			if needsColon(entry.description) {
+				fmt.Fprintf(&b, "%s: %s\n", entry.subject, entry.description)
+			} else {
+				fmt.Fprintf(&b, "%s %s\n", entry.subject, entry.description)
+			}
+			continue
+		}
+		fmt.Fprintln(&b, entry.description)
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return b.String()
+}
+
+func formatMeetingWindow(start time.Time, hasStart bool, end time.Time, hasEnd bool) string {
+	switch {
+	case hasStart && hasEnd:
+		return fmt.Sprintf("%s - %s", start.Local().Format("2006-01-02 15:04:05"), end.Local().Format("2006-01-02 15:04:05"))
+	case hasStart:
+		return start.Local().Format("2006-01-02 15:04:05")
+	case hasEnd:
+		return end.Local().Format("2006-01-02 15:04:05")
+	default:
+		return ""
+	}
+}
+
+func formatTimelineOffset(when time.Time, hasWhen bool, meetingStart time.Time, hasMeetingStart bool) string {
+	if hasWhen && hasMeetingStart {
+		diff := when.Sub(meetingStart)
+		if diff < 0 {
+			diff = 0
+		}
+		totalSeconds := int(diff.Seconds())
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+		return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+	}
+	if hasWhen {
+		return when.Local().Format("15:04:05")
+	}
+	return "??:??:??"
+}
+
+func needsColon(description string) bool {
+	switch description {
+	case "发送了消息", "产生了转写":
+		return false
+	default:
+		return !strings.HasPrefix(description, "加入了") &&
+			!strings.HasPrefix(description, "离开了") &&
+			!strings.HasPrefix(description, "被移出") &&
+			!strings.HasPrefix(description, "会议结束") &&
+			!strings.HasPrefix(description, "开始共享") &&
+			!strings.HasPrefix(description, "结束共享")
+	}
+}
+
+func leaveAction(item map[string]interface{}) string {
+	switch int(common.GetFloat(item, "leave_reason")) {
+	case 2:
+		return "因会议结束离开了会议"
+	case 3:
+		return "被移出了会议"
+	default:
+		return "离开了会议"
+	}
+}
+
+func meetingEventUserWithID(user map[string]interface{}) string {
+	if user == nil {
+		return ""
+	}
+	userID := common.GetString(user, "id")
+	userName := common.GetString(user, "user_name")
+	switch {
+	case userName != "" && userID != "":
+		return fmt.Sprintf("%s(%s)", userName, userID)
+	case userName != "":
+		return userName
+	case userID != "":
+		return userID
+	default:
+		return ""
+	}
 }
 
 func meetingEventType(event map[string]interface{}) string {
