@@ -197,17 +197,15 @@ func TestMail_DraftLifecycleWorkflowAsUser(t *testing.T) {
 
 	t.Run("verify draft removed from list as user", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"mail", "user_mailbox.drafts", "list"},
+			Args:      []string{"mail", "user_mailbox.drafts", "get"},
 			DefaultAs: "user",
 			Params: map[string]any{
 				"user_mailbox_id": mailboxID,
-				"page_size":       100,
+				"draft_id":        draftID,
 			},
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-
-		assert.False(t, gjson.Get(result.Stdout, `data.items.#(id=="`+draftID+`")`).Exists(), "stdout:\n%s", result.Stdout)
+		assert.NotEqual(t, 0, result.ExitCode, "stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+		assert.Equal(t, "not_found", gjson.Get(result.Stderr, "error.detail.type").String(), "stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 	})
 }

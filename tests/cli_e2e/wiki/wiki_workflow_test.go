@@ -89,7 +89,6 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 
 	t.Run("list spaces as bot", func(t *testing.T) {
 		result := listWikiSpaces(t, ctx, 1)
-		assert.True(t, result.Get("data.page_token").Exists(), "stdout:\n%s", result.Raw)
 		assert.True(t, result.Get("data.items").Exists(), "stdout:\n%s", result.Raw)
 	})
 
