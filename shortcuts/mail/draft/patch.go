@@ -1186,41 +1186,41 @@ func postProcessInlineImages(dctx *DraftCtx, snapshot *DraftSnapshot, resolveLoc
 // insertSignatureOp inserts a pre-rendered signature into the HTML body.
 // The RenderedSignatureHTML and SignatureImages fields must be populated
 // by the shortcut layer before calling Apply.
+//
+// Placement: signature goes between the user-authored region and any
+// system-managed tail (large attachment card or history quote wrapper),
+// matching the compose-time order [user][sig][card?][quote?]. When the
+// draft already has a signature, it is replaced in place.
 func insertSignatureOp(snapshot *DraftSnapshot, op PatchOp) error {
 	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
 	if htmlPart == nil {
 		return fmt.Errorf("insert_signature: no HTML body part found; use set_body first")
 	}
-	html := string(htmlPart.Body)
+	oldHTML := string(htmlPart.Body)
 
-	// Collect CIDs from old signature before removing it, so we can
-	// clean up orphaned MIME inline parts and avoid duplicates.
-	oldSigCIDs := collectSignatureCIDsFromHTML(html)
+	// Collect CIDs from old signature before replacement so we can prune
+	// MIME inline parts that the new signature doesn't re-reference.
+	oldSigCIDs := collectSignatureCIDsFromHTML(oldHTML)
 
-	// Remove existing signature (if any), including preceding spacing.
-	html = RemoveSignatureHTML(html)
+	sigBlock := SignatureSpacing() + BuildSignatureHTML(op.SignatureID, op.RenderedSignatureHTML)
+	newHTML := PlaceSignatureBeforeSystemTail(oldHTML, sigBlock)
 
 	// Remove orphaned MIME inline parts from old signature.
 	for _, cid := range oldSigCIDs {
-		if !containsCIDIgnoreCase(html, cid) {
+		if !containsCIDIgnoreCase(newHTML, cid) {
 			removeMIMEPartByCID(snapshot.Body, cid)
 		}
 	}
 
-	// Split at quote and insert signature between body and quote.
-	body, quote := SplitAtQuote(html)
-	sigBlock := SignatureSpacing() + BuildSignatureHTML(op.SignatureID, op.RenderedSignatureHTML)
-	html = body + sigBlock + quote
-
-	htmlPart.Body = []byte(html)
+	htmlPart.Body = []byte(newHTML)
 	htmlPart.Dirty = true
 
-	// Add signature inline images to the MIME tree.
+	// Add new signature inline images to the MIME tree.
 	for _, img := range op.SignatureImages {
 		addInlinePartToSnapshot(snapshot, img.Data, img.ContentType, img.FileName, img.CID)
 	}
 
-	syncTextPartFromHTML(snapshot, html)
+	syncTextPartFromHTML(snapshot, newHTML)
 	return nil
 }
 

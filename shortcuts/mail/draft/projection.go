@@ -228,6 +228,52 @@ func SplitAtLargeAttachment(html string) (before, card, after string) {
 	return html[:startTag], html[startTag:end], html[end:]
 }
 
+// splitAtSystemTail splits html at the earliest system-managed element:
+// either the large-file-area card container or the history-quote-wrapper,
+// whichever appears first. When neither is present, returns (html, "").
+//
+// This is the placement point for signatures. In Lark mail's compose
+// order the signature sits right after the user-authored region and
+// before any attachment cards or quoted content.
+func splitAtSystemTail(html string) (userRegion, systemTail string) {
+	cardLoc := largeFileAreaOpenRe.FindStringIndex(html)
+	quoteLoc := quoteWrapperRe.FindStringIndex(html)
+	pos := -1
+	if cardLoc != nil {
+		pos = cardLoc[0]
+	}
+	if quoteLoc != nil && (pos < 0 || quoteLoc[0] < pos) {
+		pos = quoteLoc[0]
+	}
+	if pos < 0 {
+		return html, ""
+	}
+	return html[:pos], html[pos:]
+}
+
+// PlaceSignatureBeforeSystemTail is the single source of truth for
+// signature placement. It removes any existing signature from html, then
+// inserts sigBlock at the split point between the user-authored region
+// and the system-managed tail (large attachment card or history quote
+// wrapper, whichever comes first).
+//
+// Used by both compose-time signature injection
+// (mail/signature_compose.go) and edit-time insert_signature op
+// (draft/patch.go), guaranteeing they produce a consistent HTML layout
+// [user][sig][card?][quote?].
+//
+// When sigBlock is empty, behaves as a simple "remove signature" on the
+// HTML string level — note that callers needing MIME-part orphan cleanup
+// should handle that separately.
+func PlaceSignatureBeforeSystemTail(html, sigBlock string) string {
+	cleaned := RemoveSignatureHTML(html)
+	if sigBlock == "" {
+		return cleaned
+	}
+	user, tail := splitAtSystemTail(cleaned)
+	return user + sigBlock + tail
+}
+
 // HTMLContainsLargeAttachment reports whether the given HTML fragment
 // contains a large attachment card container (`<div ... id="large-file-area-..."`).
 // Used to detect whether a user-supplied set_body value already carries
