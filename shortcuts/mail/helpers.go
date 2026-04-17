@@ -1795,6 +1795,17 @@ func buildDraftSendOutput(resData map[string]interface{}) map[string]interface{}
 	return out
 }
 
+func buildDraftSavedOutput(draftResult draftpkg.DraftResult, mailboxID string) map[string]interface{} {
+	out := map[string]interface{}{
+		"draft_id": draftResult.DraftID,
+		"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftResult.DraftID),
+	}
+	if draftResult.Reference != "" {
+		out["reference"] = draftResult.Reference
+	}
+	return out
+}
+
 func normalizeInlineCID(cid string) string {
 	trimmed := strings.TrimSpace(cid)
 	if len(trimmed) >= 4 && strings.EqualFold(trimmed[:4], "cid:") {
