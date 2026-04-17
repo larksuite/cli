@@ -27,34 +27,37 @@ func TestIM_ChatUpdateWorkflow(t *testing.T) {
 
 	chatID := createChat(t, parentT, ctx, originalName)
 
-	t.Run("update chat name", func(t *testing.T) {
+	t.Run("update chat name as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"im", "+chat-update",
 				"--chat-id", chatID,
 				"--name", updatedName,
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("update chat description", func(t *testing.T) {
+	t.Run("update chat description as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"im", "+chat-update",
 				"--chat-id", chatID,
 				"--description", updatedDescription,
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("get updated chat", func(t *testing.T) {
+	t.Run("get updated chat as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"im", "chats", "get"},
-			Params: map[string]any{"chat_id": chatID},
+			Args:      []string{"im", "chats", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"chat_id": chatID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -76,10 +79,11 @@ func TestIM_ChatsGetWorkflow(t *testing.T) {
 
 	chatID := createChat(t, parentT, ctx, chatName)
 
-	t.Run("get chat info", func(t *testing.T) {
+	t.Run("get chat info as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"im", "chats", "get"},
-			Params: map[string]any{"chat_id": chatID},
+			Args:      []string{"im", "chats", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"chat_id": chatID},
 		})
 		require.NoError(t, err)
 		t.Logf("chats get result: %s", result.Stdout)
@@ -105,10 +109,11 @@ func TestIM_ChatsLinkWorkflow(t *testing.T) {
 
 	chatID := createChat(t, parentT, ctx, chatName)
 
-	t.Run("get chat share link", func(t *testing.T) {
+	t.Run("get chat share link as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"im", "chats", "link"},
-			Params: map[string]any{"chat_id": chatID},
+			Args:      []string{"im", "chats", "link"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"chat_id": chatID},
 			Data: map[string]any{
 				"validity_period": "week",
 			},

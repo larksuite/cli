@@ -24,19 +24,22 @@ func TestTask_TasklistAddTaskWorkflow(t *testing.T) {
 	taskSummary := "lark-cli-e2e-tasklist-add-task-" + suffix
 
 	tasklistGUID := createTasklist(t, parentT, ctx, clie2e.Request{
-		Args: []string{"task", "+tasklist-create", "--name", tasklistName},
+		Args:      []string{"task", "+tasklist-create", "--name", tasklistName},
+		DefaultAs: "bot",
 	})
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
-		Args: []string{"task", "+create"},
+		Args:      []string{"task", "+create"},
+		DefaultAs: "bot",
 		Data: map[string]any{
 			"summary":     taskSummary,
 			"description": "created by tests/cli_e2e/task tasklist add workflow",
 		},
 	})
 
-	t.Run("add task to tasklist", func(t *testing.T) {
+	t.Run("add task to tasklist as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "+tasklist-task-add", "--tasklist-id", tasklistGUID, "--task-id", taskGUID},
+			Args:      []string{"task", "+tasklist-task-add", "--tasklist-id", tasklistGUID, "--task-id", taskGUID},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -47,9 +50,10 @@ func TestTask_TasklistAddTaskWorkflow(t *testing.T) {
 		assert.False(t, gjson.Get(result.Stdout, "data.failed_tasks.0").Exists(), "stdout:\n%s", result.Stdout)
 	})
 
-	t.Run("list tasklist tasks", func(t *testing.T) {
+	t.Run("list tasklist tasks as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "tasklists", "tasks"},
+			Args:      []string{"task", "tasklists", "tasks"},
+			DefaultAs: "bot",
 			Params: map[string]any{
 				"tasklist_guid": tasklistGUID,
 				"page_size":     50,
@@ -64,10 +68,11 @@ func TestTask_TasklistAddTaskWorkflow(t *testing.T) {
 		assert.Equal(t, taskSummary, taskItem.Get("summary").String())
 	})
 
-	t.Run("get task with tasklist link", func(t *testing.T) {
+	t.Run("get task with tasklist link as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"task", "tasks", "get"},
-			Params: map[string]any{"task_guid": taskGUID},
+			Args:      []string{"task", "tasks", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"task_guid": taskGUID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

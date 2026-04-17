@@ -21,7 +21,8 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 
 	suffix := clie2e.GenerateSuffix()
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
-		Args: []string{"task", "+create"},
+		Args:      []string{"task", "+create"},
+		DefaultAs: "bot",
 		Data: map[string]any{
 			"summary":     "lark-cli-e2e-reminder-" + suffix,
 			"description": "created by tests/cli_e2e/task reminder workflow",
@@ -32,9 +33,10 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 		},
 	})
 
-	t.Run("set reminder", func(t *testing.T) {
+	t.Run("set reminder as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "+reminder", "--task-id", taskGUID, "--set", "30m"},
+			Args:      []string{"task", "+reminder", "--task-id", taskGUID, "--set", "30m"},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -42,10 +44,11 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.guid").String())
 	})
 
-	t.Run("get task with reminder", func(t *testing.T) {
+	t.Run("get task with reminder as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"task", "tasks", "get"},
-			Params: map[string]any{"task_guid": taskGUID},
+			Args:      []string{"task", "tasks", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"task_guid": taskGUID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -56,9 +59,10 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 		assert.NotEmpty(t, gjson.Get(result.Stdout, "data.task.reminders.0.id").String(), "stdout:\n%s", result.Stdout)
 	})
 
-	t.Run("remove reminder", func(t *testing.T) {
+	t.Run("remove reminder as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
-			Args: []string{"task", "+reminder", "--task-id", taskGUID, "--remove"},
+			Args:      []string{"task", "+reminder", "--task-id", taskGUID, "--remove"},
+			DefaultAs: "bot",
 		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -66,10 +70,11 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.guid").String())
 	})
 
-	t.Run("get task without reminder", func(t *testing.T) {
+	t.Run("get task without reminder as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"task", "tasks", "get"},
-			Params: map[string]any{"task_guid": taskGUID},
+			Args:      []string{"task", "tasks", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"task_guid": taskGUID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

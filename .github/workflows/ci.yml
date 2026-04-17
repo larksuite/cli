@@ -209,6 +209,7 @@ jobs:
     env:
       TEST_BOT1_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
       TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
+      TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -229,6 +230,8 @@ jobs:
       - name: Run CLI E2E tests
         env:
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
+          LARKSUITE_CLI_APP_ID: ${{ env.TEST_BOT1_APP_ID }}
+          LARKSUITE_CLI_USER_ACCESS_TOKEN: ${{ env.TEST_USER_ACCESS_TOKEN }}
         run: |
           packages=$(go list ./tests/cli_e2e/... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '/demo$')
           if [ -z "$packages" ]; then

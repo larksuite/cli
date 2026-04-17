@@ -15,6 +15,10 @@ import (
 func createTask(t *testing.T, parentT *testing.T, ctx context.Context, req clie2e.Request) string {
 	t.Helper()
 
+	if req.DefaultAs == "" {
+		req.DefaultAs = "bot"
+	}
+
 	result, err := clie2e.RunCmd(ctx, req)
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -24,17 +28,15 @@ func createTask(t *testing.T, parentT *testing.T, ctx context.Context, req clie2
 	require.NotEmpty(t, taskGUID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
-			Args:   []string{"task", "tasks", "delete"},
-			Params: map[string]any{"task_guid": taskGUID},
+		cleanupCtx, cancel := clie2e.CleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
+			Args:      []string{"task", "tasks", "delete"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"task_guid": taskGUID},
 		})
-		if deleteErr != nil {
-			parentT.Errorf("delete task %s: %v", taskGUID, deleteErr)
-			return
-		}
-		if deleteResult.ExitCode != 0 {
-			parentT.Errorf("delete task %s failed: exit=%d stdout=%s stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
-		}
+		clie2e.ReportCleanupFailure(parentT, "delete task "+taskGUID, deleteResult, deleteErr)
 	})
 
 	return taskGUID
@@ -42,6 +44,10 @@ func createTask(t *testing.T, parentT *testing.T, ctx context.Context, req clie2
 
 func createTasklist(t *testing.T, parentT *testing.T, ctx context.Context, req clie2e.Request) string {
 	t.Helper()
+
+	if req.DefaultAs == "" {
+		req.DefaultAs = "bot"
+	}
 
 	result, err := clie2e.RunCmd(ctx, req)
 	require.NoError(t, err)
@@ -52,17 +58,15 @@ func createTasklist(t *testing.T, parentT *testing.T, ctx context.Context, req c
 	require.NotEmpty(t, tasklistGUID, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {
-		deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
-			Args:   []string{"task", "tasklists", "delete"},
-			Params: map[string]any{"tasklist_guid": tasklistGUID},
+		cleanupCtx, cancel := clie2e.CleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
+			Args:      []string{"task", "tasklists", "delete"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"tasklist_guid": tasklistGUID},
 		})
-		if deleteErr != nil {
-			parentT.Errorf("delete tasklist %s: %v", tasklistGUID, deleteErr)
-			return
-		}
-		if deleteResult.ExitCode != 0 {
-			parentT.Errorf("delete tasklist %s failed: exit=%d stdout=%s stderr=%s", tasklistGUID, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
-		}
+		clie2e.ReportCleanupFailure(parentT, "delete tasklist "+tasklistGUID, deleteResult, deleteErr)
 	})
 
 	return tasklistGUID

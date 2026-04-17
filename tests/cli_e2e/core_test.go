@@ -7,11 +7,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,10 +98,55 @@ func TestBuildArgs(t *testing.T) {
 	})
 }
 
+func TestSkipWithoutUserToken(t *testing.T) {
+	t.Run("returns immediately when env user access token exists", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "uat-from-env")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutUserToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.True(t, ran)
+	})
+
+	t.Run("accepts verified local auth status", func(t *testing.T) {
+		fake := newFakeCLI(t)
+		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "")
+		t.Setenv(EnvBinaryPath, fake.BinaryPath)
+		t.Setenv("FAKE_AUTH_STATUS_STDOUT", `{"identity":"user","verified":true}`)
+		t.Setenv("FAKE_AUTH_STATUS_EXIT_CODE", "0")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutUserToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.True(t, ran)
+	})
+
+	t.Run("skips when local auth is not user", func(t *testing.T) {
+		fake := newFakeCLI(t)
+		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "")
+		t.Setenv(EnvBinaryPath, fake.BinaryPath)
+		t.Setenv("FAKE_AUTH_STATUS_STDOUT", `{"identity":"bot","verified":false}`)
+		t.Setenv("FAKE_AUTH_STATUS_EXIT_CODE", "0")
+
+		ran := false
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutUserToken(t)
+			ran = true
+		})
+		require.True(t, ok)
+		assert.False(t, ran)
+	})
+}
+
 func TestRunCmd(t *testing.T) {
 	t.Run("returns stdout json on success", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
+		fake := newFakeCLI(t)
 		result, err := RunCmd(context.Background(), Request{
 			BinaryPath: fake.BinaryPath,
 			Args:       []string{"--stdout-json", `{"ok":true}`},
@@ -119,8 +161,7 @@ func TestRunCmd(t *testing.T) {
 	})
 
 	t.Run("captures stderr and exit code on failure", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
+		fake := newFakeCLI(t)
 		result, err := RunCmd(context.Background(), Request{
 			BinaryPath: fake.BinaryPath,
 			Args:       []string{"--stderr-json", `{"ok":false}`, "--exit", "3"},
@@ -134,45 +175,8 @@ func TestRunCmd(t *testing.T) {
 		assert.Equal(t, false, errMap["ok"])
 	})
 
-	t.Run("defaults default-as to bot", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
-		result, err := RunCmd(context.Background(), Request{
-			BinaryPath: fake.BinaryPath,
-			Args:       []string{"emit-default-as"},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		assert.Equal(t, "bot", strings.TrimSpace(result.Stdout))
-		assert.Equal(t, "bot\n", fake.ReadState(t))
-		assert.Equal(t, 1, fake.ReadSetCount(t))
-	})
-
-	t.Run("initializes default-as only once per binary", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
-		first, err := RunCmd(context.Background(), Request{
-			BinaryPath: fake.BinaryPath,
-			Args:       []string{"emit-default-as"},
-		})
-		require.NoError(t, err)
-		first.AssertExitCode(t, 0)
-		assert.Equal(t, "bot", strings.TrimSpace(first.Stdout))
-
-		second, err := RunCmd(context.Background(), Request{
-			BinaryPath: fake.BinaryPath,
-			Args:       []string{"emit-default-as"},
-		})
-		require.NoError(t, err)
-		second.AssertExitCode(t, 0)
-		assert.Equal(t, "bot", strings.TrimSpace(second.Stdout))
-		assert.Equal(t, "bot\n", fake.ReadState(t))
-		assert.Equal(t, 1, fake.ReadSetCount(t))
-	})
-
-	t.Run("passes explicit default-as as flag and command-line value wins", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
+	t.Run("passes explicit default-as as flag", func(t *testing.T) {
+		fake := newFakeCLI(t)
 		result, err := RunCmd(context.Background(), Request{
 			BinaryPath: fake.BinaryPath,
 			Args:       []string{"emit-arg", "--as"},
@@ -181,13 +185,10 @@ func TestRunCmd(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		assert.Equal(t, "user", strings.TrimSpace(result.Stdout))
-		assert.Equal(t, "bot\n", fake.ReadState(t))
-		assert.Equal(t, 1, fake.ReadSetCount(t))
 	})
 
 	t.Run("asserts stdout code payloads", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
+		fake := newFakeCLI(t)
 		result, err := RunCmd(context.Background(), Request{
 			BinaryPath: fake.BinaryPath,
 			Args:       []string{"--stdout-json", `{"code":0,"data":{"id":"x"}}`},
@@ -198,27 +199,8 @@ func TestRunCmd(t *testing.T) {
 		result.AssertStdoutStatus(t, 0)
 	})
 
-	t.Run("default-as init respects context cancellation", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
-		t.Setenv("FAKE_DEFAULT_AS_SLEEP", "1")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		defer cancel()
-
-		result, err := RunCmd(ctx, Request{
-			BinaryPath: fake.BinaryPath,
-			Args:       []string{"emit-default-as"},
-		})
-		require.NoError(t, err)
-		assert.Error(t, result.RunErr)
-		assert.ErrorIs(t, result.RunErr, context.DeadlineExceeded)
-		assert.Equal(t, 0, fake.ReadSetCount(t))
-	})
-
 	t.Run("passes stdin to process", func(t *testing.T) {
-		resetDefaultAsInitForTest()
-		fake := newFakeCLI(t, "auto")
+		fake := newFakeCLI(t)
 		result, err := RunCmd(context.Background(), Request{
 			BinaryPath: fake.BinaryPath,
 			Args:       []string{"emit-stdin"},
@@ -232,49 +214,19 @@ func TestRunCmd(t *testing.T) {
 
 type fakeCLI struct {
 	BinaryPath string
-	statePath  string
-	countPath  string
 }
 
-func newFakeCLI(t *testing.T, initialDefaultAs string) fakeCLI {
+func newFakeCLI(t *testing.T) fakeCLI {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-	statePath := filepath.Join(tmpDir, "default-as.txt")
-	countPath := filepath.Join(tmpDir, "set-count.txt")
-	require.NoError(t, os.WriteFile(statePath, []byte(initialDefaultAs+"\n"), 0o644))
-	require.NoError(t, os.WriteFile(countPath, []byte("0\n"), 0o644))
 
 	script := `#!/bin/sh
-state_file="__STATE_FILE__"
-count_file="__COUNT_FILE__"
-
-if [ ! -f "$state_file" ]; then
-  echo "auto" > "$state_file"
-fi
-
-if [ "$1" = "config" ] && [ "$2" = "default-as" ]; then
-  if [ "$#" -eq 2 ]; then
-    value=$(tr -d '\r\n' < "$state_file")
-    echo "default-as: $value"
-    exit 0
+if [ "$1" = "auth" ] && [ "$2" = "status" ] && [ "$3" = "--verify" ]; then
+  if [ -n "$FAKE_AUTH_STATUS_STDOUT" ]; then
+    echo "$FAKE_AUTH_STATUS_STDOUT"
   fi
-  if [ "$#" -eq 3 ]; then
-    if [ -n "$FAKE_DEFAULT_AS_SLEEP" ]; then
-      sleep "$FAKE_DEFAULT_AS_SLEEP"
-    fi
-    count=$(tr -d '\r\n' < "$count_file")
-    count=$((count + 1))
-    echo "$count" > "$count_file"
-    echo "$3" > "$state_file"
-    exit 0
-  fi
-fi
-
-if [ "$1" = "emit-default-as" ]; then
-  tr -d '\r\n' < "$state_file"
-  echo
-  exit 0
+  exit "${FAKE_AUTH_STATUS_EXIT_CODE:-0}"
 fi
 
 if [ "$1" = "emit-arg" ]; then
@@ -318,32 +270,12 @@ done
 exit "$exit_code"
 `
 
-	script = strings.ReplaceAll(script, "__STATE_FILE__", statePath)
-	script = strings.ReplaceAll(script, "__COUNT_FILE__", countPath)
 	binaryPath := filepath.Join(tmpDir, "fake-"+cliBinaryName)
 	require.NoError(t, os.WriteFile(binaryPath, []byte(script), 0o755))
 
 	return fakeCLI{
 		BinaryPath: binaryPath,
-		statePath:  statePath,
-		countPath:  countPath,
 	}
-}
-
-func (f fakeCLI) ReadState(t *testing.T) string {
-	t.Helper()
-	stateBytes, err := os.ReadFile(f.statePath)
-	require.NoError(t, err)
-	return string(stateBytes)
-}
-
-func (f fakeCLI) ReadSetCount(t *testing.T) int {
-	t.Helper()
-	countBytes, err := os.ReadFile(f.countPath)
-	require.NoError(t, err)
-	count, err := strconv.Atoi(strings.TrimSpace(string(countBytes)))
-	require.NoError(t, err)
-	return count
 }
 
 func assertSamePath(t *testing.T, want string, got string) {
@@ -361,8 +293,4 @@ func mustWriteExecutable(t *testing.T, path string) string {
 	absPath, err := filepath.Abs(path)
 	require.NoError(t, err)
 	return absPath
-}
-
-func resetDefaultAsInitForTest() {
-	defaultAsInitOnce = sync.Once{}
 }
