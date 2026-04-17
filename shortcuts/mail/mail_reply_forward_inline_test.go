@@ -92,7 +92,8 @@ func stubSourceMessageWithInlineImages(reg *httpmock.Registry, bodyHTML string, 
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"draft_id": "draft_001",
+				"draft_id":  "draft_001",
+				"reference": "https://www.feishu.cn/mail?draftId=draft_001",
 			},
 		},
 	})
@@ -122,6 +123,9 @@ func TestReply_SourceInlineImagesPreserved(t *testing.T) {
 	data := decodeShortcutEnvelopeData(t, stdout)
 	if data["draft_id"] == nil || data["draft_id"] == "" {
 		t.Fatal("expected draft_id in output")
+	}
+	if data["reference"] != "https://www.feishu.cn/mail?draftId=draft_001" {
+		t.Fatalf("reference = %v", data["reference"])
 	}
 }
 
@@ -198,6 +202,11 @@ func TestReplyAll_SourceOrphanCIDNotBlocked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reply-all should succeed with unreferenced source CID, got: %v", err)
 	}
+
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["reference"] != "https://www.feishu.cn/mail?draftId=draft_001" {
+		t.Fatalf("reference = %v", data["reference"])
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +231,11 @@ func TestForward_SourceOrphanCIDNotBlocked(t *testing.T) {
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("forward should succeed with unreferenced source CID, got: %v", err)
+	}
+
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["reference"] != "https://www.feishu.cn/mail?draftId=draft_001" {
+		t.Fatalf("reference = %v", data["reference"])
 	}
 }
 
