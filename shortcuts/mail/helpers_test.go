@@ -1182,3 +1182,38 @@ func TestApplyPriority(t *testing.T) {
 		t.Errorf("expected X-Cli-Priority: 1 in EML, got:\n%s", eml)
 	}
 }
+
+func TestValidatePriorityFlag(t *testing.T) {
+	makeRuntime := func(priority string) *common.RuntimeContext {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("priority", "", "")
+		if priority != "" {
+			_ = cmd.Flags().Set("priority", priority)
+		}
+		return common.TestNewRuntimeContext(cmd, nil)
+	}
+
+	cases := []struct {
+		name     string
+		priority string
+		wantErr  bool
+	}{
+		{"empty ok", "", false},
+		{"high ok", "high", false},
+		{"normal ok", "normal", false},
+		{"low ok", "low", false},
+		{"invalid urgent", "urgent", true},
+		{"invalid numeric", "1", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePriorityFlag(makeRuntime(tc.priority))
+			if tc.wantErr && err == nil {
+				t.Errorf("validatePriorityFlag(%q): expected error, got nil", tc.priority)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("validatePriorityFlag(%q): unexpected error: %v", tc.priority, err)
+			}
+		})
+	}
+}
