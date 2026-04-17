@@ -75,6 +75,62 @@ func TestDocMediaInsertRejectsOldDocURL(t *testing.T) {
 	}
 }
 
+func TestDocMediaInsertValidateRequiresFileOrClipboard(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "https://example.larksuite.com/docx/doxcnXXXXXXXXXXXXXXXXXX",
+		"--dry-run",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "one of --file or --from-clipboard is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDocMediaInsertValidateRejectsFileAndClipboardTogether(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "https://example.larksuite.com/docx/doxcnXXXXXXXXXXXXXXXXXX",
+		"--file", "dummy.png",
+		"--from-clipboard",
+		"--dry-run",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected mutual-exclusion error, got nil")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDocMediaInsertDryRunWithClipboardUsesPlaceholder(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "https://example.larksuite.com/docx/doxcnXXXXXXXXXXXXXXXXXX",
+		"--from-clipboard",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// JSON output escapes "<" and ">" as \u003c / \u003e by default.
+	out := stdout.String()
+	if !strings.Contains(out, `\u003cclipboard image\u003e`) && !strings.Contains(out, "<clipboard image>") {
+		t.Fatalf("dry-run output missing <clipboard image> placeholder: %s", out)
+	}
+}
+
 func TestDocMediaInsertDryRunWikiAddsResolveStep(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
 
