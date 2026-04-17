@@ -193,7 +193,7 @@
 
 | 字段 | 类型 | 说明                         |
 |------|------|----------------------------|
-| `allow_edit` | bool | 可新增、删除、修改视图，未提及默认为 `false` |
+| `allow_edit` | bool | 可新增、删除、修改视图；表权限为 `edit` 时默认为 `true`，表权限为 `read_only` 或用户明确限制时为 `false` |
 | `visibility` | object | 可见的视图配置                    |
 | `visibility.all_visible` | bool | 是否全部可见                     |
 | `visibility.visible_views` | []string | 可见视图名称 列表                  |
@@ -415,7 +415,15 @@
 | 仪表盘访问 | 不配置 | 用户明确提及该仪表盘 |
 | `base_rule_map.copy` | `false` | 用户明确要求"允许复制" |
 | `base_rule_map.download` | `false` | 用户明确要求"允许下载/打印/副本" |
+
+### 默认开启项（条件性）
+
+以下能力在特定条件下**默认开启**，用户明确限制时才排除：
+
+| 能力 | 默认值 | 排除条件 |
+|------|--------|----------|
 | `record_operations` 中的 `delete` | **包含**（`perm = edit` 时） | 用户明确限制时才排除 |
+| `view_rule.allow_edit` | **`true`**（`perm = edit` 时） | 用户明确限制"不可编辑视图"或 `perm = read_only` 时设为 `false` |
 
 ---
 
