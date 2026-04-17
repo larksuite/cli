@@ -73,7 +73,7 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--set-priority <level>` | 否 | 设置邮件优先级：`high`、`normal`、`low`。设为 `normal` 会清除已有优先级 |
 | `--patch-file <path>` | 否 | 所有正文编辑、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `--print-patch-template` 查看 JSON 结构 |
 | `--print-patch-template` | 否 | 打印 `--patch-file` 的 JSON 模板和支持的操作。建议在生成补丁文件前先运行此命令。不会读取或写入草稿 |
-| `--inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（含每个附件的 `part_id`、`cid`、`filename`）和 `inline_summary` 的草稿投影 |
+| `--inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（普通附件，含 `part_id`/`cid`/`filename`）、`large_attachments_summary`（超大附件，含 `token`/`filename`/`size_bytes`）和 `inline_summary` 的草稿投影 |
 | `--format <mode>` | 否 | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 
@@ -171,28 +171,31 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 
 ### 附件与内嵌图片
 
-**如何获取 `part_id` / `cid`：** `remove_attachment`、`remove_inline` 和 `replace_inline` 需要 `part_id` 或 `cid` 来定位目标部分。这些值来自草稿的 MIME 结构，与公开 API 的附件 ID **不同**。要获取这些值，先运行 `--inspect`：
+**如何获取定位字段：** 不同类型附件有不同的定位字段，都从 `--inspect` 获取：
+
+- **普通附件**：`part_id` 或 `cid`（来自 `projection.attachments_summary`）
+- **超大附件**：`token`（来自 `projection.large_attachments_summary`）
+- **内嵌图片**：`part_id` 或 `cid`（来自 `projection.inline_summary`）
+
+这些值来自草稿的 MIME 结构与 header 解析，与公开 API 的附件 ID **不同**。
 
 ```bash
 lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 ```
 
-返回的 `projection.attachments_summary` 和 `projection.inline_summary` 列出了每个部分的 `part_id`、`cid`、`filename` 和 `content_type`。在 `remove_attachment` / `remove_inline` / `replace_inline` 操作中使用这些值。
-
-`add_attachment` — 当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（通过下载链接卡片呈现），单个文件上限 3 GB。
+`add_attachment` — 统一入口，不区分普通/超大。当累计附件导致 EML 总大小超过 25 MB 时，超出部分自动作为超大附件处理，单个文件上限 3 GB。
 
 ```json
 { "op": "add_attachment", "path": "./report.pdf" }
 ```
 
-`remove_attachment`
+`remove_attachment` — 统一入口。`target` 接受 `part_id` / `cid`（普通附件）或 `token`（超大附件）。优先级：`part_id` > `cid` > `token`。
 
 ```json
-{ "op": "remove_attachment", "target": { "part_id": "1.3" } }
-{ "op": "remove_attachment", "target": { "cid": "logo" } }
+{ "op": "remove_attachment", "target": { "part_id": "1.3" } }     // 普通附件，按 part_id
+{ "op": "remove_attachment", "target": { "cid": "logo" } }         // 普通附件，按 CID
+{ "op": "remove_attachment", "target": { "token": "12101..." } }  // 超大附件，按 file token
 ```
-
-`target` 接受 `part_id` 或 `cid`。优先级：`part_id` > `cid`。
 
 `add_inline`
 
@@ -242,8 +245,9 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 - `target` 接受 `part_id` 或 `cid`；优先级：`part_id` > `cid`
 - **所有文件路径（`--patch-file` 及 ops 中的 `path`）必须为相对路径**
 - **正文编辑没有 flag，必须通过 `--patch-file`**
-- **`set_body` 是完整替换** — 它替换整个正文内容（包括引用区）
-- **`set_reply_body` 仅替换引用区前面的用户撰写部分** — 引用区自动重新拼接；value 只传用户撰写内容，不要包含引用区；如果用户要修改引用区内容，用 `set_body` 全量覆盖
+- **`set_body` 是完整替换** — 它替换整个正文内容（包括引用区）；**不影响附件**，普通附件（MIME part）和超大附件（HTML 卡片 + header）都会自动保留
+- **`set_reply_body` 仅替换引用区前面的用户撰写部分** — 引用区和超大附件卡片都自动保留；value 只传用户撰写内容，不要包含引用区和超大附件卡片；如果用户要修改引用区内容，用 `set_body` 全量覆盖
+- **删除附件**不能通过 `set_body` 清空正文实现 — 必须用 `remove_attachment`（按 `part_id` / `cid` 或 `token` 定位）
 - 通过 `--inspect` 返回的 `has_quoted_content` 字段可判断草稿是否包含引用区
 - 通过 `--inspect` 返回的 `has_signature` / `signature_id` 字段可判断草稿是否包含签名
 
@@ -301,19 +305,24 @@ lark-cli mail +draft-edit --draft-id <draft_id> --patch-file ./patch.json
 
 ### 从草稿中移除附件
 
-```bash
-# 1. 查看草稿以获取附件的 part_id / cid
-lark-cli mail +draft-edit --draft-id <draft_id> --inspect
-# 返回包含 projection.attachments_summary，如：
-#   [{"part_id":"1.3","filename":"report.pdf","content_type":"application/pdf"}]
+`remove_attachment` 统一处理普通附件和超大附件；根据 `--inspect` 输出选择对应的定位字段。
 
-# 2. 编写补丁文件，使用步骤 1 中获取的 part_id
+```bash
+# 1. 查看草稿以获取附件定位信息
+lark-cli mail +draft-edit --draft-id <draft_id> --inspect
+# 返回包含：
+#   projection.attachments_summary (普通附件):
+#     [{"part_id":"1.3","filename":"report.pdf","content_type":"application/pdf"}]
+#   projection.large_attachments_summary (超大附件):
+#     [{"token":"12101...","filename":"video.mov","size_bytes":314572800}]
+
+# 2. 编写补丁文件。普通附件用 part_id（或 cid），超大附件用 token
 cat > ./patch.json << 'EOF'
 {
   "ops": [
-    { "op": "remove_attachment", "target": { "part_id": "1.3" } }
-  ],
-  "options": {}
+    { "op": "remove_attachment", "target": { "part_id": "1.3" } },
+    { "op": "remove_attachment", "target": { "token": "12101..." } }
+  ]
 }
 EOF
 

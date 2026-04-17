@@ -133,22 +133,33 @@ type PartSummary struct {
 	CID         string `json:"cid,omitempty"`
 }
 
+// LargeAttachmentSummary describes a single large attachment registered in
+// the draft via the X-Lms-Large-Attachment-Ids header. Unlike normal
+// attachments, large attachments have no MIME part — their existence is
+// conveyed by the header plus an HTML card in the body.
+type LargeAttachmentSummary struct {
+	Token     string `json:"token"`
+	FileName  string `json:"filename,omitempty"`
+	SizeBytes int64  `json:"size_bytes,omitempty"`
+}
+
 type DraftProjection struct {
-	Subject            string        `json:"subject"`
-	To                 []Address     `json:"to,omitempty"`
-	Cc                 []Address     `json:"cc,omitempty"`
-	Bcc                []Address     `json:"bcc,omitempty"`
-	ReplyTo            []Address     `json:"reply_to,omitempty"`
-	InReplyTo          string        `json:"in_reply_to,omitempty"`
-	References         string        `json:"references,omitempty"`
-	BodyText           string        `json:"body_text,omitempty"`
-	BodyHTMLSummary    string        `json:"body_html_summary,omitempty"`
-	HasQuotedContent   bool          `json:"has_quoted_content,omitempty"`
-	HasSignature       bool          `json:"has_signature,omitempty"`
-	SignatureID        string        `json:"signature_id,omitempty"`
-	AttachmentsSummary []PartSummary `json:"attachments_summary,omitempty"`
-	InlineSummary      []PartSummary `json:"inline_summary,omitempty"`
-	Warnings           []string      `json:"warnings,omitempty"`
+	Subject                 string                   `json:"subject"`
+	To                      []Address                `json:"to,omitempty"`
+	Cc                      []Address                `json:"cc,omitempty"`
+	Bcc                     []Address                `json:"bcc,omitempty"`
+	ReplyTo                 []Address                `json:"reply_to,omitempty"`
+	InReplyTo               string                   `json:"in_reply_to,omitempty"`
+	References              string                   `json:"references,omitempty"`
+	BodyText                string                   `json:"body_text,omitempty"`
+	BodyHTMLSummary         string                   `json:"body_html_summary,omitempty"`
+	HasQuotedContent        bool                     `json:"has_quoted_content,omitempty"`
+	HasSignature            bool                     `json:"has_signature,omitempty"`
+	SignatureID             string                   `json:"signature_id,omitempty"`
+	AttachmentsSummary      []PartSummary            `json:"attachments_summary,omitempty"`
+	LargeAttachmentsSummary []LargeAttachmentSummary `json:"large_attachments_summary,omitempty"`
+	InlineSummary           []PartSummary            `json:"inline_summary,omitempty"`
+	Warnings                []string                 `json:"warnings,omitempty"`
 }
 
 type Patch struct {
@@ -164,10 +175,23 @@ type PatchOptions struct {
 type AttachmentTarget struct {
 	PartID string `json:"part_id,omitempty"`
 	CID    string `json:"cid,omitempty"`
+	// Token selects a large attachment by its file token (registered via
+	// the X-Lms-Large-Attachment-Ids header). Only valid for
+	// remove_attachment; replace_inline/remove_inline operate on MIME
+	// parts and do not accept Token.
+	Token string `json:"token,omitempty"`
 }
 
+// hasKey reports whether a PartID or CID is set. Used for ops that
+// target MIME parts (replace_inline, remove_inline).
 func (t AttachmentTarget) hasKey() bool {
 	return strings.TrimSpace(t.PartID) != "" || strings.TrimSpace(t.CID) != ""
+}
+
+// hasAnyKey reports whether any locator (PartID, CID, or Token) is set.
+// Used for remove_attachment which supports all three.
+func (t AttachmentTarget) hasAnyKey() bool {
+	return t.hasKey() || strings.TrimSpace(t.Token) != ""
 }
 
 type PatchOp struct {
@@ -271,8 +295,8 @@ func (op PatchOp) Validate() error {
 			return fmt.Errorf("add_attachment requires path")
 		}
 	case "remove_attachment":
-		if !op.Target.hasKey() {
-			return fmt.Errorf("remove_attachment requires target with at least one of part_id or cid")
+		if !op.Target.hasAnyKey() {
+			return fmt.Errorf("remove_attachment requires target with at least one of part_id, cid, or token")
 		}
 	case "add_inline":
 		if strings.TrimSpace(op.Path) == "" {

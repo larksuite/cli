@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
+	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
 
 func TestEstimateBase64EMLSize(t *testing.T) {
@@ -178,7 +179,7 @@ func TestBuildLargeAttachmentHTML_EscapesSpecialChars(t *testing.T) {
 func TestInsertBeforeQuoteOrAppend_WithQuote(t *testing.T) {
 	body := `<p>Hello</p><div id="lark-mail-quote-cli123" class="history-quote-wrapper"><div>quoted content</div></div>`
 	block := `<div id="lark-mail-large-file-container">CARD</div>`
-	result := insertBeforeQuoteOrAppend(body, block)
+	result := draftpkg.InsertBeforeQuoteOrAppend(body, block)
 
 	// Block should appear before the quote
 	cardIdx := strings.Index(result, "CARD")
@@ -207,7 +208,7 @@ func TestInsertBeforeQuoteOrAppend_NestedQuoteIDs(t *testing.T) {
 		`<div id="lark-mail-quote-bbb">original message</div>` +
 		`</div></div></div></div></div>`
 	block := `<div id="large-file-area-123">CARD</div>`
-	result := insertBeforeQuoteOrAppend(body, block)
+	result := draftpkg.InsertBeforeQuoteOrAppend(body, block)
 
 	cardIdx := strings.Index(result, "CARD")
 	wrapperIdx := strings.Index(result, "history-quote-wrapper")
@@ -228,14 +229,14 @@ func TestInsertBeforeQuoteOrAppend_NestedQuoteIDs(t *testing.T) {
 func TestInsertBeforeQuoteOrAppend_NoQuote(t *testing.T) {
 	body := `<p>Hello world</p>`
 	block := `<div>CARD</div>`
-	result := insertBeforeQuoteOrAppend(body, block)
+	result := draftpkg.InsertBeforeQuoteOrAppend(body, block)
 	if !strings.HasSuffix(result, block) {
 		t.Errorf("without quote, block should be appended to end, got: %s", result)
 	}
 }
 
 func TestInsertBeforeQuoteOrAppend_EmptyBody(t *testing.T) {
-	result := insertBeforeQuoteOrAppend("", "<div>CARD</div>")
+	result := draftpkg.InsertBeforeQuoteOrAppend("", "<div>CARD</div>")
 	if result != "<div>CARD</div>" {
 		t.Errorf("empty body should just return block, got: %s", result)
 	}

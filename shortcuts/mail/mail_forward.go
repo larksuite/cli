@@ -218,7 +218,7 @@ var MailForward = common.Shortcut{
 			if err != nil {
 				return fmt.Errorf("failed to encode large attachment IDs: %w", err)
 			}
-			bld = bld.Header(largeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
+			bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
 		}
 		for _, att := range origAtts {
 			bld = bld.AddAttachment(att.content, att.contentType, att.filename)
