@@ -1787,9 +1787,15 @@ func buildDraftSendOutput(resData map[string]interface{}) map[string]interface{}
 		"message_id": resData["message_id"],
 		"thread_id":  resData["thread_id"],
 	}
-	for _, key := range []string{"recall_status", "automation_send_disable"} {
-		if value, ok := resData[key]; ok {
-			out[key] = value
+	if recallStatus, ok := resData["recall_status"]; ok {
+		out["recall_status"] = recallStatus
+	}
+	if automationDisable, ok := resData["automation_send_disable"]; ok {
+		out["automation_send_disable"] = automationDisable
+		if automation, ok := automationDisable.(map[string]interface{}); ok {
+			if reason, ok := automation["reason"].(string); ok && strings.TrimSpace(reason) != "" {
+			out["automation_send_disable_reason"] = strings.TrimSpace(reason)
+		}
 		}
 	}
 	return out

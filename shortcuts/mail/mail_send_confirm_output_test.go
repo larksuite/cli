@@ -68,6 +68,9 @@ func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	} else if automation["reason"] != "Automation send is disabled by your mailbox setting" {
 		t.Fatalf("automation_send_disable.reason = %v", automation["reason"])
 	}
+	if got["automation_send_disable_reason"] != "Automation send is disabled by your mailbox setting" {
+		t.Fatalf("automation_send_disable_reason = %v", got["automation_send_disable_reason"])
+	}
 }
 
 func TestMailSendConfirmSendOutputsAutomationDisable(t *testing.T) {
@@ -134,6 +137,9 @@ func TestMailSendConfirmSendOutputsAutomationDisable(t *testing.T) {
 	}
 	if automation["reason"] != "Automation send is disabled by your mailbox setting" {
 		t.Fatalf("automation_send_disable.reason = %v", automation["reason"])
+	}
+	if data["automation_send_disable_reason"] != "Automation send is disabled by your mailbox setting" {
+		t.Fatalf("automation_send_disable_reason = %v", data["automation_send_disable_reason"])
 	}
 }
 
