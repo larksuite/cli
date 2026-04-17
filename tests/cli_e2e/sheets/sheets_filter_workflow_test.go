@@ -25,28 +25,16 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 	spreadsheetToken := ""
 	sheetID := ""
 
-	t.Run("create spreadsheet with initial data", func(t *testing.T) {
-		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
-			Args: []string{"sheets", "+create", "--title", "lark-cli-e2e-sheets-filter-" + suffix},
-		}, clie2e.RetryOptions{})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		spreadsheetToken = gjson.Get(result.Stdout, "data.spreadsheet_token").String()
-		require.NotEmpty(t, spreadsheetToken, "spreadsheet token should not be empty, stdout: %s", result.Stdout)
-
-		parentT.Cleanup(func() {
-			// No sheets delete command is currently available in lark-cli,
-			// so created spreadsheets are intentionally left in the test account.
-		})
+	t.Run("create spreadsheet with initial data as bot", func(t *testing.T) {
+		spreadsheetToken = createSpreadsheet(t, parentT, ctx, "lark-cli-e2e-sheets-filter-"+suffix, "bot")
 	})
 
-	t.Run("get sheet info", func(t *testing.T) {
+	t.Run("get sheet info as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+			Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -56,7 +44,7 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 		require.NotEmpty(t, sheetID, "sheet_id should not be empty, stdout: %s", result.Stdout)
 	})
 
-	t.Run("write test data for filtering", func(t *testing.T) {
+	t.Run("write test data for filtering as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -77,13 +65,14 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 				"--range", "A1:C5",
 				"--values", string(valuesJSON),
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("create filter with spreadsheet.sheet.filters create", func(t *testing.T) {
+	t.Run("create filter with spreadsheet.sheet.filters create as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -98,7 +87,8 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 		}
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"sheets", "spreadsheet.sheet.filters", "create"},
+			Args:      []string{"sheets", "spreadsheet.sheet.filters", "create"},
+			DefaultAs: "bot",
 			Params: map[string]any{
 				"spreadsheet_token": spreadsheetToken,
 				"sheet_id":          sheetID,
@@ -110,12 +100,13 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 		result.AssertStdoutStatus(t, 0)
 	})
 
-	t.Run("get filter with spreadsheet.sheet.filters get", func(t *testing.T) {
+	t.Run("get filter with spreadsheet.sheet.filters get as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"sheets", "spreadsheet.sheet.filters", "get"},
+			Args:      []string{"sheets", "spreadsheet.sheet.filters", "get"},
+			DefaultAs: "bot",
 			Params: map[string]any{
 				"spreadsheet_token": spreadsheetToken,
 				"sheet_id":          sheetID,
@@ -129,22 +120,22 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 		require.True(t, filterInfo.Exists(), "filter info should exist, stdout: %s", result.Stdout)
 	})
 
-	t.Run("update filter with spreadsheet.sheet.filters update", func(t *testing.T) {
+	t.Run("update filter with spreadsheet.sheet.filters update as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
 		filterData := map[string]any{
-			"col":         "B",
-			"filter_type": "number",
+			"col":         "C",
+			"filter_type": "multiValue",
 			"condition": map[string]any{
-				"filter_type":  "number",
-				"compare_type": "greater",
-				"expected":     []any{80},
+				"filter_type": "multiValue",
+				"expected":    []any{"A"},
 			},
 		}
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"sheets", "spreadsheet.sheet.filters", "update"},
+			Args:      []string{"sheets", "spreadsheet.sheet.filters", "update"},
+			DefaultAs: "bot",
 			Params: map[string]any{
 				"spreadsheet_token": spreadsheetToken,
 				"sheet_id":          sheetID,
@@ -156,12 +147,13 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 		result.AssertStdoutStatus(t, 0)
 	})
 
-	t.Run("delete filter with spreadsheet.sheet.filters delete", func(t *testing.T) {
+	t.Run("delete filter with spreadsheet.sheet.filters delete as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"sheets", "spreadsheet.sheet.filters", "delete"},
+			Args:      []string{"sheets", "spreadsheet.sheet.filters", "delete"},
+			DefaultAs: "bot",
 			Params: map[string]any{
 				"spreadsheet_token": spreadsheetToken,
 				"sheet_id":          sheetID,

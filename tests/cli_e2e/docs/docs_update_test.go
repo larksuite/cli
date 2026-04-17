@@ -9,6 +9,7 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	drivee2e "github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -16,6 +17,7 @@ import (
 
 // TestDocs_UpdateWorkflow tests the create, update, and verify lifecycle.
 func TestDocs_UpdateWorkflow(t *testing.T) {
+	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
@@ -26,14 +28,14 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 	originalContent := "# Original\n\nThis is the original content."
 	updatedContent := "# Updated\n\nThis is the updated content."
 
-	folderToken := createDocsFolderWithRetry(t, ctx, folderName)
+	folderToken := drivee2e.CreateDriveFolder(t, parentT, ctx, folderName, "bot", "")
 	var docToken string
 
-	t.Run("create", func(t *testing.T) {
-		docToken = createDocWithRetry(t, ctx, folderToken, originalTitle, originalContent)
+	t.Run("create as bot", func(t *testing.T) {
+		docToken = createDocWithRetry(t, parentT, ctx, folderToken, originalTitle, originalContent, "bot")
 	})
 
-	t.Run("update-title-and-content", func(t *testing.T) {
+	t.Run("update-title-and-content as bot", func(t *testing.T) {
 		require.NotEmpty(t, docToken, "document token should be created before update")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -44,13 +46,14 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 				"--markdown", updatedContent,
 				"--new-title", updatedTitle,
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("verify", func(t *testing.T) {
+	t.Run("verify as bot", func(t *testing.T) {
 		require.NotEmpty(t, docToken, "document token should be created before verify")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -58,6 +61,7 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 				"docs", "+fetch",
 				"--doc", docToken,
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

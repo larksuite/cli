@@ -190,11 +190,11 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	if loginSucceeded {
-		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
-	} else {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
-	}
-	if loginSucceeded {
+		if msg.AuthorizedUser != "" {
+			fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", fmt.Sprintf(msg.AuthorizedUser, userName, openId))
+		}
+	} else {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
 	}
 	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary)

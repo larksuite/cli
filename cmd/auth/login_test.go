@@ -363,7 +363,7 @@ func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
 func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
 	err := handleLoginScopeIssue(&LoginOptions{}, getLoginMsg("zh"), f, &loginScopeIssue{
-		Message: "授权完成，但以下请求 scopes 未被授予: im:message:send",
+		Message: "授权结果异常：以下请求 scopes 未被授予: im:message:send",
 		Hint:    "以上结果是本次授权请求用户最终确认后的结果，请勿持续重试；Scopes 未授予的原因是多样的，如 scope 被禁用；具体原因已通过授权页提示用户。可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 		Summary: &loginScopeSummary{
 			Requested: []string{"im:message:send"},
@@ -376,8 +376,8 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
-		"授权完成，但以下请求 scopes 未被授予: im:message:send",
+		"授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次新授予 scopes: （空）",
 		"本次未授予 scopes: im:message:send",
@@ -392,15 +392,15 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	if strings.Contains(got, "最终已授权 scopes:") {
 		t.Fatalf("stderr should not contain final granted scopes, got:\n%s", got)
 	}
-	if strings.Contains(got, "ERROR:") {
-		t.Fatalf("stderr should not contain error prefix, got:\n%s", got)
+	if strings.Contains(got, "授权成功") {
+		t.Fatalf("stderr should not contain success wording, got:\n%s", got)
 	}
 }
 
 func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 	err := handleLoginScopeIssue(&LoginOptions{JSON: true}, getLoginMsg("en"), f, &loginScopeIssue{
-		Message: "authorization completed, but these requested scopes were not granted: im:message:send",
+		Message: "authorization result is abnormal: these requested scopes were not granted: im:message:send",
 		Hint:    "Granted scopes: base:app:copy. Check app scopes.",
 		Summary: &loginScopeSummary{
 			Requested: []string{"im:message:send"},
@@ -469,7 +469,7 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 				Granted:        []string{"im:message:send", "im:message:reply"},
 			},
 			expectedPresent: []string{
-				"登录成功! 用户: tester (ou_user)",
+				"授权成功! 用户: tester (ou_user)",
 				"本次请求 scopes: im:message:send im:message:reply",
 				"本次新授予 scopes: im:message:send",
 				"本次未授予 scopes: （空）",
@@ -619,8 +619,8 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
-		"授权完成，但以下请求 scopes 未被授予: im:message:send",
+		"授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次未授予 scopes: im:message:send",
 		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
@@ -633,6 +633,9 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	if strings.Contains(got, "最终已授权 scopes:") {
 		t.Fatalf("stderr should not contain final granted scopes, got:\n%s", got)
+	}
+	if strings.Contains(got, "OK: 授权成功") {
+		t.Fatalf("stderr should not contain success prefix when scopes are missing, got:\n%s", got)
 	}
 	if strings.Contains(got, "ERROR:") {
 		t.Fatalf("stderr should not contain error prefix, got:\n%s", got)
@@ -743,7 +746,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
+		"OK: 授权成功! 用户: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次新授予 scopes: im:message:send",
 		"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
@@ -771,7 +774,7 @@ func TestWriteLoginSuccess_TextOutputEnglishIncludesStatusHintWhenNoMissingScope
 
 	got := stderr.String()
 	for _, want := range []string{
-		"Login successful! User: tester (ou_user)",
+		"Authorization successful! User: tester (ou_user)",
 		"Requested scopes: im:message:send",
 		"Newly granted scopes: im:message:send",
 		"Not granted scopes: (none)",

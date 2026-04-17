@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
@@ -1902,6 +1903,27 @@ func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes 
 	if totalBytes > MaxAttachmentBytes {
 		return fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB limit",
 			float64(totalBytes)/1024/1024)
+	}
+	return nil
+}
+
+// validateSendTime checks that --send-time, if provided, requires --confirm-send,
+// is a valid Unix timestamp in seconds, and is at least 5 minutes in the future.
+func validateSendTime(runtime *common.RuntimeContext) error {
+	sendTime := runtime.Str("send-time")
+	if sendTime == "" {
+		return nil
+	}
+	if !runtime.Bool("confirm-send") {
+		return fmt.Errorf("--send-time requires --confirm-send to be set")
+	}
+	ts, err := strconv.ParseInt(sendTime, 10, 64)
+	if err != nil {
+		return fmt.Errorf("--send-time must be a valid Unix timestamp in seconds, got %q", sendTime)
+	}
+	minTime := time.Now().Unix() + 5*60
+	if ts < minTime {
+		return fmt.Errorf("--send-time must be at least 5 minutes in the future (minimum: %d, got: %d)", minTime, ts)
 	}
 	return nil
 }

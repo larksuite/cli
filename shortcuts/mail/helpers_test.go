@@ -13,8 +13,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -1004,5 +1006,74 @@ func TestValidateComposeHasAtLeastOneRecipient_AlsoChecksCount(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeds the limit") {
 		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validateSendTime
+// ---------------------------------------------------------------------------
+
+func newSendTimeRuntime(t *testing.T, sendTime string, confirmSend bool) *common.RuntimeContext {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("send-time", "", "")
+	cmd.Flags().Bool("confirm-send", false, "")
+	if sendTime != "" {
+		_ = cmd.Flags().Set("send-time", sendTime)
+	}
+	if confirmSend {
+		_ = cmd.Flags().Set("confirm-send", "true")
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
+
+func TestValidateSendTime_Empty(t *testing.T) {
+	rt := newSendTimeRuntime(t, "", false)
+	if err := validateSendTime(rt); err != nil {
+		t.Fatalf("expected nil when send-time is empty, got %v", err)
+	}
+}
+
+func TestValidateSendTime_RequiresConfirmSend(t *testing.T) {
+	future := strconv.FormatInt(time.Now().Unix()+10*60, 10)
+	rt := newSendTimeRuntime(t, future, false)
+	err := validateSendTime(rt)
+	if err == nil {
+		t.Fatal("expected error when --send-time is set without --confirm-send")
+	}
+	if !strings.Contains(err.Error(), "--confirm-send") {
+		t.Errorf("expected error to mention --confirm-send, got: %v", err)
+	}
+}
+
+func TestValidateSendTime_InvalidInteger(t *testing.T) {
+	rt := newSendTimeRuntime(t, "not-a-number", true)
+	err := validateSendTime(rt)
+	if err == nil {
+		t.Fatal("expected error when --send-time is not a valid integer")
+	}
+	if !strings.Contains(err.Error(), "Unix timestamp") {
+		t.Errorf("expected error to mention Unix timestamp, got: %v", err)
+	}
+}
+
+func TestValidateSendTime_TooSoon(t *testing.T) {
+	// Just 1 minute in the future — below the 5-minute minimum.
+	soon := strconv.FormatInt(time.Now().Unix()+60, 10)
+	rt := newSendTimeRuntime(t, soon, true)
+	err := validateSendTime(rt)
+	if err == nil {
+		t.Fatal("expected error when --send-time is less than 5 minutes in the future")
+	}
+	if !strings.Contains(err.Error(), "5 minutes") {
+		t.Errorf("expected error to mention 5 minute minimum, got: %v", err)
+	}
+}
+
+func TestValidateSendTime_Valid(t *testing.T) {
+	future := strconv.FormatInt(time.Now().Unix()+10*60, 10)
+	rt := newSendTimeRuntime(t, future, true)
+	if err := validateSendTime(rt); err != nil {
+		t.Fatalf("expected nil for valid future send-time, got %v", err)
 	}
 }

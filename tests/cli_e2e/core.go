@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,9 +24,46 @@ import (
 const EnvBinaryPath = "LARK_CLI_BIN"
 const projectRootMarkerDir = "tests"
 const cliBinaryName = "lark-cli"
-const defaultIdentity = "bot"
+const CleanupTimeout = 30 * time.Second
 
-var defaultAsInitOnce sync.Once
+func SkipWithoutUserToken(t *testing.T) {
+	t.Helper()
+	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result, err := RunCmd(ctx, Request{
+		Args: []string{"auth", "status", "--verify"},
+	})
+	if err != nil {
+		t.Skipf("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and failed to check local user login via `lark-cli auth status --verify`: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Skipf("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local user login check failed: exit=%d stderr=%s", result.ExitCode, strings.TrimSpace(result.Stderr))
+	}
+
+	stdout := strings.TrimSpace(result.Stdout)
+	if stdout == "" {
+		t.Skip("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and `lark-cli auth status --verify` returned empty stdout")
+	}
+	if !gjson.Valid(stdout) {
+		t.Skipf("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and `lark-cli auth status --verify` returned non-JSON stdout: %s", stdout)
+	}
+
+	if identity := gjson.Get(stdout, "identity").String(); identity != "user" {
+		t.Skip("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local auth is not a verified user login")
+	}
+	if verified := gjson.Get(stdout, "verified"); verified.Exists() && !verified.Bool() {
+		verifyErr := gjson.Get(stdout, "verifyError").String()
+		if verifyErr != "" {
+			t.Skipf("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local user login verification failed: %s", verifyErr)
+		}
+		t.Skip("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local user login verification failed")
+	}
+}
 
 // Request describes one lark-cli invocation.
 type Request struct {
@@ -46,6 +82,8 @@ type Request struct {
 	DefaultAs string
 	// Format is optional and becomes --format <format> when non-empty.
 	Format string
+	// WorkDir is optional and becomes the child process working directory when non-empty.
+	WorkDir string
 }
 
 // Result captures process execution output.
@@ -74,19 +112,15 @@ func RunCmd(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 
-	// Best-effort initialization only. Failing to set default-as should not hide
-	// the actual command-under-test result, because some environments may still
-	// run the target CLI flow successfully without this convenience setup.
-	defaultAsInitOnce.Do(func() {
-		_ = setDefaultAs(ctx, binaryPath, defaultIdentity)
-	})
-
 	args, err := BuildArgs(req)
 	if err != nil {
 		return nil, err
 	}
 
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
+	if req.WorkDir != "" {
+		cmd.Dir = req.WorkDir
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -164,6 +198,72 @@ func RunCmdWithRetry(ctx context.Context, req Request, opts RetryOptions) (*Resu
 func GenerateSuffix() string {
 	now := time.Now().UTC()
 	return fmt.Sprintf("%s-%09d", now.Format("20060102-150405"), now.Nanosecond())
+}
+
+// CleanupContext returns a bounded context for teardown operations so cleanup
+// cannot outlive the test indefinitely when the remote API stalls.
+func CleanupContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), CleanupTimeout)
+}
+
+// ReportCleanupFailure emits a uniform cleanup error with command output.
+func ReportCleanupFailure(parentT *testing.T, prefix string, result *Result, err error) {
+	parentT.Helper()
+
+	if err != nil {
+		parentT.Errorf("%s: %v", prefix, err)
+		return
+	}
+	if result == nil {
+		parentT.Errorf("%s: nil result", prefix)
+		return
+	}
+	if isCleanupSuppressedResult(result) {
+		return
+	}
+	if result.ExitCode != 0 {
+		parentT.Errorf("%s failed: exit=%d stdout=%s stderr=%s", prefix, result.ExitCode, result.Stdout, result.Stderr)
+	}
+}
+
+func isCleanupSuppressedResult(result *Result) bool {
+	if result == nil {
+		return false
+	}
+
+	raw := strings.TrimSpace(result.Stdout)
+	if raw == "" {
+		raw = strings.TrimSpace(result.Stderr)
+	}
+	if raw == "" {
+		return false
+	}
+
+	start := strings.LastIndex(raw, "\n{")
+	if start >= 0 {
+		start++
+	} else {
+		start = strings.Index(raw, "{")
+	}
+	if start < 0 {
+		return false
+	}
+
+	payload := raw[start:]
+	if !gjson.Valid(payload) {
+		return false
+	}
+
+	errType := gjson.Get(payload, "error.type").String()
+	errMessage := strings.ToLower(gjson.Get(payload, "error.message").String())
+	errDetailType := gjson.Get(payload, "error.detail.type").String()
+	errCode := gjson.Get(payload, "error.code").Int()
+
+	if errDetailType == "not_found" || strings.Contains(errMessage, "not found") || strings.Contains(errMessage, "http 404") {
+		return true
+	}
+
+	return errType == "api_error" && (errCode == 800004135 || strings.Contains(errMessage, " limited"))
 }
 
 // ResolveBinaryPath finds the CLI binary path using request, env, then PATH.
@@ -257,16 +357,6 @@ func findProjectRootDir() (string, error) {
 		currentDir = parentDir
 	}
 	return "", fmt.Errorf("project root not found from cwd using marker %q", projectRootMarkerDir)
-}
-
-func setDefaultAs(ctx context.Context, binaryPath string, identity string) error {
-	cmd := exec.CommandContext(ctx, binaryPath, "config", "default-as", identity)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("set default-as %q: %w; stderr: %s", identity, err, strings.TrimSpace(stderr.String()))
-	}
-	return nil
 }
 
 func exitCode(err error) int {

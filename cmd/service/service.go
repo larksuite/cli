@@ -101,16 +101,16 @@ type ServiceMethodOptions struct {
 	SchemaPath string
 
 	// Flags
-	Params    string
-	Data      string
-	As        core.Identity
-	Output    string
-	PageAll   bool
-	PageLimit int
-	PageDelay int
-	Format    string
-	JqExpr    string
-	DryRun    bool
+	Params     string
+	Data       string
+	As         core.Identity
+	Output     string
+	PageAll    bool
+	PageLimit  int
+	PageDelay  int
+	Format     string
+	JqExpr     string
+	DryRun     bool
 	File       string   // --file flag value
 	FileFields []string // auto-detected file field names from metadata
 }
