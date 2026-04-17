@@ -619,8 +619,8 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"OK: 授权成功! 用户: tester (ou_user)",
-		"授权完成，但以下请求 scopes 未被授予: im:message:send",
+		"授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次未授予 scopes: im:message:send",
 		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
@@ -633,6 +633,9 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	if strings.Contains(got, "最终已授权 scopes:") {
 		t.Fatalf("stderr should not contain final granted scopes, got:\n%s", got)
+	}
+	if strings.Contains(got, "OK: 授权成功") {
+		t.Fatalf("stderr should not contain success prefix when scopes are missing, got:\n%s", got)
 	}
 	if strings.Contains(got, "ERROR:") {
 		t.Fatalf("stderr should not contain error prefix, got:\n%s", got)
