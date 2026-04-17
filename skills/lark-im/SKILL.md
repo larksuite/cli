@@ -46,6 +46,18 @@ When using bot identity (`--as bot`) to fetch messages (e.g. `+chat-messages-lis
 
 **Solution**: Check the app's visibility settings in the Lark Developer Console — ensure the app's visible range covers the users whose names need to be resolved. Alternatively, use `--as user` to fetch messages with user identity, which typically has broader contact access.
 
+### Fetching Messages: Prefer User Identity
+
+When reading/listing messages (`+chat-messages-list`, `+threads-messages-list`, `+messages-mget`), **prefer `--as user`** over bot identity. Bot identity requires the bot to be a member of the target chat; if it is not, the API will return a "not in group" or permission error.
+
+Note: `+messages-search` is **user-only** and does not support `--as bot`.
+
+**Recommended strategy (reason-based, no circular retries):**
+
+1. **Start with `--as user`** — broader chat access, correct sender name resolution.
+2. **If `--as user` fails due to missing scope** → try `--as bot` instead. Do not retry user until the scope is granted.
+3. **If `--as bot` fails due to "bot not in group"** → retry with `--as user` **only if** user scope is confirmed available; otherwise surface an actionable error: _"Bot is not in the chat and user scope is missing — grant `im:message:readonly` or add the bot to the chat."_
+
 ### Card Messages (Interactive)
 
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
