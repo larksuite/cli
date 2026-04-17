@@ -23,8 +23,8 @@ const (
 	minVCMeetingEventsPageSize   = 20
 	maxVCMeetingEventsPageSize   = 100
 	maxVCMeetingEventSummarySize = 80
-	defaultVCMeetingPageLimit    = 20
-	maxVCMeetingPageLimit        = 40
+	defaultVCMeetingPageLimit    = 50
+	maxVCMeetingPageLimit        = 200
 )
 
 // toUnixSeconds converts a supported CLI time input into a Unix seconds string.
@@ -54,17 +54,14 @@ var VCMeetingEvents = common.Shortcut{
 		{Name: "end", Desc: "time upper bound (ISO 8601, YYYY-MM-DD, or Unix seconds)"},
 		{Name: "page-token", Desc: "page token for the next page"},
 		{Name: "page-size", Default: "20", Desc: "page size, 20-100 (default 20)"},
-		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (max 40)"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max page limit when --page-all is set (default 20, max 40)"},
+		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (uses max page limit 200 unless --page-limit is set)"},
+		{Name: "page-limit", Type: "int", Default: "50", Desc: "max pages to fetch during auto-pagination; setting this flag also enables auto-pagination (default 50, max 200)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateMeetingEventsMeetingID(runtime.Str("meeting-id")); err != nil {
 			return err
 		}
 		if _, _, err := parseMeetingEventsTimeRange(runtime); err != nil {
-			return err
-		}
-		if _, err := common.ValidatePageSize(runtime, "page-size", defaultVCMeetingEventsSize, minVCMeetingEventsPageSize, maxVCMeetingEventsPageSize); err != nil {
 			return err
 		}
 		if _, err := meetingEventsPageLimit(runtime); err != nil {
@@ -81,7 +78,15 @@ var VCMeetingEvents = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		dryRun := common.NewDryRunAPI().GET(vcMeetingEventsAPIPath)
+		autoPaginate, pageLimit, err := meetingEventsPaginationConfig(runtime)
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
+		dryRun := common.NewDryRunAPI()
+		if autoPaginate {
+			dryRun = dryRun.Desc(fmt.Sprintf("Auto-paginates up to %d page(s)", pageLimit))
+		}
+		dryRun = dryRun.GET(vcMeetingEventsAPIPath)
 		if flat := flattenQueryParams(params); len(flat) > 0 {
 			dryRun.Params(flat)
 		}
@@ -96,6 +101,7 @@ var VCMeetingEvents = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		events = compactMeetingEvents(events)
 		rows := buildMeetingEventRows(events)
 		outData := map[string]interface{}{
 			"events":     events,
@@ -118,6 +124,27 @@ var VCMeetingEvents = common.Shortcut{
 	},
 }
 
+func meetingEventsPageSize(runtime *common.RuntimeContext) (int, error) {
+	if runtime.Bool("page-all") {
+		return maxVCMeetingEventsPageSize, nil
+	}
+	pageSizeStr := strings.TrimSpace(runtime.Str("page-size"))
+	if pageSizeStr == "" {
+		return defaultVCMeetingEventsSize, nil
+	}
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil {
+		return 0, common.FlagErrorf("invalid --page-size %q: must be an integer", pageSizeStr)
+	}
+	if pageSize < minVCMeetingEventsPageSize {
+		return minVCMeetingEventsPageSize, nil
+	}
+	if pageSize > maxVCMeetingEventsPageSize {
+		return maxVCMeetingEventsPageSize, nil
+	}
+	return pageSize, nil
+}
+
 func meetingEventsPageLimit(runtime *common.RuntimeContext) (int, error) {
 	limit := runtime.Int("page-limit")
 	if limit == 0 && !runtime.Cmd.Flags().Changed("page-limit") {
@@ -127,6 +154,21 @@ func meetingEventsPageLimit(runtime *common.RuntimeContext) (int, error) {
 		return 0, common.FlagErrorf("invalid --page-limit %d: must be between 1 and %d", limit, maxVCMeetingPageLimit)
 	}
 	return limit, nil
+}
+
+func meetingEventsPaginationConfig(runtime *common.RuntimeContext) (autoPaginate bool, pageLimit int, err error) {
+	pageLimit, err = meetingEventsPageLimit(runtime)
+	if err != nil {
+		return false, 0, err
+	}
+	autoPaginate = runtime.Bool("page-all")
+	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
+		autoPaginate = true
+	}
+	if runtime.Bool("page-all") && (runtime.Cmd == nil || !runtime.Cmd.Flags().Changed("page-limit")) {
+		pageLimit = maxVCMeetingPageLimit
+	}
+	return autoPaginate, pageLimit, nil
 }
 
 func validateMeetingEventsMeetingID(meetingID string) error {
@@ -175,7 +217,7 @@ func parseMeetingEventsTimeRange(runtime *common.RuntimeContext) (string, string
 }
 
 func buildMeetingEventsParams(runtime *common.RuntimeContext, startTime, endTime string) (larkcore.QueryParams, error) {
-	pageSize, err := common.ValidatePageSize(runtime, "page-size", defaultVCMeetingEventsSize, minVCMeetingEventsPageSize, maxVCMeetingEventsPageSize)
+	pageSize, err := meetingEventsPageSize(runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +242,11 @@ func fetchMeetingEvents(ctx context.Context, runtime *common.RuntimeContext, sta
 	if err != nil {
 		return nil, nil, false, "", err
 	}
-	if !runtime.Bool("page-all") {
+	autoPaginate, pageLimit, err := meetingEventsPaginationConfig(runtime)
+	if err != nil {
+		return nil, nil, false, "", err
+	}
+	if !autoPaginate {
 		data, err := runtime.DoAPIJSON(http.MethodGet, vcMeetingEventsAPIPath, params, nil)
 		if err != nil {
 			return nil, nil, false, "", err
@@ -214,10 +260,6 @@ func fetchMeetingEvents(ctx context.Context, runtime *common.RuntimeContext, sta
 		return data, events, hasMore, pageToken, nil
 	}
 
-	pageLimit, err := meetingEventsPageLimit(runtime)
-	if err != nil {
-		return nil, nil, false, "", err
-	}
 	var (
 		allEvents     []interface{}
 		lastData      map[string]interface{}
@@ -270,6 +312,35 @@ func flattenQueryParams(params larkcore.QueryParams) map[string]interface{} {
 		}
 	}
 	return flat
+}
+
+func compactMeetingEvents(events []interface{}) []interface{} {
+	compacted := make([]interface{}, 0, len(events))
+	for _, raw := range events {
+		event, _ := raw.(map[string]interface{})
+		if event == nil {
+			continue
+		}
+		if payload := common.GetMap(event, "payload"); payload != nil {
+			event["payload"] = compactMeetingPayload(payload)
+		}
+		compacted = append(compacted, event)
+	}
+	return compacted
+}
+
+func compactMeetingPayload(payload map[string]interface{}) map[string]interface{} {
+	if payload == nil {
+		return nil
+	}
+	compacted := make(map[string]interface{}, len(payload))
+	for key, value := range payload {
+		if items, ok := value.([]interface{}); ok && len(items) == 0 {
+			continue
+		}
+		compacted[key] = value
+	}
+	return compacted
 }
 
 func buildMeetingEventRows(events []interface{}) []map[string]interface{} {

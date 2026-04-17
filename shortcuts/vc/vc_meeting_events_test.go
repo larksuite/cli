@@ -23,7 +23,7 @@ func newMeetingEventsRuntime() *common.RuntimeContext {
 	cmd.Flags().String("page-token", "", "")
 	cmd.Flags().String("page-size", "", "")
 	cmd.Flags().Bool("page-all", false, "")
-	cmd.Flags().Int("page-limit", 20, "")
+	cmd.Flags().Int("page-limit", 50, "")
 	return common.TestNewRuntimeContext(cmd, defaultConfig())
 }
 
@@ -58,6 +58,32 @@ func participantJoinedEvent() map[string]interface{} {
 						"user_name": "Demo Bot",
 					},
 					"join_time": "2026-04-17T08:00:00Z",
+				},
+			},
+		},
+	}
+}
+
+func chatReceivedEvent() map[string]interface{} {
+	return map[string]interface{}{
+		"event_id":   "event-2",
+		"event_type": "chat_received",
+		"event_time": "2026-04-17T08:05:00Z",
+		"payload": map[string]interface{}{
+			"activity_event_type":       "chat_received",
+			"participant_joined_items":  []interface{}{},
+			"participant_left_items":    []interface{}{},
+			"transcript_received_items": []interface{}{},
+			"magic_share_started_items": []interface{}{},
+			"magic_share_ended_items":   []interface{}{},
+			"chat_received_items": []interface{}{
+				map[string]interface{}{
+					"content":      "hello",
+					"message_type": 3,
+					"operator": map[string]interface{}{
+						"id":        "u1",
+						"user_name": "Alice",
+					},
 				},
 			},
 		},
@@ -149,30 +175,39 @@ func TestMeetingEvents_Validation_InvalidTimeRange(t *testing.T) {
 	}
 }
 
-func TestMeetingEvents_Validation_InvalidPageSize(t *testing.T) {
+func TestMeetingEvents_Validation_PageSizeBelowMinDoesNotError(t *testing.T) {
 	runtime := newMeetingEventsRuntime()
 	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
 	_ = runtime.Cmd.Flags().Set("page-size", "10")
 
 	err := VCMeetingEvents.Validate(context.Background(), runtime)
-	if err == nil {
-		t.Fatal("expected validation error for invalid page size")
+	if err != nil {
+		t.Fatalf("expected no validation error for page-size clamp, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "must be between 20 and 100") {
-		t.Fatalf("unexpected error: %v", err)
+}
+
+func TestMeetingEvents_Validation_PageAllIgnoresInvalidPageSize(t *testing.T) {
+	runtime := newMeetingEventsRuntime()
+	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
+	_ = runtime.Cmd.Flags().Set("page-all", "true")
+	_ = runtime.Cmd.Flags().Set("page-size", "10")
+
+	err := VCMeetingEvents.Validate(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("expected no validation error when page-all ignores page-size, got: %v", err)
 	}
 }
 
 func TestMeetingEvents_Validation_InvalidPageLimit(t *testing.T) {
 	runtime := newMeetingEventsRuntime()
 	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
-	_ = runtime.Cmd.Flags().Set("page-limit", "41")
+	_ = runtime.Cmd.Flags().Set("page-limit", "201")
 
 	err := VCMeetingEvents.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected validation error for invalid page limit")
 	}
-	if !strings.Contains(err.Error(), "must be between 1 and 40") {
+	if !strings.Contains(err.Error(), "must be between 1 and 200") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -201,6 +236,49 @@ func TestBuildMeetingEventsParams(t *testing.T) {
 	}
 	if got := params["end_time"][0]; got != "1710003600" {
 		t.Fatalf("end_time = %q, want %q", got, "1710003600")
+	}
+}
+
+func TestBuildMeetingEventsParams_PageSizeBelowMinClampsToMin(t *testing.T) {
+	runtime := newMeetingEventsRuntime()
+	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
+	_ = runtime.Cmd.Flags().Set("page-size", "10")
+
+	params, err := buildMeetingEventsParams(runtime, "", "")
+	if err != nil {
+		t.Fatalf("buildMeetingEventsParams() error = %v", err)
+	}
+	if got := params["page_size"][0]; got != "20" {
+		t.Fatalf("page_size = %q, want %q when below min", got, "20")
+	}
+}
+
+func TestBuildMeetingEventsParams_PageSizeAboveMaxClampsToMax(t *testing.T) {
+	runtime := newMeetingEventsRuntime()
+	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
+	_ = runtime.Cmd.Flags().Set("page-size", "999")
+
+	params, err := buildMeetingEventsParams(runtime, "", "")
+	if err != nil {
+		t.Fatalf("buildMeetingEventsParams() error = %v", err)
+	}
+	if got := params["page_size"][0]; got != "100" {
+		t.Fatalf("page_size = %q, want %q when above max", got, "100")
+	}
+}
+
+func TestBuildMeetingEventsParams_PageAllUsesMaxPageSize(t *testing.T) {
+	runtime := newMeetingEventsRuntime()
+	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
+	_ = runtime.Cmd.Flags().Set("page-all", "true")
+	_ = runtime.Cmd.Flags().Set("page-size", "50")
+
+	params, err := buildMeetingEventsParams(runtime, "", "")
+	if err != nil {
+		t.Fatalf("buildMeetingEventsParams() error = %v", err)
+	}
+	if got := params["page_size"][0]; got != "100" {
+		t.Fatalf("page_size = %q, want %q when page-all is set", got, "100")
 	}
 }
 
@@ -235,6 +313,24 @@ func TestMeetingEvents_DryRun(t *testing.T) {
 	}
 }
 
+func TestMeetingEvents_DryRun_PageAllUsesMaxLimit(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--page-all",
+		"--dry-run",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), "Auto-paginates up to 200 page(s)") {
+		t.Fatalf("dry-run output missing auto-pagination description: %s", stdout.String())
+	}
+}
+
 func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "pt_2"))
@@ -260,6 +356,30 @@ func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 	}
 	if !strings.Contains(out, `"has_more":false`) {
 		t.Fatalf("expected final has_more=false: %s", stdout.String())
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_PageLimitEnablesPagination(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "pt_2"))
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, false, ""))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--page-limit", "2",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	out := strings.ReplaceAll(stdout.String(), " ", "")
+	out = strings.ReplaceAll(out, "\n", "")
+	if count := strings.Count(out, `"event_type":"participant_joined"`); count != 2 {
+		t.Fatalf("expected 2 aggregated events, got %d: %s", count, stdout.String())
 	}
 }
 
@@ -289,6 +409,38 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("json output missing %q: %s", want, stdout.String())
 		}
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{chatReceivedEvent()}, false, ""))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	out := stdout.String()
+	for _, unwanted := range []string{
+		`"participant_joined_items": []`,
+		`"participant_left_items": []`,
+		`"transcript_received_items": []`,
+		`"magic_share_started_items": []`,
+		`"magic_share_ended_items": []`,
+	} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("json output should not contain %q: %s", unwanted, out)
+		}
+	}
+	if !strings.Contains(out, `"message_type": 3`) {
+		t.Fatalf("json output should keep numeric fields: %s", out)
 	}
 }
 
