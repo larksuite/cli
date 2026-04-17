@@ -80,7 +80,7 @@ var MailDraftCreate = common.Shortcut{
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
 			return err
 		}
-		return nil
+		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		input, err := parseDraftCreateInput(runtime)

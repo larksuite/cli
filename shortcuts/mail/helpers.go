@@ -1743,6 +1743,17 @@ func parsePriority(value string) (string, error) {
 	}
 }
 
+// validatePriorityFlag validates the --priority flag value in Validate, so invalid
+// values are caught before Execute (and before dry-run prints an API plan).
+func validatePriorityFlag(runtime *common.RuntimeContext) error {
+	v := runtime.Str("priority")
+	if v == "" {
+		return nil
+	}
+	_, err := parsePriority(v)
+	return err
+}
+
 // applyPriority sets the X-Cli-Priority header on the EML builder if priority is non-empty.
 func applyPriority(bld emlbuilder.Builder, priority string) emlbuilder.Builder {
 	if priority == "" {
