@@ -93,6 +93,19 @@ lark-cli auth login --recommend
 lark-cli calendar +agenda
 ```
 
+#### Optional: Shell Completion
+
+`lark-cli completion` is available as a regular top-level command and does not require login. Generate a completion script for the shell you use most:
+
+```bash
+# Bash
+lark-cli completion bash > ~/.local/share/bash-completion/completions/lark-cli
+
+# Zsh
+mkdir -p ~/.zfunc
+lark-cli completion zsh > ~/.zfunc/_lark-cli
+```
+
 ## Quick Start (AI Agent)
 
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
@@ -127,6 +140,12 @@ lark-cli auth login --recommend
 
 ```bash
 lark-cli auth status
+```
+
+Shell completion is also available without authentication:
+
+```bash
+lark-cli completion fish > ~/.config/fish/completions/lark-cli.fish
 ```
 
 ## Agent Skills

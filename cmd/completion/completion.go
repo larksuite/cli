@@ -16,7 +16,6 @@ func NewCmdCompletion(f *cmdutil.Factory) *cobra.Command {
 		Use:       "completion <shell>",
 		Short:     "Generate shell completion scripts",
 		Long:      "Generate shell completion scripts for bash, zsh, fish, or powershell.",
-		Hidden:    true,
 		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
 		Args:      cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
