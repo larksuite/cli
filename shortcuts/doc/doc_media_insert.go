@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -40,7 +41,8 @@ var DocMediaInsert = common.Shortcut{
 	Scopes:      []string{"docs:document.media:upload", "docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
+		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)"},
+		{Name: "from-clipboard", Type: "bool", Desc: "read image from system clipboard instead of a local file (macOS/Windows built-in; Linux requires xclip, xsel or wl-paste)"},
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: "image", Desc: "type: image | file"},
 		{Name: "align", Desc: "alignment: left | center | right"},
@@ -48,6 +50,15 @@ var DocMediaInsert = common.Shortcut{
 		{Name: "file-view", Desc: "file block rendering: card (default) | preview | inline; only applies when --type=file. preview renders audio/video as an inline player"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		filePath := runtime.Str("file")
+		fromClipboard := runtime.Bool("from-clipboard")
+		if filePath == "" && !fromClipboard {
+			return common.FlagErrorf("one of --file or --from-clipboard is required")
+		}
+		if filePath != "" && fromClipboard {
+			return common.FlagErrorf("--file and --from-clipboard are mutually exclusive")
+		}
+
 		docRef, err := parseDocumentRef(runtime.Str("doc"))
 		if err != nil {
 			return err
@@ -74,6 +85,9 @@ var DocMediaInsert = common.Shortcut{
 		documentID := docRef.Token
 		stepBase := 1
 		filePath := runtime.Str("file")
+		if runtime.Bool("from-clipboard") {
+			filePath = "<clipboard image>"
+		}
 		mediaType := runtime.Str("type")
 		caption := runtime.Str("caption")
 		fileViewType := fileViewMap[runtime.Str("file-view")]
@@ -116,23 +130,42 @@ var DocMediaInsert = common.Shortcut{
 		caption := runtime.Str("caption")
 		fileViewType := fileViewMap[runtime.Str("file-view")]
 
+		// Clipboard path: read image bytes into memory, bypassing FileIO path validation.
+		var clipboardContent []byte
+		if runtime.Bool("from-clipboard") {
+			fmt.Fprintf(runtime.IO().ErrOut, "Reading image from clipboard...\n")
+			var err error
+			clipboardContent, err = readClipboardImageBytes()
+			if err != nil {
+				return err
+			}
+		}
+
 		documentID, err := resolveDocxDocumentID(runtime, docInput)
 		if err != nil {
 			return err
 		}
 
-		// Validate file
-		stat, err := runtime.FileIO().Stat(filePath)
-		if err != nil {
-			return common.WrapInputStatError(err, "file not found")
-		}
-		if !stat.Mode().IsRegular() {
-			return output.ErrValidation("file must be a regular file: %s", filePath)
+		// Determine file size and name.
+		var fileSize int64
+		var fileName string
+		if clipboardContent != nil {
+			fileSize = int64(len(clipboardContent))
+			fileName = "clipboard.png"
+		} else {
+			stat, err := runtime.FileIO().Stat(filePath)
+			if err != nil {
+				return common.WrapInputStatError(err, "file not found")
+			}
+			if !stat.Mode().IsRegular() {
+				return output.ErrValidation("file must be a regular file: %s", filePath)
+			}
+			fileSize = stat.Size()
+			fileName = filepath.Base(filePath)
 		}
 
-		fileName := filepath.Base(filePath)
 		fmt.Fprintf(runtime.IO().ErrOut, "Inserting: %s -> document %s\n", fileName, common.MaskToken(documentID))
-		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
+		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 		}
 
@@ -191,7 +224,11 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Step 3: Upload media file
-		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentTypeForMediaType(mediaType), uploadParentNode, documentID)
+		var clipboardReader *bytes.Reader
+		if clipboardContent != nil {
+			clipboardReader = bytes.NewReader(clipboardContent)
+		}
+		fileToken, err := uploadDocMediaFile(runtime, filePath, clipboardReader, fileName, fileSize, parentTypeForMediaType(mediaType), uploadParentNode, documentID) //nolint:lll
 		if err != nil {
 			return withRollbackWarning(err)
 		}

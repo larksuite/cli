@@ -75,6 +75,62 @@ func TestDocMediaInsertRejectsOldDocURL(t *testing.T) {
 	}
 }
 
+func TestDocMediaInsertValidateRequiresFileOrClipboard(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "https://example.larksuite.com/docx/doxcnXXXXXXXXXXXXXXXXXX",
+		"--dry-run",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "one of --file or --from-clipboard is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDocMediaInsertValidateRejectsFileAndClipboardTogether(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "https://example.larksuite.com/docx/doxcnXXXXXXXXXXXXXXXXXX",
+		"--file", "dummy.png",
+		"--from-clipboard",
+		"--dry-run",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected mutual-exclusion error, got nil")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDocMediaInsertDryRunWithClipboardUsesPlaceholder(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "https://example.larksuite.com/docx/doxcnXXXXXXXXXXXXXXXXXX",
+		"--from-clipboard",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// JSON output escapes "<" and ">" as \u003c / \u003e by default.
+	out := stdout.String()
+	if !strings.Contains(out, `\u003cclipboard image\u003e`) && !strings.Contains(out, "<clipboard image>") {
+		t.Fatalf("dry-run output missing <clipboard image> placeholder: %s", out)
+	}
+}
+
 func TestDocMediaInsertDryRunWikiAddsResolveStep(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-test-app"))
 
@@ -187,6 +243,110 @@ func TestDocMediaInsertDryRunUsesMultipartForLargeFile(t *testing.T) {
 	}
 	if !strings.Contains(dry.API[5].Desc, "[4]") {
 		t.Fatalf("batch_update desc = %q, want [4] step marker", dry.API[5].Desc)
+	}
+}
+
+func TestUploadDocMediaFileWithContentUsesSinglePartUpload(t *testing.T) {
+	// Clipboard path: in-memory bytes (no FilePath) route through
+	// UploadDriveMediaAll when small enough. This also exercises the
+	// drive_route_token extra built from docID.
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-upload-content-app"))
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_content_123"},
+		},
+	}
+	reg.Register(uploadStub)
+
+	runtime := common.TestNewRuntimeContextForAPI(
+		context.Background(),
+		&cobra.Command{Use: "docs +media-upload"},
+		docsTestConfigWithAppID("docs-upload-content-app"),
+		f,
+	)
+
+	payload := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a} // PNG magic bytes
+	fileToken, err := uploadDocMediaFile(
+		runtime,
+		"", // no FilePath
+		bytes.NewReader(payload),
+		"clipboard.png",
+		int64(len(payload)),
+		"docx_image",
+		"blk_parent",
+		"doxcnDocID123",
+	)
+	if err != nil {
+		t.Fatalf("uploadDocMediaFile() error: %v", err)
+	}
+	if fileToken != "file_content_123" {
+		t.Fatalf("fileToken = %q, want %q", fileToken, "file_content_123")
+	}
+
+	if !strings.Contains(string(uploadStub.CapturedBody), `drive_route_token`) {
+		t.Fatalf("expected drive_route_token in extra, captured body did not include it")
+	}
+}
+
+func TestUploadDocMediaFileWithContentUsesMultipart(t *testing.T) {
+	// Clipboard path: in-memory bytes route through UploadDriveMediaMultipart
+	// when size exceeds the single-part threshold.
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-upload-content-multi"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"upload_id":  "upload_content_multi",
+				"block_size": float64(4 * 1024 * 1024),
+				"block_num":  float64(6),
+			},
+		},
+	})
+	for i := 0; i < 6; i++ {
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/medias/upload_part",
+			Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+		})
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_content_multi_done"},
+		},
+	})
+
+	runtime := common.TestNewRuntimeContextForAPI(
+		context.Background(),
+		&cobra.Command{Use: "docs +media-upload"},
+		docsTestConfigWithAppID("docs-upload-content-multi"),
+		f,
+	)
+
+	size := common.MaxDriveMediaUploadSinglePartSize + 1
+	payload := bytes.Repeat([]byte{0xAB}, int(size))
+	fileToken, err := uploadDocMediaFile(
+		runtime,
+		"",
+		bytes.NewReader(payload),
+		"clipboard.png",
+		size,
+		"docx_image",
+		"blk_parent",
+		"", // no docID → no extra
+	)
+	if err != nil {
+		t.Fatalf("uploadDocMediaFile() error: %v", err)
+	}
+	if fileToken != "file_content_multi_done" {
+		t.Fatalf("fileToken = %q, want %q", fileToken, "file_content_multi_done")
 	}
 }
 

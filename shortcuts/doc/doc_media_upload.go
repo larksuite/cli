@@ -6,6 +6,7 @@ package doc
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	"github.com/larksuite/cli/extension/fileio"
@@ -95,7 +96,7 @@ var MediaUpload = common.Shortcut{
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 		}
 
-		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentType, parentNode, docId)
+		fileToken, err := uploadDocMediaFile(runtime, filePath, nil, fileName, stat.Size(), parentType, parentNode, docId)
 		if err != nil {
 			return err
 		}
@@ -109,7 +110,7 @@ var MediaUpload = common.Shortcut{
 	},
 }
 
-func uploadDocMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentType, parentNode, docID string) (string, error) {
+func uploadDocMediaFile(runtime *common.RuntimeContext, filePath string, content io.Reader, fileName string, fileSize int64, parentType, parentNode, docID string) (string, error) {
 	var extra string
 	if docID != "" {
 		var err error
@@ -124,6 +125,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, filePath, fileName strin
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
+			Content:    content,
 			FileName:   fileName,
 			FileSize:   fileSize,
 			ParentType: parentType,
@@ -133,6 +135,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, filePath, fileName strin
 	}
 	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
+		Content:    content,
 		FileName:   fileName,
 		FileSize:   fileSize,
 		ParentType: parentType,
