@@ -50,6 +50,25 @@ middle
 		}
 	})
 
+	t.Run("blank line separates two tables", func(t *testing.T) {
+		// The common real-world case: two tables with only a blank line
+		// between them. Exercises the flush path on an empty non-pipe row
+		// so we don't accidentally accumulate both tables into one.
+		md := "| a | b |\n|---|---|\n| 1 | 2 |\n\n| c | d |\n|---|---|\n| 3 | 4 |\n"
+		got := extractMarkdownTables(md)
+		if len(got) != 2 {
+			t.Fatalf("expected 2 tables separated by blank line, got %d", len(got))
+		}
+	})
+
+	t.Run("table immediately followed by a fenced block flushes", func(t *testing.T) {
+		md := "| a | b |\n|---|---|\n| 1 | 2 |\n```\ncode\n```\n"
+		got := extractMarkdownTables(md)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 table before fence, got %d", len(got))
+		}
+	})
+
 	t.Run("table inside fenced code is skipped", func(t *testing.T) {
 		md := "```md\n| A | B |\n|---|---|\n| 1 | 2 |\n```\n"
 		got := extractMarkdownTables(md)

@@ -18,6 +18,10 @@ import (
 // update_grid_column_width_ratio API: width_ratios must sum to 100.
 const widthRatioTotal = 100
 
+// docxBlockTypeTable is the block_type value returned by
+// /open-apis/docx/v1/documents/{id}/blocks for a docx table block.
+const docxBlockTypeTable = 31
+
 // extractMarkdownTables parses GFM pipe tables from markdown text and returns
 // each table as a slice of rows, where each row is a slice of cell strings.
 // Header separator rows (e.g. |---|---|) are dropped. Tables inside fenced
@@ -169,7 +173,8 @@ func computeWidthRatios(rows [][]string) []int {
 
 // visualWidth estimates the display width of s by counting each rune as 2 when
 // it is East Asian Wide/Full (CJK, full-width punctuation) and 1 otherwise.
-// Control characters and zero-width joiners contribute 0.
+// Zero-width runes (control chars, format chars like ZWJ, non-spacing/enclosing
+// marks such as combining accents and emoji variation selectors) contribute 0.
 func visualWidth(s string) int {
 	w := 0
 	for _, r := range s {
@@ -177,7 +182,11 @@ func visualWidth(s string) int {
 		case r == 0 || r == '\t':
 			// Tabs and NULs do not reliably contribute visual width.
 			continue
-		case unicode.IsControl(r):
+		case unicode.IsControl(r),
+			unicode.In(r, unicode.Cf, unicode.Mn, unicode.Me):
+			// Format (Cf: ZWJ, LRM, ...), non-spacing marks (Mn: combining
+			// accents, emoji variation selectors U+FE0F), and enclosing marks
+			// (Me) do not advance the cursor.
 			continue
 		case isWideRune(r):
 			w += 2
@@ -244,12 +253,23 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 		fmt.Fprintf(runtime.IO().ErrOut, "column-width adjustment skipped: %v\n", err)
 		return
 	}
-	limit := len(remote)
-	if len(tables) < limit {
-		limit = len(tables)
+	// Strict precondition: index-based pairing is only safe when the local
+	// markdown and the remote document expose the same number of tables.
+	// Diverging counts can happen when the extractor misses a form the server
+	// accepts (tables nested in blockquotes, non-conforming separator rows),
+	// or when the target doc was not fully overwritten. In either case,
+	// proceeding would silently shift every subsequent pair and write wrong
+	// ratios to tables that happen to match on column count.
+	if len(remote) != len(tables) {
+		fmt.Fprintf(
+			runtime.IO().ErrOut,
+			"column-width adjustment skipped: remote has %d table block(s) but local markdown has %d; skipping to avoid misaligned ratios\n",
+			len(remote), len(tables),
+		)
+		return
 	}
 	patched := 0
-	for i := 0; i < limit; i++ {
+	for i := range tables {
 		ratios := computeWidthRatios(tables[i])
 		if ratios == nil {
 			continue
@@ -278,7 +298,7 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 		patched++
 	}
 	if patched > 0 {
-		fmt.Fprintf(runtime.IO().ErrOut, "column widths applied to %d/%d tables\n", patched, limit)
+		fmt.Fprintf(runtime.IO().ErrOut, "column widths applied to %d/%d tables\n", patched, len(tables))
 	}
 }
 
@@ -330,7 +350,7 @@ func fetchDocumentTableBlocks(runtime *common.RuntimeContext, documentID string)
 				continue
 			}
 			bt, _ := m["block_type"].(float64)
-			if int(bt) != 31 {
+			if int(bt) != docxBlockTypeTable {
 				continue
 			}
 			blockID, _ := m["block_id"].(string)

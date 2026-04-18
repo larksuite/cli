@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -116,6 +117,11 @@ var DocsUpdate = common.Shortcut{
 		if runtime.Str("mode") == "overwrite" && runtime.Bool("auto-table-widths") {
 			if docID, ok := docxTokenForUpdate(runtime.Str("doc")); ok {
 				applyMarkdownTableColumnWidths(runtime, docID, runtime.Str("markdown"))
+			} else {
+				fmt.Fprintln(
+					runtime.IO().ErrOut,
+					"auto-table-widths skipped: --doc is not a docx token/URL (wiki-backed docs require an extra resolve step that is not implemented yet)",
+				)
 			}
 		}
 		runtime.Out(result, nil)
