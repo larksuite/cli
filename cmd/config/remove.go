@@ -4,23 +4,36 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
 // ConfigRemoveOptions holds all inputs for config remove.
 type ConfigRemoveOptions struct {
-	Factory *cmdutil.Factory
+	Factory           *cmdutil.Factory
+	LoadConfig        func() (*core.MultiAppConfig, error)
+	SaveConfig        func(*core.MultiAppConfig) error
+	RemoveSecret      func(core.SecretInput, keychain.KeychainAccess)
+	RemoveStoredToken func(string, string) error
 }
 
 // NewCmdConfigRemove creates the config remove subcommand.
 func NewCmdConfigRemove(f *cmdutil.Factory, runF func(*ConfigRemoveOptions) error) *cobra.Command {
-	opts := &ConfigRemoveOptions{Factory: f}
+	opts := &ConfigRemoveOptions{
+		Factory:           f,
+		LoadConfig:        core.LoadMultiAppConfig,
+		SaveConfig:        core.SaveMultiAppConfig,
+		RemoveSecret:      core.RemoveSecretStore,
+		RemoveStoredToken: auth.RemoveStoredToken,
+	}
 
 	cmd := &cobra.Command{
 		Use:   "remove",
@@ -37,35 +50,62 @@ func NewCmdConfigRemove(f *cmdutil.Factory, runF func(*ConfigRemoveOptions) erro
 }
 
 func configRemoveRun(opts *ConfigRemoveOptions) error {
+	if opts == nil || opts.Factory == nil ||
+		opts.LoadConfig == nil || opts.SaveConfig == nil ||
+		opts.RemoveSecret == nil || opts.RemoveStoredToken == nil {
+		return output.Errorf(output.ExitInternal, "internal", "config remove options not initialized")
+	}
+
 	f := opts.Factory
 
-	config, err := core.LoadMultiAppConfig()
-	if err != nil || config == nil || len(config.Apps) == 0 {
+	config, err := opts.LoadConfig()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return output.ErrValidation("not configured yet")
+		}
+		return output.Errorf(output.ExitInternal, "internal", "failed to load config: %v", err)
+	}
+	if config == nil || len(config.Apps) == 0 {
 		return output.ErrValidation("not configured yet")
 	}
 
 	// Save empty config first. If this fails, keep secrets and tokens intact so the
 	// existing config can still be retried instead of ending up half-removed.
 	empty := &core.MultiAppConfig{Apps: []core.AppConfig{}}
-	if err := core.SaveMultiAppConfig(empty); err != nil {
+	if err := opts.SaveConfig(empty); err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 
 	// Clean up keychain entries for all apps after config is cleared.
+	tokenTargets := 0
+	tokenRemoved := 0
+	tokenFailures := 0
 	for _, app := range config.Apps {
-		core.RemoveSecretStore(app.AppSecret, f.Keychain)
+		opts.RemoveSecret(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
-			_ = auth.RemoveStoredToken(app.AppId, user.UserOpenId)
+			tokenTargets++
+			if err := opts.RemoveStoredToken(app.AppId, user.UserOpenId); err != nil {
+				tokenFailures++
+				fmt.Fprintf(f.IOStreams.ErrOut, "warning: failed to remove a stored token for app %q: %v\n", app.AppId, err)
+				continue
+			}
+			tokenRemoved++
 		}
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, "Configuration removed")
-	userCount := 0
-	for _, app := range config.Apps {
-		userCount += len(app.Users)
-	}
-	if userCount > 0 {
-		fmt.Fprintf(f.IOStreams.ErrOut, "Cleared tokens for %d users\n", userCount)
+	if tokenTargets > 0 {
+		if tokenFailures == 0 {
+			fmt.Fprintf(f.IOStreams.ErrOut, "Cleared tokens for %d users\n", tokenRemoved)
+		} else {
+			fmt.Fprintf(
+				f.IOStreams.ErrOut,
+				"Token cleanup attempted for %d users: removed %d, failed %d\n",
+				tokenTargets,
+				tokenRemoved,
+				tokenFailures,
+			)
+		}
 	}
 	return nil
 }
