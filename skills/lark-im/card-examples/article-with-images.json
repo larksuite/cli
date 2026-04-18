@@ -1,0 +1,204 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "8px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "12px 12px 20px 12px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "transparent": false,
+                    "scale_type": "crop_center",
+                    "size": "16:5",
+                    "alt": {
+                        "tag": "plain_text",
+                        "content": ""
+                    },
+                    "corner_radius": "8px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "在当代艺术界，**某位艺术家**以其独特的未来主义风格和对传统与现代的巧妙融合而闻名。他的最新作品——**“未来茶具”** 系列，再次证明了他在艺术创作上的非凡才华和创新精神。",
+                    "text_align": "left",
+                    "text_size": "normal_v2"
+                },
+                {
+                    "tag": "img_combination",
+                    "combination_mode": "triple",
+                    "img_list": [
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        }
+                    ],
+                    "img_list_length": 3,
+                    "combination_transparent": false,
+                    "corner_radius": "8px",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "hr"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "**作品介绍**",
+                                    "text_align": "left",
+                                    "text_size": "normal",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "efficiency_outlined",
+                                        "color": "orange"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "“未来茶具”系列包括一个水壶、一个茶壶、一个糖罐和一套茶杯，每件作品都体现了这位艺术家对未来生活的独特理解和想象。这些茶具不仅在功能上满足了日常使用的需求，更在视觉上给人以强烈的冲击和思考。",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                },
+                                {
+                                    "tag": "hr"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "**设计理念**",
+                                    "text_align": "left",
+                                    "text_size": "normal",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "hot_outlined",
+                                        "color": "orange"
+                                    }
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "这位艺术家在设计这一系列作品时，深受未来主义和赛博朋克风格的影响。他将传统的茶具与现代科技元素相结合，创造出一种既熟悉又陌生的视觉体验。每件作品都采用了流线型设计，表面光滑，反射出冷峻的金属光泽，仿佛来自未来的科技产品。",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                }
+                            ],
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "一键触达客户案例"
+                                    },
+                                    "type": "primary_filled",
+                                    "width": "fill",
+                                    "size": "medium",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "direction": "horizontal",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "查看更多社区精选"
+                                    },
+                                    "type": "default",
+                                    "width": "fill",
+                                    "size": "medium"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "未来主义茶具系列专题"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "text_tag_list": [
+                {
+                    "tag": "text_tag",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": "0521 期"
+                    },
+                    "color": "lime"
+                }
+            ],
+            "template": "yellow",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "labs_outlined"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

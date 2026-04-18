@@ -1,0 +1,131 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": "【拉萨札记｜在仓央嘉措的诗行间流浪】住进布达拉宫  /  我是雪域最大的王  /  流浪在拉萨街头 /  我是世间最美的情郎」",
+                    "text_align": "left",
+                    "text_size": "normal_v2"
+                },
+                {
+                    "tag": "img_combination",
+                    "combination_mode": "trisect",
+                    "img_list": [
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        },
+                        {
+                            "img_key": "xxx"
+                        }
+                    ],
+                    "img_list_length": 9,
+                    "corner_radius": "5%"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "11"
+                                    },
+                                    "type": "text",
+                                    "width": "fill",
+                                    "size": "large",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "thumbsup_outlined"
+                                    }
+                                },
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "8"
+                                    },
+                                    "type": "text",
+                                    "width": "fill",
+                                    "size": "large",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "reply-cn_outlined"
+                                    }
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "horizontal",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "某位同事发布了 1 条公司圈动态"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "blue",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "larkcommunity_colorful"
+            },
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

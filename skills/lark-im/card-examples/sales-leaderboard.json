@@ -1,0 +1,375 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "16px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "20px 20px 20px 20px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "scale_type": "crop_center",
+                    "size": "16:6",
+                    "alt": {
+                        "tag": "plain_text",
+                        "content": ""
+                    },
+                    "corner_radius": "6px"
+                },
+                {
+                    "tag": "column_set",
+                    "background_style": "grey-100",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "scale_type": "crop_center",
+                                    "alt": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "corner_radius": "6px"
+                                }
+                            ],
+                            "padding": "12px 0px 0px 10px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "销售顾问 A ｜  **金牛奖得主**\n<font color='grey'>销售部门精钢零件销售冠军🥇</font>",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'> 1198 万</font>**\n<font color='grey'> 本月业绩</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'>+11.2% </font>**\n<font color='grey'> 较上月份</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'>+34.7% </font>**\n<font color='grey'> 较上季度</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px -2px"
+                                }
+                            ],
+                            "padding": "8px 0px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 5
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "background_style": "grey-100",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "scale_type": "crop_center",
+                                    "alt": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "corner_radius": "6px"
+                                }
+                            ],
+                            "padding": "12px 0px 0px 10px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "销售顾问 B ｜ **实力开拓者**\n<font color='grey'>销售部门精钢零件销售亚军🥈</font>",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'> 975 万</font>**\n<font color='grey'> 本月业绩</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='green'>-0.52%</font>**\n<font color='grey'> 较上月份</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'>+13.9%</font>**\n<font color='grey'> 较上季度</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px -2px"
+                                }
+                            ],
+                            "padding": "8px 0px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 5
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "background_style": "grey-100",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": true,
+                                    "scale_type": "crop_center",
+                                    "alt": {
+                                        "tag": "plain_text",
+                                        "content": ""
+                                    },
+                                    "corner_radius": "6px"
+                                }
+                            ],
+                            "padding": "12px 0px 0px 10px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "销售顾问 C ｜ **业务坚守标兵**\n<font color='grey'>销售部门精钢零件销售季军🥉</font>",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'> 798 万</font>**\n<font color='grey'> 本月业绩</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'>+8.2%</font>**\n<font color='grey'> 较上月份</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**<font color='red'>+5.8%</font>**\n<font color='grey'> 较上季度</font>",
+                                                    "text_align": "left",
+                                                    "text_size": "normal"
+                                                }
+                                            ],
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px -2px"
+                                }
+                            ],
+                            "padding": "8px 0px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 5
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "2024 年 05 月销售部门业绩排行榜来啦 🎉🎉🎉"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "grey",
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

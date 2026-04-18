@@ -1,0 +1,115 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "16px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "20px 20px 20px 20px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "transparent": false,
+                    "scale_type": "crop_center",
+                    "size": "21:8",
+                    "alt": {
+                        "tag": "plain_text",
+                        "content": ""
+                    },
+                    "corner_radius": "6px",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": ":GeneralSun: 为了提供更加多元便捷的快递取件服务，智能快递柜上线啦！让收包裹的喜悦快马加鞭来到你身边~",
+                    "text_align": "left",
+                    "text_size": "normal_v2"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "background_style": "grey-100",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">📍 具体位置</font>\n办公园区智能快递柜服务点",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "background_style": "grey-100",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">🚚 取件方式</font>\n✔️工卡刷卡  ✔️飞书扫码  ✔️取件码取件",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "号外号外！智能快递柜正式入驻办公园区啦！"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": "24h 自助取件，方便快捷~"
+            },
+            "template": "blue",
+            "icon": {
+                "tag": "standard_icon",
+                "token": "bell_filled"
+            },
+            "padding": "12px 12px 12px 20px"
+        }
+    }
+}

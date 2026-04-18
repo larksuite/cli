@@ -1,0 +1,334 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                },
+                "color": {
+                    "color_cfmb5ym9qe5": {
+                        "light_mode": "rgba(45, 45, 45, 0.01)",
+                        "dark_mode": "rgba(221, 220, 220, 0.01)"
+                    },
+                    "color_m15uj3qb5s": {
+                        "light_mode": "rgba(247, 249, 255, 1)",
+                        "dark_mode": "rgba(10, 18, 41, 1)"
+                    },
+                    "color_fnqkyskz9bf": {
+                        "light_mode": "rgba(45, 45, 45, 0.01)",
+                        "dark_mode": "rgba(221, 220, 220, 0.01)"
+                    },
+                    "color_3o25f1yylor": {
+                        "light_mode": "rgba(247, 249, 255, 1)",
+                        "dark_mode": "rgba(10, 18, 41, 1)"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "0px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "0px 0px 0px 0px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "transparent": true,
+                    "scale_type": "fit_horizontal",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey-600\">LarkDesign AI Platform</font>",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "16px 0px 0px 20px",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "premium-gleam_filled",
+                                        "color": "light_grey"
+                                    }
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "weighted",
+                                            "elements": [
+                                                {
+                                                    "tag": "repeat",
+                                                    "variable": "object_img",
+                                                    "elements": [
+                                                        {
+                                                            "tag": "interactive_container",
+                                                            "width": "fill",
+                                                            "height": "auto",
+                                                            "corner_radius": "8px",
+                                                            "elements": [
+                                                                {
+                                                                    "tag": "column_set",
+                                                                    "flex_mode": "stretch",
+                                                                    "horizontal_spacing": "8px",
+                                                                    "horizontal_align": "left",
+                                                                    "columns": [
+                                                                        {
+                                                                            "tag": "column",
+                                                                            "width": "weighted",
+                                                                            "elements": [
+                                                                                {
+                                                                                    "tag": "markdown",
+                                                                                    "content": "${object_img.title}",
+                                                                                    "text_align": "left",
+                                                                                    "text_size": "normal_v2",
+                                                                                    "margin": "0px 0px 0px 0px"
+                                                                                },
+                                                                                {
+                                                                                    "tag": "markdown",
+                                                                                    "content": "${object_img.list_content}",
+                                                                                    "text_align": "left",
+                                                                                    "text_size": "normal_v2",
+                                                                                    "margin": "0px 0px 0px 0px"
+                                                                                }
+                                                                            ],
+                                                                            "padding": "0px 0px 0px 0px",
+                                                                            "direction": "vertical",
+                                                                            "horizontal_spacing": "8px",
+                                                                            "vertical_spacing": "8px",
+                                                                            "horizontal_align": "left",
+                                                                            "vertical_align": "top",
+                                                                            "margin": "0px 0px 0px 0px",
+                                                                            "weight": 3
+                                                                        },
+                                                                        {
+                                                                            "tag": "column",
+                                                                            "width": "weighted",
+                                                                            "elements": [
+                                                                                {
+                                                                                    "tag": "img",
+                                                                                    "img_key": "${object_img.img}",
+                                                                                    "preview": true,
+                                                                                    "transparent": false,
+                                                                                    "scale_type": "fit_horizontal",
+                                                                                    "corner_radius": "12px",
+                                                                                    "margin": "0px 0px 0px 0px"
+                                                                                }
+                                                                            ],
+                                                                            "padding": "0px 0px 0px 0px",
+                                                                            "vertical_spacing": "8px",
+                                                                            "horizontal_align": "left",
+                                                                            "vertical_align": "top",
+                                                                            "margin": "0px 0px 0px 0px",
+                                                                            "weight": 1
+                                                                        }
+                                                                    ],
+                                                                    "margin": "0px 0px 0px 0px"
+                                                                }
+                                                            ],
+                                                            "has_border": false,
+                                                            "background_style": "color_fnqkyskz9bf",
+                                                            "behaviors": [
+                                                                {
+                                                                    "type": "callback",
+                                                                    "value": "view_detail"
+                                                                }
+                                                            ],
+                                                            "padding": "8px 8px 8px 8px",
+                                                            "direction": "vertical",
+                                                            "horizontal_spacing": "8px",
+                                                            "vertical_spacing": "8px",
+                                                            "horizontal_align": "left",
+                                                            "vertical_align": "top",
+                                                            "margin": "8px 12px 8px 12px"
+                                                        }
+                                                    ]
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "0px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px",
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "margin": "0px 8px 8px 8px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "-40px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "background_style": "color_3o25f1yylor",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "52px",
+                            "elements": [
+                                {
+                                    "tag": "img",
+                                    "img_key": "xxx",
+                                    "preview": false,
+                                    "transparent": false,
+                                    "scale_type": "crop_center",
+                                    "size": "small",
+                                    "corner_radius": "100%",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**五条 AI Daily**\n<font color=\"grey-600\">每天精选最真实的AI新知</font>",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "8px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 2
+                        },
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "auto",
+                                            "elements": [
+                                                {
+                                                    "tag": "button",
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": ""
+                                                    },
+                                                    "type": "text",
+                                                    "width": "fill",
+                                                    "size": "large",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "subscribe_outlined"
+                                                    },
+                                                    "hover_tips": {
+                                                        "tag": "plain_text",
+                                                        "content": "订阅，可每天收到推送"
+                                                    },
+                                                    "behaviors": [
+                                                        {
+                                                            "type": "callback",
+                                                            "value": "subscribe"
+                                                        }
+                                                    ],
+                                                    "margin": "0px 0px 0px 0px"
+                                                },
+                                                {
+                                                    "tag": "button",
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": ""
+                                                    },
+                                                    "type": "text",
+                                                    "width": "fill",
+                                                    "size": "large",
+                                                    "icon": {
+                                                        "tag": "standard_icon",
+                                                        "token": "bonus-payroll_outlined"
+                                                    },
+                                                    "hover_tips": {
+                                                        "tag": "plain_text",
+                                                        "content": "打赏，给 5 条买点狗粮"
+                                                    },
+                                                    "behaviors": [
+                                                        {
+                                                            "type": "callback",
+                                                            "value": "donation"
+                                                        }
+                                                    ],
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "horizontal",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "bottom",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "margin": "15px 15px 15px 15px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px"
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        }
+    }
+}

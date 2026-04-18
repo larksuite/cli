@@ -1,0 +1,154 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "horizontal_spacing": "8px",
+            "vertical_spacing": "16px",
+            "horizontal_align": "left",
+            "vertical_align": "top",
+            "padding": "16px 16px 16px 16px",
+            "elements": [
+                {
+                    "tag": "img",
+                    "img_key": "xxx",
+                    "preview": true,
+                    "transparent": false,
+                    "scale_type": "crop_center",
+                    "size": "21:9",
+                    "corner_radius": "6px",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": ":FIREWORKS: 热烈祝贺 **华南区** 再下一城！其它区域的小伙伴们也要加油哦~~~",
+                    "text_align": "left",
+                    "text_size": "normal",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "background_style": "grey-100",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">订单金额</font>\n##### 1000万",
+                                    "text_align": "left",
+                                    "text_size": "normal_v2"
+                                }
+                            ],
+                            "padding": "8px 16px 8px 16px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "2px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "background_style": "grey-100",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "售前区域\n##### 华南区",
+                                    "text_align": "left",
+                                    "text_size": "notation"
+                                }
+                            ],
+                            "padding": "8px 16px 8px 16px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "2px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "background_style": "grey-100",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "赢单售前\n##### <at id=all></at>",
+                                    "text_align": "left",
+                                    "text_size": "notation"
+                                }
+                            ],
+                            "padding": "8px 16px 8px 16px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "2px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": ":Trophy:  每一个客户的成功都离不开各团队的紧密配合！",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": ":LOVE:  衷心感谢在此项目中付出的各位同事和幕后英雄们！",
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "<font color=\"grey-600\">[机密] 请注意信息安全，严禁外传</font>",
+                    "text_align": "left",
+                    "text_size": "notation",
+                    "margin": "0px 0px 0px 8px",
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "lowerhand_outlined",
+                        "color": "light_grey"
+                    }
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "👏 恭喜飞书科技有限公司正式签约 "
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "green",
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

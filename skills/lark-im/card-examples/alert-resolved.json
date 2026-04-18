@@ -1,0 +1,163 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "locales": [
+                "en_us"
+            ],
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">告警内容</font>\n移动端打开异常率达到5%",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Alert details</font>\nMobile client crash rate at 5%"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">错误信息</font>\n服务请求数量过多，超出限频",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Diagnostic info</font>\nService request volume exceeds rate limit"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">告警等级</font>\nP0",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Priority level</font>\nP0"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=\"grey\">告警时间</font>\n${alarm_time}",
+                                    "i18n_content": {
+                                        "en_us": "<font color=\"grey\">Incident time</font>\n${alarm_time}"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "hr",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "<font color=\"grey\">处理进展</font>",
+                    "i18n_content": {
+                        "en_us": "<font color=\"grey\">Action taken</font>"
+                    },
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "markdown",
+                    "content": "<person id=\"${open_id}\" show_avatar=\"true\" show_name=\"true\" style=\"medium\"> </person>  ${complete_time} &nbsp;已处理  ${notes}",
+                    "i18n_content": {
+                        "en_us": "<person id=\"${open_id}\" show_avatar=\"true\" show_name=\"true\" style=\"medium\"></person>  ${complete_time} Resolved ${notes}"
+                    },
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "1px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "[已处理] 告警通知：操作执行出错请及时处理",
+                "i18n_content": {
+                    "en_us": "[Resolved] Alert: Process Error - Please Address Promptly",
+                    "ja_jp": "注文確認待ち"
+                }
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "green",
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

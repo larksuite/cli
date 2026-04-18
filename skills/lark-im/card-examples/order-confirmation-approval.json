@@ -1,0 +1,462 @@
+{
+    "msg_type": "interactive",
+    "card": {
+        "schema": "2.0",
+        "config": {
+            "update_multi": true,
+            "locales": [
+                "en_us",
+                "ja_jp"
+            ],
+            "style": {
+                "text_size": {
+                    "normal_v2": {
+                        "default": "normal",
+                        "pc": "normal",
+                        "mobile": "heading"
+                    }
+                }
+            }
+        },
+        "card_link": {
+            "url": ""
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 12px 12px",
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": "尊敬的客户：\n请于**${order_ddl_time}** 前确认订单。确认后，即可在服务开始时间使用产品并申请开票。",
+                    "i18n_content": {
+                        "en_us": "Dear Customer：\nPlease confirm the order before**${order_ddl_time}** After confirmation, you can use the product from the start of the service period and apply for invoicing.",
+                        "ja_jp": "**${order_ddl_time}**　までに注文を確認してください。確認後、サービス開始時に製品を使用し、請求を申請することができます。"
+                    },
+                    "text_align": "left",
+                    "text_size": "normal_v2",
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "background_style": "grey-100",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "飞书商业标准版, 100账号, 1年",
+                                    "i18n_content": {
+                                        "en_us": "Feishu Business Standard Edition, 100 accounts, 1 year",
+                                        "ja_jp": "飛書ビジネス標準版、100アカウント、1年"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "飞书项目商业版, 50账号, 1年",
+                                    "i18n_content": {
+                                        "en_us": "Feishu Project Business Edition, 50 accounts, 1 year",
+                                        "ja_jp": "飛書プロジェクトビジネス版、50アカウント、1年"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "markdown",
+                                    "content": "[赠品]飞书项目商业版, 50账号, 1个月",
+                                    "i18n_content": {
+                                        "en_us": "[Free Gift] Feishu Project Business Edition, 50 accounts, 1 month",
+                                        "ja_jp": "[プレゼント] 飛書プロジェクトビジネス版、50アカウント、1ヶ月"
+                                    },
+                                    "text_align": "left",
+                                    "text_size": "normal_v2",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "hr",
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "72px",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**订单金额**",
+                                                    "i18n_content": {
+                                                        "en_us": "Order Amount",
+                                                        "ja_jp": "注文金額"
+                                                    },
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2",
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "auto",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "**${order_price}**",
+                                                    "text_align": "right",
+                                                    "text_size": "normal_v2",
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "72px",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "票款顺序",
+                                                    "i18n_content": {
+                                                        "en_us": "Invoicing Sequence",
+                                                        "ja_jp": "請求順序"
+                                                    },
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2",
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "auto",
+                                            "elements": [
+                                                {
+                                                    "tag": "div",
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "先票后款",
+                                                        "i18n_content": {
+                                                            "en_us": "Invoice First, Payment After",
+                                                            "ja_jp": "請求書優先、支払いは後"
+                                                        },
+                                                        "text_size": "normal_v2",
+                                                        "text_align": "right",
+                                                        "text_color": "default"
+                                                    },
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "72px",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "支付账期",
+                                                    "i18n_content": {
+                                                        "en_us": "Payment Term",
+                                                        "ja_jp": "支払い条件"
+                                                    },
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2",
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "auto",
+                                            "elements": [
+                                                {
+                                                    "tag": "div",
+                                                    "text": {
+                                                        "tag": "plain_text",
+                                                        "content": "14 天 (自服务开始时间起)",
+                                                        "i18n_content": {
+                                                            "en_us": "Invoice First, Payment After",
+                                                            "ja_jp": "請求書優先、支払いは後"
+                                                        },
+                                                        "text_size": "normal_v2",
+                                                        "text_align": "right",
+                                                        "text_color": "default"
+                                                    },
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px 0px"
+                                },
+                                {
+                                    "tag": "column_set",
+                                    "horizontal_spacing": "8px",
+                                    "horizontal_align": "left",
+                                    "columns": [
+                                        {
+                                            "tag": "column",
+                                            "width": "72px",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "支付频率",
+                                                    "i18n_content": {
+                                                        "en_us": "Payment Frequency",
+                                                        "ja_jp": "支払い頻度"
+                                                    },
+                                                    "text_align": "left",
+                                                    "text_size": "normal_v2",
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "direction": "vertical",
+                                            "horizontal_spacing": "8px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        },
+                                        {
+                                            "tag": "column",
+                                            "width": "auto",
+                                            "elements": [
+                                                {
+                                                    "tag": "markdown",
+                                                    "content": "按年支付",
+                                                    "i18n_content": {
+                                                        "en_us": "Annually",
+                                                        "ja_jp": "年払い"
+                                                    },
+                                                    "text_align": "right",
+                                                    "text_size": "normal_v2",
+                                                    "margin": "0px 0px 0px 0px"
+                                                }
+                                            ],
+                                            "padding": "0px 0px 0px 0px",
+                                            "vertical_spacing": "8px",
+                                            "horizontal_align": "left",
+                                            "vertical_align": "top",
+                                            "margin": "0px 0px 0px 0px"
+                                        }
+                                    ],
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "8px 8px 8px 8px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "租户名称：\n",
+                                        "i18n_content": {
+                                            "en_us": "tenant：",
+                                            "ja_jp": "テナント："
+                                        },
+                                        "text_size": "normal_v2",
+                                        "text_align": "left",
+                                        "text_color": "default"
+                                    },
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "Feishu",
+                                        "text_size": "normal_v2",
+                                        "text_align": "left",
+                                        "text_color": "default"
+                                    },
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "top",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "立即确认",
+                                        "i18n_content": {
+                                            "ja_jp": "すぐに確認",
+                                            "en_us": "Confirm Now"
+                                        }
+                                    },
+                                    "type": "primary_filled",
+                                    "width": "default",
+                                    "size": "medium",
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px"
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "点击前往 \"管理后台>费用中心“ 查看更多信息",
+                                        "i18n_content": {
+                                            "en_us": "Click to go to \"Management Console > Billing Center\" for more information.\n",
+                                            "ja_jp": "管理コンソール > 請求センター」に移動して詳細を確認してください。"
+                                        },
+                                        "text_size": "notation",
+                                        "text_align": "left",
+                                        "text_color": "grey"
+                                    },
+                                    "margin": "0px 0px 0px 0px"
+                                }
+                            ],
+                            "padding": "0px 0px 0px 0px",
+                            "direction": "vertical",
+                            "horizontal_spacing": "8px",
+                            "vertical_spacing": "8px",
+                            "horizontal_align": "left",
+                            "vertical_align": "center",
+                            "margin": "0px 0px 0px 0px",
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "0px 0px 0px 0px"
+                }
+            ]
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": "您有订单待确认",
+                "i18n_content": {
+                    "en_us": "You Have an Order Pending Confirmation",
+                    "ja_jp": "注文確認待ち"
+                }
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "orange",
+            "padding": "12px 12px 12px 12px"
+        }
+    }
+}

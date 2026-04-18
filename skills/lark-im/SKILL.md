@@ -50,6 +50,10 @@ When using bot identity (`--as bot`) to fetch messages (e.g. `+chat-messages-lis
 
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
 
+**MANDATORY READ BEFORE SENDING/REPLYING TO INTERACTIVE CARD MESSAGES:**
+- [`+messages-send`](references/lark-im-messages-send.md) - Detailed guide for sending messages, including interactive cards. **Must read before any card operations**
+- [`+messages-reply`](references/lark-im-messages-reply.md) - Detailed guide for replying to messages, including interactive cards. **Must read before any card operations**
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。有 Shortcut 的操作优先使用。
