@@ -61,6 +61,28 @@ func TestBootstrapInvocationContext_ShortHelp(t *testing.T) {
 	}
 }
 
+func TestBootstrapInvocationContext_EnvVarFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "env-profile")
+	inv, err := BootstrapInvocationContext([]string{"auth", "status"})
+	if err != nil {
+		t.Fatalf("BootstrapInvocationContext() error = %v", err)
+	}
+	if inv.Profile != "env-profile" {
+		t.Fatalf("profile = %q, want %q", inv.Profile, "env-profile")
+	}
+}
+
+func TestBootstrapInvocationContext_FlagOverridesEnvVar(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "env-profile")
+	inv, err := BootstrapInvocationContext([]string{"--profile", "flag-profile", "auth", "status"})
+	if err != nil {
+		t.Fatalf("BootstrapInvocationContext() error = %v", err)
+	}
+	if inv.Profile != "flag-profile" {
+		t.Fatalf("profile = %q, want %q", inv.Profile, "flag-profile")
+	}
+}
+
 func TestBootstrapInvocationContext_HelpWithProfile(t *testing.T) {
 	inv, err := BootstrapInvocationContext([]string{"--profile", "target", "--help"})
 	if err != nil {
