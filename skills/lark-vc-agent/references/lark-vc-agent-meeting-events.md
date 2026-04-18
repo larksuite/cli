@@ -19,8 +19,8 @@ lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --start 2026-04-17T15
 # 基于上一次保存的 page_token 继续查新增事件
 lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-token <last_page_token> --page-all --format pretty
 
-# 调试或控制返回体大小时，显式限制最多翻 10 页
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-limit 10 --format json
+# 调试或控制返回体大小时，显式只查一页
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-size 20 --format json
 
 # 预览 API 调用（不实际请求）
 lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --dry-run
@@ -35,8 +35,7 @@ lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 | `--end <time>` | 否 | 结束时间，支持 ISO 8601 / `YYYY-MM-DD` / Unix 秒 |
 | `--page-token <token>` | 否 | 从指定分页游标继续拉取下一页 |
 | `--page-size <n>` | 否 | 单页模式每页大小。CLI 会自动夹紧到 `20-100`；传 `--page-all` 时固定使用 `100` |
-| `--page-limit <n>` | 否 | 自动分页最大页数。设置该参数会开启自动分页 |
-| `--page-all` | 否 | 自动分页，并在未显式指定 `--page-limit` 时使用最大页上限 |
+| `--page-all` | 否 | 自动分页，直到没有更多页面为止（内部有安全上限） |
 | `--format <fmt>` | 否 | 输出格式：json (CLI 默认) / pretty（本 skill 推荐默认） / table / ndjson / csv |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
@@ -81,10 +80,9 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 ### 4. 自动分页规则
 
 - **先分清两层默认值**：
-  - shortcut 本身：不传 `--page-all` / `--page-limit` 时，只查 1 页。
-  - 本 skill 的默认策略：除非用户明确要求只看一页、限制页数，或你确实需要控制返回体大小，否则默认**必须主动带 `--page-all`**，把当前可见事件尽量一次拉全。
-- 传 `--page-limit N`：开启自动分页，最多拉 `N` 页。
-- 传 `--page-all`：开启自动分页；若未显式传 `--page-limit`，使用最大页上限。
+  - shortcut 本身：不传 `--page-all` 时，只查 1 页。
+  - 本 skill 的默认策略：除非用户明确要求只看一页，或你确实需要控制返回体大小，否则默认**必须主动带 `--page-all`**，把当前可见事件尽量一次拉全。
+- 传 `--page-all`：开启自动分页，直到没有更多页面为止。
 - `--page-all` 时，CLI 固定使用最大 `page_size=100`。
 
 执行准则：
@@ -92,7 +90,7 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 - **默认命令模板**：`lark-cli vc +meeting-events --meeting-id <meeting.id> --page-all --format pretty`
 - 如果你发现自己执行成了不带 `--page-all` 的单页查询，而响应里又出现 `has_more=true` / `more available` / 非空 `page_token`，应立刻意识到这只是部分结果。
 - 遇到上述情况，默认补救方式是继续使用返回的 `page_token` 续拉，例如：`lark-cli vc +meeting-events --meeting-id <meeting.id> --page-token <returned_page_token> --page-all --format pretty`
-- 只有在用户明确要求“就看第一页”“先不要翻页”“最多看 N 页”时，才不要默认带 `--page-all`
+- 只有在用户明确要求“就看第一页”“先不要翻页”时，才不要默认带 `--page-all`
 
 ### 5. pretty / json 输出差异
 
@@ -105,7 +103,7 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 
 ### 6. 关于 `page_token` 的返回与续拉
 
-- 不管这次是只查 1 页，还是通过 `--page-limit` / `--page-all` 已经把当前可见事件都拿完，都应把最后拿到的 `page_token` 一并保留下来并返回给用户。
+- 不管这次是只查 1 页，还是通过 `--page-all` 已经把当前可见事件都拿完，都应把最后拿到的 `page_token` 一并保留下来并返回给用户。
 - 只要响应里出现 `has_more=true`、pretty 里出现 `more available`，或返回了非空 `page_token`，就必须先判断当前结果是否完整；默认情况下，这意味着你还需要继续分页。
 - 如果没有使用 `--page-all`，但出现了上述分页信号，默认应继续用返回的 `page_token` 拉下一页，而不是直接结束。只有在用户明确不要继续翻页时，才可以停止并明确说明当前结果不完整。
 - 下次继续“查新增事件”时，应优先复用上一次保存的 `page_token`，而不是从头全量再拉一次。
@@ -199,7 +197,6 @@ lark-cli vc +meeting-events \
 | 错误现象 | 根本原因 | 解决方案 |
 |---------|---------|---------|
 | `--meeting-id is required` | 未传入 `--meeting-id` | 传入长数字 `meeting.id` |
-| `invalid --page-limit` | `page-limit` 小于 1 或超过上限 | 调整到允许范围内 |
 | `10005 bot is not in meeting` | bot 从未真实入会该会议；或会议已结束但 bot 从未在会中出现过 | 先 `+meeting-join --meeting-number <9位号>` 真实入会再查；如果会议已经结束且当时 bot 没进过会，本接口也拉不到数据。**如果只是想看参会人快照，改用 `vc meeting get --with-participants`**（不依赖 bot 身份参会） |
 | `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人请用 `vc meeting get --with-participants` |
 | `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |

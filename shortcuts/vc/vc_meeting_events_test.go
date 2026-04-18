@@ -23,7 +23,6 @@ func newMeetingEventsRuntime() *common.RuntimeContext {
 	cmd.Flags().String("page-token", "", "")
 	cmd.Flags().String("page-size", "", "")
 	cmd.Flags().Bool("page-all", false, "")
-	cmd.Flags().Int("page-limit", 50, "")
 	return common.TestNewRuntimeContext(cmd, defaultConfig())
 }
 
@@ -290,20 +289,6 @@ func TestMeetingEvents_Validation_PageAllIgnoresInvalidPageSize(t *testing.T) {
 	}
 }
 
-func TestMeetingEvents_Validation_InvalidPageLimit(t *testing.T) {
-	runtime := newMeetingEventsRuntime()
-	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
-	_ = runtime.Cmd.Flags().Set("page-limit", "201")
-
-	err := VCMeetingEvents.Validate(context.Background(), runtime)
-	if err == nil {
-		t.Fatal("expected validation error for invalid page limit")
-	}
-	if !strings.Contains(err.Error(), "must be between 1 and 200") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestBuildMeetingEventsParams(t *testing.T) {
 	runtime := newMeetingEventsRuntime()
 	_ = runtime.Cmd.Flags().Set("meeting-id", "7628568141510692381")
@@ -418,7 +403,7 @@ func TestMeetingEvents_DryRun_PageAllUsesMaxLimit(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "Auto-paginates up to 200 page(s)") {
+	if !strings.Contains(stdout.String(), "Auto-paginates through all available pages") {
 		t.Fatalf("dry-run output missing auto-pagination description: %s", stdout.String())
 	}
 }
@@ -433,7 +418,6 @@ func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 		"--meeting-id", "7628568141510692381",
 		"--format", "json",
 		"--page-all",
-		"--page-limit", "2",
 		"--as", "user",
 	}, f, stdout)
 	if err != nil {
@@ -448,30 +432,6 @@ func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 	}
 	if !strings.Contains(out, `"has_more":false`) {
 		t.Fatalf("expected final has_more=false: %s", stdout.String())
-	}
-}
-
-func TestMeetingEvents_ExecuteJSON_PageLimitEnablesPagination(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "pt_2"))
-	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, false, ""))
-
-	err := mountAndRun(t, VCMeetingEvents, []string{
-		"+meeting-events",
-		"--meeting-id", "7628568141510692381",
-		"--format", "json",
-		"--page-limit", "2",
-		"--as", "user",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	reg.Verify(t)
-
-	out := strings.ReplaceAll(stdout.String(), " ", "")
-	out = strings.ReplaceAll(out, "\n", "")
-	if count := strings.Count(out, `"event_type":"participant_joined"`); count != 2 {
-		t.Fatalf("expected 2 aggregated events, got %d: %s", count, stdout.String())
 	}
 }
 

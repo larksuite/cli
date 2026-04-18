@@ -25,8 +25,7 @@ const (
 	defaultVCMeetingEventsSize = 20
 	minVCMeetingEventsPageSize = 20
 	maxVCMeetingEventsPageSize = 100
-	defaultVCMeetingPageLimit  = 50
-	maxVCMeetingPageLimit      = 200
+	maxVCMeetingEventsPages    = 200
 )
 
 // toUnixSeconds converts a supported CLI time input into a Unix seconds string.
@@ -56,17 +55,13 @@ var VCMeetingEvents = common.Shortcut{
 		{Name: "end", Desc: "time upper bound (ISO 8601, YYYY-MM-DD, or Unix seconds)"},
 		{Name: "page-token", Desc: "page token for the next page"},
 		{Name: "page-size", Default: "20", Desc: "page size, 20-100 (default 20)"},
-		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (uses max page limit 200 unless --page-limit is set)"},
-		{Name: "page-limit", Type: "int", Default: "50", Desc: "max pages to fetch during auto-pagination; setting this flag also enables auto-pagination (default 50, max 200)"},
+		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all available pages"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateMeetingEventsMeetingID(runtime.Str("meeting-id")); err != nil {
 			return err
 		}
 		if _, _, err := parseMeetingEventsTimeRange(runtime); err != nil {
-			return err
-		}
-		if _, err := meetingEventsPageLimit(runtime); err != nil {
 			return err
 		}
 		return nil
@@ -80,13 +75,9 @@ var VCMeetingEvents = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		autoPaginate, pageLimit, err := meetingEventsPaginationConfig(runtime)
-		if err != nil {
-			return common.NewDryRunAPI().Set("error", err.Error())
-		}
 		dryRun := common.NewDryRunAPI()
-		if autoPaginate {
-			dryRun = dryRun.Desc(fmt.Sprintf("Auto-paginates up to %d page(s)", pageLimit))
+		if runtime.Bool("page-all") {
+			dryRun = dryRun.Desc("Auto-paginates through all available pages")
 		}
 		dryRun = dryRun.GET(vcMeetingEventsAPIPath)
 		if flat := flattenQueryParams(params); len(flat) > 0 {
@@ -149,30 +140,11 @@ func meetingEventsPageSize(runtime *common.RuntimeContext) (int, error) {
 	return pageSize, nil
 }
 
-func meetingEventsPageLimit(runtime *common.RuntimeContext) (int, error) {
-	limit := runtime.Int("page-limit")
-	if limit == 0 && !runtime.Cmd.Flags().Changed("page-limit") {
-		return defaultVCMeetingPageLimit, nil
+func meetingEventsPaginationConfig(runtime *common.RuntimeContext) (bool, int) {
+	if !runtime.Bool("page-all") {
+		return false, 0
 	}
-	if limit < 1 || limit > maxVCMeetingPageLimit {
-		return 0, common.FlagErrorf("invalid --page-limit %d: must be between 1 and %d", limit, maxVCMeetingPageLimit)
-	}
-	return limit, nil
-}
-
-func meetingEventsPaginationConfig(runtime *common.RuntimeContext) (autoPaginate bool, pageLimit int, err error) {
-	pageLimit, err = meetingEventsPageLimit(runtime)
-	if err != nil {
-		return false, 0, err
-	}
-	autoPaginate = runtime.Bool("page-all")
-	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		autoPaginate = true
-	}
-	if runtime.Bool("page-all") && (runtime.Cmd == nil || !runtime.Cmd.Flags().Changed("page-limit")) {
-		pageLimit = maxVCMeetingPageLimit
-	}
-	return autoPaginate, pageLimit, nil
+	return true, maxVCMeetingEventsPages
 }
 
 func validateMeetingEventsMeetingID(meetingID string) error {
@@ -246,10 +218,7 @@ func fetchMeetingEvents(ctx context.Context, runtime *common.RuntimeContext, sta
 	if err != nil {
 		return nil, nil, false, "", err
 	}
-	autoPaginate, pageLimit, err := meetingEventsPaginationConfig(runtime)
-	if err != nil {
-		return nil, nil, false, "", err
-	}
+	autoPaginate, pageLimit := meetingEventsPaginationConfig(runtime)
 	if !autoPaginate {
 		data, err := runtime.DoAPIJSON(http.MethodGet, vcMeetingEventsAPIPath, params, nil)
 		if err != nil {
