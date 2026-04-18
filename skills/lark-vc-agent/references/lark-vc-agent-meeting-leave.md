@@ -102,9 +102,11 @@ lark-cli vc +notes --meeting-ids <meeting.id>
 
 ## 参考
 
-- [lark-vc-meeting-join](lark-vc-meeting-join.md) — 对应的入会命令
-- [lark-vc-search](lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
-- [lark-vc-recording](lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-notes](lark-vc-notes.md) — 获取会议纪要
-- [lark-vc](../SKILL.md) — 视频会议全部命令
+- [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 对应的入会命令
+- [lark-vc-agent-meeting-events](lark-vc-agent-meeting-events.md) — 会中事件流
+- [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
+- [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
+- [lark-vc-notes](../../lark-vc/references/lark-vc-notes.md) — 获取会议纪要
+- [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
+- [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
