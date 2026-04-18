@@ -70,27 +70,19 @@ func (i *Interceptor) PreRoundTrip(req *http.Request) func(resp *http.Response, 
 		return nil // not a sidecar-managed request, pass through
 	}
 
-	// 1. Save original target (scheme://host)
-	originalScheme := "https"
-	if req.URL.Scheme != "" {
-		originalScheme = req.URL.Scheme
-	}
-	originalHost := req.URL.Host
-	req.Header.Set(sidecar.HeaderProxyTarget, originalScheme+"://"+originalHost)
-
-	// 2. Set identity and tell sidecar which header to inject real token into
-	req.Header.Set(sidecar.HeaderProxyIdentity, identity)
-	req.Header.Set(sidecar.HeaderProxyAuthHeader, authHeader)
-
-	// 3. Strip placeholder auth header(s)
-	req.Header.Del("Authorization")
-	req.Header.Del(sidecar.HeaderMCPUAT)
-	req.Header.Del(sidecar.HeaderMCPTAT)
-
-	// 4. Compute body digest and HMAC signature
+	// 1. Buffer the body first, before mutating any request state. A partial
+	// read would sign a truncated body and cause a misleading HMAC mismatch
+	// on the sidecar side; bail out early and let the request fall through
+	// unmodified so the credential layer can surface an actionable error.
 	var bodyBytes []byte
 	if req.Body != nil {
-		bodyBytes, _ = io.ReadAll(req.Body)
+		var err error
+		bodyBytes, err = io.ReadAll(req.Body)
+		_ = req.Body.Close() // release original body (fd/pipe/etc.) after buffering
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: sidecar interceptor failed to read request body: %v\n", err)
+			return nil
+		}
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		if req.GetBody != nil {
 			req.GetBody = func() (io.ReadCloser, error) {
@@ -98,6 +90,23 @@ func (i *Interceptor) PreRoundTrip(req *http.Request) func(resp *http.Response, 
 			}
 		}
 	}
+
+	// 2. Save original target (scheme://host)
+	originalScheme := "https"
+	if req.URL.Scheme != "" {
+		originalScheme = req.URL.Scheme
+	}
+	originalHost := req.URL.Host
+	req.Header.Set(sidecar.HeaderProxyTarget, originalScheme+"://"+originalHost)
+
+	// 3. Set identity and tell sidecar which header to inject real token into
+	req.Header.Set(sidecar.HeaderProxyIdentity, identity)
+	req.Header.Set(sidecar.HeaderProxyAuthHeader, authHeader)
+
+	// 4. Strip placeholder auth header(s)
+	req.Header.Del("Authorization")
+	req.Header.Del(sidecar.HeaderMCPUAT)
+	req.Header.Del(sidecar.HeaderMCPTAT)
 
 	bodySHA := sidecar.BodySHA256(bodyBytes)
 	req.Header.Set(sidecar.HeaderBodySHA256, bodySHA)

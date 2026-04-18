@@ -7,12 +7,30 @@ package sidecar
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
 
 	"github.com/larksuite/cli/internal/sidecar"
 )
+
+// failingBody is a ReadCloser that errors on Read and tracks Close calls.
+type failingBody struct {
+	err      error
+	closed   bool
+	readCall bool
+}
+
+func (b *failingBody) Read(p []byte) (int, error) {
+	b.readCall = true
+	return 0, b.err
+}
+
+func (b *failingBody) Close() error {
+	b.closed = true
+	return nil
+}
 
 func TestInterceptor_PreRoundTrip(t *testing.T) {
 	key := []byte("test-key-for-hmac-signing-32byte!")
@@ -177,6 +195,54 @@ func TestInterceptor_StandardAuth_SetsAuthorizationHeader(t *testing.T) {
 
 	if ah := req.Header.Get(sidecar.HeaderProxyAuthHeader); ah != "Authorization" {
 		t.Errorf("auth header = %q, want %q", ah, "Authorization")
+	}
+}
+
+// TestInterceptor_BodyReadError verifies that when io.ReadAll on the request
+// body fails partway, PreRoundTrip skips the rewrite entirely rather than
+// signing a truncated body (which would produce a misleading HMAC mismatch on
+// the sidecar side) and releases the original body.
+func TestInterceptor_BodyReadError(t *testing.T) {
+	interceptor := &Interceptor{key: []byte("key"), sidecarHost: "127.0.0.1:16384"}
+
+	const origURL = "https://open.feishu.cn/open-apis/im/v1/messages"
+	body := &failingBody{err: errors.New("disk gremlin")}
+
+	req, _ := http.NewRequest("POST", origURL, body)
+	req.Header.Set("Authorization", "Bearer "+sidecar.SentinelUAT)
+
+	post := interceptor.PreRoundTrip(req)
+
+	if post != nil {
+		t.Error("expected nil post hook on body read failure")
+	}
+
+	// Original body must be closed to avoid leaking fd/pipe-like resources.
+	if !body.readCall {
+		t.Error("expected ReadAll to have attempted reading from the body")
+	}
+	if !body.closed {
+		t.Error("expected original body to be Close()'d after read failure")
+	}
+
+	// URL must NOT be rewritten — request should fall through to the next
+	// layer (credential) which can surface a meaningful error.
+	if req.URL.String() != origURL {
+		t.Errorf("URL should be unchanged on read failure, got %q", req.URL.String())
+	}
+
+	// No proxy/HMAC headers should leak onto the request.
+	for _, h := range []string{
+		sidecar.HeaderProxyTarget,
+		sidecar.HeaderProxySignature,
+		sidecar.HeaderProxyTimestamp,
+		sidecar.HeaderBodySHA256,
+		sidecar.HeaderProxyIdentity,
+		sidecar.HeaderProxyAuthHeader,
+	} {
+		if v := req.Header.Get(h); v != "" {
+			t.Errorf("%s should not be set on read failure, got %q", h, v)
+		}
 	}
 }
 
