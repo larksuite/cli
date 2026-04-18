@@ -14,8 +14,7 @@ metadata:
 
 ## 核心概念
 
-- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting\_id 标识。
-- **会议记录（Meeting Record）**：视频会议结束后生成的记录，支持通过关键词、时间段、参会人、组织者、会议室等筛选条件搜索会议室。
+- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting\_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索（见 `+search`）。
 - **会议纪要（Note）**：视频会议结束后生成的结构化文档，包含纪要文档（包含总结、待办、章节）和逐字稿文档。
 - **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写和会议纪要，通过 minute\_token 标识。
 - **纪要文档（MainDoc）**：AI 智能纪要的主文档，包含 AI 生成的总结和待办，对应 `note_doc_token`。
@@ -76,10 +75,28 @@ lark-cli docs +fetch --doc <doc_token>
 ### 5. 查询会中事件列表（读操作）
 1. 用户要求查看“会议里发生了什么”“谁加入/离开了会议”“聊天记录事件”“共享开始/结束”“转写事件”等会中时间线时，优先使用 `+meeting-events`。
 2. `+meeting-events` 的输入是 **meeting_id**（长数字 ID），不是 9 位会议号。
-3. 该命令是**读操作**，但后端要求当前 bot 仍在会中；若 bot 已离会，接口会报 `bot is not in meeting`。
+3. 该命令是**读操作**，但后端要求当前 bot 仍在会中；若 bot 已离会，接口会报 `bot is not in meeting`（`10005`）；会议已结束会报 `meeting_status_MEETING_END`（`20001`）。这个接口**不能做会后复盘**。
 4. `+meeting-events` 默认查 1 页；需要自动翻页时可使用 `--page-limit` 或 `--page-all`。
 5. 默认优先使用 `--format pretty`，因为 `json` 返回体通常比 pretty 大很多；只有在需要完整原始事件结构时再使用 `--format json`。
 6. 即使这次已经拿全，也应一并返回最后拿到的 `page_token`（若有），方便下次继续增量拉取，而不是每次都从头开始。
+
+### 6. 查询参会人快照（读操作）
+
+用户问“谁参加过这场会议”“这个会议有哪些参会人”“某某参会了吗”等**参会人快照**类问题时，**不要**默认用 `+meeting-events`——它要求 bot 参会过该会议且会议进行中，对已结束会议或 bot 没入会的会议直接不可用。
+
+正确抓手是 **`vc meeting get --with-participants`**：这是参会人服务端快照 API，不依赖 bot 身份参会，**已结束会议也可查**：
+
+```bash
+lark-cli vc meeting get --params '{"meeting_id":"<meeting_id>","with_participants":true}'
+```
+
+选型判断表：
+
+| 用户意图 | 推荐命令 | 为什么 |
+|---------|---------|--------|
+| 参会人快照（谁参加过、何时入/离会）| `vc meeting get --with-participants` | 任意时点可查，含已结束会议 |
+| 会中实时事件流（转写、聊天、共享）| `vc +meeting-events` | 仅 bot 参会且进行中有效 |
+| 已结束会议的发言内容 | `vc +notes` 取 `verbatim_doc_token` 再 `docs +fetch` | 逐字稿是会后产物 |
 
 ## 资源关系
 

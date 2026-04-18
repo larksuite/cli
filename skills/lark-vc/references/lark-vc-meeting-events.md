@@ -174,7 +174,9 @@ lark-cli vc +meeting-events \
 |---------|---------|---------|
 | `--meeting-id is required` | 未传入 `--meeting-id` | 传入长数字 `meeting.id` |
 | `invalid --page-limit` | `page-limit` 小于 1 或超过上限 | 调整到允许范围内 |
-| `bot is not in meeting` | bot 当前不在该会议中 | 先 `+meeting-join` 成功，再查事件 |
+| `10005 bot is not in meeting` | bot 从未真实入会该会议；或会中已离会 | 先 `+meeting-join --meeting-number <9位号>` 真实入会再查；**如果只是想看参会人快照，改用 `vc meeting get --with-participants`**（不依赖 bot 身份参会） |
+| `20001 meeting_status_MEETING_END` | 会议已结束，本接口不返回已结束会议的事件 | 本接口不支持会后复盘。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人请用 `vc meeting get --with-participants` |
+| `20002 meeting not exist` | `meeting_id` 错误（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
 | `HTTP 404` / `HTTP 500` | 服务端当前无法找到或处理该会议实例 | 换一个正在进行且 bot 可见的 meeting_id，或排查后端问题 |
 | `missing required scope(s)` | 未授权 `vc:meeting.meetingevent:read` | 按提示重新 `auth login` 补 scope |
 
@@ -183,6 +185,7 @@ lark-cli vc +meeting-events \
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `+search`。
 - 如果你只需要最终纪要、录制、逐字稿，不必查事件列表，直接用 `+notes` / `+recording`。
 - 事件列表是否完整，取决于 bot 何时入会、何时离会，以及后端当前可见的会中事件范围。
+- 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `+meeting-events` 做参会人查询。
 
 ## 参考
 
