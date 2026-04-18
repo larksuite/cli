@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"sort"
 )
 
@@ -17,13 +18,39 @@ var knownArrayFields = []string{
 	"members", "departments", "calendar_list", "acl_list", "freebusy_list",
 }
 
+// isSliceLike reports whether v is any kind of slice (e.g. []interface{},
+// []map[string]interface{}, []string, etc.), using reflect so that the
+// check is not limited to a single concrete slice type.
+func isSliceLike(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+	return reflect.TypeOf(v).Kind() == reflect.Slice
+}
+
+// toGenericSlice converts any slice type to []interface{} by re-boxing each
+// element. This only changes the outer container type; individual elements
+// retain their original dynamic type (e.g. map[string]interface{} stays as-is).
+// Returns nil if v is not a slice.
+func toGenericSlice(v interface{}) []interface{} {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Slice {
+		return nil
+	}
+	out := make([]interface{}, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		out[i] = rv.Index(i).Interface()
+	}
+	return out
+}
+
 // FindArrayField finds the primary array field in a response's data object.
 // It first checks knownArrayFields in priority order, then falls back to
 // the lexicographically smallest unknown array field for deterministic results.
 func FindArrayField(data map[string]interface{}) string {
 	for _, name := range knownArrayFields {
 		if arr, ok := data[name]; ok {
-			if _, isArr := arr.([]interface{}); isArr {
+			if isSliceLike(arr) {
 				return name
 			}
 		}
@@ -31,7 +58,7 @@ func FindArrayField(data map[string]interface{}) string {
 	// Fallback: lexicographically first array field (deterministic)
 	var candidates []string
 	for k, v := range data {
-		if _, isArr := v.([]interface{}); isArr {
+		if isSliceLike(v) {
 			candidates = append(candidates, k)
 		}
 	}
@@ -81,7 +108,7 @@ func ExtractItems(data interface{}) []interface{} {
 	// Strategy 1: Lark API envelope — result["data"][arrayField]
 	if dataObj, ok := resultMap["data"].(map[string]interface{}); ok {
 		if field := FindArrayField(dataObj); field != "" {
-			if items, ok := dataObj[field].([]interface{}); ok {
+			if items := toGenericSlice(dataObj[field]); items != nil {
 				return items
 			}
 		}
@@ -90,7 +117,7 @@ func ExtractItems(data interface{}) []interface{} {
 	// Strategy 2: direct map — result[arrayField]
 	// Covers shortcut-level data like {"members":[…], "total":5, "has_more":false}
 	if field := FindArrayField(resultMap); field != "" {
-		if items, ok := resultMap[field].([]interface{}); ok {
+		if items := toGenericSlice(resultMap[field]); items != nil {
 			return items
 		}
 	}

@@ -266,6 +266,129 @@ func TestExtractItems(t *testing.T) {
 	}
 }
 
+// --- Typed-slice regression tests ---
+// These cover the scenario where shortcut code uses []map[string]interface{}
+// (or other typed slices) instead of []interface{} in outData.
+
+func TestExtractItems_TypedMapSlice(t *testing.T) {
+	// Simulates shortcut pattern: outData["chats"] = []map[string]interface{}{...}
+	data := map[string]interface{}{
+		"chats": []map[string]interface{}{
+			{"chat_id": "oc_abc", "name": "Test Chat"},
+			{"chat_id": "oc_def", "name": "Dev Chat"},
+		},
+		"total":    2,
+		"has_more": false,
+	}
+	items := ExtractItems(data)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items from typed map slice, got %d", len(items))
+	}
+	// Verify elements are still map[string]interface{} (flattenItem can handle them)
+	for i, item := range items {
+		if _, ok := item.(map[string]interface{}); !ok {
+			t.Errorf("item[%d] should be map[string]interface{}, got %T", i, item)
+		}
+	}
+}
+
+func TestExtractItems_TypedMapSlice_InEnvelope(t *testing.T) {
+	// Typed slice inside a Lark API envelope: result["data"]["items"] = []map[string]interface{}{...}
+	data := map[string]interface{}{
+		"code": float64(0),
+		"data": map[string]interface{}{
+			"items": []map[string]interface{}{
+				{"id": "1", "name": "Alice"},
+			},
+			"has_more": false,
+		},
+	}
+	items := ExtractItems(data)
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item from typed slice in envelope, got %d", len(items))
+	}
+}
+
+func TestFormatValue_Table_TypedMapSlice(t *testing.T) {
+	// The core bug: --format table with []map[string]interface{} should render
+	// multi-column table, not a key-value two-column fallback.
+	data := map[string]interface{}{
+		"chats": []map[string]interface{}{
+			{"chat_id": "oc_abc", "name": "Lark Dev"},
+		},
+		"total":    1,
+		"has_more": false,
+	}
+
+	var buf bytes.Buffer
+	FormatValue(&buf, data, FormatTable)
+	out := buf.String()
+
+	// Should have column headers from the data fields
+	if !strings.Contains(out, "chat_id") {
+		t.Errorf("table should contain 'chat_id' column header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "name") {
+		t.Errorf("table should contain 'name' column header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Lark Dev") {
+		t.Errorf("table should contain data value 'Lark Dev', got:\n%s", out)
+	}
+	// Should NOT render as key-value fallback (metadata as rows)
+	if strings.Contains(out, "has_more") {
+		t.Errorf("table should not contain metadata 'has_more' as a row, got:\n%s", out)
+	}
+}
+
+func TestFormatValue_CSV_TypedMapSlice(t *testing.T) {
+	data := map[string]interface{}{
+		"messages": []map[string]interface{}{
+			{"message_id": "om_abc", "content": "hello"},
+			{"message_id": "om_def", "content": "world"},
+		},
+		"total": 2,
+	}
+
+	var buf bytes.Buffer
+	FormatValue(&buf, data, FormatCSV)
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+
+	if len(lines) != 3 {
+		t.Fatalf("CSV should have header + 2 rows, got %d lines:\n%s", len(lines), buf.String())
+	}
+	// Header should contain data field names, not top-level map keys
+	header := lines[0]
+	if !strings.Contains(header, "message_id") {
+		t.Errorf("CSV header should contain 'message_id', got: %s", header)
+	}
+}
+
+func TestFormatValue_NDJSON_TypedMapSlice(t *testing.T) {
+	data := map[string]interface{}{
+		"tasks": []map[string]interface{}{
+			{"guid": "t1", "url": "https://example.com/t1"},
+			{"guid": "t2", "url": "https://example.com/t2"},
+		},
+	}
+
+	var buf bytes.Buffer
+	FormatValue(&buf, data, FormatNDJSON)
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+
+	if len(lines) != 2 {
+		t.Fatalf("NDJSON should output 2 lines, got %d:\n%s", len(lines), buf.String())
+	}
+	for i, line := range lines {
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			t.Errorf("NDJSON line %d should be valid JSON: %s", i, line)
+		}
+		if _, ok := obj["guid"]; !ok {
+			t.Errorf("NDJSON line %d should contain 'guid' field, got: %s", i, line)
+		}
+	}
+}
+
 func TestFormatValue_LegacyFormats(t *testing.T) {
 	data := map[string]interface{}{
 		"data": map[string]interface{}{
