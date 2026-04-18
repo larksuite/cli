@@ -15,24 +15,29 @@ import (
 //     and strips redundant ** from ATX headings. Applied only outside fenced
 //     code blocks, and skips inline code spans.
 //
-//  2. fixSetextAmbiguity: inserts a blank line before any "---" that immediately
+//  2. normalizeNestedListIndentation: rewrites space-pair-indented nested list
+//     markers to tab-indented markers. This avoids nested ordered list items
+//     being flattened or interpreted as plain text/code on re-import.
+//
+//  3. fixSetextAmbiguity: inserts a blank line before any "---" that immediately
 //     follows a non-empty line, preventing it from being parsed as a Setext H2.
 //     Applied only outside fenced code blocks.
 //
-//  3. fixBlockquoteHardBreaks: inserts a blank blockquote line (">") between
+//  4. fixBlockquoteHardBreaks: inserts a blank blockquote line (">") between
 //     consecutive blockquote content lines so create-doc preserves line breaks.
 //     Applied only outside fenced code blocks.
 //
-//  4. fixTopLevelSoftbreaks: inserts a blank line between adjacent non-empty
+//  5. fixTopLevelSoftbreaks: inserts a blank line between adjacent non-empty
 //     lines at the top level and inside content containers (callout,
 //     quote-container, lark-td). Code fences are left untouched, and
 //     consecutive list items / continuations are not separated.
 //
-//  5. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
+//  6. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
 //     actual Unicode emoji characters that create-doc understands. Applied only
 //     outside fenced code blocks.
 func fixExportedMarkdown(md string) string {
 	md = applyOutsideCodeFences(md, fixBoldSpacing)
+	md = applyOutsideCodeFences(md, normalizeNestedListIndentation)
 	md = applyOutsideCodeFences(md, fixSetextAmbiguity)
 	md = applyOutsideCodeFences(md, fixBlockquoteHardBreaks)
 	md = fixTopLevelSoftbreaks(md)
@@ -118,8 +123,10 @@ func fixBlockquoteHardBreaks(md string) string {
 //
 // Both fixes skip inline code spans to avoid modifying literal code content.
 var (
+	boldLeadingSpaceRe    = regexp.MustCompile(`(\*\*)\s+([^*\n](?:[^*\n]*[^*\s\n])?)(\*\*)`)
 	boldTrailingSpaceRe   = regexp.MustCompile(`(\*\*\S[^*]*?)\s+(\*\*)`)
-	italicTrailingSpaceRe = regexp.MustCompile(`(\*\S[^*]*?)\s+(\*)`)
+	italicLeadingSpaceRe  = regexp.MustCompile(`(^|[^*])(\*)\s+([^*\n](?:[^*\n]*[^*\s\n])?)(\*)([^*]|$)`)
+	italicTrailingSpaceRe = regexp.MustCompile(`(^|[^*])(\*\S[^*]*?)\s+(\*)([^*]|$)`)
 	// headingBoldRe uses [^*]+ (no asterisks) to avoid mismatching headings
 	// that contain multiple disjoint bold spans such as "# **foo** and **bar**".
 	headingBoldRe = regexp.MustCompile(`(?m)^(#{1,6})\s+\*\*([^*]+)\*\*\s*$`)
@@ -190,8 +197,10 @@ func fixBoldSpacingLine(line string) string {
 	}
 	spans := scanInlineCodeSpans(line)
 	if len(spans) == 0 {
+		line = boldLeadingSpaceRe.ReplaceAllString(line, "$1$2$3")
 		line = boldTrailingSpaceRe.ReplaceAllString(line, "$1$2")
-		line = italicTrailingSpaceRe.ReplaceAllString(line, "$1$2")
+		line = italicLeadingSpaceRe.ReplaceAllString(line, "$1$2$3$4$5")
+		line = italicTrailingSpaceRe.ReplaceAllString(line, "$1$2$3$4")
 		return line
 	}
 	var sb strings.Builder
@@ -199,8 +208,10 @@ func fixBoldSpacingLine(line string) string {
 	for _, loc := range spans {
 		// Process the non-code segment before this inline code span.
 		seg := line[pos:loc[0]]
+		seg = boldLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
 		seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-		seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
+		seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3$4$5")
+		seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2$3$4")
 		sb.WriteString(seg)
 		// Preserve inline code span as-is.
 		sb.WriteString(line[loc[0]:loc[1]])
@@ -208,8 +219,10 @@ func fixBoldSpacingLine(line string) string {
 	}
 	// Remaining non-code segment after the last code span.
 	seg := line[pos:]
+	seg = boldLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
 	seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-	seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
+	seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3$4$5")
+	seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2$3$4")
 	sb.WriteString(seg)
 	return sb.String()
 }
@@ -290,6 +303,44 @@ var contentContainers = [][2]string{
 // listItemRe matches unordered and ordered list item markers, including
 // indented (nested) items.
 var listItemRe = regexp.MustCompile(`^[ \t]*([-*+]|\d+[.)]) `)
+
+// nestedListIndentRe matches nested list item markers indented with pairs of
+// spaces. We rewrite those space pairs to tabs because some downstream
+// round-trip paths treat multi-space indented ordered items as flat items or
+// literal text, while tab indentation remains nested and avoids 4-space code
+// block ambiguity.
+var nestedListIndentRe = regexp.MustCompile(`^( {2,})([-*+]|\d+[.)]) `)
+
+func normalizeNestedListIndentation(md string) string {
+	lines := strings.Split(md, "\n")
+	for i, line := range lines {
+		matches := nestedListIndentRe.FindStringSubmatch(line)
+		if len(matches) != 3 {
+			continue
+		}
+		if !hasPreviousNonBlankListItem(lines, i) {
+			continue
+		}
+		indent := matches[1]
+		if len(indent)%2 != 0 {
+			continue
+		}
+		tabs := strings.Repeat("\t", len(indent)/2)
+		lines[i] = tabs + line[len(indent):]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func hasPreviousNonBlankListItem(lines []string, index int) bool {
+	for i := index - 1; i >= 0; i-- {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			continue
+		}
+		return listItemRe.MatchString(lines[i])
+	}
+	return false
+}
 
 // isListItemOrContinuation returns true for lines that are part of a list:
 // either a list item marker line or an indented continuation of a list item.
