@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 
+	"golang.org/x/text/width"
+
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -235,43 +237,25 @@ func visualWidth(s string) int {
 }
 
 // isWideRune returns true for runes that occupy two columns in a monospace
-// grid (CJK ideographs, full-width forms, Hiragana/Katakana, emoji, and common
-// double-width symbol blocks used in emoji-text content).
+// grid. Classification is delegated to golang.org/x/text/width for the Unicode
+// East Asian Width property (covers CJK, Hangul, full-width forms, etc.), with
+// explicit ranges added for emoji and common symbol blocks that Unicode marks
+// as "neutral" but most terminals and the Lark renderer show at 2 columns.
 func isWideRune(r rune) bool {
-	switch {
-	case r >= 0x1100 && r <= 0x115F: // Hangul Jamo
+	switch width.LookupRune(r).Kind() {
+	case width.EastAsianWide, width.EastAsianFullwidth:
 		return true
-	case r >= 0x2600 && r <= 0x26FF: // Misc Symbols (☀ ☁ ⚡ ⭐ ♻ …)
+	}
+	switch {
+	case r >= 0x2600 && r <= 0x26FF: // Misc Symbols (☀ ☁ ⚡ ♻ …)
 		return true
 	case r >= 0x2700 && r <= 0x27BF: // Dingbats (✅ ✈ ✂ ✏ …)
 		return true
-	case r >= 0x2E80 && r <= 0x303E: // CJK Radicals & punctuation
-		return true
-	case r >= 0x3041 && r <= 0x33FF: // Hiragana/Katakana/CJK symbols
-		return true
-	case r >= 0x3400 && r <= 0x4DBF: // CJK Ext A
-		return true
-	case r >= 0x4E00 && r <= 0x9FFF: // CJK unified ideographs
-		return true
-	case r >= 0xA000 && r <= 0xA4CF: // Yi
-		return true
-	case r >= 0xAC00 && r <= 0xD7A3: // Hangul syllables
-		return true
-	case r >= 0xF900 && r <= 0xFAFF: // CJK compatibility ideographs
-		return true
-	case r >= 0xFE30 && r <= 0xFE4F: // CJK compatibility forms
-		return true
-	case r >= 0xFF00 && r <= 0xFF60: // Full-width ASCII
-		return true
-	case r >= 0xFFE0 && r <= 0xFFE6: // Full-width signs
-		return true
-	case r >= 0x1F000 && r <= 0x1F2FF: // Mahjong/Domino/Playing Cards/Enclosed Alphanumeric (🀄 🃏 🅰 🆗 …)
+	case r >= 0x1F000 && r <= 0x1F2FF: // Mahjong / Playing Cards / Enclosed Alphanumeric (🀄 🃏 🅰 🆗 …)
 		return true
 	case r >= 0x1F300 && r <= 0x1FAFF: // Emoji & pictographs
 		return true
-	case r >= 0x1F1E6 && r <= 0x1F1FF: // Regional Indicator Symbols (flag halves 🇺🇸 🇯🇵 …)
-		return true
-	case r >= 0x20000 && r <= 0x3FFFD: // CJK Ext B-G
+	case r >= 0x1F1E6 && r <= 0x1F1FF: // Regional Indicator Symbols (flag halves)
 		return true
 	}
 	return false
