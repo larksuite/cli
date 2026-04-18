@@ -152,8 +152,9 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 // This API has lighter permission requirements and works with user identity
 // even when the target user is not in the app's visible range.
 // Response uses "users" (not "items") and "user_id" (not "open_id").
+// The basic_batch endpoint caps user_ids at 10 per request.
 func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
-	const batchSize = 50
+	const batchSize = 10
 	for i := 0; i < len(missingIDs); i += batchSize {
 		end := i + batchSize
 		if end > len(missingIDs) {
