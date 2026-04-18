@@ -83,10 +83,16 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 
 ### 5. pretty / json 输出差异
 
-- `--format pretty`：输出“会议主题 / 会议时间 / 时间线”，适合人读
+- `--format pretty`：输出“会议主题 / 会议时间 / 时间线”，适合人读，也是默认推荐格式；在多数会议里，`json` 体积会明显大于 pretty
 - `--format json`：保留原始 `events` 结构，适合 Agent / 程序消费
 
 > **注意**：pretty 输出中的正文文本会做单行转义，像真实换行会显示为 `\n`，避免打乱时间线布局。
+
+### 6. 关于 `page_token` 的返回与续拉
+
+- 不管这次是只查 1 页，还是通过 `--page-limit` / `--page-all` 已经把当前可见事件都拿完，都应把最后拿到的 `page_token` 一并保留下来并返回给用户（若响应里有）。
+- 下次继续“查新增事件”时，应优先复用上一次保存的 `page_token`，而不是从头全量再拉一次。
+- 只有在用户明确要求“从头回放全部事件”时，才忽略历史 `page_token`，重新从第一页开始。
 
 ## 返回结构
 
@@ -128,7 +134,7 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 |---------|---------|
 | `meeting-id` | `+meeting-join` 返回的 `meeting.id`；或 `+search` 结果中的 `id` |
 | `start` / `end` | 用户给出的时间范围；如未给出则默认取全量可见事件 |
-| `page-token` | 上一页返回体中的 `page_token` |
+| `page-token` | 上一页或上一次查询结果中保存的 `page_token`；建议持久化保存，便于下次继续拉取新增事件 |
 
 ## Agent 组合场景
 

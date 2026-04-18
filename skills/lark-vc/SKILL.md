@@ -78,7 +78,8 @@ lark-cli docs +fetch --doc <doc_token>
 2. `+meeting-events` 的输入是 **meeting_id**（长数字 ID），不是 9 位会议号。
 3. 该命令是**读操作**，但后端要求当前 bot 仍在会中；若 bot 已离会，接口会报 `bot is not in meeting`。
 4. `+meeting-events` 默认查 1 页；需要自动翻页时可使用 `--page-limit` 或 `--page-all`。
-5. 默认 pretty 输出会按会议主题、会议时间和时间线逐行展示事件；需要完整原始结构时使用 `--format json`。
+5. 默认优先使用 `--format pretty`，因为 `json` 返回体通常比 pretty 大很多；只有在需要完整原始事件结构时再使用 `--format json`。
+6. 即使这次已经拿全，也应一并返回最后拿到的 `page_token`（若有），方便下次继续增量拉取，而不是每次都从头开始。
 
 ## 资源关系
 
