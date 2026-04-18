@@ -10,7 +10,7 @@ metadata:
 
 # vc-agent (v1)
 
-**开始前必须先阅读以下两份 skill 文档：**
+**CRITICAL — 开始前 MUST 先用 Read 工具读取以下两份 skill 文档：**
 - [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) — 认证、身份切换、权限处理
 - [`../lark-vc/SKILL.md`](../lark-vc/SKILL.md) — 视频会议的核心概念（Meeting / Note / Minutes 等），本 skill 直接复用，不再重复定义
 
