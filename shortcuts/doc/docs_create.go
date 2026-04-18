@@ -67,8 +67,10 @@ var DocsCreate = common.Shortcut{
 }
 
 func buildDocsCreateArgs(runtime *common.RuntimeContext) map[string]interface{} {
+	md := runtime.Str("markdown")
+	WarnCalloutType(md, runtime.IO().ErrOut)
 	args := map[string]interface{}{
-		"markdown": runtime.Str("markdown"),
+		"markdown": md,
 	}
 	if v := runtime.Str("title"); v != "" {
 		args["title"] = v

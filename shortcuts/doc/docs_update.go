@@ -71,6 +71,7 @@ var DocsUpdate = common.Shortcut{
 			"mode":   runtime.Str("mode"),
 		}
 		if v := runtime.Str("markdown"); v != "" {
+			WarnCalloutType(v, runtime.IO().ErrOut)
 			args["markdown"] = v
 		}
 		if v := runtime.Str("selection-with-ellipsis"); v != "" {
@@ -94,6 +95,7 @@ var DocsUpdate = common.Shortcut{
 			"mode":   runtime.Str("mode"),
 		}
 		if v := runtime.Str("markdown"); v != "" {
+			WarnCalloutType(v, runtime.IO().ErrOut)
 			args["markdown"] = v
 		}
 		if v := runtime.Str("selection-with-ellipsis"); v != "" {
