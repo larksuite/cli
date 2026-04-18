@@ -47,9 +47,10 @@ metadata:
 2. 输入是 **`meeting_id`**（长数字 ID），不是 9 位会议号。
 3. Bot 必须**真实参会过**（先 `+meeting-join`），否则事件流通常不可见。具体的状态边界、结束后宽限窗口与错误码（如 `10005 / 20001 / 20002`）请查看 `+meeting-events` reference。
 4. **不能做会后复盘**，**不能替代参会人快照查询**。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人快照请用 `vc meeting get --with-participants`（见 [`lark-vc`](../lark-vc/SKILL.md)）。
-5. 默认单页；需要完整事件流用 `--page-all` 或 `--page-limit`。
-6. 输出格式优先 `--format pretty`（时间线更易读）；需要保证完整消息流才用 `--format json`。
-7. 保留响应里的 `page_token`，下次增量拉取直接续，不要从头再拉。
+5. **默认必须使用 `--page-all`**，除非用户明确要求“只查一页”、明确限制页数，或确实需要控制返回体大小。
+6. 输出格式默认优先 `--format pretty`（时间线更易读）；只有在需要完整保留原始消息流与结构化字段时，才使用 `--format json`。
+7. **必须识别分页信号**：只要响应里出现 `has_more=true`、pretty 里的 `more available`，或返回了非空 `page_token`，就不能把当前结果当作完整事件流；默认应继续分页，或明确告诉用户当前只是部分结果。
+8. 保留响应里的 `page_token`，下次增量拉取直接续，不要从头再拉。
 
 ### 3. 离开会议（写操作）
 
@@ -66,9 +67,9 @@ JOIN=$(lark-cli vc +meeting-join --meeting-number 123456789 --format json)
 MID=$(echo "$JOIN" | jq -r '.data.meeting.id')
 
 # 2. 会中轮询事件
-#    --start 每轮用上一次响应里最新事件的 event_time，避免拉重复事件
+#    默认用 --page-all 拉全当前可见事件；下次增量优先复用 page_token
 #    典型间隔 10-30 秒
-lark-cli vc +meeting-events --meeting-id "$MID" --format pretty
+lark-cli vc +meeting-events --meeting-id "$MID" --page-all --format pretty
 
 # 3. 任务完成或用户要求结束时离会
 lark-cli vc +meeting-leave --meeting-id "$MID"
