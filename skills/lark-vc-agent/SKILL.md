@@ -31,7 +31,7 @@ metadata:
 1. 只有用户明确表达"让 Agent **真实入会**"（参会机器人、会中助手、代为旁听、代参会）时才用 `+meeting-join`。只是查数据不要入会。
 2. `+meeting-join --meeting-number` 只接受 **9 位纯数字**会议号，不是会议链接整串、也不是 `meeting_id`。
 3. 返回体中的 `meeting.id` **必须立刻记录**——后续 `+meeting-events` / `+meeting-leave` 都靠它，**不能用 9 位会议号替代**。
-4. 写操作**不支持回放**，执行前优先 `--dry-run` 核对请求体。
+4. 写操作会让机器人**出现在参会人列表**——对其他参会人可见，误入错会的社交成本高；执行前确认 9 位会议号来源（用户输入/会议链接），不要臆造。参数格式不确定时可用 `--dry-run` 预览请求体。
 5. 仅支持 `user` 身份，需提前 `lark-cli auth login` 并拥有 `vc:meeting.bot.join:write` scope。
 
 ### 2. 感知会中事件（读操作）
@@ -50,7 +50,7 @@ metadata:
 
 1. 完成任务或用户喊停后用 `+meeting-leave --meeting-id <从 +meeting-join 拿到的 meeting.id>`。
 2. **不接受 9 位会议号**，只接受 `meeting_id`。
-3. 写操作**不可撤销**：离会后录制 / 纪要完整性可能受影响，执行前 `--dry-run` 核对。
+3. 离会会对其他参会人可见（机器人从参会列表消失），若会议启用了录制/纪要功能，bot 的参会时长到此截止；确认 `meeting_id` 来自上一步 `+meeting-join` 的响应，而不是 9 位会议号。
 4. 仅 `user` 身份，同样需要 `vc:meeting.bot.join:write` scope。
 
 ### 4. Agent 参会最小闭环示范
@@ -84,7 +84,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 - 使用 `+meeting-events` 前**必须**阅读 [references/lark-vc-agent-meeting-events.md](references/lark-vc-agent-meeting-events.md)，了解 `meeting_id` 来源、分页、错误码（10005 / 20001 / 20002）与"bot 仍在会中"限制。
 - 使用 `+meeting-leave` 前**必须**阅读 [references/lark-vc-agent-meeting-leave.md](references/lark-vc-agent-meeting-leave.md)，了解 `meeting_id` 的来源与写操作风险。
 
-> **写操作铁律**：`+meeting-join` / `+meeting-leave` 会真实入会 / 离会、产生会议日志和参会记录。执行前优先 `--dry-run`，`meeting.id` 必须保留。
+> **写操作注意**：`+meeting-join` / `+meeting-leave` 会真实入会 / 离会，对其他参会人可见并产生参会记录；执行前核实 9 位会议号 / `meeting_id` 来源。`+meeting-join` 返回的 `meeting.id` 必须保留，后续 `+meeting-leave` / `+meeting-events` 都靠它。
 
 ## 权限表
 

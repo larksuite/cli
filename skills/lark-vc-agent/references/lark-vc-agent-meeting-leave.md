@@ -42,9 +42,9 @@ lark-cli vc +meeting-leave --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 
 必须先通过 `+meeting-join` 或其他方式在该会议中，否则接口会报错。
 
-### 4. 写操作不可回放
+### 4. 离会立即生效，对其他参会人可见
 
-离会会立刻生效，会议录制、纪要的完整性可能受影响。建议会议任务完成后再调用。
+机器人会立刻从参会列表消失；若会议启用了录制/纪要，bot 的参会时段到此截止。确认任务完成再调用；如需要重新入会，再跑 `+meeting-join` 即可（非真正"不可逆"）。
 
 ## 输出结果
 
@@ -96,9 +96,9 @@ lark-cli vc +notes --meeting-ids <meeting.id>
 
 ## 提示
 
-- 写操作**不可撤销**，执行前先 `--dry-run` 核对请求体。
+- 离会会让机器人从参会列表消失，对其他参会人可见；若需要重新入会直接再 `+meeting-join`，不是真正的"不可逆"。参数格式不确定时可选 `--dry-run` 预览。
 - 与 `+meeting-join` 成对使用：能 join 的身份才能 leave。
-- 若需要重新入会，再次调用 `+meeting-join`。
+- `meeting_id` 必须来自 `+meeting-join` 的返回值，不要用 9 位会议号。
 
 ## 参考
 
