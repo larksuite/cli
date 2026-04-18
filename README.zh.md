@@ -128,6 +128,29 @@ lark-cli auth login --recommend
 ```bash
 lark-cli auth status
 ```
+ 
+### 如何更新/升级（国内版）
+
+**第 1 步 — 设置国内 npm 镜像**
+
+```bash
+# 设置淘宝/阿里云镜像（加速下载）
+npm config set registry https://registry.npmmirror.com
+```
+
+**第 2 步 — 更新 lark-cli 到最新版本**
+
+```bash
+# 全局安装最新版本（自动覆盖旧版）
+npm install -g @larksuite/cli@latest
+```
+
+**第 3 步 — 验证版本**
+
+```bash
+# 检查是否更新成功
+lark-cli --version
+```
 
 
 ## Agent Skills
