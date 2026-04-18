@@ -111,7 +111,7 @@ var VCMeetingEvents = common.Shortcut{
 		}
 
 		timeline := buildMeetingEventTimeline(events)
-		runtime.OutFormat(outData, &output.Meta{Count: len(timeline.entries)}, func(w io.Writer) {
+		runtime.OutFormat(outData, &output.Meta{Count: len(events)}, func(w io.Writer) {
 			if len(timeline.entries) == 0 {
 				fmt.Fprintln(w, "No meeting events.")
 				return
