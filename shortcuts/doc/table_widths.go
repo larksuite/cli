@@ -1,0 +1,353 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package doc
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+	"unicode"
+
+	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/shortcuts/common"
+)
+
+// widthRatioTotal is the denominator used by Feishu's
+// update_grid_column_width_ratio API: width_ratios must sum to 100.
+const widthRatioTotal = 100
+
+// extractMarkdownTables parses GFM pipe tables from markdown text and returns
+// each table as a slice of rows, where each row is a slice of cell strings.
+// Header separator rows (e.g. |---|---|) are dropped. Tables inside fenced
+// code blocks are skipped so example snippets do not trigger column-width
+// patching.
+func extractMarkdownTables(md string) [][][]string {
+	var tables [][][]string
+	var current [][]string
+	inFence := false
+	for _, raw := range strings.Split(md, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		trimmed := strings.TrimSpace(line)
+
+		// Track fenced code blocks (```, ~~~) so we don't parse tables inside.
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			if current != nil {
+				tables = append(tables, current)
+				current = nil
+			}
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+
+		if isPipeTableRow(trimmed) {
+			if isPipeSeparatorRow(trimmed) {
+				continue
+			}
+			current = append(current, splitPipeRow(trimmed))
+			continue
+		}
+
+		if current != nil {
+			tables = append(tables, current)
+			current = nil
+		}
+	}
+	if current != nil {
+		tables = append(tables, current)
+	}
+	return tables
+}
+
+func isPipeTableRow(line string) bool {
+	return strings.HasPrefix(line, "|") && strings.HasSuffix(line, "|") && len(line) >= 2
+}
+
+var pipeSeparatorCellRE = regexp.MustCompile(`^\s*:?-{3,}:?\s*$`)
+
+func isPipeSeparatorRow(line string) bool {
+	if !isPipeTableRow(line) {
+		return false
+	}
+	for _, cell := range splitPipeRow(line) {
+		if !pipeSeparatorCellRE.MatchString(cell) {
+			return false
+		}
+	}
+	return true
+}
+
+// splitPipeRow splits a pipe table row into cells, handling escaped \| inside
+// cells by substituting a placeholder before splitting.
+func splitPipeRow(line string) []string {
+	inner := strings.TrimPrefix(strings.TrimSuffix(line, "|"), "|")
+	// Protect escaped pipes.
+	const placeholder = "\x00PIPE\x00"
+	inner = strings.ReplaceAll(inner, `\|`, placeholder)
+	parts := strings.Split(inner, "|")
+	out := make([]string, len(parts))
+	for i, p := range parts {
+		out[i] = strings.ReplaceAll(strings.TrimSpace(p), placeholder, "|")
+	}
+	return out
+}
+
+// computeWidthRatios returns column-width ratios that sum to widthRatioTotal.
+// Each column's weight is the maximum visual width across its cells (first row
+// included, header separator already removed). Empty tables or single-column
+// tables return nil to signal "nothing to patch".
+func computeWidthRatios(rows [][]string) []int {
+	if len(rows) == 0 {
+		return nil
+	}
+	cols := 0
+	for _, r := range rows {
+		if len(r) > cols {
+			cols = len(r)
+		}
+	}
+	if cols < 2 {
+		return nil
+	}
+
+	weights := make([]int, cols)
+	for _, r := range rows {
+		for i := 0; i < cols; i++ {
+			if i >= len(r) {
+				continue
+			}
+			w := visualWidth(r[i])
+			if w > weights[i] {
+				weights[i] = w
+			}
+		}
+	}
+
+	// Ensure every column has at least weight 1 so zero-width columns still
+	// receive a non-zero ratio.
+	total := 0
+	for i, w := range weights {
+		if w <= 0 {
+			weights[i] = 1
+			w = 1
+		}
+		total += w
+	}
+	if total <= 0 {
+		return nil
+	}
+
+	ratios := make([]int, cols)
+	allocated := 0
+	// Integer apportionment with rounding; remaining error goes to the widest
+	// column so the array sums to exactly widthRatioTotal.
+	for i, w := range weights {
+		ratios[i] = w * widthRatioTotal / total
+		if ratios[i] < 1 {
+			ratios[i] = 1
+		}
+		allocated += ratios[i]
+	}
+	if diff := widthRatioTotal - allocated; diff != 0 {
+		widest := 0
+		for i := 1; i < cols; i++ {
+			if weights[i] > weights[widest] {
+				widest = i
+			}
+		}
+		ratios[widest] += diff
+		if ratios[widest] < 1 {
+			ratios[widest] = 1
+		}
+	}
+	return ratios
+}
+
+// visualWidth estimates the display width of s by counting each rune as 2 when
+// it is East Asian Wide/Full (CJK, full-width punctuation) and 1 otherwise.
+// Control characters and zero-width joiners contribute 0.
+func visualWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		switch {
+		case r == 0 || r == '\t':
+			// Tabs and NULs do not reliably contribute visual width.
+			continue
+		case unicode.IsControl(r):
+			continue
+		case isWideRune(r):
+			w += 2
+		default:
+			w++
+		}
+	}
+	return w
+}
+
+// isWideRune returns true for runes that occupy two columns in a monospace
+// grid (CJK ideographs, full-width forms, Hiragana/Katakana, common emoji).
+func isWideRune(r rune) bool {
+	switch {
+	case r >= 0x1100 && r <= 0x115F: // Hangul Jamo
+		return true
+	case r >= 0x2E80 && r <= 0x303E: // CJK Radicals & punctuation
+		return true
+	case r >= 0x3041 && r <= 0x33FF: // Hiragana/Katakana/CJK symbols
+		return true
+	case r >= 0x3400 && r <= 0x4DBF: // CJK Ext A
+		return true
+	case r >= 0x4E00 && r <= 0x9FFF: // CJK unified ideographs
+		return true
+	case r >= 0xA000 && r <= 0xA4CF: // Yi
+		return true
+	case r >= 0xAC00 && r <= 0xD7A3: // Hangul syllables
+		return true
+	case r >= 0xF900 && r <= 0xFAFF: // CJK compatibility ideographs
+		return true
+	case r >= 0xFE30 && r <= 0xFE4F: // CJK compatibility forms
+		return true
+	case r >= 0xFF00 && r <= 0xFF60: // Full-width ASCII
+		return true
+	case r >= 0xFFE0 && r <= 0xFFE6: // Full-width signs
+		return true
+	case r >= 0x1F300 && r <= 0x1FAFF: // Emoji & pictographs
+		return true
+	case r >= 0x20000 && r <= 0x3FFFD: // CJK Ext B-G
+		return true
+	}
+	return false
+}
+
+// applyMarkdownTableColumnWidths calculates per-column width ratios for each
+// pipe table in the supplied markdown and PATCHes matching table blocks in the
+// given document with update_grid_column_width_ratio. Failures are logged and
+// treated as non-fatal because the main content has already been created.
+//
+// Only tables whose local column count equals the remote table's column_size
+// are patched; mismatches are skipped. Tables are matched to remote table
+// blocks by document-order index.
+func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, markdown string) {
+	if documentID == "" || strings.TrimSpace(markdown) == "" {
+		return
+	}
+	tables := extractMarkdownTables(markdown)
+	if len(tables) == 0 {
+		return
+	}
+
+	remote, err := fetchDocumentTableBlocks(runtime, documentID)
+	if err != nil {
+		fmt.Fprintf(runtime.IO().ErrOut, "column-width adjustment skipped: %v\n", err)
+		return
+	}
+	limit := len(remote)
+	if len(tables) < limit {
+		limit = len(tables)
+	}
+	patched := 0
+	for i := 0; i < limit; i++ {
+		ratios := computeWidthRatios(tables[i])
+		if ratios == nil {
+			continue
+		}
+		if remote[i].ColumnSize != len(ratios) {
+			continue
+		}
+		body := map[string]interface{}{
+			"update_grid_column_width_ratio": map[string]interface{}{
+				"width_ratios": ratios,
+			},
+		}
+		url := fmt.Sprintf(
+			"/open-apis/docx/v1/documents/%s/blocks/%s",
+			validate.EncodePathSegment(documentID),
+			validate.EncodePathSegment(remote[i].BlockID),
+		)
+		if _, err := runtime.CallAPI("PATCH", url, nil, body); err != nil {
+			fmt.Fprintf(
+				runtime.IO().ErrOut,
+				"column-width PATCH failed for block %s: %v\n",
+				remote[i].BlockID, err,
+			)
+			continue
+		}
+		patched++
+	}
+	if patched > 0 {
+		fmt.Fprintf(runtime.IO().ErrOut, "column widths applied to %d/%d tables\n", patched, limit)
+	}
+}
+
+// docxTokenForUpdate returns the docx token for the supplied --doc input,
+// if it can be determined without a network call. Wiki inputs return false
+// because resolving them requires an extra API call; callers should skip
+// column-width application in that case rather than block the main flow.
+func docxTokenForUpdate(doc string) (string, bool) {
+	ref, err := parseDocumentRef(doc)
+	if err != nil {
+		return "", false
+	}
+	if ref.Kind == "docx" {
+		return ref.Token, true
+	}
+	return "", false
+}
+
+// remoteTable describes the minimal fields we need about a docx table block.
+type remoteTable struct {
+	BlockID    string
+	ColumnSize int
+}
+
+// fetchDocumentTableBlocks returns all table blocks (block_type == 31) in the
+// given docx document, in document order. The function walks the paginated
+// /blocks endpoint.
+func fetchDocumentTableBlocks(runtime *common.RuntimeContext, documentID string) ([]remoteTable, error) {
+	var out []remoteTable
+	pageToken := ""
+	for {
+		params := map[string]interface{}{"page_size": float64(500)}
+		if pageToken != "" {
+			params["page_token"] = pageToken
+		}
+		resp, err := runtime.CallAPI(
+			"GET",
+			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks", validate.EncodePathSegment(documentID)),
+			params,
+			nil,
+		)
+		if err != nil {
+			return nil, output.Errorf(output.ExitAPI, "api_error", "fetch blocks: %v", err)
+		}
+		items, _ := resp["items"].([]interface{})
+		for _, item := range items {
+			m, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			bt, _ := m["block_type"].(float64)
+			if int(bt) != 31 {
+				continue
+			}
+			blockID, _ := m["block_id"].(string)
+			table, _ := m["table"].(map[string]interface{})
+			prop, _ := table["property"].(map[string]interface{})
+			cs, _ := prop["column_size"].(float64)
+			if blockID == "" || cs == 0 {
+				continue
+			}
+			out = append(out, remoteTable{BlockID: blockID, ColumnSize: int(cs)})
+		}
+		hasMore, _ := resp["has_more"].(bool)
+		next, _ := resp["page_token"].(string)
+		if !hasMore || next == "" || next == pageToken {
+			break
+		}
+		pageToken = next
+	}
+	return out, nil
+}
