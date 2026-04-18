@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -347,6 +348,112 @@ func TestUploadDocMediaFileWithContentUsesMultipart(t *testing.T) {
 	}
 	if fileToken != "file_content_multi_done" {
 		t.Fatalf("fileToken = %q, want %q", fileToken, "file_content_multi_done")
+	}
+}
+
+func TestDocMediaInsertExecuteFromClipboard(t *testing.T) {
+	// Covers the Execute clipboard branch end-to-end: read synthetic bytes,
+	// resolve docx root, create block, upload in-memory content, bind to block.
+	prev := readClipboardImage
+	t.Cleanup(func() { readClipboardImage = prev })
+	payload := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xAA, 0xBB}
+	readClipboardImage = func() ([]byte, error) { return payload, nil }
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-clipboard-exec-app"))
+	documentID := "doxcnClipboardExec1"
+
+	// Step 1: GET root block
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id": documentID,
+					"children": []interface{}{"existing_block"},
+				},
+			},
+		},
+	})
+	// Step 2: POST create child block
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID + "/children",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"children": []interface{}{
+					map[string]interface{}{"block_id": "new_image_block"},
+				},
+			},
+		},
+	})
+	// Step 3: POST upload_all for in-memory bytes
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_clip_abc"},
+		},
+	}
+	reg.Register(uploadStub)
+	// Step 4: PATCH batch_update
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/batch_update",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", documentID,
+		"--from-clipboard",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v — stderr: %s", err, stderr.String())
+	}
+
+	// stderr should show clipboard read + file name "clipboard.png"
+	if !strings.Contains(stderr.String(), "Reading image from clipboard") {
+		t.Errorf("stderr missing clipboard-read log: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "clipboard.png") {
+		t.Errorf("stderr missing clipboard.png file name: %s", stderr.String())
+	}
+	// stdout should include the file_token
+	if !strings.Contains(stdout.String(), "file_clip_abc") {
+		t.Errorf("stdout missing file_token: %s", stdout.String())
+	}
+
+	// Upload multipart body should contain the synthetic payload bytes.
+	if !bytes.Contains(uploadStub.CapturedBody, payload) {
+		t.Errorf("upload body missing clipboard payload bytes")
+	}
+}
+
+func TestDocMediaInsertExecuteClipboardReadError(t *testing.T) {
+	// Covers the early-return when clipboard read fails (no osascript etc).
+	prev := readClipboardImage
+	t.Cleanup(func() { readClipboardImage = prev })
+	readClipboardImage = func() ([]byte, error) {
+		return nil, fmt.Errorf("clipboard image upload is not supported on test")
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-clipboard-err-app"))
+	err := mountAndRunDocs(t, DocMediaInsert, []string{
+		"+media-insert",
+		"--doc", "doxcnXXXXXXXXXXXXXXXXXX",
+		"--from-clipboard",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected clipboard read error, got nil")
+	}
+	if !strings.Contains(err.Error(), "clipboard image upload is not supported") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

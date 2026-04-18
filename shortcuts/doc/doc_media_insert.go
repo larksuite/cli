@@ -21,6 +21,10 @@ var alignMap = map[string]int{
 	"right":  3,
 }
 
+// readClipboardImage is the clipboard read function, swappable in tests to
+// inject synthetic image bytes without depending on the host pasteboard.
+var readClipboardImage = readClipboardImageBytes
+
 var DocMediaInsert = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-insert",
@@ -112,7 +116,7 @@ var DocMediaInsert = common.Shortcut{
 		if runtime.Bool("from-clipboard") {
 			fmt.Fprintf(runtime.IO().ErrOut, "Reading image from clipboard...\n")
 			var err error
-			clipboardContent, err = readClipboardImageBytes()
+			clipboardContent, err = readClipboardImage()
 			if err != nil {
 				return err
 			}
