@@ -17,7 +17,7 @@ import (
 
 	"github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/sidecar"
+	"github.com/larksuite/cli/sidecar"
 )
 
 // Provider is the noop credential provider for sidecar mode.

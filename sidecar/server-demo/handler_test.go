@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-//go:build authsidecar
+//go:build authsidecar_demo
 
-package auth
+package main
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ import (
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/sidecar"
+	"github.com/larksuite/cli/sidecar"
 )
 
 // fakeExtProvider is a stub extcred.Provider for tests that returns a fixed token.
@@ -164,7 +164,7 @@ func TestProxyHandler_IdentityNotAllowed(t *testing.T) {
 	}
 }
 
-func TestRunProxy_RejectsSelfProxy(t *testing.T) {
+func TestRun_RejectsSelfProxy(t *testing.T) {
 	old, had := os.LookupEnv(envvars.CliAuthProxy)
 	os.Setenv(envvars.CliAuthProxy, "http://127.0.0.1:16384")
 	defer func() {
@@ -175,7 +175,7 @@ func TestRunProxy_RejectsSelfProxy(t *testing.T) {
 		}
 	}()
 
-	err := runProxy(nil, &ProxyOptions{Listen: "127.0.0.1:0"})
+	err := run(context.Background(), "127.0.0.1:0", "/tmp/should-not-be-created.key", "", "")
 	if err == nil {
 		t.Fatal("expected error when AUTH_PROXY is set")
 	}

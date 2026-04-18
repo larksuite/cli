@@ -22,7 +22,7 @@ import (
 
 	"github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/sidecar"
+	"github.com/larksuite/cli/sidecar"
 )
 
 // Provider implements transport.Provider for the sidecar mode.
