@@ -91,6 +91,7 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 - 如果你发现自己执行成了不带 `--page-all` 的单页查询，而响应里又出现 `has_more=true` / `more available` / 非空 `page_token`，应立刻意识到这只是部分结果。
 - 遇到上述情况，默认补救方式是继续使用返回的 `page_token` 续拉，例如：`lark-cli vc +meeting-events --meeting-id <meeting.id> --page-token <returned_page_token> --page-all --format pretty`
 - 只有在用户明确要求“就看第一页”“先不要翻页”时，才不要默认带 `--page-all`
+- 只要你是基于 `+meeting-events` 来回答一场**正在进行中的会议内容**，就不能直接复用上一次查询结果。无论用户是在问“现在是谁在说话”“刚刚发生了什么”“最新事件有哪些”，还是让你“总结一下这个会议讲什么”，都必须先重新执行一次 `+meeting-events`，确认拿到的是最新事件流，再回答用户。只有在用户明确要求基于某次历史快照继续分析时，才可以复用旧结果。
 
 ### 5. pretty / json 输出差异
 
@@ -108,6 +109,7 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 - 如果没有使用 `--page-all`，但出现了上述分页信号，默认应继续用返回的 `page_token` 拉下一页，而不是直接结束。只有在用户明确不要继续翻页时，才可以停止并明确说明当前结果不完整。
 - 下次继续“查新增事件”时，应优先复用上一次保存的 `page_token`，而不是从头全量再拉一次。
 - 只有在用户明确要求“从头回放全部事件”时，才忽略历史 `page_token`，重新从第一页开始。
+- 但如果用户要你回答的是**当前这场会正在讲什么**，而不是“上一次之后新增了什么”，也要先做一次新的事件查询，再决定是否需要基于旧 `page_token` 继续补拉。
 
 ## 返回结构
 
@@ -198,7 +200,7 @@ lark-cli vc +meeting-events \
 |---------|---------|---------|
 | `--meeting-id is required` | 未传入 `--meeting-id` | 传入长数字 `meeting.id` |
 | `10005 bot is not in meeting` | bot 从未真实入会该会议；或会议已结束但 bot 从未在会中出现过 | 先 `+meeting-join --meeting-number <9位号>` 真实入会再查；如果会议已经结束且当时 bot 没进过会，本接口也拉不到数据。**如果只是想看参会人快照，改用 `vc meeting get --with-participants`**（不依赖 bot 身份参会） |
-| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人请用 `vc meeting get --with-participants` |
+| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。若要拿纪要文档或逐字稿 token，用 `lark-cli vc +notes --meeting-ids <meeting.id>`；若要拿 AI 产物（summary / todos / chapters）或导出逐字稿文件，先用 `lark-cli vc +recording --meeting-ids <meeting.id>` 拿 `minute_token`，再用 `lark-cli vc +notes --minute-tokens <minute_token>`；参会人请用 `vc meeting get --with-participants` |
 | `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
 | `HTTP 404` / `HTTP 500` | 服务端当前无法找到或处理该会议实例 | 换一个正在进行且 bot 可见的 meeting_id，或排查后端问题 |
 | `missing required scope(s)` | 未授权 `vc:meeting.meetingevent:read` | 按提示重新 `auth login` 补 scope |
@@ -206,7 +208,9 @@ lark-cli vc +meeting-events \
 ## 提示
 
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `+search`。
-- 如果你只需要最终纪要、录制、逐字稿，不必查事件列表，直接用 `+notes` / `+recording`。
+- 如果会议已经结束，不要卡在 `+meeting-events`：  
+  - 想拿纪要文档或逐字稿 token：用 `lark-cli vc +notes --meeting-ids <meeting.id>`
+  - 想拿 AI 产物（summary / todos / chapters）或导出逐字稿文件：先用 `lark-cli vc +recording --meeting-ids <meeting.id>` 拿 `minute_token`，再用 `lark-cli vc +notes --minute-tokens <minute_token>`
 - 事件列表是否完整，取决于 bot 何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且 bot **曾经在会中**时还能继续拉到事件。
 - 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `+meeting-events` 做参会人查询。
 
