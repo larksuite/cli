@@ -73,6 +73,7 @@ Step 3: 渲染 & 审查 → 交付
 | 循环/飞轮图 | `scenes/flywheel.md`     | 增长飞轮、闭环链路                     |
 | 里程碑      | `scenes/milestone.md`    | 时间线、版本演进                       |
 | 流程图      | `scenes/flowchart.md`    | 业务流、状态机、带条件判断的链路       |
+| 图片展示    | `scenes/photo-showcase.md` | 用户显式要求图片/配图/插图时         |
 
 ## 渲染前自查
 
