@@ -34,23 +34,22 @@ metadata:
 
 ### 1. 加入正在进行的会议（写操作）
 
-1. 只有当用户明确要求"让机器人真实入会"（参会机器人、会中助手、代为旁听、代为参会）时才调用 `+meeting-join`。**用户只是想查会议数据时不要入会**。
-2. `--meeting-number` 只接受 **9 位纯数字**会议号，不接受会议链接整串，也不接受 `meeting_id`。
-3. 返回体中的 `meeting.id` **必须立刻记录**——后续 `+meeting-events` / `+meeting-leave` 都靠它，不能用 9 位会议号替代。
-4. 入会会让机器人**立即出现在会议的参会人列表中**，对所有参会人可见。误入错会的社交成本高于技术成本——执行前确认 9 位会议号的来源（用户输入或会议链接末尾），不要凭空编造。参数格式有疑问时可用 `--dry-run` 预览请求体。
-5. 仅支持 `user` 身份。需提前 `lark-cli auth login` 并拥有 `vc:meeting.bot.join:write` scope。
+1. 只有用户明确表达"让 Agent **真实入会**"（参会机器人、会中助手、代为旁听、代参会）时才用 `+meeting-join`。只是查数据不要入会。
+2. `+meeting-join --meeting-number` 只接受 **9 位纯数字**会议号，不是会议链接整串、也不是 `meeting_id`。
+3. 返回体中的 `meeting.id` **必须立刻记录**——后续 `+meeting-events` / `+meeting-leave` 都靠它，**不能用 9 位会议号替代**。
+4. 写操作**不支持回放**，执行前优先 `--dry-run` 核对请求体。
+5. 仅支持 `user` 身份，需提前 `lark-cli auth login` 并拥有 `vc:meeting.bot.join:write` scope。
+6. 若入会失败，优先查看 `+meeting-join` reference 的错误排查段落，重点确认会议号、密码、会议状态、等候室 / 审批以及会议是否禁止当前身份加入。
 
 ### 2. 感知会中事件（读操作）
 
 1. 用户要看"会议里正在发生什么"（参会人加入/离开、聊天、转写、屏幕共享）时，用 `+meeting-events`。
 2. 输入是 **`meeting_id`**（长数字 ID），不是 9 位会议号。
-3. **硬约束**——调用前必读：
-   - 机器人必须**已通过 `+meeting-join` 真实入会**，否则返回 `10005 bot is not in meeting`。
-   - 会议必须**仍在进行中**，已结束会议返回 `20001 meeting_status_MEETING_END`。
-   - 已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人快照请用 `vc meeting get --with-participants`（均见 [`lark-vc`](../lark-vc/SKILL.md)）。
-4. 默认单页返回；要拿完整事件流用 `--page-all` 或 `--page-limit`。
-5. 输出格式按处理深度选：`--format pretty` 把每条事件压成一行 summary（如 `participant X (name) joined`），适合**汇总时间线、快速向用户汇报**；`--format json` 保留完整 payload（open_id、聊天原文、share_doc 等），适合**提取字段做进一步处理**（过滤某类事件、联动其他命令）。
-6. 响应里的 `page_token` 要保留——下次增量拉取直接续，不要从头再拉。
+3. Bot 必须**真实参会过**（先 `+meeting-join`），否则事件流通常不可见。具体的状态边界、结束后宽限窗口与错误码（如 `10005 / 20001 / 20002`）请查看 `+meeting-events` reference。
+4. **不能做会后复盘**，**不能替代参会人快照查询**。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人快照请用 `vc meeting get --with-participants`（见 [`lark-vc`](../lark-vc/SKILL.md)）。
+5. 默认单页；需要完整事件流用 `--page-all` 或 `--page-limit`。
+6. 输出格式优先 `--format pretty`（时间线更易读）；需要保证完整消息流才用 `--format json`。
+7. 保留响应里的 `page_token`，下次增量拉取直接续，不要从头再拉。
 
 ### 3. 离开会议（写操作）
 

@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-查询当前 bot 在一场正在进行的视频会议中收到的会中事件列表。该命令是**读操作**，但只有当 bot 仍在会中时才能成功返回事件。
+查询当前 bot 在一场正在进行的视频会议中收到的会中事件列表。该命令是**读操作**。对进行中会议，要求 bot 当前仍在会中；对已结束会议，存在一个**结束后 5 分钟内的宽限窗口**，只要 bot 曾经在这场会里出现过，仍可继续拉取事件。
 
 本 skill 对应 shortcut：`lark-cli vc +meeting-events`（调用 `GET /open-apis/vc/v1/bots/events`）。
 
@@ -11,19 +11,19 @@
 
 ```bash
 # 查询当前会议的首批事件
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --format pretty
 
 # 指定时间范围
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --start 2026-04-17T15:00:00+08:00 --end 2026-04-17T16:00:00+08:00
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --start 2026-04-17T15:00:00+08:00 --end 2026-04-17T16:00:00+08:00 --format pretty
 
 # pretty 时间线输出
 lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --format pretty
 
 # 自动翻页（最多 10 页）
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-limit 10
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-limit 10 --format pretty
 
 # 自动翻到上限
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-all
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-all --format pretty
 
 # 预览 API 调用（不实际请求）
 lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --dry-run
@@ -57,7 +57,7 @@ lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 
 该命令仅支持 `user` 身份，使用前需完成 `lark-cli auth login`。
 
-### 3. bot 必须仍在会中
+### 3. bot 必须在会中，或在会议结束后的 5 分钟宽限窗口内曾经在会中
 
 这是查询“bot 在会中观察到的事件”的接口。若 bot 已离会、未入会、或会议已经无法再判断 bot 身份，后端通常会报：
 - `bot is not in meeting, no permission`
@@ -73,6 +73,13 @@ lark-cli vc +meeting-join --meeting-number 123456789
 # 再查询事件
 lark-cli vc +meeting-events --meeting-id <meeting.id>
 ```
+
+更精确地说，后端当前的判断规则是：
+
+- **会议进行中**：要求 bot **当前仍在会中**
+- **会议已结束后的 5 分钟内**：只要 bot **曾经在这场会中出现过**，仍可拉取事件
+- **会议结束超过 5 分钟**：按会议结束处理，通常不再返回事件流
+- **bot 从未真实入会过**：即使会议仍在进行或刚结束，也会返回 `10005 bot is not in meeting`
 
 ### 4. 自动分页规则
 
@@ -176,9 +183,9 @@ lark-cli vc +meeting-events \
 |---------|---------|---------|
 | `--meeting-id is required` | 未传入 `--meeting-id` | 传入长数字 `meeting.id` |
 | `invalid --page-limit` | `page-limit` 小于 1 或超过上限 | 调整到允许范围内 |
-| `10005 bot is not in meeting` | bot 从未真实入会该会议；或会中已离会 | 先 `+meeting-join --meeting-number <9位号>` 真实入会再查；**如果只是想看参会人快照，改用 `vc meeting get --with-participants`**（不依赖 bot 身份参会） |
-| `20001 meeting_status_MEETING_END` | 会议已结束，本接口不返回已结束会议的事件 | 本接口不支持会后复盘。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人请用 `vc meeting get --with-participants` |
-| `20002 meeting not exist` | `meeting_id` 错误（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
+| `10005 bot is not in meeting` | bot 从未真实入会该会议；或会议已结束但 bot 从未在会中出现过 | 先 `+meeting-join --meeting-number <9位号>` 真实入会再查；如果会议已经结束且当时 bot 没进过会，本接口也拉不到数据。**如果只是想看参会人快照，改用 `vc meeting get --with-participants`**（不依赖 bot 身份参会） |
+| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人请用 `vc meeting get --with-participants` |
+| `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
 | `HTTP 404` / `HTTP 500` | 服务端当前无法找到或处理该会议实例 | 换一个正在进行且 bot 可见的 meeting_id，或排查后端问题 |
 | `missing required scope(s)` | 未授权 `vc:meeting.meetingevent:read` | 按提示重新 `auth login` 补 scope |
 
@@ -186,7 +193,7 @@ lark-cli vc +meeting-events \
 
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `+search`。
 - 如果你只需要最终纪要、录制、逐字稿，不必查事件列表，直接用 `+notes` / `+recording`。
-- 事件列表是否完整，取决于 bot 何时入会、何时离会，以及后端当前可见的会中事件范围。
+- 事件列表是否完整，取决于 bot 何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且 bot **曾经在会中**时还能继续拉到事件。
 - 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `+meeting-events` 做参会人查询。
 
 ## 参考
