@@ -18,6 +18,7 @@ func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.DisableAuthCheck(cmd)
 
 	cmd.AddCommand(NewCmdConfigInit(f, nil))
+	cmd.AddCommand(NewCmdConfigBind(f, nil))
 	cmd.AddCommand(NewCmdConfigRemove(f, nil))
 	cmd.AddCommand(NewCmdConfigShow(f, nil))
 	cmd.AddCommand(NewCmdConfigDefaultAs(f))
