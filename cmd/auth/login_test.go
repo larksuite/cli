@@ -226,6 +226,46 @@ func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
 	}
 }
 
+func TestValidateExplicitScopes_NormalizesWhitespaceAndDeduplicates(t *testing.T) {
+	got, err := validateExplicitScopes("base:app:create \n base:app:read\tbase:app:create", "user")
+	if err != nil {
+		t.Fatalf("validateExplicitScopes() error = %v", err)
+	}
+	if got != "base:app:create base:app:read" {
+		t.Fatalf("validateExplicitScopes() = %q, want %q", got, "base:app:create base:app:read")
+	}
+}
+
+func TestValidateExplicitScopes_RejectsUnknownScopes(t *testing.T) {
+	_, err := validateExplicitScopes("base:app:create malformed:scope", "user")
+	if err == nil {
+		t.Fatal("expected validation error for unknown scope")
+	}
+	if !strings.Contains(err.Error(), "invalid scope(s): malformed:scope") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "auth scopes --format pretty") {
+		t.Fatalf("expected auth scopes hint, got: %v", err)
+	}
+}
+
+func TestAuthLoginRun_ExplicitInvalidScopeFailsBeforeNetwork(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "base:app:create malformed:scope",
+	})
+	if err == nil {
+		t.Fatal("expected validation error for invalid scope")
+	}
+	if !strings.Contains(err.Error(), "invalid scope(s): malformed:scope") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestGetDomainMetadata_IncludesFromMeta(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	nameSet := make(map[string]bool)

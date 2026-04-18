@@ -187,6 +187,13 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 
 	finalScope := opts.Scope
+	if finalScope != "" {
+		normalizedScope, err := validateExplicitScopes(finalScope, "user")
+		if err != nil {
+			return err
+		}
+		finalScope = normalizedScope
+	}
 
 	// Resolve scopes from domain/permission filters
 	if len(selectedDomains) > 0 || opts.Recommend {
@@ -519,6 +526,57 @@ func shortcutSupportsIdentity(sc common.Shortcut, identity string) bool {
 		}
 	}
 	return false
+}
+
+func validateExplicitScopes(scope, identity string) (string, error) {
+	normalized := strings.Fields(scope)
+	if len(normalized) == 0 {
+		return "", output.ErrValidation("please specify at least one scope")
+	}
+
+	knownScopes := knownScopesForIdentity(identity)
+	invalid := make([]string, 0)
+	result := make([]string, 0, len(normalized))
+	seen := make(map[string]bool, len(normalized))
+	for _, s := range normalized {
+		if !knownScopes[s] {
+			invalid = append(invalid, s)
+			continue
+		}
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		result = append(result, s)
+	}
+
+	if len(invalid) > 0 {
+		return "", output.ErrValidation(
+			"invalid scope(s): %s\ncheck the exact scope names with `lark-cli auth scopes --format pretty`, or use `lark-cli auth login --domain <domain> --recommend` to avoid manual scope typos",
+			strings.Join(invalid, ", "),
+		)
+	}
+
+	return strings.Join(result, " "), nil
+}
+
+func knownScopesForIdentity(identity string) map[string]bool {
+	known := make(map[string]bool)
+	for scope := range registry.LoadScopePriorities() {
+		known[scope] = true
+	}
+	for _, scope := range registry.CollectAllScopesFromMeta(identity) {
+		known[scope] = true
+	}
+	for _, sc := range shortcuts.AllShortcuts() {
+		if shortcutSupportsIdentity(sc, identity) {
+			for _, scope := range sc.ScopesForIdentity(identity) {
+				known[scope] = true
+			}
+		}
+	}
+	known["offline_access"] = true
+	return known
 }
 
 // suggestDomain finds the best "did you mean" match for an unknown domain.
