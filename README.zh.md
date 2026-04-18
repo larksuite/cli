@@ -55,7 +55,7 @@
 
 #### 安装
 
-以下两种方式**任选其一**：
+以下方式**任选其一**：
 
 **方式一 — 从 npm 安装（推荐）：**
 
@@ -78,6 +78,16 @@ make install
 
 # 安装 CLI SKILL（必需）
 npx skills add larksuite/cli -y -g
+```
+
+**方式三 — 通过 Claude Code Marketplace 安装：**
+
+如果你正在使用 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)，可以直接从 Marketplace 安装：
+
+```bash
+# 在 Claude Code 终端中执行
+claude plugin marketplace add larksuite/cli
+claude plugin install lark-cli@larksuite-cli
 ```
 
 #### 配置与使用
@@ -103,8 +113,11 @@ lark-cli calendar +agenda
 # 安装 CLI
 npm install -g @larksuite/cli
 
-# 安装 CLI SKILL（必需）
+# 安装 CLI SKILL（必需，二选一）
+# 方式 A：通过 npx skills
 npx skills add larksuite/cli -y -g
+# 方式 B：通过 Claude Code Marketplace
+claude plugin marketplace add larksuite/cli && claude plugin install lark-cli@larksuite-cli
 ```
 
 **第 2 步 — 配置应用凭证**

@@ -1,0 +1,12 @@
+{
+  "name": "lark-cli",
+  "version": "1.0.10",
+  "description": "The official Lark/Feishu CLI tool with 22 structured AI Agent Skills covering 14 business domains.",
+  "author": {
+    "name": "larksuite"
+  },
+  "homepage": "https://github.com/larksuite/cli",
+  "repository": "https://github.com/larksuite/cli",
+  "license": "MIT",
+  "skills": "./skills/"
+}
