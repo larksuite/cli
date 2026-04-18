@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-通过 `meeting_id` 离开当前身份所在的视频会议（bot leave）。这是一次**写操作**，会实际把当前身份从会议中移出。
+通过 `meeting_id` 让当前身份从视频会议中退出（bot leave）。**写操作**。
 
 本 skill 对应 shortcut：`lark-cli vc +meeting-leave`（调用 `POST /open-apis/vc/v1/bots/leave`）。
 
@@ -40,11 +40,11 @@ lark-cli vc +meeting-leave --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 
 ### 3. 当前身份必须在会议中
 
-必须先通过 `+meeting-join` 或其他方式在该会议中，否则接口会报错。
+必须先通过 `+meeting-join` 在该会议中，否则返回 `not in meeting` 错误。
 
 ### 4. 离会立即生效，对其他参会人可见
 
-机器人会立刻从参会列表消失；若会议启用了录制/纪要，bot 的参会时段到此截止。确认任务完成再调用；如需要重新入会，再跑 `+meeting-join` 即可（非真正"不可逆"）。
+机器人立刻从参会列表消失。任务完成后再调用；如需重新入会，再跑 `+meeting-join` 即可（非真正"不可逆"）。
 
 ## 输出结果
 
@@ -75,7 +75,7 @@ lark-cli vc +meeting-leave --meeting-id <meeting.id>
 ### 场景 2：会后补拉产物
 
 ```bash
-# 第 1 步：离会后会议仍在进行或已结束
+# 第 1 步：机器人离会（会议本身不受影响，继续进行）
 lark-cli vc +meeting-leave --meeting-id <meeting.id>
 
 # 第 2 步：会议结束后查询录制
@@ -96,9 +96,9 @@ lark-cli vc +notes --meeting-ids <meeting.id>
 
 ## 提示
 
-- 离会会让机器人从参会列表消失，对其他参会人可见；若需要重新入会直接再 `+meeting-join`，不是真正的"不可逆"。参数格式不确定时可选 `--dry-run` 预览。
-- 与 `+meeting-join` 成对使用：能 join 的身份才能 leave。
 - `meeting_id` 必须来自 `+meeting-join` 的返回值，不要用 9 位会议号。
+- 与 `+meeting-join` 成对使用：能 join 的身份才能 leave。
+- 离会非真正"不可逆"，需要重新入会直接再跑 `+meeting-join` 即可。
 
 ## 参考
 

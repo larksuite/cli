@@ -16,9 +16,6 @@ lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --format pretty
 # 指定时间范围
 lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --start 2026-04-17T15:00:00+08:00 --end 2026-04-17T16:00:00+08:00 --format pretty
 
-# pretty 时间线输出
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --format pretty
-
 # 自动翻页（最多 10 页）
 lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-limit 10 --format pretty
 
@@ -157,13 +154,13 @@ lark-cli vc +meeting-join --meeting-number 123456789
 lark-cli vc +meeting-events --meeting-id <meeting.id> --format pretty
 ```
 
-### 场景 2：会中事件排障 / 会话回放
+### 场景 2：提取完整字段做后续处理（程序消费）
 
 ```bash
-# 先看结构化原始数据
+# 拿完整原始 payload（open_id、聊天原文、share_doc 等都在 events[].payload 里）
 lark-cli vc +meeting-events --meeting-id <meeting.id> --format json
 
-# 需要继续翻页时
+# 翻页继续拉
 lark-cli vc +meeting-events --meeting-id <meeting.id> --page-limit 5 --format json
 ```
 
@@ -193,8 +190,7 @@ lark-cli vc +meeting-events \
 
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `+search`。
 - 如果你只需要最终纪要、录制、逐字稿，不必查事件列表，直接用 `+notes` / `+recording`。
-- 事件列表是否完整，取决于 bot 何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且 bot **曾经在会中**时还能继续拉到事件。
-- 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `+meeting-events` 做参会人查询。
+- 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要**用 `+meeting-events` 做参会人查询。
 
 ## 参考
 
