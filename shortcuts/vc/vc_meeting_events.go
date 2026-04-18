@@ -118,8 +118,11 @@ var VCMeetingEvents = common.Shortcut{
 			}
 			io.WriteString(w, renderMeetingEventsPretty(timeline))
 		})
-		if hasMore && runtime.Format != "json" && runtime.Format != "" {
-			fmt.Fprintf(runtime.IO().Out, "\n(more available, page_token: %s)\n", pageToken)
+		if runtime.Format == "pretty" && pageToken != "" {
+			fmt.Fprintf(runtime.IO().Out, "\npage_token: %s\n", pageToken)
+			if hasMore {
+				fmt.Fprintln(runtime.IO().Out, "more available")
+			}
 		}
 		return nil
 	},
@@ -341,23 +344,6 @@ func compactMeetingPayload(payload map[string]interface{}) map[string]interface{
 		compacted[key] = value
 	}
 	return compacted
-}
-
-func buildMeetingEventRows(events []interface{}) []map[string]interface{} {
-	rows := make([]map[string]interface{}, 0, len(events))
-	for _, raw := range events {
-		event, _ := raw.(map[string]interface{})
-		if event == nil {
-			continue
-		}
-		rows = append(rows, map[string]interface{}{
-			"event_id":   common.TruncateStr(common.GetString(event, "event_id"), 24),
-			"event_type": common.TruncateStr(meetingEventType(event), 24),
-			"event_time": common.TruncateStr(common.GetString(event, "event_time"), 25),
-			"summary":    meetingEventSummary(event),
-		})
-	}
-	return rows
 }
 
 type meetingTimeline struct {

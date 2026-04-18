@@ -574,6 +574,30 @@ func TestMeetingEvents_ExecutePretty(t *testing.T) {
 	}
 }
 
+func TestMeetingEvents_ExecutePretty_PrintsPageTokenWithoutHasMore(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEventOngoing()}, false, "pt_last"))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "pretty",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	out := stdout.String()
+	if !strings.Contains(out, "page_token: pt_last") {
+		t.Fatalf("pretty output should print page_token even when has_more is false: %s", out)
+	}
+	if strings.Contains(out, "more available") {
+		t.Fatalf("pretty output should not print more-available hint when has_more is false: %s", out)
+	}
+}
+
 func TestMeetingEvents_ExecuteEmpty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub(nil, false, ""))
