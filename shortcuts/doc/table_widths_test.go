@@ -96,6 +96,33 @@ middle
 			t.Fatalf("expected 0 tables, got %d", len(got))
 		}
 	})
+
+	t.Run("pipe row without separator is not a table", func(t *testing.T) {
+		// A stray pipe line (prose, log excerpt) must not be mistaken for
+		// a 1-row table — the Lark renderer requires a GFM separator row.
+		md := "Here is a | looking | line |\n\nand some prose."
+		got := extractMarkdownTables(md)
+		if len(got) != 0 {
+			t.Fatalf("expected 0 tables without separator, got %d: %v", len(got), got)
+		}
+	})
+
+	t.Run("two pipe rows without separator are not a table", func(t *testing.T) {
+		md := "| a | b |\n| 1 | 2 |\n"
+		got := extractMarkdownTables(md)
+		if len(got) != 0 {
+			t.Fatalf("expected 0 tables, got %d: %v", len(got), got)
+		}
+	})
+
+	t.Run("false header followed by real table", func(t *testing.T) {
+		// Dangling pipe line, blank, then a real table — only the real one counts.
+		md := "| stray | line |\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+		got := extractMarkdownTables(md)
+		if len(got) != 1 || len(got[0]) != 2 {
+			t.Fatalf("expected 1 table with 2 rows, got %v", got)
+		}
+	})
 }
 
 func TestComputeWidthRatios(t *testing.T) {
@@ -180,6 +207,10 @@ func TestVisualWidth(t *testing.T) {
 		{"中a文b", 6},
 		{"🚀", 2},
 		{"半角ﾊﾝｶｸ", 8}, // two CJK ideographs (2*2) + four halfwidth katakana (4*1)
+		{"☀️", 2},     // Misc Symbols (U+2600) + U+FE0F variation selector (zero-width)
+		{"✅", 2},      // Dingbats
+		{"🀄", 2},      // Mahjong tile (SMP 0x1F000-range)
+		{"🇺🇸", 4},     // Regional Indicator pair (flag) = 2 + 2
 	}
 	for _, c := range cases {
 		if got := visualWidth(c.s); got != c.want {

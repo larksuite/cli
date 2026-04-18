@@ -24,23 +24,37 @@ const docxBlockTypeTable = 31
 
 // extractMarkdownTables parses GFM pipe tables from markdown text and returns
 // each table as a slice of rows, where each row is a slice of cell strings.
-// Header separator rows (e.g. |---|---|) are dropped. Tables inside fenced
-// code blocks are skipped so example snippets do not trigger column-width
-// patching.
+// Only sequences that follow the GFM shape — a header row immediately followed
+// by a separator row (e.g. |---|---|) — are recognised as tables. This matches
+// the Lark renderer's behaviour and avoids false positives on stray prose that
+// happens to contain pipes (quoted snippets, log excerpts, tables in
+// blockquotes, etc.). Tables inside fenced code blocks are skipped so example
+// snippets do not trigger column-width patching.
 func extractMarkdownTables(md string) [][][]string {
 	var tables [][][]string
+	// Parser states:
+	//   nil header, nil current  → scanning prose
+	//   non-nil header, nil current → saw candidate header, awaiting separator
+	//   nil header, non-nil current → inside a confirmed table, accumulating rows
+	var header []string
 	var current [][]string
 	inFence := false
+
+	flushCurrent := func() {
+		if current != nil {
+			tables = append(tables, current)
+			current = nil
+		}
+	}
+
 	for _, raw := range strings.Split(md, "\n") {
 		line := strings.TrimRight(raw, "\r")
 		trimmed := strings.TrimSpace(line)
 
 		// Track fenced code blocks (```, ~~~) so we don't parse tables inside.
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			if current != nil {
-				tables = append(tables, current)
-				current = nil
-			}
+			flushCurrent()
+			header = nil
 			inFence = !inFence
 			continue
 		}
@@ -48,22 +62,45 @@ func extractMarkdownTables(md string) [][][]string {
 			continue
 		}
 
-		if isPipeTableRow(trimmed) {
-			if isPipeSeparatorRow(trimmed) {
-				continue
-			}
-			current = append(current, splitPipeRow(trimmed))
+		if !isPipeTableRow(trimmed) {
+			// Any non-pipe line flushes the current table and discards a
+			// pending header candidate (the header was never confirmed).
+			flushCurrent()
+			header = nil
 			continue
 		}
 
-		if current != nil {
-			tables = append(tables, current)
-			current = nil
+		// Line is a pipe row. Route by parser state.
+		switch {
+		case header != nil:
+			// Awaiting separator. If this is one, the table is confirmed.
+			if isPipeSeparatorRow(trimmed) {
+				current = [][]string{header}
+				header = nil
+				continue
+			}
+			// Two consecutive data rows without a separator don't form a
+			// GFM table; drop the pending header candidate but treat the
+			// current line as a new candidate (it might still be a header
+			// for a table that follows).
+			header = splitPipeRow(trimmed)
+		case current != nil:
+			// Inside a confirmed table.
+			if isPipeSeparatorRow(trimmed) {
+				// Separator rows after the confirmed one are unusual; drop.
+				continue
+			}
+			current = append(current, splitPipeRow(trimmed))
+		default:
+			// Scanning prose and saw a pipe row: candidate header.
+			if isPipeSeparatorRow(trimmed) {
+				// A separator row with no preceding header is not a table.
+				continue
+			}
+			header = splitPipeRow(trimmed)
 		}
 	}
-	if current != nil {
-		tables = append(tables, current)
-	}
+	flushCurrent()
 	return tables
 }
 
@@ -198,10 +235,15 @@ func visualWidth(s string) int {
 }
 
 // isWideRune returns true for runes that occupy two columns in a monospace
-// grid (CJK ideographs, full-width forms, Hiragana/Katakana, common emoji).
+// grid (CJK ideographs, full-width forms, Hiragana/Katakana, emoji, and common
+// double-width symbol blocks used in emoji-text content).
 func isWideRune(r rune) bool {
 	switch {
 	case r >= 0x1100 && r <= 0x115F: // Hangul Jamo
+		return true
+	case r >= 0x2600 && r <= 0x26FF: // Misc Symbols (☀ ☁ ⚡ ⭐ ♻ …)
+		return true
+	case r >= 0x2700 && r <= 0x27BF: // Dingbats (✅ ✈ ✂ ✏ …)
 		return true
 	case r >= 0x2E80 && r <= 0x303E: // CJK Radicals & punctuation
 		return true
@@ -223,7 +265,11 @@ func isWideRune(r rune) bool {
 		return true
 	case r >= 0xFFE0 && r <= 0xFFE6: // Full-width signs
 		return true
+	case r >= 0x1F000 && r <= 0x1F2FF: // Mahjong/Domino/Playing Cards/Enclosed Alphanumeric (🀄 🃏 🅰 🆗 …)
+		return true
 	case r >= 0x1F300 && r <= 0x1FAFF: // Emoji & pictographs
+		return true
+	case r >= 0x1F1E6 && r <= 0x1F1FF: // Regional Indicator Symbols (flag halves 🇺🇸 🇯🇵 …)
 		return true
 	case r >= 0x20000 && r <= 0x3FFFD: // CJK Ext B-G
 		return true
@@ -275,6 +321,11 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 			continue
 		}
 		if remote[i].ColumnSize != len(ratios) {
+			fmt.Fprintf(
+				runtime.IO().ErrOut,
+				"column-width skipped for table %d (block %s): local has %d columns, remote has %d\n",
+				i+1, remote[i].BlockID, len(ratios), remote[i].ColumnSize,
+			)
 			continue
 		}
 		body := map[string]interface{}{
