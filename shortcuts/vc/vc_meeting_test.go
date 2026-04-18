@@ -65,8 +65,8 @@ func TestBuildMeetingJoinBody_WithoutPassword(t *testing.T) {
 	if ji["meeting_no"] != "123456789" {
 		t.Errorf("meeting_no = %v, want 123456789", ji["meeting_no"])
 	}
-	if _, exists := ji["password"]; exists {
-		t.Errorf("password should be omitted when empty, got %v", ji["password"])
+	if _, exists := body["password"]; exists {
+		t.Errorf("password should be omitted when empty, got %v", body["password"])
 	}
 }
 
@@ -80,9 +80,8 @@ func TestBuildMeetingJoinBody_WithPassword(t *testing.T) {
 	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
 	body := buildMeetingJoinBody(runtime)
 
-	ji, _ := body["join_identify"].(map[string]interface{})
-	if ji["password"] != "secret" {
-		t.Errorf("password = %v, want secret", ji["password"])
+	if body["password"] != "secret" {
+		t.Errorf("password = %v, want secret", body["password"])
 	}
 }
 
@@ -100,8 +99,8 @@ func TestBuildMeetingJoinBody_TrimsWhitespace(t *testing.T) {
 	if ji["meeting_no"] != "123456789" {
 		t.Errorf("meeting_no should be trimmed, got %q", ji["meeting_no"])
 	}
-	if ji["password"] != "pw" {
-		t.Errorf("password should be trimmed, got %q", ji["password"])
+	if body["password"] != "pw" {
+		t.Errorf("password should be trimmed, got %q", body["password"])
 	}
 }
 
@@ -276,8 +275,8 @@ func TestMeetingJoin_Execute_WithPassword_CapturesBody(t *testing.T) {
 		t.Fatalf("failed to parse request body: %v", err)
 	}
 	ji, _ := req["join_identify"].(map[string]interface{})
-	if ji["password"] != "s3cret" {
-		t.Errorf("password = %v, want s3cret", ji["password"])
+	if req["password"] != "s3cret" {
+		t.Errorf("password = %v, want s3cret", req["password"])
 	}
 	if ji["meeting_no"] != "987654321" {
 		t.Errorf("meeting_no = %v, want 987654321", ji["meeting_no"])

@@ -81,14 +81,14 @@ var VCMeetingJoin = common.Shortcut{
 
 func buildMeetingJoinBody(runtime *common.RuntimeContext) map[string]interface{} {
 	meetingNo := strings.TrimSpace(runtime.Str("meeting-number"))
-	joinIdentify := map[string]interface{}{
-		"meeting_no": meetingNo,
+	body := map[string]interface{}{
+		"join_type": 1,
+		"join_identify": map[string]interface{}{
+			"meeting_no": meetingNo,
+		},
 	}
 	if pw := strings.TrimSpace(runtime.Str("password")); pw != "" {
-		joinIdentify["password"] = pw
+		body["password"] = pw
 	}
-	return map[string]interface{}{
-		"join_type":     1,
-		"join_identify": joinIdentify,
-	}
+	return body
 }
