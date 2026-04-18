@@ -253,8 +253,9 @@ func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 	}
 
 	result := map[string]interface{}{
-		"ok":     allOK,
-		"checks": checks,
+		"ok":        allOK,
+		"workspace": core.CurrentWorkspace().Display(),
+		"checks":    checks,
 	}
 	output.PrintJson(f.IOStreams.Out, result)
 	if !allOK {

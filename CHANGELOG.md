@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Features
+
+- Add `config bind` command to sync AI Agent (OpenClaw / Hermes) credentials into isolated lark-cli workspaces; supports TUI + flag dual mode, OS keychain storage, OpenClaw SecretRef resolution, and per-workspace runtime artifact isolation
+
 ## [v1.0.14] - 2026-04-17
 
 ### Features
