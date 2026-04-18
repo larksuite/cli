@@ -414,6 +414,46 @@ func TestSheetSetStyleExecuteSuccess(t *testing.T) {
 	}
 }
 
+func TestSheetSetStyleDryRunExpandsSingleCell(t *testing.T) {
+	t.Parallel()
+	rt := newSheetsTestRuntime(t, map[string]string{
+		"url": "", "spreadsheet-token": "sht_test", "range": "A1", "sheet-id": "sheet1",
+		"style": `{"font":{"bold":true}}`,
+	}, nil)
+	got := mustMarshalSheetsDryRun(t, SheetSetStyle.DryRun(context.Background(), rt))
+	if !strings.Contains(got, `"range":"sheet1!A1:A1"`) {
+		t.Fatalf("DryRun should expand single cell to A1:A1: %s", got)
+	}
+}
+
+func TestSheetSetStyleExecuteExpandsSingleCell(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/sheets/v2/spreadsheets/shtTOKEN/style",
+		Body: map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{
+			"updates": map[string]interface{}{"updatedCells": float64(1), "updatedRange": "sheet1!A1:A1"},
+		}},
+	}
+	reg.Register(stub)
+	err := mountAndRunSheets(t, SheetSetStyle, []string{
+		"+set-style", "--spreadsheet-token", "shtTOKEN",
+		"--sheet-id", "sheet1", "--range", "A1",
+		"--style", `{"font":{"bold":true}}`, "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("parse body: %v", err)
+	}
+	appendStyle, _ := body["appendStyle"].(map[string]interface{})
+	if appendStyle["range"] != "sheet1!A1:A1" {
+		t.Fatalf("single cell should be expanded to sheet1!A1:A1, got: %v", appendStyle["range"])
+	}
+}
+
 func TestSheetSetStyleExecuteAPIError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -523,6 +563,51 @@ func TestSheetBatchSetStyleExecuteSuccess(t *testing.T) {
 	}
 }
 
+func TestSheetBatchSetStyleDryRunExpandsSingleCells(t *testing.T) {
+	t.Parallel()
+	rt := newSheetsTestRuntime(t, map[string]string{
+		"url": "", "spreadsheet-token": "sht_test",
+		"data": `[{"ranges":["sheet1!A2","sheet1!B2"],"style":{"font":{"bold":true}}}]`,
+	}, nil)
+	got := mustMarshalSheetsDryRun(t, SheetBatchSetStyle.DryRun(context.Background(), rt))
+	if !strings.Contains(got, `"sheet1!A2:A2"`) || !strings.Contains(got, `"sheet1!B2:B2"`) {
+		t.Fatalf("DryRun should expand single cells to A2:A2 and B2:B2: %s", got)
+	}
+}
+
+func TestSheetBatchSetStyleExecuteNormalizesMixedRanges(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/sheets/v2/spreadsheets/shtTOKEN/styles_batch_update",
+		Body: map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{
+			"totalUpdatedCells": float64(5),
+		}},
+	}
+	reg.Register(stub)
+	err := mountAndRunSheets(t, SheetBatchSetStyle, []string{
+		"+batch-set-style", "--spreadsheet-token", "shtTOKEN",
+		"--data", `[{"ranges":["sheet1!C1:D2","sheet1!E3"],"style":{"font":{"italic":true}}}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("parse body: %v", err)
+	}
+	data, _ := body["data"].([]interface{})
+	if len(data) != 1 {
+		t.Fatalf("expected 1 data entry, got %d", len(data))
+	}
+	entry, _ := data[0].(map[string]interface{})
+	ranges, _ := entry["ranges"].([]interface{})
+	if len(ranges) != 2 || ranges[0] != "sheet1!C1:D2" || ranges[1] != "sheet1!E3:E3" {
+		t.Fatalf("ranges should preserve span and expand single cell, got: %v", ranges)
+	}
+}
+
 func TestSheetBatchSetStyleExecuteAPIError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -536,4 +621,102 @@ func TestSheetBatchSetStyleExecuteAPIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestNormalizeBatchStyleRanges(t *testing.T) {
+	t.Parallel()
+
+	t.Run("single cell with sheet prefix is expanded in place", func(t *testing.T) {
+		t.Parallel()
+		data := []interface{}{
+			map[string]interface{}{
+				"ranges": []interface{}{"sheet1!A1", "sheet1!B2"},
+				"style":  map[string]interface{}{"font": map[string]interface{}{"bold": true}},
+			},
+		}
+		normalizeBatchStyleRanges(data)
+		got := data[0].(map[string]interface{})["ranges"].([]interface{})
+		if got[0] != "sheet1!A1:A1" || got[1] != "sheet1!B2:B2" {
+			t.Fatalf("want [sheet1!A1:A1 sheet1!B2:B2], got %v", got)
+		}
+	})
+
+	t.Run("multi-cell span passes through unchanged", func(t *testing.T) {
+		t.Parallel()
+		data := []interface{}{
+			map[string]interface{}{
+				"ranges": []interface{}{"sheet1!A1:B2"},
+			},
+		}
+		normalizeBatchStyleRanges(data)
+		got := data[0].(map[string]interface{})["ranges"].([]interface{})
+		if got[0] != "sheet1!A1:B2" {
+			t.Fatalf("multi-cell span should be unchanged, got %v", got[0])
+		}
+	})
+
+	t.Run("bare single cell without sheet prefix passes through", func(t *testing.T) {
+		t.Parallel()
+		// Without a sheetId! prefix there's no sheet context; entry is left
+		// alone and the backend will reject it. Documented in the helper.
+		data := []interface{}{
+			map[string]interface{}{
+				"ranges": []interface{}{"A1"},
+			},
+		}
+		normalizeBatchStyleRanges(data)
+		got := data[0].(map[string]interface{})["ranges"].([]interface{})
+		if got[0] != "A1" {
+			t.Fatalf("bare single cell should pass through, got %v", got[0])
+		}
+	})
+
+	t.Run("non-string entries are preserved", func(t *testing.T) {
+		t.Parallel()
+		data := []interface{}{
+			map[string]interface{}{
+				"ranges": []interface{}{"sheet1!A1", 42, nil, "sheet1!B2"},
+			},
+		}
+		normalizeBatchStyleRanges(data)
+		got := data[0].(map[string]interface{})["ranges"].([]interface{})
+		if got[0] != "sheet1!A1:A1" {
+			t.Fatalf("first entry should be expanded, got %v", got[0])
+		}
+		if got[1] != 42 {
+			t.Fatalf("int entry should be preserved, got %v", got[1])
+		}
+		if got[2] != nil {
+			t.Fatalf("nil entry should be preserved, got %v", got[2])
+		}
+		if got[3] != "sheet1!B2:B2" {
+			t.Fatalf("last entry should be expanded, got %v", got[3])
+		}
+	})
+
+	t.Run("missing or non-array ranges key is skipped", func(t *testing.T) {
+		t.Parallel()
+		data := []interface{}{
+			map[string]interface{}{
+				"style": map[string]interface{}{"font": map[string]interface{}{"bold": true}},
+			},
+			map[string]interface{}{
+				"ranges": "not-an-array",
+			},
+			"not-a-map",
+		}
+		normalizeBatchStyleRanges(data)
+		if data[1].(map[string]interface{})["ranges"] != "not-an-array" {
+			t.Fatal("non-array ranges should be left alone")
+		}
+	})
+
+	t.Run("top-level non-array inputs do not panic", func(t *testing.T) {
+		t.Parallel()
+		// Any of these would panic if the helper didn't guard its type assertions.
+		normalizeBatchStyleRanges(nil)
+		normalizeBatchStyleRanges(map[string]interface{}{"foo": "bar"})
+		normalizeBatchStyleRanges("string")
+		normalizeBatchStyleRanges(42)
+	})
 }

@@ -51,7 +51,7 @@ var SheetSetStyle = common.Shortcut{
 		if runtime.Str("url") != "" {
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
-		r := normalizeSheetRange(runtime.Str("sheet-id"), runtime.Str("range"))
+		r := normalizePointRange(runtime.Str("sheet-id"), runtime.Str("range"))
 		var style interface{}
 		json.Unmarshal([]byte(runtime.Str("style")), &style)
 		return common.NewDryRunAPI().
@@ -70,7 +70,7 @@ var SheetSetStyle = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 
-		r := normalizeSheetRange(runtime.Str("sheet-id"), runtime.Str("range"))
+		r := normalizePointRange(runtime.Str("sheet-id"), runtime.Str("range"))
 		var style interface{}
 		if err := json.Unmarshal([]byte(runtime.Str("style")), &style); err != nil {
 			return common.FlagErrorf("--style must be valid JSON: %v", err)
