@@ -79,45 +79,29 @@ lark-cli slides +create --as user --title "图测试" --slides '[
 
 详见 [+create 文档](lark-slides-create.md#本地图片path-占位符)。
 
-### 给已有 PPT 的已有页加图（整页替换）
+### 给已有 PPT 的已有页加图
 
-> ⚠️ slides XML API 没有元素级编辑接口（见 SKILL.md 核心规则 7）—— 没法"往现有 slide 上贴一张图"，只能**把整页替换**：读原 slide → 加 `<img>` → 原位插入新页 → 删除旧页。
+拿到 `file_token` 后走 [`+replace-slide`](lark-slides-replace-slide.md) 的 `block_insert`，不用搬原 XML、不改 `slide_id`、不打乱页序：
 
 ```bash
 PRES_ID=xxx
-TARGET_SLIDE_ID=yyy       # 要加图的那一页
+SID=yyy       # 要加图的那一页
 
 # 1) 上传图片拿 file_token
 TOKEN=$(lark-cli slides +media-upload --as user \
   --file ./pic.png --presentation $PRES_ID | jq -r '.data.file_token')
 
-# 2) 读整份 PPT，摘出目标 slide 的完整 XML（保留所有 shape/line/img 原样）
-lark-cli slides xml_presentations get --as user \
-  --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
-  | jq -r '.data.xml_presentation.content'
-
-# 3) 在 agent 侧拼新 slide XML：原有所有元素原样保留 + 新增一个 <img>
-#    关键：先看原 <data> 里现有元素的 topLeftX/Y/width/height，把 <img> 放到空白区
-
-# 4) 原位 create（before_slide_id = 旧 slide_id）
-lark-cli slides xml_presentation.slide create --as user \
-  --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
-  --data "$(jq -n --arg content "$NEW_XML" --arg before "$TARGET_SLIDE_ID" \
-    '{slide:{content:$content}, before_slide_id:$before}')"
-
-# 5) create 成功后删旧页
-lark-cli slides xml_presentation.slide delete --as user \
-  --params "{\"xml_presentation_id\":\"$PRES_ID\",\"slide_id\":\"$TARGET_SLIDE_ID\"}"
+# 2) block_insert 到页末（或用 insert_before_block_id 指定插入位置）
+lark-cli slides +replace-slide --as user \
+  --presentation "$PRES_ID" --slide-id "$SID" \
+  --parts "$(jq -n --arg token "$TOKEN" \
+    '[{action:"block_insert",insertion:("<img src=\""+$token+"\" topLeftX=\"500\" topLeftY=\"100\" width=\"200\" height=\"150\"/>")}]')"
 ```
 
-**必须遵守**：
+注意事项：
 
-1. **先 create 后 delete** —— 顺序反了且 create 失败会丢页
-2. **原 slide 的所有元素必须原样搬过来** —— 只写新 `<img>` 会把原页标题/正文/形状全删掉
-3. **`before_slide_id=<旧 slide_id>` 必传** —— 不传新页追加到末尾，打乱页序
-4. **`<img>` 坐标避开现有元素** —— 先读现有元素 bbox 挑空白区；空间不够就缩小/挪动现有元素后再放图
-5. **`<img>` 的 `width:height` 仍需对齐原图比例** —— 比例不一致会被裁剪，参见 [xml-schema-quick-ref.md](xml-schema-quick-ref.md) `<img>` 说明
-6. **`slide_id` 会变** —— 新页有新 ID，外部有深链依赖的要告知用户
+1. **`<img>` 坐标避开现有元素** —— 先读现有元素 bbox 挑空白区；空间不够就先用 `block_replace` 挪动/缩小现有元素后再放图
+2. **`<img>` 的 `width:height` 对齐原图比例** —— 比例不一致会被裁剪，参见 [xml-schema-quick-ref.md](xml-schema-quick-ref.md) `<img>` 说明
 
 ## 工作原理
 
@@ -140,4 +124,5 @@ lark-cli slides xml_presentation.slide delete --as user \
 ## 相关命令
 
 - [+create](lark-slides-create.md) — 新建 PPT（支持 `@` 占位符自动上传图片）
+- [+replace-slide](lark-slides-replace-slide.md) — 给已有页加图 / 换图（`block_insert` / `block_replace`）
 - [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) — 创建 slide 页面（拿到 file_token 后塞进 XML）

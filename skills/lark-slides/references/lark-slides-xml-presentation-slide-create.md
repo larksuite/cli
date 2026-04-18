@@ -141,8 +141,12 @@ lark-cli slides xml_presentation.slide create --as user \
 
 ```json
 {
-  "slide_id": "slide_example_id",
-  "revision_id": 100
+  "code": 0,
+  "data": {
+    "slide_id": "slide_example_id",
+    "revision_id": 100
+  },
+  "msg": "success"
 }
 ```
 
@@ -150,8 +154,8 @@ lark-cli slides xml_presentation.slide create --as user \
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `slide_id` | string | 新幻灯片的唯一标识 |
-| `revision_id` | integer | 演示文稿最新版本号 |
+| `data.slide_id` | string | 新幻灯片的唯一标识 |
+| `data.revision_id` | integer | 演示文稿最新版本号 |
 
 ## slide 元素可用子元素
 

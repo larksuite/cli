@@ -41,7 +41,7 @@ lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id"
 ### 结合 jq 格式化输出
 
 ```bash
-lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id":"slides_example_presentation_id"}' | jq -r '.xml_presentation.content'
+lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id":"slides_example_presentation_id"}' | jq -r '.data.xml_presentation.content'
 ```
 
 ### 保存到文件
@@ -56,11 +56,15 @@ lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id"
 
 ```json
 {
-  "xml_presentation": {
-    "presentation_id": "slides_example_presentation_id",
-    "revision_id": 1,
-    "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\"></presentation>"
-  }
+  "code": 0,
+  "data": {
+    "xml_presentation": {
+      "presentation_id": "slides_example_presentation_id",
+      "revision_id": 1,
+      "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
+    }
+  },
+  "msg": "success"
 }
 ```
 
@@ -68,9 +72,9 @@ lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id"
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `xml_presentation.presentation_id` | string | 演示文稿唯一标识 |
-| `xml_presentation.revision_id` | integer | 版本号 |
-| `xml_presentation.content` | string | XML 格式的完整内容 |
+| `data.xml_presentation.presentation_id` | string | 演示文稿唯一标识 |
+| `data.xml_presentation.revision_id` | integer | 版本号 |
+| `data.xml_presentation.content` | string | XML 格式的完整内容 |
 
 ## 常见错误
 
@@ -83,7 +87,7 @@ lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id"
 ## 注意事项
 
 1. **执行前必做**: 使用 `lark-cli schema slides.xml_presentations.get` 查看最新的参数结构
-2. 返回的 XML 在 `xml_presentation.content` 字段中
+2. 返回的 XML 在 `data.xml_presentation.content` 字段中
 3. 如果只需要部分信息，可以使用 `jq` 等工具过滤返回结果
 4. 建议将获取的 XML 保存为文件，便于后续编辑或备份
 
