@@ -20,6 +20,8 @@ When using `--as bot`, the message is sent in the app's name, so make sure the a
 
 When using `--as user`, the message is sent as the authorized end user and requires the `im:message.send_as_user` and `im:message` scopes.
 
+For direct messages to users, `--as user` still does **not** bypass app visibility. If the target user is outside the app's visible or available range, the send can still fail even though the operator already completed `auth login`.
+
 ## Choose The Right Content Flag
 
 | Need | Recommended flag | Why |
@@ -175,6 +177,7 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
+- Assuming `--as user` can message any target user once the sender has logged in. The app still needs to be visible to the recipient, or Feishu will reject the send with visibility / authorization errors.
 
 ## `content` Format Reference
 
@@ -218,6 +221,7 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - When using `--video`, `--video-cover` is required as the video cover
 - `--dry-run` uses placeholder image keys for remote Markdown images and placeholder media keys for local uploads
 - Failures return an error code and message
+- For `--as user` direct messages, make sure the app's visible range includes the target user. A logged-in sender token alone is not enough when the app is not visible to that recipient.
 - `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the message is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT) and requires the `im:message:send_as_bot` scope
 - When sending as a bot, the app must already be in the target group or already have a direct-message relationship with the target user
