@@ -127,8 +127,8 @@ func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 	list := strings.Join(supported, ", ")
 	if f.IdentityAutoDetected {
 		return output.ErrValidation(
-			"resolved identity %q (via auto-detect or default-as) is not supported, this command only supports: %s\nhint: use --as %s",
-			as, list, supported[0])
+			"this command requires %s identity, but no user login was found (auto-detected as %s)\nhint: run `lark-cli auth login` first, then retry",
+			list, as)
 	}
 	return fmt.Errorf("--as %s is not supported, this command only supports: %s", as, list)
 }

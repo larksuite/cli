@@ -174,15 +174,15 @@ func TestCheckIdentity_Unsupported_AutoDetected(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	f.IdentityAutoDetected = true
 
-	err := f.CheckIdentity(core.AsUser, []string{"bot"})
+	err := f.CheckIdentity(core.AsBot, []string{"user"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "resolved identity") {
-		t.Errorf("expected 'resolved identity' in error, got: %v", err)
+	if !strings.Contains(err.Error(), "requires user identity") {
+		t.Errorf("expected 'requires user identity' in error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "hint: use --as bot") {
-		t.Errorf("expected hint in error, got: %v", err)
+	if !strings.Contains(err.Error(), "auth login") {
+		t.Errorf("expected 'auth login' hint in error, got: %v", err)
 	}
 }
 
