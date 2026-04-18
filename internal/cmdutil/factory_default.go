@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -40,6 +41,16 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		Invocation: inv,
 		IOStreams:  streams,
 	}
+
+	// Workspace detection: determines which config subtree to use.
+	// Must run before any config or credential load, since those paths are
+	// workspace-scoped. Default is WorkspaceLocal — existing behavior unchanged.
+	ws := core.DetectWorkspaceFromEnv(os.Getenv)
+	core.SetCurrentWorkspace(ws)
+
+	// Inject workspace-aware dir into keychain's log system.
+	// This breaks the core↔keychain import cycle by using a function variable.
+	keychain.RuntimeDirFunc = core.GetRuntimeDir
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
