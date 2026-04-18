@@ -43,7 +43,7 @@ metadata:
    - 仅对**进行中**会议有效，已结束会议返回 `20001 meeting_status_MEETING_END`。
    - **不能做会后复盘**，**不能替代参会人快照查询**。已结束会议的发言请用 `vc +notes` 取 `verbatim_doc_token`；参会人快照请用 `vc meeting get --with-participants`（见 [`lark-vc`](../lark-vc/SKILL.md)）。
 4. 默认单页；需要完整事件流用 `--page-all` 或 `--page-limit`。
-5. 输出格式优先 `--format pretty`（时间线更易读）；Agent 程序消费场景才用 `--format json`。
+5. 输出格式按处理深度选：`--format pretty` 每条事件压成一行 summary（`[event_type] 参会人 X joined`），适合**汇总时间线**；`--format json` 保留完整 payload（open_id、聊天原文、share_doc 等），适合**提取字段做进一步处理**（过滤某类事件、联动其他命令）。
 6. 保留响应里的 `page_token`，下次增量拉取直接续，不要从头再拉。
 
 ### 3. 离开会议（写操作）

@@ -83,10 +83,12 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 
 ### 5. pretty / json 输出差异
 
-- `--format pretty`：输出“会议主题 / 会议时间 / 时间线”，适合人读，也是默认推荐格式；在多数会议里，`json` 体积会明显大于 pretty
-- `--format json`：保留原始 `events` 结构，适合 Agent / 程序消费
+- `--format pretty`：每条事件输出一行 `event_id / event_time / event_type / summary`；summary 由 shortcut 按 event_type 本地生成（如 `participant X (name) joined`、`speaker X: text`、`share N started: title`），**紧凑易读**，适合**汇总时间线、快速向用户汇报**
+- `--format json`：保留**完整原始 `events[]` 结构**——参会人 open_id、聊天原文、share_doc token 等都在 `events[].payload` 里，**适合提取字段做进一步处理**（过滤某类事件、联动其他命令）
 
-> **注意**：pretty 输出中的正文文本会做单行转义，像真实换行会显示为 `\n`，避免打乱时间线布局。
+**选型**按处理深度：只要告诉用户"发生了什么"→ pretty 够用；要拿具体字段→ json。
+
+> **注意**：pretty 输出中的正文文本会做单行转义，真实换行会显示为 `\n`，避免打乱时间线布局。
 
 ### 6. 关于 `page_token` 的返回与续拉
 
