@@ -324,7 +324,7 @@ func TestResolveChatIDForMessagesList(t *testing.T) {
 
 func TestBuildMessagesSearchRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":                   "hello",
 			"chat-id":                 "oc_1,oc_2",
 			"sender":                  "ou_1,ou_2",
@@ -374,7 +374,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("start later than end", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"start": "2026-03-03T00:00:00+08:00",
 			"end":   "2026-03-02T00:00:00+08:00",
 		}, nil)
@@ -385,7 +385,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("invalid sender id", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"sender": "bad_sender",
 		}, nil)
 		_, err := buildMessagesSearchRequest(runtime)
