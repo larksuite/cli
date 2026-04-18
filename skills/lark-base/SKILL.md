@@ -103,7 +103,7 @@ metadata:
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
 | `+record-search / +record-list / +record-get` | 按关键词检索记录、读取记录明细 / 分页导出，或获取单条记录详情 | [`lark-base-record-search.md`](references/lark-base-record-search.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | 默认优先 `+record-list`；仅当用户提供明确搜索关键词时使用 `+record-search`；取数不用来做聚合分析；`--limit` 最大 `200`；仅在用户明确需要时继续翻页；`+record-list` 只能串行执行 |
-| `+record-upsert / +record-batch-create / +record-batch-update` | 创建、更新或批量写入记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-record-batch-create.md`](references/lark-base-record-batch-create.md)、[`lark-base-record-batch-update.md`](references/lark-base-record-batch-update.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；批量单次建议不超过 `500` 条；附件不要走这里 |
+| `+record-upsert / +record-batch-create / +record-batch-update` | 创建、更新或批量写入记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-record-batch-create.md`](references/lark-base-record-batch-create.md)、[`lark-base-record-batch-update.md`](references/lark-base-record-batch-update.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；`+record-batch-update` 为同值更新（同一 patch 应用到多条记录）；批量单次不超过 `200` 条；附件不要走这里 |
 | `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | `lark-cli docs +media-download` | 下载 Base 附件文件到本地 | [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) | Base 附件的 `file_token` 从 `+record-get` 返回的附件字段数组里取；**不要用 `lark-cli drive +download`**（对 Base 附件返回 403） |
 | `+record-delete / +record-history-list` | 删除记录，或查询某条记录的变更历史 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md)、[`lark-base-record-history-list.md`](references/lark-base-record-history-list.md) | 删除时用户已明确目标可直接执行并带 `--yes`；历史查询按 `table-id + record-id`，不支持整表扫描；`+record-history-list` 只能串行执行 |
@@ -250,11 +250,31 @@ metadata:
 | `slides` | 转到 Drive 相关 skill | 不继续使用本 skill 的 Base 命令 |
 | `mindnote` | 转到 Drive 相关 skill | 不继续使用本 skill 的 Base 命令 |
 
-### 3.5 执行身份与人员字段
+### 3.5 身份选择与权限降级策略
+
+多维表格通常属于用户的个人或团队资源。**默认应优先使用 `--as user`（用户身份）执行所有 Base 操作**，始终显式指定身份。
+
+- **`--as user`（推荐）**：以当前登录用户身份操作其有权访问的 Base。执行前先完成用户授权：
+
+```bash
+lark-cli auth login --domain base
+```
+
+- **`--as bot`（降级）**：仅当 user 身份权限不足、且 bot 身份确实拥有目标 Base 的访问权限时，才降级使用。bot 看不到用户私有资源，行为以应用身份执行。
+
+**执行规则**：
+
+1. 所有操作默认先用 `--as user`。
+2. 若 user 身份返回权限错误，先判断是否为**不可重试错误码**（如 `91403`）。若是，**立即停止**，不做任何重试或降级，直接按 `lark-shared` 权限不足处理流程引导用户解决。
+3. 非不可重试错误码时，检查错误响应中是否包含 `permission_violations` / `hint` 等提权引导信息：
+   - **有提权引导**：按 `lark-shared` 权限不足处理流程，先引导用户完成 user 身份提权（`auth login --scope`）；确认提权成功后，以 `--as user` 重试。
+   - **无提权引导**（如资源级无访问权限、非 scope 不足）：切换到 `--as bot` 重试**一次**。
+4. 若 bot 身份仍然返回权限错误，**立即停止重试**，根据错误响应按 `lark-shared` 流程引导用户解决（引导去开发者后台开通 scope 或确认资源访问权限）。
+5. 只有在用户明确要求"用应用身份 / bot 身份操作"，才跳过 user 直接使用 `--as bot`。
+
+**补充说明**：
 
 - 人员字段 / 用户字段：注意 `user_id_type` 与执行身份（user / bot）差异。
-- bot 身份：bot 看不到用户私有资源；行为以应用身份执行。
-- user 身份：依赖用户授权和 scope；更适合操作用户资源。
 
 ## 4. 执行规则
 
@@ -287,8 +307,8 @@ metadata:
 
 - `+table-list / +field-list / +record-list / +view-list / +record-history-list / +role-list / +dashboard-list / +dashboard-block-list / +workflow-list` 禁止并发调用，只能串行执行。
 - `+record-list` 分页时，`--limit` 最大 `200`；先拉首批并检查 `has_more`，只有用户明确需要更多数据时再继续翻页。
-- 批量写入时，单批建议不超过 `500` 条。
-- 连续写入同一表时，建议串行写入，批次间延迟 `0.5–1` 秒。
+- 批量写入时，单批不超过 `200` 条。
+- 连续写入同一表时，必须串行写入，批次间延迟 `0.5–1` 秒。
 
 ### 4.4 确认与回复规则
 
@@ -296,7 +316,7 @@ metadata:
 - 删除记录 / 字段 / 表时，如果用户已经明确说要删除，且目标明确，`+record-delete / +field-delete / +table-delete` 可直接执行，并带 `--yes`。
 - 删除目标仍有歧义时，先用 `+record-get / +field-get / +table-get` 或相应 list 命令确认。
 - `+base-create / +base-copy` 成功后，回复中必须主动返回新 Base 的标识信息；若结果带可访问链接，也应一并返回。
-- 若 Base 由 bot 身份创建且当前 CLI 存在可用 user 身份，优先继续补授当前 user 为 `full_access`；owner 转移必须单独确认，禁止擅自执行。
+- 若 Base 由 bot 身份创建或复制，shortcut 会自动尝试为当前 CLI 用户补授 `full_access`，并在输出中返回 `permission_grant`；agent 不需要再手动编排单独授权。owner 转移必须单独确认，禁止擅自执行。
 
 ## 5. 常见错误与恢复
 
@@ -311,51 +331,6 @@ metadata:
 | `not found` 且用户给的是 wiki 链接 | 常见于把 wiki token 当成 base token | 优先回退检查 wiki 解析，而不是改走 `bitable/v1` |
 | formula / lookup 创建失败 | 指南未读或结构不合法 | 先读 `formula-field-guide.md` / `lookup-field-guide.md`，再按 guide 重建请求 |
 | 系统字段 / 公式字段写入失败 | 只读字段被当成可写字段 | 改为写存储字段，计算结果交给 formula / lookup / 系统字段自动产出 |
-| `1254104` | 批量超 500 条 | 分批调用 |
+| `1254104` | 批量超 200 条 | 分批调用 |
 | `1254291` | 并发写冲突 | 串行写入 + 批次间延迟 |
-
-## 6. 参考文档
-
-- [lark-base-shortcut-field-properties.md](references/lark-base-shortcut-field-properties.md) — `+field-create/+field-update` 调用前必看，各类型 field JSON 规范
-- [role-config.md](references/role-config.md) — 角色权限配置详解
-- [lark-base-shortcut-record-value.md](references/lark-base-shortcut-record-value.md) — record 写入（`+record-upsert / +record-batch-create / +record-batch-update`）调用前必看，各类型 record JSON 规范
-- [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) — `+record-batch-create` 用法与 `--json` 结构
-- [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) — `+record-batch-update` 用法与 `--json` 结构
-- [formula-field-guide.md](references/formula-field-guide.md) — formula 字段写法、函数约束、CurrentValue 规则、跨表计算模式
-- [lookup-field-guide.md](references/lookup-field-guide.md) — lookup 字段配置规则、where/aggregate 约束、与 formula 的取舍
-- [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) — 视图筛选配置
-- [lark-base-record-list.md](references/lark-base-record-list.md) — 记录列表读取与分页
-- [lark-base-record-search.md](references/lark-base-record-search.md) — 关键词搜索记录
-- [lark-base-advperm-enable.md](references/lark-base-advperm-enable.md) — `+advperm-enable` 启用高级权限
-- [lark-base-advperm-disable.md](references/lark-base-advperm-disable.md) — `+advperm-disable` 停用高级权限
-- [lark-base-role-list.md](references/lark-base-role-list.md) — `+role-list` 列出角色
-- [lark-base-role-get.md](references/lark-base-role-get.md) — `+role-get` 获取角色详情
-- [lark-base-role-create.md](references/lark-base-role-create.md) — `+role-create` 创建角色
-- [lark-base-role-update.md](references/lark-base-role-update.md) — `+role-update` 更新角色
-- [lark-base-role-delete.md](references/lark-base-role-delete.md) — `+role-delete` 删除角色
-- [lark-base-dashboard.md](references/lark-base-dashboard.md) — dashboard 模块工作流指引
-- [dashboard-block-data-config.md](references/dashboard-block-data-config.md) — Block `data_config` 结构、图表类型、filter 规则
-- [lark-base-workflow.md](references/lark-base-workflow.md) — workflow 命令索引
-- [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) — `+workflow-create/+workflow-update` JSON body 结构详解
-- [lark-base-data-query.md](references/lark-base-data-query.md) — `+data-query` 聚合分析，含 DSL 结构、支持字段类型、聚合函数
-- [examples.md](references/examples.md) — 完整操作示例
-
-## 7. 命令分组
-
-> **执行前必做：** 从下表定位到命令后，务必先阅读对应命令的 reference 文档，再调用命令。
-
-| 命令分组 | 说明 |
-|----------|------|
-| [`table commands`](references/lark-base-table.md) | `+table-list / +table-get / +table-create / +table-update / +table-delete` |
-| [`field commands`](references/lark-base-field.md) | `+field-list / +field-get / +field-create / +field-update / +field-delete / +field-search-options` |
-| [`record commands`](references/lark-base-record.md) | `+record-search / +record-list / +record-get / +record-upsert / +record-batch-create / +record-batch-update / +record-upload-attachment / +record-delete` |
-| [`view commands`](references/lark-base-view.md) | `+view-list / +view-get / +view-create / +view-delete / +view-get-* / +view-set-* / +view-rename` |
-| [`data-query commands`](references/lark-base-data-query.md) | `+data-query` |
-| [`history commands`](references/lark-base-history.md) | `+record-history-list` |
-| [`base / workspace commands`](references/lark-base-workspace.md) | `+base-create / +base-get / +base-copy` |
-| [`advperm commands`](references/lark-base-advperm-enable.md) | `+advperm-enable / +advperm-disable` |
-| [`role commands`](references/lark-base-role-list.md) | `+role-list / +role-get / +role-create / +role-update / +role-delete` |
-| [`form commands`](references/lark-base-form-create.md) | `+form-list / +form-get / +form-create / +form-update / +form-delete` |
-| [`form questions commands`](references/lark-base-form-questions-create.md) | `+form-questions-list / +form-questions-create / +form-questions-update / +form-questions-delete` |
-| [`workflow commands`](references/lark-base-workflow.md) | `+workflow-list / +workflow-get / +workflow-create / +workflow-update / +workflow-enable / +workflow-disable` |
-| [`dashboard / dashboard-block commands`](references/lark-base-dashboard.md) | `+dashboard-list / +dashboard-get / +dashboard-create / +dashboard-update / +dashboard-delete / +dashboard-arrange / +dashboard-block-list / +dashboard-block-get / +dashboard-block-create / +dashboard-block-update / +dashboard-block-delete` |
+| `91403` | 无权限访问该 Base | **不要重试**。按 `lark-shared` 权限不足处理流程引导用户解决权限问题 |

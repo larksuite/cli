@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.14] - 2026-04-17
+
+### Features
+
+- **mail**: Add email priority support for compose and read (#538)
+- **mail**: Support scheduled send (#534)
+- **drive**: Support sheet cell comments in `+add-comment` (#518)
+- **doc**: Add `--file-view` flag to `+media-insert` (#419)
+- **base**: Auto grant current user for bot create and copy (#497)
+- **base**: Add identity priority strategy and error handling (#505)
+- **auth**: Improve login scope handling and messages (#523)
+- Add OKR business domain (#522)
+
+### Documentation
+
+- **wiki**: Improve wiki skill docs and add wiki domain template (#512)
+- **task**: Document `custom_fields` and `custom_field_options` API resources and permissions (#524)
+
+### Refactor
+
+- **skills**: Introduce `lark-doc-whiteboard.md` and streamline whiteboard workflow (#502)
+
+## [v1.0.13] - 2026-04-16
+
+### Features
+
+- **im**: Support user access token for file, image, audio, and video upload, aligning upload and send identity with `--as` flag (#474)
+- **drive**: Add `drive +create-folder` shortcut with root-folder fallback and bot-mode auto-grant (#470)
+- **wiki**: Add bot-mode auto-grant support to `wiki +node-create` (#470)
+- **doc**: Default `skip_task_detail` in `docs +fetch` to reduce unnecessary task detail expansion (#471)
+
+### Bug Fixes
+
+- **im**: Preserve original URL filename for uploaded file messages instead of generic `media.ext` names (#514)
+- **whiteboard**: Use atomic overwrite API parameter for `whiteboard +update`, replacing read-then-delete approach (#483)
+
+### Documentation
+
+- **base**: Unify record batch write limit to 200 and enforce serial writes for continuous operations (#499)
+- **base**: Remove redundant reference documentation and command grouping chapters from SKILL.md (#500)
+
+### CI
+
+- Consolidate workflows into layered CI pyramid with single `results` gate (#510)
+
+## [v1.0.12] - 2026-04-15
+
+### Features
+
+- Add guided npm install flow that installs or upgrades the CLI, installs AI skills, and walks through app config and auth login (#464)
+- **mail**: Add email signature support with `+signature`, `--signature-id` compose flags, and draft signature edit operations (#485)
+- **mail**: Return recall hints for sent emails when recall is available (#481)
+- **slides**: Add `+media-upload` and support `@path` image placeholders in `+create --slides` (#450)
+
+### Documentation
+
+- **mail**: Add recipient search guidance to the mail skill workflow (#437)
+- **calendar/vc**: Route past meeting queries to `lark-vc` and clarify historical date matching in skills (#482, #480)
+
 ## [v1.0.11] - 2026-04-14
 
 ### Features
@@ -345,6 +404,9 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.14]: https://github.com/larksuite/cli/releases/tag/v1.0.14
+[v1.0.13]: https://github.com/larksuite/cli/releases/tag/v1.0.13
+[v1.0.12]: https://github.com/larksuite/cli/releases/tag/v1.0.12
 [v1.0.11]: https://github.com/larksuite/cli/releases/tag/v1.0.11
 [v1.0.10]: https://github.com/larksuite/cli/releases/tag/v1.0.10
 [v1.0.9]: https://github.com/larksuite/cli/releases/tag/v1.0.9

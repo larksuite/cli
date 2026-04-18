@@ -10,12 +10,12 @@ import (
 )
 
 type initMsg struct {
-	SelectAction       string
-	CreateNewApp       string
-	ConfigExistingApp  string
-	Platform           string
-	SelectPlatform     string
-	Feishu             string
+	SelectAction      string
+	CreateNewApp      string
+	ConfigExistingApp string
+	Platform          string
+	SelectPlatform    string
+	Feishu            string
 	// TTY (interactive) variants
 	ScanQRCode     string // header shown above QR code
 	ScanOrOpenLink string // post-QR alt link prompt ("or open...")
@@ -29,11 +29,11 @@ type initMsg struct {
 }
 
 var initMsgZh = &initMsg{
-	SelectAction:       "选择操作",
-	CreateNewApp:       "一键配置应用 (推荐) ",
-	ConfigExistingApp:  "手动输入应用凭证",
-	Platform:           "平台",
-	SelectPlatform:     "选择平台",
+	SelectAction:         "选择操作",
+	CreateNewApp:         "一键配置应用 (推荐) ",
+	ConfigExistingApp:    "手动输入应用凭证",
+	Platform:             "平台",
+	SelectPlatform:       "选择平台",
 	Feishu:               "飞书",
 	ScanQRCode:           "\n使用飞书 / Lark 扫码配置应用：\n\n",
 	ScanOrOpenLink:       "\n或打开以下链接完成配置：\n",
@@ -46,11 +46,11 @@ var initMsgZh = &initMsg{
 }
 
 var initMsgEn = &initMsg{
-	SelectAction:       "Select action",
-	CreateNewApp:       "Set up your app with one click (Recommended)",
-	ConfigExistingApp:  "Enter app credentials yourself",
-	Platform:           "Platform",
-	SelectPlatform:     "Select platform",
+	SelectAction:         "Select action",
+	CreateNewApp:         "Set up your app with one click (Recommended)",
+	ConfigExistingApp:    "Enter app credentials yourself",
+	Platform:             "Platform",
+	SelectPlatform:       "Select platform",
 	Feishu:               "Feishu",
 	ScanQRCode:           "\nScan the QR code with Feishu/Lark:\n\n",
 	ScanOrOpenLink:       "\nOr open the link below in your browser:\n",

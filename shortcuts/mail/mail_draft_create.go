@@ -47,6 +47,7 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "attach", Desc: "Optional. Regular attachment file paths (relative path only). Separate multiple paths with commas. Each path must point to a readable local file."},
 		{Name: "inline", Desc: "Optional. Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		signatureFlag,
+		priorityFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		input, err := parseDraftCreateInput(runtime)
@@ -79,10 +80,14 @@ var MailDraftCreate = common.Shortcut{
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
 			return err
 		}
-		return nil
+		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		input, err := parseDraftCreateInput(runtime)
+		if err != nil {
+			return err
+		}
+		priority, err := parsePriority(runtime.Str("priority"))
 		if err != nil {
 			return err
 		}
@@ -91,7 +96,7 @@ var MailDraftCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		rawEML, err := buildRawEMLForDraftCreate(runtime, input, sigResult)
+		rawEML, err := buildRawEMLForDraftCreate(runtime, input, sigResult, priority)
 		if err != nil {
 			return err
 		}
@@ -129,7 +134,7 @@ func parseDraftCreateInput(runtime *common.RuntimeContext) (draftCreateInput, er
 	return input, nil
 }
 
-func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput, sigResult *signatureResult) (string, error) {
+func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput, sigResult *signatureResult, priority string) (string, error) {
 	senderEmail := resolveComposeSenderEmail(runtime)
 	if senderEmail == "" {
 		return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
@@ -190,6 +195,7 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 	} else {
 		bld = bld.TextBody([]byte(input.Body))
 	}
+	bld = applyPriority(bld, priority)
 	allFilePaths := append(append(splitByComma(input.Attach), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
 	if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
 		return "", err

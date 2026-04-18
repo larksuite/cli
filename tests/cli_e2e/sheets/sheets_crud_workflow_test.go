@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	drivee2e "github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -27,27 +29,15 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 	spreadsheetToken := ""
 	sheetID := ""
 
-	t.Run("create spreadsheet with +create", func(t *testing.T) {
-		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
-			Args: []string{"sheets", "+create", "--title", "lark-cli-e2e-sheets-" + suffix},
-		}, clie2e.RetryOptions{})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		spreadsheetToken = gjson.Get(result.Stdout, "data.spreadsheet_token").String()
-		require.NotEmpty(t, spreadsheetToken, "spreadsheet token should not be empty, stdout: %s", result.Stdout)
-
-		parentT.Cleanup(func() {
-			// Best-effort cleanup - spreadsheets don't have a direct delete shortcut
-			// The spreadsheet will be cleaned up by the test environment if needed
-		})
+	t.Run("create spreadsheet with +create as bot", func(t *testing.T) {
+		spreadsheetToken = createSpreadsheet(t, parentT, ctx, "lark-cli-e2e-sheets-"+suffix, "bot")
 	})
 
-	t.Run("get spreadsheet info with +info", func(t *testing.T) {
+	t.Run("get spreadsheet info with +info as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+			Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -58,7 +48,7 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 		require.NotEmpty(t, sheetID, "sheet_id should not be empty, stdout: %s", result.Stdout)
 	})
 
-	t.Run("write data with +write", func(t *testing.T) {
+	t.Run("write data with +write as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -77,13 +67,14 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 				"--range", "A1:C3",
 				"--values", string(valuesJSON),
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("read data with +read", func(t *testing.T) {
+	t.Run("read data with +read as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -94,6 +85,7 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 				"--sheet-id", sheetID,
 				"--range", "A1:C3",
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -106,7 +98,7 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 		assert.Equal(t, "Alice", values.Array()[1].Array()[0].String())
 	})
 
-	t.Run("append rows with +append", func(t *testing.T) {
+	t.Run("append rows with +append as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -121,13 +113,14 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 				"--range", "A4:C4",
 				"--values", string(valuesJSON),
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("find cells with +find", func(t *testing.T) {
+	t.Run("find cells with +find as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -139,6 +132,7 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 				"--find", "Alice",
 				"--range", fmt.Sprintf("%s!A1:C10", sheetID),
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -149,22 +143,32 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 		assert.True(t, len(matchedCells.Array()) > 0, "should find at least one cell containing 'Alice'")
 	})
 
-	t.Run("export spreadsheet with +export", func(t *testing.T) {
+	t.Run("export spreadsheet with +export as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
+		outputDir := t.TempDir()
+		outputPath := filepath.Join(outputDir, "export.xlsx")
 
-		// Export is an async operation; verify it initiates correctly
-		// The command may have filesystem race issues but the API call succeeds
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
 				"sheets", "+export",
 				"--spreadsheet-token", spreadsheetToken,
 				"--file-extension", "xlsx",
+				"--output-path", "./export.xlsx",
 			},
+			DefaultAs: "bot",
+			WorkDir:   outputDir,
 		})
 		require.NoError(t, err)
-		// Export initiates successfully and returns file_token even if there's a temp file race
-		assert.NotEmpty(t, gjson.Get(result.Stdout, "data.file_token").String(),
-			"export should return file_token, stdout: %s", result.Stdout)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+		savedPath := gjson.Get(result.Stdout, "data.saved_path").String()
+		require.NotEmpty(t, savedPath, "stdout:\n%s", result.Stdout)
+		savedPathReal, err := filepath.EvalSymlinks(savedPath)
+		require.NoError(t, err, "stdout:\n%s", result.Stdout)
+		outputPathReal, err := filepath.EvalSymlinks(outputPath)
+		require.NoError(t, err, "stdout:\n%s", result.Stdout)
+		assert.Equal(t, outputPathReal, savedPathReal, "stdout:\n%s", result.Stdout)
+		assert.FileExists(t, outputPath, "stdout:\n%s", result.Stdout)
 	})
 }
 
@@ -177,13 +181,16 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 	suffix := clie2e.GenerateSuffix()
 	spreadsheetToken := ""
 
-	t.Run("create spreadsheet with spreadsheets create", func(t *testing.T) {
-		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
-			Args: []string{"sheets", "spreadsheets", "create"},
+	t.Run("create spreadsheet with spreadsheets create as bot", func(t *testing.T) {
+		folderToken := drivee2e.CreateDriveFolder(t, parentT, ctx, "lark-cli-e2e-sheets-resource-folder-"+suffix, "bot", "")
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"sheets", "spreadsheets", "create"},
+			DefaultAs: "bot",
 			Data: map[string]any{
-				"title": "lark-cli-e2e-sheets-resource-" + suffix,
+				"title":        "lark-cli-e2e-sheets-resource-" + suffix,
+				"folder_token": folderToken,
 			},
-		}, clie2e.RetryOptions{})
+		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
@@ -192,16 +199,29 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token should not be empty, stdout: %s", result.Stdout)
 
 		parentT.Cleanup(func() {
-			// Best-effort cleanup
+			cleanupCtx, cancel := clie2e.CleanupContext()
+			defer cancel()
+
+			deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
+				Args: []string{
+					"drive", "+delete",
+					"--file-token", spreadsheetToken,
+					"--type", "sheet",
+					"--yes",
+				},
+				DefaultAs: "bot",
+			})
+			clie2e.ReportCleanupFailure(parentT, "delete spreadsheet "+spreadsheetToken, deleteResult, deleteErr)
 		})
 	})
 
-	t.Run("get spreadsheet with spreadsheets get", func(t *testing.T) {
+	t.Run("get spreadsheet with spreadsheets get as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"sheets", "spreadsheets", "get"},
-			Params: map[string]any{"spreadsheet_token": spreadsheetToken},
+			Args:      []string{"sheets", "spreadsheets", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"spreadsheet_token": spreadsheetToken},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -211,14 +231,15 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 		assert.NotEmpty(t, gjson.Get(result.Stdout, "data.spreadsheet.url").String())
 	})
 
-	t.Run("patch spreadsheet with spreadsheets patch", func(t *testing.T) {
+	t.Run("patch spreadsheet with spreadsheets patch as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 
 		updatedTitle := "lark-cli-e2e-sheets-patched-" + suffix
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"sheets", "spreadsheets", "patch"},
-			Params: map[string]any{"spreadsheet_token": spreadsheetToken},
-			Data:   map[string]any{"title": updatedTitle},
+			Args:      []string{"sheets", "spreadsheets", "patch"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"spreadsheet_token": spreadsheetToken},
+			Data:      map[string]any{"title": updatedTitle},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -226,8 +247,9 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 
 		// Verify the title was updated by fetching the spreadsheet
 		getResult, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"sheets", "spreadsheets", "get"},
-			Params: map[string]any{"spreadsheet_token": spreadsheetToken},
+			Args:      []string{"sheets", "spreadsheets", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"spreadsheet_token": spreadsheetToken},
 		})
 		require.NoError(t, err)
 		getResult.AssertExitCode(t, 0)

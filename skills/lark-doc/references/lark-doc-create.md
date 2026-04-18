@@ -57,9 +57,8 @@ lark-cli docs +create --title "学习笔记" --wiki-space my_library --markdown 
 如果文档中包含空白画板（`<whiteboard type="blank"></whiteboard>`），**必须继续以下步骤**：
 
 1. 从返回值的 `data.board_tokens` 字段记录所有新建画板的 token
-2. 立即切换到 [`lark-whiteboard`](../lark-whiteboard/SKILL.md) 技能
-3. 使用 `whiteboard +update` 命令为每个画板填充实际内容（Mermaid/PlantUML/DSL）
-4. 确认所有画板都有实际内容后，任务才算完成
+2. 读取 `../../lark-whiteboard/SKILL.md`，跳至"渲染 & 写入画板"章节，为每个 board_token 生成并写入实际内容
+3. 确认所有画板都有实际内容后，任务才算完成
 
 **仅创建空白画板是不够的！** 如果只创建空白画板而不填充内容，任务将被视为未完成。
 
@@ -85,7 +84,7 @@ lark-cli docs +create --title "学习笔记" --wiki-space my_library --markdown 
 - **视觉节奏**：用分割线、分栏、表格打破大段纯文字
 - **图文交融**：流程、架构或草图需要可视化时，优先使用图片、表格或空白画板
 - **克制留白**：Callout 不过度、加粗只强调核心词
-- **主动画板**：文档涉及架构、流程、组织、时间线、因果等逻辑关系时，主动插入空白画板，后续用 lark-whiteboard 填充；但若用户明确要求仅文本或内容更适合表格，则不插入。详见 [画板需求挖掘](../SKILL.md#画板需求挖掘主动识别)
+- **主动画板**：文档涉及架构、流程、组织、时间线、因果等逻辑关系时，**必须**在 markdown 对应章节的文字内容之后插入 `<whiteboard type="blank"></whiteboard>` 占位，每个图表对应一个标签。**禁止**用 `whiteboard-cli` 渲染的 PNG/SVG 图片替代画板。创建完成后从返回值 `data.board_tokens` 取 token，读取 `../../lark-whiteboard/SKILL.md` 的"渲染 & 写入画板"章节为每个 token 写入图表内容。例：文档含"系统整体架构""分层架构""部署架构"各需插入一个画板，"类图"也需插入一个画板（走 Mermaid 路由）。
 
 当用户有明确的样式、风格需求时，应当以用户的需求为准！
 
@@ -450,7 +449,7 @@ lark-cli docs +create --title "空白画板示例" --markdown '<whiteboard type=
 **重要说明**：
 - 创建空白画板时，直接使用 `<whiteboard type="blank"></whiteboard>`
 - 读取时只能获取 token，可通过 media-download 查看内容，无法直接读出画板内部内容
-- 画板编辑：详见 [SKILL.md](../SKILL.md#重要说明画板编辑)
+- 画板编辑：详见 [../../lark-whiteboard/SKILL.md](../../lark-whiteboard/SKILL.md)
 
 ### 多维表格（Base）
 

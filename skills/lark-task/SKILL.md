@@ -100,6 +100,20 @@ lark-cli task <resource> <method> [flags] # 调用 API
   - `patch` — 更新自定义分组
   - `tasks` — 获取自定义分组任务列表
 
+### custom_fields
+
+  - `create` — 创建自定义字段
+  - `get` — 获取自定义字段详情
+  - `patch` — 更新自定义字段
+  - `list` — 获取自定义字段列表
+  - `add` — 将自定义字段加入资源
+  - `remove` — 将自定义字段移出资源
+
+### custom_field_options
+
+  - `create` — 创建自定义字段选项
+  - `patch` — 更新自定义字段选项
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -127,3 +141,11 @@ lark-cli task <resource> <method> [flags] # 调用 API
 | `sections.list` | `task:section:read` |
 | `sections.patch` | `task:section:write` |
 | `sections.tasks` | `task:section:read` |
+| `custom_fields.create` | `task:custom_field:write` |
+| `custom_fields.get` | `task:custom_field:read` |
+| `custom_fields.patch` | `task:custom_field:write` |
+| `custom_fields.list` | `task:custom_field:read` |
+| `custom_fields.add` | `task:custom_field:write` |
+| `custom_fields.remove` | `task:custom_field:write` |
+| `custom_field_options.create` | `task:custom_field:write` |
+| `custom_field_options.patch` | `task:custom_field:write` |

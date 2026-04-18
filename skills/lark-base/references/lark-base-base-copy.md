@@ -47,19 +47,14 @@ POST /open-apis/base/v3/bases/:base_token/copy
   - 如果本次返回没有 `url`，至少返回新 Base 的名称和 token
 
 > [!IMPORTANT]
-> 如果 Base 是**以应用身份（bot）复制**出来的，agent 在复制成功后应**默认继续使用 bot 身份**，为当前可用的 user 身份添加该 Base 的 `full_access`（管理员）权限。
-> 推荐流程：
-> 1. 先用 `lark-cli contact +get-user` 获取当前用户信息，并从返回结果中读取该用户的 `open_id`
-> 2. 再切回 bot 身份，使用这个 `open_id` 给该用户授权该 Base 的 `full_access`（管理员）权限
+> 如果 Base 是**以应用身份（bot）复制**出来的，shortcut 会在复制成功后自动尝试为当前 CLI 用户添加该 Base 的 `full_access`（管理员）权限，并在输出中附带 `permission_grant` 字段。
 >
-> 如果 `lark-cli contact +get-user` 无法执行，或者本地没有可用的 user 身份、拿不到当前用户的 `open_id`，则应视为“本地没有可用的 user 身份”，明确说明因此未完成授权。
+> `permission_grant.status` 语义如下：
+> - `granted`：当前 CLI 用户已获得该 Base 的管理员权限
+> - `skipped`：Base 已复制成功，但没有可授权的当前 CLI 用户，或复制结果缺少可授权 token
+> - `failed`：Base 已复制成功，但自动授权失败；结果中会包含失败原因，用户可稍后重试授权，或继续使用应用身份（bot）处理该 Base
 >
-> 回复复制结果时，除 `base token` 和可访问链接外，还必须明确告知用户授权结果：
-> - 如果授权成功：直接说明当前 user 已获得该 Base 的管理员权限
-> - 如果本地没有可用的 user 身份：明确说明因此未完成授权
-> - 如果授权失败：明确说明 Base 已复制成功，但授权失败，并透出失败原因；同时提示用户可以稍后重试授权，或继续使用应用身份（bot）处理该 Base
->
-> 如果授权未完成，应继续给出后续引导：用户可以稍后重试授权，也可以继续使用应用身份（bot）处理该 Base；如果希望后续改由自己管理，也可将 Base owner 转移给该用户。
+> 回复复制结果时，除 `base token` 和可访问链接外，还必须明确告知用户 `permission_grant` 的结果。
 >
 > **仍然不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
 

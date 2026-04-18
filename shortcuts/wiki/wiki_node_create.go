@@ -58,7 +58,11 @@ var WikiNodeCreate = common.Shortcut{
 		return validateWikiNodeCreateSpec(readWikiNodeCreateSpec(runtime), runtime.As())
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		return buildWikiNodeCreateDryRun(readWikiNodeCreateSpec(runtime))
+		dry := buildWikiNodeCreateDryRun(readWikiNodeCreateSpec(runtime))
+		if runtime.IsBot() {
+			dry.Desc("After wiki node creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new wiki node.")
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := readWikiNodeCreateSpec(runtime)
@@ -70,7 +74,7 @@ var WikiNodeCreate = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Created wiki node in space %s via %s.\n", execution.ResolvedSpace.SpaceID, execution.ResolvedSpace.ResolvedBy)
-		runtime.Out(wikiNodeCreateOutput(execution), nil)
+		runtime.Out(augmentWikiNodeCreateOutput(runtime, execution), nil)
 		return nil
 	},
 }
@@ -293,6 +297,9 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 	if err != nil {
 		return nil, err
 	}
+	if node == nil {
+		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki node create returned no node")
+	}
 
 	return &wikiNodeCreateExecution{
 		Node:          node,
@@ -461,4 +468,16 @@ func wikiNodeCreateOutput(execution *wikiNodeCreateExecution) map[string]interfa
 		"origin_node_token": node.OriginNodeToken,
 		"has_child":         node.HasChild,
 	}
+}
+
+func augmentWikiNodeCreateOutput(runtime *common.RuntimeContext, execution *wikiNodeCreateExecution) map[string]interface{} {
+	if execution == nil || execution.Node == nil {
+		return map[string]interface{}{}
+	}
+
+	out := wikiNodeCreateOutput(execution)
+	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, execution.Node.NodeToken, "wiki"); grant != nil {
+		out["permission_grant"] = grant
+	}
+	return out
 }

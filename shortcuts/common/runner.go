@@ -263,8 +263,8 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 }
 
 // DoAPIAsBot executes a raw Lark SDK request using bot identity (tenant access token),
-// regardless of the current --as flag. Use this for bot-only APIs (e.g. image/file upload)
-// that must be called with TAT even when the surrounding shortcut runs as user.
+// regardless of the current --as flag. Use this for APIs that must always be called
+// with TAT even when the surrounding shortcut runs as user.
 func (ctx *RuntimeContext) DoAPIAsBot(req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
