@@ -10,14 +10,14 @@
 ## 命令
 
 ```bash
-# 查询当前会议的首批事件
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --format pretty
+# 默认建议：全量拉取当前可见事件
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-all --format pretty
 
 # 指定时间范围
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --start 2026-04-17T15:00:00+08:00 --end 2026-04-17T16:00:00+08:00 --format pretty
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --start 2026-04-17T15:00:00+08:00 --end 2026-04-17T16:00:00+08:00 --page-all --format pretty
 
 # pretty 时间线输出
-lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --format pretty
+lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-all --format pretty
 
 # 自动翻页（最多 10 页）
 lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --page-limit 10 --format pretty
@@ -40,7 +40,7 @@ lark-cli vc +meeting-events --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 | `--page-size <n>` | 否 | 单页模式每页大小。CLI 会自动夹紧到 `20-100`；传 `--page-all` 时固定使用 `100` |
 | `--page-limit <n>` | 否 | 自动分页最大页数。设置该参数会开启自动分页 |
 | `--page-all` | 否 | 自动分页，并在未显式指定 `--page-limit` 时使用最大页上限 |
-| `--format <fmt>` | 否 | 输出格式：json (默认) / pretty / table / ndjson / csv |
+| `--format <fmt>` | 否 | 输出格式：json (CLI 默认) / pretty（本 skill 推荐默认） / table / ndjson / csv |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
 ## 核心约束
@@ -83,23 +83,25 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 
 ### 4. 自动分页规则
 
-- 不传 `--page-all` 也不传 `--page-limit`：只查 1 页
-- 传 `--page-limit N`：开启自动分页，最多拉 `N` 页
-- 传 `--page-all`：开启自动分页；若未显式传 `--page-limit`，使用最大页上限
-- `--page-all` 时，CLI 固定使用最大 `page_size=100`
+- **本 skill 的默认策略**：除非用户明确要求“只查一页”、明确限制页数，或出于调试 / 控制返回体大小的原因指定了别的方式，否则默认应主动带上 `--page-all`，把当前可见事件尽量一次拉全。
+- **Agent 必须学会识别分页状态**：看到响应中的 `has_more=true` 时，要明确知道后面还有页；如果当前任务目标是“拿全当前可见事件”，就应继续分页，而不是把这一页误当成完整结果。
+- 传 `--page-limit N`：开启自动分页，最多拉 `N` 页。
+- 传 `--page-all`：开启自动分页；若未显式传 `--page-limit`，使用最大页上限。
+- `--page-all` 时，CLI 固定使用最大 `page_size=100`。
 
 ### 5. pretty / json 输出差异
 
 - `--format pretty`：每条事件输出一行 `event_id / event_time / event_type / summary`；summary 由 shortcut 按 event_type 本地生成（如 `participant X (name) joined`、`speaker X: text`、`share N started: title`），**紧凑易读**，适合**汇总时间线、快速向用户汇报**
 - `--format json`：保留**完整原始 `events[]` 结构**——参会人 open_id、聊天原文、share_doc token 等都在 `events[].payload` 里，**适合提取字段做进一步处理**（过滤某类事件、联动其他命令）
 
-**选型**按处理深度：只要告诉用户"发生了什么"→ pretty 够用；要拿具体字段→ json。
+**选型**按处理深度：只要告诉用户"发生了什么"→ `--page-all --format pretty` 通常就是默认首选；要拿具体字段→ json。
 
 > **注意**：pretty 输出中的正文文本会做单行转义，真实换行会显示为 `\n`，避免打乱时间线布局。
 
 ### 6. 关于 `page_token` 的返回与续拉
 
-- 不管这次是只查 1 页，还是通过 `--page-limit` / `--page-all` 已经把当前可见事件都拿完，都应把最后拿到的 `page_token` 一并保留下来并返回给用户（若响应里有）。
+- 不管这次是只查 1 页，还是通过 `--page-limit` / `--page-all` 已经把当前可见事件都拿完，都应把最后拿到的 `page_token` 一并保留下来并返回给用户。
+- 如果没有使用 `--page-all`，但响应里 `has_more=true`，说明这次只拿到了部分事件；此时要么继续用返回的 `page_token` 拉下一页，要么明确告诉用户当前结果并不完整。
 - 下次继续“查新增事件”时，应优先复用上一次保存的 `page_token`，而不是从头全量再拉一次。
 - 只有在用户明确要求“从头回放全部事件”时，才忽略历史 `page_token`，重新从第一页开始。
 
@@ -154,28 +156,37 @@ lark-cli vc +meeting-events --meeting-id <meeting.id>
 lark-cli vc +meeting-join --meeting-number 123456789
 
 # 第 2 步：查询事件流
-lark-cli vc +meeting-events --meeting-id <meeting.id> --format pretty
+lark-cli vc +meeting-events --meeting-id <meeting.id> --page-all --format pretty
 ```
 
-### 场景 2：会中事件排障 / 会话回放
-
-```bash
-# 先看结构化原始数据
-lark-cli vc +meeting-events --meeting-id <meeting.id> --format json
-
-# 需要继续翻页时
-lark-cli vc +meeting-events --meeting-id <meeting.id> --page-limit 5 --format json
-```
-
-### 场景 3：过滤某段时间内的事件
+### 场景 2：过滤某段时间内的事件
 
 ```bash
 lark-cli vc +meeting-events \
   --meeting-id <meeting.id> \
   --start 2026-04-17T15:00:00+08:00 \
   --end 2026-04-17T16:00:00+08:00 \
+  --page-all \
   --format pretty
 ```
+
+### 场景 3：基于上一次的 `page_token` 继续查新增事件
+
+```bash
+# 上一次查询结束后，保留最后返回的 page_token
+# 这次直接从该游标继续拉新增事件
+lark-cli vc +meeting-events \
+  --meeting-id <meeting.id> \
+  --page-token <last_page_token> \
+  --page-all \
+  --format pretty
+```
+
+适用规则：
+
+- 当用户说“继续看新事件”“看上次之后新增了什么”时，优先使用上一次保存的 `page_token`。
+- 如果这次返回里仍有 `has_more=true`，说明新增事件还没拉完，应继续分页，而不是把当前页误当成完整增量结果。
+- 只有在用户明确要求“从头回放全部事件”时，才忽略已有 `page_token`，重新从第一页开始。
 
 ## 常见错误与排查
 
@@ -193,6 +204,8 @@ lark-cli vc +meeting-events \
 
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `+search`。
 - 如果你只需要最终纪要、录制、逐字稿，不必查事件列表，直接用 `+notes` / `+recording`。
+- 对 Agent 来说，默认应把 `+meeting-events` 当作“尽量拉全当前可见事件”的命令来用，也就是优先带 `--page-all`；只有用户明确要求单页、限页，或你确实需要控制返回体大小时，才改用单页或 `--page-limit`。
+- 如果没有显式使用 `--page-all`，也必须根据返回里的 `has_more` 判断当前结果是不是完整；`has_more=true` 时，不能把这一页直接当作“全部事件”来汇报。
 - 事件列表是否完整，取决于 bot 何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且 bot **曾经在会中**时还能继续拉到事件。
 - 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `+meeting-events` 做参会人查询。
 
