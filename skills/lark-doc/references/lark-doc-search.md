@@ -53,7 +53,7 @@ lark-cli docs +search \
 # 按文档所有者过滤（creator_ids 传文档所有者 open_id，不是邮箱 / user_id）
 lark-cli docs +search \
   --query "季度总结" \
-  --filter '{"creator_ids":["ou_7890123456abcdef"]}'
+  --filter '{"creator_ids":["ou_EXAMPLE_USER_ID"]}'
 
 # 只搜索指定类型
 lark-cli docs +search \
@@ -83,7 +83,7 @@ lark-cli docs +search \
 # 只搜索指定分享者分享过的文档（sharer_ids 传分享者 open_id，最多 20 个）
 lark-cli docs +search \
   --query "复盘" \
-  --filter '{"sharer_ids":["ou_7890123456abcdef"]}'
+  --filter '{"sharer_ids":["ou_EXAMPLE_USER_ID"]}'
 
 # 按创建时间过滤并指定排序方式
 lark-cli docs +search \
@@ -93,7 +93,7 @@ lark-cli docs +search \
 # 组合多个筛选条件
 lark-cli docs +search \
   --query "项目复盘" \
-  --filter '{"creator_ids":["ou_7890123456abcdef"],"doc_types":["DOCX","SHEET"],"only_title":true,"sort_type":"OPEN_TIME","open_time":{"start":"2026-01-01T00:00:00+08:00"}}'
+  --filter '{"creator_ids":["ou_EXAMPLE_USER_ID"],"doc_types":["DOCX","SHEET"],"only_title":true,"sort_type":"OPEN_TIME","open_time":{"start":"2026-01-01T00:00:00+08:00"}}'
 
 # 只在指定知识空间下搜 Wiki
 lark-cli docs +search \
@@ -175,10 +175,10 @@ lark-cli docs +search --query "方案" --format json --page-token '<PAGE_TOKEN>'
 ### 常见 `--filter` JSON 片段
 
 ```json
-{"creator_ids":["ou_7890123456abcdef"]}
+{"creator_ids":["ou_EXAMPLE_USER_ID"]}
 {"doc_types":["SHEET","DOCX"]}
 {"chat_ids":["oc_1234567890abcdef"]}
-{"sharer_ids":["ou_7890123456abcdef"]}
+{"sharer_ids":["ou_EXAMPLE_USER_ID"]}
 {"folder_tokens":["fld_123456"]}
 {"only_title":true}
 {"only_comment":true}

@@ -11,22 +11,22 @@
 
 ```bash
 # 下载单个妙记的音视频文件
-lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c
+lark-cli minutes +download --minute-tokens obcn_EXAMPLE_TOKEN
 
 # 指定输出路径
-lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --output ./meeting.mp4
+lark-cli minutes +download --minute-tokens obcn_EXAMPLE_TOKEN --output ./meeting.mp4
 
 # 仅获取下载链接（有效期 1 天），不下载文件
-lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --url-only
+lark-cli minutes +download --minute-tokens obcn_EXAMPLE_TOKEN --url-only
 
 # 批量下载多个妙记
-lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c,obcnexa7814k4t41c446fzwj
+lark-cli minutes +download --minute-tokens obcn_EXAMPLE_TOKEN,obcn_EXAMPLE_TOKEN2
 
 # 批量下载到指定目录
-lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c,obcnexa7814k4t41c446fzwj --output ./downloads
+lark-cli minutes +download --minute-tokens obcn_EXAMPLE_TOKEN,obcn_EXAMPLE_TOKEN2 --output ./downloads
 
 # 预览 API 调用
-lark-cli minutes +download --minute-tokens obcnq3b9jl72l83w4f149w9c --dry-run
+lark-cli minutes +download --minute-tokens obcn_EXAMPLE_TOKEN --dry-run
 ```
 
 ## 参数
@@ -91,7 +91,7 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 
 | 来源 | 获取方式 |
 |------|---------|
-| 妙记 URL | 从 URL 末尾提取，如 `https://sample.feishu.cn/minutes/obcnq3b9jl72l83w4f149w9c` → `obcnq3b9jl72l83w4f149w9c` |
+| 妙记 URL | 从 URL 末尾提取，如 `https://sample.feishu.cn/minutes/obcn_EXAMPLE_TOKEN` → `obcn_EXAMPLE_TOKEN` |
 | 妙记元信息查询 | `lark-cli minutes minutes get --params '{"minute_token": "obcn..."}'` |
 | 会议纪要查询 | `lark-cli vc +notes --meeting-ids <id>` 返回结果中关联的妙记 token |
 
