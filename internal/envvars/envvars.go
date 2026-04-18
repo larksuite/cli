@@ -11,4 +11,7 @@ const (
 	CliTenantAccessToken = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN"
 	CliDefaultAs         = "LARKSUITE_CLI_DEFAULT_AS"
 	CliStrictMode        = "LARKSUITE_CLI_STRICT_MODE"
+
+	CliContentSafetyMode      = "LARKSUITE_CLI_CONTENT_SAFETY_MODE"
+	CliContentSafetyAllowlist = "LARKSUITE_CLI_CONTENT_SAFETY_ALLOWLIST"
 )

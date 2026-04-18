@@ -5,11 +5,12 @@ package output
 
 // Envelope is the standard success response wrapper.
 type Envelope struct {
-	OK       bool                   `json:"ok"`
-	Identity string                 `json:"identity,omitempty"`
-	Data     interface{}            `json:"data,omitempty"`
-	Meta     *Meta                  `json:"meta,omitempty"`
-	Notice   map[string]interface{} `json:"_notice,omitempty"`
+	OK                 bool                   `json:"ok"`
+	Identity           string                 `json:"identity,omitempty"`
+	Data               interface{}            `json:"data,omitempty"`
+	Meta               *Meta                  `json:"meta,omitempty"`
+	Notice             map[string]interface{} `json:"_notice,omitempty"`
+	ContentSafetyAlert interface{}            `json:"_content_safety_alert,omitempty"`
 }
 
 // ErrorEnvelope is the standard error response wrapper.

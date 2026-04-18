@@ -475,8 +475,20 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 // ── Output helpers ──
 
 // Out prints a success JSON envelope to stdout.
+// Alert (if any) is carried in the Envelope._content_safety_alert field;
+// no stderr warning is written because JSON consumers read the structured field.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
+	// ── content safety ──
+	cs := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+	if cs.Blocked {
+		ctx.outputErrOnce.Do(func() { ctx.outputErr = cs.BlockErr })
+		return
+	}
+
 	env := output.Envelope{OK: true, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
+	if cs.Alert != nil {
+		env.ContentSafetyAlert = cs.Alert
+	}
 	if ctx.JqExpr != "" {
 		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
@@ -499,6 +511,15 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 	switch ctx.Format {
 	case "pretty":
 		if prettyFn != nil {
+			// Non-JSON path: no envelope to carry alert, scan here and write stderr warning.
+			cs := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+			if cs.Blocked {
+				ctx.outputErrOnce.Do(func() { ctx.outputErr = cs.BlockErr })
+				return
+			}
+			if cs.Alert != nil {
+				output.WriteAlertWarning(ctx.IO().ErrOut, cs.Alert)
+			}
 			prettyFn(ctx.IO().Out)
 		} else {
 			ctx.Out(data, meta)
@@ -506,6 +527,15 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 	case "json", "":
 		ctx.Out(data, meta)
 	default:
+		// Non-JSON path (table/csv/ndjson): no envelope to carry alert, scan here.
+		cs := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+		if cs.Blocked {
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = cs.BlockErr })
+			return
+		}
+		if cs.Alert != nil {
+			output.WriteAlertWarning(ctx.IO().ErrOut, cs.Alert)
+		}
 		// table, csv, ndjson — pass data directly; FormatValue handles both
 		// plain arrays and maps with array fields (e.g. {"members":[…]})
 		format, formatOK := output.ParseFormat(ctx.Format)

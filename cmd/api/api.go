@@ -238,12 +238,13 @@ func apiRun(opts *APIOptions) error {
 		return output.MarkRaw(client.WrapDoAPIError(err))
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
-		OutputPath: opts.Output,
-		Format:     format,
-		JqExpr:     opts.JqExpr,
-		Out:        out,
-		ErrOut:     f.IOStreams.ErrOut,
-		FileIO:     f.ResolveFileIO(opts.Ctx),
+		CommandPath: opts.Cmd.CommandPath(),
+		OutputPath:  opts.Output,
+		Format:      format,
+		JqExpr:      opts.JqExpr,
+		Out:         out,
+		ErrOut:      f.IOStreams.ErrOut,
+		FileIO:      f.ResolveFileIO(opts.Ctx),
 	})
 	// MarkRaw tells root error handler to skip enrichPermissionError,
 	// preserving the original API error detail (log_id, troubleshooter, etc.).

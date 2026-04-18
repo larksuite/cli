@@ -23,12 +23,13 @@ import (
 
 // ResponseOptions configures how HandleResponse routes a raw API response.
 type ResponseOptions struct {
-	OutputPath string        // --output flag; "" = auto-detect
-	Format     output.Format // output format for JSON responses
-	JqExpr     string        // if set, apply jq filter instead of Format
-	Out        io.Writer     // stdout
-	ErrOut     io.Writer     // stderr
-	FileIO     fileio.FileIO // file transfer abstraction; required when saving files (--output or binary response)
+	CommandPath string        // raw cobra CommandPath(); used by content-safety scanning
+	OutputPath  string        // --output flag; "" = auto-detect
+	Format      output.Format // output format for JSON responses
+	JqExpr      string        // if set, apply jq filter instead of Format
+	Out         io.Writer     // stdout
+	ErrOut      io.Writer     // stderr
+	FileIO      fileio.FileIO // file transfer abstraction; required when saving files (--output or binary response)
 	// CheckError is called on parsed JSON results. Nil defaults to CheckLarkResponse.
 	CheckError func(interface{}) error
 }
@@ -63,11 +64,14 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		if opts.OutputPath != "" {
 			return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
 		}
-		if opts.JqExpr != "" {
-			return output.JqFilter(opts.Out, result, opts.JqExpr)
-		}
-		output.FormatValue(opts.Out, result, opts.Format)
-		return nil
+		return output.EmitLarkResponse(output.LarkResponseEmitRequest{
+			CommandPath: opts.CommandPath,
+			Data:        result,
+			Format:      opts.Format.String(),
+			JqExpr:      opts.JqExpr,
+			Out:         opts.Out,
+			ErrOut:      opts.ErrOut,
+		})
 	}
 
 	// Non-JSON (binary) responses.

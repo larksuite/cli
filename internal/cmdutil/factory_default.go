@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
+	_ "github.com/larksuite/cli/internal/security/contentsafety" // register default content-safety provider
 	"github.com/larksuite/cli/internal/util"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
 )
