@@ -1684,6 +1684,8 @@ func TestBaseFieldExecuteSearchOptions(t *testing.T) {
 	}
 	if got := stdout.String(); !strings.Contains(got, `"options"`) || !strings.Contains(got, `"已完成"`) {
 		t.Fatalf("stdout=%s", got)
+	} else if strings.Contains(got, `"opt_1"`) {
+		t.Fatalf("stdout should not expose option ids: %s", got)
 	}
 }
 

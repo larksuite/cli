@@ -252,6 +252,17 @@ For commands that may have side effects, preview the request with --dry-run firs
 lark-cli im +messages-send --chat-id oc_xxx --text "hello" --dry-run
 ```
 
+### Shell Completion
+
+`lark-cli` ships a working `completion` subcommand, but it is intentionally hidden from the default help output because the CLI is primarily optimized for agent workflows.
+
+```bash
+lark-cli completion zsh
+lark-cli completion bash
+lark-cli completion fish
+lark-cli completion powershell
+```
+
 ### Schema Introspection
 
 Use schema to inspect any API method's parameters, request body, response structure, supported identities, and scopes:
