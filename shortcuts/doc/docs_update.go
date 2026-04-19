@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -42,6 +43,7 @@ var DocsUpdate = common.Shortcut{
 		{Name: "selection-with-ellipsis", Desc: "content locator (e.g. 'start...end')"},
 		{Name: "selection-by-title", Desc: "title locator (e.g. '## Section')"},
 		{Name: "new-title", Desc: "also update document title"},
+		{Name: "auto-table-widths", Type: "bool", Default: "true", Desc: "for --mode overwrite, adjust Markdown pipe-table column widths based on cell content (use --auto-table-widths=false to keep equal widths; ignored for other modes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		mode := runtime.Str("mode")
@@ -112,6 +114,16 @@ var DocsUpdate = common.Shortcut{
 		}
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
+		if runtime.Str("mode") == "overwrite" && runtime.Bool("auto-table-widths") {
+			if docID, ok := docxTokenForUpdate(runtime.Str("doc")); ok {
+				applyMarkdownTableColumnWidths(runtime, docID, runtime.Str("markdown"))
+			} else {
+				fmt.Fprintln(
+					runtime.IO().ErrOut,
+					"auto-table-widths skipped: --doc is not a docx token/URL (wiki-backed docs require an extra resolve step that is not implemented yet)",
+				)
+			}
+		}
 		runtime.Out(result, nil)
 		return nil
 	},

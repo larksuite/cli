@@ -23,6 +23,7 @@ var DocsCreate = common.Shortcut{
 		{Name: "folder-token", Desc: "parent folder token"},
 		{Name: "wiki-node", Desc: "wiki node token"},
 		{Name: "wiki-space", Desc: "wiki space ID (use my_library for personal library)"},
+		{Name: "auto-table-widths", Type: "bool", Default: "true", Desc: "after create, adjust Markdown pipe-table column widths based on cell content (use --auto-table-widths=false to keep server default equal widths)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		count := 0
@@ -61,6 +62,11 @@ var DocsCreate = common.Shortcut{
 		augmentDocsCreateResult(runtime, result)
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
+		if runtime.Bool("auto-table-widths") {
+			if docID := strings.TrimSpace(common.GetString(result, "doc_id")); docID != "" {
+				applyMarkdownTableColumnWidths(runtime, docID, runtime.Str("markdown"))
+			}
+		}
 		runtime.Out(result, nil)
 		return nil
 	},
