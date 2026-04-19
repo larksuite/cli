@@ -221,6 +221,9 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 	authResp, err := larkauth.RequestDeviceAuthorization(httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
 	if err != nil {
+		if scopeErr := explainScopeRequestError(opts.Ctx, f, config, finalScope, err); scopeErr != nil {
+			return scopeErr
+		}
 		return output.ErrAuth("device authorization failed: %v", err)
 	}
 
