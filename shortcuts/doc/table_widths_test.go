@@ -123,6 +123,24 @@ middle
 			t.Fatalf("expected 1 table with 2 rows, got %v", got)
 		}
 	})
+
+	t.Run("tilde fence inside backtick fence does not close it", func(t *testing.T) {
+		// A ~~~ line inside a ``` block must not toggle the fence off.
+		md := "```\n~~~\n| A | B |\n|---|---|\n| 1 | 2 |\n~~~\n```\n"
+		got := extractMarkdownTables(md)
+		if len(got) != 0 {
+			t.Fatalf("table inside backtick fence must be skipped, got %d table(s)", len(got))
+		}
+	})
+
+	t.Run("shorter fence run inside longer fence does not close it", func(t *testing.T) {
+		// A ``` run inside a ````` block must not close the outer fence.
+		md := "`````\n```\n| A | B |\n|---|---|\n| 1 | 2 |\n```\n`````\n"
+		got := extractMarkdownTables(md)
+		if len(got) != 0 {
+			t.Fatalf("table inside longer fence must be skipped, got %d table(s)", len(got))
+		}
+	})
 }
 
 func TestComputeWidthRatios(t *testing.T) {
@@ -167,6 +185,18 @@ func TestComputeWidthRatios(t *testing.T) {
 		}
 		if got[1] <= got[0] || got[1] <= got[2] {
 			t.Fatalf("middle column should be widest, got %v", got)
+		}
+	})
+
+	t.Run("nil for more columns than widthRatioTotal", func(t *testing.T) {
+		// Each column needs at least ratio 1; with >100 columns the sum would
+		// exceed 100, so computeWidthRatios must return nil.
+		row := make([]string, widthRatioTotal+1)
+		for i := range row {
+			row[i] = "x"
+		}
+		if got := computeWidthRatios([][]string{row}); got != nil {
+			t.Fatalf("expected nil for %d columns, got len=%d: %v", widthRatioTotal+1, len(got), got)
 		}
 	})
 

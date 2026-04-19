@@ -40,7 +40,7 @@ func extractMarkdownTables(md string) [][][]string {
 	//   nil header, non-nil current → inside a confirmed table, accumulating rows
 	var header []string
 	var current [][]string
-	inFence := false
+	fenceChar, fenceMinLen := byte(0), 0
 
 	flushCurrent := func() {
 		if current != nil {
@@ -53,14 +53,32 @@ func extractMarkdownTables(md string) [][][]string {
 		line := strings.TrimRight(raw, "\r")
 		trimmed := strings.TrimSpace(line)
 
-		// Track fenced code blocks (```, ~~~) so we don't parse tables inside.
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			flushCurrent()
-			header = nil
-			inFence = !inFence
-			continue
-		}
-		if inFence {
+		// Track fenced code blocks so we don't parse tables inside.
+		// A fence opened with a given character run closes only on a matching
+		// character run of equal or greater length; mismatched markers (e.g.
+		// ~~~ inside ```) or shorter runs (e.g. ``` inside `````) are ignored.
+		if fenceChar == 0 {
+			if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+				c := trimmed[0]
+				cnt := 0
+				for cnt < len(trimmed) && trimmed[cnt] == c {
+					cnt++
+				}
+				fenceChar, fenceMinLen = c, cnt
+				flushCurrent()
+				header = nil
+				continue
+			}
+		} else {
+			if len(trimmed) > 0 && trimmed[0] == fenceChar {
+				cnt := 0
+				for cnt < len(trimmed) && trimmed[cnt] == fenceChar {
+					cnt++
+				}
+				if cnt >= fenceMinLen {
+					fenceChar, fenceMinLen = 0, 0
+				}
+			}
 			continue
 		}
 
@@ -154,6 +172,12 @@ func computeWidthRatios(rows [][]string) []int {
 		}
 	}
 	if cols < 2 {
+		return nil
+	}
+	// With more columns than widthRatioTotal, each column must receive at
+	// least ratio 1, making the sum exceed 100. Return nil so the caller
+	// skips patching rather than writing an invalid ratio slice.
+	if cols > widthRatioTotal {
 		return nil
 	}
 
