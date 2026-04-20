@@ -81,6 +81,9 @@ func TestInterceptor_PreRoundTrip(t *testing.T) {
 	if sha := req.Header.Get(sidecar.HeaderBodySHA256); sha == "" {
 		t.Error("body SHA256 header should be set")
 	}
+	if v := req.Header.Get(sidecar.HeaderProxyVersion); v != sidecar.ProtocolV1 {
+		t.Errorf("version header = %q, want %q", v, sidecar.ProtocolV1)
+	}
 
 	// Non-proxy headers should be preserved
 	if src := req.Header.Get("X-Cli-Source"); src != "lark-cli" {
@@ -233,6 +236,7 @@ func TestInterceptor_BodyReadError(t *testing.T) {
 
 	// No proxy/HMAC headers should leak onto the request.
 	for _, h := range []string{
+		sidecar.HeaderProxyVersion,
 		sidecar.HeaderProxyTarget,
 		sidecar.HeaderProxySignature,
 		sidecar.HeaderProxyTimestamp,

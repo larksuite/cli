@@ -10,8 +10,11 @@ Lark/Feishu API with real credentials injected.
 ## What this demo shows
 
 - HMAC-SHA256 request verification (timestamp drift, body digest, signature)
-- Target host allowlist (anti-SSRF)
+- Target host allowlist + https-only target validation (anti-SSRF / anti-downgrade)
 - Identity-based token resolution (UAT for user, TAT for bot)
+- Auth-header allowlist: real token may only be injected into `Authorization`
+  / `X-Lark-MCP-UAT` / `X-Lark-MCP-TAT`, rejecting attempts to smuggle it into
+  `Cookie`, `User-Agent`, or other intermediate-logged headers
 - Audit logging with path ID-segment sanitization and upstream error truncation
 - Safe request forwarding (strips client-supplied auth headers)
 
@@ -21,10 +24,6 @@ Lark/Feishu API with real credentials injected.
   `sync.Once`, which never refreshes. A long-running server will return an
   expired TAT after 2 hours. Production implementations should maintain a
   TTL-based cache with early renewal.
-- **`X-Lark-Proxy-Auth-Header` not validated** — the client picks which header
-  the real token is injected into; the demo forwards any non-empty value
-  verbatim. A production server should restrict this to an allowlist
-  (`Authorization` / `X-Lark-MCP-UAT` / `X-Lark-MCP-TAT`).
 - High availability / load balancing / hot key rotation
 - TLS termination
 - Rate limiting / per-identity quotas
@@ -105,13 +104,27 @@ The startup banner only prints the *required* variables. Two more are
 optional:
 
 ```bash
-export LARKSUITE_CLI_AUTH_PROXY="http://..."       # required
+export LARKSUITE_CLI_AUTH_PROXY="http://..."       # required (see constraints below)
 export LARKSUITE_CLI_PROXY_KEY="..."               # required
 export LARKSUITE_CLI_APP_ID="cli_xxx"              # required
 export LARKSUITE_CLI_BRAND="feishu"                # required (feishu | lark)
 export LARKSUITE_CLI_DEFAULT_AS="user"             # optional: force default identity
 export LARKSUITE_CLI_STRICT_MODE="user"            # optional: lock sandbox to one identity
 ```
+
+**`LARKSUITE_CLI_AUTH_PROXY` constraints** — validated by the CLI on startup:
+
+- Scheme must be `http://` (or bare `host:port`). `https://` is rejected
+  today because the interceptor does not yet perform TLS; a future PR that
+  wires up real TLS will relax this.
+- Host must be loopback (`127.0.0.1`, `::1`) or one of the recognized
+  same-host aliases: `localhost`, `host.docker.internal`,
+  `host.containers.internal`, `host.lima.internal`, `gateway.docker.internal`.
+  The sidecar pattern is inherently same-machine; cross-machine deployment
+  is a different product (auth broker / STS) with different security
+  requirements (mTLS, cert rotation, per-client keys) and is not supported
+  by this feature.
+- No path, query, fragment, or `user:pass@` in the URL.
 
 **How auto identity detection works in sidecar mode**: on every invocation the
 CLI asks the sidecar to look up the logged-in user's `open_id` via
@@ -146,22 +159,31 @@ Headers (client → server):
 
 | Header | Purpose |
 | --- | --- |
-| `X-Lark-Proxy-Target` | Original target **scheme + host only** (e.g. `https://open.feishu.cn`). The path and query come from the request line itself; the server reconstructs the upstream URL by concatenating `target + requestURI`. |
-| `X-Lark-Proxy-Identity` | `"user"` or `"bot"` |
-| `X-Lark-Proxy-Auth-Header` | Which header the server should inject real token into |
+| `X-Lark-Proxy-Version` | Wire-protocol version (currently `"v1"`). Server rejects unknown values with 400. |
+| `X-Lark-Proxy-Target` | Original target **scheme + host only** (e.g. `https://open.feishu.cn`). Must be `https://`; any path/query/fragment/userinfo in this header is rejected. The path and query come from the request line itself; the server reconstructs the upstream URL as `https://<host> + requestURI`. |
+| `X-Lark-Proxy-Identity` | `"user"` or `"bot"`. Covered by the signature. |
+| `X-Lark-Proxy-Auth-Header` | Which header the server should inject real token into. Covered by the signature. |
 | `X-Lark-Proxy-Signature` | hex-encoded HMAC-SHA256 |
 | `X-Lark-Proxy-Timestamp` | Unix seconds (drift ≤ 60s) |
 | `X-Lark-Body-SHA256` | hex-encoded SHA-256 of the request body |
 
-Signing material (newline-separated):
+Signing material (newline-separated, in order):
 
-```
+```text
+version
 method
 host
 pathAndQuery
 bodySHA256
 timestamp
+identity
+authHeader
 ```
+
+Every field above is part of the canonical string. In particular, `identity`
+and `authHeader` are covered so a captured request cannot be replayed with
+its identity flipped (bot↔user) or its auth-header redirected (e.g. into
+`Cookie`) inside the 60s drift window.
 
 ## Source layout
 

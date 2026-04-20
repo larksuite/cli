@@ -113,7 +113,20 @@ func (i *Interceptor) PreRoundTrip(req *http.Request) func(resp *http.Response, 
 
 	pathAndQuery := req.URL.RequestURI()
 	ts := sidecar.Timestamp()
-	sig := sidecar.Sign(i.key, req.Method, originalHost, pathAndQuery, bodySHA, ts)
+	// Cover identity and authHeader in the signature so an on-path attacker
+	// within the replay window cannot flip the injected token's identity or
+	// redirect the token into a different header.
+	sig := sidecar.Sign(i.key, sidecar.CanonicalRequest{
+		Version:      sidecar.ProtocolV1,
+		Method:       req.Method,
+		Host:         originalHost,
+		PathAndQuery: pathAndQuery,
+		BodySHA256:   bodySHA,
+		Timestamp:    ts,
+		Identity:     identity,
+		AuthHeader:   authHeader,
+	})
+	req.Header.Set(sidecar.HeaderProxyVersion, sidecar.ProtocolV1)
 	req.Header.Set(sidecar.HeaderProxyTimestamp, ts)
 	req.Header.Set(sidecar.HeaderProxySignature, sig)
 

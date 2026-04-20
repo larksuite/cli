@@ -7,10 +7,11 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"strings"
+	"net/url"
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
@@ -30,8 +31,33 @@ type proxyHandler struct {
 	allowedIDs   map[string]bool // identity allowlist derived from strict mode
 }
 
+// allowedAuthHeaders lists the only header names the sidecar will inject real
+// tokens into. Limiting this prevents a compromised sandbox from signing a
+// request with X-Lark-Proxy-Auth-Header: Cookie (or User-Agent /
+// X-Forwarded-For / any X-* header) and having the real token smuggled into
+// an upstream header that Lark ignores for auth but intermediate logs may
+// capture — an indirect exfiltration path.
+//
+// These three are the only values the CLI interceptor ever emits
+// (Authorization for OpenAPI, MCP-UAT/TAT for the MCP protocol), so anything
+// else is by definition a misuse.
+var allowedAuthHeaders = map[string]bool{
+	"Authorization":      true,
+	sidecar.HeaderMCPUAT: true, // X-Lark-MCP-UAT
+	sidecar.HeaderMCPTAT: true, // X-Lark-MCP-TAT
+}
+
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+
+	// 0. Check protocol version. We reject rather than default so that an
+	// old client paired with a newer server (or vice versa) fails loudly
+	// instead of silently producing mismatched signatures.
+	version := r.Header.Get(sidecar.HeaderProxyVersion)
+	if version != sidecar.ProtocolV1 {
+		http.Error(w, "unsupported "+sidecar.HeaderProxyVersion+": "+version, http.StatusBadRequest)
+		return
+	}
 
 	// 1. Verify timestamp
 	ts := r.Header.Get(sidecar.HeaderProxyTimestamp)
@@ -60,21 +86,51 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Verify HMAC signature
+	//Enforce scheme=https and reject any path/query embedded in the target.
+	// The sandbox is untrusted: without this check it could send
+	// X-Lark-Proxy-Target: http://open.feishu.cn to force the injected real
+	// token out over cleartext HTTP, exposing it to any on-path attacker
+	// between the sidecar and upstream.
 	target := r.Header.Get(sidecar.HeaderProxyTarget)
 	if target == "" {
 		http.Error(w, "missing "+sidecar.HeaderProxyTarget, http.StatusBadRequest)
 		return
 	}
 
-	// Extract host from target (e.g. "https://open.feishu.cn" → "open.feishu.cn")
-	targetHost := target
-	if idx := strings.Index(target, "://"); idx >= 0 {
-		targetHost = target[idx+3:]
+	pathAndQuery := r.URL.RequestURI()
+	targetHost, err := parseTarget(target)
+	if err != nil {
+		http.Error(w, "invalid "+sidecar.HeaderProxyTarget+": "+err.Error(), http.StatusForbidden)
+		h.logger.Printf("REJECT method=%s path=%s reason=%q", r.Method, sanitizePath(pathAndQuery), sanitizeError(err))
+		return
+	}
+
+	// Identity and auth-header must be read before HMAC verification because
+	// both are covered by the canonical signing string. Defaulting either one
+	// server-side would let an attacker flip the injected token's identity or
+	// target header within the replay window without invalidating the sig.
+	identity := r.Header.Get(sidecar.HeaderProxyIdentity)
+	if identity == "" {
+		http.Error(w, "missing "+sidecar.HeaderProxyIdentity, http.StatusBadRequest)
+		return
+	}
+	authHeader := r.Header.Get(sidecar.HeaderProxyAuthHeader)
+	if authHeader == "" {
+		http.Error(w, "missing "+sidecar.HeaderProxyAuthHeader, http.StatusBadRequest)
+		return
 	}
 
 	signature := r.Header.Get(sidecar.HeaderProxySignature)
-	pathAndQuery := r.URL.RequestURI()
-	if err := sidecar.Verify(h.key, r.Method, targetHost, pathAndQuery, claimedSHA, ts, signature); err != nil {
+	if err := sidecar.Verify(h.key, sidecar.CanonicalRequest{
+		Version:      version,
+		Method:       r.Method,
+		Host:         targetHost,
+		PathAndQuery: pathAndQuery,
+		BodySHA256:   claimedSHA,
+		Timestamp:    ts,
+		Identity:     identity,
+		AuthHeader:   authHeader,
+	}, signature); err != nil {
 		http.Error(w, "HMAC verification failed: "+err.Error(), http.StatusUnauthorized)
 		h.logger.Printf("REJECT method=%s path=%s reason=%q", r.Method, sanitizePath(pathAndQuery), sanitizeError(err))
 		return
@@ -87,14 +143,19 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Determine and validate identity
-	identity := r.Header.Get(sidecar.HeaderProxyIdentity)
-	if identity == "" {
-		identity = sidecar.IdentityBot
-	}
+	// 5. Validate identity
 	if !h.allowedIDs[identity] {
 		http.Error(w, "identity not allowed: "+identity, http.StatusForbidden)
 		h.logger.Printf("REJECT method=%s path=%s reason=\"identity %s not allowed by strict mode\"", r.Method, sanitizePath(pathAndQuery), identity)
+		return
+	}
+
+	// 5.5 Validate auth-header (required — the client controls this value,
+	// and without an allowlist a compromised sandbox could direct the real
+	// token into arbitrary forwarded headers).
+	if !allowedAuthHeaders[authHeader] {
+		http.Error(w, "auth-header not allowed: "+authHeader, http.StatusForbidden)
+		h.logger.Printf("REJECT method=%s path=%s reason=\"auth-header %s not in allowlist\"", r.Method, sanitizePath(pathAndQuery), authHeader)
 		return
 	}
 
@@ -117,8 +178,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 7. Build forwarding request
-	forwardURL := target + pathAndQuery
+	// 7. Build forwarding request. Scheme is pinned to https here (not taken
+	// from the client-supplied target) so any future change to parseTarget
+	// cannot regress the cleartext-leak protection.
+	forwardURL := "https://" + targetHost + pathAndQuery
 	forwardReq, err := http.NewRequestWithContext(r.Context(), r.Method, forwardURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "failed to create forward request", http.StatusInternalServerError)
@@ -143,11 +206,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	forwardReq.Header.Del(sidecar.HeaderMCPUAT)
 	forwardReq.Header.Del(sidecar.HeaderMCPTAT)
 
-	// 8. Inject real token into the header specified by the client.
-	// Standard OpenAPI uses "Authorization: Bearer <token>".
-	// MCP uses "X-Lark-MCP-UAT: <token>" or "X-Lark-MCP-TAT: <token>".
-	authHeader := r.Header.Get(sidecar.HeaderProxyAuthHeader)
-	if authHeader == "" || authHeader == "Authorization" {
+	// 8. Inject real token into the header the client committed to in the
+	// signature. Standard OpenAPI uses "Authorization: Bearer <token>"; MCP
+	// uses "X-Lark-MCP-UAT: <token>" or "X-Lark-MCP-TAT: <token>".
+	if authHeader == "Authorization" {
 		forwardReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
 	} else {
 		forwardReq.Header.Set(authHeader, tokenResult.Token)
@@ -174,4 +236,36 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 11. Audit log
 	h.logger.Printf("FORWARD method=%s path=%s identity=%s status=%d duration=%s",
 		r.Method, sanitizePath(pathAndQuery), identity, resp.StatusCode, time.Since(start).Round(time.Millisecond))
+}
+
+// parseTarget validates X-Lark-Proxy-Target and returns the host portion for
+// HMAC input and allowlist lookup. The target must be "https://<host>" with no
+// path, query, fragment, userinfo, or non-https scheme. Rejecting these shapes
+// closes a token-leak channel: a compromised sandbox holding PROXY_KEY could
+// otherwise request cleartext HTTP forwarding (or inject a path to a different
+// endpoint than the allowlist entry implies).
+func parseTarget(target string) (host string, err error) {
+	u, perr := url.Parse(target)
+	if perr != nil {
+		return "", fmt.Errorf("parse: %w", perr)
+	}
+	if u.Scheme != "https" {
+		return "", fmt.Errorf("scheme must be https, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("missing host")
+	}
+	if u.User != nil {
+		return "", fmt.Errorf("userinfo not allowed")
+	}
+	if u.Path != "" && u.Path != "/" {
+		return "", fmt.Errorf("path not allowed (got %q)", u.Path)
+	}
+	if u.RawQuery != "" {
+		return "", fmt.Errorf("query not allowed")
+	}
+	if u.Fragment != "" {
+		return "", fmt.Errorf("fragment not allowed")
+	}
+	return u.Host, nil
 }

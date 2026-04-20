@@ -57,7 +57,11 @@ func newTestHandler(key []byte) *proxyHandler {
 	}
 }
 
-// signedReq creates a properly signed request for testing handler logic past HMAC verification.
+// signedReq creates a properly signed request for testing handler logic past
+// HMAC verification. Identity defaults to bot and auth-header to
+// "Authorization"; callers can override by mutating the returned request
+// before calling ServeHTTP (and re-signing if they need the signature to
+// remain valid after the mutation).
 func signedReq(t *testing.T, key []byte, method, target, path string, body []byte) *http.Request {
 	t.Helper()
 	targetHost := target
@@ -66,24 +70,80 @@ func signedReq(t *testing.T, key []byte, method, target, path string, body []byt
 	}
 	bodySHA := sidecar.BodySHA256(body)
 	ts := sidecar.Timestamp()
-	sig := sidecar.Sign(key, method, targetHost, path, bodySHA, ts)
+	identity := sidecar.IdentityBot
+	authHeader := "Authorization"
+	sig := sidecar.Sign(key, sidecar.CanonicalRequest{
+		Version:      sidecar.ProtocolV1,
+		Method:       method,
+		Host:         targetHost,
+		PathAndQuery: path,
+		BodySHA256:   bodySHA,
+		Timestamp:    ts,
+		Identity:     identity,
+		AuthHeader:   authHeader,
+	})
 
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
 	req := httptest.NewRequest(method, path, bodyReader)
+	req.Header.Set(sidecar.HeaderProxyVersion, sidecar.ProtocolV1)
 	req.Header.Set(sidecar.HeaderProxyTarget, target)
-	req.Header.Set(sidecar.HeaderProxyIdentity, sidecar.IdentityBot)
+	req.Header.Set(sidecar.HeaderProxyIdentity, identity)
+	req.Header.Set(sidecar.HeaderProxyAuthHeader, authHeader)
 	req.Header.Set(sidecar.HeaderBodySHA256, bodySHA)
 	req.Header.Set(sidecar.HeaderProxyTimestamp, ts)
 	req.Header.Set(sidecar.HeaderProxySignature, sig)
 	return req
 }
 
+// resign recomputes the HMAC signature over the request's current proxy
+// headers. Use this in tests that mutate a signed field (Identity,
+// AuthHeader, Target host, etc.) after calling signedReq.
+func resign(t *testing.T, key []byte, req *http.Request, body []byte) {
+	t.Helper()
+	target := req.Header.Get(sidecar.HeaderProxyTarget)
+	targetHost := target
+	if idx := strings.Index(target, "://"); idx >= 0 {
+		targetHost = target[idx+3:]
+	}
+	sig := sidecar.Sign(key, sidecar.CanonicalRequest{
+		Version:      req.Header.Get(sidecar.HeaderProxyVersion),
+		Method:       req.Method,
+		Host:         targetHost,
+		PathAndQuery: req.URL.RequestURI(),
+		BodySHA256:   sidecar.BodySHA256(body),
+		Timestamp:    req.Header.Get(sidecar.HeaderProxyTimestamp),
+		Identity:     req.Header.Get(sidecar.HeaderProxyIdentity),
+		AuthHeader:   req.Header.Get(sidecar.HeaderProxyAuthHeader),
+	})
+	req.Header.Set(sidecar.HeaderProxySignature, sig)
+}
+
+// TestProxyHandler_UnsupportedVersion verifies the handler rejects requests
+// whose HeaderProxyVersion is absent or set to an unknown value. Kept in
+// front so an old client paired with a newer server (or vice versa) surfaces
+// a clear 400 instead of a misleading HMAC mismatch downstream.
+func TestProxyHandler_UnsupportedVersion(t *testing.T) {
+	h := newTestHandler([]byte("key"))
+	for _, v := range []string{"", "v0", "v2"} {
+		req := httptest.NewRequest("GET", "/path", nil)
+		if v != "" {
+			req.Header.Set(sidecar.HeaderProxyVersion, v)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("version=%q: expected 400, got %d", v, w.Code)
+		}
+	}
+}
+
 func TestProxyHandler_MissingTimestamp(t *testing.T) {
 	h := newTestHandler([]byte("key"))
 	req := httptest.NewRequest("GET", "/path", nil)
+	req.Header.Set(sidecar.HeaderProxyVersion, sidecar.ProtocolV1)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -94,6 +154,7 @@ func TestProxyHandler_MissingTimestamp(t *testing.T) {
 func TestProxyHandler_MissingBodySHA(t *testing.T) {
 	h := newTestHandler([]byte("key"))
 	req := httptest.NewRequest("GET", "/path", nil)
+	req.Header.Set(sidecar.HeaderProxyVersion, sidecar.ProtocolV1)
 	req.Header.Set(sidecar.HeaderProxyTimestamp, sidecar.Timestamp())
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -109,7 +170,10 @@ func TestProxyHandler_BadHMAC(t *testing.T) {
 	ts := sidecar.Timestamp()
 
 	req := httptest.NewRequest("GET", "/path", nil)
+	req.Header.Set(sidecar.HeaderProxyVersion, sidecar.ProtocolV1)
 	req.Header.Set(sidecar.HeaderProxyTarget, "https://open.feishu.cn")
+	req.Header.Set(sidecar.HeaderProxyIdentity, sidecar.IdentityBot)
+	req.Header.Set(sidecar.HeaderProxyAuthHeader, "Authorization")
 	req.Header.Set(sidecar.HeaderProxyTimestamp, ts)
 	req.Header.Set(sidecar.HeaderBodySHA256, bodySHA)
 	req.Header.Set(sidecar.HeaderProxySignature, "bad-signature")
@@ -125,6 +189,7 @@ func TestProxyHandler_BodySHA256Mismatch(t *testing.T) {
 	h := newTestHandler([]byte("key"))
 
 	req := httptest.NewRequest("POST", "/path", bytes.NewReader([]byte("real body")))
+	req.Header.Set(sidecar.HeaderProxyVersion, sidecar.ProtocolV1)
 	req.Header.Set(sidecar.HeaderProxyTarget, "https://open.feishu.cn")
 	req.Header.Set(sidecar.HeaderProxyTimestamp, sidecar.Timestamp())
 	req.Header.Set(sidecar.HeaderBodySHA256, sidecar.BodySHA256([]byte("different body")))
@@ -157,10 +222,189 @@ func TestProxyHandler_IdentityNotAllowed(t *testing.T) {
 
 	req := signedReq(t, key, "GET", "https://open.feishu.cn", "/open-apis/test", nil)
 	req.Header.Set(sidecar.HeaderProxyIdentity, sidecar.IdentityUser)
+	resign(t, key, req, nil) // identity is signed; must re-sign after mutation
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403 for disallowed identity, got %d", w.Code)
+	}
+}
+
+// TestParseTarget covers the per-shape rejections directly, without the
+// surrounding HTTP plumbing.
+func TestParseTarget(t *testing.T) {
+	cases := []struct {
+		name    string
+		target  string
+		wantErr bool
+		wantSub string // expected fragment of the error message
+	}{
+		{name: "valid https", target: "https://open.feishu.cn", wantErr: false},
+		{name: "valid https trailing slash", target: "https://open.feishu.cn/", wantErr: false},
+		{name: "http downgrade", target: "http://open.feishu.cn", wantErr: true, wantSub: "scheme must be https"},
+		{name: "missing scheme", target: "open.feishu.cn", wantErr: true, wantSub: "scheme must be https"},
+		{name: "ftp scheme", target: "ftp://open.feishu.cn", wantErr: true, wantSub: "scheme must be https"},
+		{name: "empty", target: "", wantErr: true, wantSub: "scheme must be https"},
+		{name: "empty host", target: "https://", wantErr: true, wantSub: "missing host"},
+		{name: "with path", target: "https://open.feishu.cn/open-apis", wantErr: true, wantSub: "path not allowed"},
+		{name: "with query", target: "https://open.feishu.cn?a=1", wantErr: true, wantSub: "query not allowed"},
+		{name: "with fragment", target: "https://open.feishu.cn#frag", wantErr: true, wantSub: "fragment not allowed"},
+		{name: "with userinfo", target: "https://attacker:pw@open.feishu.cn", wantErr: true, wantSub: "userinfo not allowed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			host, err := parseTarget(tc.target)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got host=%q", host)
+				}
+				if tc.wantSub != "" && !strings.Contains(err.Error(), tc.wantSub) {
+					t.Errorf("error %q should contain %q", err.Error(), tc.wantSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if host != "open.feishu.cn" {
+				t.Errorf("host = %q, want %q", host, "open.feishu.cn")
+			}
+		})
+	}
+}
+
+// TestProxyHandler_RejectsNonHTTPSTarget verifies end-to-end that a
+// compromised sandbox holding a valid PROXY_KEY cannot coerce the sidecar
+// into forwarding real tokens over cleartext HTTP or to an unexpected path.
+// The check must fire before HMAC verification so that the request is
+// rejected even when the signature is technically valid.
+func TestProxyHandler_RejectsNonHTTPSTarget(t *testing.T) {
+	key := []byte("test-key")
+	h := newTestHandler(key)
+
+	cases := []struct {
+		name   string
+		target string
+	}{
+		{"http downgrade", "http://open.feishu.cn"},
+		{"bare hostname", "open.feishu.cn"},
+		{"ftp scheme", "ftp://open.feishu.cn"},
+		{"target with path", "https://open.feishu.cn/open-apis/evil"},
+		{"target with query", "https://open.feishu.cn?steal=1"},
+		{"target with userinfo", "https://attacker:pw@open.feishu.cn"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Sign with a valid key against the malicious target — proves the
+			// scheme/shape check is not bypassed by signature legitimacy.
+			req := signedReq(t, key, "GET", tc.target, "/open-apis/im/v1/chats", nil)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, req)
+			if w.Code != http.StatusForbidden {
+				t.Errorf("expected 403 for target %q, got %d (body: %s)", tc.target, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestProxyHandler_RejectsIdentityReplay locks in C1 end-to-end: a captured
+// bot-signed request whose identity header is flipped to user (or vice versa)
+// must be rejected at HMAC verification, not silently served with the wrong
+// token type. Without identity in the canonical string this returns 200.
+func TestProxyHandler_RejectsIdentityReplay(t *testing.T) {
+	key := []byte("test-key")
+	h := newTestHandler(key)
+
+	req := signedReq(t, key, "GET", "https://open.feishu.cn", "/open-apis/test", nil)
+	// Attacker flips identity without touching signature.
+	req.Header.Set(sidecar.HeaderProxyIdentity, sidecar.IdentityUser)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("identity replay must fail signature verify (got %d, want 401): %s",
+			w.Code, w.Body.String())
+	}
+}
+
+// TestProxyHandler_RejectsAuthHeaderReplay is the companion: flipping
+// X-Lark-Proxy-Auth-Header post-signature must invalidate the signature so
+// an attacker cannot redirect the injected token into an unintended header.
+func TestProxyHandler_RejectsAuthHeaderReplay(t *testing.T) {
+	key := []byte("test-key")
+	h := newTestHandler(key)
+
+	req := signedReq(t, key, "GET", "https://open.feishu.cn", "/open-apis/test", nil)
+	req.Header.Set(sidecar.HeaderProxyAuthHeader, "Cookie")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("auth-header replay must fail signature verify (got %d, want 401): %s",
+			w.Code, w.Body.String())
+	}
+}
+
+// TestProxyHandler_RejectsAuthHeaderNotInAllowlist pins the auth-header
+// allowlist: even a correctly-signed request must be rejected if it asks
+// the sidecar to inject the real token into an unintended header (e.g.
+// Cookie / User-Agent / X-Forwarded-For). This closes the sidechannel
+// where the real token ends up in headers that Lark ignores for auth but
+// intermediate logs may capture.
+func TestProxyHandler_RejectsAuthHeaderNotInAllowlist(t *testing.T) {
+	key := []byte("test-key")
+	h := newTestHandler(key)
+
+	for _, bad := range []string{"Cookie", "User-Agent", "X-Forwarded-For", "X-Real-IP", "Set-Cookie"} {
+		t.Run(bad, func(t *testing.T) {
+			req := signedReq(t, key, "GET", "https://open.feishu.cn", "/open-apis/test", nil)
+			req.Header.Set(sidecar.HeaderProxyAuthHeader, bad)
+			resign(t, key, req, nil) // auth-header is signed; must re-sign after override
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, req)
+			if w.Code != http.StatusForbidden {
+				t.Errorf("authHeader=%q: expected 403, got %d (body: %s)",
+					bad, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+// TestProxyHandler_AcceptsAllowedAuthHeaders confirms the three protocol
+// header names remain accepted after the allowlist is enforced. Uses
+// newTestHandler which has no upstream forwarding set up, so reaching the
+// forward step is proof the auth-header check passed.
+func TestProxyHandler_AcceptsAllowedAuthHeaders(t *testing.T) {
+	key := []byte("test-key")
+
+	for _, good := range []string{"Authorization", sidecar.HeaderMCPUAT, sidecar.HeaderMCPTAT} {
+		t.Run(good, func(t *testing.T) {
+			// Use a handler with a real (fake) credential provider so we can
+			// distinguish auth-header reject (403) from later failures.
+			cred := credential.NewCredentialProvider(
+				[]extcred.Provider{&fakeExtProvider{token: "real-token"}},
+				nil, nil, nil,
+			)
+			h := &proxyHandler{
+				key:          key,
+				cred:         cred,
+				appID:        "cli_test",
+				logger:       discardLogger(),
+				forwardCl:    &http.Client{},
+				allowedHosts: map[string]bool{"open.feishu.cn": true},
+				allowedIDs:   map[string]bool{sidecar.IdentityUser: true, sidecar.IdentityBot: true},
+			}
+
+			req := signedReq(t, key, "GET", "https://open.feishu.cn", "/open-apis/test", nil)
+			req.Header.Set(sidecar.HeaderProxyAuthHeader, good)
+			resign(t, key, req, nil)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, req)
+			// Expect NOT 403 "auth-header not allowed" — the request will fail
+			// at forward (502 because open.feishu.cn isn't reachable without
+			// an actual upstream in tests), but it must get past our check.
+			if w.Code == http.StatusForbidden && strings.Contains(w.Body.String(), "auth-header not allowed") {
+				t.Errorf("authHeader=%q was rejected by allowlist: %s", good, w.Body.String())
+			}
+		})
 	}
 }
 
@@ -244,15 +488,16 @@ func TestProxyHandler_StripsClientSuppliedAuthHeaders(t *testing.T) {
 	const realToken = "real-tenant-access-token"
 
 	// Capture what the upstream receives after sidecar forwarding.
+	// TLS is required because parseTarget rejects non-https targets.
 	var captured http.Header
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		captured = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
 
-	// Strip "http://" prefix to get host:port (matches what the handler sees).
-	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
+	// Strip "https://" prefix to get host:port (matches what the handler sees).
+	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
 
 	cred := credential.NewCredentialProvider(
 		[]extcred.Provider{&fakeExtProvider{token: realToken}},
@@ -265,7 +510,7 @@ func TestProxyHandler_StripsClientSuppliedAuthHeaders(t *testing.T) {
 		cred:         cred,
 		appID:        "cli_test",
 		logger:       discardLogger(),
-		forwardCl:    &http.Client{},
+		forwardCl:    upstream.Client(), // trusts the httptest CA
 		allowedHosts: map[string]bool{upstreamHost: true},
 		allowedIDs:   map[string]bool{sidecar.IdentityUser: true, sidecar.IdentityBot: true},
 	}
@@ -297,8 +542,9 @@ func TestProxyHandler_StripsClientSuppliedAuthHeaders(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			captured = nil
 
-			req := signedReq(t, key, "GET", "http://"+upstreamHost, "/open-apis/test", nil)
+			req := signedReq(t, key, "GET", "https://"+upstreamHost, "/open-apis/test", nil)
 			req.Header.Set(sidecar.HeaderProxyAuthHeader, tc.proxyAuthHeader)
+			resign(t, key, req, nil) // auth-header is signed; re-sign after override
 
 			// Attacker smuggles all three possible auth headers with bogus values.
 			req.Header.Set("Authorization", "Bearer attacker-token")
