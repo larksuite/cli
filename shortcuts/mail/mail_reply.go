@@ -149,6 +149,7 @@ var MailReply = common.Shortcut{
 		}
 		var autoResolvedPaths []string
 		var composedHTMLBody string
+		var composedTextBody string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply blocked: %w", err)
@@ -183,12 +184,13 @@ var MailReply = common.Shortcut{
 				return err
 			}
 		} else {
-			bld = bld.TextBody([]byte(bodyStr + quoted))
+			composedTextBody = bodyStr + quoted
+			bld = bld.TextBody([]byte(composedTextBody))
 		}
 		bld = applyPriority(bld, priority)
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
-		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, 0)
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(attachFlag), emlBase, 0)
 		if err != nil {
 			return err
 		}

@@ -411,7 +411,7 @@ func TestEnsureLargeAttachmentCards_NoServerHeader(t *testing.T) {
 	}
 }
 
-func TestEnsureLargeAttachmentCards_PlainTextBodyUnchanged(t *testing.T) {
+func TestEnsureLargeAttachmentCards_PlainTextBodyInjectsDownloadInfo(t *testing.T) {
 	headerVal := encodeServerHeader([]map[string]interface{}{
 		{"file_key": "tok_aaa", "file_name": "report.pdf", "file_size": 1024},
 	})
@@ -427,12 +427,128 @@ func TestEnsureLargeAttachmentCards_PlainTextBodyUnchanged(t *testing.T) {
 	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
 	ensureLargeAttachmentCards(rt, snapshot)
 
-	// Plain-text body cannot host HTML cards — body should remain unchanged.
-	if string(snapshot.Body.Body) != "plain text body" {
-		t.Error("plain text body should not be modified")
+	body := string(snapshot.Body.Body)
+	if !strings.Contains(body, "plain text body") {
+		t.Error("original text should be preserved")
+	}
+	if !strings.Contains(body, "report.pdf") {
+		t.Error("plain text should contain filename")
+	}
+	if !strings.Contains(body, "tok_aaa") {
+		t.Error("plain text should contain download link with token")
 	}
 	if draftpkg.FindHTMLBodyPart(snapshot.Body) != nil {
 		t.Error("should not create an HTML part when text/plain body already exists")
+	}
+}
+
+func TestEnsureLargeAttachmentCards_PlainTextNoDuplicate(t *testing.T) {
+	headerVal := encodeServerHeader([]map[string]interface{}{
+		{"file_key": "tok_aaa", "file_name": "report.pdf", "file_size": 1024},
+	})
+	bodyWithToken := "plain text body\nDownload: https://www.feishu.cn/mail/page/attachment?token=tok_aaa\n"
+	snapshot := &draftpkg.DraftSnapshot{
+		Headers: []draftpkg.Header{
+			{Name: draftpkg.ServerLargeAttachmentHeader, Value: headerVal},
+		},
+		Body: &draftpkg.Part{
+			MediaType: "text/plain",
+			Body:      []byte(bodyWithToken),
+		},
+	}
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	ensureLargeAttachmentCards(rt, snapshot)
+
+	if string(snapshot.Body.Body) != bodyWithToken {
+		t.Error("body should not be modified when token already present")
+	}
+}
+
+func TestBuildLargeAttachmentPlainText(t *testing.T) {
+	results := []largeAttachmentResult{
+		{FileName: "report.pdf", FileSize: 26214400, FileToken: "tok_aaa"},
+		{FileName: "video.mp4", FileSize: 314572800, FileToken: "tok_bbb"},
+	}
+	text := buildLargeAttachmentPlainText(core.BrandFeishu, "zh_cn", results)
+	if !strings.Contains(text, "来自飞书邮箱的超大附件") {
+		t.Error("should contain Chinese title for Feishu brand")
+	}
+	if !strings.Contains(text, "report.pdf") {
+		t.Error("should contain first filename")
+	}
+	if !strings.Contains(text, "video.mp4") {
+		t.Error("should contain second filename")
+	}
+	if !strings.Contains(text, "25.0 MB") {
+		t.Error("should contain file size display")
+	}
+	if !strings.Contains(text, "tok_aaa") {
+		t.Error("should contain first token in URL")
+	}
+	if !strings.Contains(text, "tok_bbb") {
+		t.Error("should contain second token in URL")
+	}
+	if !strings.Contains(text, "下载:") {
+		t.Error("should contain Chinese download label")
+	}
+
+	textEN := buildLargeAttachmentPlainText(core.BrandLark, "en_us", results)
+	if !strings.Contains(textEN, "Large file from Lark Mail") {
+		t.Error("should contain English title for Lark brand")
+	}
+	if !strings.Contains(textEN, "Download:") {
+		t.Error("should contain English download label")
+	}
+}
+
+func TestInjectLargeAttachmentTextIntoSnapshot(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{
+			MediaType: "text/plain",
+			Body:      []byte("hello"),
+		},
+	}
+	injectLargeAttachmentTextIntoSnapshot(snapshot, "\nattachment info\n")
+	got := string(snapshot.Body.Body)
+	if got != "hello\nattachment info\n" {
+		t.Errorf("got %q", got)
+	}
+	if !snapshot.Body.Dirty {
+		t.Error("should mark part as dirty")
+	}
+}
+
+func TestInjectLargeAttachmentTextIntoSnapshot_NilBody(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{}
+	injectLargeAttachmentTextIntoSnapshot(snapshot, "attachment info\n")
+	if snapshot.Body == nil {
+		t.Fatal("should create body")
+	}
+	if snapshot.Body.MediaType != "text/plain" {
+		t.Errorf("MediaType = %q, want text/plain", snapshot.Body.MediaType)
+	}
+	if string(snapshot.Body.Body) != "attachment info\n" {
+		t.Errorf("body = %q", string(snapshot.Body.Body))
+	}
+}
+
+func TestInjectLargeAttachmentTextIntoSnapshot_ExistingHTMLBody(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>hello</p>"),
+		},
+	}
+	injectLargeAttachmentTextIntoSnapshot(snapshot, "\nattachment info\n")
+	if string(snapshot.Body.Body) != "<p>hello</p>" {
+		t.Error("should not modify existing non-text body")
+	}
+}
+
+func TestBuildLargeAttachmentPlainText_Empty(t *testing.T) {
+	text := buildLargeAttachmentPlainText(core.BrandFeishu, "zh_cn", nil)
+	if text != "" {
+		t.Error("should return empty string for no results")
 	}
 }
 

@@ -306,6 +306,23 @@ func FindHTMLBodyPart(root *Part) *Part {
 	return nil
 }
 
+// FindTextBodyPart walks the MIME tree and returns the first text/plain
+// part, or nil when no text/plain part exists.
+func FindTextBodyPart(root *Part) *Part {
+	if root == nil {
+		return nil
+	}
+	if strings.EqualFold(root.MediaType, "text/plain") {
+		return root
+	}
+	for _, c := range root.Children {
+		if f := FindTextBodyPart(c); f != nil {
+			return f
+		}
+	}
+	return nil
+}
+
 // InsertBeforeQuoteOrAppend inserts block into html right before the
 // outermost quote wrapper (<div ... class="history-quote-wrapper">), or
 // appends it to the end when no quote block is present. Matching uses

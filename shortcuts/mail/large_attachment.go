@@ -321,6 +321,38 @@ func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []large
 	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, items.String())
 }
 
+func buildLargeAttachmentPlainText(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
+	if len(results) == 0 {
+		return ""
+	}
+
+	appName := brandDisplayName(brand, lang)
+	title := "Large file from " + appName + " Mail"
+	downloadText := "Download"
+	if strings.HasPrefix(lang, "zh") {
+		title = "来自" + appName + "邮箱的超大附件"
+		downloadText = "下载"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString(title)
+	sb.WriteString("\n")
+	for i, att := range results {
+		sb.WriteString(att.FileName)
+		sb.WriteString("\n")
+		sb.WriteString(common.FormatSize(att.FileSize))
+		sb.WriteString("\n")
+		sb.WriteString(downloadText + ": " + buildLargeAttachmentPreviewURL(brand, att.FileToken))
+		if i < len(results)-1 {
+			sb.WriteString("\n\n")
+		} else {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
 // fileTypeIcon returns the CDN icon filename for a given attachment filename,
 // matching desktop's AttachmentIconPath (mail-editor/src/plugins/bigAttachment/utils.ts).
 func fileTypeIcon(filename string) string {
@@ -371,39 +403,22 @@ func fileTypeIcon(filename string) string {
 // processLargeAttachments is the unified entry point for large attachment
 // handling across all mail compose shortcuts (draft-create, reply, forward, send).
 //
-// It replaces the previous pattern of:
-//
-//	checkAttachmentSizeLimit → AddFileAttachment loop
-//
-// with:
-//
-//	processLargeAttachments → add normal via AddFileAttachment + inject HTML for oversized
-//
-// The large attachment HTML card is inserted before the quote block (if present)
-// in the HTML body, matching the desktop client's exportLargeFileArea placement.
-//
 // Parameters:
-//   - runtime: shortcut runtime context
-//   - bld: the EML builder (with body and inline images already set)
-//   - htmlBody: the current HTML body string (for quote-aware insertion)
+//   - htmlBody: the current HTML body string (for quote-aware insertion); empty for plain-text emails
+//   - textBody: the current text body string; empty for HTML emails
 //   - attachPaths: user-specified attachment file paths (from --attach flag)
-//   - extraEMLBytes: EML bytes already accounted for (e.g. downloaded original
-//     attachments in forward, estimated body+header size). Callers should
-//     pass the sum of base64-encoded sizes of any content already added to bld.
+//   - extraEMLBytes: EML bytes already accounted for
 //   - extraAttachCount: number of attachments already added to bld
-//
-// Returns the updated builder with normal attachments embedded and large
-// attachment HTML injected into the body.
 func processLargeAttachments(
 	ctx context.Context,
 	runtime *common.RuntimeContext,
 	bld emlbuilder.Builder,
 	htmlBody string,
+	textBody string,
 	attachPaths []string,
 	extraEMLBytes int64,
 	extraAttachCount int,
 ) (emlbuilder.Builder, error) {
-	// Count check (total attachments must not exceed limit)
 	totalCount := extraAttachCount + len(attachPaths)
 	if totalCount > MaxAttachmentCount {
 		return bld, fmt.Errorf("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
@@ -414,7 +429,6 @@ func processLargeAttachments(
 		return bld, err
 	}
 
-	// Single file size limit (3 GB), aligned with desktop client.
 	for _, f := range files {
 		if f.Size > MaxLargeAttachmentSize {
 			return bld, fmt.Errorf("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
@@ -425,22 +439,17 @@ func processLargeAttachments(
 	classified := classifyAttachments(files, extraEMLBytes)
 
 	if len(classified.Oversized) == 0 {
-		// All files fit in EML — use the normal path
 		for _, f := range classified.Normal {
 			bld = bld.AddFileAttachment(f.Path)
 		}
 		return bld, nil
 	}
 
-	if htmlBody == "" {
-		return bld, fmt.Errorf("large attachments require an HTML body; " +
-			"plain-text messages cannot include the download card " +
-			"(remove --plain-text or reduce attachment size below 25 MB)")
+	if htmlBody == "" && textBody == "" {
+		return bld, fmt.Errorf("large attachments require a body; " +
+			"empty messages cannot include the download link")
 	}
 
-	// Guard: large attachment upload requires user identity. When unavailable
-	// (e.g. bot identity), fall back to the traditional size-limit error so
-	// callers get a clear, actionable message.
 	if runtime.Config == nil || runtime.UserOpenId() == "" {
 		var totalBytes int64
 		for _, f := range files {
@@ -451,19 +460,19 @@ func processLargeAttachments(
 			float64(totalBytes)/1024/1024)
 	}
 
-	// Upload oversized files
 	results, err := uploadLargeAttachments(ctx, runtime, classified.Oversized)
 	if err != nil {
 		return bld, err
 	}
 
-	// Generate the large attachment HTML block and insert it before the
-	// quote block (if present), matching desktop's exportLargeFileArea.
-	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
-	bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(htmlBody, largeHTML)))
+	if htmlBody != "" {
+		largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
+		bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(htmlBody, largeHTML)))
+	} else {
+		largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), results)
+		bld = bld.TextBody([]byte(textBody + largeText))
+	}
 
-	// Register large attachment tokens so the mail server associates them
-	// with this draft.
 	ids := make([]largeAttID, len(results))
 	for i, r := range results {
 		ids[i] = largeAttID{ID: r.FileToken}
@@ -474,12 +483,10 @@ func processLargeAttachments(
 	}
 	bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
 
-	// Embed normal files
 	for _, f := range classified.Normal {
 		bld = bld.AddFileAttachment(f.Path)
 	}
 
-	// Print summary
 	fmt.Fprintf(runtime.IO().ErrOut, "  %d normal attachment(s) embedded in EML\n", len(classified.Normal))
 	fmt.Fprintf(runtime.IO().ErrOut, "  %d large attachment(s) uploaded (download links in body)\n", len(classified.Oversized))
 
@@ -491,8 +498,8 @@ func processLargeAttachments(
 // back from the server may have their HTML cards stripped, even though the
 // server-format X-Lark-Large-Attachment header still carries file_name and
 // file_size metadata. This function uses that metadata to reconstruct only the
-// missing cards and injects them into the HTML body without duplicating cards
-// that are already present.
+// missing cards/text and injects them into the body (HTML or plain text)
+// without duplicating entries that are already present.
 //
 // Must be called BEFORE normalizeLargeAttachmentHeader, because that
 // function converts the server-format header to CLI format and discards
@@ -500,27 +507,6 @@ func processLargeAttachments(
 func ensureLargeAttachmentCards(runtime *common.RuntimeContext, snapshot *draftpkg.DraftSnapshot) {
 	summaries := draftpkg.ParseLargeAttachmentSummariesFromHeader(snapshot.Headers)
 	if len(summaries) == 0 {
-		return
-	}
-
-	htmlPart := draftpkg.FindHTMLBodyPart(snapshot.Body)
-	var htmlBody string
-	if htmlPart != nil {
-		htmlBody = string(htmlPart.Body)
-	}
-	existingCards := draftpkg.ParseLargeAttachmentItemsFromHTML(htmlBody)
-
-	var missing []largeAttachmentResult
-	for _, s := range summaries {
-		if _, exists := existingCards[s.Token]; !exists {
-			missing = append(missing, largeAttachmentResult{
-				FileName:  s.FileName,
-				FileSize:  s.SizeBytes,
-				FileToken: s.Token,
-			})
-		}
-	}
-	if len(missing) == 0 {
 		return
 	}
 
@@ -532,8 +518,47 @@ func ensureLargeAttachmentCards(runtime *common.RuntimeContext, snapshot *draftp
 	if runtime.Factory != nil {
 		lang = resolveLang(runtime)
 	}
-	largeHTML := buildLargeAttachmentHTML(brand, lang, missing)
-	injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+
+	htmlPart := draftpkg.FindHTMLBodyPart(snapshot.Body)
+	if htmlPart != nil {
+		existingCards := draftpkg.ParseLargeAttachmentItemsFromHTML(string(htmlPart.Body))
+		var missing []largeAttachmentResult
+		for _, s := range summaries {
+			if _, exists := existingCards[s.Token]; !exists {
+				missing = append(missing, largeAttachmentResult{
+					FileName:  s.FileName,
+					FileSize:  s.SizeBytes,
+					FileToken: s.Token,
+				})
+			}
+		}
+		if len(missing) == 0 {
+			return
+		}
+		largeHTML := buildLargeAttachmentHTML(brand, lang, missing)
+		injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+		return
+	}
+
+	textPart := draftpkg.FindTextBodyPart(snapshot.Body)
+	if textPart != nil {
+		bodyText := string(textPart.Body)
+		var missing []largeAttachmentResult
+		for _, s := range summaries {
+			if !strings.Contains(bodyText, s.Token) {
+				missing = append(missing, largeAttachmentResult{
+					FileName:  s.FileName,
+					FileSize:  s.SizeBytes,
+					FileToken: s.Token,
+				})
+			}
+		}
+		if len(missing) == 0 {
+			return
+		}
+		largeText := buildLargeAttachmentPlainText(brand, lang, missing)
+		injectLargeAttachmentTextIntoSnapshot(snapshot, largeText)
+	}
 }
 
 // preprocessLargeAttachmentsForDraftEdit scans a draft-edit patch for
@@ -602,11 +627,12 @@ func preprocessLargeAttachmentsForDraftEdit(
 		return patch, nil // all fit, let draft.Apply handle them
 	}
 
-	// Guard: large attachment card requires an HTML body part.
-	if draftpkg.FindHTMLBodyPart(snapshot.Body) == nil {
-		return patch, fmt.Errorf("large attachments require an HTML body; " +
-			"plain-text drafts cannot include the download card " +
-			"(convert the draft to HTML or reduce attachment size below 25 MB)")
+	// Guard: large attachment requires at least some body part.
+	hasHTML := draftpkg.FindHTMLBodyPart(snapshot.Body) != nil
+	hasText := draftpkg.FindTextBodyPart(snapshot.Body) != nil
+	if !hasHTML && !hasText {
+		return patch, fmt.Errorf("large attachments require a body; " +
+			"empty drafts cannot include the download link")
 	}
 
 	// Guard: need user identity for upload.
@@ -626,9 +652,13 @@ func preprocessLargeAttachmentsForDraftEdit(
 		return patch, err
 	}
 
-	// Inject large attachment HTML into the snapshot's HTML body part.
-	largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
-	injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+	if hasHTML {
+		largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
+		injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+	} else {
+		largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), results)
+		injectLargeAttachmentTextIntoSnapshot(snapshot, largeText)
+	}
 
 	// Register large attachment tokens, merging with any existing IDs already
 	// present in the snapshot (from a previous draft-create or draft-edit).
@@ -744,6 +774,23 @@ func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, lar
 	}
 	htmlPart.Body = []byte(draftpkg.InsertBeforeQuoteOrAppend(string(htmlPart.Body), largeHTML))
 	htmlPart.Dirty = true
+}
+
+func injectLargeAttachmentTextIntoSnapshot(snapshot *draftpkg.DraftSnapshot, largeText string) {
+	textPart := draftpkg.FindTextBodyPart(snapshot.Body)
+	if textPart == nil {
+		if snapshot.Body != nil {
+			return
+		}
+		snapshot.Body = &draftpkg.Part{
+			MediaType: "text/plain",
+			Body:      []byte(largeText),
+			Dirty:     true,
+		}
+		return
+	}
+	textPart.Body = append(textPart.Body, []byte(largeText)...)
+	textPart.Dirty = true
 }
 
 // normalizeLargeAttachmentHeader converts server-format X-Lark-Large-Attachment

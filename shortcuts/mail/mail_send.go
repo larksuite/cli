@@ -118,8 +118,10 @@ var MailSend = common.Shortcut{
 		}
 		var autoResolvedPaths []string
 		var composedHTMLBody string
+		var composedTextBody string
 		if plainText {
-			bld = bld.TextBody([]byte(body))
+			composedTextBody = body
+			bld = bld.TextBody([]byte(composedTextBody))
 		} else if bodyIsHTML(body) || sigResult != nil {
 			// If signature is requested on plain-text body, auto-upgrade to HTML.
 			htmlBody := body
@@ -149,12 +151,13 @@ var MailSend = common.Shortcut{
 				return err
 			}
 		} else {
-			bld = bld.TextBody([]byte(body))
+			composedTextBody = body
+			bld = bld.TextBody([]byte(composedTextBody))
 		}
 		bld = applyPriority(bld, priority)
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
-		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, 0)
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(attachFlag), emlBase, 0)
 		if err != nil {
 			return err
 		}

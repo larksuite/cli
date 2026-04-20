@@ -149,6 +149,7 @@ var MailForward = common.Shortcut{
 		}
 		var autoResolvedPaths []string
 		var composedHTMLBody string
+		var composedTextBody string
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("forward blocked: %w", err)
@@ -194,7 +195,8 @@ var MailForward = common.Shortcut{
 				return err
 			}
 		} else {
-			bld = bld.TextBody([]byte(buildForwardedMessage(&orig, body)))
+			composedTextBody = buildForwardedMessage(&orig, body)
+			bld = bld.TextBody([]byte(composedTextBody))
 		}
 		bld = applyPriority(bld, priority)
 		// Download original attachments, separating normal from large.
@@ -264,10 +266,9 @@ var MailForward = common.Shortcut{
 
 		// Upload oversized attachments as large attachments.
 		if len(classified.Oversized) > 0 {
-			if composedHTMLBody == "" {
-				return output.ErrValidation("large attachments require an HTML body; " +
-					"plain-text messages cannot include the download card " +
-					"(remove --plain-text or reduce attachment size below 25 MB)")
+			if composedHTMLBody == "" && composedTextBody == "" {
+				return output.ErrValidation("large attachments require a body; " +
+					"empty messages cannot include the download link")
 			}
 			if runtime.Config == nil || runtime.UserOpenId() == "" {
 				var totalBytes int64
@@ -312,8 +313,13 @@ var MailForward = common.Shortcut{
 				return err
 			}
 
-			largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), uploadResults)
-			bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(composedHTMLBody, largeHTML)))
+			if composedHTMLBody != "" {
+				largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(composedHTMLBody, largeHTML)))
+			} else {
+				largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				bld = bld.TextBody([]byte(composedTextBody + largeText))
+			}
 
 			for _, r := range uploadResults {
 				largeAttIDs = append(largeAttIDs, largeAttID{ID: r.FileToken})

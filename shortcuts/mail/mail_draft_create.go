@@ -165,8 +165,10 @@ func buildRawEMLForDraftCreate(ctx context.Context, runtime *common.RuntimeConte
 	}
 	var autoResolvedPaths []string
 	var composedHTMLBody string
+	var composedTextBody string
 	if input.PlainText {
-		bld = bld.TextBody([]byte(input.Body))
+		composedTextBody = input.Body
+		bld = bld.TextBody([]byte(composedTextBody))
 	} else if bodyIsHTML(input.Body) || sigResult != nil {
 		htmlBody := input.Body
 		if !bodyIsHTML(input.Body) {
@@ -195,12 +197,13 @@ func buildRawEMLForDraftCreate(ctx context.Context, runtime *common.RuntimeConte
 			return "", err
 		}
 	} else {
-		bld = bld.TextBody([]byte(input.Body))
+		composedTextBody = input.Body
+		bld = bld.TextBody([]byte(composedTextBody))
 	}
 	bld = applyPriority(bld, priority)
 	allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 	emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(input.Body)), allInlinePaths, 0)
-	bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(input.Attach), emlBase, 0)
+	bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(input.Attach), emlBase, 0)
 	if err != nil {
 		return "", err
 	}
