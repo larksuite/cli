@@ -60,6 +60,16 @@ func TestDetectAttachmentMIMETypeUsesExtension(t *testing.T) {
 	}
 }
 
+func TestDetectAttachmentMIMETypeFallsBackToSourcePathExtension(t *testing.T) {
+	got, err := detectAttachmentMIMEType(nil, "report.docx", "report")
+	if err != nil {
+		t.Fatalf("detectAttachmentMIMEType() error = %v", err)
+	}
+	if got != "application/vnd.openxmlformats-officedocument.wordprocessingml.document" {
+		t.Fatalf("detectAttachmentMIMEType() = %q, want docx MIME type", got)
+	}
+}
+
 func TestDetectAttachmentMIMETypeFallsBackToContent(t *testing.T) {
 	fio := attachmentTestFileIO{openFile: newAttachmentTestFile([]byte("hello from base attachment"))}
 

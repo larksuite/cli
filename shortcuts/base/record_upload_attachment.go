@@ -293,6 +293,9 @@ func detectAttachmentMIMEType(fio fileio.FileIO, filePath, fileName string) (str
 	if byExt := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(fileName)))); byExt != "" {
 		return stripMIMEParams(byExt), nil
 	}
+	if byExt := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath)))); byExt != "" {
+		return stripMIMEParams(byExt), nil
+	}
 
 	f, err := fio.Open(filePath)
 	if err != nil {
