@@ -33,6 +33,7 @@ var MailDraftEdit = common.Shortcut{
 		{Name: "set-bcc", Desc: "Replace the entire Bcc recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "patch-file", Desc: "Edit entry point for body edits, incremental recipient changes, header edits, attachment changes, or inline-image changes. All body edits MUST go through --patch-file. Two body ops: set_body (full replacement including quote) and set_reply_body (replaces only user-authored content, auto-preserves quote block). Run --inspect first to check has_quoted_content, then --print-patch-template for the JSON structure. Relative path only."},
 		{Name: "print-patch-template", Type: "bool", Desc: "Print the JSON template and supported operations for the --patch-file flag. Recommended first step before generating a patch file. No draft read or write is performed."},
+		{Name: "set-priority", Desc: "Set email priority: high, normal, low. Setting 'normal' removes any existing priority header."},
 		{Name: "inspect", Type: "bool", Desc: "Inspect the draft without modifying it. Returns the draft projection including subject, recipients, body summary, has_quoted_content (whether the draft contains a reply/forward quote block), attachments_summary (with part_id and cid for each attachment), and inline_summary. Run this BEFORE editing body to check has_quoted_content: if true, use set_reply_body in --patch-file to preserve the quote; if false, use set_body."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -275,6 +276,19 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 	setRecipients("to", runtime.Str("set-to"))
 	setRecipients("cc", runtime.Str("set-cc"))
 	setRecipients("bcc", runtime.Str("set-bcc"))
+
+	// --set-priority → inject set_header / remove_header op
+	if setPriority := runtime.Str("set-priority"); setPriority != "" {
+		headerVal, pErr := parsePriority(setPriority)
+		if pErr != nil {
+			return patch, pErr
+		}
+		if headerVal != "" {
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "set_header", Name: "X-Cli-Priority", Value: headerVal})
+		} else {
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "remove_header", Name: "X-Cli-Priority"})
+		}
+	}
 
 	if len(patch.Ops) == 0 {
 		return patch, output.ErrValidation("at least one edit operation is required; use direct flags such as --set-subject/--set-to, or use --patch-file for body edits and other advanced operations (run --print-patch-template first)")

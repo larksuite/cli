@@ -6,6 +6,9 @@ package drive
 import (
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
 func TestParseCommentDocRef(t *testing.T) {
@@ -14,6 +17,7 @@ func TestParseCommentDocRef(t *testing.T) {
 	tests := []struct {
 		name      string
 		input     string
+		docType   string
 		wantKind  string
 		wantToken string
 		wantErr   string
@@ -31,10 +35,30 @@ func TestParseCommentDocRef(t *testing.T) {
 			wantToken: "xxxxxx",
 		},
 		{
-			name:      "raw token treated as docx",
+			name:      "raw token with type docx",
 			input:     "xxxxxx",
+			docType:   "docx",
 			wantKind:  "docx",
 			wantToken: "xxxxxx",
+		},
+		{
+			name:      "raw token with type sheet",
+			input:     "shtToken",
+			docType:   "sheet",
+			wantKind:  "sheet",
+			wantToken: "shtToken",
+		},
+		{
+			name:      "raw token with type doc",
+			input:     "docToken",
+			docType:   "doc",
+			wantKind:  "doc",
+			wantToken: "docToken",
+		},
+		{
+			name:    "raw token without type",
+			input:   "xxxxxx",
+			wantErr: "--type is required",
 		},
 		{
 			name:      "old doc url",
@@ -53,7 +77,7 @@ func TestParseCommentDocRef(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := parseCommentDocRef(tt.input)
+			got, err := parseCommentDocRef(tt.input, tt.docType)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
@@ -249,7 +273,7 @@ func TestBuildCommentCreateV2RequestFull(t *testing.T) {
 			"text": "全文评论",
 		},
 	}
-	got := buildCommentCreateV2Request("docx", "", replyElements)
+	got := buildCommentCreateV2Request("docx", "", replyElements, nil)
 
 	if got["file_type"] != "docx" {
 		t.Fatalf("expected file_type docx, got %#v", got["file_type"])
@@ -279,7 +303,7 @@ func TestBuildCommentCreateV2RequestLocal(t *testing.T) {
 			"text": "评论内容",
 		},
 	}
-	got := buildCommentCreateV2Request("docx", "blk_123", replyElements)
+	got := buildCommentCreateV2Request("docx", "blk_123", replyElements, nil)
 
 	if got["file_type"] != "docx" {
 		t.Fatalf("expected file_type docx, got %#v", got["file_type"])
@@ -298,5 +322,542 @@ func TestBuildCommentCreateV2RequestLocal(t *testing.T) {
 	}
 	if gotReplyElements[0]["type"] != "text" || gotReplyElements[0]["text"] != "评论内容" {
 		t.Fatalf("unexpected reply element: %#v", gotReplyElements[0])
+	}
+}
+
+// ── Sheet comment tests ─────────────────────────────────────────────────────
+
+func TestParseCommentDocRefSheet(t *testing.T) {
+	t.Parallel()
+	ref, err := parseCommentDocRef("https://example.larksuite.com/sheets/shtToken123", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ref.Kind != "sheet" || ref.Token != "shtToken123" {
+		t.Fatalf("expected sheet/shtToken123, got %s/%s", ref.Kind, ref.Token)
+	}
+}
+
+func TestParseCommentDocRefSheetWithQuery(t *testing.T) {
+	t.Parallel()
+	ref, err := parseCommentDocRef("https://example.larksuite.com/sheets/shtToken123?sheet=abc", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ref.Kind != "sheet" || ref.Token != "shtToken123" {
+		t.Fatalf("expected sheet/shtToken123, got %s/%s", ref.Kind, ref.Token)
+	}
+}
+
+func TestBuildCommentCreateV2RequestSheet(t *testing.T) {
+	t.Parallel()
+	replyElements := []map[string]interface{}{
+		{"type": "text", "text": "请修正此单元格"},
+	}
+	got := buildCommentCreateV2Request("sheet", "", replyElements, &sheetAnchor{
+		SheetID: "abc123",
+		Col:     3,
+		Row:     5,
+	})
+
+	if got["file_type"] != "sheet" {
+		t.Fatalf("expected file_type sheet, got %#v", got["file_type"])
+	}
+	anchor, ok := got["anchor"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected anchor map, got %#v", got["anchor"])
+	}
+	if anchor["block_id"] != "abc123" {
+		t.Fatalf("expected block_id abc123, got %#v", anchor["block_id"])
+	}
+	if anchor["sheet_col"] != 3 {
+		t.Fatalf("expected sheet_col 3, got %#v", anchor["sheet_col"])
+	}
+	if anchor["sheet_row"] != 5 {
+		t.Fatalf("expected sheet_row 5, got %#v", anchor["sheet_row"])
+	}
+}
+
+func TestBuildCommentCreateV2RequestSheetOverridesBlockID(t *testing.T) {
+	t.Parallel()
+	replyElements := []map[string]interface{}{
+		{"type": "text", "text": "test"},
+	}
+	// When both sheet anchor and blockID are provided, sheet anchor wins.
+	got := buildCommentCreateV2Request("sheet", "should_be_ignored", replyElements, &sheetAnchor{
+		SheetID: "s1",
+		Col:     0,
+		Row:     0,
+	})
+	anchor := got["anchor"].(map[string]interface{})
+	if anchor["block_id"] != "s1" {
+		t.Fatalf("expected sheet anchor block_id, got %#v", anchor["block_id"])
+	}
+	if _, exists := anchor["sheet_col"]; !exists {
+		t.Fatal("expected sheet_col in anchor")
+	}
+}
+
+// ── Sheet cell ref parsing tests ────────────────────────────────────────────
+
+func TestParseSheetCellRef(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		sheetID string
+		col     int
+		row     int
+	}{
+		{"A1", "s1!A1", "s1", 0, 0},
+		{"D6", "abc!D6", "abc", 3, 5},
+		{"AA1", "s1!AA1", "s1", 26, 0},
+		{"lowercase", "s1!d6", "s1", 3, 5},
+		{"B10", "sheet1!B10", "sheet1", 1, 9},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseSheetCellRef(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.SheetID != tc.sheetID || got.Col != tc.col || got.Row != tc.row {
+				t.Fatalf("expected {%s %d %d}, got {%s %d %d}", tc.sheetID, tc.col, tc.row, got.SheetID, got.Col, got.Row)
+			}
+		})
+	}
+}
+
+func TestParseSheetCellRefInvalid(t *testing.T) {
+	t.Parallel()
+	cases := []string{"", "noExclamation", "s1!", "!A1", "s1!123", "s1!A"}
+	for _, input := range cases {
+		t.Run(input, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseSheetCellRef(input)
+			if err == nil {
+				t.Fatalf("expected error for %q", input)
+			}
+		})
+	}
+}
+
+// ── Sheet comment validate tests ────────────────────────────────────────────
+
+func TestSheetCommentValidateMissingBlockID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--block-id is required") {
+		t.Fatalf("expected block-id required error, got: %v", err)
+	}
+}
+
+func TestSheetCommentValidateInvalidBlockIDFormat(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "no-exclamation",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "<sheetId>!<cell>") {
+		t.Fatalf("expected format error, got: %v", err)
+	}
+}
+
+func TestSheetCommentValidateRejectsFullComment(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "s1!A1",
+		"--full-comment",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "not applicable for sheet") {
+		t.Fatalf("expected incompatible flags error, got: %v", err)
+	}
+}
+
+func TestSheetCommentValidateRejectsSelectionWithEllipsis(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "s1!A1",
+		"--selection-with-ellipsis", "something",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "not applicable for sheet") {
+		t.Fatalf("expected incompatible flags error, got: %v", err)
+	}
+}
+
+// ── Sheet comment execute tests ─────────────────────────────────────────────
+
+func TestSheetCommentExecuteSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/shtToken/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"comment_id": "comment123", "created_at": 1700000000},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtToken",
+		"--content", `[{"type":"text","text":"请检查"}]`,
+		"--block-id", "s1!D6",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "comment123") {
+		t.Fatalf("stdout missing comment_id: %s", stdout.String())
+	}
+}
+
+func TestSheetCommentExecuteWithURL(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/shtFromURL/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"comment_id": "c456"},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtFromURL?sheet=abc",
+		"--content", `[{"type":"text","text":"ok"}]`,
+		"--block-id", "abc!A1",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSheetCommentViaWikiResolve(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": "shtResolved",
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/shtResolved/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"comment_id": "wikiSheetComment"},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/wiki/wikiToken123",
+		"--content", `[{"type":"text","text":"wiki sheet comment"}]`,
+		"--block-id", "s1!B3",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "wikiSheetComment") {
+		t.Fatalf("stdout missing comment_id: %s", stdout.String())
+	}
+}
+
+func TestSheetCommentViaWikiMissingBlockID(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": "shtResolved",
+				},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/wiki/wikiToken123",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--block-id is required") {
+		t.Fatalf("expected block-id required error, got: %v", err)
+	}
+}
+
+// ── DryRun coverage ─────────────────────────────────────────────────────────
+
+func TestDryRunSheetDirectURL(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "s1!A1",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "sheet comment") {
+		t.Fatalf("dry-run output missing sheet comment: %s", stdout.String())
+	}
+}
+
+func TestDryRunWikiResolvesToSheet(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{"obj_type": "sheet", "obj_token": "shtResolved"},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/wiki/wikiToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "s1!D6",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "sheet comment") {
+		t.Fatalf("dry-run output missing sheet comment: %s", stdout.String())
+	}
+}
+
+func TestDryRunWikiResolvesToDocxFull(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{"obj_type": "docx", "obj_token": "docxResolved"},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/wiki/wikiToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "full comment") {
+		t.Fatalf("dry-run output missing full comment: %s", stdout.String())
+	}
+}
+
+func TestDryRunDocxLocalWithBlockID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/docx/docxToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "blk_123",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "local comment") {
+		t.Fatalf("dry-run output missing local comment: %s", stdout.String())
+	}
+}
+
+func TestDryRunDocxFullComment(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/docx/docxToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "full comment") {
+		t.Fatalf("dry-run output missing full comment: %s", stdout.String())
+	}
+}
+
+// ── resolveCommentTarget coverage ───────────────────────────────────────────
+
+func TestResolveWikiToDocxFullComment(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{"obj_type": "docx", "obj_token": "docxResolved"},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/docxResolved/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"comment_id": "wikiDocxComment"},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/wiki/wikiToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "wikiDocxComment") {
+		t.Fatalf("stdout missing comment_id: %s", stdout.String())
+	}
+}
+
+func TestResolveWikiToUnsupportedType(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{"obj_type": "bitable", "obj_token": "bitToken"},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/wiki/wikiToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "only support doc/docx/sheet") {
+		t.Fatalf("expected unsupported type error, got: %v", err)
+	}
+}
+
+func TestResolveWikiIncompleteNodeData(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/wiki/wikiToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "incomplete node data") {
+		t.Fatalf("expected incomplete node error, got: %v", err)
+	}
+}
+
+func TestDocOldFormatLocalCommentRejected(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/doc/oldDocToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "blk_123",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "only support docx and sheet") {
+		t.Fatalf("expected local comment rejection for old doc, got: %v", err)
+	}
+}
+
+// ── Additional unit function tests ──────────────────────────────────────────
+
+func TestAnchorBlockIDForDryRun(t *testing.T) {
+	t.Parallel()
+	if got := anchorBlockIDForDryRun("blk_123"); got != "blk_123" {
+		t.Fatalf("expected blk_123, got %s", got)
+	}
+	if got := anchorBlockIDForDryRun(""); got != "<anchor_block_id>" {
+		t.Fatalf("expected placeholder, got %s", got)
+	}
+	if got := anchorBlockIDForDryRun("  "); got != "<anchor_block_id>" {
+		t.Fatalf("expected placeholder for whitespace, got %s", got)
+	}
+}
+
+func TestParseSheetCellRefRowZero(t *testing.T) {
+	t.Parallel()
+	_, err := parseSheetCellRef("s1!A0")
+	if err == nil || !strings.Contains(err.Error(), "must be >= 1") {
+		t.Fatalf("expected row validation error, got: %v", err)
+	}
+}
+
+func TestParseCommentDocRefPathLikeToken(t *testing.T) {
+	t.Parallel()
+	_, err := parseCommentDocRef("token/with/slash", "")
+	if err == nil || !strings.Contains(err.Error(), "unsupported --doc input") {
+		t.Fatalf("expected unsupported doc error, got: %v", err)
+	}
+}
+
+func TestExtractURLTokenEmptyAfterMarker(t *testing.T) {
+	t.Parallel()
+	_, ok := extractURLToken("https://example.com/sheets/", "/sheets/")
+	if ok {
+		t.Fatal("expected false for empty token after marker")
+	}
+}
+
+func TestSheetCommentExecuteAPIError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/shtToken/new_comments",
+		Status: 400, Body: map[string]interface{}{"code": 1061002, "msg": "params error"},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/sheets/shtToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "s1!A1",
+		"--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }

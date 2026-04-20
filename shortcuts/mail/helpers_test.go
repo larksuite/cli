@@ -1077,3 +1077,143 @@ func TestValidateSendTime_Valid(t *testing.T) {
 		t.Fatalf("expected nil for valid future send-time, got %v", err)
 	}
 }
+
+func TestParsePriority(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"empty", "", "", false},
+		{"high", "high", "1", false},
+		{"normal", "normal", "", false},
+		{"low", "low", "5", false},
+		{"case-insensitive HIGH", "HIGH", "1", false},
+		{"whitespace padding", "  low  ", "5", false},
+		{"invalid", "urgent", "", true},
+		{"numeric not accepted", "1", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parsePriority(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parsePriority(%q): expected error, got nil", tc.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parsePriority(%q): unexpected error: %v", tc.input, err)
+			}
+			if got != tc.want {
+				t.Errorf("parsePriority(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildMessageOutput_PriorityFromLabels(t *testing.T) {
+	cases := []struct {
+		name         string
+		labels       []interface{}
+		priorityType string
+		wantType     string
+		wantText     string
+	}{
+		{"high from label", []interface{}{"UNREAD", "HIGH_PRIORITY"}, "", "1", "high"},
+		{"low from label", []interface{}{"LOW_PRIORITY"}, "", "5", "low"},
+		{"no priority label", []interface{}{"UNREAD"}, "", "", ""},
+		{"label overrides priority_type field", []interface{}{"HIGH_PRIORITY"}, "5", "1", "high"},
+		{"priority_type fallback when no label", []interface{}{"UNREAD"}, "1", "1", "high"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := map[string]interface{}{
+				"message_id": "m1",
+				"label_ids":  tc.labels,
+			}
+			if tc.priorityType != "" {
+				msg["priority_type"] = tc.priorityType
+			}
+			out := buildMessageOutput(msg, false)
+			gotText, _ := out["priority_type_text"].(string)
+			if gotText != tc.wantText {
+				t.Errorf("priority_type_text = %q, want %q", gotText, tc.wantText)
+			}
+			gotType, _ := out["priority_type"].(string)
+			if gotType != tc.wantType {
+				t.Errorf("priority_type = %q, want %q", gotType, tc.wantType)
+			}
+		})
+	}
+}
+
+func TestApplyPriority(t *testing.T) {
+	// Empty priority: EML must not contain X-Cli-Priority header.
+	emptyBld := emlbuilder.New().
+		From("", "sender@example.com").
+		To("", "recipient@example.com").
+		Subject("no priority").
+		TextBody([]byte("body"))
+	emptyBld = applyPriority(emptyBld, "")
+	raw, err := emptyBld.BuildBase64URL()
+	if err != nil {
+		t.Fatalf("build EML failed: %v", err)
+	}
+	eml := decodeBase64URL(raw)
+	if strings.Contains(eml, "X-Cli-Priority") {
+		t.Errorf("expected no X-Cli-Priority header when priority is empty, got EML:\n%s", eml)
+	}
+
+	// Non-empty priority: header must be present with the exact value.
+	highBld := emlbuilder.New().
+		From("", "sender@example.com").
+		To("", "recipient@example.com").
+		Subject("high priority").
+		TextBody([]byte("body"))
+	highBld = applyPriority(highBld, "1")
+	raw, err = highBld.BuildBase64URL()
+	if err != nil {
+		t.Fatalf("build EML failed: %v", err)
+	}
+	eml = decodeBase64URL(raw)
+	if !strings.Contains(eml, "X-Cli-Priority: 1") {
+		t.Errorf("expected X-Cli-Priority: 1 in EML, got:\n%s", eml)
+	}
+}
+
+func TestValidatePriorityFlag(t *testing.T) {
+	makeRuntime := func(priority string) *common.RuntimeContext {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("priority", "", "")
+		if priority != "" {
+			_ = cmd.Flags().Set("priority", priority)
+		}
+		return common.TestNewRuntimeContext(cmd, nil)
+	}
+
+	cases := []struct {
+		name     string
+		priority string
+		wantErr  bool
+	}{
+		{"empty ok", "", false},
+		{"high ok", "high", false},
+		{"normal ok", "normal", false},
+		{"low ok", "low", false},
+		{"invalid urgent", "urgent", true},
+		{"invalid numeric", "1", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePriorityFlag(makeRuntime(tc.priority))
+			if tc.wantErr && err == nil {
+				t.Errorf("validatePriorityFlag(%q): expected error, got nil", tc.priority)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("validatePriorityFlag(%q): unexpected error: %v", tc.priority, err)
+			}
+		})
+	}
+}

@@ -84,6 +84,8 @@ type Request struct {
 	Format string
 	// WorkDir is optional and becomes the child process working directory when non-empty.
 	WorkDir string
+	// Env adds or overrides environment variables for this one child process only.
+	Env map[string]string
 }
 
 // Result captures process execution output.
@@ -121,6 +123,7 @@ func RunCmd(ctx context.Context, req Request) (*Result, error) {
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}
+	cmd.Env = buildCommandEnv(req)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -141,6 +144,39 @@ func RunCmd(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	return result, nil
+}
+
+func buildCommandEnv(req Request) []string {
+	env := append([]string{}, os.Environ()...)
+	overrides := map[string]string{}
+	for k, v := range req.Env {
+		overrides[k] = v
+	}
+	// Keep user-token injection scoped to user-only test commands so bot
+	// commands continue to use config-init credentials in the same process.
+	if req.DefaultAs == "user" {
+		if appID := os.Getenv("TEST_BOT1_APP_ID"); appID != "" {
+			if token := os.Getenv("TEST_USER_ACCESS_TOKEN"); token != "" {
+				overrides["LARKSUITE_CLI_APP_ID"] = appID
+				overrides["LARKSUITE_CLI_USER_ACCESS_TOKEN"] = token
+			}
+		}
+	}
+	for k, v := range overrides {
+		prefix := k + "="
+		replaced := false
+		for i, item := range env {
+			if strings.HasPrefix(item, prefix) {
+				env[i] = prefix + v
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			env = append(env, prefix+v)
+		}
+	}
+	return env
 }
 
 // RunCmdWithRetry reruns a command when the result matches the configured retry condition.

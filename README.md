@@ -30,7 +30,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
 | 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
 | 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                                                                    |
-| 🖼️ Slides     | Create and manage presentations, read presentation content, and add or remove slides                                             |
+| 🖼️ Slides     | Create and manage presentations, read presentation content, and add or remove slides                                              |
 | ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders                                      |
 | 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
 | 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
@@ -38,6 +38,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                                                                        |
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
+| 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments and indicators.                                            |
 
 ## Installation & Quick Start
 

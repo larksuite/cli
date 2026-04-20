@@ -33,7 +33,7 @@ func TestBuildRawEMLForDraftCreate_ResolvesLocalImages(t *testing.T) {
 		Body:    `<p>Hello</p><p><img src="./test_image.png" /></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil)
+	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -58,7 +58,7 @@ func TestBuildRawEMLForDraftCreate_NoLocalImages(t *testing.T) {
 		Body:    `<p>Hello <b>world</b></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil)
+	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -93,7 +93,7 @@ func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 		Attach:  "./big.txt",
 	}
 
-	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil)
+	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err == nil {
 		t.Fatal("expected size limit error when auto-resolved image + attachment exceed 25MB")
 	}
@@ -113,7 +113,7 @@ func TestBuildRawEMLForDraftCreate_OrphanedInlineSpecError(t *testing.T) {
 		Inline:  `[{"cid":"orphan","file_path":"./unused.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil)
+	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err == nil {
 		t.Fatal("expected error for orphaned --inline CID not referenced in body")
 	}
@@ -133,12 +133,46 @@ func TestBuildRawEMLForDraftCreate_MissingCIDRefError(t *testing.T) {
 		Inline:  `[{"cid":"present","file_path":"./present.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil)
+	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err == nil {
 		t.Fatal("expected error for missing CID reference")
 	}
 	if !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("expected error mentioning missing, got: %v", err)
+	}
+}
+
+func TestBuildRawEMLForDraftCreate_WithPriority(t *testing.T) {
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		Subject: "priority test",
+		Body:    `<p>Hello</p>`,
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "1")
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+	if !strings.Contains(eml, "X-Cli-Priority: 1") {
+		t.Errorf("expected X-Cli-Priority: 1 in EML, got:\n%s", eml)
+	}
+}
+
+func TestBuildRawEMLForDraftCreate_NoPriority(t *testing.T) {
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		Subject: "no priority",
+		Body:    `<p>Hello</p>`,
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+	if strings.Contains(eml, "X-Cli-Priority") {
+		t.Errorf("expected no X-Cli-Priority header when priority is empty, got:\n%s", eml)
 	}
 }
 
@@ -153,7 +187,7 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 		PlainText: true,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil)
+	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}

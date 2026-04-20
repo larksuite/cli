@@ -40,6 +40,13 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			wantType:     "cross_brand",
 			wantHint:     "same brand environment",
 		},
+		{
+			name:         "sheets float image invalid dims",
+			code:         LarkErrSheetsFloatImageInvalidDims,
+			wantExitCode: ExitAPI,
+			wantType:     "invalid_params",
+			wantHint:     "--width / --height / --offset-x / --offset-y",
+		},
 	}
 
 	for _, tt := range tests {

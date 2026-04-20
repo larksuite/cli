@@ -159,9 +159,7 @@
     { "type": "connector", "connector": { "from": "child-b", "to": "leaf-b1", "fromAnchor": "bottom", "toAnchor": "top", "lineShape": "rightAngle", "lineWidth": 2 } },
     { "type": "connector", "connector": { "from": "child-b", "to": "leaf-b2", "fromAnchor": "bottom", "toAnchor": "top", "lineShape": "rightAngle", "lineWidth": 2 } }
   ]
-};
-
-fs.writeFileSync('diagram.json', JSON.stringify(doc, null, 2));
+}
 ```
 
 ## 陷阱

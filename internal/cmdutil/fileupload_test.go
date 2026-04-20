@@ -336,3 +336,40 @@ func TestBuildFormdata(t *testing.T) {
 		}
 	})
 }
+
+// TestFormatFormFieldValue locks in the fix for the float64 -> scientific
+// notation bug. JSON numbers unmarshal to float64, and fmt's default %v for
+// float64 delegates to %g which switches to scientific notation at ~1e6
+// (e.g. 1185356 -> "1.185356e+06"). Backends that parse the form field as an
+// integer reject that, surfacing as a generic "params error".
+func TestFormatFormFieldValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   any
+		want string
+	}{
+		{"float64 large integer avoids scientific", float64(1185356), "1185356"},
+		{"float64 below scientific threshold", float64(358934), "358934"},
+		{"float64 zero", float64(0), "0"},
+		{"float64 huge", float64(20 * 1024 * 1024), "20971520"},
+		{"float64 negative", float64(-42), "-42"},
+		{"float64 fractional preserved", float64(3.14), "3.14"},
+		{"string pass-through", "hello", "hello"},
+		{"bool true", true, "true"},
+		{"int via %v", 42, "42"},
+		{"int64 via %v", int64(9007199254740992), "9007199254740992"},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatFormFieldValue(tt.in)
+			if got != tt.want {
+				t.Fatalf("formatFormFieldValue(%v) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}

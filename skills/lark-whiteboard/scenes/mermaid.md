@@ -16,12 +16,6 @@
 - 用户直接粘贴了 Mermaid 语法文本
 - 图表类型为思维导图、时序图、类图、饼图（自动路由）
 
-## CLI 用法
-
-```bash
-npx -y @larksuite/whiteboard-cli@^0.2.0 -i ./diagrams/{name}.mmd -o ./diagrams/{name}.png
-```
-
 ## 思维导图 (Mindmap)
 
 ```mermaid
