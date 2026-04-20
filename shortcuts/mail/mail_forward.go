@@ -152,6 +152,15 @@ var MailForward = common.Shortcut{
 				return fmt.Errorf("forward blocked: %w", err)
 			}
 			processedBody := buildBodyDiv(body, bodyIsHTML(body))
+			// Extract large attachment card from the original body so it
+			// appears in the main body area rather than inside the quote,
+			// matching the desktop client behavior.
+			origLargeAttCard := ""
+			if draftpkg.HTMLContainsLargeAttachment(orig.bodyRaw) {
+				bodyWithout, card, trailing := draftpkg.SplitAtLargeAttachment(orig.bodyRaw)
+				origLargeAttCard = card
+				orig.bodyRaw = bodyWithout + trailing
+			}
 			forwardQuote := buildForwardQuoteHTML(&orig)
 			var srcCIDs []string
 			bld, srcCIDs, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
@@ -166,7 +175,7 @@ var MailForward = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
-			composedHTMLBody = bodyWithSig + forwardQuote
+			composedHTMLBody = bodyWithSig + origLargeAttCard + forwardQuote
 			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var userCIDs []string
