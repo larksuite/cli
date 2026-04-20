@@ -1384,6 +1384,9 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 func validateForwardAttachmentURLs(src composeSourceMessage) error {
 	var missing []string
 	for _, att := range src.ForwardAttachments {
+		if att.AttachmentType == attachmentTypeLarge {
+			continue
+		}
 		if att.DownloadURL == "" {
 			missing = append(missing, fmt.Sprintf("attachment %q (%s)", att.Filename, att.ID))
 		}
