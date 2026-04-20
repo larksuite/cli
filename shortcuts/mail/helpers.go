@@ -1869,12 +1869,13 @@ func validateInlineCIDs(html string, userCIDs, extraCIDs []string) error {
 	return nil
 }
 
-func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, []string, error) {
+func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, []string, int64, error) {
 	var cids []string
+	var totalBytes int64
 	for _, img := range images {
 		content, err := downloadAttachmentContent(runtime, img.DownloadURL)
 		if err != nil {
-			return bld, nil, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
+			return bld, nil, 0, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
 		}
 		cid := normalizeInlineCID(img.CID)
 		if cid == "" {
@@ -1886,8 +1887,9 @@ func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Bui
 		}
 		bld = bld.AddInline(content, contentType, img.Filename, cid)
 		cids = append(cids, cid)
+		totalBytes += int64(len(content))
 	}
-	return bld, cids, nil
+	return bld, cids, totalBytes, nil
 }
 
 // InlineSpec represents one inline image entry from the --inline JSON array.

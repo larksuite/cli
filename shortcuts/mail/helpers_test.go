@@ -688,9 +688,12 @@ func TestAddInlineImagesToBuilder_EmptyCIDSkipped(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "logo.png", ContentType: "image/png", CID: "", DownloadURL: srv.URL + "/img1"},
 	}
-	_, _, err := addInlineImagesToBuilder(rt, bld, images)
+	_, _, totalBytes, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if totalBytes != 0 {
+		t.Errorf("expected 0 totalBytes for skipped CID, got %d", totalBytes)
 	}
 }
 
@@ -709,9 +712,12 @@ func TestAddInlineImagesToBuilder_Success(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "banner.png", ContentType: "image/png", CID: "cid:banner", DownloadURL: srv.URL + "/img1"},
 	}
-	result, _, err := addInlineImagesToBuilder(rt, bld, images)
+	result, _, totalBytes, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if totalBytes != int64(len("imagedata")) {
+		t.Errorf("expected totalBytes=%d, got %d", len("imagedata"), totalBytes)
 	}
 	raw, err := result.BuildBase64URL()
 	if err != nil {
