@@ -255,23 +255,12 @@ func doSyncFetch() {
 
 // --- background refresh ---
 
-var (
-	refreshOnce         sync.Once
-	backgroundRefreshWG sync.WaitGroup
-)
+var refreshOnce sync.Once
 
 func triggerBackgroundRefresh() {
 	refreshOnce.Do(func() {
-		backgroundRefreshWG.Add(1)
-		go func() {
-			defer backgroundRefreshWG.Done()
-			doBackgroundRefresh()
-		}()
+		go doBackgroundRefresh()
 	})
-}
-
-func waitForBackgroundRefresh() {
-	backgroundRefreshWG.Wait()
 }
 
 func doBackgroundRefresh() {
