@@ -3,7 +3,10 @@
 
 package credential
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
 var (
 	mu        sync.Mutex
@@ -11,12 +14,28 @@ var (
 )
 
 // Register registers a credential Provider.
-// Providers are consulted in registration order.
+// Providers are consulted in priority order (lowest value first).
+// Providers that implement Priority() int are sorted accordingly;
+// those that do not default to priority 10.
 // Typically called from init() via blank import.
 func Register(p Provider) {
 	mu.Lock()
 	defer mu.Unlock()
 	providers = append(providers, p)
+	sort.SliceStable(providers, func(i, j int) bool {
+		return providerPriority(providers[i]) < providerPriority(providers[j])
+	})
+}
+
+// providerPriority returns the priority of a provider.
+// If the provider implements interface{ Priority() int }, that value is used;
+// otherwise 10 is returned as the default priority.
+// Lower values are consulted first.
+func providerPriority(p Provider) int {
+	if pp, ok := p.(interface{ Priority() int }); ok {
+		return pp.Priority()
+	}
+	return 10
 }
 
 // Providers returns all registered providers (snapshot).

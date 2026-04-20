@@ -8,7 +8,7 @@
 
 ## Layout 选型
 
-- **脚本生成坐标**（推荐）：用 .js 脚本计算数据点坐标和折线路径，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.1.0` 渲染
+- **脚本生成坐标**（推荐）：用 .cjs 脚本计算数据点坐标和折线路径，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
 
 ## Layout 规则
 
@@ -199,13 +199,6 @@
 - 点3 (Q4, 180): pointX = 80 + (3/3)*900 = 980, pointY = 480 - ((180-100)/120)*400 = 213
 - ellipse 定位：ellipseX = pointX - 6, ellipseY = pointY - 6
 
-**脚本运行方式**：
-
-```bash
-node generate-line-chart.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i line-chart.json -o ./line-chart.png
-```
-
 ## 陷阱
 
 - Y 轴范围不合理：若数据集中在 80-120，Y 轴从 0 到 120 会让折线挤在顶部一小段区域，应设 yMin 接近数据最小值
@@ -213,3 +206,9 @@ npx -y @larksuite/whiteboard-cli@^0.1.0 -i line-chart.json -o ./line-chart.png
 - 数据点太密时标注互相遮挡（超过 10 个点考虑隔一个标注一次）
 - 折线段忘记设 endArrow: "none"，默认带箭头
 - 多系列时折线颜色相近难以区分，应使用对比度高的不同色系
+
+此场景必须用 .cjs 脚本生成。Agent 使用时只需修改 `data` 数组，其余坐标与折线生成全自动计算。
+
+```javascript
+const { writeFileSync } = require('fs');
+```

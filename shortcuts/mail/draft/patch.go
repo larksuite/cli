@@ -33,10 +33,12 @@ var protectedHeaders = map[string]bool{
 // bodyChangingOps lists patch operations that modify the HTML body content,
 // which is the trigger for running local image path resolution.
 var bodyChangingOps = map[string]bool{
-	"set_body":       true,
-	"set_reply_body": true,
-	"replace_body":   true,
-	"append_body":    true,
+	"set_body":         true,
+	"set_reply_body":   true,
+	"replace_body":     true,
+	"append_body":      true,
+	"insert_signature": true,
+	"remove_signature": true,
 }
 
 func Apply(dctx *DraftCtx, snapshot *DraftSnapshot, patch Patch) error {
@@ -121,6 +123,10 @@ func applyOp(dctx *DraftCtx, snapshot *DraftSnapshot, op PatchOp, options PatchO
 			return fmt.Errorf("remove_inline: %w", err)
 		}
 		return removeInline(snapshot, partID)
+	case "insert_signature":
+		return insertSignatureOp(snapshot, op)
+	case "remove_signature":
+		return removeSignatureOp(snapshot)
 	default:
 		return fmt.Errorf("unsupported patch op %q", op.Op)
 	}
@@ -284,7 +290,7 @@ func setReplyBody(snapshot *DraftSnapshot, value string, options PatchOptions) e
 	if htmlPart == nil {
 		return setBody(snapshot, value, options)
 	}
-	_, quotePart := splitAtQuote(string(htmlPart.Body))
+	_, quotePart := SplitAtQuote(string(htmlPart.Body))
 	if quotePart == "" {
 		// No quote block found — fall back to regular set_body.
 		return setBody(snapshot, value, options)
@@ -1134,4 +1140,167 @@ func postProcessInlineImages(dctx *DraftCtx, snapshot *DraftSnapshot, resolveLoc
 	}
 	removeOrphanedInlineParts(snapshot.Body, refSet)
 	return nil
+}
+
+// ── Signature patch operations ──
+
+// insertSignatureOp inserts a pre-rendered signature into the HTML body.
+// The RenderedSignatureHTML and SignatureImages fields must be populated
+// by the shortcut layer before calling Apply.
+func insertSignatureOp(snapshot *DraftSnapshot, op PatchOp) error {
+	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	if htmlPart == nil {
+		return fmt.Errorf("insert_signature: no HTML body part found; use set_body first")
+	}
+	html := string(htmlPart.Body)
+
+	// Collect CIDs from old signature before removing it, so we can
+	// clean up orphaned MIME inline parts and avoid duplicates.
+	oldSigCIDs := collectSignatureCIDsFromHTML(html)
+
+	// Remove existing signature (if any), including preceding spacing.
+	html = RemoveSignatureHTML(html)
+
+	// Remove orphaned MIME inline parts from old signature.
+	for _, cid := range oldSigCIDs {
+		if !containsCIDIgnoreCase(html, cid) {
+			removeMIMEPartByCID(snapshot.Body, cid)
+		}
+	}
+
+	// Split at quote and insert signature between body and quote.
+	body, quote := SplitAtQuote(html)
+	sigBlock := SignatureSpacing() + BuildSignatureHTML(op.SignatureID, op.RenderedSignatureHTML)
+	html = body + sigBlock + quote
+
+	htmlPart.Body = []byte(html)
+	htmlPart.Dirty = true
+
+	// Add signature inline images to the MIME tree.
+	for _, img := range op.SignatureImages {
+		addInlinePartToSnapshot(snapshot, img.Data, img.ContentType, img.FileName, img.CID)
+	}
+
+	syncTextPartFromHTML(snapshot, html)
+	return nil
+}
+
+// removeSignatureOp removes the signature block from the HTML body.
+func removeSignatureOp(snapshot *DraftSnapshot) error {
+	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	if htmlPart == nil {
+		return fmt.Errorf("remove_signature: no HTML body part found")
+	}
+	html := string(htmlPart.Body)
+
+	if !signatureWrapperRe.MatchString(html) {
+		return fmt.Errorf("no signature found in draft body")
+	}
+
+	// Collect CIDs referenced by the signature before removing it.
+	sigCIDs := collectSignatureCIDsFromHTML(html)
+
+	// Remove signature and preceding spacing.
+	html = RemoveSignatureHTML(html)
+
+	// Remove orphaned inline parts (only if the CID is no longer referenced in remaining HTML).
+	for _, cid := range sigCIDs {
+		if !containsCIDIgnoreCase(html, cid) {
+			removeMIMEPartByCID(snapshot.Body, cid)
+		}
+	}
+
+	htmlPart.Body = []byte(html)
+	htmlPart.Dirty = true
+
+	syncTextPartFromHTML(snapshot, html)
+	return nil
+}
+
+// syncTextPartFromHTML regenerates the text/plain part from the current HTML,
+// mirroring the coupled-body logic in tryApplyCoupledBodySetBody.
+func syncTextPartFromHTML(snapshot *DraftSnapshot, html string) {
+	if snapshot.PrimaryTextPartID == "" {
+		return
+	}
+	textPart := findPart(snapshot.Body, snapshot.PrimaryTextPartID)
+	if textPart == nil {
+		return
+	}
+	textPart.Body = []byte(plainTextFromHTML(html))
+	textPart.Dirty = true
+}
+
+// Note: SignatureSpacing, BuildSignatureHTML, FindMatchingCloseDiv, and
+// RemoveSignatureHTML are exported from projection.go to avoid duplication
+// with the mail package's signature_html.go.
+
+// collectSignatureCIDsFromHTML extracts CID references from the signature block in HTML.
+func collectSignatureCIDsFromHTML(html string) []string {
+	loc := signatureWrapperRe.FindStringIndex(html)
+	if loc == nil {
+		return nil
+	}
+	sigEnd := FindMatchingCloseDiv(html, loc[0])
+	sigHTML := html[loc[0]:sigEnd]
+
+	matches := cidRefRegexp.FindAllStringSubmatch(sigHTML, -1)
+	cids := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if len(m) >= 2 {
+			cids = append(cids, m[1])
+		}
+	}
+	return cids
+}
+
+// removeMIMEPartByCID removes the first MIME part with the given Content-ID.
+func removeMIMEPartByCID(root *Part, cid string) {
+	if root == nil {
+		return
+	}
+	normalizedCID := strings.Trim(cid, "<>")
+	for i, child := range root.Children {
+		if child == nil {
+			continue
+		}
+		childCID := strings.Trim(child.ContentID, "<>")
+		if strings.EqualFold(childCID, normalizedCID) {
+			root.Children = append(root.Children[:i], root.Children[i+1:]...)
+			return
+		}
+		removeMIMEPartByCID(child, cid)
+	}
+}
+
+// addInlinePartToSnapshot adds an inline image part to the MIME tree.
+func addInlinePartToSnapshot(snapshot *DraftSnapshot, data []byte, contentType, filename, cid string) {
+	part := &Part{
+		MediaType:          contentType,
+		ContentDisposition: "inline",
+		ContentID:          strings.Trim(cid, "<>"),
+		Body:               data,
+		Dirty:              true,
+	}
+	if filename != "" {
+		part.MediaParams = map[string]string{"name": filename}
+	}
+	// Find or create the multipart/related container.
+	if snapshot.Body == nil {
+		return
+	}
+	if snapshot.Body.IsMultipart() {
+		snapshot.Body.Children = append(snapshot.Body.Children, part)
+	}
+	// Non-multipart body: inline part is not added. This is expected when
+	// the draft has a simple text/html body without multipart/related wrapper.
+	// The signature HTML still references the CID, but the image won't render.
+	// In practice, compose shortcuts wrap the body in multipart/related when
+	// inline images are present, so this path rarely triggers.
+}
+
+// containsCIDIgnoreCase checks if html contains a "cid:<value>" reference,
+// case-insensitively. Aligned with other CID comparisons in this package.
+func containsCIDIgnoreCase(html, cid string) bool {
+	return strings.Contains(strings.ToLower(html), "cid:"+strings.ToLower(cid))
 }

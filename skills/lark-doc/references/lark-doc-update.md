@@ -5,6 +5,9 @@
 
 更新飞书云文档内容，支持 7 种更新模式。优先使用局部更新（replace_range/append/insert_before/insert_after），慎用 overwrite（会清空文档重写，可能丢失图片、评论等）。
 
+## 重要说明
+> **⚠️ 本文档中提到的 html 标签不需要在 Markdown 中转义！若转义，会导致相关的表格，多维表格，画板等 block 插入失败**
+
 ## 命令
 
 ```bash

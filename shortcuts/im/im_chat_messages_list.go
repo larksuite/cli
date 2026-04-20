@@ -28,7 +28,7 @@ var ImChatMessageList = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "chat-id", Desc: "(required, mutually exclusive with --user-id) chat ID (oc_xxx)"},
-		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id) user open_id (ou_xxx)"},
+		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id; user identity only) user open_id (ou_xxx)"},
 		{Name: "start", Desc: "start time (ISO 8601)"},
 		{Name: "end", Desc: "end time (ISO 8601)"},
 		{Name: "sort", Default: "desc", Desc: "sort order", Enum: []string{"asc", "desc"}},
@@ -57,11 +57,21 @@ var ImChatMessageList = common.Shortcut{
 		return d.GET("/open-apis/im/v1/messages").Params(dryParams)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := common.ExactlyOne(runtime, "chat-id", "user-id"); err != nil {
-			if runtime.Str("chat-id") == "" && runtime.Str("user-id") == "" {
-				return common.FlagErrorf("specify at least one of --chat-id or --user-id")
+		// Under bot identity, --user-id is not supported; require --chat-id only.
+		if runtime.IsBot() {
+			if runtime.Str("user-id") != "" {
+				return common.FlagErrorf("--user-id requires user identity (--as user); use --chat-id when calling with bot identity")
 			}
-			return err
+			if runtime.Str("chat-id") == "" {
+				return common.FlagErrorf("specify --chat-id (bot identity does not support --user-id)")
+			}
+		} else {
+			if err := common.ExactlyOne(runtime, "chat-id", "user-id"); err != nil {
+				if runtime.Str("chat-id") == "" && runtime.Str("user-id") == "" {
+					return common.FlagErrorf("specify at least one of --chat-id or --user-id")
+				}
+				return err
+			}
 		}
 
 		// Validate ID formats

@@ -2,6 +2,170 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.15] - 2026-04-20
+
+### Features
+
+- **sheets**: Add float image shortcuts (#494)
+- **approval**: Document `remind` and `initiated` methods in skill (#554)
+
+### Bug Fixes
+
+- **base**: Preserve attachment metadata on base uploads (#563)
+- **base**: Fix role view and record default permission on edit (#530)
+- **sheets**: Normalize single-cell range in `+set-style` and `+batch-set-style` (#548)
+- **im**: Cap `basic_batch` user_ids at 10 per API limit (#551)
+- **install**: Refine install wizard messages (#529)
+- **whiteboard**: Deprecate old `lark-whiteboard-cli` skill (#547)
+
+## [v1.0.14] - 2026-04-17
+
+### Features
+
+- **mail**: Add email priority support for compose and read (#538)
+- **mail**: Support scheduled send (#534)
+- **drive**: Support sheet cell comments in `+add-comment` (#518)
+- **doc**: Add `--file-view` flag to `+media-insert` (#419)
+- **base**: Auto grant current user for bot create and copy (#497)
+- **base**: Add identity priority strategy and error handling (#505)
+- **auth**: Improve login scope handling and messages (#523)
+- Add OKR business domain (#522)
+
+### Documentation
+
+- **wiki**: Improve wiki skill docs and add wiki domain template (#512)
+- **task**: Document `custom_fields` and `custom_field_options` API resources and permissions (#524)
+
+### Refactor
+
+- **skills**: Introduce `lark-doc-whiteboard.md` and streamline whiteboard workflow (#502)
+
+## [v1.0.13] - 2026-04-16
+
+### Features
+
+- **im**: Support user access token for file, image, audio, and video upload, aligning upload and send identity with `--as` flag (#474)
+- **drive**: Add `drive +create-folder` shortcut with root-folder fallback and bot-mode auto-grant (#470)
+- **wiki**: Add bot-mode auto-grant support to `wiki +node-create` (#470)
+- **doc**: Default `skip_task_detail` in `docs +fetch` to reduce unnecessary task detail expansion (#471)
+
+### Bug Fixes
+
+- **im**: Preserve original URL filename for uploaded file messages instead of generic `media.ext` names (#514)
+- **whiteboard**: Use atomic overwrite API parameter for `whiteboard +update`, replacing read-then-delete approach (#483)
+
+### Documentation
+
+- **base**: Unify record batch write limit to 200 and enforce serial writes for continuous operations (#499)
+- **base**: Remove redundant reference documentation and command grouping chapters from SKILL.md (#500)
+
+### CI
+
+- Consolidate workflows into layered CI pyramid with single `results` gate (#510)
+
+## [v1.0.12] - 2026-04-15
+
+### Features
+
+- Add guided npm install flow that installs or upgrades the CLI, installs AI skills, and walks through app config and auth login (#464)
+- **mail**: Add email signature support with `+signature`, `--signature-id` compose flags, and draft signature edit operations (#485)
+- **mail**: Return recall hints for sent emails when recall is available (#481)
+- **slides**: Add `+media-upload` and support `@path` image placeholders in `+create --slides` (#450)
+
+### Documentation
+
+- **mail**: Add recipient search guidance to the mail skill workflow (#437)
+- **calendar/vc**: Route past meeting queries to `lark-vc` and clarify historical date matching in skills (#482, #480)
+
+## [v1.0.11] - 2026-04-14
+
+### Features
+
+- **sheets**: Add dropdown shortcuts for data validation management (`+set-dropdown`, `+update-dropdown`, `+get-dropdown`, `+delete-dropdown`) (#461)
+- **task**: Add task search, tasklist search, related-task, set-ancestor, and subscribe-event shortcuts (#377)
+- Streamline interactive login by removing the extra auth confirmation step (#451)
+
+### Bug Fixes
+
+- **base**: Validate JSON object inputs for base shortcuts and reject `null` objects (#458)
+
+### Documentation
+
+- **sheets**: Document value formats for formulas and special field types (#456)
+- **readme**: Add Attendance to the features table (#460)
+
+## [v1.0.10] - 2026-04-13
+
+### Features
+
+- **im**: Support im oapi range download for large files (#283)
+- **sheets**: Add filter view and condition shortcuts (#422)
+- **wiki**: Add wiki move shortcut with async task polling (#436)
+- **drive**: Add drive `+create-shortcut` shortcut (#432)
+- **drive**: Add drive files patch metadata API (#444)
+- **task**: Support `--section-guid` flag in tasklist-task-add shortcut (#430)
+
+### Bug Fixes
+
+- **base**: Support large base attachment uploads (#441)
+- **config**: Clarify init copy for TTY, preserve original for AI (#448)
+- **im**: Reject `--user-id` under bot identity for chat-messages-list (#340)
+- **mail**: Add missing scopes for mail `+watch` shortcut (#357)
+- **mail**: Restrict `--output-dir` to current working directory (#376)
+
+### Documentation
+
+- **wiki**: Add wiki member operations to lark-wiki skill (#417)
+- **task**: Document sections API resources, permissions, and URL parsing (#430)
+- **doc**: Clarify when markdown escaping is needed (#312)
+
+## [v1.0.9] - 2026-04-11
+
+### Features
+
+- Add attendance `user_task.query` (#405)
+- Support minutes search (#359)
+- **slides**: Add slides `+create` shortcut with `--slides` one-step creation (#389)
+- **slides**: Return presentation URL in slides `+create` output (#425)
+- **sheets**: Add dimension shortcuts for row/column operations (#413)
+- **sheets**: Add cell operation shortcuts for merge, replace, and style (#412)
+- **drive**: Add drive folder delete shortcut with async task polling (#415)
+
+### Documentation
+
+- **drive**: Add guide for granting document permission to current bot (#414)
+
+## [v1.0.8] - 2026-04-10
+
+### Features
+
+- Add `update` command with self-update, verification, and rollback (#391)
+- Add `--file` flag for multipart/form-data file uploads (#395)
+- Support file comment reply reactions (#380)
+- **base**: Add `+dashboard-arrange` command for auto-arranging dashboard blocks layout and `text` block type with Markdown support (#388)
+- **base**: Add record batch `+add` / `+set` shortcuts (#277)
+- **base**: Add `+record-search` for keyword-based record search (#328)
+- **base**: Add view visible fields `+get` / `+set` shortcuts (#326)
+- **base**: Add record field filters (#327)
+- **base**: Optimize workflow skills (#345)
+- **calendar**: Add room find workflow (#403)
+- **mail**: Add `--page-token` and `--page-size` to mail `+triage` (#301)
+- **whiteboard**: Add `+query` shortcut and enhance `+update` with Mermaid/PlantUML support (#382)
+
+### Bug Fixes
+
+- Improve error hints for sandbox and initialization issues (#384)
+- Fix markdown line breaks support (#338)
+- Return raw base field and view responses (#378)
+- **base**: Return raw table list response and clarify sort help (#393)
+- **calendar**: Add default video meeting to `+create` (#383)
+- **mail**: Replace `os.Exit` with graceful shutdown in mail watch (#350)
+
+### Documentation
+
+- **base**: Document Base attachment download via docs `+media-download` (#404)
+- Reorganize lark-base skill guidance (#374)
+
 ## [v1.0.7] - 2026-04-09
 
 ### Features
@@ -256,6 +420,14 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.15]: https://github.com/larksuite/cli/releases/tag/v1.0.15
+[v1.0.14]: https://github.com/larksuite/cli/releases/tag/v1.0.14
+[v1.0.13]: https://github.com/larksuite/cli/releases/tag/v1.0.13
+[v1.0.12]: https://github.com/larksuite/cli/releases/tag/v1.0.12
+[v1.0.11]: https://github.com/larksuite/cli/releases/tag/v1.0.11
+[v1.0.10]: https://github.com/larksuite/cli/releases/tag/v1.0.10
+[v1.0.9]: https://github.com/larksuite/cli/releases/tag/v1.0.9
+[v1.0.8]: https://github.com/larksuite/cli/releases/tag/v1.0.8
 [v1.0.7]: https://github.com/larksuite/cli/releases/tag/v1.0.7
 [v1.0.6]: https://github.com/larksuite/cli/releases/tag/v1.0.6
 [v1.0.5]: https://github.com/larksuite/cli/releases/tag/v1.0.5

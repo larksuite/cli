@@ -1,7 +1,7 @@
 ---
 name: lark-vc
 version: 1.0.0
-description: "飞书视频会议：查询会议记录、获取会议纪要产物（总结、待办、章节、逐字稿）。1. 查询已经结束的会议数量或详情时使用本技能(如昨天 | 上周 | 今天已经开过的会议等场景)，查询未开始的会议日程使用 lark-calendar 技能。2. 支持通过关键词、时间范围、组织者、参与者、会议室等筛选条件搜索会议记录。3. 获取或整理会议纪要时使用本技能。"
+description: "飞书视频会议：查询会议记录、获取会议纪要产物（总结、待办、章节、逐字稿）。1. 查询已经结束的会议数量或详情时使用本技能(如历史日期｜ 昨天 | 上周 | 今天已经开过的会议等场景)，查询未开始的会议日程使用 lark-calendar 技能。2. 支持通过关键词、时间范围、组织者、参与者、会议室等筛选条件搜索会议记录。3. 获取或整理会议纪要时使用本技能。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -99,6 +99,10 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | [`+search`](references/lark-vc-search.md) | Search meeting records (requires at least one filter) |
 | [`+notes`](references/lark-vc-notes.md) | Query meeting notes (via meeting-ids, minute-tokens, or calendar-event-ids) |
 | [`+recording`](references/lark-vc-recording.md) | Query minute_token from meeting-ids or calendar-event-ids |
+
+- 使用 `+search` 命令时，必须阅读 [references/lark-vc-search.md](references/lark-vc-search.md)，了解搜索参数和返回值结构。
+- 使用 `+notes` 命令时，必须阅读 [references/lark-vc-notes.md](references/lark-vc-notes.md)，了解查询参数、产物类型和返回值结构。
+- 使用 `+recording` 命令时，必须阅读 [references/lark-vc-recording.md](references/lark-vc-recording.md)，了解查询参数和返回值结构。
 
 ## API Resources
 

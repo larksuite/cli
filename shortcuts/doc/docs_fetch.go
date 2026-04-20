@@ -28,6 +28,8 @@ var DocsFetch = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		args := map[string]interface{}{
 			"doc_id": runtime.Str("doc"),
+			// Default to skipping embedded task detail expansion for faster +fetch output.
+			"skip_task_detail": true,
 		}
 		if v := runtime.Str("offset"); v != "" {
 			n, _ := strconv.Atoi(v)
@@ -46,6 +48,8 @@ var DocsFetch = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		args := map[string]interface{}{
 			"doc_id": runtime.Str("doc"),
+			// Default to skipping embedded task detail expansion for faster +fetch output.
+			"skip_task_detail": true,
 		}
 		if v := runtime.Str("offset"); v != "" {
 			n, _ := strconv.Atoi(v)

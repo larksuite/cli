@@ -18,6 +18,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 | `wordCloud` | 词云 |
 | `radar` | 雷达图 |
 | `statistics` | 指标卡 |
+| `text` | 文本（支持 Markdown） |
 
 ## 字段类型与操作符速查（AI 决策用）
 
@@ -44,6 +45,29 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 | `filter` | object | 筛选条件 |
 | `filter.conjunction` | `"and"` / `"or"` | 筛选逻辑 |
 | `filter.conditions` | `[{ "field_name", "operator", "value" }]` | 筛选条件数组，value 类型因字段类型而异（见下方 filter 格式规则） |
+
+### text 类型特殊结构
+
+`text` 类型组件用于展示富文本内容，**不需要数据源配置**（无 `table_name`、`series`、`group_by`、`filter`）。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `text` | string | **必填**。支持 Markdown 语法，详见下方说明 |
+
+**支持的 Markdown 语法：**
+
+| 语法 | 示例 | 效果 |
+|------|------|------|
+| 一级标题 | `# 标题` | 大标题 |
+| 二级标题 | `## 标题` | 中标题 |
+| 三级标题 | `### 标题` | 小标题 |
+| 加粗 | `**文字**` | **文字** |
+| 斜体 | `*文字*` | *文字* |
+| 删除线 | `~~文字~~` | ~~文字~~ |
+| 有序列表 | `1. 项目` | 1. 项目 |
+| 无序列表 | `- 项目` | - 项目 |
+
+> **注意**：以上未提及的 Markdown 语法（如链接、图片、代码块、表格等）均不支持。
 
 ## group_by 详细说明
 
@@ -138,8 +162,10 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 ## 约束与本地校验
 
 - 必填与互斥
-  - 必填：`table_name`
-  - 互斥：`series` 与 `count_all` 二选一，且至少提供其一
+  - 图表类型必填：`table_name`
+  - text 类型必填：`text`
+  - 互斥：`series` 与 `count_all` 二选一，且至少提供其一（仅图表类型）
+  - text 类型**不支持**：`series`、`count_all`、`group_by`、`filter`
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
   - `group_by[].sort.type` 取值 `group|value|view`；`order` 取值 `asc|desc`
@@ -147,7 +173,8 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
   - `series[].rollup` 自动转成大写（如 `sum` → `SUM`）
   - `group_by[].sort.type/order` 自动转成小写
 - 本地校验（可通过 `--no-validate` 跳过）
-  - `+dashboard-block-create/update` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
+  - `+dashboard-block-create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
+  - `+dashboard-block-update` 不做强类型校验，由后端验证具体字段
   - 仅需传入合法 JSON；CLI 不会擅自改写你的业务含义
 
 ## 可复制模板
@@ -286,6 +313,16 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
   "count_all": true
 }
 ```
+
+文本组件（Markdown 富文本）：
+
+```json
+{
+  "text": "# 🚀 一级标题\n这是一个 **加粗** *斜体* ~~删除线~~ 的示例。\n\n## 📌 二级标题\n1. 有序列表项 1\n2. 有序列表项 2\n\n### 📌 三级标题\n- 无序列表项 1\n- 无序列表项 2"
+}
+```
+
+> **注意**：text 类型组件不需要 `table_name`、`series`、`group_by`、`filter` 等数据源相关字段。
 
 ## 常见错误与修复
 

@@ -5,6 +5,7 @@ package common
 
 import (
 	"context"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -26,4 +27,13 @@ func TestNewRuntimeContextWithCtx(ctx context.Context, cmd *cobra.Command, cfg *
 // TestNewRuntimeContextWithIdentity creates a RuntimeContext with a specific identity for testing.
 func TestNewRuntimeContextWithIdentity(cmd *cobra.Command, cfg *core.CliConfig, as core.Identity) *RuntimeContext {
 	return &RuntimeContext{Cmd: cmd, Config: cfg, resolvedAs: as}
+}
+
+// TestNewRuntimeContextWithBotInfo creates a RuntimeContext with a pre-set BotInfo for testing.
+func TestNewRuntimeContextWithBotInfo(cmd *cobra.Command, cfg *core.CliConfig, info *BotInfo) *RuntimeContext {
+	rctx := &RuntimeContext{Cmd: cmd, Config: cfg}
+	rctx.botInfoFunc = sync.OnceValues(func() (*BotInfo, error) {
+		return info, nil
+	})
+	return rctx
 }

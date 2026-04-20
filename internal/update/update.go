@@ -218,8 +218,8 @@ func fetchLatestVersion() (string, error) {
 // is considered newer — an unparseable local version is assumed outdated.
 // When a cannot be parsed, returns false (can't confirm it's newer).
 func IsNewer(a, b string) bool {
-	ap := ParseVersion(a)
-	bp := ParseVersion(b)
+	ap := parseVersionDetail(a)
+	bp := parseVersionDetail(b)
 	if ap == nil {
 		return false // can't confirm remote is newer
 	}
@@ -227,28 +227,59 @@ func IsNewer(a, b string) bool {
 		return true // local version unparseable → assume outdated
 	}
 	for i := 0; i < 3; i++ {
-		if ap[i] > bp[i] {
+		if ap.core[i] > bp.core[i] {
 			return true
 		}
-		if ap[i] < bp[i] {
+		if ap.core[i] < bp.core[i] {
 			return false
 		}
 	}
-	return false
+	return comparePrerelease(ap.prerelease, bp.prerelease) > 0
 }
 
 // ParseVersion parses "X.Y.Z" (with optional "v" prefix and pre-release suffix)
 // into [major, minor, patch]. Returns nil on invalid input.
 func ParseVersion(v string) []int {
+	parsed := parseVersionDetail(v)
+	if parsed == nil {
+		return nil
+	}
+	return []int{parsed.core[0], parsed.core[1], parsed.core[2]}
+}
+
+type parsedVersion struct {
+	core       [3]int
+	prerelease string
+}
+
+// validPrerelease matches semver pre-release identifiers (dot-separated).
+// Each identifier is either: "0", a non-zero-leading numeric, or alphanumeric with at least one letter/hyphen.
+// Rejects empty identifiers ("1.0.0-"), leading-zero numerics ("1.0.0-01"), etc.
+var validPrerelease = regexp.MustCompile(
+	`^(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)` +
+		`(?:\.(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*$`)
+
+func parseVersionDetail(v string) *parsedVersion {
 	v = strings.TrimPrefix(v, "v")
+	if idx := strings.Index(v, "+"); idx >= 0 {
+		v = v[:idx]
+	}
+	prerelease := ""
+	if idx := strings.Index(v, "-"); idx >= 0 {
+		prerelease = v[idx+1:]
+		v = v[:idx]
+		if prerelease == "" || !validPrerelease.MatchString(prerelease) {
+			return nil
+		}
+	}
 	parts := strings.SplitN(v, ".", 3)
 	if len(parts) != 3 {
 		return nil
 	}
-	nums := make([]int, 3)
+	var nums [3]int
 	for i, p := range parts {
-		if idx := strings.IndexAny(p, "-+"); idx >= 0 {
-			p = p[:idx]
+		if len(p) > 1 && p[0] == '0' {
+			return nil // leading zero in core part (e.g. "01.0.0")
 		}
 		n, err := strconv.Atoi(p)
 		if err != nil {
@@ -256,5 +287,56 @@ func ParseVersion(v string) []int {
 		}
 		nums[i] = n
 	}
-	return nums
+	return &parsedVersion{core: nums, prerelease: prerelease}
+}
+
+func comparePrerelease(a, b string) int {
+	if a == "" && b == "" {
+		return 0
+	}
+	if a == "" {
+		return 1
+	}
+	if b == "" {
+		return -1
+	}
+	ap := strings.Split(a, ".")
+	bp := strings.Split(b, ".")
+	for i := 0; i < len(ap) && i < len(bp); i++ {
+		cmp := comparePrereleaseIdentifier(ap[i], bp[i])
+		if cmp != 0 {
+			return cmp
+		}
+	}
+	switch {
+	case len(ap) > len(bp):
+		return 1
+	case len(ap) < len(bp):
+		return -1
+	default:
+		return 0
+	}
+}
+
+func comparePrereleaseIdentifier(a, b string) int {
+	an, aErr := strconv.Atoi(a)
+	bn, bErr := strconv.Atoi(b)
+	aNumeric := aErr == nil
+	bNumeric := bErr == nil
+	switch {
+	case aNumeric && bNumeric:
+		if an > bn {
+			return 1
+		}
+		if an < bn {
+			return -1
+		}
+		return 0
+	case aNumeric:
+		return -1
+	case bNumeric:
+		return 1
+	default:
+		return strings.Compare(a, b)
+	}
 }

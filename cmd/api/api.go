@@ -41,6 +41,7 @@ type APIOptions struct {
 	Format    string
 	JqExpr    string
 	DryRun    bool
+	File      string
 }
 
 var urlPrefixRe = regexp.MustCompile(`https?://[^/]+(/open-apis/.+)`)
@@ -87,6 +88,7 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	cmd.Flags().StringVar(&opts.File, "file", "", "file to upload as multipart/form-data ([field=]path, supports - for stdin)")
 
 	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
@@ -105,20 +107,24 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 }
 
 // buildAPIRequest validates flags and builds a RawApiRequest.
-func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
-	// stdin is an io.Reader consumed at most once. Only one of --params/--data
-	// may use "-" (stdin); the conflict check below prevents silent data loss.
+// When dryRun is true and a file is provided, file reading is skipped and
+// FileUploadMeta is returned instead so the caller can render dry-run output.
+func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
 	stdin := opts.Factory.IOStreams.In
-	if opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+
+	// Validate --file mutual exclusions first.
+	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
+		return client.RawApiRequest{}, nil, err
 	}
+
+	// stdin conflict: --params and --data cannot both read from stdin, regardless of --file.
+	if opts.Params == "-" && opts.Data == "-" {
+		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+	}
+
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
 	if err != nil {
-		return client.RawApiRequest{}, err
-	}
-	data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
-	if err != nil {
-		return client.RawApiRequest{}, err
+		return client.RawApiRequest{}, nil, err
 	}
 	if opts.PageSize > 0 {
 		params["page_size"] = opts.PageSize
@@ -128,14 +134,53 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, error) {
 		Method: opts.Method,
 		URL:    normalisePath(opts.Path),
 		Params: params,
-		Data:   data,
 		As:     opts.As,
 	}
-	// WithFileDownload tells the SDK to skip CodeError parsing on 200 OK.
-	if opts.Output != "" {
-		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+
+	if opts.File != "" {
+		// File upload path: build formdata.
+		fieldName, filePath, isStdin := cmdutil.ParseFileFlag(opts.File, "file")
+
+		// Parse --data as JSON map for form fields (not as body).
+		var dataFields any
+		if opts.Data != "" {
+			dataFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+			if err != nil {
+				return client.RawApiRequest{}, nil, err
+			}
+			if _, ok := dataFields.(map[string]any); !ok {
+				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+			}
+		}
+
+		if opts.DryRun {
+			return request, &cmdutil.FileUploadMeta{
+				FieldName: fieldName, FilePath: filePath, FormFields: dataFields,
+			}, nil
+		}
+
+		fd, err := cmdutil.BuildFormdata(
+			opts.Factory.ResolveFileIO(opts.Ctx),
+			fieldName, filePath, isStdin, stdin, dataFields,
+		)
+		if err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
+		request.Data = fd
+		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
+	} else {
+		// Normal path: JSON body.
+		data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+		if err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
+		request.Data = data
+		if opts.Output != "" {
+			request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
+		}
 	}
-	return request, nil
+
+	return request, nil, nil
 }
 
 func apiRun(opts *APIOptions) error {
@@ -153,7 +198,7 @@ func apiRun(opts *APIOptions) error {
 		return err
 	}
 
-	request, err := buildAPIRequest(opts)
+	request, fileMeta, err := buildAPIRequest(opts)
 	if err != nil {
 		return err
 	}
@@ -164,6 +209,9 @@ func apiRun(opts *APIOptions) error {
 	}
 
 	if opts.DryRun {
+		if fileMeta != nil {
+			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+		}
 		return apiDryRun(f, request, config, opts.Format)
 	}
 	// Identity info is now included in the JSON envelope; skip stderr printing.

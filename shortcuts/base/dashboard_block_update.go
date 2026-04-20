@@ -24,7 +24,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		dashboardIDFlag(true),
 		blockIDFlag(true),
 		{Name: "name", Desc: "new block name"},
-		{Name: "data-config", Desc: "data config JSON: table_name, series|count_all (mutually exclusive), group_by, filter. See dashboard-block-data-config.md for details."},
+		{Name: "data-config", Desc: "data config JSON. For chart types: table_name, series|count_all, group_by, filter. For text type: text (markdown supported). See dashboard-block-data-config.md for details."},
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
 	},
@@ -42,9 +42,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			return err
 		}
 		norm := normalizeDataConfig(cfg)
-		if errs := validateBlockDataConfig("", norm); len(errs) > 0 { // update 时不强校验类型特性
-			return formatDataConfigErrors(errs)
-		}
+		// update 时不做强类型校验（不传 type），让后端验证具体字段
 		b, _ := json.Marshal(norm)
 		_ = runtime.Cmd.Flags().Set("data-config", string(b))
 		return nil

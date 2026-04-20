@@ -42,7 +42,7 @@ const doc: WBDocument = {
 ## 连线技巧
 
 ```typescript
-// 自动绕线（推荐）：仅需指定节点 id（锚点也是可选的，引擎可自动推断），并使用 polyline（或 rightAngle）形状
+// 自动绕线（推荐）：仅需指定节点 id（引擎可自动推断最优出线方向），并使用 polyline 或 rightAngle 形状
 // 只要不传 waypoints，引擎会尝试自动避开障碍物并生成折线。
 { type: 'connector', connector: {
   from: 'a', to: 'b', // fromAnchor 和 toAnchor 也可以省略，让引擎自己找最短路径
@@ -60,20 +60,30 @@ const doc: WBDocument = {
   from: { x: 300, y: 140 }, to: { x: 300, y: 340 },
   waypoints: [{ x: 350, y: 140 }, { x: 350, y: 340 }],
   lineShape: 'polyline', lineColor: '#000000', lineWidth: 2, endArrow: 'arrow' }}
+
+// 绘制坐标轴/数轴（必须使用 straight，防止刻度文字触发自动避障导致线条弯曲）
+{ type: 'connector', connector: {
+  from: { x: 100, y: 400 }, to: { x: 600, y: 400 },
+  lineShape: 'straight', lineColor: '#000000', lineWidth: 2, endArrow: 'arrow' }}
 ```
 
 > [!IMPORTANT]
-> **1. `lineShape` 强制选用约束**：
->   - **`'polyline'`（圆角折线）**：**默认首选**。适用于流程图、架构图等绝大多数场景。
->   - **`'straight'`（直线）**：适用于**坐标轴、数轴、几何图形边框**等**绝对不能弯曲**的场景。
->   - **`'rightAngle'`（直角折线）**：适用于 [organization.md](scenes/organization.md) 等明确要求“总线/直角规约”、树状层级严格对齐的场景。
->   - **`'curve'`（曲线）**：适用于优雅的跨层连线（S型弯）、自由发散的脑图分支、或做注解箭头时。
-> **2. 间距要求**：有 connector 连线的卡片间 gap ≥ 40，否则箭头挤在缝里看不清。
+> **1. 形状选用要求（核心）**，需明确 `lineShape` 类型：
+> - **`'polyline'`（圆角折线）**：**默认首选**。适用于流程图、架构图等绝大多数场景。支持引擎的**自动绕线与避障**功能（只需指定 `from` 和 `to`）。
+> - **`'rightAngle'`（直角折线）**：适用于明确要求“总线/直角规约”、树状层级严格对齐的场景，同样支持**自动绕线与避障**。
+> - **`'straight'`（直线）**：不受自动避障机制的影响，适用于**坐标轴、数轴、几何图形边框、直接指向关系**等要求线条绝对笔直、不允许出现任何绕行或弯曲的场景。
+> - **`'curve'`（曲线）**：适用于优雅的跨层连线（S型弯）、自由发散的脑图分支、或做注解箭头时。
+> - **注意**：你需要根据当前绘制的图表类型和上下文语境，选择最合适的 `lineShape`。不要盲目全部使用 `polyline`，例如在绘制坐标系时必须主动切换为 `straight`。
+> **2. 间距要求**：有 connector 连线的卡片间 gap 需 ≥ 40，否则箭头挤在缝里看不清。
 > **3. 顶层约束**：`connector` 必须直接放在 `WBDocument.nodes`，**严禁**嵌套在 `children` 内。建议在数据末尾统一声明连线。
-
+>
 > [!TIP]
-> **何时手动算 waypoints**：引擎没有连线自动避障功能，当需要避开特定障碍物、或保证特定的走线形状时，需要手动计算 `waypoints` 控制走向。
-> **连线标签**：需要文字说明时，可用 `label` 标注。
+> **自动绕线 vs 手动控制**
+> - **优先依赖自动绕线**：对于 `'polyline'` 和 `'rightAngle'`，引擎会自动规划路径并尝试避开障碍物（`fromAnchor` 和 `toAnchor` 也可省略，引擎会自动推断最优出线方向），这是最推荐的方式。
+> - **何时手动算 waypoints**：**仅在必要时**（例如自动路由不符合预期，或者必须强制走特定形状绕开特定元素时），才需要通过 `waypoints` 手动接管坐标序列。
+>
+> **连线标签**
+> - **连线文字说明**：需要文字说明时，可用 `label` 标注。
 
 ---
 

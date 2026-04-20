@@ -79,11 +79,33 @@ func TestDryRunRecordOps(t *testing.T) {
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, commaFieldRT), "limit=1", "offset=0", "field_id=A%2CB", "field_id=C")
 
+	searchRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"json":       `{"view_id":"viw_1","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"offset":-1,"limit":500}`,
+		},
+		nil, nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordSearch(ctx, searchRT),
+		"POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/search",
+		`"view_id":"viw_1"`,
+		`"keyword":"Created"`,
+		`"search_fields":["Title","fld_owner"]`,
+		`"select_fields":["Title","fld_owner"]`,
+		`"offset":-1`,
+		`"limit":500`,
+	)
+
 	upsertCreateRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"Name":"A"}`},
 		nil, nil,
 	)
 	assertDryRunContains(t, dryRunRecordUpsert(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records")
+	assertDryRunContains(t, dryRunRecordBatchCreate(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_create")
+	assertDryRunContains(t, dryRunRecordBatchUpdate(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_update")
 
 	rt := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "record-id": "rec_1", "json": `{"Name":"B"}`},
@@ -115,6 +137,8 @@ func TestDryRunRecordOps(t *testing.T) {
 		"bitable_file",
 		"PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1",
 		"report-final.pdf",
+		`"mime_type":"\u003cdetected_mime_type\u003e"`,
+		`"size":"\u003cfile_size\u003e"`,
 		"deprecated_set_attachment",
 	)
 }

@@ -1,0 +1,334 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  # ── Layer 1: Fast Gate ─────────────────────────────────────────────
+  fast-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            echo "::error::Unformatted Go files detected — run 'gofmt -w .' and commit"
+            exit 1
+          fi
+      - name: Check go.mod tidiness
+        run: |
+          go mod tidy
+          if ! git diff --quiet go.mod go.sum; then
+            echo "::error::go.mod or go.sum is not tidy. Run 'go mod tidy' and commit the changes."
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+  # ── Layer 2: Quality Gate ──────────────────────────────────────────
+  unit-test:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Run tests
+        run: go test -v -race -count=1 -timeout=5m ./cmd/... ./internal/... ./shortcuts/...
+
+  lint:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Run golangci-lint
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev=origin/main
+
+  coverage:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Run tests with coverage
+        run: |
+          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '^github.com/larksuite/cli/tests/cli_e2e/')
+          go test -race -coverprofile=coverage.txt -covermode=atomic $packages
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@3f20e214133d0983f9a10f3d63b0faf9241a3daa # v6
+        with:
+          files: coverage.txt
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Check coverage threshold
+        run: |
+          total=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}' | tr -d '%')
+          threshold=40
+          echo "Coverage: ${total}% (threshold: ${threshold}%)"
+          if (( $(echo "$total < $threshold" | bc -l) )); then
+            echo "::error::Coverage ${total}% is below threshold ${threshold}%"
+            exit 1
+          fi
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ ! -f coverage.txt ]; then
+            echo "No coverage data available" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          total=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}')
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total coverage: ${total}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Details</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+  deadcode:
+    needs: fast-gate
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Dead code check (incremental)
+        run: |
+          # Analyze current HEAD (strip line:col for stable diff across line shifts)
+          # Filter "go: downloading ..." lines to avoid false diffs from module cache state
+          go run golang.org/x/tools/cmd/deadcode@v0.31.0 -test ./... 2>&1 | \
+            grep -v '^go: ' | \
+            sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-head.txt
+
+          # Analyze base branch via worktree
+          git worktree add -q /tmp/dc-base "origin/${{ github.base_ref }}"
+          (cd /tmp/dc-base && python3 scripts/fetch_meta.py && \
+           go run golang.org/x/tools/cmd/deadcode@v0.31.0 -test ./... 2>&1 | \
+            grep -v '^go: ' | \
+            sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-base.txt) || {
+            echo "::warning::Failed to analyze base branch — skipping incremental dead code check"
+            git worktree remove -f /tmp/dc-base 2>/dev/null || true
+            exit 0
+          }
+          git worktree remove -f /tmp/dc-base
+
+          # Only new dead code blocks the PR
+          comm -23 /tmp/dc-head.txt /tmp/dc-base.txt > /tmp/dc-new.txt
+          if [ -s /tmp/dc-new.txt ]; then
+            echo "::group::New dead code"
+            cat /tmp/dc-new.txt
+            echo "::endgroup::"
+            echo "::error::New dead code detected — remove unreachable functions before merging"
+            exit 1
+          fi
+          echo "No new dead code introduced"
+
+  # ── Layer 3: E2E Gate ──────────────────────────────────────────────
+  e2e-dry-run:
+    needs: [unit-test, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Build lark-cli
+        run: make build
+      - name: Run dry-run E2E tests
+        env:
+          LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
+          LARKSUITE_CLI_APP_ID: dry-run
+          LARKSUITE_CLI_APP_SECRET: dry-run
+          LARKSUITE_CLI_BRAND: feishu
+        run: go test -v -count=1 -timeout=5m ./tests/cli_e2e/... -run 'DryRun|Regression'
+
+  e2e-live:
+    needs: [unit-test, lint]
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    env:
+      TEST_BOT1_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
+      TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
+      TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Build lark-cli
+        run: make build
+      - name: Configure bot credentials
+        run: |
+          if [ -z "$TEST_BOT1_APP_ID" ] || [ -z "$TEST_BOT1_APP_SECRET" ]; then
+            echo "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET"
+            exit 1
+          fi
+          printf '%s\n' "$TEST_BOT1_APP_SECRET" | ./lark-cli config init --app-id "$TEST_BOT1_APP_ID" --app-secret-stdin
+      - name: Run CLI E2E tests
+        env:
+          LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
+        run: |
+          packages=$(go list ./tests/cli_e2e/... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '/demo$')
+          if [ -z "$packages" ]; then
+            echo "No CLI E2E packages to test after exclusions."
+            exit 1
+          fi
+          packages_arg=$(printf '%s\n' "$packages" | paste -sd' ' -)
+          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages_arg" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
+      - name: Publish CLI E2E test report
+        if: ${{ !cancelled() }}
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+        with:
+          name: CLI E2E Tests
+          path: cli-e2e-report.xml
+          reporter: java-junit
+          use-actions-summary: true
+          list-suites: all
+          list-tests: all
+
+  # ── Layer 4: Security & Compliance (parallel with L2-L3) ──────────
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Gitleaks
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_KEY }}
+      - name: govulncheck
+        continue-on-error: true
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - name: Check dependency licenses
+        run: go run github.com/google/go-licenses/v2@v2.0.1 check ./... --disallowed_types=forbidden,restricted,reciprocal,unknown
+
+  license-header:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Check license headers
+        uses: apache/skywalking-eyes/header@8c96ee223558797cdd9eba82c0919258e1cf2dad
+        with:
+          config: .licenserc.yaml
+
+  # ── Results Gate (single required check for branch protection) ─────
+  results:
+    if: ${{ always() }}
+    needs: [fast-gate, unit-test, lint, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate results
+        run: |
+          echo "## CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Layer | Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| L1 | fast-gate | ${{ needs.fast-gate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | unit-test | ${{ needs.unit-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | deadcode | ${{ needs.deadcode.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L3 | e2e-dry-run | ${{ needs.e2e-dry-run.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L3 | e2e-live | ${{ needs.e2e-live.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | license-header | ${{ needs.license-header.result }} |" >> $GITHUB_STEP_SUMMARY
+
+          # Any failure or cancellation in any job blocks the merge.
+          # Legitimately skipped jobs (deadcode on push, e2e-live on fork,
+          # license-header on push) are OK.
+          FAILED=0
+          for result in \
+            "${{ needs.fast-gate.result }}" \
+            "${{ needs.unit-test.result }}" \
+            "${{ needs.lint.result }}" \
+            "${{ needs.coverage.result }}" \
+            "${{ needs.deadcode.result }}" \
+            "${{ needs.e2e-dry-run.result }}" \
+            "${{ needs.e2e-live.result }}" \
+            "${{ needs.security.result }}" \
+            "${{ needs.license-header.result }}"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" = "1" ]; then
+            echo ""
+            echo "::error::One or more CI jobs failed — see table above"
+            exit 1
+          fi

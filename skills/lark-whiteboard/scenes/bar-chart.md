@@ -8,7 +8,7 @@
 
 ## Layout 选型
 
-- **脚本生成坐标**（推荐）：用 .js 脚本计算柱体位置和高度，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.1.0` 渲染
+- **脚本生成坐标**（推荐）：用 .cjs 脚本计算柱体位置和高度，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
 - **绝对定位手写**：简单柱状图（≤ 5 个柱）可手写坐标
 
 ## Layout 规则
@@ -172,13 +172,6 @@
 - bar-2 (150): height = (150/200)*400 = 300, y = 480-300 = 180
 - bar-0 x = 80 + 0*300 + 80/2 = 120, bar-1 x = 80 + 1*300 + 40 = 420, bar-2 x = 80 + 2*300 + 40 = 720
 
-**脚本运行方式**：
-
-```bash
-node generate-bar-chart.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i bar-chart.json -o ./bar-chart.png
-```
-
 ## 陷阱
 
 - 单系列用多色（不专业）：同一数据系列所有柱体应使用同一颜色
@@ -186,3 +179,9 @@ npx -y @larksuite/whiteboard-cli@^0.1.0 -i bar-chart.json -o ./bar-chart.png
 - 柱体间距不均匀（脚本需统一计算 barGap）
 - Y 轴刻度线和格线误带箭头
 - 坐标轴忘记带箭头
+
+此场景必须用 .cjs 脚本生成。Agent 使用时只需修改 `data` 数组，其余坐标与柱体高度全自动计算。
+
+```javascript
+const { writeFileSync } = require('fs');
+```

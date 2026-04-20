@@ -33,6 +33,14 @@ const (
 	LarkErrRefreshRevoked     = 20064 // refresh_token revoked
 	LarkErrRefreshAlreadyUsed = 20073 // refresh_token already consumed (single-use rotation)
 	LarkErrRefreshServerError = 20050 // refresh endpoint server-side error, retryable
+
+	// Drive shortcut / cross-space constraints.
+	LarkErrDriveResourceContention = 1061045 // resource contention occurred, please retry
+	LarkErrDriveCrossTenantUnit    = 1064510 // cross tenant and unit not support
+	LarkErrDriveCrossBrand         = 1064511 // cross brand not support
+
+	// Sheets float image: width/height/offset out of range or invalid.
+	LarkErrSheetsFloatImageInvalidDims = 1310246
 )
 
 // ClassifyLarkError maps a Lark API error code + message to (exitCode, errType, hint).
@@ -60,6 +68,20 @@ func ClassifyLarkError(code int, msg string) (int, string, string) {
 	// rate limit
 	case LarkErrRateLimit:
 		return ExitAPI, "rate_limit", "please try again later"
+
+	// drive-specific constraints that benefit from actionable hints
+	case LarkErrDriveResourceContention:
+		return ExitAPI, "conflict", "please retry later and avoid concurrent duplicate requests"
+	case LarkErrDriveCrossTenantUnit:
+		return ExitAPI, "cross_tenant_unit", "operate on source and target within the same tenant and region/unit"
+	case LarkErrDriveCrossBrand:
+		return ExitAPI, "cross_brand", "operate on source and target within the same brand environment"
+
+	// sheets-specific constraints that benefit from actionable hints
+	case LarkErrSheetsFloatImageInvalidDims:
+		return ExitAPI, "invalid_params",
+			"check --width / --height / --offset-x / --offset-y: " +
+				"width/height must be >= 20 px; offsets must be >= 0 and less than the anchor cell's width/height"
 	}
 
 	return ExitAPI, "api_error", ""

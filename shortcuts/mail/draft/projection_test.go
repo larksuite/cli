@@ -100,7 +100,7 @@ Content-Type: text/html; charset=UTF-8
 
 func TestSplitAtQuoteReply(t *testing.T) {
 	html := `<div>My reply</div><div class="history-quote-wrapper"><div>quoted</div></div>`
-	body, quote := splitAtQuote(html)
+	body, quote := SplitAtQuote(html)
 	if body != `<div>My reply</div>` {
 		t.Fatalf("body = %q", body)
 	}
@@ -111,7 +111,7 @@ func TestSplitAtQuoteReply(t *testing.T) {
 
 func TestSplitAtQuoteForward(t *testing.T) {
 	html := `<div>note</div><div id="lark-mail-quote-cli123456" class="history-quote-wrapper"><div>quoted</div></div>`
-	body, quote := splitAtQuote(html)
+	body, quote := SplitAtQuote(html)
 	if body != `<div>note</div>` {
 		t.Fatalf("body = %q", body)
 	}
@@ -122,7 +122,7 @@ func TestSplitAtQuoteForward(t *testing.T) {
 
 func TestSplitAtQuoteNoQuote(t *testing.T) {
 	html := `<div>no quote here</div>`
-	body, quote := splitAtQuote(html)
+	body, quote := SplitAtQuote(html)
 	if body != html {
 		t.Fatalf("body = %q, want original html", body)
 	}
@@ -169,7 +169,7 @@ Content-Type: text/html; charset=UTF-8
 
 func TestSplitAtQuoteFalsePositivePlainText(t *testing.T) {
 	html := `<p>The CSS class history-quote-wrapper is used for quotes.</p>`
-	body, quote := splitAtQuote(html)
+	body, quote := SplitAtQuote(html)
 	if body != html {
 		t.Fatalf("body should be unchanged, got %q", body)
 	}

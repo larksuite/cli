@@ -5,6 +5,9 @@
 
 从 Lark-flavored Markdown 内容创建一个新的飞书云文档。
 
+## 重要说明
+> **⚠️ 本文档中提到的 html 标签不需要在 Markdown 中转义！若转义，会导致相关的表格，多维表格，画板等 block 插入失败**
+
 ## 命令
 
 ```bash
@@ -49,6 +52,18 @@ lark-cli docs +create --title "学习笔记" --wiki-space my_library --markdown 
 >
 > **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
 
+## 重要：创建文档后的可视化流程
+
+如果文档中包含空白画板（`<whiteboard type="blank"></whiteboard>`），**必须继续以下步骤**：
+
+1. 从返回值的 `data.board_tokens` 字段记录所有新建画板的 token
+2. 读取 `../../lark-whiteboard/SKILL.md`，跳至"渲染 & 写入画板"章节，为每个 board_token 生成并写入实际内容
+3. 确认所有画板都有实际内容后，任务才算完成
+
+**仅创建空白画板是不够的！** 如果只创建空白画板而不填充内容，任务将被视为未完成。
+
+> ⚠️ **警告**：务必检查返回值中是否有 `board_tokens` 字段。如果有，说明创建了空白画板，必须继续填充内容！
+
 ## 参数
 
 | 参数 | 必填 | 说明 |
@@ -69,6 +84,7 @@ lark-cli docs +create --title "学习笔记" --wiki-space my_library --markdown 
 - **视觉节奏**：用分割线、分栏、表格打破大段纯文字
 - **图文交融**：流程、架构或草图需要可视化时，优先使用图片、表格或空白画板
 - **克制留白**：Callout 不过度、加粗只强调核心词
+- **主动画板**：文档涉及架构、流程、组织、时间线、因果等逻辑关系时，**必须**在 markdown 对应章节的文字内容之后插入 `<whiteboard type="blank"></whiteboard>` 占位，每个图表对应一个标签。**禁止**用 `whiteboard-cli` 渲染的 PNG/SVG 图片替代画板。创建完成后从返回值 `data.board_tokens` 取 token，读取 `../../lark-whiteboard/SKILL.md` 的"渲染 & 写入画板"章节为每个 token 写入图表内容。例：文档含"系统整体架构""分层架构""部署架构"各需插入一个画板，"类图"也需插入一个画板（走 Mermaid 路由）。
 
 当用户有明确的样式、风格需求时，应当以用户的需求为准！
 
@@ -117,7 +133,8 @@ lark-cli docs +create --title "产品需求" --markdown '<callout emoji="💡" b
 
 - 使用标准 Markdown 语法作为基础
 - 使用自定义 XML 标签实现飞书特有功能（具体标签见各功能章节）
-- 需要显示特殊字符时使用反斜杠转义：`* ~ ` $ [ ] < > { } | ^`
+- 只有当字符会被解释为 Markdown / Lark 富文本语法时，才需要使用反斜杠转义：``* ~ ` $ [ ] < > { } | ^``
+- 普通文本中的孤立字符不要过度转义。例如 `5 * 3`、`version~1.0`、`final_trajectory` 通常应保持原样，只有像 `*斜体*`、`**粗体**`、`~~删除线~~` 这种会触发格式化的写法，想按字面量显示时才需要转义
 
 ---
 
@@ -432,7 +449,7 @@ lark-cli docs +create --title "空白画板示例" --markdown '<whiteboard type=
 **重要说明**：
 - 创建空白画板时，直接使用 `<whiteboard type="blank"></whiteboard>`
 - 读取时只能获取 token，可通过 media-download 查看内容，无法直接读出画板内部内容
-- 画板编辑：详见 [SKILL.md](../SKILL.md#重要说明画板编辑)
+- 画板编辑：详见 [../../lark-whiteboard/SKILL.md](../../lark-whiteboard/SKILL.md)
 
 ### 多维表格（Base）
 
@@ -633,13 +650,14 @@ $$
 | 知识卡片 | Callout + emoji | 用于概念解释、小贴士 |
 | 引用说明 | 引用块 > | 引用原文、名言 |
 | 术语对照 | 两列表格 | 中英文、缩写全称等 |
+| 架构/流程/组织/时间线/因果 | **空白画板** | 主动插入，用 lark-whiteboard 绘制（用户明确仅文本或数据密集表格场景除外） |
 
 ---
 
 ## 最佳实践
 
 - **空行分隔**：不同块类型之间用空行分隔
-- **转义字符**：特殊字符用 `\` 转义：`\*` `\~` `\``
+- **转义字符**：只有在字符会触发格式化时才用 `\` 转义。例如想输出字面量 `*斜体*` 时写成 `\*斜体\*`；但 `5 * 3`、`version~1.0`、`final_trajectory` 这类普通文本通常不需要转义
 - **图片**：使用 URL，系统自动下载上传
 - **分栏**：列宽总和必须为 100
 - **表格选择**：简单数据用 Markdown，复杂嵌套用 `<lark-table>`

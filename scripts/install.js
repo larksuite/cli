@@ -3,10 +3,10 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const os = require("os");
 
-const VERSION = require("../package.json").version;
+const VERSION = require("../package.json").version.replace(/-.*$/, "");
 const REPO = "larksuite/cli";
 const NAME = "lark-cli";
 
@@ -43,13 +43,16 @@ const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 fs.mkdirSync(binDir, { recursive: true });
 
 function download(url, destPath) {
+  const args = [
+    "--fail", "--location", "--silent", "--show-error",
+    "--connect-timeout", "10", "--max-time", "120",
+    "--output", destPath,
+  ];
   // --ssl-revoke-best-effort: on Windows (Schannel), avoid CRYPT_E_REVOCATION_OFFLINE
   // errors when the certificate revocation list server is unreachable
-  const sslFlag = isWindows ? "--ssl-revoke-best-effort " : "";
-  execSync(
-    `curl ${sslFlag}--fail --location --silent --show-error --connect-timeout 10 --max-time 120 --output "${destPath}" "${url}"`,
-    { stdio: ["ignore", "ignore", "pipe"] }
-  );
+  if (isWindows) args.unshift("--ssl-revoke-best-effort");
+  args.push(url);
+  execFileSync("curl", args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
 function install() {
@@ -64,12 +67,12 @@ function install() {
     }
 
     if (isWindows) {
-      execSync(
-        `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'"`,
-        { stdio: "ignore" }
-      );
+      execFileSync("powershell", [
+        "-Command",
+        `Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'`,
+      ], { stdio: "ignore" });
     } else {
-      execSync(`tar -xzf "${archivePath}" -C "${tmpDir}"`, {
+      execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], {
         stdio: "ignore",
       });
     }
@@ -83,6 +86,16 @@ function install() {
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+}
+
+// When triggered as a postinstall hook under npx, skip the binary download.
+// The "install" wizard doesn't need it, and run.js calls install.js directly
+// (with LARK_CLI_RUN=1) for other commands that do need the binary.
+const isNpxPostinstall =
+  process.env.npm_command === "exec" && !process.env.LARK_CLI_RUN;
+
+if (isNpxPostinstall) {
+  process.exit(0);
 }
 
 try {

@@ -12,6 +12,7 @@ import (
 
 // ── Dashboard CRUD ──────────────────────────────────────────────────
 
+// TestBaseDashboardExecuteList tests the +dashboard-list command.
 func TestBaseDashboardExecuteList(t *testing.T) {
 	t.Run("single page", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -41,6 +42,7 @@ func TestBaseDashboardExecuteList(t *testing.T) {
 
 }
 
+// TestBaseDashboardExecuteGet tests the +dashboard-get command.
 func TestBaseDashboardExecuteGet(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -67,6 +69,7 @@ func TestBaseDashboardExecuteGet(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardExecuteCreate tests the +dashboard-create command.
 func TestBaseDashboardExecuteCreate(t *testing.T) {
 	t.Run("name only", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -114,6 +117,7 @@ func TestBaseDashboardExecuteCreate(t *testing.T) {
 	})
 }
 
+// TestBaseDashboardExecuteUpdate tests the +dashboard-update command.
 func TestBaseDashboardExecuteUpdate(t *testing.T) {
 	t.Run("update name", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -161,6 +165,7 @@ func TestBaseDashboardExecuteUpdate(t *testing.T) {
 	})
 }
 
+// TestBaseDashboardExecuteDelete tests the +dashboard-delete command.
 func TestBaseDashboardExecuteDelete(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -179,6 +184,7 @@ func TestBaseDashboardExecuteDelete(t *testing.T) {
 
 // ── Dashboard Block CRUD ────────────────────────────────────────────
 
+// TestBaseDashboardBlockExecuteList tests the +dashboard-block-list command.
 func TestBaseDashboardBlockExecuteList(t *testing.T) {
 	t.Run("single page", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -208,6 +214,7 @@ func TestBaseDashboardBlockExecuteList(t *testing.T) {
 
 }
 
+// TestBaseDashboardBlockExecuteGet tests the +dashboard-block-get command.
 func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -261,6 +268,7 @@ func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 	})
 }
 
+// TestBaseDashboardBlockExecuteCreate tests the +dashboard-block-create command.
 func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 	t.Run("with data-config", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -354,6 +362,7 @@ func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 	})
 }
 
+// TestBaseDashboardBlockExecuteUpdate tests the +dashboard-block-update command.
 func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 	t.Run("update name and data-config", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -420,6 +429,7 @@ func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 	})
 }
 
+// TestBaseDashboardBlockExecuteDelete tests the +dashboard-block-delete command.
 func TestBaseDashboardBlockExecuteDelete(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -438,6 +448,7 @@ func TestBaseDashboardBlockExecuteDelete(t *testing.T) {
 
 // ── Dry Run: Dashboard & Blocks ──────────────────────────────────────
 
+// TestBaseDashboardDryRun_List tests the +dashboard-list --dry-run flag.
 func TestBaseDashboardDryRun_List(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	if err := runShortcut(t, BaseDashboardList, []string{"+dashboard-list", "--base-token", "app_x", "--page-size", "50", "--dry-run", "--format", "pretty"}, factory, stdout); err != nil {
@@ -449,6 +460,7 @@ func TestBaseDashboardDryRun_List(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardDryRun_Get tests the +dashboard-get --dry-run flag.
 func TestBaseDashboardDryRun_Get(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	if err := runShortcut(t, BaseDashboardGet, []string{"+dashboard-get", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--dry-run", "--format", "pretty"}, factory, stdout); err != nil {
@@ -460,6 +472,7 @@ func TestBaseDashboardDryRun_Get(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardDryRun_Create tests the +dashboard-create --dry-run flag.
 func TestBaseDashboardDryRun_Create(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-create", "--base-token", "app_x", "--name", "新报表", "--theme-style", "default", "--dry-run", "--format", "pretty"}
@@ -472,6 +485,7 @@ func TestBaseDashboardDryRun_Create(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardDryRun_Update tests the +dashboard-update --dry-run flag.
 func TestBaseDashboardDryRun_Update(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--name", "更新名", "--dry-run", "--format", "pretty"}
@@ -484,6 +498,7 @@ func TestBaseDashboardDryRun_Update(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardDryRun_Delete tests the +dashboard-delete --dry-run flag.
 func TestBaseDashboardDryRun_Delete(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-delete", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--dry-run", "--format", "pretty"}
@@ -496,6 +511,7 @@ func TestBaseDashboardDryRun_Delete(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockDryRun_List tests the +dashboard-block-list --dry-run flag.
 func TestBaseDashboardBlockDryRun_List(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-block-list", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--page-size", "10", "--dry-run", "--format", "pretty"}
@@ -508,6 +524,7 @@ func TestBaseDashboardBlockDryRun_List(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockDryRun_Get tests the +dashboard-block-get --dry-run flag.
 func TestBaseDashboardBlockDryRun_Get(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-block-get", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a", "--user-id-type", "union_id", "--dry-run", "--format", "pretty"}
@@ -520,6 +537,7 @@ func TestBaseDashboardBlockDryRun_Get(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockDryRun_Create tests the +dashboard-block-create --dry-run flag.
 func TestBaseDashboardBlockDryRun_Create(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--name", "订单趋势", "--type", "column", "--data-config", `{"table_name":"订单表","count_all":true}`, "--user-id-type", "open_id", "--dry-run", "--format", "pretty"}
@@ -532,6 +550,7 @@ func TestBaseDashboardBlockDryRun_Create(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockDryRun_Update tests the +dashboard-block-update --dry-run flag.
 func TestBaseDashboardBlockDryRun_Update(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a", "--name", "订单趋势v2", "--data-config", `{"table_name":"订单表2","count_all":true}`, "--dry-run", "--format", "pretty"}
@@ -544,6 +563,7 @@ func TestBaseDashboardBlockDryRun_Update(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockDryRun_Delete tests the +dashboard-block-delete --dry-run flag.
 func TestBaseDashboardBlockDryRun_Delete(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	args := []string{"+dashboard-block-delete", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a", "--dry-run", "--format", "pretty"}
@@ -558,6 +578,7 @@ func TestBaseDashboardBlockDryRun_Delete(t *testing.T) {
 
 // ── Validator: data_config ───────────────────────────────────────────
 
+// TestBaseDashboardBlockCreate_ValidateFails tests that data_config validation catches missing table_name.
 func TestBaseDashboardBlockCreate_ValidateFails(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	// 缺 table_name 且 series 与 count_all 同时存在
@@ -574,6 +595,7 @@ func TestBaseDashboardBlockCreate_ValidateFails(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockCreate_NoValidateFlagAllocs tests that --no-validate flag skips client-side validation.
 func TestBaseDashboardBlockCreate_NoValidateFlagAllocs(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{Method: "POST", URL: "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks",
@@ -591,6 +613,7 @@ func TestBaseDashboardBlockCreate_NoValidateFlagAllocs(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockCreate_InvalidRollup tests that invalid rollup values are rejected during validation.
 func TestBaseDashboardBlockCreate_InvalidRollup(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	// 合法 JSON，但 rollup=COUNTA（不支持）
@@ -604,5 +627,188 @@ func TestBaseDashboardBlockCreate_InvalidRollup(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "rollup") || !strings.Contains(got, "data_config 校验失败") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ── Text Block Tests ────────────────────────────────────────────────
+
+// TestBaseDashboardBlockExecuteCreate_TextType tests creating text blocks with markdown content.
+func TestBaseDashboardBlockExecuteCreate_TextType(t *testing.T) {
+	t.Run("valid text block", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_text",
+					"name":     "说明文字",
+					"type":     "text",
+					"data_config": map[string]interface{}{
+						"text": "# 标题\n**加粗**",
+					},
+				},
+			},
+		})
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "说明文字", "--type", "text",
+			"--data-config", `{"text":"# 标题\n**加粗**"}`,
+		}
+		if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"blk_text"`) || !strings.Contains(got, `"created": true`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("text block missing text field", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "Bad", "--type", "text",
+			"--data-config", `{}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for missing text field")
+		}
+		if got := err.Error(); !strings.Contains(got, "text") || !strings.Contains(got, "data_config 校验失败") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+// TestBaseDashboardBlockExecuteUpdate_TextType tests updating text block content and name.
+func TestBaseDashboardBlockExecuteUpdate_TextType(t *testing.T) {
+	t.Run("update text content", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_text",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_text",
+					"name":     "更新后的标题",
+					"type":     "text",
+					"data_config": map[string]interface{}{
+						"text": "# 新内容",
+					},
+				},
+			},
+		})
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_text",
+			"--name", "更新后的标题",
+			"--data-config", `{"text":"# 新内容"}`,
+		}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"updated": true`) || !strings.Contains(got, "新内容") {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("update without type skips strict validation", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		// update 不传 type，不做强类型校验，直接透传给后端
+		reg.Register(&httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_text",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_text",
+					"type":     "text",
+				},
+			},
+		})
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_text",
+			"--data-config", `{"content":"xxx"}`,
+		}
+		// 不传 type，本地不做强校验，让后端处理
+		err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"updated": true`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+}
+
+// ── Dashboard Arrange ────────────────────────────────────────────────
+
+// TestBaseDashboardExecuteArrange tests the +dashboard-arrange command for auto-arranging dashboard blocks.
+func TestBaseDashboardExecuteArrange(t *testing.T) {
+	t.Run("arrange dashboard blocks", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/arrange",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"dashboard_id": "dsh_001",
+					"name":         "测试仪表盘",
+					"blocks": []interface{}{
+						map[string]interface{}{
+							"block_id":   "cht_xxx",
+							"block_name": "组件1",
+							"block_type": "column",
+							"layout": map[string]interface{}{
+								"x": 0, "y": 0, "w": 500, "h": 400,
+							},
+						},
+					},
+				},
+			},
+		})
+		args := []string{"+dashboard-arrange", "--base-token", "app_x", "--dashboard-id", "dsh_001"}
+		if err := runShortcut(t, BaseDashboardArrange, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"arranged": true`) || !strings.Contains(got, `"dashboard_id"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("arrange with user-id-type", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "user_id_type=union_id",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"dashboard_id": "dsh_001",
+					"blocks":       []interface{}{},
+				},
+			},
+		})
+		args := []string{"+dashboard-arrange", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--user-id-type", "union_id"}
+		if err := runShortcut(t, BaseDashboardArrange, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"arranged": true`) || !strings.Contains(got, `"dashboard_id"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+}
+
+// TestBaseDashboardDryRun_Arrange tests the +dashboard-arrange --dry-run flag includes empty body.
+func TestBaseDashboardDryRun_Arrange(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-arrange", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--user-id-type", "union_id", "--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardArrange, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "POST /open-apis/base/v3/bases/app_x/dashboards/dsh_001/arrange") || !strings.Contains(got, "union_id") || !strings.Contains(got, "{}") {
+		t.Fatalf("stdout=%s", got)
 	}
 }

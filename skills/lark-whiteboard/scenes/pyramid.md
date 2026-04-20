@@ -29,7 +29,7 @@ vertical frame + 每层宽度递减。gap 4px 保持紧密。
 必须使用 `node` 运行脚本生成 JSON。
 
 ```javascript
-import fs from 'fs';
+const fs = require('fs');
 
 // 1. 配置基础参数
 const GAP = 4;
@@ -82,7 +82,7 @@ const output = {
   ]
 };
 
-fs.writeFileSync('pyramid.json', JSON.stringify(output, null, 2));
+fs.writeFileSync('diagram.json', JSON.stringify(output, null, 2));
 ```
 
 ## 陷阱

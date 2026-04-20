@@ -209,6 +209,23 @@
 { "fillColor": "#1F2329", "borderColor": "#1F2329", "borderWidth": 2, "borderRadius": 0, "fontSize": 15, "textColor": "#FFFFFF", "textAlign": "center" }
 ```
 
+### 图标组件
+
+icon + text 的组合卡片。icon 的 `color` 跟随所属分组的 borderColor，与其他节点视觉一致。
+
+```json
+{
+  "type": "frame", "layout": "vertical", "gap": 4, "padding": 12,
+  "alignItems": "center", "fillColor": "#FFFFFF", "borderColor": "#5178C6", "borderWidth": 2, "borderRadius": 8,
+  "children": [
+    { "type": "icon", "name": "server", "width": 36, "height": 36, "color": "#5178C6" },
+    { "type": "text", "width": "fit-content", "height": "fit-content", "text": "应用服务器", "fontSize": 12 }
+  ]
+}
+```
+
+icon color 需要结合上下文选择合适的颜色, 比如: 使用所属分组的borderColor
+
 ### textColor 规则
 
 ```

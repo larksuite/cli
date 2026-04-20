@@ -4,6 +4,8 @@
 
 分页列出一张表里的记录；可按视图过滤，也可按字段裁剪返回列。
 
+> 默认优先使用 `+record-list`；仅当用户提供明确搜索关键词时，才使用 [lark-base-record-search.md](lark-base-record-search.md)。
+
 ## 返回关键字段
 
 | 字段 | 类型 | 说明 |
@@ -30,16 +32,16 @@
 
 ```bash
 lark-cli base +record-list \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
+  --base-token XXXXXX \
+  --table-id tblXXX \
   --offset 0 \
   --limit 100
 
 lark-cli base +record-list \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --view-id viw_xxx \
-  --field-id fld_status \
+  --base-token XXXXXX \
+  --table-id tblXXX \
+  --view-id vewXXX \
+  --field-id fldStatus \
   --field-id 项目名称 \
   --offset 0 \
   --limit 50

@@ -190,7 +190,7 @@ func buildSuggestionRequest(runtime *common.RuntimeContext) (*SuggestionRequest,
 var CalendarSuggestion = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+suggestion",
-	Description: "Intelligently suggest available meeting times to simplify scheduling",
+	Description: "Intelligently suggest available time blocks based on unclear time ranges",
 	Risk:        "read",
 	Scopes:      []string{"calendar:calendar.free_busy:read"},
 	AuthTypes:   []string{"user", "bot"},
@@ -292,7 +292,7 @@ var CalendarSuggestion = common.Shortcut{
 			Body:       req,
 		})
 		if err != nil {
-			return output.ErrWithHint(output.ExitInternal, "request_fail", "api request fail", err.Error())
+			return err
 		}
 
 		if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {

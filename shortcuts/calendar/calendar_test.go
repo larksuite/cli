@@ -7,16 +7,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 // ---------------------------------------------------------------------------
@@ -86,6 +88,20 @@ func noLoginBotDefaultConfig() *core.CliConfig {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 		DefaultAs: "bot",
 	}
+}
+
+type missingTokenResolver struct{}
+
+func (r *missingTokenResolver) ResolveToken(context.Context, credential.TokenSpec) (*credential.TokenResult, error) {
+	return nil, &credential.TokenUnavailableError{Source: "test", Type: credential.TokenTypeUAT}
+}
+
+type staticAccountResolver struct {
+	config *core.CliConfig
+}
+
+func (r *staticAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return credential.AccountFromCliConfig(r.config), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +399,11 @@ func TestCalendarShortcuts_RequireLoginUnlessExplicitBot(t *testing.T) {
 			name:     "freebusy",
 			shortcut: CalendarFreebusy,
 			args:     []string{"+freebusy", "--start", "2025-03-21", "--end", "2025-03-21"},
+		},
+		{
+			name:     "room-find",
+			shortcut: CalendarRoomFind,
+			args:     []string{"+room-find", "--slot", "2025-03-21T00:00:00+08:00~2025-03-21T01:00:00+08:00"},
 		},
 		{
 			name:     "rsvp",
@@ -1044,6 +1065,255 @@ func TestSuggestion_APIError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CalendarRoomFind tests
+// ---------------------------------------------------------------------------
+
+func TestRoomFind_MultiSlot_NewEventContext(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	for range 2 {
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/calendar/v4/freebusy/room_find",
+			Body: map[string]interface{}{
+				"code": 0,
+				"msg":  "ok",
+				"data": map[string]interface{}{
+					"available_rooms": []interface{}{
+						map[string]interface{}{
+							"room_id":            "omm_room1",
+							"room_name":          "F2-02",
+							"capacity":           7,
+							"reserve_until_time": "2026-04-01T00:00:00Z",
+						},
+					},
+				},
+			},
+		})
+	}
+
+	err := mountAndRun(t, CalendarRoomFind, []string{
+		"+room-find",
+		"--slot", "2026-03-27T14:00:00+08:00~2026-03-27T15:00:00+08:00",
+		"--slot", "2026-03-27T16:00:00+08:00~2026-03-27T17:00:00+08:00",
+		"--attendee-ids", "ou_user1,ou_user2",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "\"time_slots\"") {
+		t.Fatalf("expected aggregated time_slots output, got: %s", stdout.String())
+	}
+}
+
+func TestRoomFind_RejectsDangerousChars(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarRoomFind, []string{
+		"+room-find",
+		"--slot", "2026-03-27T14:00:00+08:00~2026-03-27T15:00:00+08:00",
+		"--room-name", "F2-02\x7f",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected validation error for dangerous characters")
+	}
+	if !strings.Contains(err.Error(), "--room-name") {
+		t.Fatalf("expected dangerous char error for --room-name, got: %v", err)
+	}
+}
+
+func TestRoomFind_DryRun_SplitsUserAndChatAttendees(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarRoomFind, []string{
+		"+room-find",
+		"--slot", "2026-03-27T14:00:00+08:00~2026-03-27T15:00:00+08:00",
+		"--attendee-ids", "ou_user1,oc_group1",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"attendee_user_ids"`) || !strings.Contains(out, `"ou_user1"`) || !strings.Contains(out, `"attendee_chat_ids"`) || !strings.Contains(out, `"oc_group1"`) {
+		t.Fatalf("dry-run should split attendee IDs by prefix, got: %s", out)
+	}
+}
+
+func TestRoomFind_DryRun_IncludesStructuredLocationFields(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarRoomFind, []string{
+		"+room-find",
+		"--slot", "2026-03-27T14:00:00+08:00~2026-03-27T15:00:00+08:00",
+		"--city", "北京",
+		"--building", "学清嘉创大厦B座",
+		"--floor", "F2",
+		"--room-name", "木星",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{`"city": "北京"`, `"building": "学清嘉创大厦B座"`, `"floor": "F2"`, `"room_name": "木星"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run should include %s, got: %s", want, out)
+		}
+	}
+}
+
+func TestRoomFind_RequestIncludesStructuredLocationFields(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/freebusy/room_find",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"available_rooms": []interface{}{},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, CalendarRoomFind, []string{
+		"+room-find",
+		"--slot", "2026-03-27T14:00:00+08:00~2026-03-27T15:00:00+08:00",
+		"--city", "北京",
+		"--building", "学清嘉创大厦B座",
+		"--floor", "F2",
+		"--room-name", "木星",
+		"--as", "bot",
+	}, f, nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &got); err != nil {
+		t.Fatalf("unmarshal captured request: %v", err)
+	}
+	for key, want := range map[string]string{
+		"city":      "北京",
+		"building":  "学清嘉创大厦B座",
+		"floor":     "F2",
+		"room_name": "木星",
+	} {
+		if got[key] != want {
+			t.Fatalf("expected %s=%q, got %#v", key, want, got[key])
+		}
+	}
+}
+
+func TestRoomFind_RejectsInvertedOrZeroLengthSlots(t *testing.T) {
+	cases := []struct {
+		name string
+		slot string
+	}{
+		{
+			name: "inverted",
+			slot: "2026-03-27T15:00:00+08:00~2026-03-27T14:00:00+08:00",
+		},
+		{
+			name: "zero-length",
+			slot: "2026-03-27T15:00:00+08:00~2026-03-27T15:00:00+08:00",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+			err := mountAndRun(t, CalendarRoomFind, []string{
+				"+room-find",
+				"--slot", tc.slot,
+				"--as", "bot",
+			}, f, nil)
+			if err == nil {
+				t.Fatal("expected slot validation error")
+			}
+			if !strings.Contains(err.Error(), "--slot end time must be after start time") {
+				t.Fatalf("expected invalid slot range error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestRoomFind_PreservesAuthErrorFromDoAPI(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, noLoginConfig())
+	f.Credential = credential.NewCredentialProvider(
+		nil,
+		&staticAccountResolver{config: noLoginConfig()},
+		&missingTokenResolver{},
+		nil,
+	)
+
+	err := mountAndRun(t, CalendarRoomFind, []string{
+		"+room-find",
+		"--slot", "2026-03-27T14:00:00+08:00~2026-03-27T15:00:00+08:00",
+		"--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected auth error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected structured exit error, got %T", err)
+	}
+	if exitErr.Code != output.ExitAuth {
+		t.Fatalf("expected exit code %d, got %d (%v)", output.ExitAuth, exitErr.Code, err)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "auth" {
+		t.Fatalf("expected auth error detail, got %#v", exitErr.Detail)
+	}
+}
+
+func TestSuggestion_PreservesAuthErrorFromDoAPI(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, noLoginConfig())
+	f.Credential = credential.NewCredentialProvider(
+		nil,
+		&staticAccountResolver{config: noLoginConfig()},
+		&missingTokenResolver{},
+		nil,
+	)
+
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion",
+		"--start", "2026-03-27T14:00:00+08:00",
+		"--end", "2026-03-27T15:00:00+08:00",
+		"--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected auth error")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected structured exit error, got %T", err)
+	}
+	if exitErr.Code != output.ExitAuth {
+		t.Fatalf("expected exit code %d, got %d (%v)", output.ExitAuth, exitErr.Code, err)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "auth" {
+		t.Fatalf("expected auth error detail, got %#v", exitErr.Detail)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers unit tests
 // ---------------------------------------------------------------------------
 
@@ -1107,17 +1377,17 @@ func TestResolveStartEnd_ExplicitValues(t *testing.T) {
 // Shortcuts() registration test
 // ---------------------------------------------------------------------------
 
-func TestShortcuts_Returns5(t *testing.T) {
+func TestShortcuts_Returns6(t *testing.T) {
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 5 {
-		t.Fatalf("expected 5 shortcuts, got %d", len(shortcuts))
+	if len(shortcuts) != 6 {
+		t.Fatalf("expected 6 shortcuts, got %d", len(shortcuts))
 	}
 
 	names := map[string]bool{}
 	for _, s := range shortcuts {
 		names[s.Command] = true
 	}
-	for _, want := range []string{"+agenda", "+create", "+freebusy", "+rsvp", "+suggestion"} {
+	for _, want := range []string{"+agenda", "+create", "+freebusy", "+room-find", "+rsvp", "+suggestion"} {
 		if !names[want] {
 			t.Errorf("missing shortcut %s", want)
 		}

@@ -6,6 +6,7 @@ package vfs
 import (
 	"io/fs"
 	"os"
+	"path/filepath"
 )
 
 // OsFs delegates every method to the os standard library.
@@ -33,3 +34,7 @@ func (OsFs) MkdirAll(path string, perm fs.FileMode) error { return os.MkdirAll(p
 func (OsFs) ReadDir(name string) ([]os.DirEntry, error)   { return os.ReadDir(name) }
 func (OsFs) Remove(name string) error                     { return os.Remove(name) }
 func (OsFs) Rename(oldpath, newpath string) error         { return os.Rename(oldpath, newpath) }
+
+// Path resolution
+func (OsFs) EvalSymlinks(path string) (string, error) { return filepath.EvalSymlinks(path) }
+func (OsFs) Executable() (string, error)              { return os.Executable() }

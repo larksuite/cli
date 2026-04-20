@@ -163,6 +163,16 @@ type CliConfig struct {
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
+// identityBotBit is the bit flag for bot identity in SupportedIdentities.
+// Must match extension/credential.SupportsBot.
+const identityBotBit uint8 = 1 << 1
+
+// CanBot reports whether the current credential context supports bot identity.
+// Returns true when SupportedIdentities is unset (0, unknown) or includes the bot bit.
+func (c *CliConfig) CanBot() bool {
+	return c.SupportedIdentities == 0 || c.SupportedIdentities&identityBotBit != 0
+}
+
 // GetConfigDir returns the config directory path.
 // If the home directory cannot be determined, it falls back to a relative path
 // and prints a warning to stderr.

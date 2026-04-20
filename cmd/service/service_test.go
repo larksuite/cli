@@ -4,6 +4,7 @@
 package service
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -707,6 +708,144 @@ func TestScopeAwareChecker_ScopeError_BotMode(t *testing.T) {
 	// Bot mode should still include the scope hint
 	if !strings.Contains(err.Error(), "insufficient permissions") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// ── file upload ──
+
+func imImageMethod() map[string]interface{} {
+	return map[string]interface{}{
+		"path":       "images",
+		"httpMethod": "POST",
+		"requestBody": map[string]interface{}{
+			"image_type": map[string]interface{}{
+				"type":     "string",
+				"required": true,
+			},
+			"image": map[string]interface{}{
+				"type":     "file",
+				"required": true,
+			},
+		},
+		"accessTokens": []interface{}{"user", "tenant"},
+	}
+}
+
+func imSpec() map[string]interface{} {
+	return map[string]interface{}{
+		"name":        "im",
+		"servicePath": "/open-apis/im/v1",
+	}
+}
+
+func TestServiceMethod_FileFlagRegistered(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), imImageMethod(), "create", "images", nil)
+	flag := cmd.Flags().Lookup("file")
+	if flag == nil {
+		t.Fatal("expected --file flag to be registered for file upload method")
+	}
+}
+
+func TestServiceMethod_FileFlagNotRegistered(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("POST", nil), "copy", "files", nil)
+	flag := cmd.Flags().Lookup("file")
+	if flag != nil {
+		t.Fatal("expected --file flag NOT to be registered for non-file method")
+	}
+}
+
+func TestServiceMethod_FileFlagNotRegisteredForGET(t *testing.T) {
+	getMethod := map[string]interface{}{
+		"path":       "images",
+		"httpMethod": "GET",
+		"requestBody": map[string]interface{}{
+			"image": map[string]interface{}{
+				"type": "file",
+			},
+		},
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), getMethod, "get", "images", nil)
+	flag := cmd.Flags().Lookup("file")
+	if flag != nil {
+		t.Fatal("expected --file flag NOT to be registered for GET method")
+	}
+}
+
+func TestServiceMethod_FileUpload_DryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.jpg"
+	if err := os.WriteFile(tmpFile, []byte("fake-image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), imImageMethod(), "create", "images", nil)
+	cmd.SetArgs([]string{
+		"--file", "image=" + tmpFile,
+		"--data", `{"image_type":"message"}`,
+		"--dry-run",
+		"--as", "bot",
+	})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "image") {
+		t.Errorf("expected dry-run output to mention file field, got: %s", out)
+	}
+	if !strings.Contains(out, "Dry Run") {
+		t.Errorf("expected dry-run header, got: %s", out)
+	}
+}
+
+func TestDetectFileFields(t *testing.T) {
+	tests := []struct {
+		name   string
+		method map[string]interface{}
+		want   []string
+	}{
+		{
+			name: "single file field",
+			method: map[string]interface{}{
+				"requestBody": map[string]interface{}{
+					"image": map[string]interface{}{"type": "file"},
+					"name":  map[string]interface{}{"type": "string"},
+				},
+			},
+			want: []string{"image"},
+		},
+		{
+			name: "no file fields",
+			method: map[string]interface{}{
+				"requestBody": map[string]interface{}{
+					"name": map[string]interface{}{"type": "string"},
+				},
+			},
+			want: nil,
+		},
+		{
+			name:   "no requestBody",
+			method: map[string]interface{}{},
+			want:   nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectFileFields(tt.method)
+			if len(got) != len(tt.want) {
+				t.Errorf("detectFileFields() = %v, want %v", got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("detectFileFields()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
 	}
 }
 

@@ -69,6 +69,12 @@ func TestLoginMsg_FormatStrings(t *testing.T) {
 			t.Errorf("%s LoginSuccess has no format verb", lang)
 		}
 
+		// AuthorizedUser should contain two %s placeholders (userName, openId)
+		got = fmt.Sprintf(msg.AuthorizedUser, "testuser", "ou_123")
+		if got == msg.AuthorizedUser {
+			t.Errorf("%s AuthorizedUser has no format verb", lang)
+		}
+
 		// SummaryDomains should contain %s
 		got = fmt.Sprintf(msg.SummaryDomains, "calendar, task")
 		if got == msg.SummaryDomains {

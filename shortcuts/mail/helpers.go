@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
@@ -1162,6 +1163,7 @@ func buildMessageOutput(msg map[string]interface{}, html bool) map[string]interf
 	out["date_formatted"] = normalized.DateFormatted
 	out["message_state_text"] = normalized.MessageStateText
 	if normalized.PriorityType != "" {
+		out["priority_type"] = normalized.PriorityType
 		out["priority_type_text"] = normalized.PriorityTypeText
 	}
 	out["body_plain_text"] = normalized.BodyPlainText
@@ -1240,10 +1242,21 @@ func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string
 	out.MessageStateText = messageStateText(state)
 	out.FolderID = strVal(msg["folder_id"])
 	out.LabelIDs = toStringList(msg["label_ids"])
+	// Priority: prefer label_ids (HIGH_PRIORITY/LOW_PRIORITY), fall back to priority_type field.
 	priorityType := strVal(msg["priority_type"])
 	out.PriorityType = priorityType
 	if priorityType != "" {
 		out.PriorityTypeText = priorityTypeText(priorityType)
+	}
+	for _, label := range out.LabelIDs {
+		switch label {
+		case "HIGH_PRIORITY":
+			out.PriorityType = "1"
+			out.PriorityTypeText = "high"
+		case "LOW_PRIORITY":
+			out.PriorityType = "5"
+			out.PriorityTypeText = "low"
+		}
 	}
 	if securityLevel := toSecurityLevel(msg["security_level"]); securityLevel != nil {
 		out.SecurityLevel = securityLevel
@@ -1707,6 +1720,48 @@ func priorityTypeText(priorityType string) string {
 	}
 }
 
+// priorityFlag is the common flag definition for --priority, shared by all compose shortcuts.
+var priorityFlag = common.Flag{
+	Name: "priority",
+	Desc: "Email priority: high, normal, low. If omitted, no priority header is set.",
+}
+
+// parsePriority parses the --priority flag value and returns the X-Cli-Priority
+// header value. Returns "" if the priority should not be set (empty or "normal").
+func parsePriority(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return "", nil
+	case "high":
+		return "1", nil
+	case "normal":
+		return "", nil
+	case "low":
+		return "5", nil
+	default:
+		return "", fmt.Errorf("invalid --priority value %q: expected high, normal, or low", value)
+	}
+}
+
+// validatePriorityFlag validates the --priority flag value in Validate, so invalid
+// values are caught before Execute (and before dry-run prints an API plan).
+func validatePriorityFlag(runtime *common.RuntimeContext) error {
+	v := runtime.Str("priority")
+	if v == "" {
+		return nil
+	}
+	_, err := parsePriority(v)
+	return err
+}
+
+// applyPriority sets the X-Cli-Priority header on the EML builder if priority is non-empty.
+func applyPriority(bld emlbuilder.Builder, priority string) emlbuilder.Builder {
+	if priority == "" {
+		return bld
+	}
+	return bld.Header("X-Cli-Priority", priority)
+}
+
 // parseNetAddrs converts a comma-separated address string to []net/mail.Address.
 // It reuses ParseMailboxList for display-name-aware parsing and deduplicates
 // by email address (case-insensitive), preserving the first occurrence.
@@ -1906,6 +1961,27 @@ func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes 
 	return nil
 }
 
+// validateSendTime checks that --send-time, if provided, requires --confirm-send,
+// is a valid Unix timestamp in seconds, and is at least 5 minutes in the future.
+func validateSendTime(runtime *common.RuntimeContext) error {
+	sendTime := runtime.Str("send-time")
+	if sendTime == "" {
+		return nil
+	}
+	if !runtime.Bool("confirm-send") {
+		return fmt.Errorf("--send-time requires --confirm-send to be set")
+	}
+	ts, err := strconv.ParseInt(sendTime, 10, 64)
+	if err != nil {
+		return fmt.Errorf("--send-time must be a valid Unix timestamp in seconds, got %q", sendTime)
+	}
+	minTime := time.Now().Unix() + 5*60
+	if ts < minTime {
+		return fmt.Errorf("--send-time must be at least 5 minutes in the future (minimum: %d, got: %d)", minTime, ts)
+	}
+	return nil
+}
+
 // validateConfirmSendScope checks that the user's token includes the
 // mail:user_mailbox.message:send scope when --confirm-send is set.
 // This scope is not declared in the shortcut's static Scopes (to keep the
@@ -1931,6 +2007,23 @@ func validateConfirmSendScope(runtime *common.RuntimeContext) error {
 			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant the send permission", strings.Join(missing, " ")))
 	}
 	return nil
+}
+
+// buildSendResult builds the output map for a successful send, including
+// recall tip if the backend indicates the message is recallable.
+func buildSendResult(resData map[string]interface{}, mailboxID string) map[string]interface{} {
+	result := map[string]interface{}{
+		"message_id": resData["message_id"],
+		"thread_id":  resData["thread_id"],
+	}
+	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
+		messageID, _ := resData["message_id"].(string)
+		result["recall_available"] = true
+		result["recall_tip"] = fmt.Sprintf(
+			`This message can be recalled within 24 hours. To recall: lark-cli mail user_mailbox.sent_messages recall --params '{"user_mailbox_id":"%s","message_id":"%s"}'`,
+			mailboxID, messageID)
+	}
+	return result
 }
 
 // validateFolderReadScope checks that the user's token includes the

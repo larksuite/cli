@@ -223,6 +223,7 @@ func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		CreateTask,
 		UpdateTask,
+		SetAncestorTask,
 		CommentTask,
 		CompleteTask,
 		ReopenTask,
@@ -230,7 +231,11 @@ func Shortcuts() []common.Shortcut {
 		FollowersTask,
 		ReminderTask,
 		GetMyTasks,
+		GetRelatedTasks,
+		SearchTask,
+		SubscribeTaskEvent,
 		CreateTasklist,
+		SearchTasklist,
 		AddTaskToTasklist,
 		MembersTasklist,
 	}
