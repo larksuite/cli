@@ -15,6 +15,56 @@ func TestFixBoldSpacing(t *testing.T) {
 		want  string
 	}{
 		{
+			name:  "leading space after opening bold",
+			input: "** hello**",
+			want:  "**hello**",
+		},
+		{
+			name:  "leading space after opening italic",
+			input: "* hello*",
+			want:  "*hello*",
+		},
+		{
+			name:  "leading and trailing spaces inside bold are collapsed",
+			input: "** hello **",
+			want:  "**hello**",
+		},
+		{
+			name:  "leading and trailing spaces inside italic are collapsed",
+			input: "* hello *",
+			want:  "*hello*",
+		},
+		{
+			name:  "multiple spaced italic spans on one line are each collapsed",
+			input: "* a* * b*",
+			want:  "*a* *b*",
+		},
+		{
+			name:  "ambiguous italic span stays literal",
+			input: "2 * x * y",
+			want:  "2 * x * y",
+		},
+		{
+			name:  "ambiguous bold span stays literal",
+			input: "2 ** x ** y",
+			want:  "2 ** x ** y",
+		},
+		{
+			name:  "single-rune italic with spaces on both sides stays literal",
+			input: "* x *",
+			want:  "* x *",
+		},
+		{
+			name:  "single-rune bold with spaces on both sides stays literal",
+			input: "** x **",
+			want:  "** x **",
+		},
+		{
+			name:  "triple-asterisk near miss stays literal",
+			input: "*** hello**",
+			want:  "*** hello**",
+		},
+		{
 			name:  "trailing space before closing bold",
 			input: "**hello **",
 			want:  "**hello**",
@@ -53,6 +103,16 @@ func TestFixBoldSpacing(t *testing.T) {
 			name:  "inline code preserved, bold outside fixed",
 			input: "**foo ** and `**bar **`",
 			want:  "**foo** and `**bar **`",
+		},
+		{
+			name:  "inline code with spaced italic stays literal while outside span is fixed",
+			input: "`* hello *` and * hello *",
+			want:  "`* hello *` and *hello*",
+		},
+		{
+			name:  "opening space inside text tag fixed",
+			input: `<text color="red">** Helpful - 有用性：**</text>`,
+			want:  `<text color="red">**Helpful - 有用性：**</text>`,
 		},
 		{
 			name:  "double-backtick inline code not modified",
@@ -217,6 +277,53 @@ func TestFixTopLevelSoftbreaks(t *testing.T) {
 			got := fixTopLevelSoftbreaks(tt.input)
 			if got != tt.want {
 				t.Errorf("fixTopLevelSoftbreaks(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeNestedListIndentation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "nested ordered list uses tabs instead of space pairs",
+			input: "1. parent\n  1. child\n    1. grandchild",
+			want:  "1. parent\n\t1. child\n\t\t1. grandchild",
+		},
+		{
+			name:  "nested mixed list markers use tabs instead of space pairs",
+			input: "- parent\n  - child\n    1. grandchild",
+			want:  "- parent\n\t- child\n\t\t1. grandchild",
+		},
+		{
+			name:  "top-level list unchanged",
+			input: "1. parent\n2. sibling",
+			want:  "1. parent\n2. sibling",
+		},
+		{
+			name:  "indented top-level marker without parent list stays unchanged",
+			input: "paragraph\n\n  1. item",
+			want:  "paragraph\n\n  1. item",
+		},
+		{
+			name:  "blank-line-separated loose-list sibling stays unchanged",
+			input: "1. a\n\n  1. b",
+			want:  "1. a\n\n  1. b",
+		},
+		{
+			name:  "indented code block inside list item stays unchanged",
+			input: "- parent\n\n    1. code",
+			want:  "- parent\n\n    1. code",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeNestedListIndentation(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeNestedListIndentation(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
