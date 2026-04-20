@@ -390,6 +390,11 @@ func TestWarnCalloutType(t *testing.T) {
 			wantHint: false,
 		},
 		{
+			name:     "whitespace around equals is tolerated in background-color",
+			input:    `<callout type="warning" emoji="📝" background-color = "light-red">`,
+			wantHint: false,
+		},
+		{
 			name:     "unknown type emits no hint",
 			input:    `<callout type="custom" emoji="🔥">`,
 			wantHint: false,

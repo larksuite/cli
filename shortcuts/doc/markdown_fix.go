@@ -331,6 +331,11 @@ var calloutOpenTagRe = regexp.MustCompile(`<callout(\s[^>]*)?>`)
 // quoted) from a callout opening tag's attribute string.
 var calloutTypeAttrRe = regexp.MustCompile(`\btype=(?:"([^"]*)"|'([^']*)')`)
 
+// calloutBackgroundColorAttrRe matches a background-color= attribute name
+// with optional whitespace around the equals sign, so forms like
+// `background-color="..."` and `background-color = "..."` are both accepted.
+var calloutBackgroundColorAttrRe = regexp.MustCompile(`\bbackground-color\s*=`)
+
 // WarnCalloutType scans md for callout tags that carry a type= attribute but
 // no background-color= attribute, then writes a hint line to w for each one
 // suggesting the explicit Feishu color attributes to use instead.
@@ -345,7 +350,7 @@ func WarnCalloutType(md string, w io.Writer) {
 			attrs = m[1]
 		}
 		// Skip tags that already carry an explicit background-color.
-		if strings.Contains(attrs, "background-color=") {
+		if calloutBackgroundColorAttrRe.MatchString(attrs) {
 			return tag
 		}
 		parts := calloutTypeAttrRe.FindStringSubmatch(attrs)
