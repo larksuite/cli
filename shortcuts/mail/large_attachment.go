@@ -19,13 +19,15 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
 // attachmentFile holds metadata about a local file to be attached.
 type attachmentFile struct {
-	Path     string // relative file path as provided by the user
-	FileName string // basename
-	Size     int64  // raw file size in bytes
+	Path        string // relative file path as provided by the user
+	FileName    string // basename
+	Size        int64  // raw file size in bytes
+	SourceIndex int    // original index in the caller's list (e.g. patch op index)
 }
 
 // classifiedAttachments is the result of classifyAttachments.
@@ -108,12 +110,17 @@ func classifyAttachments(files []attachmentFile, emlBaseSize int64) classifiedAt
 	return result
 }
 
-// statAttachmentFiles stats each path and returns attachmentFile metadata.
+// statAttachmentFiles stats each path, checks blocked extensions, and returns
+// attachmentFile metadata.
 func statAttachmentFiles(fio fileio.FileIO, paths []string) ([]attachmentFile, error) {
 	files := make([]attachmentFile, 0, len(paths))
 	for _, p := range paths {
 		if strings.TrimSpace(p) == "" {
 			continue
+		}
+		name := filepath.Base(p)
+		if err := filecheck.CheckBlockedExtension(name); err != nil {
+			return nil, err
 		}
 		info, err := fio.Stat(p)
 		if err != nil {
@@ -121,7 +128,7 @@ func statAttachmentFiles(fio fileio.FileIO, paths []string) ([]attachmentFile, e
 		}
 		files = append(files, attachmentFile{
 			Path:     p,
-			FileName: filepath.Base(p),
+			FileName: name,
 			Size:     info.Size(),
 		})
 	}
@@ -519,6 +526,9 @@ func preprocessLargeAttachmentsForDraftEdit(
 	if err != nil {
 		return patch, err
 	}
+	for i := range files {
+		files[i].SourceIndex = attachOps[i].index
+	}
 
 	// Check 3GB single file limit.
 	for _, f := range files {
@@ -535,6 +545,13 @@ func preprocessLargeAttachmentsForDraftEdit(
 	classified := classifyAttachments(files, emlBaseSize)
 	if len(classified.Oversized) == 0 {
 		return patch, nil // all fit, let draft.Apply handle them
+	}
+
+	// Guard: large attachment card requires an HTML body part.
+	if draftpkg.FindHTMLBodyPart(snapshot.Body) == nil {
+		return patch, fmt.Errorf("large attachments require an HTML body; " +
+			"plain-text drafts cannot include the download card " +
+			"(convert the draft to HTML or reduce attachment size below 25 MB)")
 	}
 
 	// Guard: need user identity for upload.
@@ -610,13 +627,13 @@ func preprocessLargeAttachmentsForDraftEdit(
 	}
 
 	// Remove oversized ops from the patch (keep normal ones for draft.Apply).
-	oversizedPaths := make(map[string]bool, len(classified.Oversized))
+	oversizedIndices := make(map[int]bool, len(classified.Oversized))
 	for _, f := range classified.Oversized {
-		oversizedPaths[f.Path] = true
+		oversizedIndices[f.SourceIndex] = true
 	}
 	var filteredOps []draftpkg.PatchOp
-	for _, op := range patch.Ops {
-		if op.Op == "add_attachment" && oversizedPaths[op.Path] {
+	for i, op := range patch.Ops {
+		if oversizedIndices[i] {
 			continue // skip oversized, already uploaded
 		}
 		filteredOps = append(filteredOps, op)

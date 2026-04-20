@@ -4,10 +4,12 @@
 package mail
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
 
@@ -272,5 +274,44 @@ func TestInsertBeforeQuoteOrAppend_EmptyBody(t *testing.T) {
 	result := draftpkg.InsertBeforeQuoteOrAppend("", "<div>CARD</div>")
 	if result != "<div>CARD</div>" {
 		t.Errorf("empty body should just return block, got: %s", result)
+	}
+}
+
+func TestStatAttachmentFiles_BlockedExtension(t *testing.T) {
+	chdirTemp(t)
+	fio := &localfileio.LocalFileIO{}
+
+	blocked := []string{"malware.exe", "script.js", "payload.ps1", "trojan.bat"}
+	for _, name := range blocked {
+		os.WriteFile(name, []byte("content"), 0o644)
+	}
+
+	for _, name := range blocked {
+		t.Run(name, func(t *testing.T) {
+			_, err := statAttachmentFiles(fio, []string{name})
+			if err == nil {
+				t.Fatalf("expected blocked extension error for %q", name)
+			}
+			if !strings.Contains(err.Error(), "not allowed") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+
+	// Allowed extensions should pass.
+	allowed := []string{"report.pdf", "data.csv", "photo.png"}
+	for _, name := range allowed {
+		os.WriteFile(name, []byte("content"), 0o644)
+	}
+	for _, name := range allowed {
+		t.Run(name, func(t *testing.T) {
+			files, err := statAttachmentFiles(fio, []string{name})
+			if err != nil {
+				t.Fatalf("expected %q to be allowed, got: %v", name, err)
+			}
+			if len(files) != 1 || files[0].FileName != name {
+				t.Fatalf("unexpected result: %+v", files)
+			}
+		})
 	}
 }
