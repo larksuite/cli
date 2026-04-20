@@ -644,6 +644,9 @@ func TestShortcuts(t *testing.T) {
 	}
 
 	want := []string{
+		"+app-feed-card-create",
+		"+app-feed-card-delete",
+		"+app-feed-card-update",
 		"+chat-create",
 		"+chat-messages-list",
 		"+chat-search",
