@@ -255,7 +255,7 @@ var MailForward = common.Shortcut{
 		origIdx := 0
 		for _, f := range classified.Normal {
 			if f.Path == "" {
-				bld = bld.AddAttachment(origAtts[origIdx].content, "application/octet-stream", origAtts[origIdx].filename)
+				bld = bld.AddAttachment(origAtts[origIdx].content, origAtts[origIdx].contentType, origAtts[origIdx].filename)
 				origIdx++
 			} else {
 				bld = bld.AddFileAttachment(f.Path)
