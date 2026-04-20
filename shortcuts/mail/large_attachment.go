@@ -490,6 +490,11 @@ func preprocessLargeAttachmentsForDraftEdit(
 	snapshot *draftpkg.DraftSnapshot,
 	patch draftpkg.Patch,
 ) (draftpkg.Patch, error) {
+	// Always normalize server-format headers to CLI format so every code
+	// path below (and every early return) sends the format the server
+	// recognizes on write.
+	normalizeLargeAttachmentHeader(snapshot)
+
 	// Collect add_attachment ops and their indices.
 	type attachOp struct {
 		index int
@@ -667,4 +672,81 @@ func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, lar
 	}
 	htmlPart.Body = []byte(draftpkg.InsertBeforeQuoteOrAppend(string(htmlPart.Body), largeHTML))
 	htmlPart.Dirty = true
+}
+
+// normalizeLargeAttachmentHeader converts server-format X-Lark-Large-Attachment
+// headers to CLI-format X-Lms-Large-Attachment-Ids and removes all server-format
+// headers. This ensures the PUT update always sends the format the server
+// recognizes for write operations.
+func normalizeLargeAttachmentHeader(snapshot *draftpkg.DraftSnapshot) {
+	cliIdx := -1
+	var serverIdxs []int
+	seen := make(map[string]bool)
+	var serverTokens []largeAttID
+
+	for i, h := range snapshot.Headers {
+		if !draftpkg.IsLargeAttachmentHeader(h.Name) {
+			continue
+		}
+		if strings.EqualFold(h.Name, draftpkg.LargeAttachmentIDsHeader) {
+			cliIdx = i
+			continue
+		}
+		serverIdxs = append(serverIdxs, i)
+		decoded, err := base64.StdEncoding.DecodeString(h.Value)
+		if err != nil {
+			continue
+		}
+		var raw []json.RawMessage
+		if json.Unmarshal(decoded, &raw) != nil {
+			continue
+		}
+		for _, r := range raw {
+			var entry struct {
+				ID      string `json:"id"`
+				FileKey string `json:"file_key"`
+			}
+			if json.Unmarshal(r, &entry) == nil {
+				tok := entry.ID
+				if tok == "" {
+					tok = entry.FileKey
+				}
+				if tok != "" && !seen[tok] {
+					seen[tok] = true
+					serverTokens = append(serverTokens, largeAttID{ID: tok})
+				}
+			}
+		}
+	}
+
+	if len(serverIdxs) == 0 {
+		return
+	}
+
+	// Remove server-format headers in reverse order to preserve indices.
+	for j := len(serverIdxs) - 1; j >= 0; j-- {
+		idx := serverIdxs[j]
+		snapshot.Headers = append(snapshot.Headers[:idx], snapshot.Headers[idx+1:]...)
+		if cliIdx > idx {
+			cliIdx--
+		}
+	}
+
+	// If a CLI-format header exists, it is authoritative — keep it as-is.
+	if cliIdx >= 0 {
+		return
+	}
+
+	// No CLI header — convert server tokens into one.
+	if len(serverTokens) == 0 {
+		return
+	}
+	idsJSON, err := json.Marshal(serverTokens)
+	if err != nil {
+		return
+	}
+	snapshot.Headers = append(snapshot.Headers, draftpkg.Header{
+		Name:  draftpkg.LargeAttachmentIDsHeader,
+		Value: base64.StdEncoding.EncodeToString(idsJSON),
+	})
 }
