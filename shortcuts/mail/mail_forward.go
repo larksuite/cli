@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
@@ -253,7 +255,7 @@ var MailForward = common.Shortcut{
 		origIdx := 0
 		for _, f := range classified.Normal {
 			if f.Path == "" {
-				bld = bld.AddAttachment(origAtts[origIdx].content, origAtts[origIdx].contentType, origAtts[origIdx].filename)
+				bld = bld.AddAttachment(origAtts[origIdx].content, "application/octet-stream", origAtts[origIdx].filename)
 				origIdx++
 			} else {
 				bld = bld.AddFileAttachment(f.Path)
@@ -277,22 +279,37 @@ var MailForward = common.Shortcut{
 					float64(totalBytes)/1024/1024)
 			}
 
-			var uploadResults []largeAttachmentResult
+			// Write oversized original attachments (in-memory) to temp
+			// files in the current directory so they can be uploaded via
+			// the file-based multipart upload path.
+			var tempFiles []string
+			defer func() {
+				for _, tf := range tempFiles {
+					os.Remove(tf)
+				}
+			}()
+			var allOversized []attachmentFile
 			for _, f := range classified.Oversized {
 				if f.Path == "" {
-					result, err := uploadLargeAttachmentBytes(ctx, runtime, origAtts[origIdx].content, origAtts[origIdx].filename)
-					if err != nil {
-						return err
-					}
-					uploadResults = append(uploadResults, result)
+					att := origAtts[origIdx]
 					origIdx++
-				} else {
-					results, err := uploadLargeAttachments(ctx, runtime, []attachmentFile{f})
-					if err != nil {
-						return err
+					tmpName := fmt.Sprintf(".lark-cli-fwd-%s", filepath.Base(att.filename))
+					if err := os.WriteFile(tmpName, att.content, 0600); err != nil {
+						return fmt.Errorf("failed to write temp file for %s: %w", att.filename, err)
 					}
-					uploadResults = append(uploadResults, results...)
+					tempFiles = append(tempFiles, tmpName)
+					allOversized = append(allOversized, attachmentFile{
+						Path:     tmpName,
+						FileName: att.filename,
+						Size:     int64(len(att.content)),
+					})
+				} else {
+					allOversized = append(allOversized, f)
 				}
+			}
+			uploadResults, err := uploadLargeAttachments(ctx, runtime, allOversized)
+			if err != nil {
+				return err
 			}
 
 			largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), uploadResults)
