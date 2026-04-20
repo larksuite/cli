@@ -6,6 +6,8 @@ package doc
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // fixExportedMarkdown applies post-processing to Lark-exported Markdown to
@@ -126,10 +128,6 @@ func fixBlockquoteHardBreaks(md string) string {
 // The bold and italic spacing fixes only run on non-code segments so literal
 // code content is left unchanged.
 var (
-	boldLeadingSpaceRe    = regexp.MustCompile(`(\*\*)\s+([^*\n](?:[^*\n]*[^*\s\n])?)(\*\*)`)
-	boldTrailingSpaceRe   = regexp.MustCompile(`(\*\*\S[^*]*?)\s+(\*\*)`)
-	italicLeadingSpaceRe  = regexp.MustCompile(`(^|[^*])(\*)\s+([^*\n](?:[^*\n]*[^*\s\n])?)(\*)([^*]|$)`)
-	italicTrailingSpaceRe = regexp.MustCompile(`(^|[^*])(\*\S[^*]*?)\s+(\*)([^*]|$)`)
 	// headingBoldRe uses [^*]+ (no asterisks) to avoid mismatching headings
 	// that contain multiple disjoint bold spans such as "# **foo** and **bar**".
 	headingBoldRe = regexp.MustCompile(`(?m)^(#{1,6})\s+\*\*([^*]+)\*\*\s*$`)
@@ -192,42 +190,114 @@ func scanInlineCodeSpans(line string) [][2]int {
 // fixBoldSpacingLine applies bold/italic trailing-space fixes to a single line,
 // skipping content inside inline code spans to avoid corrupting literal code.
 // ATX heading lines are also skipped here because headingBoldRe in fixBoldSpacing
-// handles them separately and boldTrailingSpaceRe can misfire on headings with
-// multiple disjoint bold spans (e.g. "# **foo** and **bar**").
+// handles them separately, keeping heading-only normalization isolated from the
+// inline emphasis spacing scanner below.
 func fixBoldSpacingLine(line string) string {
 	if atxHeadingRe.MatchString(line) {
 		return line
 	}
 	spans := scanInlineCodeSpans(line)
 	if len(spans) == 0 {
-		line = boldLeadingSpaceRe.ReplaceAllString(line, "$1$2$3")
-		line = boldTrailingSpaceRe.ReplaceAllString(line, "$1$2")
-		line = italicLeadingSpaceRe.ReplaceAllString(line, "$1$2$3$4$5")
-		line = italicTrailingSpaceRe.ReplaceAllString(line, "$1$2$3$4")
-		return line
+		return fixEmphasisSpacingSegment(line)
 	}
 	var sb strings.Builder
 	pos := 0
 	for _, loc := range spans {
 		// Process the non-code segment before this inline code span.
 		seg := line[pos:loc[0]]
-		seg = boldLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
-		seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-		seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3$4$5")
-		seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2$3$4")
-		sb.WriteString(seg)
+		sb.WriteString(fixEmphasisSpacingSegment(seg))
 		// Preserve inline code span as-is.
 		sb.WriteString(line[loc[0]:loc[1]])
 		pos = loc[1]
 	}
 	// Remaining non-code segment after the last code span.
-	seg := line[pos:]
-	seg = boldLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3")
-	seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-	seg = italicLeadingSpaceRe.ReplaceAllString(seg, "$1$2$3$4$5")
-	seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2$3$4")
-	sb.WriteString(seg)
+	sb.WriteString(fixEmphasisSpacingSegment(line[pos:]))
 	return sb.String()
+}
+
+// fixEmphasisSpacingSegment trims only the whitespace immediately inside simple
+// *...* and **...** spans. It deliberately ignores runs of 3+ asterisks and
+// any candidate whose payload contains another asterisk so nested emphasis-like
+// text remains untouched. When both inner sides contain whitespace, single-rune
+// payloads are preserved as literal text (for example "* x *" and "** x **").
+func fixEmphasisSpacingSegment(seg string) string {
+	if !strings.Contains(seg, "*") {
+		return seg
+	}
+
+	var sb strings.Builder
+	pos := 0
+	for pos < len(seg) {
+		openStart, openEnd, ok := nextAsteriskRun(seg, pos)
+		if !ok {
+			sb.WriteString(seg[pos:])
+			break
+		}
+
+		sb.WriteString(seg[pos:openStart])
+
+		markerLen := openEnd - openStart
+		if markerLen != 1 && markerLen != 2 {
+			sb.WriteString(seg[openStart:openEnd])
+			pos = openEnd
+			continue
+		}
+
+		closeStart, closeEnd, ok := nextAsteriskRun(seg, openEnd)
+		if !ok || closeEnd-closeStart != markerLen {
+			sb.WriteString(seg[openStart:openEnd])
+			pos = openEnd
+			continue
+		}
+
+		payload := seg[openEnd:closeStart]
+		normalized, shouldNormalize := normalizeEmphasisPayload(payload)
+		if !shouldNormalize {
+			sb.WriteString(seg[openStart:closeEnd])
+			pos = closeEnd
+			continue
+		}
+
+		marker := seg[openStart:openEnd]
+		sb.WriteString(marker)
+		sb.WriteString(normalized)
+		sb.WriteString(marker)
+		pos = closeEnd
+	}
+	return sb.String()
+}
+
+func nextAsteriskRun(s string, start int) (runStart, runEnd int, ok bool) {
+	for i := start; i < len(s); i++ {
+		if s[i] != '*' {
+			continue
+		}
+		j := i
+		for j < len(s) && s[j] == '*' {
+			j++
+		}
+		return i, j, true
+	}
+	return 0, 0, false
+}
+
+func normalizeEmphasisPayload(payload string) (string, bool) {
+	trimmedLeft := strings.TrimLeftFunc(payload, unicode.IsSpace)
+	trimmed := strings.TrimRightFunc(trimmedLeft, unicode.IsSpace)
+	if trimmed == "" {
+		return payload, false
+	}
+
+	hasLeadingSpace := len(trimmedLeft) != len(payload)
+	hasTrailingSpace := len(trimmed) != len(trimmedLeft)
+	if !hasLeadingSpace && !hasTrailingSpace {
+		return payload, true
+	}
+
+	if hasLeadingSpace && hasTrailingSpace && utf8.RuneCountInString(trimmed) == 1 {
+		return payload, false
+	}
+	return trimmed, true
 }
 
 var setextRe = regexp.MustCompile(`(?m)^([^\n]+)\n(-{3,}\s*$)`)

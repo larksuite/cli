@@ -25,6 +25,21 @@ func TestFixBoldSpacing(t *testing.T) {
 			want:  "*hello*",
 		},
 		{
+			name:  "leading and trailing spaces inside bold are collapsed",
+			input: "** hello **",
+			want:  "**hello**",
+		},
+		{
+			name:  "leading and trailing spaces inside italic are collapsed",
+			input: "* hello *",
+			want:  "*hello*",
+		},
+		{
+			name:  "multiple spaced italic spans on one line are each collapsed",
+			input: "* a* * b*",
+			want:  "*a* *b*",
+		},
+		{
 			name:  "ambiguous italic span stays literal",
 			input: "2 * x * y",
 			want:  "2 * x * y",
@@ -33,6 +48,21 @@ func TestFixBoldSpacing(t *testing.T) {
 			name:  "ambiguous bold span stays literal",
 			input: "2 ** x ** y",
 			want:  "2 ** x ** y",
+		},
+		{
+			name:  "single-rune italic with spaces on both sides stays literal",
+			input: "* x *",
+			want:  "* x *",
+		},
+		{
+			name:  "single-rune bold with spaces on both sides stays literal",
+			input: "** x **",
+			want:  "** x **",
+		},
+		{
+			name:  "triple-asterisk near miss stays literal",
+			input: "*** hello**",
+			want:  "*** hello**",
 		},
 		{
 			name:  "trailing space before closing bold",
@@ -73,6 +103,11 @@ func TestFixBoldSpacing(t *testing.T) {
 			name:  "inline code preserved, bold outside fixed",
 			input: "**foo ** and `**bar **`",
 			want:  "**foo** and `**bar **`",
+		},
+		{
+			name:  "inline code with spaced italic stays literal while outside span is fixed",
+			input: "`* hello *` and * hello *",
+			want:  "`* hello *` and *hello*",
 		},
 		{
 			name:  "opening space inside text tag fixed",
