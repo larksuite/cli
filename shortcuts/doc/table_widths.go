@@ -5,6 +5,7 @@ package doc
 
 import (
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"unicode"
@@ -15,6 +16,11 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+// apiCaller is the subset of *common.RuntimeContext used by the table-width
+// orchestration. Exposing it as a function type keeps this package testable
+// without a fake for the whole runtime surface.
+type apiCaller func(method, url string, params map[string]interface{}, data interface{}) (map[string]interface{}, error)
 
 // widthRatioTotal is the denominator used by Feishu's
 // update_grid_column_width_ratio API: width_ratios must sum to 100.
@@ -27,11 +33,18 @@ const docxBlockTypeTable = 31
 // extractMarkdownTables parses GFM pipe tables from markdown text and returns
 // each table as a slice of rows, where each row is a slice of cell strings.
 // Only sequences that follow the GFM shape — a header row immediately followed
-// by a separator row (e.g. |---|---|) — are recognised as tables. This matches
-// the Lark renderer's behaviour and avoids false positives on stray prose that
-// happens to contain pipes (quoted snippets, log excerpts, tables in
-// blockquotes, etc.). Tables inside fenced code blocks are skipped so example
-// snippets do not trigger column-width patching.
+// by a separator row whose cell count matches the header — are recognised as
+// tables. This matches the Lark renderer's behaviour and avoids false
+// positives on stray prose that happens to contain pipes.
+//
+// Body rows are normalised to the confirmed column count so extra or missing
+// cells do not produce a ratio list that disagrees with the rendered table's
+// column_size (which would otherwise cause the subsequent PATCH to be skipped).
+//
+// Fenced code blocks are skipped. Fence tracking honours the CommonMark rule
+// that a fence only closes on a matching fence character (backtick vs tilde)
+// of equal-or-longer length; shorter fence markers inside a longer fence do
+// not terminate it.
 func extractMarkdownTables(md string) [][][]string {
 	var tables [][][]string
 	// Parser states:
@@ -40,45 +53,53 @@ func extractMarkdownTables(md string) [][][]string {
 	//   nil header, non-nil current → inside a confirmed table, accumulating rows
 	var header []string
 	var current [][]string
-	fenceChar, fenceMinLen := byte(0), 0
+	tableCols := 0
+
+	var fenceChar byte // 0 when not in a fence; '`' or '~' while inside
+	var fenceLen int
 
 	flushCurrent := func() {
 		if current != nil {
 			tables = append(tables, current)
 			current = nil
+			tableCols = 0
 		}
+	}
+
+	normaliseRow := func(row []string, cols int) []string {
+		switch {
+		case len(row) > cols:
+			return row[:cols]
+		case len(row) < cols:
+			padded := make([]string, cols)
+			copy(padded, row)
+			return padded
+		}
+		return row
 	}
 
 	for _, raw := range strings.Split(md, "\n") {
 		line := strings.TrimRight(raw, "\r")
 		trimmed := strings.TrimSpace(line)
 
-		// Track fenced code blocks so we don't parse tables inside.
-		// A fence opened with a given character run closes only on a matching
-		// character run of equal or greater length; mismatched markers (e.g.
-		// ~~~ inside ```) or shorter runs (e.g. ``` inside `````) are ignored.
-		if fenceChar == 0 {
-			if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-				c := trimmed[0]
-				cnt := 0
-				for cnt < len(trimmed) && trimmed[cnt] == c {
-					cnt++
-				}
-				fenceChar, fenceMinLen = c, cnt
+		if c, n, ok := detectFenceMarker(trimmed); ok {
+			switch {
+			case fenceChar == 0:
+				// Entering a fence; remember the marker.
 				flushCurrent()
 				header = nil
-				continue
+				fenceChar = c
+				fenceLen = n
+			case c == fenceChar && n >= fenceLen:
+				// Closing the active fence with a matching marker of
+				// equal-or-longer length.
+				fenceChar = 0
+				fenceLen = 0
 			}
-		} else {
-			if len(trimmed) > 0 && trimmed[0] == fenceChar {
-				cnt := 0
-				for cnt < len(trimmed) && trimmed[cnt] == fenceChar {
-					cnt++
-				}
-				if cnt >= fenceMinLen {
-					fenceChar, fenceMinLen = 0, 0
-				}
-			}
+			// Any other fence marker inside an open fence is ignored.
+			continue
+		}
+		if fenceChar != 0 {
 			continue
 		}
 
@@ -93,16 +114,24 @@ func extractMarkdownTables(md string) [][][]string {
 		// Line is a pipe row. Route by parser state.
 		switch {
 		case header != nil:
-			// Awaiting separator. If this is one, the table is confirmed.
+			// Awaiting a separator with the same cell count as the header.
 			if isPipeSeparatorRow(trimmed) {
-				current = [][]string{header}
+				sep := splitPipeRow(trimmed)
+				if len(sep) == len(header) {
+					tableCols = len(header)
+					current = [][]string{header}
+					header = nil
+					continue
+				}
+				// Separator cell count disagrees with the header; not a
+				// valid GFM table. Drop the pending header entirely
+				// rather than treat the separator as a new candidate.
 				header = nil
 				continue
 			}
 			// Two consecutive data rows without a separator don't form a
-			// GFM table; drop the pending header candidate but treat the
-			// current line as a new candidate (it might still be a header
-			// for a table that follows).
+			// GFM table; drop the pending header but keep the current
+			// line as a fresh candidate for a table that may follow.
 			header = splitPipeRow(trimmed)
 		case current != nil:
 			// Inside a confirmed table.
@@ -110,7 +139,7 @@ func extractMarkdownTables(md string) [][][]string {
 				// Separator rows after the confirmed one are unusual; drop.
 				continue
 			}
-			current = append(current, splitPipeRow(trimmed))
+			current = append(current, normaliseRow(splitPipeRow(trimmed), tableCols))
 		default:
 			// Scanning prose and saw a pipe row: candidate header.
 			if isPipeSeparatorRow(trimmed) {
@@ -122,6 +151,33 @@ func extractMarkdownTables(md string) [][][]string {
 	}
 	flushCurrent()
 	return tables
+}
+
+// detectFenceMarker recognises a CommonMark-style code fence opening or
+// closing marker. Returns the fence character (backtick or tilde), the run
+// length, and true when the trimmed line is a valid fence marker line — that
+// is, at least three identical fence chars optionally followed by an info
+// string. Text after the opening run is treated as an info string and does
+// not affect fence closure.
+func detectFenceMarker(trimmed string) (byte, int, bool) {
+	if len(trimmed) < 3 {
+		return 0, 0, false
+	}
+	c := trimmed[0]
+	if c != '`' && c != '~' {
+		return 0, 0, false
+	}
+	n := 0
+	for n < len(trimmed) && trimmed[n] == c {
+		n++
+	}
+	if n < 3 {
+		return 0, 0, false
+	}
+	// Backtick fences disallow backticks in the info string per CommonMark;
+	// a tilde fence accepts any info string. For our purposes we only need
+	// to know the char + length to decide open/close.
+	return c, n, true
 }
 
 func isPipeTableRow(line string) bool {
@@ -174,9 +230,11 @@ func computeWidthRatios(rows [][]string) []int {
 	if cols < 2 {
 		return nil
 	}
-	// With more columns than widthRatioTotal, each column must receive at
-	// least ratio 1, making the sum exceed 100. Return nil so the caller
-	// skips patching rather than writing an invalid ratio slice.
+	// Every column must receive at least 1 in the final ratio (the API
+	// rejects 0), so we cannot honour both the "≥1 per column" floor and
+	// the "sum == widthRatioTotal" contract when the column count exceeds
+	// widthRatioTotal. Give up and let the server keep its equal-width
+	// default rather than emit an invalid width_ratios array.
 	if cols > widthRatioTotal {
 		return nil
 	}
@@ -226,10 +284,15 @@ func computeWidthRatios(rows [][]string) []int {
 				widest = i
 			}
 		}
-		ratios[widest] += diff
-		if ratios[widest] < 1 {
-			ratios[widest] = 1
+		// If piling the full error onto the widest column would push its
+		// ratio below 1, the table cannot be expressed as a valid
+		// width_ratios array that still sums to widthRatioTotal without
+		// silently violating the ≥1 floor on another column. Give up and
+		// return nil rather than write a bad array the API will reject.
+		if ratios[widest]+diff < 1 {
+			return nil
 		}
+		ratios[widest] += diff
 	}
 	return ratios
 }
@@ -238,6 +301,16 @@ func computeWidthRatios(rows [][]string) []int {
 // it is East Asian Wide/Full (CJK, full-width punctuation) and 1 otherwise.
 // Zero-width runes (control chars, format chars like ZWJ, non-spacing/enclosing
 // marks such as combining accents and emoji variation selectors) contribute 0.
+//
+// Known over-counting: Regional Indicator pairs (flags like 🇺🇸) and emoji
+// ZWJ sequences (👨‍👩‍👧‍👦) render as a single grapheme cluster of visual
+// width 2 but this function counts each base codepoint independently, so a
+// flag weighs 4 and a four-person family weighs 8. The weights are only used
+// as proportional inputs to column-width ratios, so the practical impact is
+// that cells dominated by flags or family emoji claim slightly more width
+// than the eye expects. Accepting this until a grapheme-cluster segmenter
+// (e.g. rivo/uniseg) becomes worth the dependency — see the visualWidth
+// test cases that pin the current behaviour.
 func visualWidth(s string) int {
 	w := 0
 	for _, r := range s {
@@ -294,6 +367,14 @@ func isWideRune(r rune) bool {
 // are patched; mismatches are skipped. Tables are matched to remote table
 // blocks by document-order index.
 func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, markdown string) {
+	applyTableColumnWidths(runtime.CallAPI, runtime.IO().ErrOut, documentID, markdown)
+}
+
+// applyTableColumnWidths is the testable core. Callers hand in an apiCaller
+// and an io.Writer so tests can exercise the orchestration (remote/local
+// count mismatch, per-table column-count skip, PATCH error non-fatal
+// handling) without touching the network.
+func applyTableColumnWidths(api apiCaller, errOut io.Writer, documentID, markdown string) {
 	if documentID == "" || strings.TrimSpace(markdown) == "" {
 		return
 	}
@@ -302,9 +383,9 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 		return
 	}
 
-	remote, err := fetchDocumentTableBlocks(runtime, documentID)
+	remote, err := fetchTableBlocks(api, documentID)
 	if err != nil {
-		fmt.Fprintf(runtime.IO().ErrOut, "column-width adjustment skipped: %v\n", err)
+		fmt.Fprintf(errOut, "column-width adjustment skipped: %v\n", err)
 		return
 	}
 	// Strict precondition: index-based pairing is only safe when the local
@@ -316,7 +397,7 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 	// ratios to tables that happen to match on column count.
 	if len(remote) != len(tables) {
 		fmt.Fprintf(
-			runtime.IO().ErrOut,
+			errOut,
 			"column-width adjustment skipped: remote has %d table block(s) but local markdown has %d; skipping to avoid misaligned ratios\n",
 			len(remote), len(tables),
 		)
@@ -330,7 +411,7 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 		}
 		if remote[i].ColumnSize != len(ratios) {
 			fmt.Fprintf(
-				runtime.IO().ErrOut,
+				errOut,
 				"column-width skipped for table %d (block %s): local has %d columns, remote has %d\n",
 				i+1, remote[i].BlockID, len(ratios), remote[i].ColumnSize,
 			)
@@ -346,9 +427,9 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 			validate.EncodePathSegment(documentID),
 			validate.EncodePathSegment(remote[i].BlockID),
 		)
-		if _, err := runtime.CallAPI("PATCH", url, nil, body); err != nil {
+		if _, err := api("PATCH", url, nil, body); err != nil {
 			fmt.Fprintf(
-				runtime.IO().ErrOut,
+				errOut,
 				"column-width PATCH failed for block %s: %v\n",
 				remote[i].BlockID, err,
 			)
@@ -357,21 +438,76 @@ func applyMarkdownTableColumnWidths(runtime *common.RuntimeContext, documentID, 
 		patched++
 	}
 	if patched > 0 {
-		fmt.Fprintf(runtime.IO().ErrOut, "column widths applied to %d/%d tables\n", patched, len(tables))
+		fmt.Fprintf(errOut, "column widths applied to %d/%d tables\n", patched, len(tables))
 	}
 }
 
-// docxTokenForUpdate returns the docx token for the supplied --doc input,
-// if it can be determined without a network call. Wiki inputs return false
-// because resolving them requires an extra API call; callers should skip
-// column-width application in that case rather than block the main flow.
-func docxTokenForUpdate(doc string) (string, bool) {
+// docxTokenForUpdate returns the docx token for the supplied --doc input.
+// Docx URLs / bare tokens short-circuit; wiki inputs are resolved to their
+// backing docx via /open-apis/wiki/v2/spaces/get_node so that column-width
+// application works uniformly regardless of how the user referenced the doc.
+func docxTokenForUpdate(runtime *common.RuntimeContext, doc string) (string, bool) {
+	return docxTokenForAutoWidths(runtime.CallAPI, doc)
+}
+
+// docxTokenForAutoWidths is the testable core: it normalises a user-supplied
+// doc token or URL to a docx token, optionally following a single wiki→docx
+// resolve call. Callers hand in an apiCaller so tests can stub the network.
+func docxTokenForAutoWidths(api apiCaller, doc string) (string, bool) {
 	ref, err := parseDocumentRef(doc)
 	if err != nil {
 		return "", false
 	}
-	if ref.Kind == "docx" {
+	switch ref.Kind {
+	case "docx":
 		return ref.Token, true
+	case "wiki":
+		return resolveWikiNodeToDocx(api, ref.Token)
+	}
+	return "", false
+}
+
+// resolveWikiNodeToDocx maps a wiki node token to its backing docx object
+// token using the public wiki API. Returns false for non-docx-backed nodes
+// (sheets, bitables, etc.) so the caller can skip cleanly.
+func resolveWikiNodeToDocx(api apiCaller, wikiToken string) (string, bool) {
+	resp, err := api(
+		"GET",
+		"/open-apis/wiki/v2/spaces/get_node",
+		map[string]interface{}{"token": wikiToken},
+		nil,
+	)
+	if err != nil || resp == nil {
+		return "", false
+	}
+	node, _ := resp["node"].(map[string]interface{})
+	if node == nil {
+		return "", false
+	}
+	if objType, _ := node["obj_type"].(string); objType != "docx" {
+		return "", false
+	}
+	token, _ := node["obj_token"].(string)
+	return token, token != ""
+}
+
+// resolveDocxTokenForCreateResult extracts the docx token from an MCP
+// create-doc result, preferring the doc_url (unambiguous about Kind) and
+// falling back to doc_id. Wiki URLs surfaced in the response are resolved to
+// docx via the public wiki API so the auto-widths path still runs.
+func resolveDocxTokenForCreateResult(api apiCaller, result map[string]interface{}) (string, bool) {
+	if docURL := strings.TrimSpace(common.GetString(result, "doc_url")); docURL != "" {
+		if ref, err := parseDocumentRef(docURL); err == nil {
+			switch ref.Kind {
+			case "docx":
+				return ref.Token, true
+			case "wiki":
+				return resolveWikiNodeToDocx(api, ref.Token)
+			}
+		}
+	}
+	if docID := strings.TrimSpace(common.GetString(result, "doc_id")); docID != "" {
+		return docID, true
 	}
 	return "", false
 }
@@ -382,10 +518,10 @@ type remoteTable struct {
 	ColumnSize int
 }
 
-// fetchDocumentTableBlocks returns all table blocks (block_type == 31) in the
-// given docx document, in document order. The function walks the paginated
-// /blocks endpoint.
-func fetchDocumentTableBlocks(runtime *common.RuntimeContext, documentID string) ([]remoteTable, error) {
+// fetchTableBlocks returns all table blocks (block_type == 31) in the given
+// docx document, in document order. The function walks the paginated /blocks
+// endpoint via the supplied apiCaller.
+func fetchTableBlocks(api apiCaller, documentID string) ([]remoteTable, error) {
 	var out []remoteTable
 	pageToken := ""
 	for {
@@ -393,7 +529,7 @@ func fetchDocumentTableBlocks(runtime *common.RuntimeContext, documentID string)
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
-		resp, err := runtime.CallAPI(
+		resp, err := api(
 			"GET",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks", validate.EncodePathSegment(documentID)),
 			params,

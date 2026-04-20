@@ -115,12 +115,12 @@ var DocsUpdate = common.Shortcut{
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
 		if runtime.Str("mode") == "overwrite" && runtime.Bool("auto-table-widths") {
-			if docID, ok := docxTokenForUpdate(runtime.Str("doc")); ok {
+			if docID, ok := docxTokenForUpdate(runtime, runtime.Str("doc")); ok {
 				applyMarkdownTableColumnWidths(runtime, docID, runtime.Str("markdown"))
 			} else {
 				fmt.Fprintln(
 					runtime.IO().ErrOut,
-					"auto-table-widths skipped: --doc is not a docx token/URL (wiki-backed docs require an extra resolve step that is not implemented yet)",
+					"auto-table-widths skipped: could not resolve --doc to a docx token",
 				)
 			}
 		}

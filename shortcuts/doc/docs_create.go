@@ -63,7 +63,7 @@ var DocsCreate = common.Shortcut{
 
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
 		if runtime.Bool("auto-table-widths") {
-			if docID := strings.TrimSpace(common.GetString(result, "doc_id")); docID != "" {
+			if docID, ok := resolveDocxTokenForCreateResult(runtime.CallAPI, result); ok {
 				applyMarkdownTableColumnWidths(runtime, docID, runtime.Str("markdown"))
 			}
 		}
