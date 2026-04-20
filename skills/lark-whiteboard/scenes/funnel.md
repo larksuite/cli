@@ -26,10 +26,10 @@
 
 ## 脚本构建模板
 
-必须使用 `node` 运行脚本生成 JSON。
+此场景必须用 .cjs 脚本生成。
 
 ```javascript
-import fs from 'fs';
+const fs = require('fs');
 
 // 1. 配置基础参数
 const GAP = 4;
@@ -90,7 +90,7 @@ const output = {
   ]
 };
 
-fs.writeFileSync('funnel.json', JSON.stringify(output, null, 2));
+fs.writeFileSync('diagram.json', JSON.stringify(output, null, 2));
 ```
 
 ## 陷阱

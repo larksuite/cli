@@ -1,0 +1,3004 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema
+        xmlns:xs="http://www.w3.org/2001/XMLSchema"
+        xmlns:sml="http://www.larkoffice.com/sml/2.0"
+        targetNamespace="http://www.larkoffice.com/sml/2.0"
+        elementFormDefault="qualified"
+        attributeFormDefault="unqualified">
+    <xs:annotation>
+        <xs:documentation xml:lang="zh-CN">
+            飞书 Slides 结构化标记语言 (Structured Markup Language, SML) 2.0
+
+            版本信息：
+            - Schema 版本: 2.0.0
+            - 命名空间: http://www.larkoffice.com/sml/2.0
+            - 发布日期: 2025-11-03
+        </xs:documentation>
+    </xs:annotation>
+
+    <!-- ==================== 命名规范说明 ==================== -->
+    <!--
+      元素名：小写, HTML 兼容优先（p, ul, span）
+      属性名：camelCase（textType, fontSize, textAlign）
+      类型名：PascalCase（TextType, FontFamilyType）
+      枚举值：kebab-case（sub-headline, left-right-arrow）
+    -->
+
+    <!-- ==================== 基础类型定义 ==================== -->
+    <!-- Color: 颜色类型 -->
+    <xs:simpleType name="Color">
+        <xs:annotation>
+            <xs:documentation>
+                颜色格式, 支持纯色和渐变色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:union memberTypes="sml:SolidColor sml:GradientColor"/>
+    </xs:simpleType>
+
+
+    <!-- SolidColor: 纯色 -->
+    <xs:simpleType name="SolidColor">
+        <xs:annotation>
+            <xs:documentation>
+                支持 RGB/RGBA 两种颜色格式：
+                - RGB: rgb(r,g,b)
+                - 说明：r,g,b 为 [0,255] 的整数
+                - 示例：rgb(255,0,0)
+                - RGBA: rgba(r,g,b,a)
+                - 说明：r,g,b 为 [0,255] 的整数，a 为 0 或 0.x ... 1 或 1.0 的浮点数
+                - 示例：rgba(255,0,0,0.5)
+                注意：允许空格，如 rgb(255, 0, 0) 也是有效格式
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <!-- 仅支持 rgb(r,g,b) 和 rgba(r,g,b,a) 格式 -->
+            <xs:pattern value="(rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+
+    <!-- 渐变色类型定义 -->
+    <xs:simpleType name="GradientColor">
+        <xs:annotation>
+            <xs:documentation>
+                渐变色格式支持以下类型：
+                - 线性渐变：
+                语法：linear-gradient(角度, 颜色停靠点, 颜色停靠点, ...)
+                角度：[0,360)数字 + deg，如 90deg、180deg，表示渐变方向
+                颜色停靠点：定义渐变中每个颜色的位置（参见“颜色停靠点说明”）
+                示例：linear-gradient(90deg, rgb(255, 0, 0) 0%, rgb(0, 0, 255) 100%)
+
+                - 射线渐变:
+                语法：radial-gradient(circle [at 中心位置], 颜色停靠点, 颜色停靠点, ...)
+                形状：circle，仅支持 circle 形状
+                中心位置：定义渐变中心的位置（参见“中心位置说明”）
+                颜色停靠点：定义颜色在半径方向上的分布（参见“颜色停靠点说明”）
+                示例：radial-gradient(circle at 50% 50%, rgb(255, 0, 0) 0%, rgb(0, 0, 255) 100%)
+
+                - 矩形渐变:
+                语法：rect-gradient(circle [at 中心位置], 颜色停靠点, 颜色停靠点, ...)
+                形状：circle，仅支持 circle 形状
+                中心位置：定义渐变中心的位置（参见“中心位置说明”）
+                颜色停靠点：定义颜色在矩形范围内的分布（参见“颜色停靠点说明”）
+                示例：rect-gradient(circle at 0% 0%, rgb(255, 0, 0) 0%, rgb(0, 0, 255) 100%)
+
+                - 形状渐变:
+                语法：shape-gradient(circle [at 中心位置], 颜色停靠点, 颜色停靠点, ...)
+                形状：circle，仅支持 circle 形状
+                中心位置：仅支持 50% 50%，若输入其他位置，将回退为 50% 50%
+                颜色停靠点：定义颜色分布（参见“颜色停靠点说明”）
+                示例：shape-gradient(circle at 50% 50%, rgb(255, 0, 0) 0%, rgb(0, 0, 255) 100%)
+
+                --------------------------------------------------------
+                中心位置说明:
+                所有非线性渐变（射线渐变、矩形渐变、形状渐变）均可指定渐变中心位置：
+                - 格式：x% y%，为百分比格式 (0-100% 0-100%)，表示相对于容器宽高的比例位置
+                - 支持以下枚举值：
+                0% 0%：左上角
+                100% 0%：右上角
+                50% 50%：中心
+                0% 100%：左下角
+                100% 100%：右下角
+                - 若位置超出支持范围或格式错误，将会被回退为 50% 50%
+
+                颜色停靠点说明：
+                - 格式：颜色 位置%
+                - 颜色：必须为 rgb(r,g,b) 或 rgba(r,g,b,a) 格式
+                - 无透明通道: rgb(r,g,b)，其中 r,g,b 为 [0,255] 的整数
+                - 含透明通道: rgba(r,g,b,a)，其中 r,g,b 为 [0,255] 的整数，a 为 0 或 0.x ... 1 或 1.0 的浮点数
+                - 颜色停靠点（color stop）:
+                - 定义：颜色在渐变路径上的位置，至少需要 2 个颜色停靠点
+                - 位置：整数百分比，取值范围 [0, 100]，后跟 % 符号
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <!-- 线性渐变：仅支持角度(deg) -->
+            <xs:pattern value="linear-gradient\(\s*\d+deg\s*,\s*((rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)(\s*,\s*(rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)+\s*\)"/>
+
+            <!-- 射线渐变：circle, 位置支持0-100%的百分比 -->
+            <xs:pattern value="radial-gradient\(\s*circle(\s+at\s+\d{1,3}%\s+\d{1,3}%)?\s*,\s*((rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)(\s*,\s*(rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)+\s*\)"/>
+
+            <!-- 矩形渐变：circle,位置支持0-100%的百分比 -->
+            <xs:pattern value="rect-gradient\(\s*circle(\s+at\s+\d{1,3}%\s+\d{1,3}%)?\s*,\s*((rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)(\s*,\s*(rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)+\s*\)"/>
+
+            <!-- 形状渐变：circle, 位置支持0-100%的百分比 -->
+            <xs:pattern value="shape-gradient\(\s*circle(\s+at\s+\d{1,3}%\s+\d{1,3}%)?\s*,\s*((rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)(\s*,\s*(rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0(\.\d+)?|1(\.0+)?)\s*\))\s+\d{1,3}%)+\s*\)"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- RotationType: 旋转角度，取值范围 [0, 360) 度，支持小数 -->
+    <xs:simpleType name="RotationType">
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="0"/>
+            <xs:maxExclusive value="360"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 非负整数（包含0, 适用于坐标） -->
+    <xs:simpleType name="NonNegativeInt">
+        <xs:restriction base="xs:nonNegativeInteger"/>
+    </xs:simpleType>
+
+    <!-- 正小数（>0）, 适用于宽高、长度等 -->
+    <xs:simpleType name="PositiveSize">
+        <xs:restriction base="xs:double">
+            <xs:minExclusive value="0"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 字体族类型定义 -->
+    <xs:simpleType name="FontFamilyType">
+        <xs:annotation>
+            <xs:documentation>
+                字体族名称, 支持任意字体。
+
+                常用中文字体：
+                思源宋体、寒蝉德黑体、标小智无界黑、寒蝉锦书宋、站酷小薇体、
+                寒蝉团圆体 圆体、寒蝉团圆体 黑体、荆南缘默体、寒蝉端黑宋、
+                资源圆体、钟齐流江毛草、寒蝉端黑体、站酷庆科黄油体、寒蝉云墨黑、
+                有字库龙藏体、寒蝉全圆体、思源黑体、钟齐志莽行书、抖音美好体、
+                马善政毛笔楷体、霞鹜 975 圆体
+
+                常用拉丁字体：
+                Francois One、Heebo、Lobster、Roboto Slab、Varela Round、
+                PT Serif、Signika、Vollkorn、Mulish、Rokkitt、Inconsolata、
+                PT Sans Caption、EB Garamond、Dancing Script、Rajdhani、Poppins、
+                Merriweather、PT Sans Narrow、Libre Baskerville、Slabo 27px、
+                Inter、Noto Serif、Yanone Kaffeesatz、Merriweather Sans、Lato、
+                Source Code Pro、Mukta、Teko、Hind Siliguri、Catamaran、Arvo、
+                Alegreya Sans、Titillium Web、Roboto Mono、Play、Indie Flower、
+                Ubuntu Condensed、Libre Franklin、Barlow、PT Sans、Acme、Cuprum、
+                Josefin Sans、DM Sans、Playfair Display、Rubik、Questrial、Anton、
+                Oswald、Cabin、Ubuntu、Abel、Exo 2、Bree Serif、Roboto Condensed、
+                Amatic SC、Abril Fatface、Comfortaa、IBM Plex Sans、Work Sans、
+                Kanit、Noto Sans、Alegreya、Shadows Into Light、Barlow Condensed、
+                Nunito Sans、Quicksand、Overpass、Bebas Neue、Raleway、Exo、
+                Archivo Narrow、Hind、Open Sans、Poiret One、Asap、Roboto、Nunito、
+                Bitter、Dosis、Oxygen、Prompt、Karla、Fjalla One、Fira Sans、
+                Crimson Text、Pacifico、Arimo、Maven Pro、Cairo、Montserrat、
+                Righteous、Lora
+
+                其他语言字体：
+                源ノ角ゴシック、본고딕、Nanum Gothic
+
+                系统字体：
+                Arial、Arial Black、Calibri、Comic Sans Ms、Sans Serif、Serif、
+                Times New Roman、Tahoma、Trebuchet MS、Verdana、Georgia、Garamond、
+                黑体、宋体、楷体、Hiragino Mincho
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+
+    <!-- 字号类型定义 -->
+    <xs:simpleType name="FontSizeType">
+        <xs:annotation>
+            <xs:documentation>
+                字体大小, 使用正整数, 单位px
+                示例：12, 14, 16, 18, 20, 24, 28, 32 等
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:positiveInteger">
+            <xs:minInclusive value="6"/>
+            <xs:maxInclusive value="400"/>
+            <xs:pattern value="[0-9]+"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="NonNegativeDouble">
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="0.0"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 文本类型枚举 -->
+    <xs:simpleType name="TextType">
+        <xs:annotation>
+            <xs:documentation>
+                文本语义层级, 影响默认字号和样式
+                title = 大标题
+                headline = 标题
+                sub-headline = 副标题
+                body = 正文
+                caption = 小号正文
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="title"/>
+            <xs:enumeration value="headline"/>
+            <xs:enumeration value="sub-headline"/>
+            <xs:enumeration value="body"/>
+            <xs:enumeration value="caption"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 文本对齐 -->
+    <xs:simpleType name="TextAlignType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="left"><xs:annotation><xs:documentation>左对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="center"><xs:annotation><xs:documentation>居中对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="right"><xs:annotation><xs:documentation>右对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="justify"><xs:annotation><xs:documentation>两端对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="dist"><xs:annotation><xs:documentation>分散对齐</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 垂直对齐 -->
+    <xs:simpleType name="VerticalAlignType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="top"/>
+            <xs:enumeration value="middle"/>
+            <xs:enumeration value="bottom"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 直线线条类型枚举 -->
+    <xs:simpleType name="LineType">
+        <xs:annotation><xs:documentation>直线线条类型枚举</xs:documentation></xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="straight-connector1"><xs:annotation><xs:documentation>直线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="line"><xs:annotation><xs:documentation>普通的、非连接功能的线条</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 曲线线条类型枚举 -->
+    <xs:simpleType name="PolylineType">
+        <xs:annotation><xs:documentation>曲线线条类型枚举</xs:documentation></xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="bent-connector2"><xs:annotation><xs:documentation>包含2个线段的折线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bent-connector3"><xs:annotation><xs:documentation>包含3个线段的折线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bent-connector4"><xs:annotation><xs:documentation>包含4个线段的折线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bent-connector5"><xs:annotation><xs:documentation>包含5个线段的折线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-connector2"><xs:annotation><xs:documentation>包含2个线段的曲线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-connector3"><xs:annotation><xs:documentation>包含3个线段的曲线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-connector4"><xs:annotation><xs:documentation>包含4个线段的曲线连接符</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-connector5"><xs:annotation><xs:documentation>包含5个线段的曲线连接符</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+
+    <!-- 溢出时处理文本策略类型 -->
+    <xs:simpleType name="AutoFitType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="shape-auto-fit"><xs:annotation><xs:documentation>自动调整尺寸</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="no-auto-fit"><xs:annotation><xs:documentation>不自动调整</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="normal-auto-fit"><xs:annotation><xs:documentation>缩排文本</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+
+    <!-- 图形类型 -->
+    <xs:simpleType name="ShapeType">
+        <xs:annotation><xs:documentation>图形形状类型枚举</xs:documentation></xs:annotation>
+        <xs:restriction base="xs:string">
+            <!-- 基础形状 -->
+            <xs:enumeration value="custom"><xs:annotation><xs:documentation>自定义形状</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="rect"><xs:annotation><xs:documentation>矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="ellipse"><xs:annotation><xs:documentation>椭圆</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="text"><xs:annotation><xs:documentation>文本框</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="triangle"><xs:annotation><xs:documentation>三角形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="rt-triangle"><xs:annotation><xs:documentation>直角三角形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-lt-triangle"><xs:annotation><xs:documentation>幻灯片左三角形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="pentagon"><xs:annotation><xs:documentation>五边形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="hexagon"><xs:annotation><xs:documentation>六边形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="heptagon"><xs:annotation><xs:documentation>七边形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="octagon"><xs:annotation><xs:documentation>八边形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="decagon"><xs:annotation><xs:documentation>十边形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="dodecagon"><xs:annotation><xs:documentation>十二边形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="diamond"><xs:annotation><xs:documentation>菱形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="parallelogram"><xs:annotation><xs:documentation>平行四边形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="trapezoid"><xs:annotation><xs:documentation>梯形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="non-isosceles-trapezoid"><xs:annotation><xs:documentation>非等腰梯形</xs:documentation></xs:annotation></xs:enumeration>
+
+            <!-- 圆角矩形系列 -->
+            <xs:enumeration value="round-rect"><xs:annotation><xs:documentation>圆角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-full-round-rect"><xs:annotation><xs:documentation>幻灯片全圆角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="round2diag-rect"><xs:annotation><xs:documentation>对角双圆角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="round1rect"><xs:annotation><xs:documentation>单圆角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="round2same-rect"><xs:annotation><xs:documentation>同侧双圆角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="snip-round-rect"><xs:annotation><xs:documentation>切角圆角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="snip1rect"><xs:annotation><xs:documentation>单切角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="snip2diag-rect"><xs:annotation><xs:documentation>对角双切角矩形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="snip2same-rect"><xs:annotation><xs:documentation>同侧双切角矩形</xs:documentation></xs:annotation></xs:enumeration>
+
+            <!-- 星形系列 -->
+            <xs:enumeration value="slides-star"><xs:annotation><xs:documentation>幻灯片星形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star4"><xs:annotation><xs:documentation>四角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star5"><xs:annotation><xs:documentation>五角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star6"><xs:annotation><xs:documentation>六角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star7"><xs:annotation><xs:documentation>七角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star8"><xs:annotation><xs:documentation>八角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star10"><xs:annotation><xs:documentation>十角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star12"><xs:annotation><xs:documentation>十二角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star16"><xs:annotation><xs:documentation>十六角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star24"><xs:annotation><xs:documentation>二十四角星</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star32"><xs:annotation><xs:documentation>三十二角星</xs:documentation></xs:annotation></xs:enumeration>
+
+            <!-- 箭头系列 -->
+            <xs:enumeration value="right-arrow"><xs:annotation><xs:documentation>右箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-arrow"><xs:annotation><xs:documentation>左箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="up-arrow"><xs:annotation><xs:documentation>上箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="down-arrow"><xs:annotation><xs:documentation>下箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-right-arrow"><xs:annotation><xs:documentation>左右箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-left-right-arrow"><xs:annotation><xs:documentation>幻灯片左右箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="up-down-arrow"><xs:annotation><xs:documentation>上下箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="quad-arrow"><xs:annotation><xs:documentation>四向箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-right-up-arrow"><xs:annotation><xs:documentation>左右上箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-up-arrow"><xs:annotation><xs:documentation>左上箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bent-arrow"><xs:annotation><xs:documentation>弯曲箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bent-up-arrow"><xs:annotation><xs:documentation>向上弯曲箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-right-arrow"><xs:annotation><xs:documentation>右弯箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-left-arrow"><xs:annotation><xs:documentation>左弯箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-up-arrow"><xs:annotation><xs:documentation>上弯箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="curved-down-arrow"><xs:annotation><xs:documentation>下弯箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="striped-right-arrow"><xs:annotation><xs:documentation>条纹右箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="notched-right-arrow"><xs:annotation><xs:documentation>缺口右箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="circular-arrow"><xs:annotation><xs:documentation>环形箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-circular-arrow"><xs:annotation><xs:documentation>左环形箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-right-circular-arrow"><xs:annotation><xs:documentation>左右环形箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="swoosh-arrow"><xs:annotation><xs:documentation>飞驰箭头</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="uturn-arrow"><xs:annotation><xs:documentation>U型转弯箭头</xs:documentation></xs:annotation></xs:enumeration>
+
+            <!-- 标注系列 -->
+            <xs:enumeration value="slides-round-rect-callout1"><xs:annotation><xs:documentation>幻灯片圆角矩形标注1</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-round-rect-callout2"><xs:annotation><xs:documentation>幻灯片圆角矩形标注2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-round-rect-callout3"><xs:annotation><xs:documentation>幻灯片圆角矩形标注3</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-wedge-rect-callout"><xs:annotation><xs:documentation>幻灯片楔形矩形标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-wedge-round-rect-callout"><xs:annotation><xs:documentation>幻灯片楔形圆角矩形标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="callout1"><xs:annotation><xs:documentation>标注1</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="callout2"><xs:annotation><xs:documentation>标注2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="callout3"><xs:annotation><xs:documentation>标注3</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="accent-callout1"><xs:annotation><xs:documentation>强调标注1</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="accent-callout2"><xs:annotation><xs:documentation>强调标注2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="accent-callout3"><xs:annotation><xs:documentation>强调标注3</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="border-callout1"><xs:annotation><xs:documentation>边框标注1</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="border-callout2"><xs:annotation><xs:documentation>边框标注2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="border-callout3"><xs:annotation><xs:documentation>边框标注3</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="accent-border-callout1"><xs:annotation><xs:documentation>强调边框标注1</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="accent-border-callout2"><xs:annotation><xs:documentation>强调边框标注2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="accent-border-callout3"><xs:annotation><xs:documentation>强调边框标注3</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="wedge-rect-callout"><xs:annotation><xs:documentation>楔形矩形标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="wedge-round-rect-callout"><xs:annotation><xs:documentation>楔形圆角矩形标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="wedge-ellipse-callout"><xs:annotation><xs:documentation>楔形椭圆标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="cloud-callout"><xs:annotation><xs:documentation>云形标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="right-arrow-callout"><xs:annotation><xs:documentation>右箭头标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-arrow-callout"><xs:annotation><xs:documentation>左箭头标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="up-arrow-callout"><xs:annotation><xs:documentation>上箭头标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="down-arrow-callout"><xs:annotation><xs:documentation>下箭头标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-right-arrow-callout"><xs:annotation><xs:documentation>左右箭头标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="up-down-arrow-callout"><xs:annotation><xs:documentation>上下箭头标注</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="quad-arrow-callout"><xs:annotation><xs:documentation>四向箭头标注</xs:documentation></xs:annotation></xs:enumeration>
+
+            <!-- 流程图系列 -->
+            <xs:enumeration value="flow-chart-process"><xs:annotation><xs:documentation>流程图：处理</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-alternate-process"><xs:annotation><xs:documentation>流程图：可选处理</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-decision"><xs:annotation><xs:documentation>流程图：决策</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-input-output"><xs:annotation><xs:documentation>流程图：输入输出</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-predefined-process"><xs:annotation><xs:documentation>流程图：预定义处理</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-internal-storage"><xs:annotation><xs:documentation>流程图：内部存储</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-document"><xs:annotation><xs:documentation>流程图：文档</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-multidocument"><xs:annotation><xs:documentation>流程图：多文档</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-terminator"><xs:annotation><xs:documentation>流程图：终止</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-preparation"><xs:annotation><xs:documentation>流程图：准备</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-manual-input"><xs:annotation><xs:documentation>流程图：手动输入</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-manual-operation"><xs:annotation><xs:documentation>流程图：手动操作</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-connector"><xs:annotation><xs:documentation>流程图：连接器</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-offpage-connector"><xs:annotation><xs:documentation>流程图：跨页连接器</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-punched-card"><xs:annotation><xs:documentation>流程图：穿孔卡片</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-punched-tape"><xs:annotation><xs:documentation>流程图：穿孔纸带</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-summing-junction"><xs:annotation><xs:documentation>流程图：汇总结点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-or"><xs:annotation><xs:documentation>流程图：或</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-collate"><xs:annotation><xs:documentation>流程图：对照</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-sort"><xs:annotation><xs:documentation>流程图：排序</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-extract"><xs:annotation><xs:documentation>流程图：摘录</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-merge"><xs:annotation><xs:documentation>流程图：合并</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-offline-storage"><xs:annotation><xs:documentation>流程图：脱机存储</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-online-storage"><xs:annotation><xs:documentation>流程图：联机存储</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-magnetic-tape"><xs:annotation><xs:documentation>流程图：磁带</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-magnetic-disk"><xs:annotation><xs:documentation>流程图：磁盘</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-magnetic-drum"><xs:annotation><xs:documentation>流程图：磁鼓</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-display"><xs:annotation><xs:documentation>流程图：显示</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="flow-chart-delay"><xs:annotation><xs:documentation>流程图：延迟</xs:documentation></xs:annotation></xs:enumeration>
+
+            <!-- 操作按钮系列 -->
+            <xs:enumeration value="action-button-blank"><xs:annotation><xs:documentation>操作按钮：空白</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-home"><xs:annotation><xs:documentation>操作按钮：主页</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-help"><xs:annotation><xs:documentation>操作按钮：帮助</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-information"><xs:annotation><xs:documentation>操作按钮：信息</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-forward-next"><xs:annotation><xs:documentation>操作按钮：前进/下一个</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-back-previous"><xs:annotation><xs:documentation>操作按钮：后退/上一个</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-end"><xs:annotation><xs:documentation>操作按钮：结束</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-beginning"><xs:annotation><xs:documentation>操作按钮：开始</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-return"><xs:annotation><xs:documentation>操作按钮：返回</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-document"><xs:annotation><xs:documentation>操作按钮：文档</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-sound"><xs:annotation><xs:documentation>操作按钮：声音</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="action-button-movie"><xs:annotation><xs:documentation>操作按钮：影片</xs:documentation></xs:annotation></xs:enumeration>
+
+            <!-- 其他特殊形状 -->
+            <xs:enumeration value="slides-home-plate"><xs:annotation><xs:documentation>幻灯片本垒板形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="home-plate"><xs:annotation><xs:documentation>本垒板形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-chevron"><xs:annotation><xs:documentation>幻灯片V形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="chevron"><xs:annotation><xs:documentation>V形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="pie"><xs:annotation><xs:documentation>饼形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="pie-wedge"><xs:annotation><xs:documentation>饼状楔形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="donut"><xs:annotation><xs:documentation>圆环</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="arc"><xs:annotation><xs:documentation>弧形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="slides-block-arc"><xs:annotation><xs:documentation>幻灯片块弧形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="block-arc"><xs:annotation><xs:documentation>块弧形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="chord"><xs:annotation><xs:documentation>弦形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-brace"><xs:annotation><xs:documentation>左大括号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="right-brace"><xs:annotation><xs:documentation>右大括号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-bracket"><xs:annotation><xs:documentation>左中括号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="right-bracket"><xs:annotation><xs:documentation>右中括号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="brace-pair"><xs:annotation><xs:documentation>大括号对</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bracket-pair"><xs:annotation><xs:documentation>中括号对</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="teardrop"><xs:annotation><xs:documentation>泪滴形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="can"><xs:annotation><xs:documentation>圆柱形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="cube"><xs:annotation><xs:documentation>立方体</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bevel"><xs:annotation><xs:documentation>斜面</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="folded-corner"><xs:annotation><xs:documentation>折角</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="smiley-face"><xs:annotation><xs:documentation>笑脸</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="heart"><xs:annotation><xs:documentation>心形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="lightning-bolt"><xs:annotation><xs:documentation>闪电</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="sun"><xs:annotation><xs:documentation>太阳</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="moon"><xs:annotation><xs:documentation>月亮</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="cloud"><xs:annotation><xs:documentation>云</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="irregular-seal1"><xs:annotation><xs:documentation>不规则印章1</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="irregular-seal2"><xs:annotation><xs:documentation>不规则印章2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="ribbon"><xs:annotation><xs:documentation>缎带</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="ribbon2"><xs:annotation><xs:documentation>缎带2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="ellipse-ribbon"><xs:annotation><xs:documentation>椭圆形缎带</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="ellipse-ribbon2"><xs:annotation><xs:documentation>椭圆形缎带2</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left-right-ribbon"><xs:annotation><xs:documentation>左右缎带</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="vertical-scroll"><xs:annotation><xs:documentation>垂直卷轴</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="horizontal-scroll"><xs:annotation><xs:documentation>水平卷轴</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="wave"><xs:annotation><xs:documentation>波形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="double-wave"><xs:annotation><xs:documentation>双波形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="plus"><xs:annotation><xs:documentation>加号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="math-plus"><xs:annotation><xs:documentation>数学加号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="math-minus"><xs:annotation><xs:documentation>数学减号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="math-multiply"><xs:annotation><xs:documentation>数学乘号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="math-divide"><xs:annotation><xs:documentation>数学除号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="math-equal"><xs:annotation><xs:documentation>数学等号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="math-not-equal"><xs:annotation><xs:documentation>数学不等号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="corner"><xs:annotation><xs:documentation>直角</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="diag-stripe"><xs:annotation><xs:documentation>对角条纹</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="frame"><xs:annotation><xs:documentation>框架</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="half-frame"><xs:annotation><xs:documentation>半框架</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="funnel"><xs:annotation><xs:documentation>漏斗</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="gear6"><xs:annotation><xs:documentation>6齿齿轮</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="gear9"><xs:annotation><xs:documentation>9齿齿轮</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="plaque"><xs:annotation><xs:documentation>匾额</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="plaque-tabs"><xs:annotation><xs:documentation>匾额标签</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="corner-tabs"><xs:annotation><xs:documentation>角标签</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="square-tabs"><xs:annotation><xs:documentation>方形标签</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="chart-plus"><xs:annotation><xs:documentation>图表加号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="chart-star"><xs:annotation><xs:documentation>图表星形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="chart-x"><xs:annotation><xs:documentation>图表X</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="no-smoking"><xs:annotation><xs:documentation>禁止吸烟</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="line-inv"><xs:annotation><xs:documentation>反转线</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 箭头类型 -->
+    <xs:simpleType name="ArrowType">
+        <xs:annotation>
+            <xs:documentation>箭头类型枚举定义</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="none"> <xs:annotation><xs:documentation>无箭头</xs:documentation></xs:annotation> </xs:enumeration>
+            <xs:enumeration value="arrow"> <xs:annotation><xs:documentation>基本箭头</xs:documentation></xs:annotation> </xs:enumeration>
+            <xs:enumeration value="empty-triangle"> <xs:annotation><xs:documentation>空心三角形箭头</xs:documentation></xs:annotation> </xs:enumeration>
+            <xs:enumeration value="solid-triangle"> <xs:annotation><xs:documentation>实心三角形箭头</xs:documentation></xs:annotation> </xs:enumeration>
+            <xs:enumeration value="empty-diamond"> <xs:annotation><xs:documentation>空心菱形箭头</xs:documentation></xs:annotation> </xs:enumeration>
+            <xs:enumeration value="solid-diamond"> <xs:annotation><xs:documentation>实心菱形箭头</xs:documentation></xs:annotation> </xs:enumeration>
+            <xs:enumeration value="empty-circle">  <xs:annotation><xs:documentation>空心圆形箭头</xs:documentation></xs:annotation> </xs:enumeration>
+            <xs:enumeration value="solid-circle"> <xs:annotation><xs:documentation>实心圆形箭头</xs:documentation></xs:annotation> </xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 箭头大小类型 -->
+    <xs:simpleType name="ArrowScaleType">
+        <xs:annotation>
+            <xs:documentation>箭头缩放等级</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="sm"><xs:annotation><xs:documentation>小, 对应于 ECMA-376 ST_LineEndLength / ST_LineEndWidth sm</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="med"><xs:annotation><xs:documentation>中, 对应于 ECMA-376 ST_LineEndLength / ST_LineEndWidth med</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="lg"><xs:annotation><xs:documentation>大, 对应于 ECMA-376 ST_LineEndLength / ST_LineEndWidth lg</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 不透明度类型, 范围 [0,1] -->
+    <xs:simpleType name="AlphaType">
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="0"/>
+            <xs:maxInclusive value="1"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 比例类型 [0,1] -->
+    <xs:simpleType name="RatioType">
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="0"/>
+            <xs:maxInclusive value="1"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 整数范围类型：[0,200] -->
+    <xs:simpleType name="Range0To200Type">
+        <xs:annotation>
+            <xs:documentation>
+                整数范围类型：[0,200]
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:nonNegativeInteger">
+            <xs:minInclusive value="0"/>
+            <xs:maxInclusive value="200"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 小数范围类型：[0,200] -->
+    <xs:simpleType name="Range0To200DotType">
+        <xs:annotation>
+            <xs:documentation>
+                小数范围类型：[0,200]
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="0"/>
+            <xs:maxInclusive value="200"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 顶点X坐标 -->
+    <xs:simpleType name="XType">
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="-8640"/>
+            <xs:maxInclusive value="10560"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 顶点Y坐标 -->
+    <xs:simpleType name="YType">
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="-4860"/>
+            <xs:maxInclusive value="5940"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 虚线类型 -->
+    <xs:simpleType name="DashArrayType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="solid"><xs:annotation><xs:documentation>实线</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="dash"><xs:annotation><xs:documentation>短划线</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="dot"><xs:annotation><xs:documentation>方点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="long-dash"><xs:annotation><xs:documentation>长划线</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="round-dot"><xs:annotation><xs:documentation>圆点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="sys-dot"><xs:annotation><xs:documentation>系统圆点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="sys-dash"><xs:annotation><xs:documentation>系统方点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="dash-dot"><xs:annotation><xs:documentation>短划线-点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="long-dash-dot"><xs:annotation><xs:documentation>长划线-点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="long-dash-dot-dot"><xs:annotation><xs:documentation>长划线-点-点</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- Chart值类型：只支持number和string -->
+    <xs:simpleType name="ChartValueType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="number"/>
+            <xs:enumeration value="string"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 图表类型枚举 -->
+    <xs:simpleType name="ChartType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="pie"><xs:annotation><xs:documentation>饼图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="column"><xs:annotation><xs:documentation>柱状图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bar"><xs:annotation><xs:documentation>条形图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="line"><xs:annotation><xs:documentation>折线图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="area"><xs:annotation><xs:documentation>面积图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="radar"><xs:annotation><xs:documentation>雷达图</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="combo"><xs:annotation><xs:documentation>组合图</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 填充样式类型 -->
+    <xs:complexType name="FillType">
+        <xs:annotation>
+            <xs:documentation>
+                填充类型:
+                - color: 颜色填充 (RGB/RGBA格式)
+                - fillImg: 填充图片
+                - fillPattern: 填充图案
+                优先级: fillPattern > fillImg > color
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs="0">
+            <xs:element name="fillImg" type="sml:FillImgType"/>
+            <xs:element name="fillPattern" type="sml:FillPatternType"/>
+            <xs:element name="fillColor" type="sml:FillColorType"/>
+        </xs:choice>
+    </xs:complexType>
+
+    <!-- Pattern 填充类型 -->
+    <xs:complexType name="FillPatternType">
+        <xs:annotation>
+            <xs:documentation>
+                背景图案配置
+                基础属性:
+                - type: 图案类型, 可选, 默认值为pct5
+                - foregroundColor: 前景色（纯色）, 可选, 默认跟随字体颜色
+                - backgroundColor: 背景色（纯色）, 可选, 默认为白色 rgb(255, 255, 255)
+                - alpha: 不透明度
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="type" type="sml:PatternType" use="optional" default="pct5"/>
+        <xs:attribute name="foregroundColor" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="backgroundColor" type="sml:SolidColor" use="optional" default="rgb(255, 255, 255)"/>
+        <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+    </xs:complexType>
+
+
+    <!-- Color 填充类型 -->
+    <xs:complexType name="FillColorType">
+        <xs:annotation>
+            <xs:documentation>
+                颜色填充配置
+                - color: 纯色和渐变色
+                - rotateWithShape: 是否随形状旋转, 只对渐变色有效
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:Color" use="optional"/>
+        <xs:attribute name="rotateWithShape" type="xs:boolean" use="optional" default="true"/>
+    </xs:complexType>
+
+
+    <!-- 填充图片类型 -->
+    <xs:complexType name="FillImgType">
+        <xs:annotation>
+            <xs:documentation>
+                图片填充配置
+                基础属性:
+                - src: 图片资源标识, 必填
+                - alt: 图片替代文本/名称, 可选, 默认为空
+                - rotateWithShape: 是否随形状旋转, 可选, 默认为true
+                - alpha: 图片不透明度, 可选, 范围[0, 1], 默认为1
+
+                拉伸填充属性:
+                - stretchLeft/stretchRight: 左右拉伸比例, 可选, 范围[-1000, 1000], (对应 -100000% 到 100000%)
+                - stretchTop/stretchBottom: 上下拉伸比例, 可选, 范围[-1000, 1000], (对应 -100000% 到 100000%)
+
+                平铺填充属性:
+                - flip: 平铺翻转方向, 可选
+                - align: 平铺对齐方式, 可选
+                - horizontalOffset/verticalOffset: 水平/垂直偏移, 可选
+                - horizontalRatio/verticalRatio: 水平/垂直缩放比例, 可选, 范围[0, 1]
+
+                注意: 拉伸和平铺属性不能同时使用
+            </xs:documentation>
+        </xs:annotation>
+
+        <!-- 基础属性 -->
+        <xs:attribute name="src" type="xs:string" use="required"/>
+        <xs:attribute name="alt" type="xs:string" use="optional"/>
+        <xs:attribute name="rotateWithShape" type="xs:boolean" use="optional" default="true"/>
+        <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+
+        <!-- 拉伸填充属性 -->
+        <xs:attribute name="stretchLeft" type="xs:double" use="optional" />
+        <xs:attribute name="stretchRight" type="xs:double" use="optional" />
+        <xs:attribute name="stretchTop" type="xs:double" use="optional" />
+        <xs:attribute name="stretchBottom" type="xs:double" use="optional" />
+
+        <!-- 平铺填充属性 -->
+        <xs:attribute name="flip" type="sml:TileFlipType" use="optional" />
+        <xs:attribute name="align" type="sml:TileAlignType" use="optional"/>
+        <xs:attribute name="horizontalOffset" type="xs:double" use="optional"/>
+        <xs:attribute name="verticalOffset" type="xs:double" use="optional"/>
+        <xs:attribute name="horizontalRatio" type="sml:RatioType" use="optional"/>
+        <xs:attribute name="verticalRatio" type="sml:RatioType" use="optional"/>
+    </xs:complexType>
+
+    <!-- 边框样式类型 -->
+    <xs:complexType name="BorderType">
+        <xs:annotation>
+            <xs:documentation>
+                通用边框样式类型
+                - color: 边框颜色
+                - width: 边框宽度（像素）
+                - dashArray: 虚线样式
+                - compound: 复合边框样式
+                - lineCap: 线端样式
+                - lineJoin: 线连接样式
+                - miterLimit: 斜接限制
+                - rotateWithShape: 是否随形状旋转
+                注意: 空边框标签表示默认无边框, 默认样式跟随不同的元素
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:Color" use="optional"/>
+        <!-- 边框宽度（像素）, 只支持整数 -->
+        <xs:attribute name="width" type="xs:nonNegativeInteger" use="optional"/>
+        <xs:attribute name="dashArray" type="sml:DashArrayType" use="optional" default="solid"/>
+        <xs:attribute name="compound" type="sml:CompoundType" use="optional" default="single"/>
+        <xs:attribute name="lineCap" type="sml:LineCapType" use="optional" default="butt"/>
+        <xs:attribute name="lineJoin" type="sml:LineJoinType" use="optional" default="round"/>
+        <xs:attribute name="miterLimit" type="xs:nonNegativeInteger" use="optional" default="8"/>
+        <xs:attribute name="rotateWithShape" type="xs:boolean" use="optional" default="true"/>
+
+    </xs:complexType>
+
+    <!-- 起始箭头样式类型 -->
+    <xs:complexType name="StartArrowStyleType">
+        <xs:annotation>
+            <xs:documentation>
+                起始箭头样式类型
+                - type: 起始箭头类型
+                - widthScale: 箭头宽度
+                - heightScale: 箭头高度
+                如果type为none, 则表示无箭头, 其他属性无效
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="type" type="sml:ArrowType" use="optional" default="none"/>
+        <xs:attribute name="widthScale" type="sml:ArrowScaleType" use="optional" />
+        <xs:attribute name="heightScale" type="sml:ArrowScaleType" use="optional" />
+    </xs:complexType>
+
+    <!-- 结束箭头样式类型 -->
+    <xs:complexType name="EndArrowStyleType">
+        <xs:annotation>
+            <xs:documentation>
+                结束箭头样式类型
+                - type: 结束箭头类型, 可选, 默认arrow
+                - widthScale: 箭头宽度
+                - heightScale: 箭头高度
+                如果type为none, 则表示无箭头, 其他属性无效
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="type" type="sml:ArrowType" use="optional" default="none"/>
+        <xs:attribute name="widthScale" type="sml:ArrowScaleType" use="optional" />
+        <xs:attribute name="heightScale" type="sml:ArrowScaleType" use="optional"/>
+    </xs:complexType>
+
+    <!-- 裁剪类型定义 -->
+    <xs:complexType name="CropType">
+        <xs:annotation>
+            <xs:documentation>
+                裁剪配置: 原图填充到预裁剪区域，再根据offset裁出最终尺寸
+
+                可选属性:
+                type: 裁剪形状，默认rect
+                leftOffset, rightOffset, topOffset, bottomOffset: 边缘偏移量(px)。正值向内裁剪，负值向外扩展留白，0值对齐边缘
+                presetHandlers: 控制点配置，对应ECMA预设形状的控制点。单个或多个数字，多个用逗号分隔。示例: type="rect"且presetHandlers="60"时为圆角矩形，圆角半径60px
+
+                说明: 指定offset时，若预裁剪尺寸与原图比例不一致会产生拉伸变形。无法确定原图比例时，不要指定offset
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="type" type="sml:ShapeType" use="optional" default="rect"/>
+        <xs:attribute name="leftOffset" type="xs:double" use="optional"/>
+        <xs:attribute name="rightOffset" type="xs:double" use="optional"/>
+        <xs:attribute name="topOffset" type="xs:double" use="optional"/>
+        <xs:attribute name="bottomOffset" type="xs:double" use="optional"/>
+        <xs:attribute name="presetHandlers" type="xs:string" use="optional" />
+    </xs:complexType>
+
+    <!-- 倒影效果类型 -->
+    <xs:complexType name="ReflectionType">
+        <xs:annotation>
+            <xs:documentation>
+                倒影效果配置
+                - alpha: 倒影不透明度, 取值范围 [0,1]
+                - offset: 倒影偏移量, 取值范围 [0,200]（倒影与原始元素的间距, 单位为像素）
+                - size: 倒影大小, 取值范围 [0,1]（相对于原始元素高度的比例）
+                注意:空标签表示默认阴影效果(alpha=1, offset=8, size=0.3)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1" />
+        <xs:attribute name="offset" type="sml:Range0To200Type" use="optional" default="8" />
+        <xs:attribute name="size" type="sml:RatioType" use="optional" default="0.3"/>
+    </xs:complexType>
+
+
+    <!-- 阴影效果类型 -->
+    <xs:complexType name="ShadowType">
+        <xs:annotation>
+            <xs:documentation>
+                阴影效果配置
+                基础属性:
+                - color: 阴影颜色
+                - offset: 阴影偏移距离（像素）, 取值范围 [0, 200]（阴影距离元素的距离, 单位为像素）
+                - angle: 阴影角度, 取值范围 [0, 360)（0度为向右, 90度为向下, 顺时针）
+                - blur: 模糊半径（像素）, 取值范围 [0, 100], 值越大越模糊
+                变形属性（可选）:
+                - hScale: 水平缩放比例, 取值范围 [-2, 2]（1为原始大小, 小于1缩小, 大于1放大）
+                - vScale: 垂直缩放比例, 取值范围 [-2, 2]（1为原始大小, 小于1缩小, 大于1放大）
+                - hSkew: 水平斜切角度, 取值范围 [-90, 90]（负值向左倾斜, 正值向右倾斜）
+                - vSkew: 垂直斜切角度, 取值范围 [-90, 90]（负值向上倾斜, 正值向下倾斜）
+                对齐方式:
+                - shadowAlign: 阴影相对于元素的对齐方式（默认为top-left左上对齐）
+                注意:空标签表示默认阴影效果(color=rgba(0, 0, 0, 0.25), offset=15, blur=35, angle=45)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:Color" use="optional" default="rgba(0, 0, 0, 0.25)"/>
+        <xs:attribute name="offset" type="sml:Range0To200DotType" use="optional" default="15" />
+        <xs:attribute name="blur" type="sml:PercentageType" use="optional" default="35"/>
+        <xs:attribute name="angle" type="sml:RotationType" use="optional" default="45"/>
+        <xs:attribute name="hScale" type="sml:ScaleType" use="optional" default="1"/>
+        <xs:attribute name="vScale" type="sml:ScaleType" use="optional" default="1"/>
+        <xs:attribute name="hSkew" type="sml:SkewType" use="optional" default="0"/>
+        <xs:attribute name="vSkew" type="sml:SkewType" use="optional" default="0"/>
+        <xs:attribute name="align" type="sml:ShadowAlignType" use="optional" default="top-left"/>
+    </xs:complexType>
+
+    <!-- 文本轮廓类型 -->
+    <xs:complexType name="OutlineType">
+        <xs:annotation>
+            <xs:documentation>
+                文本轮廓配置
+                属性:
+                - color: 轮廓颜色
+                - width: 轮廓宽度
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional" default="rgba(0, 0, 0, 0.25)"/>
+        <xs:attribute name="width" type="sml:NonNegativeDouble" use="optional" default="2"/>
+    </xs:complexType>
+
+    <!-- ==================== 主题相关类型 ==================== -->
+
+    <!-- 文本样式集合类型 -->
+    <xs:complexType name="TextStylesType">
+        <xs:sequence>
+            <xs:element name="title" minOccurs="0">
+                <xs:complexType>
+                    <xs:attribute name="fontFamily" type="sml:FontFamilyType" default="思源黑体"/>
+                    <xs:attribute name="fontSize" type="sml:FontSizeType" default="54"/>
+                    <xs:attribute name="fontColor" type="sml:Color" default="rgba(0, 0, 0, 0.25)"/>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="headline" minOccurs="0">
+                <xs:complexType>
+                    <xs:attribute name="fontFamily" type="sml:FontFamilyType" default="思源黑体"/>
+                    <xs:attribute name="fontSize" type="sml:FontSizeType" default="38"/>
+                    <xs:attribute name="fontColor" type="sml:Color" default="rgba(0, 0, 0, 0.25)"/>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="sub-headline" minOccurs="0">
+                <xs:complexType>
+                    <xs:attribute name="fontFamily" type="sml:FontFamilyType" default="思源黑体"/>
+                    <xs:attribute name="fontSize" type="sml:FontSizeType" default="32"/>
+                    <xs:attribute name="fontColor" type="sml:Color" default="rgba(0, 0, 0, 0.25)"/>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="body" minOccurs="0">
+                <xs:complexType>
+                    <xs:attribute name="fontFamily" type="sml:FontFamilyType" default="思源黑体"/>
+                    <xs:attribute name="fontSize" type="sml:FontSizeType" default="16"/>
+                    <xs:attribute name="fontColor" type="sml:Color" default="rgba(0, 0, 0, 0.25)"/>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="caption" minOccurs="0">
+                <xs:complexType>
+                    <xs:attribute name="fontFamily" type="sml:FontFamilyType" default="思源黑体"/>
+                    <xs:attribute name="fontSize" type="sml:FontSizeType" default="12"/>
+                    <xs:attribute name="fontColor" type="sml:Color" default="rgba(128, 128, 128, 1)"/>
+                </xs:complexType>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <!-- 主题类型 -->
+    <xs:complexType name="ThemeType">
+        <xs:annotation>
+            <xs:documentation>
+                主题类型
+                子元素:
+                - background: 背景填充, 可选, 默认白色rgba(255, 255, 255, 1)
+                - textStyles: 文本样式集合
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="background" type="sml:FillType" minOccurs="0"/>
+            <xs:element name="textStyles" type="sml:TextStylesType" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <!-- ==================== 幻灯片类型 ==================== -->
+    <xs:complexType name="SlideType">
+        <xs:annotation>
+            <xs:documentation>
+                单页幻灯片结构
+                子元素:
+                - style: 页面样式(背景色等), style的fill默认颜色为白色rgba(255, 255, 255, 1)
+                - data: 页面元素容器(shape/line/polyline/img/table/icon/chart/undefined)
+                - note: 演讲者备注
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- 样式 -->
+            <xs:element name="style" minOccurs="0">
+                <xs:complexType>
+                    <xs:all>
+                        <xs:element name="fill" type="sml:FillType" minOccurs="0"/>
+                    </xs:all>
+                </xs:complexType>
+            </xs:element>
+
+            <!-- 数据元素 -->
+            <xs:element name="data" minOccurs="0">
+                <xs:complexType>
+                    <xs:choice minOccurs="0" maxOccurs="unbounded">
+                        <xs:element ref="sml:shape"/>
+                        <xs:element ref="sml:line"/>
+                        <xs:element ref="sml:polyline"/>
+                        <xs:element ref="sml:img"/>
+                        <xs:element ref="sml:table"/>
+                        <xs:element ref="sml:icon"/>
+                        <xs:element ref="sml:chart"/>
+                        <xs:element ref="sml:undefined"/>
+                    </xs:choice>
+                </xs:complexType>
+            </xs:element>
+
+            <!-- 演讲者备注 -->
+            <xs:element name="note" minOccurs="0">
+                <xs:annotation>
+                    <xs:documentation>
+                        演讲者备注, 仅在演示模式显示
+                        支持完整的内容结构
+                        属性:
+                        - id: 备注唯一标识符
+
+                        子元素:
+                        - content: 备注文本内容容器
+                    </xs:documentation>
+                </xs:annotation>
+                <xs:complexType>
+                    <xs:all>
+                        <xs:element ref="sml:content" minOccurs="0"/>
+                    </xs:all>
+                    <xs:attribute name="id" type="xs:string" use="optional"/>
+                </xs:complexType>
+            </xs:element>
+        </xs:sequence>
+        <!-- id属性：幻灯片唯一标识符, 用途：便于引用和链接到特定幻灯片 -->
+        <xs:attribute name="id" type="xs:string" use="optional"/>
+    </xs:complexType>
+
+    <!-- ==================== 演示文稿类型（根元素） ==================== -->
+
+    <xs:complexType name="PresentationType">
+        <xs:annotation>
+            <xs:documentation>
+                演示文稿根类型, 包含整个幻灯片文档结构
+                - title: 演示文稿标题(可选)
+                - theme: 全局主题设置(可选)
+                - slide: 幻灯片页面(1-100页)
+                属性：
+                - id: 演示文稿唯一标识符(可选)
+                - width: 演示文稿宽度像素值(必选)
+                - height: 演示文稿高度像素值(必选)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="title" type="xs:string" minOccurs="0"/>
+            <xs:element name="theme" type="sml:ThemeType" minOccurs="0"/>
+            <xs:element name="slide" type="sml:SlideType" minOccurs="1" maxOccurs="100"/>
+        </xs:sequence>
+        <xs:attribute name="id" type="xs:string" use="optional"/>
+        <xs:attribute name="width" type="xs:positiveInteger" use="required"/>
+        <xs:attribute name="height" type="xs:positiveInteger" use="required"/>
+    </xs:complexType>
+
+    <!-- ==================== 根元素定义 ==================== -->
+
+    <xs:element name="presentation" type="sml:PresentationType"/>
+
+    <!-- ==================== 内容元素定义 ==================== -->
+    <xs:element name="content">
+        <xs:annotation>
+            <xs:documentation>
+                文本内容根容器, 用于描述结构化文本
+                属性说明:
+                - textType: 控制整体文本样式 (title/headline/sub-headline/body/caption)
+                - verticalAlign: 内容在容器中的垂直对齐方式
+                - paddingTop/Right/Bottom/Left: 内容与容器边缘的间距, 当位于shape中, shape的type为text时, padding默认值各为0, 当shape的type为其他时, padding默认值各为5, 当位于td中, padding默认值各为8
+                - lineSpacing: Block 级别行间距
+                - beforeLineSpacing/afterLineSpacing: 段落前/后的行间距, 可选, 默认值为fixed:0
+                - letterSpacing:  content 级别字间距
+                - textAlign: content 级别文本对齐方式, 可选, 当位于shape中, shape的type为text时, textAlign默认值为left, 当shape的type为其他时, textAlign默认值为center
+                - fontSize: content 级别字体大小
+                - fontFamily: content 级别字体族
+                - color: content 级别字体颜色
+                - backgroundColor: content 级别背景颜色
+                - bold: content 级别是否加粗
+                - italic: content 级别是否斜体
+                - strikethrough: content 级别是否删除线
+                - underline: content 级别是否下划线
+                - list: content 级别列表类型 bullet/number
+                - listStyle: content 级别列表样式
+                - anchorCenter: 控制文本对齐方式, 优先级高于 textAlign
+                - autoFit: 控制文本编辑溢出时处理策略
+                - baseline: 上标/下标, 相较于文本基线的偏移量
+                - wrap: 是否自动换行
+
+                注意：如果content子元素不指定属性, 默认继承content的属性值, 如果局部子元素指定了属性, 则使用局部属性值
+
+                子元素:
+                - p: 段落元素
+                - ul: 无序列表元素
+                - ol: 有序列表元素
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:sequence>
+                <xs:choice minOccurs="0" maxOccurs="unbounded">
+                    <xs:element ref="sml:p"/>
+                    <xs:element ref="sml:ul"/>
+                    <xs:element ref="sml:ol"/>
+                </xs:choice>
+            </xs:sequence>
+
+            <xs:attribute name="textType" type="sml:TextType" default="body"/>
+            <xs:attribute name="verticalAlign" type="sml:VerticalAlignType" default="middle"/>
+            <xs:attribute name="paddingTop" type="sml:PaddingValueType"/>
+            <xs:attribute name="paddingRight" type="sml:PaddingValueType"/>
+            <xs:attribute name="paddingBottom" type="sml:PaddingValueType"/>
+            <xs:attribute name="paddingLeft" type="sml:PaddingValueType"/>
+            <xs:attribute name="lineSpacing" type="sml:LineSpacingType" default="multiple:1.5"/>
+            <xs:attribute name="beforeLineSpacing" type="sml:LineSpacingType" default="fixed:0"/>
+            <xs:attribute name="afterLineSpacing" type="sml:LineSpacingType" default="fixed:0"/>
+            <xs:attribute name="letterSpacing" type="xs:double"/>
+            <xs:attribute name="textAlign" type="sml:TextAlignType"/>
+            <xs:attribute name="fontSize" type="sml:FontSizeType"/>
+            <xs:attribute name="fontFamily" type="sml:FontFamilyType"/>
+            <xs:attribute name="color" type="sml:Color"/>
+            <xs:attribute name="backgroundColor" type="sml:Color"/>
+            <xs:attribute name="bold" type="xs:boolean" />
+            <xs:attribute name="italic" type="xs:boolean" />
+            <xs:attribute name="strikethrough" type="xs:boolean" />
+            <xs:attribute name="underline" type="xs:boolean" />
+            <xs:attribute name="list" type="sml:ListType" default="none"/>
+            <xs:attribute name="listStyle" type="sml:ListStyleType" />
+            <xs:attribute name="anchorCenter" type="xs:boolean" default="false" /> <!-- 控制竖排文字是否在垂直方向保持居中 -->
+            <xs:attribute name="autoFit" type="sml:AutoFitType" default="no-auto-fit" />
+            <xs:attribute name="wrap" type="xs:boolean" default="true" />
+        </xs:complexType>
+    </xs:element>
+
+    <!-- ==================== 段落元素 ==================== -->
+    <xs:element name="p">
+        <xs:annotation>
+            <xs:documentation>
+                段落容器, 支持富文本内容
+                可包含纯文本和内联格式元素(br/strong/em/u/span/del/a/shadow/outline)
+                内联元素嵌套：所有内联元素均可包含纯文本或其他内联元素，以实现复杂的格式组合
+                元素自嵌套：除a元素外，其余内联元素支持自身嵌套，当shadow和outline自嵌套时，渲染效果遵循就近原则，以内层定义的样式为准
+
+                空格处理规则：
+                - 文本内的连续空格会被合并为单个空格
+                - 文本开头和结尾的空格会被忽略
+                - 需要保留空格时（多个连续、首尾位置），请使用&#32;字符
+                - 标签之间的空格和换行符会自动省略，换行请使用<br/>标签
+
+                制表符处理规则：
+                - 需要使用制表符时，请使用&#9;字符
+
+                富文本元素说明：
+                - br: 换行
+                - strong: 加粗
+                - em: 斜体
+                - u: 下划线
+                - span: 文本样式
+                - del: 删除线
+                - a: 超链接
+                - shadow: 文本阴影
+                - outline: 文本轮廓
+                属性说明:
+                - textAlign: 文本对齐方式
+                - lineSpacing: 行间距
+                - beforeLineSpacing/afterLineSpacing: 段落前/后的行间距
+                - letterSpacing: 字间距
+                - level: 段落级别, 取值范围 [1,10]
+                - list: 列表类型(bullet/number)
+                - listStyle: 列表样式
+                - marginLeft: 段落左侧缩进宽度
+                - indent: 首行缩进宽度
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
+                <xs:element ref="sml:br"/>
+                <xs:element ref="sml:strong"/>
+                <xs:element ref="sml:em"/>
+                <xs:element ref="sml:u"/>
+                <xs:element ref="sml:span"/>
+                <xs:element ref="sml:del"/>
+                <xs:element ref="sml:a"/>
+                <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:outline"/>
+            </xs:choice>
+            <xs:attribute name="textAlign" type="sml:TextAlignType" />
+            <xs:attribute name="lineSpacing" type="sml:LineSpacingType" default="multiple:1.5"/>
+            <xs:attribute name="beforeLineSpacing" type="sml:LineSpacingType" default="fixed:0"/>
+            <xs:attribute name="afterLineSpacing" type="sml:LineSpacingType" default="fixed:0"/>
+            <xs:attribute name="letterSpacing" type="sml:LetterSpacingType" default="0" />
+            <xs:attribute name="level" type="sml:LevelType" default="1"/>
+            <xs:attribute name="list" type="sml:ListType" default="none"/>
+            <xs:attribute name="listStyle" type="sml:ListStyleType"/>
+            <xs:attribute name="marginLeft" type="xs:double" use="optional" />
+            <xs:attribute name="indent" type="sml:NonNegativeDouble" use="optional"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- ==================== 列表元素 ==================== -->
+    <!-- 无序列表 -->
+    <xs:element name="ul">
+        <xs:annotation>
+            <xs:documentation>无序列表</xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="li" maxOccurs="unbounded">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element ref="sml:p"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+            </xs:sequence>
+            <xs:attribute name="listStyle" type="sml:UnorderedListStyle" default="circle-hollow-square"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 有序列表 -->
+    <xs:element name="ol">
+        <xs:annotation>
+            <xs:documentation>有序列表, 可指定序号</xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="li" maxOccurs="unbounded">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element ref="sml:p"/>
+                        </xs:sequence>
+                        <xs:attribute name="index" type="xs:integer"/>
+                    </xs:complexType>
+                </xs:element>
+            </xs:sequence>
+            <xs:attribute name="listStyle" type="sml:OrderedListStyle" default="number-lower-alpha-lower-roman"/>
+        </xs:complexType>
+    </xs:element>
+
+
+    <!-- ==================== 页面元素定义 ==================== -->
+
+    <!-- XSD 暂不支持的元素 -->
+    <xs:element name="undefined">
+        <xs:annotation>
+            <xs:documentation>
+                未定义元素, 用于处理不支持的形状类型, 当导出时遇到不支持的type数据时, 使用此元素替代
+                属性说明:
+                - id: 元素唯一标识符(可选)
+                - type: 原始的不支持的类型名称, 包括 video(视频), audio(音频), whiteboard(画板）
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="type" type="xs:string" use="optional"/>
+        </xs:complexType>
+    </xs:element>
+
+
+    <!-- 图形元素 -->
+    <xs:element name="shape">
+        <xs:annotation>
+            <xs:documentation>
+                图形元素, 支持多种形状和文本内容
+
+                属性说明:
+                - id: 图形唯一标识符(可选)
+                - type: 图形类型 (rect/ellipse/triangle等, 其中text是文本框), 必须。
+                - topLeftX/topLeftY: 左上角坐标, 必须
+                - width/height: 宽高尺寸, 必须
+                - rotation: 旋转角度[0, 360)
+                - path: 自定义路径(仅当type=custom时有效), 可选
+                - presetHandlers: 图形控制点设置(例如：圆角设置), 可选
+                - flipX/flipY: 水平/垂直翻转, 可选, 默认false
+                - vert: 文本垂直对齐方式, 可选
+                - alpha: 不透明度[0,1], 可选
+                子元素:
+                - fill: 填充样式, 可选, 无fill标签表示无填充, 空fill标签表示默认填充样式(type="text"的默认填充颜色为透明rgba(255, 255, 255, 0), 其他类型的默认填充颜色为rgba(222, 224, 227, 1)))
+                - border: 边框样式, 可选
+                - 无border标签: 无边框
+                - 空border标签: 默认边框
+                - type="text": 透明边框 rgba(255, 255, 255, 0)
+                - type为其他值: 纯色取 S+10%, B-10%；渐变色各颜色停靠点取 S+10%, B-10%；图片/图案无边框
+                - content: 图形内的文本内容, 可选, 富文本
+                - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
+                - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="fill" type="sml:FillType" minOccurs="0"/>
+                <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
+                <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
+                <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element ref="sml:content" minOccurs="0"/>
+            </xs:all>
+
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="type" type="sml:ShapeType" use="required"/>
+            <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
+            <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="rotation" type="sml:RotationType" use="optional" default="0"/>
+            <xs:attribute name="path" type="xs:string" use="optional"/>
+            <xs:attribute name="presetHandlers" type="xs:string" use="optional"/>
+            <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="vert" type="sml:TextVertical" use="optional" default="horz"/>
+            <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 线条元素 -->
+    <xs:element name="line">
+        <xs:annotation>
+            <xs:documentation>
+                线条/箭头元素, 支持多种样式和箭头类型
+
+                属性说明:
+                - type: 线条类型
+                - id: 线条唯一标识符(可选)
+                - startX/startY: 起点坐标
+                - endX/endY: 终点坐标
+                - alpha: 不透明度[0,1]
+
+                坐标说明:
+                - startX/startY 和 endX/endY 都是绝对坐标
+                - 起点 = (startX, startY)
+                - 终点 = (endX, endY)
+
+                子元素:
+                - border: 线条样式(颜色/宽度/虚线等), 必需, 线条必须有边框样式, 空border标签表示默认样式(颜色:rgba(43, 47, 54, 1)), 宽度: 2px)
+                - startArrow: 起点箭头, 可选
+                - endArrow: 终点箭头, 可选
+                - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
+                - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="border" type="sml:BorderType" minOccurs="1"/>
+                <xs:element name="startArrow" type="sml:StartArrowStyleType" minOccurs="0"/>
+                <xs:element name="endArrow" type="sml:EndArrowStyleType" minOccurs="0"/>
+                <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0" />
+            </xs:all>
+            <xs:attribute name="type" type="sml:LineType" use="optional" default="straight-connector1"/>
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="startX" type="sml:XType" use="required"/>
+            <xs:attribute name="startY" type="sml:YType" use="required"/>
+            <xs:attribute name="endX" type="sml:XType" use="required"/>
+            <xs:attribute name="endY" type="sml:YType" use="required"/>
+            <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 折线/曲线元素 -->
+    <xs:element name="polyline">
+        <xs:annotation>
+            <xs:documentation>
+                折线/曲线元素, 支持多种连接类型和自定义路径
+
+                属性说明:
+                - id: 折线唯一标识符(可选)
+                - type: 线条类型, 参考 LineType 枚举
+                - topLeftX/topLeftY: 外接矩形左上角坐标
+                - width/height: 外接矩形宽高尺寸
+                - presetHandlers: 控制折线/曲线的调节点位置
+                - rotation: 旋转角度 [0,360) 度)
+                - flipX/flipY: 水平/垂直翻转
+                - alpha: 不透明度[0,1]
+
+                坐标系统说明:
+                - topLeftX/topLeftY 定义外接矩形的位置
+                - width/height 定义外接矩形的大小
+
+                子元素:
+                - border: 线条样式(颜色/宽度/虚线等), 必需, 线条必须有边框样式, 空border标签表示默认样式(颜色:rgba(43, 47, 54, 1)), 宽度: 2px)
+                - startArrow: 起点箭头, 可选
+                - endArrow: 终点箭头, 可选
+                - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
+                - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="border" type="sml:BorderType" minOccurs="1"/>
+                <xs:element name="startArrow" type="sml:StartArrowStyleType" minOccurs="0"/>
+                <xs:element name="endArrow" type="sml:EndArrowStyleType" minOccurs="0"/>
+                <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
+            </xs:all>
+
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="type" type="sml:PolylineType" use="optional" default="bent-connector2"/>
+            <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
+            <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="presetHandlers" type="xs:string" use="optional"/>
+            <xs:attribute name="rotation" type="sml:RotationType" use="optional" default="0"/>
+            <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 图片元素 -->
+    <xs:element name="img">
+        <xs:annotation>
+            <xs:documentation>
+                必需属性:
+                src: 图片token
+                topLeftX, topLeftY: 显示位置左上角坐标(裁剪后)
+                width, height: 显示尺寸(裁剪后)
+
+                可选属性:
+                id: 唯一标识符
+                alt: 描述文本
+                rotation: 旋转角度[0, 360)
+                flipX, flipY: 水平/垂直翻转
+                exposure, contrast, saturation, temperature: 图像调整参数
+                alpha: 不透明度[0, 1]
+
+                可选子元素:
+                crop: 裁剪。无标签或所有offset未设置时从左上角自适应裁到width×height
+                reflection: 倒影。无标签代表无倒影,空标签代表使用默认样式
+                shadow: 阴影。无标签代表无阴影,空标签代表使用默认样式
+                border: 边框。无标签代表无边框,空标签代表使用默认样式(颜色: rgba(43, 47, 54, 1), 宽度: 2)
+                fill: 填充。无标签代表无填充,空标签代表使用默认样式(颜色: rgba(91, 155, 213, 1))
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="crop" type="sml:CropType" minOccurs="0"/>
+                <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
+                <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
+                <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="fill" type="sml:FillType" minOccurs="0"/>
+            </xs:all>
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="src" type="xs:string" use="required"/>
+            <xs:attribute name="alt" type="xs:string" use="optional"/>
+            <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
+            <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="rotation" type="sml:RotationType" use="optional" default="0"/>
+            <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="exposure" type="xs:integer" use="optional" default="0"/>
+            <xs:attribute name="contrast" type="xs:integer" use="optional" default="0"/>
+            <xs:attribute name="saturation" type="xs:integer" use="optional" default="0"/>
+            <xs:attribute name="temperature" type="xs:integer" use="optional" default="0"/>
+            <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 图标元素 -->
+    <xs:element name="icon">
+        <xs:annotation>
+            <xs:documentation>
+                图标元素, 支持外部图标资源和样式配置
+                属性:
+                - id: 图标唯一标识符(可选)
+                - iconType: 图标类型, 来自iconpark图标库
+                - width/height: 显示尺寸
+                - rotation: 旋转角度
+                - topLeftX/topLeftY: 左上角坐标
+                - flipX/flipY: 水平/垂直翻转
+                - alpha: 不透明度[0,1]
+
+                子元素:
+                - fill: 填充样式, 无fill标签代表不填充, 空fill标签代表使用默认样式(默认颜色填充, 颜色为rgba(208, 211, 214, 1))
+                - border: 边框样式, 无border标签代表无边框, 空border标签代表使用默认样式(默认实线边框, 颜色为rgba(51, 51, 51, 1), 宽度为3)
+                - reflection: 倒影样式, 无reflection标签代表无倒影, 空reflection标签代表使用默认样式
+                - shadow: 阴影样式, 无shadow标签代表无阴影, 空shadow标签代表使用默认样式
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="fill" type="sml:FillType" minOccurs="0"/>
+                <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
+                <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
+                <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+            </xs:all>
+
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="iconType" type="xs:string" use="optional" default="iconpark/Base/setting.svg"/>
+            <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
+            <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="rotation" type="sml:RotationType" use="optional" default="0"/>
+            <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 表格元素 -->
+    <xs:element name="table">
+        <xs:annotation>
+            <xs:documentation>
+                表格元素, 用于展示结构化数据
+                边框规则：
+                - 后设置优先：相邻单元格线条只有一个颜色, 如果均设置, 则右下单元格的设置覆盖左上单元格
+                - 不设置边框属性时使用默认样式
+
+                填充规则：
+                - 单元格可设置独立填充样式
+                - 不设置填充属性时使用表格默认样式
+
+                table 属性:
+                - id: 表格唯一标识符(可选)
+                - topLeftX/topLeftY: 左上角坐标
+                - flipX/flipY: 水平/垂直翻转
+                table 子元素:
+                - colgroup: 列组元素, 用于定义列的宽度
+                - tr: 行元素, 包含多个单元格
+
+                colgroup 子元素:
+                - col: 列元素
+                col 属性:
+                - span: 列跨数, 默认为1, 可选
+                - width: 列宽度, 默认值为110, 可选
+
+                tr 属性:
+                - height: 行高, 默认为单元格高度
+                tr 子元素:
+                - td: 单元格元素, 用于显示数据
+
+                td 属性:
+                - id: 单元格唯一标识符(可选)
+                - colspan: 单元格跨列数, 默认为1
+                - rowspan: 单元格跨行数, 默认为1
+                td 子元素:
+                - borderTop/borderRight/borderBottom/borderLeft: 单元格边框样式, 无border标签代表无边框, 空border标签代表使用默认样式(实线边框, 颜色为rgba(221, 222, 223, 1), 宽度为1)
+                - fill: 单元格填充样式, 无fill标签代表不填充, 空fill标签代表使用默认样式(默认颜色填充, 颜色为rgba(255, 255, 255, 1))
+                - content: 单元格内容
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="colgroup" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="col" maxOccurs="unbounded">
+                                <xs:complexType>
+                                    <xs:attribute name="span" type="sml:PositiveSize" use="optional" default="1"/>
+                                    <xs:attribute name="width" type="sml:PositiveSize" use="optional" default="110"/>
+                                </xs:complexType>
+                            </xs:element>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="tr" maxOccurs="unbounded">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="td" maxOccurs="unbounded">
+                                <xs:complexType>
+                                    <xs:all>
+                                        <xs:element name="borderTop" type="sml:BorderType" minOccurs="0"/>
+                                        <xs:element name="borderRight" type="sml:BorderType" minOccurs="0"/>
+                                        <xs:element name="borderBottom" type="sml:BorderType" minOccurs="0"/>
+                                        <xs:element name="borderLeft" type="sml:BorderType" minOccurs="0"/>
+                                        <xs:element name="fill" type="sml:FillType" minOccurs="0"/>
+                                        <xs:element ref="sml:content" minOccurs="0"/>
+                                    </xs:all>
+                                    <xs:attribute name="id" type="xs:string" use="optional"/>
+                                    <xs:attribute name="colspan" type="sml:PositiveSize" use="optional" default="1"/>
+                                    <xs:attribute name="rowspan" type="sml:PositiveSize" use="optional" default="1"/>
+                                </xs:complexType>
+                            </xs:element>
+                        </xs:sequence>
+                        <xs:attribute name="height" type="sml:PositiveSize" use="optional" default="37"/>
+                    </xs:complexType>
+                </xs:element>
+            </xs:sequence>
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
+            <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
+            <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- ==================== 内联元素 ==================== -->
+    <xs:element name="br">
+        <xs:annotation>
+            <xs:documentation>换行符, 强制换行, 以<br/>形式出现</xs:documentation>
+        </xs:annotation>
+        <xs:complexType/>
+    </xs:element>
+
+    <xs:element name="strong">
+        <xs:annotation>
+            <xs:documentation>粗体/加重文本</xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
+                <xs:element ref="sml:br"/>
+                <xs:element ref="sml:strong"/>
+                <xs:element ref="sml:em"/>
+                <xs:element ref="sml:u"/>
+                <xs:element ref="sml:span"/>
+                <xs:element ref="sml:del"/>
+                <xs:element ref="sml:a"/>
+                <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:outline"/>
+            </xs:choice>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 阴影内联元素 -->
+    <xs:element name="shadow">
+        <xs:annotation>
+            <xs:documentation>
+                文本阴影效果内联元素
+                可以对文本的特定部分应用阴影效果, 内联元素shadow只支持基础属性
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:complexContent>
+                <xs:extension base="sml:ShadowType">
+                    <xs:choice minOccurs="0" maxOccurs="unbounded">
+                        <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:strong"/>
+                        <xs:element ref="sml:em"/>
+                        <xs:element ref="sml:u"/>
+                        <xs:element ref="sml:span"/>
+                        <xs:element ref="sml:del"/>
+                        <xs:element ref="sml:a"/>
+                        <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:outline"/>
+                    </xs:choice>
+                </xs:extension>
+            </xs:complexContent>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 文本轮廓内联元素 -->
+    <xs:element name="outline">
+        <xs:annotation>
+            <xs:documentation>
+                文本轮廓效果内联元素
+                可以对文本的特定部分应用轮廓效果
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:complexContent>
+                <xs:extension base="sml:OutlineType">
+                    <xs:choice minOccurs="0" maxOccurs="unbounded">
+                        <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:strong"/>
+                        <xs:element ref="sml:em"/>
+                        <xs:element ref="sml:u"/>
+                        <xs:element ref="sml:span"/>
+                        <xs:element ref="sml:del"/>
+                        <xs:element ref="sml:a"/>
+                        <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:outline"/>
+                    </xs:choice>
+                </xs:extension>
+            </xs:complexContent>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="em">
+        <xs:annotation>
+            <xs:documentation>斜体/强调文本</xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
+                <xs:element ref="sml:br"/>
+                <xs:element ref="sml:strong"/>
+                <xs:element ref="sml:em"/>
+                <xs:element ref="sml:u"/>
+                <xs:element ref="sml:span"/>
+                <xs:element ref="sml:del"/>
+                <xs:element ref="sml:a"/>
+                <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:outline"/>
+            </xs:choice>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="u">
+        <xs:annotation>
+            <xs:documentation>下划线文本</xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
+                <xs:element ref="sml:br"/>
+                <xs:element ref="sml:strong"/>
+                <xs:element ref="sml:em"/>
+                <xs:element ref="sml:u"/>
+                <xs:element ref="sml:span"/>
+                <xs:element ref="sml:del"/>
+                <xs:element ref="sml:a"/>
+                <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:outline"/>
+            </xs:choice>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="del">
+        <xs:annotation>
+            <xs:documentation>删除线文本</xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
+                <xs:element ref="sml:br"/>
+                <xs:element ref="sml:strong"/>
+                <xs:element ref="sml:em"/>
+                <xs:element ref="sml:u"/>
+                <xs:element ref="sml:span"/>
+                <xs:element ref="sml:del"/>
+                <xs:element ref="sml:a"/>
+                <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:outline"/>
+            </xs:choice>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="span">
+        <xs:annotation>
+            <xs:documentation>
+                内联样式容器
+                属性: color (文本颜色), backgroundColor (背景颜色)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
+                <xs:element ref="sml:br"/>
+                <xs:element ref="sml:strong"/>
+                <xs:element ref="sml:em"/>
+                <xs:element ref="sml:u"/>
+                <xs:element ref="sml:span"/>
+                <xs:element ref="sml:del"/>
+                <xs:element ref="sml:a"/>
+                <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:outline"/>
+            </xs:choice>
+            <xs:attribute name="color" type="sml:Color" use="optional"/>
+            <xs:attribute name="backgroundColor" type="sml:Color" use="optional"/>
+            <xs:attribute name="fontSize" type="sml:FontSizeType" use="optional"/>
+            <xs:attribute name="fontFamily" type="sml:FontFamilyType" use="optional"/>
+            <xs:attribute name="bold" type="xs:boolean" use="optional" />
+            <xs:attribute name="italic" type="xs:boolean" use="optional" />
+            <xs:attribute name="underline" type="xs:boolean" use="optional" />
+            <xs:attribute name="strikethrough" type="xs:boolean" use="optional" />
+            <xs:attribute name="baseline" type="xs:double" use="optional" />
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="a">
+        <xs:annotation>
+            <xs:documentation>
+                超链接元素
+                属性: href (仅支持 http/https)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
+                <xs:element ref="sml:br"/>
+                <xs:element ref="sml:strong"/>
+                <xs:element ref="sml:em"/>
+                <xs:element ref="sml:u"/>
+                <xs:element ref="sml:span"/>
+                <xs:element ref="sml:del"/>
+                <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:outline"/>
+            </xs:choice>
+            <xs:attribute name="href" use="required">
+                <xs:simpleType>
+                    <xs:restriction base="xs:anyURI">
+                        <xs:pattern value="(https?|s?ftp|ftps|nfs|ssh)://\S+"/>
+                        <xs:pattern value="[\w.-]+[.:]\S*"/>
+                        <xs:pattern value="(mailto:)?\S+@\S+\.\w{2,}"/>
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:attribute>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 字符间距类型 -->
+    <xs:simpleType name="LetterSpacingType">
+        <xs:annotation>
+            <xs:documentation>字符间距, 单位: px, 取值范围 [-1000, 1000]</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="-1000"/>
+            <xs:maxInclusive value="1000"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="LineSpacingType">
+        <xs:annotation>
+            <xs:documentation>
+                行间距类型, 支持固定行距和多倍行距两种模式。
+                - fixed: 固定行距, 单位为px, 例如 "fixed:20" 表示20px固定行距
+                - multiple: 多倍行距，相对于行内最大字号的倍数, 例如 "multiple:1.5" 表示1.5倍行距, 表示 1.5 * maxFontSize 行距
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:pattern value="fixed:\d+(\.\d+)?|multiple:\d+(\.\d+)?"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 缩进层级类型 -->
+    <xs:simpleType name="LevelType">
+        <xs:annotation>
+            <xs:documentation>段落缩进层级, 取值范围 [1, 10]</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:integer">
+            <xs:minInclusive value="1"/>
+            <xs:maxInclusive value="10"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 平铺对齐方式枚举 -->
+    <xs:simpleType name="TileAlignType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="left-top"/>
+            <xs:enumeration value="top"/>
+            <xs:enumeration value="right-top"/>
+            <xs:enumeration value="left"/>
+            <xs:enumeration value="center"/>
+            <xs:enumeration value="right"/>
+            <xs:enumeration value="left-bottom"/>
+            <xs:enumeration value="bottom"/>
+            <xs:enumeration value="right-bottom"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 平铺翻转方向枚举 -->
+    <xs:simpleType name="TileFlipType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="none"/>
+            <xs:enumeration value="horizontal"/>
+            <xs:enumeration value="vertical"/>
+            <xs:enumeration value="both"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 内边距值类型 -->
+    <xs:simpleType name="PaddingValueType">
+        <xs:annotation>
+            <xs:documentation>单个内边距值, 单位: px, 取值范围 [0, 1584]</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="0"/>
+            <xs:maxInclusive value="1584"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 有序列表样式枚举 -->
+    <xs:simpleType name="OrderedListStyle">
+        <xs:annotation>
+            <xs:documentation>有序列表样式</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="number-lower-alpha-lower-roman"><xs:annotation><xs:documentation>1. a. i. - 数字/小写字母/小写罗马</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="number-lower-alpha-lower-roman-paren"><xs:annotation><xs:documentation>1) a) i) - 带括号版本</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="hierarchical-number"><xs:annotation><xs:documentation>1. 1.1. 1.1.1. - 多级数字</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="upper-alpha-lower-alpha-lower-roman"><xs:annotation><xs:documentation>A. a. i. - 大写字母/小写字母/小写罗马</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="upper-roman-upper-alpha-number"><xs:annotation><xs:documentation>I. A. 1. - 大写罗马/大写字母/数字</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="zero-padded-lower-alpha-lower-roman"><xs:annotation><xs:documentation>01. a. i. - 补零数字/小写字母/小写罗马</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="circle-number"><xs:annotation><xs:documentation> 圆圈数字</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="lower-alpha-paren"><xs:annotation><xs:documentation>a) b) c) - 小写字母带括号</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="lower-alpha-dot"><xs:annotation><xs:documentation>a. b. c. - 小写字母带点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="chinese-formal"><xs:annotation><xs:documentation>一、二、三、 - 中文数字</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+    <!-- 无序列表样式枚举 -->
+    <xs:simpleType name="UnorderedListStyle">
+        <xs:annotation>
+            <xs:documentation>无序列表样式</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="circle-hollow-square"><xs:annotation><xs:documentation>实心圆 空心圆 实心方形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="diamond-triangle-square"><xs:annotation><xs:documentation>棱形 三角形 实心方形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="hollow-square-all"><xs:annotation><xs:documentation>空心方形 空心方形 空心方形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="arrow-diamond-circle"><xs:annotation><xs:documentation>右箭头 实心棱形 实心圆形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="star-hollow-circle-square"><xs:annotation><xs:documentation>实心五角星 空心圆形 实心方形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="triangle-hollow-circle-square"><xs:annotation><xs:documentation>三角形 空心圆形 实心方形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="solid-square-all"><xs:annotation><xs:documentation>实心方形 实心方形 实心方形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="solid-diamond-all"><xs:annotation><xs:documentation>实心菱形 实心菱形 实心菱形</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="check-all"><xs:annotation><xs:documentation>对勾 对勾 对勾</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 列表样式（二选一） -->
+    <xs:simpleType name="ListStyleType">
+        <xs:union memberTypes="sml:OrderedListStyle sml:UnorderedListStyle"/>
+    </xs:simpleType>
+
+    <!-- 百分比类型 [0,100],支持小数 -->
+    <xs:simpleType name="PercentageType">
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="0"/>
+            <xs:maxInclusive value="100"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 复合类型 -->
+    <xs:simpleType name="CompoundType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="single"><xs:annotation><xs:documentation>单线</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="double"><xs:annotation><xs:documentation>双线, 每条线宽度相等, 都是1/3边框宽, 中间间隔1/3边框宽</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="thin-thick"><xs:annotation><xs:documentation>双线, 细 - 粗, 粗线=3/5边框宽, 细线=1/5边框宽, 间隔=1/5边框宽</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="thick-thin"><xs:annotation><xs:documentation>双线, 粗 - 细, 粗线=3/5边框宽, 细线=1/5边框宽, 间隔=1/5边框宽</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="three"><xs:annotation><xs:documentation>三线, 细 - 粗 - 细, 粗线=1/3边框宽, 细线=1/6边框宽, 间隔=1/6边框宽</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 线端类型 -->
+    <xs:simpleType name="LineCapType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="butt"><xs:annotation><xs:documentation>平</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="square"><xs:annotation><xs:documentation>方</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="round"><xs:annotation><xs:documentation>圆</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 连接类型 -->
+    <xs:simpleType name="LineJoinType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="round"><xs:annotation><xs:documentation>圆</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bevel"><xs:annotation><xs:documentation>斜</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="miter"><xs:annotation><xs:documentation>尖</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 阴影对齐方式枚举 -->
+    <xs:simpleType name="ShadowAlignType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="top-left"><xs:annotation><xs:documentation>左上对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="top"><xs:annotation><xs:documentation>顶部居中对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="top-right"><xs:annotation><xs:documentation>右上对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="left"><xs:annotation><xs:documentation>左侧居中对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="center"><xs:annotation><xs:documentation>完全居中对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="right"><xs:annotation><xs:documentation>右侧居中对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bottom-left"><xs:annotation><xs:documentation>左下对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bottom"><xs:annotation><xs:documentation>底部居中对齐</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="bottom-right"><xs:annotation><xs:documentation>右下对齐</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 缩放比例类型 -->
+    <xs:simpleType name="ScaleType">
+        <xs:annotation>
+            <xs:documentation>缩放比例, 取值范围 [-2,2]（1为原始大小, 小于1缩小, 大于1放大）</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="-2"/>
+            <xs:maxInclusive value="2"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 斜切角度类型 -->
+    <xs:simpleType name="SkewType">
+        <xs:annotation>
+            <xs:documentation>斜切角度, 取值范围 [-90,90]（单位为度）</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:double">
+            <xs:minInclusive value="-90"/>
+            <xs:maxInclusive value="90"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 文本垂直对齐方式枚举 -->
+    <xs:simpleType name="TextVertical">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="horz"><xs:annotation><xs:documentation>水平</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="vert"><xs:annotation><xs:documentation>旋转90度</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="vert270"><xs:annotation><xs:documentation>旋转270度</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="word-art-vert-rtl"><xs:annotation><xs:documentation>堆积从右往左</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="word-art-vert"><xs:annotation><xs:documentation>堆积</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="ea-vert"><xs:annotation><xs:documentation>垂直</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 列表类型 -->
+    <xs:simpleType name="ListType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="bullet"/>
+            <xs:enumeration value="number"/>
+            <xs:enumeration value="none"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 图案类型枚举 -->
+    <xs:simpleType name="PatternType">
+        <xs:restriction base="xs:string">
+            <!-- 百分比图案 -->
+            <xs:enumeration value="pct5"/>
+            <xs:enumeration value="pct10"/>
+            <xs:enumeration value="pct20"/>
+            <xs:enumeration value="pct25"/>
+            <xs:enumeration value="pct30"/>
+            <xs:enumeration value="pct40"/>
+            <xs:enumeration value="pct50"/>
+            <xs:enumeration value="pct60"/>
+            <xs:enumeration value="pct70"/>
+            <xs:enumeration value="pct75"/>
+            <xs:enumeration value="pct80"/>
+            <xs:enumeration value="pct90"/>
+            <!-- 对角线图案 -->
+            <xs:enumeration value="lt-dn-diag"/>
+            <xs:enumeration value="lt-up-diag"/>
+            <xs:enumeration value="dk-dn-diag"/>
+            <xs:enumeration value="dk-up-diag"/>
+            <xs:enumeration value="wd-dn-diag"/>
+            <xs:enumeration value="wd-up-diag"/>
+            <xs:enumeration value="dn-diag"/>
+            <xs:enumeration value="up-diag"/>
+            <!-- 水平/垂直线条 -->
+            <xs:enumeration value="lt-vert"/>
+            <xs:enumeration value="lt-horz"/>
+            <xs:enumeration value="nar-vert"/>
+            <xs:enumeration value="nar-horz"/>
+            <xs:enumeration value="dk-vert"/>
+            <xs:enumeration value="dk-horz"/>
+            <xs:enumeration value="horz"/>
+            <xs:enumeration value="vert"/>
+            <!-- 虚线图案 -->
+            <xs:enumeration value="dash-dn-diag"/>
+            <xs:enumeration value="dash-up-diag"/>
+            <xs:enumeration value="dash-horz"/>
+            <xs:enumeration value="dash-vert"/>
+            <!-- 装饰图案 -->
+            <xs:enumeration value="sm-confetti"/>
+            <xs:enumeration value="lg-confetti"/>
+            <xs:enumeration value="zig-zag"/>
+            <xs:enumeration value="wave"/>
+            <!-- 砖块/编织图案 -->
+            <xs:enumeration value="diag-brick"/>
+            <xs:enumeration value="horz-brick"/>
+            <xs:enumeration value="weave"/>
+            <xs:enumeration value="plaid"/>
+            <!-- 点状图案 -->
+            <xs:enumeration value="divot"/>
+            <xs:enumeration value="dot-grid"/>
+            <xs:enumeration value="dot-dmnd"/>
+            <!-- 网格/格子图案 -->
+            <xs:enumeration value="sm-grid"/>
+            <xs:enumeration value="lg-grid"/>
+            <xs:enumeration value="sm-check"/>
+            <xs:enumeration value="lg-check"/>
+            <!-- 菱形图案 -->
+            <xs:enumeration value="open-dmnd"/>
+            <xs:enumeration value="solid-dmnd"/>
+            <!-- 十字图案 -->
+            <xs:enumeration value="cross"/>
+            <xs:enumeration value="diag-cross"/>
+            <!-- 其他图案 -->
+            <xs:enumeration value="shingle"/>
+            <xs:enumeration value="trellis"/>
+            <xs:enumeration value="sphere"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 以下是图表相关定义 -->
+    <!-- ==================== 基础枚举类型 ==================== -->
+    <xs:simpleType name="ChartLineStyleType">
+        <xs:annotation>
+            <xs:documentation>
+                图表线条样式枚举
+                可选值: solid(实线) | dashed(虚线) | dotted(点线)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="solid"/>
+            <xs:enumeration value="dashed"/>
+            <xs:enumeration value="dotted"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartPointShapeType">
+        <xs:annotation>
+            <xs:documentation>
+                图表数据点形状枚举
+                可选值: circle(圆形) | square(正方形) | triangle(三角形) | diamond(菱形) | rect(矩形)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="circle"/>
+            <xs:enumeration value="square"/>
+            <xs:enumeration value="triangle"/>
+            <xs:enumeration value="diamond"/>
+            <xs:enumeration value="rect"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartLegendPositionType">
+        <xs:annotation>
+            <xs:documentation>
+                图表图例位置枚举
+                可选值: top(顶部) | bottom(底部) | left(左侧) | right(右侧)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="top"/>
+            <xs:enumeration value="bottom"/>
+            <xs:enumeration value="left"/>
+            <xs:enumeration value="right"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartDataLabelPositionType">
+        <xs:annotation>
+            <xs:documentation>
+                数据标签位置
+
+                - pie: outside | inside，默认值 outside
+                - column/bar: outside(柱外部) | center(柱内中间) | top(柱内顶部) | bottom(柱内底部)，默认值 outside
+                - line/area/radar: 默认值 auto，且建议只设置 auto
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="auto"/>
+            <xs:enumeration value="top"/>
+            <xs:enumeration value="bottom"/>
+            <xs:enumeration value="left"/>
+            <xs:enumeration value="right"/>
+            <xs:enumeration value="center"/>
+            <xs:enumeration value="inside"/>
+            <xs:enumeration value="outside"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartRadarShapeType">
+        <xs:annotation>
+            <xs:documentation>
+                雷达图外轮廓形状枚举
+                可选值: polygon(多边形) | circle(圆形)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="polygon"/>
+            <xs:enumeration value="circle"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartAxisLabelAngleType">
+        <xs:annotation>
+            <xs:documentation>
+                坐标轴标签旋转角度枚举
+                可选值: -90 | -45 | 0 | 45 | 90 (单位：度)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:integer">
+            <xs:enumeration value="-90"/>
+            <xs:enumeration value="-45"/>
+            <xs:enumeration value="0"/>
+            <xs:enumeration value="45"/>
+            <xs:enumeration value="90"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartTextAlignType">
+        <xs:annotation>
+            <xs:documentation>
+                图表文本对齐方式枚举
+                可选值: left(左对齐) | center(居中) | right(右对齐)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="left"/>
+            <xs:enumeration value="center"/>
+            <xs:enumeration value="right"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartAxisKindType">
+        <xs:annotation>
+            <xs:documentation>
+                图表坐标轴类型
+                可选值: x | y | angle | radius
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="x"/>
+            <xs:enumeration value="y"/>
+            <xs:enumeration value="angle"/>
+            <xs:enumeration value="radius"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartYAxisPositionType">
+        <xs:annotation>
+            <xs:documentation>
+                图表Y轴位置枚举
+                可选值: left(左侧) | right(右侧)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="left"/>
+            <xs:enumeration value="right"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="ChartComboSeriesType">
+        <xs:annotation>
+            <xs:documentation>
+                组合图系列类型枚举
+                可选值: column(柱状) | line(折线) | area(面积)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="column"/>
+            <xs:enumeration value="line"/>
+            <xs:enumeration value="area"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- ==================== 文本样式类型 ==================== -->
+
+    <xs:complexType name="ChartFontStyleType">
+        <xs:annotation>
+            <xs:documentation>
+                图表字体样式基类（所有文本元素的基础配置）
+
+                属性:
+                - fontSize: 字号大小
+                - bold: 是否加粗
+                - italic: 是否斜体, 默认false
+                - underline: 是否下划线, 默认false
+                - strikethrough: 是否删除线, 默认false
+                - color: 文本颜色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="fontSize" type="sml:FontSizeType" use="optional"/>
+        <xs:attribute name="bold" type="xs:boolean" use="optional"/>
+        <xs:attribute name="italic" type="xs:boolean" use="optional" default="false"/>
+        <xs:attribute name="underline" type="xs:boolean" use="optional" default="false"/>
+        <xs:attribute name="strikethrough" type="xs:boolean" use="optional" default="false"/>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartGlobalFontType" >
+        <xs:attribute name="size" type="sml:FontSizeType" use="optional" default="12"/>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartTitleType" mixed="true">
+        <xs:annotation>
+            <xs:documentation>
+                图表标题配置
+
+                属性:
+                - textAlign: 文本对齐方式(left|center|right), 默认left
+                - fontSize: 字号大小
+                - bold: 是否加粗
+                - italic: 是否斜体, 默认false
+                - underline: 是否下划线, 默认false
+                - strikethrough: 是否删除线, 默认false
+                - color: 文本颜色
+
+                内容: 标题文本
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartFontStyleType">
+                <xs:attribute name="textAlign" type="sml:ChartTextAlignType" use="optional" default="left"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <xs:complexType name="ChartLegendType">
+        <xs:annotation>
+            <xs:documentation>
+                图表图例配置
+
+                属性:
+                - position: 图例位置(top|bottom|left|right), 默认bottom
+                - fontSize: 字号大小
+                - bold: 是否加粗
+                - italic: 是否斜体, 默认false
+                - underline: 是否下划线, 默认false
+                - strikethrough: 是否删除线, 默认false
+                - color: 文本颜色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartFontStyleType">
+                <xs:attribute name="position" type="sml:ChartLegendPositionType" use="optional" default="bottom"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <xs:complexType name="ChartDataLabelsType">
+        <xs:annotation>
+            <xs:documentation>
+                图表数据标签配置
+
+                属性:
+                - position: 标签位置(auto|top|bottom|left|right|center|inside|outside), 默认auto
+                - series: 是否显示系列名称, 默认false, 条形图和柱状图下生效
+                - category: 是否显示分类名称, 默认false
+                - value: 是否显示数值, 默认true
+                - percentage: 是否显示百分比, 默认false
+                - format: 数字格式代码，例如 0%、0.00%、0.00、#,##0.00、¥#,##0.00, 0万
+                - fontSize: 字号大小
+                - bold: 是否加粗
+                - italic: 是否斜体, 默认false
+                - underline: 是否下划线, 默认false
+                - strikethrough: 是否删除线, 默认false
+                - color: 文本颜色
+
+                注意: category、value、percentage至少有一项为true
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartFontStyleType">
+                <xs:attribute name="position" type="sml:ChartDataLabelPositionType" use="optional"/>
+                <xs:attribute name="series" type="xs:boolean" use="optional" default="false"/>
+                <xs:attribute name="category" type="xs:boolean" use="optional" default="false"/>
+                <xs:attribute name="value" type="xs:boolean" use="optional" default="true"/>
+                <xs:attribute name="percentage" type="xs:boolean" use="optional" default="false"/>
+                <xs:attribute name="format" type="xs:string" use="optional"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <!-- ==================== 图表整体样式 ==================== -->
+
+    <xs:complexType name="ChartBackgroundType">
+        <xs:annotation>
+            <xs:documentation>
+                图表背景配置
+
+                属性:
+                - color: 背景颜色, 默认透明 rgba(0,0,0,0)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional" default="rgb(255, 255, 255)"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartBorderType">
+        <xs:annotation>
+            <xs:documentation>
+                图表边框配置
+
+                属性:
+                - color: 边框颜色，默认 rgb(222, 224, 227)
+                - width: 边框宽度(像素), 默认 1
+                - style: 边框样式(solid|dashed|dotted), 默认 solid
+                - radius: 圆角半径(像素), 默认 6
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="width" type="xs:nonNegativeInteger" use="optional" default="1"/>
+        <xs:attribute name="style" type="sml:ChartLineStyleType" use="optional" default="solid"/>
+        <xs:attribute name="radius" type="xs:nonNegativeInteger" use="optional" />
+    </xs:complexType>
+
+    <xs:complexType name="ChartColorThemeType">
+        <xs:annotation>
+            <xs:documentation>
+                图表配色主题（定义系列颜色序列, 按系列索引循环应用）
+
+                属性:
+                - themeId: 主题标识（可选），主要用于兼容线上图表导出，AI生成不使用主题标识
+
+                子元素:
+                - color: 主题颜色项(建议至少1个), 每个color定义一个系列的颜色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="color" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                    <xs:annotation>
+                        <xs:documentation>
+                            单个主题颜色定义
+
+                            属性:
+                            - value: 颜色值(必需)
+                        </xs:documentation>
+                    </xs:annotation>
+                    <xs:attribute name="value" type="sml:SolidColor" use="required"/>
+                </xs:complexType>
+            </xs:element>
+        </xs:sequence>
+        <xs:attribute name="themeId" type="xs:string" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartColorGradientType">
+        <xs:annotation>
+            <xs:documentation>
+                图表渐变填充开关（空标签即启用渐变效果）
+
+                无属性
+                无子元素
+            </xs:documentation>
+        </xs:annotation>
+    </xs:complexType>
+
+    <xs:complexType name="ChartStyleType">
+        <xs:annotation>
+            <xs:documentation>
+                图表全局样式容器
+
+                子元素:
+                - chartBackground: 背景配置(可选)
+                - chartFont: 默认字体配置(可选)
+                - chartBorder: 边框配置(可选)，无需边框时不设置
+                - chartColorTheme: 配色主题(可选)
+                - chartColorGradient: 渐变填充开关(可选)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartBackground" type="sml:ChartBackgroundType" minOccurs="0"/>
+            <xs:element name="chartFont" type="sml:ChartGlobalFontType" minOccurs="0"/>
+            <xs:element name="chartBorder" type="sml:ChartBorderType" minOccurs="0"/>
+            <xs:element name="chartColorTheme" type="sml:ChartColorThemeType" minOccurs="0"/>
+            <xs:element name="chartColorGradient" type="sml:ChartColorGradientType" minOccurs="0"/>
+        </xs:all>
+    </xs:complexType>
+
+    <xs:complexType name="ChartTooltipType">
+        <xs:annotation>
+            <xs:documentation>
+                图表 Tooltip 配置
+
+                属性:
+                - format: 数字格式代码，例如 0%、0.00%、0.00、#,##0.00、¥#,##0.00, 0万
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="format" type="xs:string" use="optional"/>
+    </xs:complexType>
+
+    <!-- ==================== 数据可视化元素配置：三层体系 ==================== -->
+    <!-- 配置优先级：单元素配置 > 系列级配置 > 全局配置 -->
+
+    <!-- 数据点配置 -->
+    <xs:complexType name="ChartGlobalPointsType">
+        <xs:annotation>
+            <xs:documentation>
+                图表全局数据点配置（第一层：所有系列的默认样式）
+                适用于: 折线图、散点图、气泡图
+
+                属性:
+                - color: 数据点颜色
+                - shape: 数据点形状(circle|square|triangle|diamond|rect), 默认circle
+                - size: 数据点大小(像素)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="shape" type="sml:ChartPointShapeType" use="optional" default="circle"/>
+        <xs:attribute name="size" type="xs:nonNegativeInteger" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartSeriesPointsType">
+        <xs:annotation>
+            <xs:documentation>
+                图表系列数据点配置（第二层：单系列统一配置 + 单点精确定制）
+                继承ChartGlobalPointsType的所有属性
+                适用于: 折线图、散点图、气泡图
+
+                属性:
+                - color: 该系列所有点的颜色
+                - shape: 该系列所有点的形状
+                - size: 该系列所有点的大小
+
+                子元素:
+                - chartPoint: 单个数据点配置(可选, 多个), 用于覆盖特定点的样式
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartGlobalPointsType">
+                <xs:sequence>
+                    <xs:element name="chartPoint" minOccurs="0" maxOccurs="unbounded">
+                        <xs:complexType>
+                            <xs:annotation>
+                                <xs:documentation>
+                                    单个数据点配置（第三层：最高优先级）
+
+                                    属性:
+                                    - index: 数据点索引(从1开始, 必需), 表示该系列中第几个数据点
+                                    - color: 该点的颜色
+                                    - shape: 该点的形状(circle|square|triangle|diamond|rect)
+                                    - size: 该点的大小(像素)
+                                </xs:documentation>
+                            </xs:annotation>
+                            <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
+                            <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+                            <xs:attribute name="shape" type="sml:ChartPointShapeType" use="optional"/>
+                            <xs:attribute name="size" type="xs:nonNegativeInteger" use="optional"/>
+                        </xs:complexType>
+                    </xs:element>
+                </xs:sequence>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <!-- 线条配置 -->
+    <xs:complexType name="ChartLineType">
+        <xs:annotation>
+            <xs:documentation>
+                图表全局线条配置（第一层：所有系列的默认样式）
+                适用于: 折线图、面积图、组合图的折线部分
+
+                属性:
+                - color: 线条颜色
+                - width: 线条宽度(像素), 默认2
+                - style: 线条样式(solid|dashed|dotted), 默认solid
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="width" type="xs:positiveInteger" use="optional" default="2"/>
+        <xs:attribute name="style" type="sml:ChartLineStyleType" use="optional" default="solid"/>
+    </xs:complexType>
+
+    <!-- 面积配置 -->
+    <xs:complexType name="ChartAreaType">
+        <xs:annotation>
+            <xs:documentation>
+                图表全局面积配置（第一层：所有系列的默认填充样式）
+                适用于: 面积图、组合图的面积部分, 雷达图的填充部分
+
+                属性:
+                - color: 填充颜色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+    </xs:complexType>
+
+    <!-- 柱子配置 -->
+    <xs:complexType name="ChartGlobalBarsType">
+        <xs:annotation>
+            <xs:documentation>
+                图表全局柱子配置（第一层：所有系列的默认柱子样式）
+                适用于: 柱状图、条形图、组合图的柱状部分
+
+                属性:
+                - color: 柱子填充颜色
+                - borderColor: 柱子边框颜色
+                - borderWidth: 柱子边框宽度(像素), 默认0
+                - borderStyle: 柱子边框样式(solid|dashed|dotted), 默认solid
+                - backgroundColor: 柱子背景颜色
+                - width: 柱子宽度(像素), 未设置时自动计算
+                - gap: 柱子间距比例[0,1], 0表示无间距, 1表示间距等于柱宽
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="borderColor" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="borderWidth" type="xs:nonNegativeInteger" use="optional" default="0"/>
+        <xs:attribute name="borderStyle" type="sml:ChartLineStyleType" use="optional" default="solid"/>
+        <xs:attribute name="backgroundColor" type="sml:SolidColor" use="optional" />
+        <xs:attribute name="width" type="xs:nonNegativeInteger" use="optional"/>
+        <xs:attribute name="gap" type="sml:RatioType" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartSeriesBarsType">
+        <xs:annotation>
+            <xs:documentation>
+                图表系列柱子配置（第二层：单系列统一配置 + 单柱精确定制）
+                继承ChartGlobalBarsType的所有属性，但注意backgroundColor，width，gap不能作为系列设置
+                适用于: 柱状图、条形图、组合图的柱状部分
+
+                属性:
+                - color: 该系列所有柱子的填充颜色
+                - borderColor: 该系列所有柱子的边框颜色
+                - borderWidth: 该系列所有柱子的边框宽度
+                - borderStyle: 该系列所有柱子的边框样式
+
+                子元素:
+                - chartBar: 单个柱子配置(可选, 多个), 用于覆盖特定柱子的样式
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartGlobalBarsType">
+                <xs:sequence>
+                    <xs:element name="chartBar" minOccurs="0" maxOccurs="unbounded">
+                        <xs:complexType>
+                            <xs:annotation>
+                                <xs:documentation>
+                                    单个柱子配置（第三层：最高优先级）
+
+                                    属性:
+                                    - index: 柱子索引(从1开始, 必需), 表示该系列中第几个柱子
+                                    - color: 该柱子的填充颜色
+                                    - borderColor: 该柱子的边框颜色
+                                    - borderWidth: 该柱子的边框宽度(像素)
+                                    - borderStyle: 该柱子的边框样式(solid|dashed|dotted)
+                                </xs:documentation>
+                            </xs:annotation>
+                            <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
+                            <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+                            <xs:attribute name="borderColor" type="sml:SolidColor" use="optional"/>
+                            <xs:attribute name="borderWidth" type="xs:nonNegativeInteger" use="optional"/>
+                            <xs:attribute name="borderStyle" type="sml:ChartLineStyleType" use="optional"/>
+                        </xs:complexType>
+                    </xs:element>
+                </xs:sequence>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <!-- 扇区配置（饼图专用） -->
+    <xs:complexType name="ChartSectorType">
+        <xs:annotation>
+            <xs:documentation>
+                图表单个扇区配置
+                适用于: 饼图、环形图
+
+                属性:
+                - index: 扇区索引(从1开始, 必需), 表示第几个扇区
+                - offsetRadius: 扇区径向偏移比例[0,1], 用于突出显示
+                - borderColor: 扇区边框颜色
+                - color: 扇区填充颜色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
+        <xs:attribute name="offsetRadius" type="sml:RatioType" use="optional"/>
+        <xs:attribute name="borderColor" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartSectorsType">
+        <xs:annotation>
+            <xs:documentation>
+                图表扇区整体配置
+                适用于: 饼图、环形图
+
+                属性:
+                - borderColor: 所有扇区的统一边框颜色
+                - innerRadius: 内半径比例[0,1], 0为饼图, 大于0为环形图, 默认0
+                - offsetRadius: 整体径向偏移比例[0,1], 将整个饼图从中心推开, 默认0
+                - startAngle: 起始角度[0,360), 控制第一个扇区的起始位置, 默认0
+
+                子元素:
+                - chartSector: 单个扇区配置(可选, 多个), 用于定制特定扇区
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="chartSector" type="sml:ChartSectorType" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attribute name="borderColor" type="sml:SolidColor" use="optional"/>
+        <xs:attribute name="innerRadius" type="sml:RatioType" use="optional" default="0"/>
+        <xs:attribute name="offsetRadius" type="sml:RatioType" use="optional" default="0"/>
+        <xs:attribute name="startAngle" type="sml:RotationType" use="optional" default="0"/>
+    </xs:complexType>
+
+    <!-- ==================== 系列配置 ==================== -->
+
+    <xs:complexType name="ChartSeriesListType">
+        <xs:annotation>
+            <xs:documentation>
+                图表多系列配置
+
+                子元素:
+                - chartSeries: 单个系列配置(必需, 1个或多个), 用于定制特定系列
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="chartSeries" type="sml:ChartSeriesType" minOccurs="1" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ChartSeriesType">
+        <xs:annotation>
+            <xs:documentation>
+                图表单个系列完整配置（用于覆盖全局配置或定制特定系列）
+
+                属性:
+                - index: 系列索引(从1开始, 必需), 指定作用于第几个系列
+                - comboType: 组合图中该系列的类型(column|line|area)
+                - yAxisPosition: 该系列使用的Y轴位置(left|right)
+
+                子元素:
+                - chartPoints: 数据点样式配置(可选)
+                - chartLine: 线条样式配置(可选)
+                - chartArea: 面积样式配置(可选)
+                - chartBars: 柱子样式配置(可选)
+                - chartSectors: 扇区样式配置(可选)
+                - chartLabels: 数据标签配置(可选)
+                - chartTooltip: 数据提示框配置(可选)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="chartPoints" type="sml:ChartSeriesPointsType" minOccurs="0"/>
+            <xs:element name="chartLine" type="sml:ChartLineType" minOccurs="0"/>
+            <xs:element name="chartArea" type="sml:ChartAreaType" minOccurs="0"/>
+            <xs:element name="chartBars" type="sml:ChartSeriesBarsType" minOccurs="0"/>
+            <xs:element name="chartSectors" type="sml:ChartSectorsType" minOccurs="0"/>
+            <xs:element name="chartLabels" type="sml:ChartDataLabelsType" minOccurs="0"/>
+            <xs:element name="chartTooltip" type="sml:ChartTooltipType" minOccurs="0"/>
+        </xs:sequence>
+        <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
+        <xs:attribute name="comboType" type="sml:ChartComboSeriesType" use="optional"/>
+        <xs:attribute name="yAxisPosition" type="sml:ChartYAxisPositionType" use="optional"/>
+    </xs:complexType>
+
+    <!-- ==================== 坐标轴配置 ==================== -->
+    <xs:complexType name="ChartGridLineType">
+        <xs:annotation>
+            <xs:documentation>
+                图表网格线配置
+
+                属性:
+                - width: 网格线宽度(像素)
+                - color: 网格线颜色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="width" type="xs:nonNegativeInteger" use="optional"/>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartAxisLineType">
+        <xs:annotation>
+            <xs:documentation>
+                图表坐标轴线配置（空标签即显示轴线）
+
+                无属性
+                无子元素
+            </xs:documentation>
+        </xs:annotation>
+    </xs:complexType>
+
+    <xs:complexType name="ChartAxisLabelType">
+        <xs:annotation>
+            <xs:documentation>
+                图表坐标轴标签配置
+
+                属性:
+                - angle: 标签旋转角度(-90|-45|0|45|90), 用于避免标签重叠, 不设置时自动计算
+                - format: 数字格式代码，例如 0%、0.00%、0.00、#,##0.00、¥#,##0.00, 0万
+                - fontSize: 字号大小
+                - bold: 是否加粗
+                - italic: 是否斜体, 默认false
+                - underline: 是否下划线, 默认false
+                - strikethrough: 是否删除线, 默认false
+                - color: 文本颜色
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexContent>
+            <xs:extension base="sml:ChartFontStyleType">
+                <xs:attribute name="angle" type="sml:ChartAxisLabelAngleType" use="optional"/>
+                <xs:attribute name="format" type="xs:string" use="optional"/>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+
+    <xs:complexType name="ChartAxisType">
+        <xs:annotation>
+            <xs:documentation>
+                图表单个坐标轴配置
+
+                属性:
+                - type: 坐标轴类型(必需)
+                * 直角坐标系: x(横轴)、y(纵轴)
+                * 极坐标系: angle(角度轴)、radius(半径轴)
+                - position: 坐标轴位置(可选)(left|right), 仅对y轴有效
+                - max: 坐标轴最大值(不设置时自动计算)
+                - min: 坐标轴最小值(不设置时自动计算)
+
+                子元素:
+                - chartTitle: 坐标轴标题(可选)
+                - chartLabel: 坐标轴刻度标签格式(可选)
+                - chartAxisLine: 坐标轴线配置(可选), 未设置时不显示轴线
+                - chartGridLine: 网格线配置(可选), 未设置时不显示网格线
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartTitle" type="sml:ChartTitleType" minOccurs="0"/>
+            <xs:element name="chartLabel" type="sml:ChartAxisLabelType" minOccurs="0"/>
+            <xs:element name="chartAxisLine" type="sml:ChartAxisLineType" minOccurs="0"/>
+            <xs:element name="chartGridLine" type="sml:ChartGridLineType" minOccurs="0"/>
+        </xs:all>
+        <xs:attribute name="type" type="sml:ChartAxisKindType" use="required"/>
+        <xs:attribute name="position" type="sml:ChartYAxisPositionType" use="optional"/>
+        <xs:attribute name="max" type="xs:integer" use="optional"/>
+        <xs:attribute name="min" type="xs:integer" use="optional"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartAxesType">
+        <xs:annotation>
+            <xs:documentation>
+                图表坐标轴容器
+
+                子元素:
+                - chartAxis: 坐标轴配置, 可包含多个坐标轴, 建议至少包含 2 个坐标轴配置
+
+                柱状图、条形图、折线图、面积图、组合图: X 轴、Y 轴（可双轴）
+                雷达图: 角度轴、半径轴
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="chartAxis" type="sml:ChartAxisType" minOccurs="1" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <!-- ==================== 特殊图表类型配置 ==================== -->
+
+    <xs:complexType name="ChartLineSmoothType">
+        <xs:annotation>
+            <xs:documentation>
+                图表平滑折线配置（空标签即启用, 将折线转换为贝塞尔曲线）
+                适用于: 折线图、面积图、雷达图、组合图
+
+                无属性
+                无子元素
+            </xs:documentation>
+        </xs:annotation>
+    </xs:complexType>
+
+    <xs:complexType name="ChartLineStepType">
+        <xs:annotation>
+            <xs:documentation>
+                图表阶梯折线配置（空标签即启用, 将折线转换为阶梯状）
+                适用于: 折线图、面积图、组合图
+
+                无属性
+                无子元素
+            </xs:documentation>
+        </xs:annotation>
+    </xs:complexType>
+
+    <xs:complexType name="ChartStackType">
+        <xs:annotation>
+            <xs:documentation>
+                图表堆叠配置（将多个系列的值累加显示）
+                适用于: 面积图、条形图、柱状图、组合图
+
+                属性:
+                - percentage: 是否启用百分比堆叠(显示占比而非绝对值), 默认false
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="percentage" type="xs:boolean" use="optional" default="false"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartRadarType">
+        <xs:annotation>
+            <xs:documentation>
+                雷达图专用配置
+
+                属性:
+                - shape: 雷达图外轮廓形状(polygon|circle), 默认polygon
+                - area: 是否填充区域(类似面积图效果), 默认true
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="shape" type="sml:ChartRadarShapeType" use="optional" default="polygon"/>
+        <xs:attribute name="area" type="xs:boolean" use="optional" default="true"/>
+    </xs:complexType>
+
+    <!-- ==================== 绘图区配置 ==================== -->
+
+    <xs:complexType name="ChartPlotAreaType">
+        <xs:annotation>
+            <xs:documentation>
+                图表绘图区配置（定义图表类型和数据坐标体系）
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartPlot" type="sml:ChartPlotType" minOccurs="1"/>
+            <xs:element name="chartAxes" type="sml:ChartAxesType" minOccurs="0"/>
+        </xs:all>
+    </xs:complexType>
+
+    <xs:complexType name="ChartPlotType">
+        <xs:annotation>
+            <xs:documentation>
+                图表绘图区配置（定义图表类型和数据坐标体系）
+
+                属性:
+                - type: 图表类型(必需)
+                * line(折线图) | area(面积图) | bar(条形图) | column(柱状图)
+                * pie(饼图) | radar(雷达图) | combo(组合图)
+                - comboType: 组合图系列类型(可选), 仅组合图使用
+                - yAxisPosition: 右Y轴位置(可选), 只有在笛卡尔坐标系下, 默认值 left, 其他坐标系图表如饼图, 没有 yAxisPosition
+
+                子元素:
+                - chartPoints: 全局数据点样式配置(可选)
+                - chartLines: 全局线条样式配置(可选)
+                - chartAreas: 全局面积样式配置(可选)
+                - chartBars: 全局柱子样式配置(可选)
+                - chartLabels: 全局数据标签配置(可选)
+                - chartSeriesList: 系列列表配置(可选), 用于单独配置每个系列
+                - chartExtra: 额外配置(可选)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartPoints" type="sml:ChartGlobalPointsType" minOccurs="0"/>
+            <xs:element name="chartLines" type="sml:ChartLineType" minOccurs="0"/>
+            <xs:element name="chartAreas" type="sml:ChartAreaType" minOccurs="0"/>
+            <xs:element name="chartBars" type="sml:ChartGlobalBarsType" minOccurs="0"/>
+            <xs:element name="chartLabels" type="sml:ChartDataLabelsType" minOccurs="0"/>
+            <xs:element name="chartSeriesList" type="sml:ChartSeriesListType" minOccurs="0"/>
+            <xs:element name="chartExtra" type="sml:ChartExtraType" minOccurs="0"/>
+        </xs:all>
+        <xs:attribute name="type" type="sml:ChartType" use="required"/>
+        <xs:attribute name="comboType" type="sml:ChartComboSeriesType" use="optional"/>
+        <xs:attribute name="yAxisPosition" type="sml:ChartYAxisPositionType" use="optional" default="left"/>
+    </xs:complexType>
+
+    <xs:complexType name="ChartExtraType">
+        <xs:annotation>
+            <xs:documentation>
+                图表额外配置
+                - chartRadar: 雷达图特有配置(可选), 仅雷达图使用
+                - chartSmooth: 平滑折线开关(可选), 适用于折线/面积/雷达/组合图
+                - chartStep: 阶梯折线开关(可选), 适用于折线/面积/组合图
+                - chartStack: 堆叠设置(可选), 适用于面积/条形/柱状/组合图
+            </xs:documentation>
+        </xs:annotation>
+        <xs:all>
+            <xs:element name="chartRadar" type="sml:ChartRadarType" minOccurs="0"/>
+            <xs:element name="chartSmooth" type="sml:ChartLineSmoothType" minOccurs="0"/>
+            <xs:element name="chartStep" type="sml:ChartLineStepType" minOccurs="0"/>
+            <xs:element name="chartStack" type="sml:ChartStackType" minOccurs="0"/>
+        </xs:all>
+    </xs:complexType>
+
+
+    <!-- ==================== 数据配置 ==================== -->
+    <xs:complexType name="ChartDataFieldType">
+        <xs:annotation>
+            <xs:documentation>
+                图表数据字段定义
+
+                属性:
+                - name: 字段名称(必需), 列标题或系列名称
+                - valueType: 数据值类型(string|number)
+
+                内容: CSV格式的数据值（逗号分隔）
+                - 用逗号 ', ' 分割值, 禁止传入 array
+                - 当 valueType="string" 时, 若字符串包含逗号需用双引号包裹, 如："a, b", c, d
+                - 当 valueType="number" 时, 直接用逗号分割数字, 如：1, 2, 3.5
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute name="name" type="xs:string" use="required"/>
+                <xs:attribute name="valueType" type="sml:ChartValueType" use="optional"/>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="ChartDataDim1Type">
+        <xs:annotation>
+            <xs:documentation>
+                图表分类维度（第一维度：X轴/分类）
+                定义数据点的分类标签或X轴坐标值
+
+                子元素:
+                - chartField: 数据字段(有且仅有1个)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="chartField" type="sml:ChartDataFieldType" minOccurs="1" maxOccurs="1"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ChartDataDim2Type">
+        <xs:annotation>
+            <xs:documentation>
+                图表数值维度（第二维度：Y轴/数值）
+                包含数值系列数据, 每个field代表一个系列
+
+                子元素:
+                - chartField: 数据字段(至少1个), 每个字段代表一个数据系列
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="chartField" type="sml:ChartDataFieldType" minOccurs="1" maxOccurs="unbounded"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ChartDataType">
+        <xs:annotation>
+            <xs:documentation>
+                图表数据容器（采用二维数据模型）
+
+                数据组织方式:
+                dim1中每个值对应dim2中所有系列的同一位置数据
+                例如: dim1的第2个值对应dim2中所有系列的第2个值
+
+                子元素:
+                - dim1: 分类维度(必需), 定义数据点的位置
+                - dim2: 数值维度(必需), 定义数据系列
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="dim1" type="sml:ChartDataDim1Type" minOccurs="1" maxOccurs="1"/>
+            <xs:element name="dim2" type="sml:ChartDataDim2Type" minOccurs="1" maxOccurs="1"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:element name="chart">
+        <xs:annotation>
+            <xs:documentation>
+                图表元素, 用于展示数据可视化
+
+                属性:
+                - id: 图表元素ID (可选)
+                - topLeftX: 左上角X坐标 [-8640,10560]
+                - topLeftY: 左上角Y坐标 [-4860,5940]
+                - width: 图表宽度
+                - height: 图表高度
+                - rotation: 旋转角度 [0,360), 默认0
+                - flipX: 水平翻转, 默认false
+                - flipY: 垂直翻转, 默认false
+                - alpha: 透明度 [0,1], 默认1
+
+                子元素:
+                - chartTitle: 标题设置 (可选)
+                - chartSubTitle: 副标题设置 (可选)
+                - chartStyle: 图表样式 (可选)
+                - chartPlotArea: 绘图区配置 (必需)
+                - chartData: 数据容器 (必需)
+                - chartLegend: 图例配置(可选)
+                - chartTooltip: Tooltip 配置(可选)
+                - reflection: 倒影效果 (可选)
+                - shadow: 阴影效果 (可选)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="chartTitle" type="sml:ChartTitleType" minOccurs="0"/>
+                <xs:element name="chartSubTitle" type="sml:ChartTitleType" minOccurs="0"/>
+                <xs:element name="chartStyle" type="sml:ChartStyleType" minOccurs="0"/>
+                <xs:element name="chartLegend" type="sml:ChartLegendType" minOccurs="0"/>
+                <xs:element name="chartTooltip" type="sml:ChartTooltipType" minOccurs="0"/>
+                <xs:element name="chartPlotArea" type="sml:ChartPlotAreaType" minOccurs="1"/>
+                <xs:element name="chartData" type="sml:ChartDataType" minOccurs="1"/>
+                <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
+                <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+            </xs:all>
+            <xs:attribute name="id" type="xs:string" use="optional"/>
+            <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
+            <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="rotation" type="sml:RotationType" use="optional" default="0"/>
+            <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+        </xs:complexType>
+    </xs:element>
+</xs:schema>

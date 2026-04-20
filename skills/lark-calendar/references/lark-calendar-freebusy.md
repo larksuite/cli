@@ -120,5 +120,5 @@ lark-cli calendar +freebusy --start 2026-03-12 --user-id ou_member_b
 
 - [lark-calendar-agenda](lark-calendar-agenda.md) — 查看日程安排
 - [lark-calendar-create](lark-calendar-create.md) — 创建日程
-- [lark-calendar-suggestion](lark-calendar-suggestion.md) — 针对时间未确定的预约日程需求，提供多个时间推荐方案
+- [lark-calendar-suggestion](lark-calendar-suggestion.md) — 根据非明确时间或一段时间范围，推荐多个可用时间块方案
 - [lark-calendar](../SKILL.md) — 日历完整 API

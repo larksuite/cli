@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 func TestValidateDriveExportSpec(t *testing.T) {
@@ -465,7 +466,8 @@ func TestSaveContentToOutputDirRejectsOverwriteWithoutFlag(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
-	_, err = saveContentToOutputDir(".", "exists.txt", []byte("new"), false)
+	fio := &localfileio.LocalFileIO{}
+	_, err = saveContentToOutputDir(fio, ".", "exists.txt", []byte("new"), false)
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("expected overwrite error, got %v", err)
 	}

@@ -21,7 +21,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{
 			Op:        "set_reply_to",
 			Addresses: []Address{{Name: "Support", Address: "support@example.com"}},
@@ -48,7 +48,7 @@ hello
 	if len(snapshot.ReplyTo) == 0 {
 		t.Fatalf("ReplyTo should be set before clear")
 	}
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "clear_reply_to"}},
 	})
 	if err != nil {
@@ -76,7 +76,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_header", Name: "X-Priority"}},
 	})
 	if err != nil {
@@ -96,7 +96,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "remove_header", Name: "Content-Type"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "protected") {
@@ -114,7 +114,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops:     []PatchOp{{Op: "remove_header", Name: "Reply-To"}},
 		Options: PatchOptions{AllowProtectedHeaderEdits: true},
 	})
@@ -139,7 +139,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_header", Name: "Bad:Name", Value: "value"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "must not contain") {
@@ -156,7 +156,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_header", Name: "X-Custom", Value: "val\r\ninjected"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "must not contain") {
@@ -177,7 +177,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_subject", Value: "Subject\ninjection"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "must not contain") {
@@ -198,7 +198,7 @@ Content-Type: text/plain; charset=UTF-8
 
 hello
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "unknown_op"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "unsupported") {

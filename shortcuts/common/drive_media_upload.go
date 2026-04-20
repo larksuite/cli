@@ -11,8 +11,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
@@ -51,13 +49,9 @@ type DriveMediaMultipartUploadConfig struct {
 }
 
 func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig) (string, error) {
-	safeFilePath, err := validate.SafeInputPath(cfg.FilePath)
+	f, err := runtime.FileIO().Open(cfg.FilePath)
 	if err != nil {
-		return "", output.ErrValidation("invalid file path: %s", err)
-	}
-	f, err := vfs.Open(safeFilePath)
-	if err != nil {
-		return "", output.ErrValidation("cannot read file: %s", err)
+		return "", WrapInputStatError(err)
 	}
 	defer f.Close()
 
@@ -173,13 +167,9 @@ func ExtractDriveMediaUploadFileToken(data map[string]interface{}, action string
 }
 
 func uploadDriveMediaMultipartParts(runtime *RuntimeContext, filePath string, fileSize int64, session DriveMediaMultipartUploadSession) error {
-	safeFilePath, err := validate.SafeInputPath(filePath)
+	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
-		return output.ErrValidation("invalid file path: %s", err)
-	}
-	f, err := vfs.Open(safeFilePath)
-	if err != nil {
-		return output.ErrValidation("cannot read file: %s", err)
+		return WrapInputStatError(err)
 	}
 	defer f.Close()
 

@@ -22,6 +22,10 @@ var BaseFieldCreate = common.Shortcut{
 		{Name: "json", Desc: "field property JSON object", Required: true},
 		{Name: "i-have-read-guide", Type: "bool", Desc: "set only after you have read the formula/lookup guide for those field types", Hidden: true},
 	},
+	Tips: []string{
+		`Example: --json '{"name":"Status","type":"text"}'`,
+		"Agent hint: use the lark-base skill's field-create guide for usage and limits.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateFieldCreate(runtime)
 	},

@@ -8,7 +8,7 @@
 
 ## Layout 选型
 
-- **脚本生成坐标**（推荐）：Treemap 需要精确的面积比例计算，用 .js 脚本递归切分矩形，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.1.0` 渲染
+- **脚本生成坐标**（推荐）：Treemap 需要精确的面积比例计算，用 .cjs 脚本递归切分矩形，脚本输出 JSON 文件后调用 `npx -y @larksuite/whiteboard-cli@^0.2.0` 渲染
 - 不适合手动心算坐标
 
 ## Layout 规则
@@ -202,16 +202,15 @@
 - 硬件 40/100 * 1100 = 440，软件 35/100 * 1100 = 385，服务 25/100 * 1100 = 275
 - 子矩形从 y=75 开始，可用高度 665
 
-**脚本运行方式**：
-
-```bash
-node generate-treemap.js
-npx -y @larksuite/whiteboard-cli@^0.1.0 -i treemap.json -o ./treemap.png
-```
-
 ## 陷阱
 
 - **父标签被子矩形遮挡**（最严重）：子矩形必须从 y + 35（相对父矩形顶部）开始放置，为父分类标签留出空间
 - **分类标签不可见**：分类标签 text 节点必须在其子矩形 rect 节点之前添加（z-index 靠后的节点在上层）
 - **面积比例不正确**：必须用脚本预先计算比例，不要心算
 - **缺少配色区分**：不同顶层分类必须用不同背景色（从色板选取），所有子节点继承对应色系
+
+此场景必须用 .cjs 脚本生成。Agent 使用时只需修改 `data` 树，其余坐标与矩形面积自动递归计算。
+
+```javascript
+const { writeFileSync } = require('fs');
+```

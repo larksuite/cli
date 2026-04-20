@@ -81,7 +81,7 @@ func TestSerializeGoldenFixtures(t *testing.T) {
 			if tc.patchFn != nil {
 				patch = tc.patchFn(t)
 			}
-			if err := Apply(snapshot, patch); err != nil {
+			if err := Apply(&DraftCtx{FIO: testFIO}, snapshot, patch); err != nil {
 				t.Fatalf("Apply() error = %v", err)
 			}
 			raw, err := Serialize(snapshot)

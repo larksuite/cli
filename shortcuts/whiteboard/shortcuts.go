@@ -11,15 +11,20 @@ import (
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		WhiteboardUpdate,
+		WhiteboardUpdateOld,
+		WhiteboardQuery,
 	}
 }
 
 type WbCliOutput struct {
-	Code int `json:"code"`
-	Data WbCliOutputData
+	Code     int `json:"code"`
+	Data     WbCliOutputData
+	RawNodes []interface{} `json:"nodes"` // 从 whiteboard-cli -t openapi 输出的原始请求格式
 }
 
 type WbCliOutputData struct {
-	To     string      `json:"to"`
-	Result interface{} `json:"result"`
+	To     string `json:"to"`
+	Result struct {
+		Nodes []interface{} `json:"nodes"`
+	} `json:"result"`
 }

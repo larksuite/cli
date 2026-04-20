@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -19,6 +19,18 @@ var alignMap = map[string]int{
 	"left":   1,
 	"center": 2,
 	"right":  3,
+}
+
+// fileViewMap maps the user-facing --file-view value to the docx File block
+// `view_type` enum. The underlying values come from the open platform spec:
+//
+//	1 = card view (default)
+//	2 = preview view (renders audio/video files as an inline player)
+//	3 = inline view
+var fileViewMap = map[string]int{
+	"card":    1,
+	"preview": 2,
+	"inline":  3,
 }
 
 var DocMediaInsert = common.Shortcut{
@@ -36,6 +48,7 @@ var DocMediaInsert = common.Shortcut{
 		{Name: "caption", Desc: "image caption text"},
 		{Name: "selection-with-ellipsis", Desc: "plain text (or 'start...end') that identifies the target block; the media is inserted after that block by default"},
 		{Name: "before", Type: "bool", Desc: "insert before the matched block instead of after (requires --selection-with-ellipsis)"},
+		{Name: "file-view", Desc: "file block rendering: card (default) | preview | inline; only applies when --type=file. preview renders audio/video as an inline player"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		docRef, err := parseDocumentRef(runtime.Str("doc"))
@@ -47,6 +60,14 @@ var DocMediaInsert = common.Shortcut{
 		}
 		if runtime.Bool("before") && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) == "" {
 			return output.ErrValidation("--before requires --selection-with-ellipsis")
+		}
+		if view := runtime.Str("file-view"); view != "" {
+			if _, ok := fileViewMap[view]; !ok {
+				return output.ErrValidation("invalid --file-view value %q, expected one of: card | preview | inline", view)
+			}
+			if runtime.Str("type") != "file" {
+				return output.ErrValidation("--file-view only applies when --type=file")
+			}
 		}
 		return nil
 	},
@@ -63,9 +84,10 @@ var DocMediaInsert = common.Shortcut{
 		caption := runtime.Str("caption")
 		selection := strings.TrimSpace(runtime.Str("selection-with-ellipsis"))
 		hasSelection := selection != ""
+		fileViewType := fileViewMap[runtime.Str("file-view")]
 
 		parentType := parentTypeForMediaType(mediaType)
-		createBlockData := buildCreateBlockData(mediaType, 0)
+		createBlockData := buildCreateBlockData(mediaType, 0, fileViewType)
 		if hasSelection {
 			createBlockData["index"] = "<locate_index>"
 		} else {
@@ -126,7 +148,7 @@ var DocMediaInsert = common.Shortcut{
 			POST("/open-apis/docx/v1/documents/:document_id/blocks/:document_id/children").
 			Desc(fmt.Sprintf("[%d] Create empty block at target position", stepBase+1)).
 			Body(createBlockData)
-		appendDocMediaInsertUploadDryRun(d, filePath, parentType, stepBase+2)
+		appendDocMediaInsertUploadDryRun(d, runtime.FileIO(), filePath, parentType, stepBase+2)
 		d.PATCH("/open-apis/docx/v1/documents/:document_id/blocks/batch_update").
 			Desc(fmt.Sprintf("[%d] Bind uploaded file token to the new block", stepBase+3)).
 			Body(batchUpdateData)
@@ -139,11 +161,7 @@ var DocMediaInsert = common.Shortcut{
 		mediaType := runtime.Str("type")
 		alignStr := runtime.Str("align")
 		caption := runtime.Str("caption")
-
-		safeFilePath, pathErr := validate.SafeInputPath(filePath)
-		if pathErr != nil {
-			return output.ErrValidation("unsafe file path: %s", pathErr)
-		}
+		fileViewType := fileViewMap[runtime.Str("file-view")]
 
 		documentID, err := resolveDocxDocumentID(runtime, docInput)
 		if err != nil {
@@ -151,9 +169,9 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Validate file
-		stat, err := vfs.Stat(safeFilePath)
+		stat, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return output.ErrValidation("file not found: %s", filePath)
+			return common.WrapInputStatError(err, "file not found")
 		}
 		if !stat.Mode().IsRegular() {
 			return output.ErrValidation("file must be a regular file: %s", filePath)
@@ -200,7 +218,7 @@ var DocMediaInsert = common.Shortcut{
 
 		createData, err := runtime.CallAPI("POST",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s/children", validate.EncodePathSegment(documentID), validate.EncodePathSegment(parentBlockID)),
-			nil, buildCreateBlockData(mediaType, insertIndex))
+			nil, buildCreateBlockData(mediaType, insertIndex, fileViewType))
 		if err != nil {
 			return err
 		}
@@ -276,12 +294,22 @@ func parentTypeForMediaType(mediaType string) string {
 	return "docx_image"
 }
 
-func buildCreateBlockData(mediaType string, index int) map[string]interface{} {
+func buildCreateBlockData(mediaType string, index int, fileViewType int) map[string]interface{} {
 	child := map[string]interface{}{
 		"block_type": blockTypeForMediaType(mediaType),
 	}
 	if mediaType == "file" {
-		child["file"] = map[string]interface{}{}
+		fileData := map[string]interface{}{}
+		// view_type can only be set at block creation time; the PATCH
+		// replace_file endpoint does not accept it, so if the caller wants
+		// preview/inline rendering we must wire it in here. Whitelist the
+		// concrete enum values so a stray positive int cannot produce a
+		// malformed payload if Validate is ever bypassed.
+		switch fileViewType {
+		case 1, 2, 3:
+			fileData["view_type"] = fileViewType
+		}
+		child["file"] = fileData
 	} else {
 		child["image"] = map[string]interface{}{}
 	}
@@ -507,12 +535,12 @@ func extractCreatedBlockTargets(createData map[string]interface{}, mediaType str
 	return blockID, uploadParentNode, replaceBlockID
 }
 
-func appendDocMediaInsertUploadDryRun(d *common.DryRunAPI, filePath, parentType string, step int) {
+func appendDocMediaInsertUploadDryRun(d *common.DryRunAPI, fio fileio.FileIO, filePath, parentType string, step int) {
 	// The upload step runs only after the empty placeholder block is created, so
 	// dry-run can refer to that future block ID only symbolically. For large
 	// files, keep multipart internals as substeps of the single user-facing
 	// "upload file" step.
-	if docMediaShouldUseMultipart(filePath) {
+	if docMediaShouldUseMultipart(fio, filePath) {
 		d.POST("/open-apis/drive/v1/medias/upload_prepare").
 			Desc(fmt.Sprintf("[%da] Initialize multipart upload", step)).
 			Body(map[string]interface{}{

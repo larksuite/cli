@@ -61,7 +61,8 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 |------|------|------|
 | `--message-id <id>` | 是 | 被回复的邮件 ID |
 | `--body <text>` | 是 | 回复正文。推荐使用 HTML 获得富文本排版；也支持纯文本。根据回复正文和原邮件正文自动检测 HTML。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径） |
-| `--from <email>` | 否 | 发件人邮箱地址（默认读取 user_mailboxes.profile.primary_email_address） |
+| `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。默认读取邮箱主地址 |
+| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--to <emails>` | 否 | 额外收件人，多个用逗号分隔（追加到自动聚合结果） |
 | `--cc <emails>` | 否 | 额外抄送，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
@@ -69,7 +70,10 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '测试' --dry-run
 | `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用 |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径 |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
+| `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到回复正文与引用块之间。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
+| `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
 | `--confirm-send` | 否 | 确认发送回复（默认只保存草稿）。仅在用户明确确认后使用 |
+| `--send-time <timestamp>` | 否 | 定时发送时间，Unix 时间戳（秒）。需至少为当前时间 + 5 分钟。配合 `--confirm-send` 使用可定时发送邮件 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 
 ## 返回值
@@ -116,6 +120,25 @@ lark-cli mail +reply-all --message-id <邮件ID> --body '<p>已确认。</p>'
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
 ```
 
+### 场景 3：用户说"下午 3 点回复全部说已确认"（定时发送）
+```bash
+# Step 1: 创建回复全部草稿
+lark-cli mail +reply-all --message-id <邮件ID> --body '<p>已确认。</p>'
+# → 返回 draft_id
+
+# Step 2: 向用户确认 "回复全部草稿已创建：收件人 alice@, bob@, carol@，内容「已确认。」定时 <目标时间> 发送。确认吗？"
+
+# Step 3: 用户确认后定时发送（send_time 为 Unix 时间戳，需至少当前时间 + 5 分钟）
+lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}' --data '{"send_time":"<unix_timestamp>"}'
+```
+
+### 场景 4：用户说"等等，先不回复了"（取消定时发送）
+```bash
+# 取消定时发送（取消后邮件变回草稿）
+lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
+```
+→ 取消成功后邮件恢复为草稿状态，用户可重新编辑或在之后重新发送。
+
 ## 实现说明
 
 - 自动收件人规则：原发件人优先进入 To，原 To/Cc 进入 Cc。
@@ -127,13 +150,27 @@ lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_
 
 回复发送成功后：
 
-**1. 确认投递状态**（必须）— 用返回的 `message_id` 查询投递状态：
+**1. 确认投递状态**（仅立即发送 — 无 `--send-time` 时必须）
+
+用返回的 `message_id` 查询投递状态：
 
 ```bash
 lark-cli mail user_mailbox.messages send_status --params '{"user_mailbox_id":"me","message_id":"<发送返回的 message_id>"}'
 ```
 
 状态码：1=正在投递, 2=投递失败重试, 3=退信, 4=投递成功, 5=待审批, 6=审批拒绝。向用户简要报告投递结果，异常状态需重点提示。
+
+**1b. 定时发送（指定了 `--send-time`）**
+
+定时发送不会立即产生 `message_id`，因此 `send_status` 在定时发送成功后会返回"待发送"状态，**不建议在定时发送后立即查询**。可在预定发送时间后再查询。
+
+如需取消定时发送：
+
+```bash
+lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
+```
+
+**取消后邮件会变回草稿**，可继续编辑或在之后重新发送。
 
 **2. 标记已读**（可选）— 询问用户是否需要将原邮件标记为已读。如果用户同意：
 

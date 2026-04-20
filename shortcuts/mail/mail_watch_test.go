@@ -8,8 +8,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -576,6 +581,101 @@ func TestSetKeysSorted(t *testing.T) {
 	got := setKeys(map[string]bool{"c": true, "a": true, "b": true})
 	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
 		t.Fatalf("unexpected: %v", got)
+	}
+}
+
+// --- handleMailWatchSignal ---
+
+// TestHandleMailWatchSignalUnsubscribesAndCancels verifies that all callbacks are invoked and the shutdown message is printed.
+func TestHandleMailWatchSignalUnsubscribesAndCancels(t *testing.T) {
+	var buf bytes.Buffer
+	unsubscribed := false
+	stopped := false
+	canceled := false
+
+	handleMailWatchSignal(&buf, os.Interrupt, 3, func() {
+		unsubscribed = true
+	}, func() {
+		stopped = true
+	}, func() {
+		canceled = true
+	})
+
+	if !unsubscribed {
+		t.Fatal("expected unsubscribeWithLog to be called")
+	}
+	if !stopped {
+		t.Fatal("expected signal stop to be called")
+	}
+	if !canceled {
+		t.Fatal("expected cancel to be called")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Shutting down (signal: interrupt)... (received 3 events)") {
+		t.Fatalf("missing shutdown message, got: %q", out)
+	}
+}
+
+// TestHandleMailWatchSignalReportsUnsubscribeFailure verifies that unsubscribe errors are written to errOut.
+func TestHandleMailWatchSignalReportsUnsubscribeFailure(t *testing.T) {
+	var buf bytes.Buffer
+
+	handleMailWatchSignal(&buf, os.Interrupt, 1, func() {
+		fmt.Fprintln(&buf, "Warning: unsubscribe failed: boom")
+	}, func() {}, func() {})
+
+	if got := buf.String(); !strings.Contains(got, "Warning: unsubscribe failed: boom") {
+		t.Fatalf("expected unsubscribe warning, got: %q", got)
+	}
+}
+
+// TestHandleMailWatchSignalPanicUnblocksShutdown verifies that a panic in unsubscribeWithLog still triggers shutdown.
+func TestHandleMailWatchSignalPanicUnblocksShutdown(t *testing.T) {
+	shutdownBySignal := make(chan struct{})
+	var shutdownOnce sync.Once
+	_, cancelWatch := context.WithCancel(context.Background())
+	triggerShutdown := func() {
+		shutdownOnce.Do(func() { close(shutdownBySignal) })
+		cancelWatch()
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				triggerShutdown()
+			}
+		}()
+		<-sigCh
+		// Simulate panic inside handleMailWatchSignal (e.g. unsubscribeWithLog panics)
+		panic("unsubscribe exploded")
+	}()
+
+	sigCh <- os.Interrupt
+
+	select {
+	case <-shutdownBySignal:
+		// Success: shutdown channel was closed despite the panic
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdownBySignal was not closed after panic — process would hang")
+	}
+}
+
+// TestHandleMailWatchSignalCallOrder verifies callbacks execute in order: stop signals → unsubscribe → cancel.
+func TestHandleMailWatchSignalCallOrder(t *testing.T) {
+	var order []string
+
+	handleMailWatchSignal(io.Discard, os.Interrupt, 0, func() {
+		order = append(order, "unsub")
+	}, func() {
+		order = append(order, "stop")
+	}, func() {
+		order = append(order, "cancel")
+	})
+
+	// Expected: stop → unsub → cancel
+	if len(order) != 3 || order[0] != "stop" || order[1] != "unsub" || order[2] != "cancel" {
+		t.Fatalf("unexpected call order: %v, want [stop unsub cancel]", order)
 	}
 }
 

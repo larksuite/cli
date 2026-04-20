@@ -377,6 +377,9 @@ func mediaFallbackOrError(originalValue, mediaType string, uploadErr error) (str
 
 // resolveP2PChatID resolves user open_id to P2P chat_id.
 func resolveP2PChatID(runtime *common.RuntimeContext, openID string) (string, error) {
+	if runtime.IsBot() {
+		return "", output.Errorf(output.ExitValidation, "validation", "--user-id requires user identity (--as user); use --chat-id when calling with bot identity")
+	}
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/chat_p2p/batch_query",
@@ -581,6 +584,7 @@ func parseMediaDuration(runtime *common.RuntimeContext, filePath, fileType strin
 type mediaBuffer struct {
 	data []byte
 	ext  string // file extension including leading dot, e.g. ".mp4"
+	name string // original file name extracted from the source URL
 }
 
 // newMediaBuffer downloads URL content into memory via downloadURLToReader.
@@ -595,7 +599,14 @@ func newMediaBuffer(ctx context.Context, runtime *common.RuntimeContext, rawURL 
 	if err != nil {
 		return nil, fmt.Errorf("download failed: %w", err)
 	}
-	return &mediaBuffer{data: data, ext: ext}, nil
+	return newMediaBufferFromBytes(data, ext, rawURL), nil
+}
+
+// newMediaBufferFromBytes builds a mediaBuffer from already-downloaded bytes.
+// Split out from newMediaBuffer so the URL-to-filename wiring is testable
+// without going through the hardened download transport.
+func newMediaBufferFromBytes(data []byte, ext, rawURL string) *mediaBuffer {
+	return &mediaBuffer{data: data, ext: ext, name: fileNameFromURL(rawURL)}
 }
 
 // Reader returns a new io.Reader over the buffered data. Each call returns a
@@ -605,9 +616,9 @@ func (b *mediaBuffer) Reader() io.Reader {
 	return bytes.NewReader(b.data)
 }
 
-// FileName returns a synthetic file name based on the URL extension.
+// FileName returns the original file name extracted from the source URL.
 func (b *mediaBuffer) FileName() string {
-	return "media" + b.ext
+	return b.name
 }
 
 // FileType returns the IM file type detected from the extension.
@@ -764,25 +775,49 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 //  5. Compress excess blank lines
 //  6. Strip invalid image references (keep only img_xxx keys)
 var (
-	reH2toH6     = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
-	reH1         = regexp.MustCompile(`(?m)^# (.+)$`)
-	reHasH1toH3  = regexp.MustCompile(`(?m)^#{1,3} `)
-	reConsecH    = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
-	reTableNoGap = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
-	reTableAfter = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
-	reExcessNL   = regexp.MustCompile(`\n{3,}`)
-	reInvalidImg = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
-	reCodeBlock  = regexp.MustCompile("```[\\s\\S]*?```")
+	reH2toH6             = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
+	reH1                 = regexp.MustCompile(`(?m)^# (.+)$`)
+	reHasH1toH3          = regexp.MustCompile(`(?m)^#{1,3} `)
+	reConsecH            = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
+	reTableNoGap         = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
+	reTableAfter         = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
+	reExcessNL           = regexp.MustCompile(`\n{3,}`)
+	reInvalidImg         = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
+	reCodeBlock          = regexp.MustCompile("```[\\s\\S]*?```")
+	reBlankLineSeparator = regexp.MustCompile(`\n(?:[ \t]*\n)+`)
 )
 
-func optimizeMarkdownStyle(text string) string {
-	const mark = "___CB_"
+const (
+	markdownCodeBlockPlaceholder = "___CB_"
+	postBlankLinePlaceholder     = "\u200B"
+)
+
+type markdownPart struct {
+	text         string
+	newlineCount int
+	isSeparator  bool
+}
+
+func protectMarkdownCodeBlocks(text string) (string, []string) {
 	var codeBlocks []string
-	r := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
+	protected := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
 		idx := len(codeBlocks)
 		codeBlocks = append(codeBlocks, m)
-		return fmt.Sprintf("%s%d___", mark, idx)
+		return fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx)
 	})
+	return protected, codeBlocks
+}
+
+func restoreMarkdownCodeBlocks(text string, codeBlocks []string) string {
+	restored := text
+	for i, block := range codeBlocks {
+		restored = strings.Replace(restored, fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, i), block, 1)
+	}
+	return restored
+}
+
+func optimizeMarkdownStyle(text string) string {
+	r, codeBlocks := protectMarkdownCodeBlocks(text)
 
 	// Only downgrade when original text has H1~H3; order matters (H2~H6 first).
 	if reHasH1toH3.MatchString(text) {
@@ -795,9 +830,7 @@ func optimizeMarkdownStyle(text string) string {
 	r = reTableNoGap.ReplaceAllString(r, "$1\n\n$2")
 	r = reTableAfter.ReplaceAllString(r, "$1\n")
 
-	for i, block := range codeBlocks {
-		r = strings.Replace(r, fmt.Sprintf("%s%d___", mark, i), block, 1)
-	}
+	r = restoreMarkdownCodeBlocks(r, codeBlocks)
 
 	r = reExcessNL.ReplaceAllString(r, "\n\n")
 
@@ -816,12 +849,109 @@ func optimizeMarkdownStyle(text string) string {
 	return r
 }
 
+func shouldUseSegmentedPost(markdown string) bool {
+	protected, _ := protectMarkdownCodeBlocks(markdown)
+	return reBlankLineSeparator.MatchString(protected)
+}
+
+func splitMarkdownByBlankLines(markdown string) []markdownPart {
+	protected, codeBlocks := protectMarkdownCodeBlocks(markdown)
+	locs := reBlankLineSeparator.FindAllStringIndex(protected, -1)
+	if len(locs) == 0 {
+		return []markdownPart{{text: markdown}}
+	}
+
+	parts := make([]markdownPart, 0, len(locs)*2+1)
+	last := 0
+	for _, loc := range locs {
+		if loc[0] > last {
+			content := restoreMarkdownCodeBlocks(protected[last:loc[0]], codeBlocks)
+			if content != "" {
+				parts = append(parts, markdownPart{text: content})
+			}
+		}
+		separator := protected[loc[0]:loc[1]]
+		parts = append(parts, markdownPart{
+			isSeparator:  true,
+			newlineCount: strings.Count(separator, "\n"),
+		})
+		last = loc[1]
+	}
+
+	if last < len(protected) {
+		content := restoreMarkdownCodeBlocks(protected[last:], codeBlocks)
+		if content != "" {
+			parts = append(parts, markdownPart{text: content})
+		}
+	}
+
+	if len(parts) == 0 {
+		return []markdownPart{{text: markdown}}
+	}
+	return parts
+}
+
+func marshalMarkdownPostContent(content [][]map[string]interface{}) string {
+	payload := map[string]interface{}{
+		"zh_cn": map[string]interface{}{
+			"content": content,
+		},
+	}
+	data, _ := json.Marshal(payload)
+	return string(data)
+}
+
+func buildSingleMDPost(markdown string) string {
+	return marshalMarkdownPostContent([][]map[string]interface{}{
+		{{
+			"tag":  "md",
+			"text": optimizeMarkdownStyle(markdown),
+		}},
+	})
+}
+
+func buildSegmentedPost(markdown string) string {
+	parts := splitMarkdownByBlankLines(markdown)
+	content := make([][]map[string]interface{}, 0, len(parts))
+	for _, part := range parts {
+		if part.isSeparator {
+			for i := 1; i < part.newlineCount; i++ {
+				content = append(content, []map[string]interface{}{{
+					"tag":  "text",
+					"text": postBlankLinePlaceholder,
+				}})
+			}
+			continue
+		}
+		if part.text == "" {
+			continue
+		}
+		optimized := strings.Trim(optimizeMarkdownStyle(part.text), "\n")
+		if optimized == "" {
+			continue
+		}
+		content = append(content, []map[string]interface{}{{
+			"tag":  "md",
+			"text": optimized,
+		}})
+	}
+	if len(content) == 0 {
+		return buildSingleMDPost(markdown)
+	}
+	return marshalMarkdownPostContent(content)
+}
+
+func buildMarkdownPostContent(markdown string) string {
+	if shouldUseSegmentedPost(markdown) {
+		return buildSegmentedPost(markdown)
+	}
+	return buildSingleMDPost(markdown)
+}
+
 // wrapMarkdownAsPost wraps markdown text into Feishu post format JSON (no network).
-// Used by DryRun. Output: {"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
+// Used by DryRun. Output may include md/text paragraphs when blank-line separators are present.
 func wrapMarkdownAsPost(markdown string) string {
-	optimized := optimizeMarkdownStyle(markdown)
-	inner, _ := json.Marshal(optimized)
-	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
+	return buildMarkdownPostContent(markdown)
 }
 
 var reMarkdownImage = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^)\s]+)\)`)
@@ -856,9 +986,7 @@ func wrapMarkdownAsPostForDryRun(markdown string) (content, desc string) {
 // and wraps as post format JSON. Used by Execute (makes network calls).
 func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
 	resolved := resolveMarkdownImageURLs(ctx, runtime, markdown)
-	optimized := optimizeMarkdownStyle(resolved)
-	inner, _ := json.Marshal(optimized)
-	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
+	return buildMarkdownPostContent(resolved)
 }
 
 // resolveMarkdownImageURLs finds ![alt](https://...) in markdown, downloads each URL,
@@ -1011,7 +1139,7 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 	fd.AddField("image_type", imageType)
 	fd.AddFile("image", f)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/images",
 		Body:       fd,
@@ -1052,7 +1180,7 @@ func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePat
 	}
 	fd.AddFile("file", f)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/files",
 		Body:       fd,
@@ -1080,7 +1208,7 @@ func uploadImageFromReader(ctx context.Context, runtime *common.RuntimeContext, 
 	fd.AddField("image_type", imageType)
 	fd.AddFile("image", r)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/images",
 		Body:       fd,
@@ -1112,7 +1240,7 @@ func uploadFileFromReader(ctx context.Context, runtime *common.RuntimeContext, r
 	}
 	fd.AddFile("file", r)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/files",
 		Body:       fd,

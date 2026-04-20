@@ -6,6 +6,7 @@ package fileio
 import (
 	"context"
 	"io"
+	"io/fs"
 )
 
 // Provider creates FileIO instances.
@@ -46,6 +47,7 @@ type FileIO interface {
 type FileInfo interface {
 	Size() int64
 	IsDir() bool
+	Mode() fs.FileMode
 }
 
 // File is the interface returned by FileIO.Open.

@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/vfs"
-
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -85,9 +83,9 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 // uploadMediaForImport uploads the source file to the temporary import media
 // endpoint and returns the file token consumed by import_tasks.
 func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, docType string) (string, error) {
-	importInfo, err := vfs.Stat(filePath)
+	importInfo, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
-		return "", output.ErrValidation("cannot read file: %s", err)
+		return "", common.WrapInputStatError(err)
 	}
 
 	fileSize := importInfo.Size()

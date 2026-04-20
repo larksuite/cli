@@ -11,8 +11,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
@@ -26,7 +24,8 @@ var MailDraftEdit = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me)"},
+		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me). Prefer --mailbox for clarity; --from is kept for backward compatibility."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Takes priority over --from when both are set."},
 		{Name: "draft-id", Desc: "Target draft ID. Required for real edits. It can be omitted only when using the --print-patch-template flag by itself."},
 		{Name: "set-subject", Desc: "Replace the subject with this final value. Use this for full subject replacement, not for appending a fragment to the existing subject."},
 		{Name: "set-to", Desc: "Replace the entire To recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
@@ -34,6 +33,7 @@ var MailDraftEdit = common.Shortcut{
 		{Name: "set-bcc", Desc: "Replace the entire Bcc recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "patch-file", Desc: "Edit entry point for body edits, incremental recipient changes, header edits, attachment changes, or inline-image changes. All body edits MUST go through --patch-file. Two body ops: set_body (full replacement including quote) and set_reply_body (replaces only user-authored content, auto-preserves quote block). Run --inspect first to check has_quoted_content, then --print-patch-template for the JSON structure. Relative path only."},
 		{Name: "print-patch-template", Type: "bool", Desc: "Print the JSON template and supported operations for the --patch-file flag. Recommended first step before generating a patch file. No draft read or write is performed."},
+		{Name: "set-priority", Desc: "Set email priority: high, normal, low. Setting 'normal' removes any existing priority header."},
 		{Name: "inspect", Type: "bool", Desc: "Inspect the draft without modifying it. Returns the draft projection including subject, recipients, body summary, has_quoted_content (whether the draft contains a reply/forward quote block), attachments_summary (with part_id and cid for each attachment), and inline_summary. Run this BEFORE editing body to check has_quoted_content: if true, use set_reply_body in --patch-file to preserve the quote; if false, use set_body."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -93,7 +93,26 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("parse draft raw EML failed: %v", err)
 		}
-		if err := draftpkg.Apply(snapshot, patch); err != nil {
+		// Pre-process insert_signature ops: resolve signature using the draft's
+		// From address so alias/shared-mailbox senders get correct template vars.
+		var draftFromEmail string
+		if len(snapshot.From) > 0 {
+			draftFromEmail = snapshot.From[0].Address
+		}
+		for i := range patch.Ops {
+			if patch.Ops[i].Op == "insert_signature" {
+				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, draftFromEmail)
+				if sigErr != nil {
+					return sigErr
+				}
+				if sigResult != nil {
+					patch.Ops[i].RenderedSignatureHTML = sigResult.RenderedContent
+					patch.Ops[i].SignatureImages = sigResult.Images
+				}
+			}
+		}
+		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
+		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
 			return output.ErrValidation("apply draft patch failed: %v", err)
 		}
 		serialized, err := draftpkg.Serialize(snapshot)
@@ -216,7 +235,7 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 
 	patchFile := strings.TrimSpace(runtime.Str("patch-file"))
 	if patchFile != "" {
-		filePatch, err := loadPatchFile(patchFile)
+		filePatch, err := loadPatchFile(runtime, patchFile)
 		if err != nil {
 			return patch, err
 		}
@@ -258,19 +277,33 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 	setRecipients("cc", runtime.Str("set-cc"))
 	setRecipients("bcc", runtime.Str("set-bcc"))
 
+	// --set-priority → inject set_header / remove_header op
+	if setPriority := runtime.Str("set-priority"); setPriority != "" {
+		headerVal, pErr := parsePriority(setPriority)
+		if pErr != nil {
+			return patch, pErr
+		}
+		if headerVal != "" {
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "set_header", Name: "X-Cli-Priority", Value: headerVal})
+		} else {
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "remove_header", Name: "X-Cli-Priority"})
+		}
+	}
+
 	if len(patch.Ops) == 0 {
 		return patch, output.ErrValidation("at least one edit operation is required; use direct flags such as --set-subject/--set-to, or use --patch-file for body edits and other advanced operations (run --print-patch-template first)")
 	}
 	return patch, patch.Validate()
 }
 
-func loadPatchFile(path string) (draftpkg.Patch, error) {
+func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch, error) {
 	var patch draftpkg.Patch
-	safePath, err := validate.SafeInputPath(path)
+	f, err := runtime.FileIO().Open(path)
 	if err != nil {
 		return patch, fmt.Errorf("--patch-file %q: %w", path, err)
 	}
-	data, err := vfs.ReadFile(safePath)
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return patch, err
 	}
@@ -312,6 +345,8 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
 			{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 			{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
+			{"op": "insert_signature", "shape": map[string]interface{}{"signature_id": "string (run mail +signature to list IDs)"}},
+			{"op": "remove_signature", "shape": map[string]interface{}{}, "note": "removes existing signature from the HTML body"},
 		},
 		"supported_ops_by_group": []map[string]interface{}{
 			{
@@ -345,6 +380,13 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 					{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
 					{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 					{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
+				},
+			},
+			{
+				"group": "signature",
+				"ops": []map[string]interface{}{
+					{"op": "insert_signature", "shape": map[string]interface{}{"signature_id": "string (run mail +signature to list IDs)"}},
+					{"op": "remove_signature", "shape": map[string]interface{}{}, "note": "removes existing signature and its preceding spacing from the HTML body"},
 				},
 			},
 		},

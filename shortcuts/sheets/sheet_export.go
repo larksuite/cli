@@ -7,14 +7,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -64,7 +63,7 @@ var SheetExport = common.Shortcut{
 
 		// Early path validation before any API call
 		if outputPath != "" {
-			if _, err := validate.SafeOutputPath(outputPath); err != nil {
+			if _, err := runtime.ResolveSavePath(outputPath); err != nil {
 				return output.ErrValidation("unsafe output path: %s", err)
 			}
 		}
@@ -129,22 +128,21 @@ var SheetExport = common.Shortcut{
 		}
 		defer resp.Body.Close()
 
-		safePath, pathErr := validate.SafeOutputPath(outputPath)
-		if pathErr != nil {
-			return output.ErrValidation("unsafe output path: %s", pathErr)
-		}
-		if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
-			return output.Errorf(output.ExitInternal, "api_error", "cannot create parent directory: %s", err)
-		}
-
-		sizeBytes, err := validate.AtomicWriteFromReader(safePath, resp.Body, 0600)
+		result, err := runtime.FileIO().Save(outputPath, fileio.SaveOptions{
+			ContentType:   resp.Header.Get("Content-Type"),
+			ContentLength: resp.ContentLength,
+		}, resp.Body)
 		if err != nil {
-			return output.Errorf(output.ExitInternal, "api_error", "cannot create file: %s", err)
+			return common.WrapSaveErrorByCategory(err, "io")
 		}
 
+		savedPath, _ := runtime.ResolveSavePath(outputPath)
+		if savedPath == "" {
+			savedPath = outputPath
+		}
 		runtime.Out(map[string]interface{}{
-			"saved_path": safePath,
-			"size_bytes": sizeBytes,
+			"saved_path": savedPath,
+			"size_bytes": result.Size(),
 		}, nil)
 		return nil
 	},

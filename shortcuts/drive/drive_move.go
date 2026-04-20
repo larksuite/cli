@@ -115,7 +115,7 @@ var DriveMove = common.Shortcut{
 				"ready":        ready,
 			}
 			if !ready {
-				nextCommand := driveTaskCheckResultCommand(taskID)
+				nextCommand := driveTaskCheckResultCommand(taskID, string(runtime.As()))
 				fmt.Fprintf(runtime.IO().ErrOut, "Folder move task is still in progress. Continue with: %s\n", nextCommand)
 				out["timed_out"] = true
 				out["next_command"] = nextCommand

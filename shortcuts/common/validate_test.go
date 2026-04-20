@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/spf13/cobra"
 )
 
@@ -199,7 +200,7 @@ func TestValidateSafeOutputDir_RejectsSymlinkEscape(t *testing.T) {
 		t.Fatalf("Symlink: %v", err)
 	}
 
-	if err := ValidateSafeOutputDir("evil_out"); err == nil {
+	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "evil_out"); err == nil {
 		t.Fatal("expected error for symlink pointing outside CWD, got nil")
 	}
 }
@@ -214,7 +215,7 @@ func TestValidateSafeOutputDir_RejectsDanglingSymlink(t *testing.T) {
 		t.Fatalf("Symlink: %v", err)
 	}
 
-	if err := ValidateSafeOutputDir("dangling"); err == nil {
+	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "dangling"); err == nil {
 		t.Fatal("expected error for dangling symlink, got nil")
 	}
 }
@@ -230,7 +231,7 @@ func TestValidateSafeOutputDir_AllowsNormalSubdir(t *testing.T) {
 		t.Fatalf("Mkdir: %v", err)
 	}
 
-	if err := ValidateSafeOutputDir("output"); err != nil {
+	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "output"); err != nil {
 		t.Fatalf("expected no error for real subdir, got: %v", err)
 	}
 }
@@ -241,7 +242,7 @@ func TestValidateSafeOutputDir_AllowsNonExistentPath(t *testing.T) {
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 
-	if err := ValidateSafeOutputDir("new_output_dir"); err != nil {
+	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "new_output_dir"); err != nil {
 		t.Fatalf("expected no error for non-existent path, got: %v", err)
 	}
 }

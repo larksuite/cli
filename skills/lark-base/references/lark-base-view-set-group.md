@@ -11,15 +11,17 @@ lark-cli base +view-set-group \
   --base-token app_xxx \
   --table-id tbl_xxx \
   --view-id viw_xxx \
-  --json [{"field":"fld_status","desc":false}]
+  --json '{"group_config":[{"field":"fldStatus","desc":false}]}'
 ```
 
 ## JSON 结构
 
 ```json
-[
-  { "field": "fld_status", "desc": false }
-]
+{
+  "group_config": [
+    { "field": "fldStatus", "desc": false }
+  ]
+}
 ```
 
 ## 参数
@@ -29,7 +31,7 @@ lark-cli base +view-set-group \
 | `--base-token <token>` | 是 | Base Token |
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--view-id <id_or_name>` | 是 | 视图 ID 或视图名 |
-| `--json <body>` | 是 | JSON 对象或数组 |
+| `--json <body>` | 是 | JSON 对象 |
 
 ## API 入参详情
 
@@ -49,14 +51,12 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/group
 - 每项：
   - `field`：字段 id 或字段名，长度 `1..100`
   - `desc`：可选，默认 `false`
-- `--json` 既可传对象 `{"group_config":[...]}`，也可直接传数组 `[...]`
-- 直接传数组时，CLI 会自动包装成 `group_config`
 
 
 ## JSON Schema（原文）
 
 ```json
-{"type":"array","items":{"type":"object","properties":{"field":{"type":"string","minLength":1,"maxLength":100,"description":"Field id or name"},"desc":{"type":"boolean","default":false,"description":"define how to sort group headers"}},"required":["field"],"additionalProperties":false},"minItems":0,"maxItems":3,"$schema":"http://json-schema.org/draft-07/schema#"}
+{"type":"object","properties":{"group_config":{"type":"array","items":{"type":"object","properties":{"field":{"type":"string","minLength":1,"maxLength":100,"description":"Field id or name"},"desc":{"type":"boolean","default":false,"description":"define how to sort group headers"}},"required":["field"],"additionalProperties":false},"minItems":0,"maxItems":3}},"required":["group_config"],"additionalProperties":false,"$schema":"http://json-schema.org/draft-07/schema#"}
 
 ```
 

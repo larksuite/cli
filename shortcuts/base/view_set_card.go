@@ -22,6 +22,10 @@ var BaseViewSetCard = common.Shortcut{
 		viewRefFlag(true),
 		{Name: "json", Desc: "card JSON object", Required: true},
 	},
+	Tips: []string{
+		`Example: --json '{"cover_field":"fldCover"}'`,
+		"Agent hint: use the lark-base skill's view-set-card guide for usage and limits.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)
 	},

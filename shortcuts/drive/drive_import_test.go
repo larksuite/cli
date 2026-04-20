@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 

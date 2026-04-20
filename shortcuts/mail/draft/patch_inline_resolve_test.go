@@ -26,7 +26,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>Hello<img src="./logo.png" /></div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div>Hello<img src="./logo.png" /></div>`}},
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>empty</div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div><img src="./a.png" /><img src="./b.jpg" /></div>`}},
 	})
 	if err != nil {
@@ -126,7 +126,7 @@ cG5n
 	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
 	originalBody := string(htmlPart.Body)
 
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: originalBody}},
 	})
 	if err != nil {
@@ -156,7 +156,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>empty</div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div><img src="./logo.png" /><img src="./sub/logo.png" /></div>`}},
 	})
 	if err != nil {
@@ -190,7 +190,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>empty</div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div><img src="./logo.png" /><p>text</p><img src="./logo.png" /></div>`}},
 	})
 	if err != nil {
@@ -235,7 +235,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>empty</div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div><img src="./doc.txt" /></div>`}},
 	})
 	if err == nil {
@@ -268,7 +268,7 @@ cG5n
 --rel--
 `)
 	// Remove the <img> tag from body.
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<div>hello</div>"}},
 	})
 	if err != nil {
@@ -309,7 +309,7 @@ cG5n
 --rel--
 `)
 	// Replace old image reference with a new local file.
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<div><img src="./new.png" /></div>`}},
 	})
 	if err != nil {
@@ -352,7 +352,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>original reply</div><div class="history-quote-wrapper"><div>quoted text</div></div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_reply_body", Value: `<div>new reply<img src="./photo.png" /></div>`}},
 	})
 	if err != nil {
@@ -402,7 +402,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>empty</div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "add_inline", Path: "a.png", CID: "a"},
 			{Op: "set_body", Value: `<div><img src="cid:a" /><img src="./b.png" /></div>`},
@@ -449,7 +449,7 @@ Content-Type: text/html; charset=UTF-8
 `)
 	// add_inline creates CID "logo", but body uses local path instead of cid:logo.
 	// resolve generates a UUID CID, orphan cleanup removes the unused "logo".
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "add_inline", Path: "logo.png", CID: "logo"},
 			{Op: "set_body", Value: `<div><img src="./logo.png" /></div>`},
@@ -503,7 +503,7 @@ cG5n
 --rel--
 `)
 	// remove_inline removes the MIME part, but set_body still references cid:logo.
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "remove_inline", Target: AttachmentTarget{CID: "logo"}},
 			{Op: "set_body", Value: `<div><img src="cid:logo" /></div>`},
@@ -541,7 +541,7 @@ Content-Transfer-Encoding: base64
 cG5n
 --rel--
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{
 			{Op: "remove_inline", Target: AttachmentTarget{CID: "old"}},
 			{Op: "set_body", Value: `<div><img src="./new.png" /></div>`},
@@ -584,7 +584,7 @@ Content-Type: text/plain; charset=UTF-8
 
 Just plain text.
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "Updated plain text."}},
 	})
 	if err != nil {
@@ -631,7 +631,7 @@ cG5n
 `)
 	// A metadata-only edit should not destroy the HTML body part even though
 	// its Content-ID is not referenced by any <img src="cid:...">.
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_subject", Value: "Updated subject"}},
 	})
 	if err != nil {
@@ -901,7 +901,7 @@ func TestSetBodyReplacesOrphanedInlineUnderMixed(t *testing.T) {
 	}
 
 	// Apply set_body with a local image path (triggers auto-resolve).
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: `<p>111<img src="./Peter1.jpeg" /></p><p>222</p>`}},
 	})
 	if err != nil {
@@ -970,7 +970,7 @@ Content-Type: text/html; charset=UTF-8
 
 <div>Hello<img src="./nonexistent-image.png" /></div>
 `)
-	err := Apply(snapshot, Patch{
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_subject", Value: "Updated subject"}},
 	})
 	if err != nil {

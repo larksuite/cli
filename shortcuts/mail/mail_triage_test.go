@@ -967,4 +967,441 @@ func TestBuildSearchParamsPageToken(t *testing.T) {
 	}
 }
 
+// --- resolveTriagePageSize ---
+
+func TestResolveTriagePageSizeDefaultMax(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, nil) // max=0 (unset) → normalizeTriageMax returns 20
+	got := resolveTriagePageSize(rt)
+	if got != 20 {
+		t.Fatalf("expected 20, got %d", got)
+	}
+}
+
+func TestResolveTriagePageSizeFromMax(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, map[string]string{"max": "30"})
+	got := resolveTriagePageSize(rt)
+	if got != 30 {
+		t.Fatalf("expected 30, got %d", got)
+	}
+}
+
+func TestResolveTriagePageSizeFromPageSize(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, map[string]string{"page-size": "10"})
+	got := resolveTriagePageSize(rt)
+	if got != 10 {
+		t.Fatalf("expected 10, got %d", got)
+	}
+}
+
+func TestResolveTriagePageSizePageSizeOverridesMax(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, map[string]string{"max": "30", "page-size": "5"})
+	got := resolveTriagePageSize(rt)
+	if got != 5 {
+		t.Fatalf("expected page-size=5 to override max=30, got %d", got)
+	}
+}
+
+func TestResolveTriagePageSizeClamped(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, map[string]string{"page-size": "999"})
+	got := resolveTriagePageSize(rt)
+	if got != 400 {
+		t.Fatalf("expected clamped to 400, got %d", got)
+	}
+}
+
+// --- page-token path validation ---
+
+func TestResolveTriagePathSearchTokenContinuation(t *testing.T) {
+	// search: token without --query is valid (continuation)
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "search:abc123"), "", triageFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !useSearch {
+		t.Fatal("search: prefix should select search path")
+	}
+}
+
+func TestResolveTriagePathListTokenConflictsWithQuery(t *testing.T) {
+	// list: token + --query → error (query would be silently ignored)
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "hello", triageFilter{})
+	if err == nil {
+		t.Fatal("expected error for list: token with --query")
+	}
+}
+
+func TestResolveTriagePathListTokenConflictsWithSearchFilter(t *testing.T) {
+	// list: token + search-only filter field → error
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "", triageFilter{From: []string{"a@b.com"}})
+	if err == nil {
+		t.Fatal("expected error for list: token with search-only filter")
+	}
+}
+
+func TestResolveTriagePathListTokenWithListFilter(t *testing.T) {
+	// list: token + list-compatible filter → OK
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "", triageFilter{Folder: "inbox"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if useSearch {
+		t.Fatal("list: prefix should select list path")
+	}
+}
+
+func TestResolveTriagePathBareTokenRejected(t *testing.T) {
+	// Bare tokens are rejected at parse time, not at resolveTriagePath time
+	_, err := parseTriagePageToken("baretoken123")
+	if err == nil {
+		t.Fatal("expected error for bare token without prefix")
+	}
+	if !strings.Contains(err.Error(), "prefix") {
+		t.Fatalf("error should mention prefix, got: %v", err)
+	}
+}
+
+func TestResolveTriagePathEmptyToken(t *testing.T) {
+	// No token → falls back to usesTriageSearchPath
+	useSearch, err := resolveTriagePath(triagePageToken{}, "hello", triageFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !useSearch {
+		t.Fatal("query present → should use search path")
+	}
+
+	useSearch, err = resolveTriagePath(triagePageToken{}, "", triageFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if useSearch {
+		t.Fatal("no query → should use list path")
+	}
+}
+
+func TestPageTokenSearchPrefixStripped(t *testing.T) {
+	raw := "search:72d98412d30aa6af"
+	got := strings.TrimPrefix(raw, "search:")
+	if got != "72d98412d30aa6af" {
+		t.Fatalf("expected stripped token, got %q", got)
+	}
+}
+
+func TestPageTokenListPrefixStripped(t *testing.T) {
+	raw := "list:FfccvoqPd_loLhtcRx8cx"
+	got := strings.TrimPrefix(raw, "list:")
+	if got != "FfccvoqPd_loLhtcRx8cx" {
+		t.Fatalf("expected stripped token, got %q", got)
+	}
+}
+
+func TestPageTokenBareTokenRejected(t *testing.T) {
+	_, err := parseTriagePageToken("FfccvoqPd_loLhtcRx8cx")
+	if err == nil {
+		t.Fatal("expected error for bare token without prefix")
+	}
+	if !strings.Contains(err.Error(), "prefix") {
+		t.Fatalf("error should mention prefix requirement, got: %v", err)
+	}
+}
+
+// --- DryRun with page-size ---
+
+func TestMailTriageDryRunPageSizeOverridesMax(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"max":       "50",
+		"page-size": "8",
+		"filter":    `{"folder_id":"INBOX"}`,
+	})
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	got, ok := apis[0].Params["page_size"].(float64)
+	if !ok {
+		t.Fatalf("page_size type mismatch, got %#v", apis[0].Params["page_size"])
+	}
+	if int(got) != 8 {
+		t.Fatalf("expected page_size=8 (from --page-size), got %d", int(got))
+	}
+}
+
+func TestMailTriageDryRunSearchPathCapsPageSizeAt15(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"query":     "hello",
+		"page-size": "30",
+	})
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	got, ok := apis[0].Params["page_size"].(float64)
+	if !ok {
+		t.Fatalf("page_size type mismatch, got %#v", apis[0].Params["page_size"])
+	}
+	if int(got) != searchPageMax {
+		t.Fatalf("expected page_size capped at %d, got %d", searchPageMax, int(got))
+	}
+}
+
+// --- DryRun with page-token ---
+
+func TestMailTriageDryRunListPathWithPageToken(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"filter":     `{"folder_id":"INBOX"}`,
+		"page-token": "list:abc123token",
+	})
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	got, ok := apis[0].Params["page_token"]
+	if !ok {
+		t.Fatalf("expected page_token in params")
+	}
+	if got != "abc123token" {
+		t.Fatalf("expected stripped page_token='abc123token', got %v", got)
+	}
+}
+
+func TestMailTriageDryRunSearchPathWithPageToken(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"query":      "test",
+		"page-token": "search:def456token",
+	})
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	got, ok := apis[0].Params["page_token"]
+	if !ok {
+		t.Fatalf("expected page_token in params")
+	}
+	if got != "def456token" {
+		t.Fatalf("expected stripped page_token='def456token', got %v", got)
+	}
+}
+
+func TestMailTriageDryRunBarePageTokenErrors(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"filter":     `{"folder_id":"INBOX"}`,
+		"page-token": "baretoken123",
+	})
+	dry := MailTriage.DryRun(context.Background(), runtime)
+	b, _ := json.Marshal(dry)
+	s := string(b)
+	if !strings.Contains(s, "filter_error") {
+		t.Fatalf("expected filter_error for bare token, got %s", s)
+	}
+}
+
+// --- resolveTriagePath ---
+
+func TestResolveTriagePathSearchPrefixWithoutQuery(t *testing.T) {
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "search:abc"), "", triageFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !useSearch {
+		t.Fatal("search: prefix should select search path")
+	}
+}
+
+func TestResolveTriagePathListPrefixWithoutConflict(t *testing.T) {
+	useSearch, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc"), "", triageFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if useSearch {
+		t.Fatal("list: prefix should select list path")
+	}
+}
+
+func TestResolveTriagePathListPrefixWithQueryErrors(t *testing.T) {
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc"), "hello", triageFilter{})
+	if err == nil {
+		t.Fatal("expected error for list: token with --query")
+	}
+}
+
+func TestResolveTriagePathListPrefixWithSearchFilterErrors(t *testing.T) {
+	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc"), "", triageFilter{Subject: "test"})
+	if err == nil {
+		t.Fatal("expected error for list: token with search-only filter field")
+	}
+}
+
+func TestResolveTriagePathBareTokenErrors(t *testing.T) {
+	_, err := parseTriagePageToken("baretoken")
+	if err == nil {
+		t.Fatal("expected error for bare token")
+	}
+}
+
+func TestResolveTriagePathEmptyTokenFallsBack(t *testing.T) {
+	useSearch, err := resolveTriagePath(triagePageToken{}, "", triageFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if useSearch {
+		t.Fatal("no query → should use list path")
+	}
+
+	useSearch, err = resolveTriagePath(triagePageToken{}, "keyword", triageFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !useSearch {
+		t.Fatal("query present → should use search path")
+	}
+}
+
+// --- DryRun: token prefix overrides path ---
+
+func TestMailTriageDryRunSearchTokenWithoutQueryUsesSearchPath(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"page-token": "search:abc123",
+	})
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	if apis[0].URL != mailboxPath("me", "search") {
+		t.Fatalf("search: prefix should force search path, got url %s", apis[0].URL)
+	}
+}
+
+func TestMailTriageDryRunListTokenWithQueryErrors(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"query":      "hello",
+		"page-token": "list:abc123",
+	})
+	dry := MailTriage.DryRun(context.Background(), runtime)
+	b, _ := json.Marshal(dry)
+	s := string(b)
+	if !strings.Contains(s, "filter_error") {
+		t.Fatalf("expected filter_error for list token with query, got %s", s)
+	}
+}
+
+// --- DryRun with no page-token has no page_token param ---
+
+func TestMailTriageDryRunNoPageTokenOmitsParam(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"filter": `{"folder_id":"INBOX"}`,
+	})
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	if _, ok := apis[0].Params["page_token"]; ok {
+		t.Fatalf("page_token should not be present when --page-token is empty")
+	}
+}
+
+// --- Flag definition checks ---
+
+func TestMailTriageFlagsIncludePageTokenAndPageSize(t *testing.T) {
+	flagNames := make(map[string]bool)
+	for _, fl := range MailTriage.Flags {
+		flagNames[fl.Name] = true
+	}
+	for _, name := range []string{"page-token", "page-size", "max"} {
+		if !flagNames[name] {
+			t.Fatalf("expected flag --%s to be defined", name)
+		}
+	}
+}
+
+func mustParseTriagePageToken(t *testing.T, token string) triagePageToken {
+	t.Helper()
+	parsed, err := parseTriagePageToken(token)
+	if err != nil {
+		t.Fatalf("parseTriagePageToken(%q) failed: %v", token, err)
+	}
+	return parsed
+}
+
+// --- parseTriagePageToken / encodeTriagePageToken ---
+
+func TestEncodeTriagePageToken(t *testing.T) {
+	got := encodeTriagePageToken("search", "abc123")
+	if got != "search:abc123" {
+		t.Fatalf("expected search:abc123, got %q", got)
+	}
+}
+
+func TestEncodeTriagePageTokenEmpty(t *testing.T) {
+	got := encodeTriagePageToken("search", "")
+	if got != "" {
+		t.Fatalf("expected empty for empty raw token, got %q", got)
+	}
+}
+
+func TestParseTriagePageTokenSearch(t *testing.T) {
+	parsed, err := parseTriagePageToken("search:abc123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.Path != "search" || parsed.RawToken != "abc123" {
+		t.Fatalf("unexpected parsed: %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenList(t *testing.T) {
+	parsed, err := parseTriagePageToken("list:longtoken123xyz")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.Path != "list" || parsed.RawToken != "longtoken123xyz" {
+		t.Fatalf("unexpected parsed: %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenWithColonsInRawToken(t *testing.T) {
+	// Raw token may contain colons
+	parsed, err := parseTriagePageToken("search:abc:def:ghi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.Path != "search" || parsed.RawToken != "abc:def:ghi" {
+		t.Fatalf("unexpected parsed: %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenBareRejected(t *testing.T) {
+	_, err := parseTriagePageToken("baretoken")
+	if err == nil {
+		t.Fatal("expected error for bare token")
+	}
+}
+
+func TestParseTriagePageTokenEmptyRawTokenRejected(t *testing.T) {
+	_, err := parseTriagePageToken("search:")
+	if err == nil {
+		t.Fatal("expected error for empty raw token after prefix")
+	}
+	_, err = parseTriagePageToken("list:")
+	if err == nil {
+		t.Fatal("expected error for empty raw token after prefix")
+	}
+}
+
+func TestParseTriagePageTokenEmpty(t *testing.T) {
+	parsed, err := parseTriagePageToken("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if parsed.RawToken != "" {
+		t.Fatalf("expected empty parsed, got %+v", parsed)
+	}
+}
+
+func TestParseTriagePageTokenInvalidPrefix(t *testing.T) {
+	_, err := parseTriagePageToken("unknown:abc123")
+	if err == nil {
+		t.Fatal("expected error for unknown prefix")
+	}
+}
+
 func boolPtr(v bool) *bool { return &v }

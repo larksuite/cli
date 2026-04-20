@@ -39,12 +39,15 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "to", Desc: "Optional. Full To recipient list. Separate multiple addresses with commas. Display-name format is supported. When omitted, the draft is created without recipients (they can be added later via +draft-edit)."},
 		{Name: "subject", Desc: "Required. Final draft subject. Pass the full subject you want to appear in the draft.", Required: true},
 		{Name: "body", Desc: "Required. Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode.", Required: true},
-		{Name: "from", Desc: "Optional. Sender email address; also selects the mailbox to create the draft in. If omitted, the current signed-in user's primary mailbox address is used."},
+		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, the mailbox's primary address is used."},
+		{Name: "mailbox", Desc: "Optional. Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "Optional. Full Cc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "bcc", Desc: "Optional. Full Bcc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
 		{Name: "attach", Desc: "Optional. Regular attachment file paths (relative path only). Separate multiple paths with commas. Each path must point to a readable local file."},
 		{Name: "inline", Desc: "Optional. Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		signatureFlag,
+		priorityFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		input, err := parseDraftCreateInput(runtime)
@@ -53,7 +56,7 @@ var MailDraftCreate = common.Shortcut{
 		}
 		mailboxID := resolveComposeMailboxID(runtime)
 		return common.NewDryRunAPI().
-			Desc("Create a new empty draft without sending it. The command first reads the current mailbox profile to determine the default sender when `--from` is omitted, then builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.").
+			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, --mailbox, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.").
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
@@ -71,21 +74,32 @@ var MailDraftCreate = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("body")) == "" {
 			return output.ErrValidation("--body is required; pass the full email body")
 		}
-		if err := validateComposeInlineAndAttachments(runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
 			return err
 		}
-		return nil
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+			return err
+		}
+		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		input, err := parseDraftCreateInput(runtime)
 		if err != nil {
 			return err
 		}
-		rawEML, err := buildRawEMLForDraftCreate(runtime, input)
+		priority, err := parsePriority(runtime.Str("priority"))
 		if err != nil {
 			return err
 		}
 		mailboxID := resolveComposeMailboxID(runtime)
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, runtime.Str("signature-id"), runtime.Str("from"))
+		if err != nil {
+			return err
+		}
+		rawEML, err := buildRawEMLForDraftCreate(runtime, input, sigResult, priority)
+		if err != nil {
+			return err
+		}
 		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("create draft failed: %w", err)
@@ -120,20 +134,17 @@ func parseDraftCreateInput(runtime *common.RuntimeContext) (draftCreateInput, er
 	return input, nil
 }
 
-func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput) (string, error) {
-	senderEmail := input.From
+func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput, sigResult *signatureResult, priority string) (string, error) {
+	senderEmail := resolveComposeSenderEmail(runtime)
 	if senderEmail == "" {
-		senderEmail = fetchCurrentUserEmail(runtime)
-		if senderEmail == "" {
-			return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
-		}
+		return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
 	}
 
 	if err := validateRecipientCount(input.To, input.CC, input.BCC); err != nil {
 		return "", err
 	}
 
-	bld := emlbuilder.New().
+	bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 		AllowNoRecipients().
 		Subject(input.Subject)
 	if strings.TrimSpace(input.To) != "" {
@@ -155,12 +166,18 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 	var autoResolvedPaths []string
 	if input.PlainText {
 		bld = bld.TextBody([]byte(input.Body))
-	} else if bodyIsHTML(input.Body) {
-		resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(input.Body)
+	} else if bodyIsHTML(input.Body) || sigResult != nil {
+		htmlBody := input.Body
+		if !bodyIsHTML(input.Body) {
+			htmlBody = buildBodyDiv(input.Body, false)
+		}
+		resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(htmlBody)
 		if resolveErr != nil {
 			return "", resolveErr
 		}
+		resolved = injectSignatureIntoBody(resolved, sigResult)
 		bld = bld.HTMLBody([]byte(resolved))
+		bld = addSignatureImagesToBuilder(bld, sigResult)
 		var allCIDs []string
 		for _, ref := range refs {
 			bld = bld.AddFileInline(ref.FilePath, ref.CID)
@@ -171,14 +188,16 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 			bld = bld.AddFileInline(spec.FilePath, spec.CID)
 			allCIDs = append(allCIDs, spec.CID)
 		}
+		allCIDs = append(allCIDs, signatureCIDs(sigResult)...)
 		if err := validateInlineCIDs(resolved, allCIDs, nil); err != nil {
 			return "", err
 		}
 	} else {
 		bld = bld.TextBody([]byte(input.Body))
 	}
+	bld = applyPriority(bld, priority)
 	allFilePaths := append(append(splitByComma(input.Attach), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-	if err := checkAttachmentSizeLimit(allFilePaths, 0); err != nil {
+	if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
 		return "", err
 	}
 	for _, path := range splitByComma(input.Attach) {

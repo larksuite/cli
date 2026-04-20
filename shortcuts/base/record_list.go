@@ -19,6 +19,7 @@ var BaseRecordList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
+		{Name: "field-id", Type: "string_array", Desc: "field ID or field name to include (repeatable)"},
 		{Name: "view-id", Desc: "view ID"},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size"},

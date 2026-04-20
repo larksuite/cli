@@ -22,6 +22,10 @@ var BaseViewSetTimebar = common.Shortcut{
 		viewRefFlag(true),
 		{Name: "json", Desc: "timebar JSON object", Required: true},
 	},
+	Tips: []string{
+		`Example: --json '{"start_time":"fldStart","end_time":"fldEnd","title":"fldTitle"}'`,
+		"Agent hint: use the lark-base skill's view-set-timebar guide for usage and limits.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)
 	},

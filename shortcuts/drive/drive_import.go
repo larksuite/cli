@@ -9,10 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/larksuite/cli/internal/vfs"
-
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -49,7 +47,7 @@ var DriveImport = common.Shortcut{
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
 		}
-		fileSize, err := preflightDriveImportFile(&spec)
+		fileSize, err := preflightDriveImportFile(runtime.FileIO(), &spec)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
@@ -66,6 +64,9 @@ var DriveImport = common.Shortcut{
 		dry.GET("/open-apis/drive/v1/import_tasks/:ticket").
 			Desc("[3] Poll import task result").
 			Set("ticket", "<ticket>")
+		if runtime.IsBot() {
+			dry.Desc("After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on it.")
+		}
 
 		return dry
 	},
@@ -76,7 +77,7 @@ var DriveImport = common.Shortcut{
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
 		}
-		if _, err := preflightDriveImportFile(&spec); err != nil {
+		if _, err := preflightDriveImportFile(runtime.FileIO(), &spec); err != nil {
 			return err
 		}
 
@@ -133,23 +134,23 @@ var DriveImport = common.Shortcut{
 			out["timed_out"] = true
 			out["next_command"] = nextCommand
 		}
+		if ready {
+			if grant := common.AutoGrantCurrentUserDrivePermission(runtime, common.GetString(out, "token"), resultType); grant != nil {
+				out["permission_grant"] = grant
+			}
+		}
 
 		runtime.Out(out, nil)
 		return nil
 	},
 }
 
-func preflightDriveImportFile(spec *driveImportSpec) (int64, error) {
+func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, error) {
 	// Keep dry-run and execution aligned on path normalization, file existence,
 	// and format-specific size limits before planning the upload path.
-	safeFilePath, err := validate.SafeInputPath(spec.FilePath)
+	info, err := fio.Stat(spec.FilePath)
 	if err != nil {
-		return 0, output.ErrValidation("unsafe file path: %s", err)
-	}
-
-	info, err := vfs.Stat(safeFilePath)
-	if err != nil {
-		return 0, output.ErrValidation("cannot read file: %s", err)
+		return 0, common.WrapInputStatError(err)
 	}
 	if !info.Mode().IsRegular() {
 		return 0, output.ErrValidation("file must be a regular file: %s", spec.FilePath)

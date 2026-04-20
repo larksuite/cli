@@ -97,34 +97,28 @@ Drive Folder (云空间文件夹)
     └── file_token (直接使用)
 ```
 
-## 重要说明：画板编辑
-> **⚠️ lark-doc skill 不能直接编辑已有画板内容，但 `docs +update` 可以新建空白画板**
-### 场景 1：已通过 docs +fetch 获取到文档内容和画板 token
-如果用户已经通过 `docs +fetch` 拉取了文档内容，并且文档中已有画板（返回的 markdown 中包含 `<whiteboard token="xxx"/>` 标签），请引导用户：
-1. 记录画板的 token
-2. 查看 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md) 了解如何编辑画板内容
-### 场景 2：刚创建画板，需要编辑
-如果用户刚通过 `docs +update` 创建了空白画板，需要编辑时：
-**步骤 1：按空白画板语法创建**
-- 在 `--markdown` 中直接传 `<whiteboard type="blank"></whiteboard>`
-- 需要多个空白画板时，在同一个 `--markdown` 里重复多个 whiteboard 标签
-  **步骤 2：从响应中记录 token**
-- `docs +update` 成功后，读取响应字段 `data.board_tokens`
-- `data.board_tokens` 是新建画板的 token 列表，后续编辑直接使用这里的 token
-  **步骤 3：引导编辑**
-- 记录需要编辑的画板 token
-- 查看 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md) 了解如何编辑画板内容
-### 注意事项
-- 已有画板内容无法通过 lark-doc 的 `docs +update` 直接编辑
-- 编辑画板需要使用专门的 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md)
+## 绘图需求识别与挖掘
+
+用户很少主动提"画板"——**默认**使用飞书画板承载图表，命中以下任一信号即触发：
+- 用户提到图表类型：架构图、流程图、时序图、组织图、路线图、对比图、鱼骨图、飞轮图、思维导图等
+- 用户表达可视化意图：画一下、梳理关系、画个流程、给我一个图、方便汇报等
+- 文档主题涉及结构关系、流程走向、时间线、数据对比
+
+以下场景不加图：用户明确拒绝、合同/法律条款/合规声明等严谨连续文本、原样转录任务。
+
+> [!CAUTION]
+> 命中后，**MUST** 先读取 [`references/lark-doc-whiteboard.md`](references/lark-doc-whiteboard.md) 并**严格按其流程执行**。
+>
+> **绝对禁止**用 `whiteboard-cli` 渲染 PNG 后通过 `docs +media-insert` 插入文档——图表必须通过 `lark-cli whiteboard +update` 写入画板 block，这是唯一合法路径。
 
 ## 快速决策
-- 用户说“找一个表格”“按名称搜电子表格”“找报表”“最近打开的表格”，先用 `lark-cli docs +search` 做资源发现。
 - 用户说“看一下文档里的图片/附件/素材”“预览素材”，优先用 `lark-cli docs +media-preview`。
 - 用户明确说“下载素材”，再用 `lark-cli docs +media-download`。
 - 如果目标明确是画板 / whiteboard / 画板缩略图，只能用 `lark-cli docs +media-download --type whiteboard`，不要用 `+media-preview`。
+- 用户说“找一个表格”“按名称搜电子表格”“找报表”“最近打开的表格”，先用 `lark-cli docs +search` 做资源发现。
 - `docs +search` 不是只搜文档 / Wiki；结果里会直接返回 `SHEET` 等云空间对象。
 - 拿到 spreadsheet URL / token 后，再切到 `lark-sheets` 做对象内部读取、筛选、写入等操作。
+- 用户说“给文档加评论”“查看评论”“回复评论”“给评论加表情 / reaction”“删除评论表情 / reaction”，**不要留在 `lark-doc`**，直接切到 `lark-drive` 处理。
 
 ## 补充说明 
 `docs +search` 除了搜索文档 / Wiki，也承担“先定位云空间对象，再切回对应业务 skill 操作”的资源发现入口角色；当用户口头说“表格 / 报表”时，也优先从这里开始。
@@ -140,6 +134,5 @@ Shortcut 是对常用操作的高级封装（`lark-cli docs +<verb> [flags]`）�
 | [`+fetch`](references/lark-doc-fetch.md) | Fetch Lark document content |
 | [`+update`](references/lark-doc-update.md) | Update a Lark document |
 | [`+media-insert`](references/lark-doc-media-insert.md) | Insert a local image or file at the end of a Lark document (4-step orchestration + auto-rollback) |
-| [`+media-preview`](references/lark-doc-media-preview.md) | Preview document media file (auto-detects extension) |
 | [`+media-download`](references/lark-doc-media-download.md) | Download document media or whiteboard thumbnail (auto-detects extension) |
-| [`+whiteboard-update`](references/lark-doc-whiteboard-update.md) | Update an existing whiteboard in lark document with whiteboard dsl. Such DSL input from stdin. refer to lark-whiteboard skill for more details. |
+| [`+whiteboard-update`](../lark-whiteboard/references/lark-whiteboard-update.md) | Alias of `whiteboard +update`. Update an existing whiteboard with DSL, Mermaid or PlantUML. Prefer `whiteboard +update`; refer to lark-whiteboard skill for details. |

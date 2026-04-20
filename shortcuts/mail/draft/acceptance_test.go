@@ -11,7 +11,7 @@ func TestAcceptanceReplyDraftSubjectOnly(t *testing.T) {
 	originalInline := findPart(snapshot.Body, "1.2")
 	originalAttachment := findPart(snapshot.Body, "1.3")
 
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_subject", Value: "Reply updated"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -46,7 +46,7 @@ func TestAcceptanceReplyDraftSubjectOnly(t *testing.T) {
 
 func TestAcceptanceHTMLInlineReplaceHTML(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/html_inline_draft.eml"))
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "replace_body", BodyKind: "text/html", Selector: "primary", Value: `<div>updated<img src="cid:logo"></div>`}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -70,7 +70,7 @@ func TestAcceptanceHTMLInlineReplaceHTML(t *testing.T) {
 
 func TestAcceptanceAlternativeSetBodyUpdatesHTMLAndSummary(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/alternative_draft.eml"))
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_body", Value: "<div>updated <strong>body</strong></div>"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -97,7 +97,7 @@ func TestAcceptanceCalendarDraftAppendPlainPreservesCalendar(t *testing.T) {
 	if originalCalendar == nil {
 		t.Fatalf("calendar part missing")
 	}
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "append_body", BodyKind: "text/plain", Selector: "primary", Value: "\nagenda"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -122,7 +122,7 @@ func TestAcceptanceCalendarDraftAppendPlainPreservesCalendar(t *testing.T) {
 func TestAcceptanceSignedDraftSubjectOnlyPreservesSignedEntity(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/multipart_signed_draft.eml"))
 	originalBodyEntity := string(snapshot.Body.RawEntity)
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "set_subject", Value: "Signed updated"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -144,7 +144,7 @@ func TestAcceptanceDirtyMultipartAppendPlainPreservesOuterNoise(t *testing.T) {
 	snapshot := mustParseFixtureDraft(t, mustReadFixture(t, "testdata/dirty_multipart_preamble.eml"))
 	originalPreamble := string(snapshot.Body.Preamble)
 	originalEpilogue := string(snapshot.Body.Epilogue)
-	if err := Apply(snapshot, Patch{
+	if err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
 		Ops: []PatchOp{{Op: "append_body", BodyKind: "text/plain", Selector: "primary", Value: "\nworld"}},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)

@@ -5,6 +5,7 @@ package draft
 
 import (
 	"fmt"
+	"io"
 	"mime"
 	"path/filepath"
 	"regexp"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
@@ -33,32 +33,34 @@ var protectedHeaders = map[string]bool{
 // bodyChangingOps lists patch operations that modify the HTML body content,
 // which is the trigger for running local image path resolution.
 var bodyChangingOps = map[string]bool{
-	"set_body":       true,
-	"set_reply_body": true,
-	"replace_body":   true,
-	"append_body":    true,
+	"set_body":         true,
+	"set_reply_body":   true,
+	"replace_body":     true,
+	"append_body":      true,
+	"insert_signature": true,
+	"remove_signature": true,
 }
 
-func Apply(snapshot *DraftSnapshot, patch Patch) error {
+func Apply(dctx *DraftCtx, snapshot *DraftSnapshot, patch Patch) error {
 	if err := patch.Validate(); err != nil {
 		return err
 	}
 	hasBodyChange := false
 	for _, op := range patch.Ops {
-		if err := applyOp(snapshot, op, patch.Options); err != nil {
+		if err := applyOp(dctx, snapshot, op, patch.Options); err != nil {
 			return err
 		}
 		if bodyChangingOps[op.Op] {
 			hasBodyChange = true
 		}
 	}
-	if err := postProcessInlineImages(snapshot, hasBodyChange); err != nil {
+	if err := postProcessInlineImages(dctx, snapshot, hasBodyChange); err != nil {
 		return err
 	}
 	return refreshSnapshot(snapshot)
 }
 
-func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
+func applyOp(dctx *DraftCtx, snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 	switch op.Op {
 	case "set_subject":
 		if strings.ContainsAny(op.Value, "\r\n") {
@@ -100,7 +102,7 @@ func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 		}
 		removeHeader(&snapshot.Headers, op.Name)
 	case "add_attachment":
-		return addAttachment(snapshot, op.Path)
+		return addAttachment(dctx, snapshot, op.Path)
 	case "remove_attachment":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
@@ -108,19 +110,23 @@ func applyOp(snapshot *DraftSnapshot, op PatchOp, options PatchOptions) error {
 		}
 		return removeAttachment(snapshot, partID)
 	case "add_inline":
-		return addInline(snapshot, op.Path, op.CID, op.FileName, op.ContentType)
+		return addInline(dctx, snapshot, op.Path, op.CID, op.FileName, op.ContentType)
 	case "replace_inline":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
 			return fmt.Errorf("replace_inline: %w", err)
 		}
-		return replaceInline(snapshot, partID, op.Path, op.CID, op.FileName, op.ContentType)
+		return replaceInline(dctx, snapshot, partID, op.Path, op.CID, op.FileName, op.ContentType)
 	case "remove_inline":
 		partID, err := resolveTarget(snapshot, op.Target)
 		if err != nil {
 			return fmt.Errorf("remove_inline: %w", err)
 		}
 		return removeInline(snapshot, partID)
+	case "insert_signature":
+		return insertSignatureOp(snapshot, op)
+	case "remove_signature":
+		return removeSignatureOp(snapshot)
 	default:
 		return fmt.Errorf("unsupported patch op %q", op.Op)
 	}
@@ -284,7 +290,7 @@ func setReplyBody(snapshot *DraftSnapshot, value string, options PatchOptions) e
 	if htmlPart == nil {
 		return setBody(snapshot, value, options)
 	}
-	_, quotePart := splitAtQuote(string(htmlPart.Body))
+	_, quotePart := SplitAtQuote(string(htmlPart.Body))
 	if quotePart == "" {
 		// No quote block found — fall back to regular set_body.
 		return setBody(snapshot, value, options)
@@ -478,22 +484,23 @@ func newMultipartContainer(mediaType string) *Part {
 	}
 }
 
-func addAttachment(snapshot *DraftSnapshot, path string) error {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return fmt.Errorf("attachment %q: %w", path, err)
-	}
+func addAttachment(dctx *DraftCtx, snapshot *DraftSnapshot, path string) error {
 	if err := checkBlockedExtension(filepath.Base(path)); err != nil {
 		return err
 	}
-	info, err := vfs.Stat(safePath)
+	info, err := dctx.FIO.Stat(path)
 	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := dctx.FIO.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -543,19 +550,20 @@ func addAttachment(snapshot *DraftSnapshot, path string) error {
 // creates a MIME inline part, and attaches it to the snapshot's
 // multipart/related container. If container is non-nil it is reused;
 // otherwise the container is resolved from the snapshot.
-func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, container *Part) (*Part, error) {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return nil, fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
+func loadAndAttachInline(dctx *DraftCtx, snapshot *DraftSnapshot, path, cid, fileName string, container *Part) (*Part, error) {
+	info, err := dctx.FIO.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), nil); err != nil {
 		return nil, err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := dctx.FIO.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("inline image %q: %w", path, err)
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
@@ -567,7 +575,7 @@ func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, co
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
-	inline, err := newInlinePart(safePath, content, cid, name, detectedCT)
+	inline, err := newInlinePart(path, content, cid, name, detectedCT)
 	if err != nil {
 		return nil, fmt.Errorf("inline image %q: %w", path, err)
 	}
@@ -586,12 +594,12 @@ func loadAndAttachInline(snapshot *DraftSnapshot, path, cid, fileName string, co
 	return container, nil
 }
 
-func addInline(snapshot *DraftSnapshot, path, cid, fileName, contentType string) error {
-	_, err := loadAndAttachInline(snapshot, path, cid, fileName, nil)
+func addInline(dctx *DraftCtx, snapshot *DraftSnapshot, path, cid, fileName, contentType string) error {
+	_, err := loadAndAttachInline(dctx, snapshot, path, cid, fileName, nil)
 	return err
 }
 
-func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, contentType string) error {
+func replaceInline(dctx *DraftCtx, snapshot *DraftSnapshot, partID, path, cid, fileName, contentType string) error {
 	part := findPart(snapshot.Body, partID)
 	if part == nil {
 		return fmt.Errorf("inline part %q not found", partID)
@@ -599,18 +607,19 @@ func replaceInline(snapshot *DraftSnapshot, partID, path, cid, fileName, content
 	if !isInlinePart(part) {
 		return fmt.Errorf("part %q is not an inline MIME part", partID)
 	}
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return fmt.Errorf("inline image %q: %w", path, err)
-	}
-	info, err := vfs.Stat(safePath)
+	info, err := dctx.FIO.Stat(path)
 	if err != nil {
 		return err
 	}
 	if err := checkSnapshotAttachmentLimit(snapshot, info.Size(), part); err != nil {
 		return err
 	}
-	content, err := vfs.ReadFile(safePath)
+	f, err := dctx.FIO.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -990,7 +999,7 @@ func ResolveLocalImagePaths(html string) (string, []LocalImageRef, error) {
 // resolveLocalImgSrc scans HTML for <img src="local/path"> references,
 // creates MIME inline parts for each local file, and returns the HTML
 // with those src attributes replaced by cid: URIs.
-func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
+func resolveLocalImgSrc(dctx *DraftCtx, snapshot *DraftSnapshot, html string) (string, error) {
 	resolved, refs, err := ResolveLocalImagePaths(html)
 	if err != nil {
 		return "", err
@@ -999,7 +1008,7 @@ func resolveLocalImgSrc(snapshot *DraftSnapshot, html string) (string, error) {
 	var container *Part
 	for _, ref := range refs {
 		fileName := filepath.Base(ref.FilePath)
-		container, err = loadAndAttachInline(snapshot, ref.FilePath, ref.CID, fileName, container)
+		container, err = loadAndAttachInline(dctx, snapshot, ref.FilePath, ref.CID, fileName, container)
 		if err != nil {
 			return "", err
 		}
@@ -1092,7 +1101,7 @@ func FindOrphanedCIDs(html string, addedCIDs []string) []string {
 // NOTE: The EML builder path has an equivalent function processInlineImagesForEML
 // in shortcuts/mail/helpers.go. When adding new validation or processing logic here,
 // update processInlineImagesForEML as well (or extract a shared function).
-func postProcessInlineImages(snapshot *DraftSnapshot, resolveLocal bool) error {
+func postProcessInlineImages(dctx *DraftCtx, snapshot *DraftSnapshot, resolveLocal bool) error {
 	htmlPart := findPrimaryBodyPart(snapshot.Body, "text/html")
 	if htmlPart == nil {
 		return nil
@@ -1102,7 +1111,7 @@ func postProcessInlineImages(snapshot *DraftSnapshot, resolveLocal bool) error {
 	html := origHTML
 	if resolveLocal {
 		var err error
-		html, err = resolveLocalImgSrc(snapshot, origHTML)
+		html, err = resolveLocalImgSrc(dctx, snapshot, origHTML)
 		if err != nil {
 			return err
 		}
@@ -1131,4 +1140,167 @@ func postProcessInlineImages(snapshot *DraftSnapshot, resolveLocal bool) error {
 	}
 	removeOrphanedInlineParts(snapshot.Body, refSet)
 	return nil
+}
+
+// ── Signature patch operations ──
+
+// insertSignatureOp inserts a pre-rendered signature into the HTML body.
+// The RenderedSignatureHTML and SignatureImages fields must be populated
+// by the shortcut layer before calling Apply.
+func insertSignatureOp(snapshot *DraftSnapshot, op PatchOp) error {
+	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	if htmlPart == nil {
+		return fmt.Errorf("insert_signature: no HTML body part found; use set_body first")
+	}
+	html := string(htmlPart.Body)
+
+	// Collect CIDs from old signature before removing it, so we can
+	// clean up orphaned MIME inline parts and avoid duplicates.
+	oldSigCIDs := collectSignatureCIDsFromHTML(html)
+
+	// Remove existing signature (if any), including preceding spacing.
+	html = RemoveSignatureHTML(html)
+
+	// Remove orphaned MIME inline parts from old signature.
+	for _, cid := range oldSigCIDs {
+		if !containsCIDIgnoreCase(html, cid) {
+			removeMIMEPartByCID(snapshot.Body, cid)
+		}
+	}
+
+	// Split at quote and insert signature between body and quote.
+	body, quote := SplitAtQuote(html)
+	sigBlock := SignatureSpacing() + BuildSignatureHTML(op.SignatureID, op.RenderedSignatureHTML)
+	html = body + sigBlock + quote
+
+	htmlPart.Body = []byte(html)
+	htmlPart.Dirty = true
+
+	// Add signature inline images to the MIME tree.
+	for _, img := range op.SignatureImages {
+		addInlinePartToSnapshot(snapshot, img.Data, img.ContentType, img.FileName, img.CID)
+	}
+
+	syncTextPartFromHTML(snapshot, html)
+	return nil
+}
+
+// removeSignatureOp removes the signature block from the HTML body.
+func removeSignatureOp(snapshot *DraftSnapshot) error {
+	htmlPart := findPart(snapshot.Body, snapshot.PrimaryHTMLPartID)
+	if htmlPart == nil {
+		return fmt.Errorf("remove_signature: no HTML body part found")
+	}
+	html := string(htmlPart.Body)
+
+	if !signatureWrapperRe.MatchString(html) {
+		return fmt.Errorf("no signature found in draft body")
+	}
+
+	// Collect CIDs referenced by the signature before removing it.
+	sigCIDs := collectSignatureCIDsFromHTML(html)
+
+	// Remove signature and preceding spacing.
+	html = RemoveSignatureHTML(html)
+
+	// Remove orphaned inline parts (only if the CID is no longer referenced in remaining HTML).
+	for _, cid := range sigCIDs {
+		if !containsCIDIgnoreCase(html, cid) {
+			removeMIMEPartByCID(snapshot.Body, cid)
+		}
+	}
+
+	htmlPart.Body = []byte(html)
+	htmlPart.Dirty = true
+
+	syncTextPartFromHTML(snapshot, html)
+	return nil
+}
+
+// syncTextPartFromHTML regenerates the text/plain part from the current HTML,
+// mirroring the coupled-body logic in tryApplyCoupledBodySetBody.
+func syncTextPartFromHTML(snapshot *DraftSnapshot, html string) {
+	if snapshot.PrimaryTextPartID == "" {
+		return
+	}
+	textPart := findPart(snapshot.Body, snapshot.PrimaryTextPartID)
+	if textPart == nil {
+		return
+	}
+	textPart.Body = []byte(plainTextFromHTML(html))
+	textPart.Dirty = true
+}
+
+// Note: SignatureSpacing, BuildSignatureHTML, FindMatchingCloseDiv, and
+// RemoveSignatureHTML are exported from projection.go to avoid duplication
+// with the mail package's signature_html.go.
+
+// collectSignatureCIDsFromHTML extracts CID references from the signature block in HTML.
+func collectSignatureCIDsFromHTML(html string) []string {
+	loc := signatureWrapperRe.FindStringIndex(html)
+	if loc == nil {
+		return nil
+	}
+	sigEnd := FindMatchingCloseDiv(html, loc[0])
+	sigHTML := html[loc[0]:sigEnd]
+
+	matches := cidRefRegexp.FindAllStringSubmatch(sigHTML, -1)
+	cids := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if len(m) >= 2 {
+			cids = append(cids, m[1])
+		}
+	}
+	return cids
+}
+
+// removeMIMEPartByCID removes the first MIME part with the given Content-ID.
+func removeMIMEPartByCID(root *Part, cid string) {
+	if root == nil {
+		return
+	}
+	normalizedCID := strings.Trim(cid, "<>")
+	for i, child := range root.Children {
+		if child == nil {
+			continue
+		}
+		childCID := strings.Trim(child.ContentID, "<>")
+		if strings.EqualFold(childCID, normalizedCID) {
+			root.Children = append(root.Children[:i], root.Children[i+1:]...)
+			return
+		}
+		removeMIMEPartByCID(child, cid)
+	}
+}
+
+// addInlinePartToSnapshot adds an inline image part to the MIME tree.
+func addInlinePartToSnapshot(snapshot *DraftSnapshot, data []byte, contentType, filename, cid string) {
+	part := &Part{
+		MediaType:          contentType,
+		ContentDisposition: "inline",
+		ContentID:          strings.Trim(cid, "<>"),
+		Body:               data,
+		Dirty:              true,
+	}
+	if filename != "" {
+		part.MediaParams = map[string]string{"name": filename}
+	}
+	// Find or create the multipart/related container.
+	if snapshot.Body == nil {
+		return
+	}
+	if snapshot.Body.IsMultipart() {
+		snapshot.Body.Children = append(snapshot.Body.Children, part)
+	}
+	// Non-multipart body: inline part is not added. This is expected when
+	// the draft has a simple text/html body without multipart/related wrapper.
+	// The signature HTML still references the CID, but the image won't render.
+	// In practice, compose shortcuts wrap the body in multipart/related when
+	// inline images are present, so this path rarely triggers.
+}
+
+// containsCIDIgnoreCase checks if html contains a "cid:<value>" reference,
+// case-insensitively. Aligned with other CID comparisons in this package.
+func containsCIDIgnoreCase(html, cid string) bool {
+	return strings.Contains(strings.ToLower(html), "cid:"+strings.ToLower(cid))
 }

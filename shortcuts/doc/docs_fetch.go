@@ -28,6 +28,8 @@ var DocsFetch = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		args := map[string]interface{}{
 			"doc_id": runtime.Str("doc"),
+			// Default to skipping embedded task detail expansion for faster +fetch output.
+			"skip_task_detail": true,
 		}
 		if v := runtime.Str("offset"); v != "" {
 			n, _ := strconv.Atoi(v)
@@ -46,6 +48,8 @@ var DocsFetch = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		args := map[string]interface{}{
 			"doc_id": runtime.Str("doc"),
+			// Default to skipping embedded task detail expansion for faster +fetch output.
+			"skip_task_detail": true,
 		}
 		if v := runtime.Str("offset"); v != "" {
 			n, _ := strconv.Atoi(v)
@@ -59,6 +63,10 @@ var DocsFetch = common.Shortcut{
 		result, err := common.CallMCPTool(runtime, "fetch-doc", args)
 		if err != nil {
 			return err
+		}
+
+		if md, ok := result["markdown"].(string); ok {
+			result["markdown"] = fixExportedMarkdown(md)
 		}
 
 		runtime.OutFormat(result, nil, func(w io.Writer) {

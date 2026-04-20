@@ -141,6 +141,42 @@ lark-cli sheets spreadsheet.sheet.filters update \
 - `Wrong Filter Value`：筛选已存在，需要先 delete 再 create
 - `Excess Limit`：update 时重复添加同一列条件
 
+### 单元格数据类型
+
+接受二维数组的 shortcut（`+write`/`+append` 的 `--values`、`+create` 的 `--data`）中，每个单元格值支持以下类型。**公式、带文本链接、@人、@文档、下拉列表必须使用对象格式**，直接传字符串会被当作纯文本存储。
+
+| 类型 | 写入格式 | 示例 |
+|------|---------|------|
+| 字符串 | `"文本"` | `"hello"` |
+| 数字 | `数字` | `123`、`3.14` |
+| 日期 | `数字`（自 1899-12-30 起的天数，需先设单元格日期格式） | `42101` |
+| 链接（纯 URL） | `"URL 字符串"` | `"https://example.com"` |
+| 链接（带文本） | `{"type":"url","text":"显示文本","link":"URL"}` | `{"type":"url","text":"飞书","link":"https://www.feishu.cn"}` |
+| 邮箱 | `"邮箱字符串"` | `"user@example.com"` |
+| **公式** | `{"type":"formula","text":"=公式"}` | `{"type":"formula","text":"=SUM(A1:A10)"}` |
+| @人 | `{"type":"mention","text":"标识","textType":"email\|openId\|unionId","notify":false}` | `{"type":"mention","text":"user@example.com","textType":"email","notify":false}`（notify 可选，默认 false；仅在用户明确要求通知时设为 true） |
+| @文档 | `{"type":"mention","textType":"fileToken","text":"token","objType":"类型"}` | `{"type":"mention","textType":"fileToken","text":"shtXXX","objType":"sheet"}` |
+| 下拉列表 | `{"type":"multipleValue","values":[值1,值2]}` | `{"type":"multipleValue","values":["选项A","选项B"]}` |
+
+**写入公式示例**：
+
+```bash
+# ✅ 正确：使用对象格式
+lark-cli sheets +write --url "URL" --sheet-id "sheetId" --range "C6" \
+  --values '[[{"type":"formula","text":"=SUM(C2:C5)"}]]'
+
+# ❌ 错误：直接传字符串，会被存为纯文本
+lark-cli sheets +write --url "URL" --sheet-id "sheetId" --range "C6" \
+  --values '[["=SUM(C2:C5)"]]'
+```
+
+> **公式语法参考**：涉及 ARRAYFORMULA、原生数组函数、MAP/LAMBDA、日期差、Excel 公式改写等飞书特有规则时，先阅读 [`references/lark-sheets-formula.md`](references/lark-sheets-formula.md)。
+
+**限制**：
+- 公式支持 IMPORTRANGE 跨表引用（最多 5 层嵌套、每个工作表最多 100 个引用）
+- @人仅支持同租户用户，单次最多 50 人
+- 下拉列表需**先配置下拉选项**，否则 `multipleValue` 写入会变成纯文本。配置方法见 [`references/lark-sheets-set-dropdown.md`](references/lark-sheets-set-dropdown.md)。值中的字符串不能包含逗号
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli sheets +<verb> [flags]`）。有 Shortcut 的操作优先使用。
@@ -155,6 +191,48 @@ Shortcut 是对常用操作的高级封装（`lark-cli sheets +<verb> [flags]`�
 | [`+find`](references/lark-sheets-find.md) | Find cells in a spreadsheet |
 | [`+create`](references/lark-sheets-create.md) | Create a spreadsheet (optional header row and initial data) |
 | [`+export`](references/lark-sheets-export.md) | Export a spreadsheet (async task polling + optional download) |
+| [`+merge-cells`](references/lark-sheets-merge-cells.md) | Merge cells in a spreadsheet |
+| [`+unmerge-cells`](references/lark-sheets-unmerge-cells.md) | Unmerge (split) cells in a spreadsheet |
+| [`+replace`](references/lark-sheets-replace.md) | Find and replace cell values |
+| [`+set-style`](references/lark-sheets-set-style.md) | Set cell style for a range |
+| [`+batch-set-style`](references/lark-sheets-batch-set-style.md) | Batch set cell styles for multiple ranges |
+| [`+add-dimension`](references/lark-sheets-add-dimension.md) | Add rows or columns at the end of a sheet |
+| [`+insert-dimension`](references/lark-sheets-insert-dimension.md) | Insert rows or columns at a specified position |
+| [`+update-dimension`](references/lark-sheets-update-dimension.md) | Update row or column properties (visibility, size) |
+| [`+move-dimension`](references/lark-sheets-move-dimension.md) | Move rows or columns to a new position |
+| [`+delete-dimension`](references/lark-sheets-delete-dimension.md) | Delete rows or columns |
+| [`+create-filter-view`](references/lark-sheets-create-filter-view.md) | Create a filter view |
+| [`+update-filter-view`](references/lark-sheets-update-filter-view.md) | Update a filter view |
+| [`+list-filter-views`](references/lark-sheets-list-filter-views.md) | List all filter views in a sheet |
+| [`+get-filter-view`](references/lark-sheets-get-filter-view.md) | Get a filter view by ID |
+| [`+delete-filter-view`](references/lark-sheets-delete-filter-view.md) | Delete a filter view |
+| [`+create-filter-view-condition`](references/lark-sheets-create-filter-view-condition.md) | Create a filter condition on a filter view |
+| [`+update-filter-view-condition`](references/lark-sheets-update-filter-view-condition.md) | Update a filter condition |
+| [`+list-filter-view-conditions`](references/lark-sheets-list-filter-view-conditions.md) | List all filter conditions of a filter view |
+| [`+get-filter-view-condition`](references/lark-sheets-get-filter-view-condition.md) | Get a filter condition by column |
+| [`+delete-filter-view-condition`](references/lark-sheets-delete-filter-view-condition.md) | Delete a filter condition |
+
+### 下拉列表
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+set-dropdown`](references/lark-sheets-set-dropdown.md) | 设置下拉列表（`multipleValue` 写入的前置步骤） |
+| [`+update-dropdown`](references/lark-sheets-update-dropdown.md) | 更新下拉列表选项 |
+| [`+get-dropdown`](references/lark-sheets-get-dropdown.md) | 查询下拉列表配置 |
+| [`+delete-dropdown`](references/lark-sheets-delete-dropdown.md) | 删除下拉列表 |
+
+### 浮动图片
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+media-upload`](references/lark-sheets-media-upload.md) | 上传本地图片素材，返回 `file_token`（供 `+create-float-image` 使用；>20MB 自动分片） |
+| [`+create-float-image`](references/lark-sheets-create-float-image.md) | 创建浮动图片 |
+| [`+update-float-image`](references/lark-sheets-update-float-image.md) | 更新浮动图片属性 |
+| [`+get-float-image`](references/lark-sheets-get-float-image.md) | 获取浮动图片 |
+| [`+list-float-images`](references/lark-sheets-list-float-images.md) | 查询所有浮动图片 |
+| [`+delete-float-image`](references/lark-sheets-delete-float-image.md) | 删除浮动图片 |
+
+> 浮动图片相关的读接口只返回元数据（含 `float_image_token`），**不包含图片字节**。要读取图片内容，用 token 调 `lark-cli docs +media-preview --token "<float_image_token>" --output ./image.png`。
 
 ## API Resources
 
@@ -182,6 +260,14 @@ lark-cli sheets <resource> <method> [flags] # 调用 API
 
   - `find` — 查找单元格
 
+### spreadsheet.sheet.float_images
+
+  - `create` — 创建浮动图片
+  - `patch` — 更新浮动图片
+  - `get` — 获取浮动图片
+  - `query` — 查询所有浮动图片
+  - `delete` — 删除浮动图片
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -194,4 +280,9 @@ lark-cli sheets <resource> <method> [flags] # 调用 API
 | `spreadsheet.sheet.filters.get` | `sheets:spreadsheet:read` |
 | `spreadsheet.sheet.filters.update` | `sheets:spreadsheet:write_only` |
 | `spreadsheet.sheets.find` | `sheets:spreadsheet:read` |
+| `spreadsheet.sheet.float_images.create` | `sheets:spreadsheet:write_only` |
+| `spreadsheet.sheet.float_images.patch` | `sheets:spreadsheet:write_only` |
+| `spreadsheet.sheet.float_images.get` | `sheets:spreadsheet:read` |
+| `spreadsheet.sheet.float_images.query` | `sheets:spreadsheet:read` |
+| `spreadsheet.sheet.float_images.delete` | `sheets:spreadsheet:write_only` |
 
