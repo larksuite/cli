@@ -27,10 +27,14 @@ func TestReadClipboardToTempFile_EmptyResultRemovesTempFile(t *testing.T) {
 	emptyPath := f.Name()
 	f.Close()
 
-	// Stat should report size == 0
+	// Stat should report size == 0. Guard info.Size() behind the err check
+	// so a failed Stat does not nil-deref inside the t.Fatalf format args.
 	info, err := os.Stat(emptyPath)
-	if err != nil || info.Size() != 0 {
-		t.Fatalf("expected empty file, got size=%d err=%v", info.Size(), err)
+	if err != nil {
+		t.Fatalf("stat empty file: %v", err)
+	}
+	if info.Size() != 0 {
+		t.Fatalf("expected empty file, got size=%d", info.Size())
 	}
 
 	// Simulate what readClipboardToTempFile does on empty output: cleanup + error.
