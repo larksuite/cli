@@ -111,17 +111,20 @@ func fixBlockquoteHardBreaks(md string) string {
 	return strings.Join(out, "\n")
 }
 
-// fixBoldSpacing fixes two issues with bold markers exported by Lark:
+// fixBoldSpacing normalizes emphasis markers exported by Lark while preserving
+// inline code spans:
 //
-//  1. Trailing whitespace before closing **: "**text **" → "**text**"
-//     CommonMark requires no space before a closing delimiter; otherwise the
-//     ** is rendered as literal text.
+//  1. Removes leading whitespace after opening ** and * delimiters:
+//     "** text**" → "**text**", "* text*" → "*text*"
 //
-//  2. Redundant bold in ATX headings: "# **text**" → "# text"
-//     Headings are already bold, so the inner ** is visually redundant and
-//     some renderers display the markers literally.
+//  2. Removes trailing whitespace before closing ** and * delimiters:
+//     "**text **" → "**text**", "*text *" → "*text*"
 //
-// Both fixes skip inline code spans to avoid modifying literal code content.
+//  3. Removes redundant bold around an entire ATX heading:
+//     "# **text**" → "# text"
+//
+// The bold and italic spacing fixes only run on non-code segments so literal
+// code content is left unchanged.
 var (
 	boldLeadingSpaceRe    = regexp.MustCompile(`(\*\*)\s+([^*\n](?:[^*\n]*[^*\s\n])?)(\*\*)`)
 	boldTrailingSpaceRe   = regexp.MustCompile(`(\*\*\S[^*]*?)\s+(\*\*)`)
@@ -335,7 +338,7 @@ func hasPreviousNonBlankListItem(lines []string, index int) bool {
 	for i := index - 1; i >= 0; i-- {
 		trimmed := strings.TrimSpace(lines[i])
 		if trimmed == "" {
-			continue
+			return false
 		}
 		return listItemRe.MatchString(lines[i])
 	}

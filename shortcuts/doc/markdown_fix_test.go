@@ -273,6 +273,16 @@ func TestNormalizeNestedListIndentation(t *testing.T) {
 			input: "paragraph\n\n  1. item",
 			want:  "paragraph\n\n  1. item",
 		},
+		{
+			name:  "blank-line-separated loose-list sibling stays unchanged",
+			input: "1. a\n\n  1. b",
+			want:  "1. a\n\n  1. b",
+		},
+		{
+			name:  "indented code block inside list item stays unchanged",
+			input: "- parent\n\n    1. code",
+			want:  "- parent\n\n    1. code",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
