@@ -114,7 +114,8 @@ var DriveExport = common.Shortcut{
 				title = spec.Token
 			}
 			fileName := ensureExportFileExtension(sanitizeExportFileName(title, spec.Token), spec.FileExtension)
-			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(common.GetString(data, "content")), overwrite)
+			content := common.TrimMarkdownCodeBlockTrailingBlanks(common.GetString(data, "content"))
+			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(content), overwrite)
 			if err != nil {
 				return err
 			}
@@ -125,7 +126,7 @@ var DriveExport = common.Shortcut{
 				"file_extension": spec.FileExtension,
 				"file_name":      filepath.Base(savedPath),
 				"saved_path":     savedPath,
-				"size_bytes":     len([]byte(common.GetString(data, "content"))),
+				"size_bytes":     len([]byte(content)),
 			}, nil)
 			return nil
 		}

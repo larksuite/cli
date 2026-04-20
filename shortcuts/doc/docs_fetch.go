@@ -64,6 +64,9 @@ var DocsFetch = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if md, ok := result["markdown"].(string); ok {
+			result["markdown"] = common.TrimMarkdownCodeBlockTrailingBlanks(md)
+		}
 
 		if md, ok := result["markdown"].(string); ok {
 			result["markdown"] = fixExportedMarkdown(md)

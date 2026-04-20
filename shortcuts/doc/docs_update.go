@@ -71,7 +71,7 @@ var DocsUpdate = common.Shortcut{
 			"mode":   runtime.Str("mode"),
 		}
 		if v := runtime.Str("markdown"); v != "" {
-			args["markdown"] = v
+			args["markdown"] = common.TrimMarkdownCodeBlockTrailingBlanks(v)
 		}
 		if v := runtime.Str("selection-with-ellipsis"); v != "" {
 			args["selection_with_ellipsis"] = v
@@ -89,12 +89,13 @@ var DocsUpdate = common.Shortcut{
 			Set("mcp_tool", "update-doc").Set("args", args)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		markdown := common.TrimMarkdownCodeBlockTrailingBlanks(runtime.Str("markdown"))
 		args := map[string]interface{}{
 			"doc_id": runtime.Str("doc"),
 			"mode":   runtime.Str("mode"),
 		}
-		if v := runtime.Str("markdown"); v != "" {
-			args["markdown"] = v
+		if markdown != "" {
+			args["markdown"] = markdown
 		}
 		if v := runtime.Str("selection-with-ellipsis"); v != "" {
 			args["selection_with_ellipsis"] = v
@@ -111,7 +112,7 @@ var DocsUpdate = common.Shortcut{
 			return err
 		}
 
-		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
+		normalizeDocsUpdateResult(result, markdown)
 		runtime.Out(result, nil)
 		return nil
 	},
