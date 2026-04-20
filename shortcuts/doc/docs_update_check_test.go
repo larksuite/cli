@@ -65,6 +65,37 @@ func TestCheckDocsUpdateReplaceMultilineMarkdown(t *testing.T) {
 			markdown: "",
 			wantHint: false,
 		},
+		{
+			// The check must ignore blank lines inside fenced code; otherwise
+			// a user replacing one block with a legitimate code sample that
+			// contains blank lines would see a spurious warning.
+			name:     "blank line inside backtick fenced code is not flagged",
+			mode:     "replace_range",
+			markdown: "```\nline1\n\nline2\n```",
+			wantHint: false,
+		},
+		{
+			name:     "blank line inside tilde fenced code is not flagged",
+			mode:     "replace_range",
+			markdown: "~~~\ncode line one\n\ncode line two\n~~~",
+			wantHint: false,
+		},
+		{
+			// Mixed prose + fenced code: any blank line in prose still wins,
+			// even if the fenced content also contains blanks.
+			name:     "blank line in prose outside fence still flags even when fence has blanks",
+			mode:     "replace_range",
+			markdown: "first paragraph\n\nsecond paragraph\n\n```\ncode\n\nmore\n```",
+			wantHint: true,
+		},
+		{
+			// Fenced code with no blank lines inside must not trip on the
+			// fence markers themselves.
+			name:     "fenced code with no blank lines does not flag",
+			mode:     "replace_range",
+			markdown: "prose before\n```go\nfmt.Println(\"hi\")\n```\nprose after",
+			wantHint: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -134,6 +165,56 @@ func TestCheckDocsUpdateBoldItalic(t *testing.T) {
 			name:     "empty input is fine",
 			input:    "",
 			wantHint: false,
+		},
+		{
+			// The emphasis check must not fire on literal Markdown samples
+			// inside a fenced code block — the canonical use case is docs
+			// authors pasting tutorials that demonstrate these exact patterns.
+			name:     "triple asterisks inside backtick fenced code is not flagged",
+			input:    "example:\n```\nthe shape ***keyword*** downgrades\n```",
+			wantHint: false,
+		},
+		{
+			name:     "underscore-bold inside fenced code is not flagged",
+			input:    "example:\n```markdown\nuse **_strong italic_** carefully\n```",
+			wantHint: false,
+		},
+		{
+			name:     "bold-underscore inside fenced code is not flagged",
+			input:    "example:\n~~~\n_**outside-underscore**_ is a bad shape\n~~~",
+			wantHint: false,
+		},
+		{
+			name:     "triple asterisks inside inline code span is not flagged",
+			input:    "the literal `***text***` marker is just a sample",
+			wantHint: false,
+		},
+		{
+			name:     "underscore-bold inside inline code is not flagged",
+			input:    "the shape `**_italic_**` would downgrade, but only if it were real",
+			wantHint: false,
+		},
+		{
+			name:     "escaped triple asterisks rendered as literal text is not flagged",
+			input:    `the literal \***text*** with escaped opener`,
+			wantHint: false,
+		},
+		{
+			name:     "escaped bold inside underscore-italic is not flagged",
+			input:    `shape \*\*_text_\*\* is literal, not emphasis`,
+			wantHint: false,
+		},
+		{
+			// Real emphasis outside the code span must still be detected —
+			// the strip step must not over-sanitize.
+			name:     "real triple asterisks outside inline code still flags",
+			input:    "real ***strong*** and literal `***keyword***` — the first one counts",
+			wantHint: true,
+		},
+		{
+			name:     "real triple asterisks outside fenced code still flags",
+			input:    "real ***strong***\n\n```\nliteral ***keyword*** in code\n```",
+			wantHint: true,
 		},
 	}
 	for _, tt := range tests {
