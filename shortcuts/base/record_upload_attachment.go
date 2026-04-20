@@ -4,14 +4,15 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
-	"net/http"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
@@ -303,7 +304,7 @@ func detectAttachmentMIMEType(fio fileio.FileIO, filePath, fileName string) (str
 	if readErr != nil && !errors.Is(readErr, io.EOF) {
 		return "", output.ErrValidation("cannot read file: %s", readErr)
 	}
-	return stripMIMEParams(http.DetectContentType(buf[:n])), nil
+	return detectAttachmentMIMEFromContent(buf[:n]), nil
 }
 
 func stripMIMEParams(value string) string {
@@ -311,4 +312,44 @@ func stripMIMEParams(value string) string {
 		value = value[:i]
 	}
 	return strings.TrimSpace(value)
+}
+
+func detectAttachmentMIMEFromContent(content []byte) string {
+	if len(content) == 0 {
+		return "application/octet-stream"
+	}
+	if bytes.HasPrefix(content, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		return "image/png"
+	}
+	if bytes.HasPrefix(content, []byte{0xff, 0xd8, 0xff}) {
+		return "image/jpeg"
+	}
+	if bytes.HasPrefix(content, []byte("GIF87a")) || bytes.HasPrefix(content, []byte("GIF89a")) {
+		return "image/gif"
+	}
+	if len(content) >= 12 && bytes.Equal(content[:4], []byte("RIFF")) && bytes.Equal(content[8:12], []byte("WEBP")) {
+		return "image/webp"
+	}
+	if bytes.HasPrefix(content, []byte("%PDF-")) {
+		return "application/pdf"
+	}
+	if looksLikeText(content) {
+		return "text/plain"
+	}
+	return "application/octet-stream"
+}
+
+func looksLikeText(content []byte) bool {
+	if !utf8.Valid(content) {
+		return false
+	}
+	for _, r := range string(content) {
+		if r == '\n' || r == '\r' || r == '\t' {
+			continue
+		}
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
