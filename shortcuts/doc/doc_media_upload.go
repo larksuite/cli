@@ -13,7 +13,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-var MediaUpload = common.Shortcut{
+var DocMediaUpload = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-upload",
 	Description: "Upload media file (image/attachment) to a document block",
@@ -22,8 +22,8 @@ var MediaUpload = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
-		{Name: "parent-type", Desc: "parent type: docx_image | docx_file", Required: true},
-		{Name: "parent-node", Desc: "parent node ID (block_id)", Required: true},
+		{Name: "parent-type", Desc: "parent type: docx_image | docx_file | whiteboard", Required: true},
+		{Name: "parent-node", Desc: "parent node ID (block_id for docx, board_token for whiteboard)", Required: true},
 		{Name: "doc-id", Desc: "document ID (for drive_route_token)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

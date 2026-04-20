@@ -118,7 +118,7 @@ func TestDocMediaUploadDryRunUsesMultipartForLargeFile(t *testing.T) {
 		t.Fatalf("set --parent-node: %v", err)
 	}
 
-	dry := decodeDocDryRun(t, MediaUpload.DryRun(context.Background(), common.TestNewRuntimeContext(cmd, nil)))
+	dry := decodeDocDryRun(t, DocMediaUpload.DryRun(context.Background(), common.TestNewRuntimeContext(cmd, nil)))
 	if dry.Description != "chunked media upload (files > 20MB)" {
 		t.Fatalf("dry-run description = %q", dry.Description)
 	}
