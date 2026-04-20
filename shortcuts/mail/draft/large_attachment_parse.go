@@ -75,11 +75,11 @@ func parseLargeAttachmentTokens(headers []Header) []string {
 	return nil
 }
 
-// parseLargeAttachmentSummariesFromHeader extracts full metadata from the
+// ParseLargeAttachmentSummariesFromHeader extracts full metadata from the
 // large attachment header. Returns non-nil only when the server-format
 // header (X-Lark-Large-Attachment) is found, since it carries file_name
 // and file_size that the CLI-format header lacks.
-func parseLargeAttachmentSummariesFromHeader(headers []Header) []LargeAttachmentSummary {
+func ParseLargeAttachmentSummariesFromHeader(headers []Header) []LargeAttachmentSummary {
 	for _, h := range headers {
 		if !strings.EqualFold(h.Name, ServerLargeAttachmentHeader) {
 			continue
@@ -105,13 +105,13 @@ func parseLargeAttachmentSummariesFromHeader(headers []Header) []LargeAttachment
 	return nil
 }
 
-// parseLargeAttachmentItemsFromHTML walks the HTML body looking for large
+// ParseLargeAttachmentItemsFromHTML walks the HTML body looking for large
 // attachment card items (<div id="large-file-item">) and returns a map
 // from token (data-mail-token attribute value) to filename + size.
 //
 // The size is parsed best-effort from the displayed string (e.g. "25.0 MB");
 // it carries the precision of the formatted value and is not byte-exact.
-func parseLargeAttachmentItemsFromHTML(htmlBody string) map[string]LargeAttachmentSummary {
+func ParseLargeAttachmentItemsFromHTML(htmlBody string) map[string]LargeAttachmentSummary {
 	out := map[string]LargeAttachmentSummary{}
 	if htmlBody == "" {
 		return out

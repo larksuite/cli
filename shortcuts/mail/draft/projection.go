@@ -148,14 +148,14 @@ func Project(snapshot *DraftSnapshot) DraftProjection {
 // carries filename and size directly. Falls back to merging CLI-format
 // header tokens with HTML-parsed metadata.
 func projectLargeAttachments(headers []Header, htmlBody string) []LargeAttachmentSummary {
-	if summaries := parseLargeAttachmentSummariesFromHeader(headers); len(summaries) > 0 {
+	if summaries := ParseLargeAttachmentSummariesFromHeader(headers); len(summaries) > 0 {
 		return summaries
 	}
 	tokens := parseLargeAttachmentTokens(headers)
 	if len(tokens) == 0 {
 		return nil
 	}
-	metas := parseLargeAttachmentItemsFromHTML(htmlBody)
+	metas := ParseLargeAttachmentItemsFromHTML(htmlBody)
 	out := make([]LargeAttachmentSummary, 0, len(tokens))
 	for _, token := range tokens {
 		meta := metas[token]

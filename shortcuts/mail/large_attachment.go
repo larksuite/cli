@@ -486,6 +486,56 @@ func processLargeAttachments(
 	return bld, nil
 }
 
+// ensureLargeAttachmentCards checks whether the snapshot's HTML body is missing
+// download cards for large attachments registered in the header. Drafts read
+// back from the server may have their HTML cards stripped, even though the
+// server-format X-Lark-Large-Attachment header still carries file_name and
+// file_size metadata. This function uses that metadata to reconstruct only the
+// missing cards and injects them into the HTML body without duplicating cards
+// that are already present.
+//
+// Must be called BEFORE normalizeLargeAttachmentHeader, because that
+// function converts the server-format header to CLI format and discards
+// file_name/file_size.
+func ensureLargeAttachmentCards(runtime *common.RuntimeContext, snapshot *draftpkg.DraftSnapshot) {
+	summaries := draftpkg.ParseLargeAttachmentSummariesFromHeader(snapshot.Headers)
+	if len(summaries) == 0 {
+		return
+	}
+
+	htmlPart := draftpkg.FindHTMLBodyPart(snapshot.Body)
+	var htmlBody string
+	if htmlPart != nil {
+		htmlBody = string(htmlPart.Body)
+	}
+	existingCards := draftpkg.ParseLargeAttachmentItemsFromHTML(htmlBody)
+
+	var missing []largeAttachmentResult
+	for _, s := range summaries {
+		if _, exists := existingCards[s.Token]; !exists {
+			missing = append(missing, largeAttachmentResult{
+				FileName:  s.FileName,
+				FileSize:  s.SizeBytes,
+				FileToken: s.Token,
+			})
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+
+	brand := core.BrandFeishu
+	if runtime.Config != nil {
+		brand = runtime.Config.Brand
+	}
+	lang := "zh_cn"
+	if runtime.Factory != nil {
+		lang = resolveLang(runtime)
+	}
+	largeHTML := buildLargeAttachmentHTML(brand, lang, missing)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+}
+
 // preprocessLargeAttachmentsForDraftEdit scans a draft-edit patch for
 // add_attachment ops, classifies the files (normal vs oversized based on
 // the snapshot's current EML size), uploads oversized files, injects the
@@ -497,6 +547,11 @@ func preprocessLargeAttachmentsForDraftEdit(
 	snapshot *draftpkg.DraftSnapshot,
 	patch draftpkg.Patch,
 ) (draftpkg.Patch, error) {
+	// Reconstruct missing large attachment HTML cards from the server-format
+	// header metadata. Must run before normalizeLargeAttachmentHeader which
+	// discards file_name/file_size.
+	ensureLargeAttachmentCards(runtime, snapshot)
+
 	// Always normalize server-format headers to CLI format so every code
 	// path below (and every early return) sends the format the server
 	// recognizes on write.

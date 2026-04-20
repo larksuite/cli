@@ -4,12 +4,17 @@
 package mail
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
 
@@ -274,6 +279,160 @@ func TestInsertBeforeQuoteOrAppend_EmptyBody(t *testing.T) {
 	result := draftpkg.InsertBeforeQuoteOrAppend("", "<div>CARD</div>")
 	if result != "<div>CARD</div>" {
 		t.Errorf("empty body should just return block, got: %s", result)
+	}
+}
+
+// encodeServerHeader builds a base64-encoded X-Lark-Large-Attachment value.
+func encodeServerHeader(entries []map[string]interface{}) string {
+	b, _ := json.Marshal(entries)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func TestEnsureLargeAttachmentCards_InjectsMissingCards(t *testing.T) {
+	headerVal := encodeServerHeader([]map[string]interface{}{
+		{"file_key": "tok_aaa", "file_name": "report.pdf", "file_size": 50 * 1024 * 1024},
+		{"file_key": "tok_bbb", "file_name": "data.zip", "file_size": 100 * 1024 * 1024},
+	})
+	snapshot := &draftpkg.DraftSnapshot{
+		Headers: []draftpkg.Header{
+			{Name: draftpkg.ServerLargeAttachmentHeader, Value: headerVal},
+		},
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>Hello</p>"),
+		},
+	}
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	ensureLargeAttachmentCards(rt, snapshot)
+
+	html := string(snapshot.Body.Body)
+	if !strings.Contains(html, "report.pdf") {
+		t.Error("missing card for report.pdf")
+	}
+	if !strings.Contains(html, "data.zip") {
+		t.Error("missing card for data.zip")
+	}
+	if !strings.Contains(html, `data-mail-token="tok_aaa"`) {
+		t.Error("missing data-mail-token for tok_aaa")
+	}
+	if !strings.Contains(html, `data-mail-token="tok_bbb"`) {
+		t.Error("missing data-mail-token for tok_bbb")
+	}
+	// Original body should still be present.
+	if !strings.Contains(html, "<p>Hello</p>") {
+		t.Error("original body content lost")
+	}
+}
+
+func TestEnsureLargeAttachmentCards_NoDuplicateWhenCardExists(t *testing.T) {
+	headerVal := encodeServerHeader([]map[string]interface{}{
+		{"file_key": "tok_aaa", "file_name": "report.pdf", "file_size": 50 * 1024 * 1024},
+	})
+	existingCard := `<div id="large-file-area-123456789" style="border:1px solid #DEE0E3;">` +
+		`<div>Title</div>` +
+		`<div style="border-top:solid 1px #DEE0E3;" id="large-file-item">` +
+		`<div><div>report.pdf</div><div><span>50.0 MB</span></div></div>` +
+		`<a href="https://example.com" data-mail-token="tok_aaa">Download</a>` +
+		`</div></div>`
+	snapshot := &draftpkg.DraftSnapshot{
+		Headers: []draftpkg.Header{
+			{Name: draftpkg.ServerLargeAttachmentHeader, Value: headerVal},
+		},
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>Hello</p>" + existingCard),
+		},
+	}
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	originalHTML := string(snapshot.Body.Body)
+	ensureLargeAttachmentCards(rt, snapshot)
+
+	// HTML should remain unchanged — no duplicate card injected.
+	if string(snapshot.Body.Body) != originalHTML {
+		t.Errorf("HTML was modified when card already existed.\nbefore: %s\nafter:  %s", originalHTML, string(snapshot.Body.Body))
+	}
+}
+
+func TestEnsureLargeAttachmentCards_PartialMissing(t *testing.T) {
+	headerVal := encodeServerHeader([]map[string]interface{}{
+		{"file_key": "tok_aaa", "file_name": "report.pdf", "file_size": 50 * 1024 * 1024},
+		{"file_key": "tok_bbb", "file_name": "data.zip", "file_size": 100 * 1024 * 1024},
+	})
+	existingCard := `<div id="large-file-area-123456789">` +
+		`<div>Title</div>` +
+		`<div id="large-file-item">` +
+		`<a data-mail-token="tok_aaa">Download</a>` +
+		`</div></div>`
+	snapshot := &draftpkg.DraftSnapshot{
+		Headers: []draftpkg.Header{
+			{Name: draftpkg.ServerLargeAttachmentHeader, Value: headerVal},
+		},
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>Hello</p>" + existingCard),
+		},
+	}
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	ensureLargeAttachmentCards(rt, snapshot)
+
+	html := string(snapshot.Body.Body)
+	// tok_bbb should be injected.
+	if !strings.Contains(html, `data-mail-token="tok_bbb"`) {
+		t.Error("missing card for tok_bbb")
+	}
+	if !strings.Contains(html, "data.zip") {
+		t.Error("missing filename data.zip in card")
+	}
+	// tok_aaa's existing card should remain (present exactly once).
+	count := strings.Count(html, `data-mail-token="tok_aaa"`)
+	if count != 1 {
+		t.Errorf("tok_aaa card count: got %d, want 1", count)
+	}
+}
+
+func TestEnsureLargeAttachmentCards_NoServerHeader(t *testing.T) {
+	// Only CLI-format header — no server-format metadata to reconstruct from.
+	cliVal := base64.StdEncoding.EncodeToString([]byte(`[{"id":"tok_aaa"}]`))
+	snapshot := &draftpkg.DraftSnapshot{
+		Headers: []draftpkg.Header{
+			{Name: draftpkg.LargeAttachmentIDsHeader, Value: cliVal},
+		},
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>Hello</p>"),
+		},
+	}
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	originalHTML := string(snapshot.Body.Body)
+	ensureLargeAttachmentCards(rt, snapshot)
+
+	if string(snapshot.Body.Body) != originalHTML {
+		t.Error("HTML should not be modified when only CLI-format header is present")
+	}
+}
+
+func TestEnsureLargeAttachmentCards_PlainTextBodyUnchanged(t *testing.T) {
+	headerVal := encodeServerHeader([]map[string]interface{}{
+		{"file_key": "tok_aaa", "file_name": "report.pdf", "file_size": 1024},
+	})
+	snapshot := &draftpkg.DraftSnapshot{
+		Headers: []draftpkg.Header{
+			{Name: draftpkg.ServerLargeAttachmentHeader, Value: headerVal},
+		},
+		Body: &draftpkg.Part{
+			MediaType: "text/plain",
+			Body:      []byte("plain text body"),
+		},
+	}
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	ensureLargeAttachmentCards(rt, snapshot)
+
+	// Plain-text body cannot host HTML cards — body should remain unchanged.
+	if string(snapshot.Body.Body) != "plain text body" {
+		t.Error("plain text body should not be modified")
+	}
+	if draftpkg.FindHTMLBodyPart(snapshot.Body) != nil {
+		t.Error("should not create an HTML part when text/plain body already exists")
 	}
 }
 

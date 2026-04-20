@@ -128,7 +128,7 @@ func TestParseLargeAttachmentItemsFromHTML(t *testing.T) {
 		item("tokB", "b.mov", "300 MB") +
 		`</div>`
 
-	got := parseLargeAttachmentItemsFromHTML(html)
+	got := ParseLargeAttachmentItemsFromHTML(html)
 	if len(got) != 2 {
 		t.Fatalf("expected 2 items, got %d: %+v", len(got), got)
 	}
