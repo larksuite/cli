@@ -1162,3 +1162,26 @@ func TestValidatePriorityFlag(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildMessageForCompose_InlineNoCID_ClassifiedAsAttachment(t *testing.T) {
+	msg := map[string]interface{}{
+		"message_id": "msg1",
+		"subject":    "test",
+		"attachments": []interface{}{
+			map[string]interface{}{"id": "att1", "filename": "with-cid.png", "is_inline": true, "cid": "cid123", "content_type": "image/png"},
+			map[string]interface{}{"id": "att2", "filename": "no-cid.png", "is_inline": true, "cid": "", "content_type": "image/png"},
+			map[string]interface{}{"id": "att3", "filename": "regular.pdf", "is_inline": false, "content_type": "application/pdf"},
+		},
+	}
+	out := buildMessageForCompose(msg, nil, true)
+	if len(out.Images) != 1 || out.Images[0].ID != "att1" {
+		t.Errorf("expected 1 image (att1), got %d: %+v", len(out.Images), out.Images)
+	}
+	if len(out.Attachments) != 2 {
+		t.Fatalf("expected 2 attachments, got %d: %+v", len(out.Attachments), out.Attachments)
+	}
+	ids := []string{out.Attachments[0].ID, out.Attachments[1].ID}
+	if ids[0] != "att2" || ids[1] != "att3" {
+		t.Errorf("expected attachments [att2, att3], got %v", ids)
+	}
+}

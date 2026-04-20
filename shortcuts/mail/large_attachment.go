@@ -521,13 +521,32 @@ func preprocessLargeAttachmentsForDraftEdit(
 
 	// Register large attachment tokens, merging with any existing IDs already
 	// present in the snapshot (from a previous draft-create or draft-edit).
+	// The server returns X-Lark-Large-Attachment on readback, so check both
+	// header names.
 	var existingIDs []largeAttID
 	existingIdx := -1
 	for i, h := range snapshot.Headers {
-		if strings.EqualFold(h.Name, draftpkg.LargeAttachmentIDsHeader) {
+		if draftpkg.IsLargeAttachmentHeader(h.Name) {
 			existingIdx = i
 			if decoded, err := base64.StdEncoding.DecodeString(h.Value); err == nil {
-				_ = json.Unmarshal(decoded, &existingIDs)
+				var raw []json.RawMessage
+				if json.Unmarshal(decoded, &raw) == nil {
+					for _, r := range raw {
+						var entry struct {
+							ID      string `json:"id"`
+							FileKey string `json:"file_key"`
+						}
+						if json.Unmarshal(r, &entry) == nil {
+							tok := entry.ID
+							if tok == "" {
+								tok = entry.FileKey
+							}
+							if tok != "" {
+								existingIDs = append(existingIDs, largeAttID{ID: tok})
+							}
+						}
+					}
+				}
 			}
 			break
 		}
@@ -542,6 +561,7 @@ func preprocessLargeAttachmentsForDraftEdit(
 	}
 	headerValue := base64.StdEncoding.EncodeToString(idsJSON)
 	if existingIdx >= 0 {
+		snapshot.Headers[existingIdx].Name = draftpkg.LargeAttachmentIDsHeader
 		snapshot.Headers[existingIdx].Value = headerValue
 	} else {
 		snapshot.Headers = append(snapshot.Headers, draftpkg.Header{

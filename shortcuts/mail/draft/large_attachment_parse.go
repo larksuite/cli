@@ -15,29 +15,90 @@ import (
 	xhtml "golang.org/x/net/html"
 )
 
+// largeAttHeaderEntry is a union of the CLI and server JSON formats for
+// entries in the large attachment header.
+type largeAttHeaderEntry struct {
+	ID       string `json:"id,omitempty"`
+	FileKey  string `json:"file_key,omitempty"`
+	FileName string `json:"file_name,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+}
+
+func (e largeAttHeaderEntry) token() string {
+	if e.ID != "" {
+		return e.ID
+	}
+	return e.FileKey
+}
+
+// IsLargeAttachmentHeader returns true if the header name matches either
+// the CLI-written or server-returned large attachment header.
+func IsLargeAttachmentHeader(name string) bool {
+	return strings.EqualFold(name, LargeAttachmentIDsHeader) ||
+		strings.EqualFold(name, ServerLargeAttachmentHeader)
+}
+
+// decodeLargeAttachmentHeader decodes the base64 value and returns entries.
+func decodeLargeAttachmentHeader(value string) ([]largeAttHeaderEntry, error) {
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil {
+		return nil, err
+	}
+	var items []largeAttHeaderEntry
+	if err := json.Unmarshal(decoded, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 // parseLargeAttachmentTokens returns the ordered list of large attachment
-// tokens from the X-Lms-Large-Attachment-Ids header. Returns nil when the
-// header is missing or malformed.
+// tokens from either X-Lms-Large-Attachment-Ids (CLI format) or
+// X-Lark-Large-Attachment (server format). Returns nil when neither
+// header is present or the value is malformed.
 func parseLargeAttachmentTokens(headers []Header) []string {
 	for _, h := range headers {
-		if !strings.EqualFold(h.Name, LargeAttachmentIDsHeader) {
+		if !IsLargeAttachmentHeader(h.Name) {
 			continue
 		}
-		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(h.Value))
+		items, err := decodeLargeAttachmentHeader(h.Value)
 		if err != nil {
-			return nil
-		}
-		var items []struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(decoded, &items); err != nil {
 			return nil
 		}
 		out := make([]string, 0, len(items))
 		for _, it := range items {
-			if it.ID != "" {
-				out = append(out, it.ID)
+			if tok := it.token(); tok != "" {
+				out = append(out, tok)
 			}
+		}
+		return out
+	}
+	return nil
+}
+
+// parseLargeAttachmentSummariesFromHeader extracts full metadata from the
+// large attachment header. Returns non-nil only when the server-format
+// header (X-Lark-Large-Attachment) is found, since it carries file_name
+// and file_size that the CLI-format header lacks.
+func parseLargeAttachmentSummariesFromHeader(headers []Header) []LargeAttachmentSummary {
+	for _, h := range headers {
+		if !strings.EqualFold(h.Name, ServerLargeAttachmentHeader) {
+			continue
+		}
+		items, err := decodeLargeAttachmentHeader(h.Value)
+		if err != nil {
+			return nil
+		}
+		out := make([]LargeAttachmentSummary, 0, len(items))
+		for _, it := range items {
+			tok := it.token()
+			if tok == "" {
+				continue
+			}
+			out = append(out, LargeAttachmentSummary{
+				Token:     tok,
+				FileName:  it.FileName,
+				SizeBytes: it.FileSize,
+			})
 		}
 		return out
 	}
@@ -204,51 +265,53 @@ func removeLargeAttachment(snapshot *DraftSnapshot, token string) error {
 	return nil
 }
 
-// removeTokenFromIDsHeader removes the given token from the
-// X-Lms-Large-Attachment-Ids header. Returns an error if the header is
-// missing or the token is not listed.
+// removeTokenFromIDsHeader removes the given token from whichever large
+// attachment header is present (CLI or server format). Returns an error
+// if no header is found or the token is not listed. After removal, the
+// header is re-encoded in CLI format (X-Lms-Large-Attachment-Ids) so
+// the server can process the update on upload.
 func removeTokenFromIDsHeader(snapshot *DraftSnapshot, token string) error {
 	headerIdx := -1
 	for i, h := range snapshot.Headers {
-		if strings.EqualFold(h.Name, LargeAttachmentIDsHeader) {
+		if IsLargeAttachmentHeader(h.Name) {
 			headerIdx = i
 			break
 		}
 	}
 	if headerIdx < 0 {
-		return fmt.Errorf("remove_attachment: draft has no %s header", LargeAttachmentIDsHeader)
+		return fmt.Errorf("remove_attachment: draft has no large attachment header")
 	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(snapshot.Headers[headerIdx].Value))
+	items, err := decodeLargeAttachmentHeader(snapshot.Headers[headerIdx].Value)
 	if err != nil {
-		return fmt.Errorf("remove_attachment: malformed %s header: %w", LargeAttachmentIDsHeader, err)
+		return fmt.Errorf("remove_attachment: malformed large attachment header: %w", err)
 	}
-	type idItem struct {
-		ID string `json:"id"`
-	}
-	var items []idItem
-	if err := json.Unmarshal(decoded, &items); err != nil {
-		return fmt.Errorf("remove_attachment: malformed %s header: %w", LargeAttachmentIDsHeader, err)
-	}
-	filtered := items[:0]
+	filtered := make([]largeAttHeaderEntry, 0, len(items))
 	removed := false
 	for _, it := range items {
-		if it.ID == token {
+		if it.token() == token {
 			removed = true
 			continue
 		}
 		filtered = append(filtered, it)
 	}
 	if !removed {
-		return fmt.Errorf("remove_attachment: token %q not found in %s", token, LargeAttachmentIDsHeader)
+		return fmt.Errorf("remove_attachment: token %q not found in large attachment header", token)
 	}
 	if len(filtered) == 0 {
 		snapshot.Headers = append(snapshot.Headers[:headerIdx], snapshot.Headers[headerIdx+1:]...)
 		return nil
 	}
-	encoded, err := json.Marshal(filtered)
-	if err != nil {
-		return fmt.Errorf("remove_attachment: failed to re-encode %s header: %w", LargeAttachmentIDsHeader, err)
+	cliItems := make([]struct {
+		ID string `json:"id"`
+	}, len(filtered))
+	for i, it := range filtered {
+		cliItems[i].ID = it.token()
 	}
+	encoded, err := json.Marshal(cliItems)
+	if err != nil {
+		return fmt.Errorf("remove_attachment: failed to re-encode large attachment header: %w", err)
+	}
+	snapshot.Headers[headerIdx].Name = LargeAttachmentIDsHeader
 	snapshot.Headers[headerIdx].Value = base64.StdEncoding.EncodeToString(encoded)
 	return nil
 }

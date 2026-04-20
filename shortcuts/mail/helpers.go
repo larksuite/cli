@@ -1289,7 +1289,7 @@ func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string
 			contentType := resolveAttachmentContentType(att, filename)
 			dlURL := urlMap[id]
 
-			if isInline {
+			if isInline && cid != "" {
 				images = append(images, mailImageOutput{
 					ID:          id,
 					Filename:    filename,

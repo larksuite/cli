@@ -32,10 +32,14 @@ const (
 	LargeAttachmentTokenAttr   = "data-mail-token"
 )
 
-// LargeAttachmentIDsHeader registers large attachment tokens with the
-// mail server so it can associate them with the draft. The value is the
-// base64 encoding of a JSON array: [{"id": "<token>"}].
+// LargeAttachmentIDsHeader is the header name CLI writes when creating
+// or editing a draft. The value is base64-encoded JSON: [{"id":"<token>"}].
 const LargeAttachmentIDsHeader = "X-Lms-Large-Attachment-Ids"
+
+// ServerLargeAttachmentHeader is the header name the mail server returns
+// on readback. The value is base64-encoded JSON with richer metadata:
+// [{"file_key":"<token>","file_name":"...","file_size":...}].
+const ServerLargeAttachmentHeader = "X-Lark-Large-Attachment"
 
 // quoteWrapperRe matches an actual <div> element whose class attribute
 // contains QuoteWrapperClass. This avoids false positives when the
@@ -139,11 +143,14 @@ func Project(snapshot *DraftSnapshot) DraftProjection {
 	return proj
 }
 
-// projectLargeAttachments merges header tokens (authoritative, ordered)
-// with HTML-parsed metadata (filename + size) to produce
-// LargeAttachmentSummary entries. Tokens present in the header but
-// missing from HTML are still reported, carrying only the token.
+// projectLargeAttachments extracts large attachment info from the draft.
+// It first tries the server-format header (X-Lark-Large-Attachment) which
+// carries filename and size directly. Falls back to merging CLI-format
+// header tokens with HTML-parsed metadata.
 func projectLargeAttachments(headers []Header, htmlBody string) []LargeAttachmentSummary {
+	if summaries := parseLargeAttachmentSummariesFromHeader(headers); len(summaries) > 0 {
+		return summaries
+	}
 	tokens := parseLargeAttachmentTokens(headers)
 	if len(tokens) == 0 {
 		return nil
