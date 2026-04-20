@@ -11,6 +11,7 @@ func Shortcuts() []common.Shortcut {
 		ImAppFeedCardCreate,
 		ImAppFeedCardDelete,
 		ImAppFeedCardUpdate,
+		ImFeedCardTimeSensitive,
 		ImChatCreate,
 		ImChatMessageList,
 		ImChatSearch,

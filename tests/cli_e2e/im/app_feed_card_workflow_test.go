@@ -106,6 +106,47 @@ func TestIM_AppFeedCardBatchDryRun(t *testing.T) {
 	assert.Equal(t, "biz_dryrun", deleteCard["biz_id"])
 }
 
+func TestIM_FeedCardTimeSensitiveDryRun(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	cardResult, err := clie2e.RunCmd(context.Background(), clie2e.Request{
+		Args: []string{
+			"im", "+feed-card-time-sensitive",
+			"--feed-card-id", "oc_dryrun",
+			"--user-ids", "ou_dryrun",
+			"--time-sensitive", "false",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	cardResult.AssertExitCode(t, 0)
+
+	cardEntry := firstIMDryRunRequest(t, cardResult.Stdout)
+	assert.Equal(t, "PATCH", cardEntry["method"])
+	assert.Equal(t, "/open-apis/im/v2/feed_cards/oc_dryrun", cardEntry["url"])
+	assert.Equal(t, map[string]any{"user_id_type": "open_id"}, cardEntry["params"])
+	cardBody, ok := cardEntry["body"].(map[string]any)
+	require.True(t, ok, "card body should be an object: %#v", cardEntry["body"])
+	assert.Equal(t, []any{"ou_dryrun"}, cardBody["user_ids"])
+	assert.Equal(t, false, cardBody["time_sensitive"])
+
+	invalidCardResult, err := clie2e.RunCmd(context.Background(), clie2e.Request{
+		Args: []string{
+			"im", "+feed-card-time-sensitive",
+			"--feed-card-id", "om_dryrun",
+			"--user-ids", "ou_dryrun",
+			"--time-sensitive", "true",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	invalidCardResult.AssertExitCode(t, 2)
+	assert.Equal(t, "validation", gjson.Get(invalidCardResult.Stderr, "error.type").String(), "stderr:\n%s", invalidCardResult.Stderr)
+	assert.Contains(t, gjson.Get(invalidCardResult.Stderr, "error.message").String(), `starting with "oc_"`)
+}
+
 func TestIM_AppFeedCardCreateWorkflowAsBot(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -132,14 +173,8 @@ func TestIM_AppFeedCardCreateWorkflowAsBot(t *testing.T) {
 		t.Skipf("skipped: app feed card API permission is unavailable in this environment: %s", result.Stderr)
 	}
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, true)
 
-	returnedBizID := gjson.Get(result.Stdout, "data.biz_id").String()
-	cleanupBizID := returnedBizID
-	if cleanupBizID == "" {
-		cleanupBizID = bizID
-	}
-
+	cleanupBizID := bizID
 	deleted := false
 	t.Cleanup(func() {
 		if deleted {
@@ -160,6 +195,12 @@ func TestIM_AppFeedCardCreateWorkflowAsBot(t *testing.T) {
 		})
 		clie2e.ReportCleanupFailure(t, "delete app feed card", cleanupResult, cleanupErr)
 	})
+
+	result.AssertStdoutStatus(t, true)
+	returnedBizID := gjson.Get(result.Stdout, "data.biz_id").String()
+	if returnedBizID != "" {
+		cleanupBizID = returnedBizID
+	}
 	require.NotEmpty(t, returnedBizID, "stdout:\n%s", result.Stdout)
 
 	updateResult, err := clie2e.RunCmd(ctx, clie2e.Request{

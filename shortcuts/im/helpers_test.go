@@ -647,6 +647,7 @@ func TestShortcuts(t *testing.T) {
 		"+app-feed-card-create",
 		"+app-feed-card-delete",
 		"+app-feed-card-update",
+		"+feed-card-time-sensitive",
 		"+chat-create",
 		"+chat-messages-list",
 		"+chat-search",
