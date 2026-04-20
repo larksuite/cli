@@ -37,6 +37,10 @@ type DriveMediaUploadAllConfig struct {
 	ParentType string
 	ParentNode *string
 	Extra      string
+	// Reader, when non-nil, is used as the upload source instead of opening
+	// FilePath. Callers must set FileName and FileSize explicitly. The reader
+	// is NOT closed by UploadDriveMediaAll; the caller owns its lifetime.
+	Reader io.Reader
 }
 
 type DriveMediaMultipartUploadConfig struct {
@@ -49,11 +53,17 @@ type DriveMediaMultipartUploadConfig struct {
 }
 
 func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig) (string, error) {
-	f, err := runtime.FileIO().Open(cfg.FilePath)
-	if err != nil {
-		return "", WrapInputStatError(err)
+	var fileReader io.Reader
+	if cfg.Reader != nil {
+		fileReader = cfg.Reader
+	} else {
+		f, err := runtime.FileIO().Open(cfg.FilePath)
+		if err != nil {
+			return "", WrapInputStatError(err)
+		}
+		defer f.Close()
+		fileReader = f
 	}
-	defer f.Close()
 
 	fd := larkcore.NewFormdata()
 	fd.AddField("file_name", cfg.FileName)
@@ -65,7 +75,7 @@ func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig)
 	if cfg.Extra != "" {
 		fd.AddField("extra", cfg.Extra)
 	}
-	fd.AddFile("file", f)
+	fd.AddFile("file", fileReader)
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -185,17 +186,13 @@ var MailForward = common.Shortcut{
 			bld = bld.TextBody([]byte(buildForwardedMessage(&orig, body)))
 		}
 		bld = applyPriority(bld, priority)
-		// Download original attachments and accumulate size for limit check
+		// Download original attachments, separating normal from large.
 		type downloadedAtt struct {
 			content     []byte
 			contentType string
 			filename    string
 		}
 		var origAtts []downloadedAtt
-		var origAttBytes int64
-		type largeAttID struct {
-			ID string `json:"id"`
-		}
 		var largeAttIDs []largeAttID
 		for _, att := range sourceMsg.ForwardAttachments {
 			if att.AttachmentType == attachmentTypeLarge {
@@ -211,27 +208,101 @@ var MailForward = common.Shortcut{
 				contentType = "application/octet-stream"
 			}
 			origAtts = append(origAtts, downloadedAtt{content, contentType, att.Filename})
-			origAttBytes += int64(len(content))
 		}
+
+		// Classify ALL attachments (original + user-added) together so that
+		// original attachments exceeding the EML limit are uploaded as large
+		// attachments instead of being embedded.
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
+
+		var allFiles []attachmentFile
+		for _, att := range origAtts {
+			allFiles = append(allFiles, attachmentFile{
+				FileName: att.filename,
+				Size:     int64(len(att.content)),
+			})
+		}
+		userFiles, err := statAttachmentFiles(runtime.FileIO(), splitByComma(attachFlag))
+		if err != nil {
+			return err
+		}
+		for _, f := range userFiles {
+			if f.Size > MaxLargeAttachmentSize {
+				return output.ErrValidation("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+					f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
+			}
+		}
+		totalCount := len(origAtts) + len(userFiles)
+		if totalCount > MaxAttachmentCount {
+			return output.ErrValidation("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
+		}
+		allFiles = append(allFiles, userFiles...)
+		classified := classifyAttachments(allFiles, emlBase)
+
+		// Embed normal attachments.
+		origIdx := 0
+		for _, f := range classified.Normal {
+			if f.Path == "" {
+				bld = bld.AddAttachment(origAtts[origIdx].content, origAtts[origIdx].contentType, origAtts[origIdx].filename)
+				origIdx++
+			} else {
+				bld = bld.AddFileAttachment(f.Path)
+			}
+		}
+
+		// Upload oversized attachments as large attachments.
+		if len(classified.Oversized) > 0 {
+			if composedHTMLBody == "" {
+				return output.ErrValidation("large attachments require an HTML body; " +
+					"plain-text messages cannot include the download card " +
+					"(remove --plain-text or reduce attachment size below 25 MB)")
+			}
+			if runtime.Config == nil || runtime.UserOpenId() == "" {
+				var totalBytes int64
+				for _, f := range classified.Oversized {
+					totalBytes += f.Size
+				}
+				return output.ErrValidation("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
+					"large attachment upload requires user identity (--as user)",
+					float64(totalBytes)/1024/1024)
+			}
+
+			var uploadResults []largeAttachmentResult
+			for _, f := range classified.Oversized {
+				if f.Path == "" {
+					result, err := uploadLargeAttachmentBytes(ctx, runtime, origAtts[origIdx].content, origAtts[origIdx].filename)
+					if err != nil {
+						return err
+					}
+					uploadResults = append(uploadResults, result)
+					origIdx++
+				} else {
+					results, err := uploadLargeAttachments(ctx, runtime, []attachmentFile{f})
+					if err != nil {
+						return err
+					}
+					uploadResults = append(uploadResults, results...)
+				}
+			}
+
+			largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), uploadResults)
+			bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(composedHTMLBody, largeHTML)))
+
+			for _, r := range uploadResults {
+				largeAttIDs = append(largeAttIDs, largeAttID{ID: r.FileToken})
+			}
+
+			fmt.Fprintf(runtime.IO().ErrOut, "  %d normal attachment(s) embedded in EML\n", len(classified.Normal))
+			fmt.Fprintf(runtime.IO().ErrOut, "  %d large attachment(s) uploaded (download links in body)\n", len(classified.Oversized))
+		}
+
 		if len(largeAttIDs) > 0 {
 			idsJSON, err := json.Marshal(largeAttIDs)
 			if err != nil {
 				return fmt.Errorf("failed to encode large attachment IDs: %w", err)
 			}
 			bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
-		}
-		for _, att := range origAtts {
-			bld = bld.AddAttachment(att.content, att.contentType, att.filename)
-		}
-		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
-		origAttEMLBytes := int64(0)
-		for _, att := range origAtts {
-			origAttEMLBytes += estimateBase64EMLSize(int64(len(att.content)))
-		}
-		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, origAttEMLBytes)
-		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, splitByComma(attachFlag), emlBase, len(origAtts))
-		if err != nil {
-			return err
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {
