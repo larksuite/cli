@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -84,6 +85,52 @@ func (m *MultiAppConfig) CurrentAppConfig(profileOverride string) *AppConfig {
 		return &m.Apps[0]
 	}
 	return nil
+}
+
+// FindAppByID searches apps by appId and returns a pointer to the matching AppConfig.
+// Returns a ConfigError listing available IDs if not found.
+func FindAppByID(apps []AppConfig, appID string) (*AppConfig, error) {
+	for i := range apps {
+		if apps[i].AppId == appID {
+			return &apps[i], nil
+		}
+	}
+	ids := make([]string, len(apps))
+	for i, a := range apps {
+		ids[i] = a.AppId
+	}
+	return nil, &ConfigError{
+		Code:    2,
+		Type:    "config",
+		Message: fmt.Sprintf("app %q not found in config; available: %s", appID, strings.Join(ids, ", ")),
+		Hint:    "check LARKSUITE_CLI_PROFILE or run `lark-cli config init`",
+	}
+}
+
+// ActiveApp returns the active app from a MultiAppConfig.
+// Resolution priority: LARKSUITE_CLI_PROFILE env var > CurrentApp field > Apps[0].
+func ActiveApp(multi *MultiAppConfig) (*AppConfig, error) {
+	if len(multi.Apps) == 0 {
+		return nil, &ConfigError{Code: 2, Type: "config", Message: "no apps configured", Hint: "run `lark-cli config init`"}
+	}
+	if envProfile := os.Getenv(envvars.CliProfile); envProfile != "" {
+		app := multi.CurrentAppConfig(envProfile)
+		if app == nil {
+			return nil, &ConfigError{
+				Code:    2,
+				Type:    "config",
+				Message: fmt.Sprintf("profile %q not found", envProfile),
+				Hint:    fmt.Sprintf("available profiles: %s", formatProfileNames(multi.ProfileNames())),
+			}
+		}
+		return app, nil
+	}
+	// Fall back to CurrentAppConfig's own resolution (CurrentApp field > Apps[0]).
+	app := multi.CurrentAppConfig("")
+	if app == nil {
+		return nil, &ConfigError{Code: 2, Type: "config", Message: "no apps configured", Hint: "run `lark-cli config init`"}
+	}
+	return app, nil
 }
 
 // FindApp looks up an app by name, then by appId. Returns nil if not found.
@@ -239,14 +286,24 @@ func RequireConfigForProfile(kc keychain.KeychainAccess, profileOverride string)
 
 // ResolveConfigFromMulti resolves a single-app config from an already-loaded MultiAppConfig.
 // This avoids re-reading the config file when the caller has already loaded it.
+// Resolution priority: profileOverride > LARKSUITE_CLI_PROFILE env var > config.CurrentApp > Apps[0].
 func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string) (*CliConfig, error) {
-	app := raw.CurrentAppConfig(profileOverride)
-	if app == nil {
-		return nil, &ConfigError{
-			Code:    2,
-			Type:    "config",
-			Message: fmt.Sprintf("profile %q not found", profileOverride),
-			Hint:    fmt.Sprintf("available profiles: %s", formatProfileNames(raw.ProfileNames())),
+	var app *AppConfig
+	if profileOverride != "" {
+		app = raw.CurrentAppConfig(profileOverride)
+		if app == nil {
+			return nil, &ConfigError{
+				Code:    2,
+				Type:    "config",
+				Message: fmt.Sprintf("profile %q not found", profileOverride),
+				Hint:    fmt.Sprintf("available profiles: %s", formatProfileNames(raw.ProfileNames())),
+			}
+		}
+	} else {
+		var err error
+		app, err = ActiveApp(raw)
+		if err != nil {
+			return nil, err
 		}
 	}
 

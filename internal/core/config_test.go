@@ -85,6 +85,174 @@ func TestMultiAppConfig_RoundTrip(t *testing.T) {
 	}
 }
 
+// noopKeychain satisfies keychain.KeychainAccess for tests (returns empty, no error).
+type noopKeychain struct{}
+
+func (n *noopKeychain) Get(service, account string) (string, error) { return "", nil }
+func (n *noopKeychain) Set(service, account, value string) error    { return nil }
+func (n *noopKeychain) Remove(service, account string) error        { return nil }
+
+func TestFindAppByID_Found(t *testing.T) {
+	apps := []AppConfig{
+		{AppId: "cli_aaa", Brand: BrandFeishu},
+		{AppId: "cli_bbb", Brand: BrandLark},
+	}
+	got, err := FindAppByID(apps, "cli_bbb")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.AppId != "cli_bbb" {
+		t.Errorf("AppId = %q, want %q", got.AppId, "cli_bbb")
+	}
+}
+
+func TestFindAppByID_NotFound(t *testing.T) {
+	apps := []AppConfig{
+		{AppId: "cli_aaa", Brand: BrandFeishu},
+	}
+	_, err := FindAppByID(apps, "cli_zzz")
+	if err == nil {
+		t.Fatal("expected error for missing app")
+	}
+	var cfgErr *ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("expected ConfigError, got %T", err)
+	}
+}
+
+func TestActiveApp_EnvVar(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "cli_bbb")
+	multi := &MultiAppConfig{
+		Apps: []AppConfig{
+			{AppId: "cli_aaa"},
+			{AppId: "cli_bbb"},
+		},
+	}
+	got, err := ActiveApp(multi)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.AppId != "cli_bbb" {
+		t.Errorf("AppId = %q, want %q", got.AppId, "cli_bbb")
+	}
+}
+
+func TestActiveApp_FallsBackToFirst(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "")
+	multi := &MultiAppConfig{
+		Apps: []AppConfig{
+			{AppId: "cli_aaa"},
+			{AppId: "cli_bbb"},
+		},
+	}
+	got, err := ActiveApp(multi)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.AppId != "cli_aaa" {
+		t.Errorf("AppId = %q, want %q", got.AppId, "cli_aaa")
+	}
+}
+
+func TestActiveApp_FallsBackToCurrentApp(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "")
+	multi := &MultiAppConfig{
+		CurrentApp: "cli_bbb",
+		Apps: []AppConfig{
+			{AppId: "cli_aaa"},
+			{AppId: "cli_bbb"},
+		},
+	}
+	got, err := ActiveApp(multi)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.AppId != "cli_bbb" {
+		t.Errorf("AppId = %q, want %q", got.AppId, "cli_bbb")
+	}
+}
+
+func TestActiveApp_EnvVarNotFound(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "cli_missing")
+	multi := &MultiAppConfig{
+		Apps: []AppConfig{{AppId: "cli_aaa"}},
+	}
+	_, err := ActiveApp(multi)
+	if err == nil {
+		t.Fatal("expected error for missing app")
+	}
+}
+
+func TestRequireConfig_EnvVarSelectsApp(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_PROFILE", "cli_bbb")
+
+	config := &MultiAppConfig{
+		Apps: []AppConfig{
+			{AppId: "cli_aaa", AppSecret: PlainSecret("sec_a"), Brand: BrandFeishu, Users: []AppUser{}},
+			{AppId: "cli_bbb", AppSecret: PlainSecret("sec_b"), Brand: BrandLark, Users: []AppUser{{UserOpenId: "ou_123", UserName: "bob"}}},
+		},
+	}
+	if err := SaveMultiAppConfig(config); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := RequireConfig(&noopKeychain{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.AppID != "cli_bbb" {
+		t.Errorf("AppID = %q, want %q", got.AppID, "cli_bbb")
+	}
+	if got.UserOpenId != "ou_123" {
+		t.Errorf("UserOpenId = %q, want %q", got.UserOpenId, "ou_123")
+	}
+}
+
+func TestRequireConfig_DefaultsToFirstApp(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_PROFILE", "")
+
+	config := &MultiAppConfig{
+		Apps: []AppConfig{
+			{AppId: "cli_first", AppSecret: PlainSecret("sec"), Brand: BrandFeishu, Users: []AppUser{}},
+		},
+	}
+	if err := SaveMultiAppConfig(config); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := RequireConfig(&noopKeychain{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.AppID != "cli_first" {
+		t.Errorf("AppID = %q, want %q", got.AppID, "cli_first")
+	}
+}
+
+func TestRequireConfig_EnvVarNotFound(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_PROFILE", "cli_missing")
+
+	config := &MultiAppConfig{
+		Apps: []AppConfig{
+			{AppId: "cli_aaa", AppSecret: PlainSecret("sec"), Brand: BrandFeishu, Users: []AppUser{}},
+		},
+	}
+	if err := SaveMultiAppConfig(config); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	_, err := RequireConfig(&noopKeychain{})
+	if err == nil {
+		t.Fatal("expected error for missing app")
+	}
+}
+
 func TestResolveConfigFromMulti_RejectsSecretKeyMismatch(t *testing.T) {
 	raw := &MultiAppConfig{
 		Apps: []AppConfig{
@@ -164,27 +332,33 @@ func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T
 	}
 }
 
-func TestResolveConfigFromMulti_DoesNotUseEnvProfileFallback(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_PROFILE", "missing")
+func TestResolveConfigFromMulti_ProfileOverrideTakesPrecedenceOverEnv(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_PROFILE", "env-profile")
 
 	raw := &MultiAppConfig{
-		CurrentApp: "active",
 		Apps: []AppConfig{
 			{
-				Name:      "active",
-				AppId:     "cli_active",
-				AppSecret: PlainSecret("secret"),
+				Name:      "env-profile",
+				AppId:     "cli_env",
+				AppSecret: PlainSecret("secret_env"),
+				Brand:     BrandFeishu,
+			},
+			{
+				Name:      "explicit",
+				AppId:     "cli_explicit",
+				AppSecret: PlainSecret("secret_explicit"),
 				Brand:     BrandFeishu,
 			},
 		},
 	}
 
-	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	// When profileOverride is set, it should be used instead of the env var.
+	cfg, err := ResolveConfigFromMulti(raw, nil, "explicit")
 	if err != nil {
 		t.Fatalf("ResolveConfigFromMulti() error = %v", err)
 	}
-	if cfg.ProfileName != "active" {
-		t.Fatalf("ResolveConfigFromMulti() profile = %q, want %q", cfg.ProfileName, "active")
+	if cfg.ProfileName != "explicit" {
+		t.Fatalf("ResolveConfigFromMulti() profile = %q, want %q", cfg.ProfileName, "explicit")
 	}
 }
 
