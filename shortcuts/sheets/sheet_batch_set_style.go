@@ -22,7 +22,7 @@ var SheetBatchSetStyle = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
 		{Name: "spreadsheet-token", Desc: "spreadsheet token"},
-		{Name: "data", Desc: "JSON array of {ranges, style} objects", Required: true},
+		{Name: "data", Desc: "JSON array of {ranges, style} objects; each range must carry a sheetId! prefix (e.g. sheet1!A1)", Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token := runtime.Str("spreadsheet-token")
@@ -49,6 +49,7 @@ var SheetBatchSetStyle = common.Shortcut{
 		}
 		var data interface{}
 		json.Unmarshal([]byte(runtime.Str("data")), &data)
+		normalizeBatchStyleRanges(data)
 		return common.NewDryRunAPI().
 			PUT("/open-apis/sheets/v2/spreadsheets/:token/styles_batch_update").
 			Body(map[string]interface{}{
@@ -66,6 +67,7 @@ var SheetBatchSetStyle = common.Shortcut{
 		if err := json.Unmarshal([]byte(runtime.Str("data")), &data); err != nil {
 			return common.FlagErrorf("--data must be valid JSON: %v", err)
 		}
+		normalizeBatchStyleRanges(data)
 
 		result, err := runtime.CallAPI("PUT",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/styles_batch_update", validate.EncodePathSegment(token)),
@@ -80,4 +82,35 @@ var SheetBatchSetStyle = common.Shortcut{
 		runtime.Out(result, nil)
 		return nil
 	},
+}
+
+// normalizeBatchStyleRanges mutates each string entry in data[].ranges in place
+// so the /styles_batch_update endpoint accepts single-cell shorthand.
+// Entries carrying a sheetId! prefix (e.g. "sheet1!A1") are expanded to
+// "sheet1!A1:A1"; multi-cell spans pass through unchanged.
+// A bare single cell without the sheetId! prefix (e.g. "A1") cannot be
+// expanded because the helper has no sheet-id context (the shortcut exposes
+// no --sheet-id flag), and the backend would reject the payload anyway —
+// such entries pass through unchanged. Non-string entries, missing
+// ranges keys, and non-array top-level inputs are ignored silently.
+func normalizeBatchStyleRanges(data interface{}) {
+	items, ok := data.([]interface{})
+	if !ok {
+		return
+	}
+	for _, item := range items {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		ranges, ok := entry["ranges"].([]interface{})
+		if !ok {
+			continue
+		}
+		for i, r := range ranges {
+			if s, ok := r.(string); ok {
+				ranges[i] = normalizePointRange("", s)
+			}
+		}
+	}
 }

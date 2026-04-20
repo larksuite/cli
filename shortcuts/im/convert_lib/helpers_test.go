@@ -4,7 +4,9 @@
 package convertlib
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -167,6 +169,57 @@ func TestResolveSenderNames(t *testing.T) {
 	}
 	if got["ou_missing"] != "" {
 		t.Fatalf("missing sender = %#v, want empty", got["ou_missing"])
+	}
+}
+
+func TestBatchResolveByBasicContactRespectsAPILimit(t *testing.T) {
+	// basic_batch allows at most 10 user_ids per request. Given 25 missing IDs,
+	// expect three requests with sizes 10 / 10 / 5.
+	var batchSizes []int
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/basic_batch") {
+			return nil, fmt.Errorf("unexpected path: %s", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, err
+		}
+		userIDs, _ := payload["user_ids"].([]interface{})
+		if len(userIDs) > 10 {
+			t.Fatalf("batch exceeded API limit: size = %d", len(userIDs))
+		}
+		batchSizes = append(batchSizes, len(userIDs))
+
+		users := make([]interface{}, 0, len(userIDs))
+		for _, raw := range userIDs {
+			id, _ := raw.(string)
+			users = append(users, map[string]interface{}{
+				"user_id": id,
+				"name":    "name-" + id,
+			})
+		}
+		return convertlibJSONResponse(200, map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"users": users},
+		}), nil
+	}))
+
+	missingIDs := make([]string, 25)
+	for i := range missingIDs {
+		missingIDs[i] = fmt.Sprintf("ou_%02d", i)
+	}
+	nameMap := map[string]string{}
+	batchResolveByBasicContact(runtime, missingIDs, nameMap)
+
+	if want := []int{10, 10, 5}; !reflect.DeepEqual(batchSizes, want) {
+		t.Fatalf("batch sizes = %v, want %v", batchSizes, want)
+	}
+	if len(nameMap) != 25 {
+		t.Fatalf("resolved name count = %d, want 25", len(nameMap))
 	}
 }
 
