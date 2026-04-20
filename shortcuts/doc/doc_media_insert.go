@@ -46,7 +46,7 @@ var DocMediaInsert = common.Shortcut{
 		{Name: "type", Default: "image", Desc: "type: image | file"},
 		{Name: "align", Desc: "alignment: left | center | right"},
 		{Name: "caption", Desc: "image caption text"},
-		{Name: "selection-with-ellipsis", Desc: "plain text (or 'start...end') that identifies the target block; the media is inserted after that block by default"},
+		{Name: "selection-with-ellipsis", Desc: "plain text (or 'start...end' to disambiguate) matching the target block's content. Media is inserted at the top-level ancestor of the matched block — i.e., when the selection is inside a callout, table cell, or nested list, media lands outside that container, not inside it. Pass 'start...end' (a unique prefix and suffix separated by '...') when the plain text appears in more than one block"},
 		{Name: "before", Type: "bool", Desc: "insert before the matched block instead of after (requires --selection-with-ellipsis)"},
 		{Name: "file-view", Desc: "file block rendering: card (default) | preview | inline; only applies when --type=file. preview renders audio/video as an inline player"},
 	},
@@ -440,10 +440,12 @@ func extractAppendTarget(rootData map[string]interface{}, fallbackBlockID string
 // parent_id chain (using single-block GET calls when needed) to resolve nested
 // blocks to their top-level ancestor in rootChildren.
 func locateInsertIndex(runtime *common.RuntimeContext, documentID string, selection string, rootChildren []interface{}, before bool) (int, error) {
+	// Ask for 2 matches so we can warn when the selection is ambiguous. locate-doc
+	// orders matches by document position, so matches[0] is still deterministic.
 	args := map[string]interface{}{
 		"doc_id":                  documentID,
 		"selection_with_ellipsis": selection,
-		"limit":                   1,
+		"limit":                   2,
 	}
 	result, err := common.CallMCPTool(runtime, "locate-doc", args)
 	if err != nil {
@@ -458,6 +460,15 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 			fmt.Sprintf("locate-doc did not find any block matching selection (%s)", redactSelection(selection)),
 			"check spelling or use 'start...end' syntax to narrow the selection",
 		)
+	}
+	if len(matches) > 1 {
+		// Silently picking the first match surprises users whose selection appears
+		// in more than one block (e.g. the same phrase in a title and a paragraph).
+		// Surface that another match exists and point at the 'start...end' disambiguator.
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"warning: selection (%s) matched more than one block; inserting relative to the first. "+
+				"Pass --selection-with-ellipsis 'start...end' to narrow.\n",
+			redactSelection(selection))
 	}
 
 	matchMap, _ := matches[0].(map[string]interface{})
@@ -484,12 +495,21 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 		}
 	}
 
-	// Walk up the parent chain. locate-doc already gives us one level of parent,
-	// so most cases need zero extra API calls.
+	// Walk up the parent chain to the top-level ancestor in rootChildren. This
+	// is serial by nature: each level's parent_id is only known after the
+	// previous level's GET /blocks/{id} response arrives, so the calls cannot
+	// be batched or parallelised.
+	//
+	// visited is the real cycle guard — it stops an A→B→A parent-id loop (seen
+	// on malformed API responses) after one lap. maxDepth is belt-and-suspenders
+	// in case both visited tracking and parent_id sanity simultaneously break;
+	// 32 comfortably exceeds the deepest real docx nesting (~6–8 levels for
+	// quote/callout/list combinations) without letting a bug run unbounded.
 	cur := anchorBlockID
 	nextParent := parentBlockID
 	visited := map[string]bool{}
-	const maxDepth = 8
+	const maxDepth = 32
+	walkDepth := 0
 	for depth := 0; depth < maxDepth; depth++ {
 		if visited[cur] {
 			break
@@ -497,6 +517,19 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 		visited[cur] = true
 
 		if idx, ok := rootSet[cur]; ok {
+			if walkDepth > 0 {
+				// The anchor was nested inside a callout / table cell / list and
+				// got resolved to its top-level ancestor. Surface this so users
+				// don't misread "insert before 'X'" as "insert right next to X"
+				// when X is buried several levels deep.
+				posLabel := "after"
+				if before {
+					posLabel = "before"
+				}
+				fmt.Fprintf(runtime.IO().ErrOut,
+					"note: selection (%s) was nested %d level(s) deep; inserting %s its top-level ancestor at index %d\n",
+					redactSelection(selection), walkDepth, posLabel, idx)
+			}
 			if before {
 				return idx, nil
 			}
@@ -522,6 +555,7 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 			break
 		}
 		cur = parent
+		walkDepth++
 	}
 
 	return 0, output.ErrWithHint(
