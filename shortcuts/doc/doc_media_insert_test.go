@@ -257,9 +257,12 @@ func buildLocateDocMCPResponse(matches []map[string]interface{}) map[string]inte
 	}
 }
 
+// registerInsertWithSelectionStubs wires the minimal stub set for the
+// --selection-with-ellipsis happy path. Returns the create-block stub so
+// callers can inspect the request body (e.g. to verify the computed index).
 func registerInsertWithSelectionStubs(reg interface {
 	Register(*httpmock.Stub)
-}, docID, anchorBlockID, parentBlockID string) {
+}, docID, anchorBlockID, parentBlockID string, rootChildren []interface{}) *httpmock.Stub {
 	// Root block
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -269,7 +272,7 @@ func registerInsertWithSelectionStubs(reg interface {
 			"data": map[string]interface{}{
 				"block": map[string]interface{}{
 					"block_id": docID,
-					"children": []interface{}{"blk_a", "blk_b"},
+					"children": rootChildren,
 				},
 			},
 		},
@@ -282,8 +285,8 @@ func registerInsertWithSelectionStubs(reg interface {
 			{"anchor_block_id": anchorBlockID, "parent_block_id": parentBlockID},
 		}),
 	})
-	// Create block
-	reg.Register(&httpmock.Stub{
+	// Create block — returned so the test can inspect index in CapturedBody.
+	createStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID + "/children",
 		Body: map[string]interface{}{
@@ -294,7 +297,8 @@ func registerInsertWithSelectionStubs(reg interface {
 				},
 			},
 		},
-	})
+	}
+	reg.Register(createStub)
 	// Upload
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -310,13 +314,36 @@ func registerInsertWithSelectionStubs(reg interface {
 		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/batch_update",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	})
+	return createStub
 }
 
-// TestLocateInsertIndexAfterModeViaExecute verifies that --selection-with-ellipsis
-// inserts after the matched root-level block (index = root index + 1).
+// assertCreateBlockIndex decodes the create-block request body and asserts the
+// `index` field equals want. Fails the test if the body is missing or wrong.
+func assertCreateBlockIndex(t *testing.T, stub *httpmock.Stub, want int) {
+	t.Helper()
+	if stub.CapturedBody == nil {
+		t.Fatalf("create-block stub captured no body")
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode create-block body: %v (raw: %s)", err, stub.CapturedBody)
+	}
+	got, _ := body["index"].(float64)
+	if int(got) != want {
+		t.Fatalf("create-block index = %v, want %d (body: %s)", body["index"], want, stub.CapturedBody)
+	}
+}
+
+// TestLocateInsertIndexAfterModeViaExecute verifies that
+// --selection-with-ellipsis (default after-mode) places the new block
+// immediately after the matched root-level block. Uses three root children so
+// the after-index (2) differs from what --before would produce (1), and
+// inspects the create-block request body to prove the computed index actually
+// reaches the /children API.
 func TestLocateInsertIndexAfterModeViaExecute(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-after-app"))
-	registerInsertWithSelectionStubs(reg, "doxcnSEL", "blk_a", "doxcnSEL")
+	createStub := registerInsertWithSelectionStubs(reg, "doxcnSEL", "blk_b", "doxcnSEL",
+		[]interface{}{"blk_a", "blk_b", "blk_c"})
 
 	tmpDir := t.TempDir()
 	withDocsWorkingDir(t, tmpDir)
@@ -332,13 +359,19 @@ func TestLocateInsertIndexAfterModeViaExecute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error: %v", err)
 	}
+	// after blk_b (index 1) → insert at index 2, between blk_b and blk_c.
+	assertCreateBlockIndex(t, createStub, 2)
 }
 
-// TestLocateInsertIndexBeforeModeViaExecute verifies that --before inserts before
-// the matched root-level block.
+// TestLocateInsertIndexBeforeModeViaExecute verifies that --before inserts
+// before the matched root-level block. Pairs with the after-mode test above:
+// same fixture, same anchor, but --before should flip the index from 2 to 1.
+// A regression that ignored --before would still pass the success check alone,
+// so we assert the create-block body explicitly.
 func TestLocateInsertIndexBeforeModeViaExecute(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-before-app"))
-	registerInsertWithSelectionStubs(reg, "doxcnSEL2", "blk_b", "doxcnSEL2")
+	createStub := registerInsertWithSelectionStubs(reg, "doxcnSEL2", "blk_b", "doxcnSEL2",
+		[]interface{}{"blk_a", "blk_b", "blk_c"})
 
 	tmpDir := t.TempDir()
 	withDocsWorkingDir(t, tmpDir)
@@ -355,15 +388,26 @@ func TestLocateInsertIndexBeforeModeViaExecute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error: %v", err)
 	}
+	// before blk_b (index 1) → insert at index 1, between blk_a and blk_b.
+	assertCreateBlockIndex(t, createStub, 1)
 }
 
-// TestLocateInsertIndexNestedBlockViaExecute verifies that a nested block's
-// parent_block_id hint is used to walk to the root-level ancestor.
+// TestLocateInsertIndexNestedBlockViaExecute verifies that a deeply-nested
+// anchor (2+ levels below root) walks up through an intermediate block via
+// the GET /blocks/{id} API to find the root-level ancestor. This exercises
+// the fallback ancestor-walk path in locateInsertIndex — the parent_block_id
+// hint from locate-doc is only good for one level, so deeper nesting must hit
+// the block-fetch loop.
 func TestLocateInsertIndexNestedBlockViaExecute(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("locate-nested-app"))
 
 	docID := "doxcnNESTED"
-	// Root block with blk_section and blk_other as children
+	// Root children: blk_section (index 0), blk_other (index 1).
+	// Anchor blk_grandchild is nested two levels deep:
+	//   root → blk_section → blk_section_child → blk_grandchild
+	// locate-doc gives us parent_block_id = blk_section_child (one level up);
+	// the walk must fetch blk_section_child to discover its parent = blk_section
+	// before it can land on a root child.
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID,
@@ -377,15 +421,30 @@ func TestLocateInsertIndexNestedBlockViaExecute(t *testing.T) {
 			},
 		},
 	})
-	// MCP locate-doc returns blk_child nested under blk_section
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "mcp.feishu.cn/mcp",
 		Body: buildLocateDocMCPResponse([]map[string]interface{}{
-			{"anchor_block_id": "blk_child", "parent_block_id": "blk_section"},
+			{"anchor_block_id": "blk_grandchild", "parent_block_id": "blk_section_child"},
 		}),
 	})
-	reg.Register(&httpmock.Stub{
+	// Intermediate block lookup — this is the key step that exercises the
+	// fallback walk. Without this stub the test would fail.
+	intermediateStub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/blk_section_child",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"block": map[string]interface{}{
+					"block_id":  "blk_section_child",
+					"parent_id": "blk_section",
+				},
+			},
+		},
+	}
+	reg.Register(intermediateStub)
+	createStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/docx/v1/documents/" + docID + "/blocks/" + docID + "/children",
 		Body: map[string]interface{}{
@@ -396,7 +455,8 @@ func TestLocateInsertIndexNestedBlockViaExecute(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+	reg.Register(createStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_all",
@@ -425,6 +485,13 @@ func TestLocateInsertIndexNestedBlockViaExecute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error: %v", err)
 	}
+	// Confirm the ancestor-walk actually fired — without this assertion a
+	// regression that short-circuited the walk would still pass.
+	if intermediateStub.CapturedBody == nil && intermediateStub.CapturedHeaders == nil {
+		t.Errorf("expected GET /blocks/blk_section_child to be invoked by the parent-walk; stub was not hit")
+	}
+	// after blk_section (index 0) → insert at index 1, between blk_section and blk_other.
+	assertCreateBlockIndex(t, createStub, 1)
 }
 
 // TestLocateInsertIndexNoMatchReturnsError verifies that when locate-doc returns

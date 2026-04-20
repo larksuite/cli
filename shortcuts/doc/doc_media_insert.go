@@ -58,7 +58,16 @@ var DocMediaInsert = common.Shortcut{
 		if docRef.Kind == "doc" {
 			return output.ErrValidation("docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx")
 		}
-		if runtime.Bool("before") && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) == "" {
+		rawSelection := runtime.Str("selection-with-ellipsis")
+		trimmedSelection := strings.TrimSpace(rawSelection)
+		// Explicitly reject a flag that was supplied but blank: runtime.Str cannot
+		// distinguish "omitted" from "provided as empty/whitespace", and a silent
+		// trim-to-empty would make +media-insert fall back to append-mode and
+		// write at the wrong location.
+		if rawSelection != "" && trimmedSelection == "" {
+			return output.ErrValidation("--selection-with-ellipsis must not be blank or whitespace-only")
+		}
+		if runtime.Bool("before") && trimmedSelection == "" {
 			return output.ErrValidation("--before requires --selection-with-ellipsis")
 		}
 		if view := runtime.Str("file-view"); view != "" {
@@ -200,7 +209,9 @@ var DocMediaInsert = common.Shortcut{
 		selection := strings.TrimSpace(runtime.Str("selection-with-ellipsis"))
 		if selection != "" {
 			before := runtime.Bool("before")
-			fmt.Fprintf(runtime.IO().ErrOut, "Locating block matching selection: %q\n", selection)
+			// Redact the selection when logging — it is copied verbatim from
+			// document content and may contain confidential text.
+			fmt.Fprintf(runtime.IO().ErrOut, "Locating block matching selection (%s)\n", redactSelection(selection))
 			idx, err := locateInsertIndex(runtime, documentID, selection, rootChildren, before)
 			if err != nil {
 				return err
@@ -285,6 +296,20 @@ func blockTypeForMediaType(mediaType string) int {
 		return 23
 	}
 	return 27
+}
+
+// redactSelection summarizes --selection-with-ellipsis values for logging and
+// error messages without echoing raw document text. Returns the rune count and,
+// for longer strings, a short prefix so operators can still identify which
+// selection failed without leaking confidential content into terminals or CI
+// logs.
+func redactSelection(s string) string {
+	const prefixRunes = 8
+	runes := []rune(s)
+	if len(runes) <= prefixRunes {
+		return fmt.Sprintf("%d chars", len(runes))
+	}
+	return fmt.Sprintf("%q… %d chars total", string(runes[:prefixRunes]), len(runes))
 }
 
 func parentTypeForMediaType(mediaType string) string {
@@ -430,7 +455,7 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 		return 0, output.ErrWithHint(
 			output.ExitValidation,
 			"no_match",
-			fmt.Sprintf("locate-doc did not find any block matching selection %q", selection),
+			fmt.Sprintf("locate-doc did not find any block matching selection (%s)", redactSelection(selection)),
 			"check spelling or use 'start...end' syntax to narrow the selection",
 		)
 	}
@@ -502,7 +527,7 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 	return 0, output.ErrWithHint(
 		output.ExitValidation,
 		"block_not_reachable",
-		fmt.Sprintf("block matching selection %q is not reachable from document root", selection),
+		fmt.Sprintf("block matching selection (%s) is not reachable from document root", redactSelection(selection)),
 		"try a top-level heading or paragraph as the selection",
 	)
 }
