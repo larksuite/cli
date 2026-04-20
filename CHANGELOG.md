@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.15] - 2026-04-20
+
+### Features
+
+- **sheets**: Add float image shortcuts (#494)
+- **approval**: Document `remind` and `initiated` methods in skill (#554)
+
+### Bug Fixes
+
+- **base**: Preserve attachment metadata on base uploads (#563)
+- **base**: Fix role view and record default permission on edit (#530)
+- **sheets**: Normalize single-cell range in `+set-style` and `+batch-set-style` (#548)
+- **im**: Cap `basic_batch` user_ids at 10 per API limit (#551)
+- **install**: Refine install wizard messages (#529)
+- **whiteboard**: Deprecate old `lark-whiteboard-cli` skill (#547)
+
 ## [v1.0.14] - 2026-04-17
 
 ### Features
@@ -404,6 +420,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.15]: https://github.com/larksuite/cli/releases/tag/v1.0.15
 [v1.0.14]: https://github.com/larksuite/cli/releases/tag/v1.0.14
 [v1.0.13]: https://github.com/larksuite/cli/releases/tag/v1.0.13
 [v1.0.12]: https://github.com/larksuite/cli/releases/tag/v1.0.12
