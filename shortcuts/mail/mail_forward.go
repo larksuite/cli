@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
@@ -230,10 +229,11 @@ var MailForward = common.Shortcut{
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), int64(len(body)), allInlinePaths, 0)
 
 		var allFiles []attachmentFile
-		for _, att := range origAtts {
+		for i, att := range origAtts {
 			allFiles = append(allFiles, attachmentFile{
-				FileName: att.filename,
-				Size:     int64(len(att.content)),
+				FileName:    att.filename,
+				Size:        int64(len(att.content)),
+				SourceIndex: i,
 			})
 		}
 		userFiles, err := statAttachmentFiles(runtime.FileIO(), splitByComma(attachFlag))
@@ -246,7 +246,7 @@ var MailForward = common.Shortcut{
 					f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
 			}
 		}
-		totalCount := len(origAtts) + len(userFiles)
+		totalCount := len(origAtts) + len(largeAttIDs) + len(userFiles)
 		if totalCount > MaxAttachmentCount {
 			return output.ErrValidation("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
 		}
@@ -254,11 +254,10 @@ var MailForward = common.Shortcut{
 		classified := classifyAttachments(allFiles, emlBase)
 
 		// Embed normal attachments.
-		origIdx := 0
 		for _, f := range classified.Normal {
 			if f.Path == "" {
-				bld = bld.AddAttachment(origAtts[origIdx].content, origAtts[origIdx].contentType, origAtts[origIdx].filename)
-				origIdx++
+				att := origAtts[f.SourceIndex]
+				bld = bld.AddAttachment(att.content, att.contentType, att.filename)
 			} else {
 				bld = bld.AddFileAttachment(f.Path)
 			}
@@ -281,8 +280,8 @@ var MailForward = common.Shortcut{
 			}
 
 			// Write oversized original attachments (in-memory) to temp
-			// files in the current directory so they can be uploaded via
-			// the file-based multipart upload path.
+			// files so they can be uploaded via the file-based multipart
+			// upload path.
 			var tempFiles []string
 			defer func() {
 				for _, tf := range tempFiles {
@@ -292,10 +291,15 @@ var MailForward = common.Shortcut{
 			var allOversized []attachmentFile
 			for _, f := range classified.Oversized {
 				if f.Path == "" {
-					att := origAtts[origIdx]
-					origIdx++
-					tmpName := fmt.Sprintf(".lark-cli-fwd-%s", filepath.Base(att.filename))
+					att := origAtts[f.SourceIndex]
+					tmpFile, err := os.CreateTemp("", ".lark-cli-fwd-*")
+					if err != nil {
+						return fmt.Errorf("failed to create temp file for %s: %w", att.filename, err)
+					}
+					tmpName := tmpFile.Name()
+					tmpFile.Close()
 					if err := os.WriteFile(tmpName, att.content, 0600); err != nil {
+						os.Remove(tmpName)
 						return fmt.Errorf("failed to write temp file for %s: %w", att.filename, err)
 					}
 					tempFiles = append(tempFiles, tmpName)
