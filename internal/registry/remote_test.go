@@ -19,6 +19,7 @@ import (
 
 // resetInit resets the package-level state so each test starts fresh.
 func resetInit() {
+	waitForBackgroundRefresh()
 	initOnce = sync.Once{}
 	mergedServices = make(map[string]map[string]interface{})
 	mergedProjectList = nil
@@ -445,8 +446,6 @@ func TestFetchRemoteMerged_InvalidJSON(t *testing.T) {
 }
 
 func TestBrandSwitchInvalidatesCache(t *testing.T) {
-	// Wait for any background goroutines from previous tests to settle
-	time.Sleep(200 * time.Millisecond)
 	resetInit()
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
