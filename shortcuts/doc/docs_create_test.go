@@ -6,6 +6,7 @@ package doc
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -178,6 +179,23 @@ func TestDocsCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	if body["perm_type"] != "container" {
 		t.Fatalf("permission request perm_type = %#v, want %q", body["perm_type"], "container")
 	}
+}
+
+func TestMissingCreateAutoWidthScopes(t *testing.T) {
+	t.Run("all scopes granted", func(t *testing.T) {
+		granted := "docx:document:create docx:document:readonly docx:document:write_only"
+		if got := missingCreateAutoWidthScopes(granted); len(got) != 0 {
+			t.Fatalf("expected no missing scopes, got %v", got)
+		}
+	})
+
+	t.Run("missing readonly and write_only", func(t *testing.T) {
+		got := missingCreateAutoWidthScopes("docx:document:create")
+		want := []string{"docx:document:readonly", "docx:document:write_only"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("missingCreateAutoWidthScopes() = %v, want %v", got, want)
+		}
+	})
 }
 
 func docsCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {

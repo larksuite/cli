@@ -8,8 +8,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+var docsCreateAutoWidthScopes = []string{
+	"docx:document:readonly",
+	"docx:document:write_only",
+}
 
 var DocsCreate = common.Shortcut{
 	Service:     "docs",
@@ -17,7 +23,7 @@ var DocsCreate = common.Shortcut{
 	Description: "Create a Lark document",
 	Risk:        "write",
 	AuthTypes:   []string{"user", "bot"},
-	Scopes:      []string{"docx:document:create", "docx:document:readonly", "docx:document:write_only"},
+	Scopes:      []string{"docx:document:create"},
 	Flags: []common.Flag{
 		{Name: "title", Desc: "document title"},
 		{Name: "markdown", Desc: "Markdown content (Lark-flavored)", Required: true, Input: []string{common.File, common.Stdin}},
@@ -64,10 +70,16 @@ var DocsCreate = common.Shortcut{
 		normalizeDocsUpdateResult(result, runtime.Str("markdown"))
 
 		if markdownLikelyContainsTable(runtime.Str("markdown")) {
+			if missing := missingCreateAutoWidthRuntimeScopes(runtime); len(missing) > 0 {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: table auto-width skipped after docs +create: missing granted scope(s): %s\n", strings.Join(missing, ", "))
+				runtime.Out(result, nil)
+				return nil
+			}
+
 			// Post-process: auto-resize table column widths
 			docID := common.GetString(result, "doc_id")
 			if docID != "" {
-				if warn := autoResizeTableColumns(runtime, docID); warn != "" {
+				if warn := autoResizeTableColumnsAfterWrite(runtime, docID); warn != "" {
 					fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
 				}
 			}
@@ -118,6 +130,21 @@ func selectDocsPermissionTarget(result map[string]interface{}) docsPermissionTar
 		return docsPermissionTarget{Token: docID, Type: "docx"}
 	}
 	return docsPermissionTarget{}
+}
+
+func missingCreateAutoWidthRuntimeScopes(runtime *common.RuntimeContext) []string {
+	if runtime == nil || runtime.IsBot() || runtime.Config == nil || runtime.Config.AppID == "" || runtime.Config.UserOpenId == "" {
+		return nil
+	}
+	stored := auth.GetStoredToken(runtime.Config.AppID, runtime.Config.UserOpenId)
+	if stored == nil {
+		return nil
+	}
+	return missingCreateAutoWidthScopes(stored.Scope)
+}
+
+func missingCreateAutoWidthScopes(grantedScope string) []string {
+	return auth.MissingScopes(grantedScope, docsCreateAutoWidthScopes)
 }
 
 func parseDocsPermissionTargetFromURL(docURL string) (docsPermissionTarget, bool) {

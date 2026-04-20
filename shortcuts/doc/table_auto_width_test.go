@@ -4,7 +4,9 @@
 package doc
 
 import (
+	"context"
 	"testing"
+	"time"
 )
 
 func TestStringDisplayWidth(t *testing.T) {
@@ -372,23 +374,32 @@ func TestSameColumnWidths(t *testing.T) {
 }
 
 func TestShouldSkipTableWidthUpdate(t *testing.T) {
-	t.Run("skip when widths already match", func(t *testing.T) {
-		if !shouldSkipTableWidthUpdate([]int{120, 200}, []int{120, 200}, 2) {
+	t.Run("skips when current widths already match", func(t *testing.T) {
+		if !shouldSkipTableWidthUpdate([]int{120, 180}, []int{120, 180}, 2) {
 			t.Fatal("expected matching widths to skip update")
 		}
 	})
 
-	t.Run("skip initial equal distribution without stored widths", func(t *testing.T) {
-		if !shouldSkipTableWidthUpdate(nil, []int{350, 350}, 2) {
-			t.Fatal("expected nil current widths with equal target to skip update")
+	t.Run("does not skip equal-width reset when custom widths differ", func(t *testing.T) {
+		if shouldSkipTableWidthUpdate([]int{200, 150}, []int{350, 350}, 2) {
+			t.Fatal("expected stale custom widths to be reset to equal widths")
 		}
 	})
 
-	t.Run("do not skip resetting custom widths back to equal", func(t *testing.T) {
-		if shouldSkipTableWidthUpdate([]int{200, 500}, []int{350, 350}, 2) {
-			t.Fatal("expected custom widths to be reset to equal distribution")
+	t.Run("skips implicit equal widths when current widths are absent", func(t *testing.T) {
+		if !shouldSkipTableWidthUpdate(nil, []int{350, 350}, 2) {
+			t.Fatal("expected nil current widths with equal distribution to skip update")
 		}
 	})
+}
+
+func TestSleepWithContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if sleepWithContext(ctx, 10*time.Millisecond) {
+		t.Fatal("expected canceled context to abort sleep")
+	}
 }
 
 func TestFirstNonEmpty(t *testing.T) {

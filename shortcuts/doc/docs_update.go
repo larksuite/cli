@@ -117,7 +117,7 @@ var DocsUpdate = common.Shortcut{
 		if shouldAutoResizeAfterUpdate(runtime.Str("mode"), runtime.Str("markdown")) {
 			docID := common.GetString(result, "doc_id")
 			if docID == "" {
-				resolvedDocID, resolveErr := resolveDocxDocumentID(runtime, runtime.Str("doc"), "table auto-width")
+				resolvedDocID, resolveErr := resolveDocxDocumentID(runtime, runtime.Str("doc"), "docs +update")
 				if resolveErr != nil {
 					fmt.Fprintf(runtime.IO().ErrOut, "warning: table auto-width skipped: %v\n", resolveErr)
 				} else {
@@ -125,7 +125,7 @@ var DocsUpdate = common.Shortcut{
 				}
 			}
 			if docID != "" {
-				if warn := autoResizeTableColumns(runtime, docID); warn != "" {
+				if warn := autoResizeTableColumnsAfterWrite(runtime, docID); warn != "" {
 					fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warn)
 				}
 			}

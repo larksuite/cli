@@ -4,8 +4,11 @@
 package doc
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/util"
@@ -17,31 +20,71 @@ const (
 	blockTypeTable = 31
 	blockTypeText  = 2
 
-	minColumnWidth    = 80
-	maxColumnWidth    = 400
-	docContainerWidth = 700
-	charUnitWidth     = 12 // approximate pixel width per character unit
-	cellPadding       = 16 // horizontal padding inside each table cell (left + right)
+	// Width heuristics were measured against the default desktop Lark docx table renderer.
+	// If the renderer font, padding, or content container width changes, recalibrate these together.
+	minColumnWidth    = 80  // Keep narrow columns readable before they collapse into truncation.
+	maxColumnWidth    = 400 // Prevent one verbose column from dominating the measured 700px content area.
+	docContainerWidth = 700 // Measured editable content width for standard desktop docx tables.
+	charUnitWidth     = 12  // Approximate pixel width of one display-width unit at the default table font size.
+	cellPadding       = 16  // Measured horizontal padding inside one cell, left plus right.
 
-	mentionUserFallbackWidth = 8
-	mentionDocFallbackWidth  = 12
-	inlineFileFallbackWidth  = 10
-	inlineBlockFallbackWidth = 8
-	reminderFallbackWidth    = 10
-	equationFallbackWidth    = 8
-	linkPreviewFallbackWidth = 12
+	mentionUserFallbackWidth = 8  // Rough width of a short @mention when the API omits display text.
+	mentionDocFallbackWidth  = 12 // Rough width of a short linked-doc chip when only metadata is available.
+	inlineFileFallbackWidth  = 10 // Rough width of an inline file attachment pill.
+	inlineBlockFallbackWidth = 8  // Rough width of an inline block placeholder.
+	reminderFallbackWidth    = 10 // Rough width of a reminder chip without rendered text.
+	equationFallbackWidth    = 8  // Rough width of a compact inline equation token.
+	linkPreviewFallbackWidth = 12 // Rough width of a compact link preview chip.
 	maxBlockPageFetches      = 100
+
+	tableAutoWidthRetryDelay = 250 * time.Millisecond
 )
 
 // autoResizeTableColumns fetches all blocks from a document, finds table blocks,
 // calculates optimal column widths based on cell content, and updates via API.
 // Errors are non-fatal: returns a warning message or empty string on success.
 func autoResizeTableColumns(runtime *common.RuntimeContext, documentID string) string {
+	return autoResizeTableColumnsWithExpectation(runtime, documentID, false)
+}
+
+func autoResizeTableColumnsAfterWrite(runtime *common.RuntimeContext, documentID string) string {
+	return autoResizeTableColumnsWithExpectation(runtime, documentID, true)
+}
+
+func autoResizeTableColumnsWithExpectation(runtime *common.RuntimeContext, documentID string, expectTable bool) string {
 	blocks, err := fetchAllBlocks(runtime, documentID)
 	if err != nil {
+		if isAutoWidthCanceled(err) {
+			return ""
+		}
 		return fmt.Sprintf("table auto-width skipped: %v", err)
 	}
 
+	warn, foundTable := applyTableAutoWidth(runtime, documentID, blocks)
+	if warn != "" || foundTable || !expectTable {
+		return warn
+	}
+
+	if !sleepWithContext(runtime.Ctx(), tableAutoWidthRetryDelay) {
+		return ""
+	}
+
+	blocks, err = fetchAllBlocks(runtime, documentID)
+	if err != nil {
+		if isAutoWidthCanceled(err) {
+			return ""
+		}
+		return fmt.Sprintf("table auto-width skipped: %v", err)
+	}
+
+	warn, foundTable = applyTableAutoWidth(runtime, documentID, blocks)
+	if warn != "" || foundTable {
+		return warn
+	}
+	return "table auto-width skipped: markdown looked like a table, but no docx table blocks were available yet; the backend may still be syncing"
+}
+
+func applyTableAutoWidth(runtime *common.RuntimeContext, documentID string, blocks []interface{}) (string, bool) {
 	blockMap := make(map[string]map[string]interface{}, len(blocks))
 	for _, b := range blocks {
 		if m, ok := b.(map[string]interface{}); ok {
@@ -52,7 +95,11 @@ func autoResizeTableColumns(runtime *common.RuntimeContext, documentID string) s
 	}
 
 	var warnings []string
+	foundTable := false
 	for _, b := range blocks {
+		if runtimeContextCanceled(runtime.Ctx()) {
+			return "", foundTable
+		}
 		m, ok := b.(map[string]interface{})
 		if !ok {
 			continue
@@ -61,6 +108,7 @@ func autoResizeTableColumns(runtime *common.RuntimeContext, documentID string) s
 		if int(blockType) != blockTypeTable {
 			continue
 		}
+		foundTable = true
 		blockID, _ := m["block_id"].(string)
 		if blockID == "" {
 			continue
@@ -71,9 +119,9 @@ func autoResizeTableColumns(runtime *common.RuntimeContext, documentID string) s
 	}
 
 	if len(warnings) > 0 {
-		return fmt.Sprintf("table auto-width partial: %v", warnings)
+		return fmt.Sprintf("table auto-width partial: %s", strings.Join(warnings, "; ")), foundTable
 	}
-	return ""
+	return "", foundTable
 }
 
 // fetchAllBlocks retrieves all document blocks with pagination.
@@ -81,6 +129,9 @@ func fetchAllBlocks(runtime *common.RuntimeContext, documentID string) ([]interf
 	var allItems []interface{}
 	var pageToken string
 	for pageCount := 0; pageCount < maxBlockPageFetches; pageCount++ {
+		if runtimeContextCanceled(runtime.Ctx()) {
+			return nil, runtime.Ctx().Err()
+		}
 		params := map[string]interface{}{
 			"page_size": 500,
 		}
@@ -155,9 +206,13 @@ func resizeOneTable(runtime *common.RuntimeContext, documentID, blockID string, 
 
 	// Update table column widths — one PATCH per column because batch_update
 	// silently ignores multiple update_table_property ops on the same table
-	// in a single request.
+	// in a single request. That also means end-to-end latency scales roughly
+	// linearly with the number of changed columns in the table.
 	var updateErrors []string
 	for i, w := range columnWidths {
+		if runtimeContextCanceled(runtime.Ctx()) {
+			return ""
+		}
 		if i < len(currentWidths) && currentWidths[i] == w {
 			continue
 		}
@@ -442,4 +497,36 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func runtimeContextCanceled(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) bool {
+	if ctx == nil {
+		time.Sleep(delay)
+		return true
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func isAutoWidthCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
