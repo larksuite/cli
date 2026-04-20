@@ -290,12 +290,12 @@ func HTMLContainsLargeAttachment(html string) bool {
 }
 
 // FindHTMLBodyPart walks the MIME tree and returns the first text/html
-// part, or nil when no HTML part exists.
+// body part (skipping attachment-disposition parts), or nil when none exists.
 func FindHTMLBodyPart(root *Part) *Part {
 	if root == nil {
 		return nil
 	}
-	if strings.EqualFold(root.MediaType, "text/html") {
+	if strings.EqualFold(root.MediaType, "text/html") && !strings.EqualFold(root.ContentDisposition, "attachment") {
 		return root
 	}
 	for _, c := range root.Children {
@@ -307,12 +307,12 @@ func FindHTMLBodyPart(root *Part) *Part {
 }
 
 // FindTextBodyPart walks the MIME tree and returns the first text/plain
-// part, or nil when no text/plain part exists.
+// body part (skipping attachment-disposition parts), or nil when none exists.
 func FindTextBodyPart(root *Part) *Part {
 	if root == nil {
 		return nil
 	}
-	if strings.EqualFold(root.MediaType, "text/plain") {
+	if strings.EqualFold(root.MediaType, "text/plain") && !strings.EqualFold(root.ContentDisposition, "attachment") {
 		return root
 	}
 	for _, c := range root.Children {
