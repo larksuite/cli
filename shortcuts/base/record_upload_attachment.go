@@ -109,6 +109,8 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 				map[string]interface{}{
 					"file_token":                "<uploaded_file_token>",
 					"name":                      fileName,
+					"mime_type":                 "<detected_mime_type>",
+					"size":                      "<file_size>",
 					"deprecated_set_attachment": true,
 				},
 			},
@@ -247,10 +249,14 @@ func normalizeAttachmentForPatch(attachment map[string]interface{}) map[string]i
 }
 
 func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, baseToken string, fileSize int64) (map[string]interface{}, error) {
+	mimeType, err := detectAttachmentMIMEType(runtime.FileIO(), filePath, fileName)
+	if err != nil {
+		return nil, err
+	}
+
 	parentNode := baseToken
 	var (
 		fileToken string
-		err       error
 	)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
@@ -269,11 +275,6 @@ func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, 
 			ParentNode: parentNode,
 		})
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	mimeType, err := detectAttachmentMIMEType(runtime.FileIO(), filePath, fileName)
 	if err != nil {
 		return nil, err
 	}

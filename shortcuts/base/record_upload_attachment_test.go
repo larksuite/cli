@@ -96,9 +96,31 @@ func TestDetectAttachmentMIMETypeReturnsReadError(t *testing.T) {
 	}
 }
 
-func TestDetectAttachmentMIMEFromContentBinaryFallback(t *testing.T) {
-	got := detectAttachmentMIMEFromContent([]byte{0x00, 0x01, 0x02, 0x03})
-	if got != "application/octet-stream" {
-		t.Fatalf("detectAttachmentMIMEFromContent() = %q, want %q", got, "application/octet-stream")
+func TestDetectAttachmentMIMEFromContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content []byte
+		want    string
+	}{
+		{name: "empty", content: nil, want: "application/octet-stream"},
+		{name: "png", content: []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, want: "image/png"},
+		{name: "jpeg", content: []byte{0xff, 0xd8, 0xff, 0xe0}, want: "image/jpeg"},
+		{name: "gif87a", content: []byte("GIF87a"), want: "image/gif"},
+		{name: "gif89a", content: []byte("GIF89a"), want: "image/gif"},
+		{name: "webp", content: []byte("RIFF1234WEBP"), want: "image/webp"},
+		{name: "pdf", content: []byte("%PDF-1.7"), want: "application/pdf"},
+		{name: "text", content: []byte("hello from base attachment"), want: "text/plain"},
+		{name: "text with newline", content: []byte("hello\nworld\tok"), want: "text/plain"},
+		{name: "control bytes", content: []byte{'h', 'i', 0x00}, want: "application/octet-stream"},
+		{name: "binary fallback", content: []byte{0x00, 0x01, 0x02, 0x03}, want: "application/octet-stream"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectAttachmentMIMEFromContent(tt.content)
+			if got != tt.want {
+				t.Fatalf("detectAttachmentMIMEFromContent() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
