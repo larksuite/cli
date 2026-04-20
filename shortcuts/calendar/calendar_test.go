@@ -375,6 +375,238 @@ func TestCreate_NoEventIdReturned(t *testing.T) {
 	}
 }
 
+func TestCreate_CreateEvent_InvalidParamsWithDetail(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": errCodeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "end_time should be later than start_time"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bad Time",
+		"--start", "2025-03-21T10:00:00+08:00",
+		"--end", "2025-03-21T11:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for 190014, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "end_time should be later than start_time") {
+		t.Errorf("expected detail value in message, got %q", exitErr.Detail.Message)
+	}
+}
+
+func TestCreate_CreateEvent_InvalidParamsWithoutDetailValue(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": errCodeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+		},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bad Time",
+		"--start", "2025-03-21T10:00:00+08:00",
+		"--end", "2025-03-21T11:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for 190014, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	}
+}
+
+func TestCreate_CreateEvent_InvalidParams_ErrorNotMap(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method:      "POST",
+		URL:         "/open-apis/calendar/v4/calendars/cal_test123/events",
+		RawBody:     []byte(`{"code":190014,"msg":"invalid params","error":"just a string"}`),
+		ContentType: "text/plain",
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bad Time",
+		"--start", "2025-03-21T10:00:00+08:00",
+		"--end", "2025-03-21T11:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for 190014, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	}
+}
+
+func TestCreate_CreateEvent_InvalidParams_NoDetailsKey(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": errCodeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"other_key": "no details here",
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bad Time",
+		"--start", "2025-03-21T10:00:00+08:00",
+		"--end", "2025-03-21T11:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for 190014, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	}
+}
+
+func TestCreate_CreateEvent_InvalidParams_DetailItemNotMap(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": errCodeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{nil},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bad Time",
+		"--start", "2025-03-21T10:00:00+08:00",
+		"--end", "2025-03-21T11:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for 190014, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	}
+}
+
+func TestCreate_WithAttendees_InvalidParamsWithDetail_RollsBack(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":   "evt_190014",
+					"summary":    "Bad Attendees",
+					"start_time": map[string]interface{}{"timestamp": "1742515200"},
+					"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_190014/attendees",
+		Body: map[string]interface{}{
+			"code": errCodeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "invalid attendee open_id"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/events/evt_190014",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bad Attendees",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--attendee-ids", "ou_invalid",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for invalid attendees with 190014, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid attendee open_id") {
+		t.Errorf("expected detail value in error, got: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CalendarAgenda tests
 // ---------------------------------------------------------------------------
@@ -645,6 +877,67 @@ func TestAgenda_ExplicitCalendarId(t *testing.T) {
 	}
 }
 
+func TestAgenda_InvalidParamsWithDetail(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": errCodeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "start_time is required"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for 190014, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	}
+}
+
+func TestAgenda_NonExitError_Passthrough(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/events/instance_view",
+		RawBody: []byte("this is not json"),
+	})
+
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for non-JSON response, got nil")
+	}
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Code != 0 {
+		t.Fatalf("expected non-API error passthrough, got API error code %d", exitErr.Detail.Code)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CalendarFreebusy tests
 // ---------------------------------------------------------------------------
@@ -722,6 +1015,46 @@ func TestFreebusy_APIError(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected error for API failure, got nil")
+	}
+}
+
+func TestFreebusy_InvalidParamsWithDetail(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/freebusy/list",
+		Body: map[string]interface{}{
+			"code": errCodeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "user_id is invalid"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarFreebusy, []string{
+		"+freebusy",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+		"--user-id", "ou_someone",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for 190014, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "user_id is invalid") {
+		t.Errorf("expected detail value in message, got %q", exitErr.Detail.Message)
 	}
 }
 
