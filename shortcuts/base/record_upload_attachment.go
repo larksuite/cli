@@ -7,6 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -269,10 +272,43 @@ func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, 
 		return nil, err
 	}
 
+	mimeType, err := detectAttachmentMIMEType(runtime.FileIO(), filePath, fileName)
+	if err != nil {
+		return nil, err
+	}
+
 	attachment := map[string]interface{}{
 		"file_token":                fileToken,
 		"name":                      fileName,
+		"mime_type":                 mimeType,
+		"size":                      fileSize,
 		"deprecated_set_attachment": true,
 	}
 	return attachment, nil
+}
+
+func detectAttachmentMIMEType(fio fileio.FileIO, filePath, fileName string) (string, error) {
+	if byExt := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(fileName)))); byExt != "" {
+		return stripMIMEParams(byExt), nil
+	}
+
+	f, err := fio.Open(filePath)
+	if err != nil {
+		return "", common.WrapInputStatError(err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, readErr := f.Read(buf)
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return "", output.ErrValidation("cannot read file: %s", readErr)
+	}
+	return stripMIMEParams(http.DetectContentType(buf[:n])), nil
+}
+
+func stripMIMEParams(value string) string {
+	if i := strings.IndexByte(value, ';'); i != -1 {
+		value = value[:i]
+	}
+	return strings.TrimSpace(value)
 }
