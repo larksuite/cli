@@ -1,7 +1,7 @@
 ---
 name: lark-mail
 version: 1.0.0
-description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, and mail rules. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
+description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, and mail rules. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, 分享邮件, 分享到群, share email, share to chat, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -214,6 +214,38 @@ lark-cli mail user_mailbox.sent_messages get_recall_detail --as user \
 
 **注意：** 撤回是异步操作，`recall` 返回成功仅表示请求已受理，实际结果需通过 `get_recall_detail` 查询。若响应中无 `recall_available` 字段，说明该邮件或应用不支持撤回，不要主动提及撤回。
 
+### 分享邮件到 IM
+
+将邮件以卡片形式分享到飞书群聊或个人会话。
+
+**依赖 Scope：** `mail:user_mailbox.message:readonly`、`im:message`、`im:message.send_as_user`
+
+1. 分享单封邮件到群聊（默认 `--receive-id-type chat_id`）：
+   ```bash
+   lark-cli mail +share-to-chat --message-id <邮件ID> --receive-id oc_xxx
+   ```
+
+2. 分享整个会话到群聊：
+   ```bash
+   lark-cli mail +share-to-chat --thread-id <会话ID> --receive-id oc_xxx
+   ```
+
+3. 通过邮箱分享给个人：
+   ```bash
+   lark-cli mail +share-to-chat --message-id <邮件ID> --receive-id user@example.com --receive-id-type email
+   ```
+
+4. 如果不知道群聊 ID，先搜索：
+   ```bash
+   lark-cli im +chat-search --query "群名关键词"
+   ```
+   从结果中获取 `chat_id`，然后执行分享。
+
+**注意：**
+- 分享需要用户在目标会话中有发消息权限
+- 需要同时授权 mail 和 im 两个域的 scope
+- 分享的卡片包含邮件摘要信息，收件人可点击查看
+
 ### 正文格式：优先使用 HTML
 
 撰写邮件正文时，**默认使用 HTML 格式**（body 内容会被自动检测）。仅当用户明确要求纯文本时，才使用 `--plain-text` 标志强制纯文本模式。
@@ -334,6 +366,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+draft-edit`](references/lark-mail-draft-edit.md) | Use when updating an existing mail draft without sending it. Prefer this shortcut over calling raw drafts.get or drafts.update directly, because it performs draft-safe MIME read/patch/write editing while preserving unchanged structure, attachments, and headers where possible. |
 | [`+forward`](references/lark-mail-forward.md) | Forward a message and save as draft (default). Use --confirm-send to send immediately after user confirmation. Original message block included automatically. |
 | [`+signature`](references/lark-mail-signature.md) | List or view email signatures with default usage info. |
+| [`+share-to-chat`](references/lark-mail-share-to-chat.md) | Share an email or thread as a card to a Lark IM chat. |
 
 ## API Resources
 

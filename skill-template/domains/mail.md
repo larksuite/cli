@@ -199,6 +199,38 @@ lark-cli mail user_mailbox.sent_messages get_recall_detail --as user \
 
 **注意：** 撤回是异步操作，`recall` 返回成功仅表示请求已受理，实际结果需通过 `get_recall_detail` 查询。若响应中无 `recall_available` 字段，说明该邮件或应用不支持撤回，不要主动提及撤回。
 
+### 分享邮件到 IM
+
+将邮件以卡片形式分享到飞书群聊或个人会话。
+
+**依赖 Scope：** `mail:user_mailbox.message:readonly`、`im:message`、`im:message.send_as_user`
+
+1. 分享单封邮件到群聊（默认 `--receive-id-type chat_id`）：
+   ```bash
+   lark-cli mail +share-to-chat --message-id <邮件ID> --receive-id oc_xxx
+   ```
+
+2. 分享整个会话到群聊：
+   ```bash
+   lark-cli mail +share-to-chat --thread-id <会话ID> --receive-id oc_xxx
+   ```
+
+3. 通过邮箱分享给个人：
+   ```bash
+   lark-cli mail +share-to-chat --message-id <邮件ID> --receive-id user@example.com --receive-id-type email
+   ```
+
+4. 如果不知道群聊 ID，先搜索：
+   ```bash
+   lark-cli im +chat-search --query "群名关键词"
+   ```
+   从结果中获取 `chat_id`，然后执行分享。
+
+**注意：**
+- 分享需要用户在目标会话中有发消息权限
+- 需要同时授权 mail 和 im 两个域的 scope
+- 分享的卡片包含邮件摘要信息，收件人可点击查看
+
 ### 正文格式：优先使用 HTML
 
 撰写邮件正文时，**默认使用 HTML 格式**（body 内容会被自动检测）。仅当用户明确要求纯文本时，才使用 `--plain-text` 标志强制纯文本模式。
