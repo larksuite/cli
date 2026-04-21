@@ -39,10 +39,19 @@ const MIRROR_URL = `https://registry.npmmirror.com/-/binary/lark-cli/v${VERSION}
 const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
+function assertAllowedHost(url) {
+  const { hostname } = new URL(url);
+  if (!ALLOWED_HOSTS.includes(hostname)) {
+    throw new Error(`Download host not allowed: ${hostname}`);
+  }
+}
+
 function download(url, destPath) {
+  assertAllowedHost(url);
   const args = [
     "--fail", "--location", "--silent", "--show-error",
     "--connect-timeout", "10", "--max-time", "120",
+    "--max-redirs", "3",
     "--output", destPath,
   ];
   // --ssl-revoke-best-effort: on Windows (Schannel), avoid CRYPT_E_REVOCATION_OFFLINE
@@ -64,6 +73,9 @@ function install() {
     } catch (err) {
       download(MIRROR_URL, archivePath);
     }
+
+    const expectedHash = getExpectedChecksum(archiveName);
+    verifyChecksum(archivePath, expectedHash);
 
     if (isWindows) {
       execFileSync("powershell", [
