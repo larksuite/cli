@@ -438,3 +438,174 @@ func TestFixTopLevelSoftbreaksQuoteContainer(t *testing.T) {
 		t.Errorf("fixTopLevelSoftbreaks quote-container = %q, want %q", got, want)
 	}
 }
+
+func TestFixLarkTables(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name: "simple 2x2 table",
+			input: `<lark-table>
+<lark-tr>
+<lark-td>Header 1</lark-td>
+<lark-td>Header 2</lark-td>
+</lark-tr>
+<lark-tr>
+<lark-td>Cell 1</lark-td>
+<lark-td>Cell 2</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `| Header 1 | Header 2 |
+| --- | --- |
+| Cell 1 | Cell 2 |`,
+		},
+		{
+			name: "table with empty cells",
+			input: `<lark-table>
+<lark-tr>
+<lark-td>A</lark-td>
+<lark-td></lark-td>
+</lark-tr>
+<lark-tr>
+<lark-td></lark-td>
+<lark-td>B</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `| A |  |
+| --- | --- |
+|  | B |`,
+		},
+		{
+			name: "table with pipe character escaped",
+			input: `<lark-table>
+<lark-tr>
+<lark-td>a|b</lark-td>
+<lark-td>c|d</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `| a\|b | c\|d |
+| --- | --- |`,
+		},
+		{
+			name: "table with multiline content",
+			input: `<lark-table>
+<lark-tr>
+<lark-td>line1
+line2</lark-td>
+<lark-td>single</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `| line1<br/>line2 | single |
+| --- | --- |`,
+		},
+		{
+			name: "table with merged cells not converted",
+			input: `<lark-table>
+<lark-tr>
+<lark-td colspan="2">merged</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `<lark-table>
+<lark-tr>
+<lark-td colspan="2">merged</lark-td>
+</lark-tr>
+</lark-table>`,
+		},
+		{
+			name: "table inside code block not converted",
+			input: "```\n<lark-table>\n<lark-tr>\n<lark-td>cell</lark-td>\n</lark-tr>\n</lark-table>\n```",
+			want: "```\n<lark-table>\n<lark-tr>\n<lark-td>cell</lark-td>\n</lark-tr>\n</lark-table>\n```",
+		},
+		{
+			name: "multiple tables in document",
+			input: `# Title
+
+<lark-table>
+<lark-tr>
+<lark-td>A</lark-td>
+</lark-tr>
+</lark-table>
+
+More text.
+
+<lark-table>
+<lark-tr>
+<lark-td>B</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `# Title
+
+| A |
+| --- |
+
+More text.
+
+| B |
+| --- |`,
+		},
+		{
+			name: "table with whitespace in cells",
+			input: `<lark-table>
+<lark-tr>
+<lark-td>
+  content
+</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `| content |
+| --- |`,
+		},
+		{
+			name: "table with attributes on tags",
+			input: `<lark-table id="tbl1">
+<lark-tr class="row">
+<lark-td style="bold">Data</lark-td>
+</lark-tr>
+</lark-table>`,
+			want: `| Data |
+| --- |`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := applyOutsideCodeFences(tt.input, fixLarkTables)
+			if got != tt.want {
+				t.Errorf("fixLarkTables(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFixLarkTablesIntegrated(t *testing.T) {
+	// Test that fixLarkTables is applied in fixExportedMarkdown
+	input := `# Document
+
+<lark-table>
+<lark-tr>
+<lark-td>Header</lark-td>
+</lark-tr>
+<lark-tr>
+<lark-td>Data</lark-td>
+</lark-tr>
+</lark-table>
+
+End.`
+	result := fixExportedMarkdown(input)
+
+	// Should contain markdown table format
+	if !strings.Contains(result, "| Header |") {
+		t.Error("expected markdown table header in output")
+	}
+	if !strings.Contains(result, "| --- |") {
+		t.Error("expected markdown table separator in output")
+	}
+	if !strings.Contains(result, "| Data |") {
+		t.Error("expected markdown table data row in output")
+	}
+	// Should NOT contain XML tags
+	if strings.Contains(result, "<lark-table>") {
+		t.Error("expected lark-table XML to be converted")
+	}
+}

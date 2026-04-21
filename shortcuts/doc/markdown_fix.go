@@ -13,31 +13,36 @@ import (
 // fixExportedMarkdown applies post-processing to Lark-exported Markdown to
 // improve round-trip fidelity on re-import:
 //
-//  1. fixBoldSpacing: removes trailing whitespace before closing ** / *,
+//  1. fixLarkTables: converts Feishu XML tables (<lark-table>, <lark-tr>,
+//     <lark-td>) to standard Markdown tables. Applied only outside fenced
+//     code blocks. Tables with merged cells (colspan/rowspan) are skipped.
+//
+//  2. fixBoldSpacing: removes trailing whitespace before closing ** / *,
 //     and strips redundant ** from ATX headings. Applied only outside fenced
 //     code blocks, and skips inline code spans.
 //
-//  2. normalizeNestedListIndentation: rewrites space-pair-indented nested list
+//  3. normalizeNestedListIndentation: rewrites space-pair-indented nested list
 //     markers to tab-indented markers. This avoids nested ordered list items
 //     being flattened or interpreted as plain text/code on re-import.
 //
-//  3. fixSetextAmbiguity: inserts a blank line before any "---" that immediately
+//  4. fixSetextAmbiguity: inserts a blank line before any "---" that immediately
 //     follows a non-empty line, preventing it from being parsed as a Setext H2.
 //     Applied only outside fenced code blocks.
 //
-//  4. fixBlockquoteHardBreaks: inserts a blank blockquote line (">") between
+//  5. fixBlockquoteHardBreaks: inserts a blank blockquote line (">") between
 //     consecutive blockquote content lines so create-doc preserves line breaks.
 //     Applied only outside fenced code blocks.
 //
-//  5. fixTopLevelSoftbreaks: inserts a blank line between adjacent non-empty
+//  6. fixTopLevelSoftbreaks: inserts a blank line between adjacent non-empty
 //     lines at the top level and inside content containers (callout,
 //     quote-container, lark-td). Code fences are left untouched, and
 //     consecutive list items / continuations are not separated.
 //
-//  6. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
+//  7. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
 //     actual Unicode emoji characters that create-doc understands. Applied only
 //     outside fenced code blocks.
 func fixExportedMarkdown(md string) string {
+	md = applyOutsideCodeFences(md, fixLarkTables)
 	md = applyOutsideCodeFences(md, fixBoldSpacing)
 	md = applyOutsideCodeFences(md, normalizeNestedListIndentation)
 	md = applyOutsideCodeFences(md, fixSetextAmbiguity)
@@ -537,4 +542,67 @@ func fixTopLevelSoftbreaks(md string) string {
 	}
 
 	return strings.Join(out, "\n")
+}
+
+// fixLarkTables converts Feishu/Lark XML tables to standard Markdown tables.
+// It handles:
+//   - Simple tables with rows (<lark-tr>) and cells (<lark-td>)
+//   - Empty cells
+//   - Cells containing pipe characters (escaped as \|)
+//   - Multiline cell content (converted to <br/>)
+//   - Tables with merged cells are skipped (colspan/rowspan attributes)
+func fixLarkTables(md string) string {
+	// Match entire <lark-table>...</lark-table> blocks
+	tableRe := regexp.MustCompile(`(?s)<lark-table[^>]*>(.*?)</lark-table>`)
+	return tableRe.ReplaceAllStringFunc(md, func(tableMatch string) string {
+		// Check for merged cells - if present, skip conversion and keep XML
+		if strings.Contains(tableMatch, "colspan=") || strings.Contains(tableMatch, "rowspan=") {
+			return tableMatch
+		}
+
+		// Extract all rows
+		rowRe := regexp.MustCompile(`(?s)<lark-tr[^>]*>(.*?)</lark-tr>`)
+		rows := rowRe.FindAllStringSubmatch(tableMatch, -1)
+		if len(rows) == 0 {
+			return tableMatch
+		}
+
+		var mdRows []string
+		colCount := 0
+
+		for _, row := range rows {
+			cellRe := regexp.MustCompile(`(?s)<lark-td[^>]*>(.*?)</lark-td>`)
+			cells := cellRe.FindAllStringSubmatch(row[1], -1)
+			if len(cells) == 0 {
+				continue
+			}
+
+			var cellContents []string
+			for _, cell := range cells {
+				content := strings.TrimSpace(cell[1])
+				// Handle multiline content
+				content = strings.ReplaceAll(content, "\n", "<br/>")
+				// Escape pipe characters
+				content = strings.ReplaceAll(content, "|", `\|`)
+				cellContents = append(cellContents, content)
+			}
+
+			mdRows = append(mdRows, "| "+strings.Join(cellContents, " | ")+" |")
+			if len(cellContents) > colCount {
+				colCount = len(cellContents)
+			}
+		}
+
+		if len(mdRows) == 0 {
+			return tableMatch
+		}
+
+		// Build separator row after the first row (header)
+		separator := "|" + strings.Repeat(" --- |", colCount)
+		if len(mdRows) > 0 {
+			mdRows = append([]string{mdRows[0], separator}, mdRows[1:]...)
+		}
+
+		return strings.Join(mdRows, "\n")
+	})
 }

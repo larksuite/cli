@@ -70,6 +70,20 @@ func TestFixExportedMarkdownIdempotent(t *testing.T) {
 			"</quote-container>",
 			"",
 		}, "\n"),
+
+			"lark-table converted to markdown": strings.Join([]string{
+				"<lark-table>",
+				"<lark-tr>",
+				"<lark-td>Header</lark-td>",
+				"<lark-td>Value</lark-td>",
+				"</lark-tr>",
+				"<lark-tr>",
+				"<lark-td>Data</lark-td>",
+				"<lark-td>123</lark-td>",
+				"</lark-tr>",
+				"</lark-table>",
+				"",
+			}, "\n"),
 	}
 
 	for name, fixture := range fixtures {
