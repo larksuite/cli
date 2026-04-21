@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -2072,7 +2073,7 @@ func validateRecipientCount(to, cc, bcc string) error {
 	return nil
 }
 
-func validateComposeInlineAndAttachments(inlineFlag string, plainText bool, body string) error {
+func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
 			return fmt.Errorf("--inline is not supported with --plain-text (inline images require HTML body)")
@@ -2081,9 +2082,15 @@ func validateComposeInlineAndAttachments(inlineFlag string, plainText bool, body
 			return fmt.Errorf("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
 		}
 	}
-	// Validate inline specs format early (before Execute).
-	// Size checks are handled in Execute by processLargeAttachments, which
-	// automatically uploads oversized files as large attachments.
-	_, err := parseInlineSpecs(inlineFlag)
-	return err
+	inlineSpecs, err := parseInlineSpecs(inlineFlag)
+	if err != nil {
+		return err
+	}
+	// Preflight: verify explicit file paths exist and pass blocked-extension
+	// checks so that --dry-run surfaces local errors before Execute.
+	allPaths := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
+	if _, err := statAttachmentFiles(fio, allPaths); err != nil {
+		return err
+	}
+	return nil
 }

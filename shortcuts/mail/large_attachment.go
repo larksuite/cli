@@ -88,7 +88,12 @@ func estimateEMLBaseSize(fio fileio.FileIO, bodySize int64, inlineFilePaths []st
 // inline images + attachments, all base64-encoded. Files are processed in
 // the user-specified order. Once a file would push the EML over MaxEMLSize,
 // it and all subsequent files are classified as oversized.
+//
+// Each oversized file reserves largeAttOverheadPerFile bytes for the HTML
+// card / plain-text block and header entry that will be injected later.
 func classifyAttachments(files []attachmentFile, emlBaseSize int64) classifiedAttachments {
+	const largeAttOverheadPerFile int64 = 3 * 1024
+
 	var result classifiedAttachments
 	accumulated := emlBaseSize
 	overflow := false
@@ -96,12 +101,14 @@ func classifyAttachments(files []attachmentFile, emlBaseSize int64) classifiedAt
 	for _, f := range files {
 		if overflow {
 			result.Oversized = append(result.Oversized, f)
+			accumulated += largeAttOverheadPerFile
 			continue
 		}
 		cost := estimateBase64EMLSize(f.Size)
 		if accumulated+cost > emlbuilder.MaxEMLSize {
 			overflow = true
 			result.Oversized = append(result.Oversized, f)
+			accumulated += largeAttOverheadPerFile
 			continue
 		}
 		accumulated += cost
