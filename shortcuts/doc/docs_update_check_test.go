@@ -147,7 +147,7 @@ func TestCheckDocsUpdateReplaceMultilineMarkdown(t *testing.T) {
 				t.Fatalf("checkDocsUpdateReplaceMultilineMarkdown(%q, %q) = %q, wantHint=%v",
 					tt.mode, tt.markdown, got, tt.wantHint)
 			}
-			if tt.wantHint && !strings.Contains(got, "delete_range") {
+			if tt.wantHint && (!strings.Contains(got, "delete_range") || !strings.Contains(got, "insert_before")) {
 				t.Errorf("hint should suggest delete_range/insert_before remediation, got: %s", got)
 			}
 		})
