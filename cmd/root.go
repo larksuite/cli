@@ -14,15 +14,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/larksuite/cli/cmd/api"
-	"github.com/larksuite/cli/cmd/auth"
-	"github.com/larksuite/cli/cmd/completion"
-	cmdconfig "github.com/larksuite/cli/cmd/config"
-	"github.com/larksuite/cli/cmd/doctor"
-	"github.com/larksuite/cli/cmd/profile"
-	"github.com/larksuite/cli/cmd/schema"
-	"github.com/larksuite/cli/cmd/service"
-	cmdupdate "github.com/larksuite/cli/cmd/update"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -30,7 +21,6 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/update"
-	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
 
@@ -95,38 +85,7 @@ func Execute() int {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		return 1
 	}
-	f := cmdutil.NewDefault(inv)
-
-	globals := &GlobalOptions{Profile: inv.Profile}
-	rootCmd := &cobra.Command{
-		Use:     "lark-cli",
-		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
-		Long:    rootLong,
-		Version: build.Version,
-	}
-	installTipsHelpFunc(rootCmd)
-	rootCmd.SilenceErrors = true
-
-	RegisterGlobalFlags(rootCmd.PersistentFlags(), globals)
-	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		cmd.SilenceUsage = true
-	}
-
-	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))
-	rootCmd.AddCommand(auth.NewCmdAuth(f))
-	rootCmd.AddCommand(profile.NewCmdProfile(f))
-	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
-	rootCmd.AddCommand(api.NewCmdApi(f, nil))
-	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
-	rootCmd.AddCommand(completion.NewCmdCompletion(f))
-	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
-	service.RegisterServiceCommands(rootCmd, f)
-	shortcuts.RegisterShortcuts(rootCmd, f)
-
-	// Prune commands incompatible with strict mode.
-	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
-		pruneForStrictMode(rootCmd, mode)
-	}
+	f, rootCmd := buildInternal(context.Background(), inv)
 
 	// --- Update check (non-blocking) ---
 	if !isCompletionCommand(os.Args) {
