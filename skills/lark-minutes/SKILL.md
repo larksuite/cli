@@ -25,13 +25,15 @@ metadata:
 2. 仅支持使用关键词、时间段、参与者、所有者等筛选条件搜索妙记记录，对于不支持的筛选条件，需要提示用户。
 3. 搜索结果存在多条数据时，务必注意分页数据获取，不要遗漏任何妙记记录。
 4. 如果是会议的妙记，应优先使用 [vc +search](../lark-vc/references/lark-vc-search.md) 先定位会议，再按需通过 [vc +recording](../lark-vc/references/lark-vc-recording.md) 获取 `minute_token`。
+5. 会议场景的妙记路由，以及"参与的妙记"如何解释，统一以 [minutes +search](references/lark-minutes-search.md) 为准。
 
 
 ### 2. 查看妙记基础信息
 
 1. 当用户只需要确认某条妙记的标题、封面、时长、所有者、URL 等基础信息时，使用 `minutes minutes get`。
 2. 如果用户给的是妙记 URL，应先从 URL 末尾提取 `minute_token`，再调用 `minutes minutes get`。
-3. 用户意图不明确时，默认先给基础元信息，帮助确认是否命中目标妙记。
+3. 如果是会议 / 日程上下文中的妙记基础信息，先通过 VC 链路拿到 `minute_token`，再调用 `minutes minutes get`。
+4. 用户意图不明确时，默认先给基础元信息，帮助确认是否命中目标妙记。
 
 > 使用 `lark-cli schema minutes.minutes.get` 可查看完整返回值结构。核心字段包含：`title`（标题）、`cover`（封面 URL）、`duration`（时长，毫秒）、`owner_id`（所有者 ID）、`url`（妙记链接）。
 
@@ -71,7 +73,8 @@ Minutes (妙记) ← minute_token 标识
 > - 用户说"妙记列表 / 搜索妙记 / 某个关键词的妙记" → `minutes +search`
 > - 用户只是想看"我的妙记 / 某段时间内的妙记 / 妙记列表"，不要先走 [lark-vc](../lark-vc/SKILL.md)，而应直接使用本 skill
 > - 用户如果同时提到"会议 / 会 / 开会 / 某场会"，即使也提到了"妙记"，也应优先走 [lark-vc](../lark-vc/SKILL.md) 先定位会议，再通过 [vc +recording](../lark-vc/references/lark-vc-recording.md) 获取 `minute_token`
-> - 用户说"我的妙记 / 我拥有的妙记 / 我参与的妙记"时，可将相关过滤条件映射为 `me`；`me` 表示当前用户
+> - 用户如果要的是妙记基础信息，拿到 `minute_token` 后用 `minutes minutes get`；用户如果要的是逐字稿、总结、待办、章节，再走 `vc +notes --minute-tokens`
+> - “我的妙记”“参与的妙记”等自然语言映射细则，以 [minutes +search](references/lark-minutes-search.md) 为准
 > - 结果有多页时，使用 `page_token` 持续翻页，直到确认没有更多结果
 > - `minutes +search` 单次最多返回 `200` 条；结果总数没有固定上限
 > - 用户说"这个妙记的标题 / 时长 / 封面 / 链接" → `minutes minutes get`

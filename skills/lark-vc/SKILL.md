@@ -87,7 +87,9 @@ Meeting (视频会议)
 > **优先级**：当用户搜索历史会议时，应优先使用 `vc +search` 而非 `calendar events search`。calendar 的搜索面向日程，vc 的搜索面向已结束的会议记录，支持按参会人、组织者、会议室等维度过滤。
 >
 > **路由规则**：如果用户在问“开过的会”“今天开了哪些会”“最近参加过什么会”“已结束的会议”“历史会议记录”，优先使用 `vc +search`。只有在查询未来日程、待开的会、agenda 时才优先使用 [lark-calendar](../lark-calendar/SKILL.md)。
-> 
+>
+> **妙记边界**：`+notes` 负责纪要内容、逐字稿和 AI 产物；妙记基础信息请优先看 [`+recording`](references/lark-vc-recording.md) 与 [lark-minutes](../lark-minutes/SKILL.md)。
+>
 > **特殊情况**: 当用户查询“今天有哪些会议”时，通过 `vc +search` 查询今天开过的会议记录，同时使用 lark-calendar 技能查询今天还未开始的会议，统一整理后展示给用户。
 
 ## Shortcuts（推荐优先使用）
