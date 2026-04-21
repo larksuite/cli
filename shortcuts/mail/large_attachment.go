@@ -279,33 +279,18 @@ func brandDisplayName(brand core.LarkBrand, lang string) string {
 	return "Feishu"
 }
 
-func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
+func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
 	}
-
-	// i18n text aligned with desktop's Mail_Attachment_AttachmentFromFeishuMail
-	// (title with APP_DISPLAY_NAME placeholder) and Mail_Attachment_Download.
-	// APP_DISPLAY_NAME is brand-dependent: Feishu/飞书 for domestic, Lark for
-	// international.
-	appName := brandDisplayName(brand, lang)
-	title := "Large file from " + appName + " Mail"
 	downloadText := "Download"
 	if strings.HasPrefix(lang, "zh") {
-		title = "来自" + appName + "邮箱的超大附件"
 		downloadText = "下载"
 	}
-
-	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
-	if len(timestamp) > 9 {
-		timestamp = timestamp[:9]
-	}
-
 	iconCDN := iconCDNCN
 	if brand == core.BrandLark {
 		iconCDN = iconCDNEN
 	}
-
 	var items strings.Builder
 	for _, att := range results {
 		fmt.Fprintf(&items, largeAttItemTpl,
@@ -317,8 +302,23 @@ func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []large
 			downloadText,
 		)
 	}
+	return items.String()
+}
 
-	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, items.String())
+func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
+	if len(results) == 0 {
+		return ""
+	}
+	appName := brandDisplayName(brand, lang)
+	title := "Large file from " + appName + " Mail"
+	if strings.HasPrefix(lang, "zh") {
+		title = "来自" + appName + "邮箱的超大附件"
+	}
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+	if len(timestamp) > 9 {
+		timestamp = timestamp[:9]
+	}
+	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, buildLargeAttachmentItems(brand, lang, results))
 }
 
 func buildLargeAttachmentPlainText(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
@@ -535,8 +535,7 @@ func ensureLargeAttachmentCards(runtime *common.RuntimeContext, snapshot *draftp
 		if len(missing) == 0 {
 			return
 		}
-		largeHTML := buildLargeAttachmentHTML(brand, lang, missing)
-		injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+		injectLargeAttachmentHTMLIntoSnapshot(snapshot, brand, lang, missing)
 		return
 	}
 
@@ -653,8 +652,7 @@ func preprocessLargeAttachmentsForDraftEdit(
 	}
 
 	if hasHTML {
-		largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
-		injectLargeAttachmentHTMLIntoSnapshot(snapshot, largeHTML)
+		injectLargeAttachmentHTMLIntoSnapshot(snapshot, runtime.Config.Brand, resolveLang(runtime), results)
 	} else {
 		largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), results)
 		injectLargeAttachmentTextIntoSnapshot(snapshot, largeText)
@@ -754,25 +752,39 @@ func flattenSnapshotParts(root *draftpkg.Part) []*draftpkg.Part {
 	return out
 }
 
-// injectLargeAttachmentHTMLIntoSnapshot finds the HTML body part in the
-// snapshot and inserts the large attachment HTML before the quote block
-// (or appends to the end if no quote).
-func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, largeHTML string) {
+// injectLargeAttachmentHTMLIntoSnapshot adds large attachment items to the
+// snapshot's HTML body. When the body already contains a large-file-area
+// container, new items are appended inside that container (maintaining a
+// single container, matching the desktop client). Otherwise a new
+// container is created and inserted before the quote block (or appended).
+func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, brand core.LarkBrand, lang string, results []largeAttachmentResult) {
+	if len(results) == 0 {
+		return
+	}
 	htmlPart := draftpkg.FindHTMLBodyPart(snapshot.Body)
 	if htmlPart == nil {
-		// No HTML body — create one from the large attachment HTML alone.
-		// This shouldn't normally happen (drafts usually have a body).
 		if snapshot.Body != nil {
-			return // don't overwrite existing non-HTML body
+			return
 		}
 		snapshot.Body = &draftpkg.Part{
 			MediaType: "text/html",
-			Body:      []byte(largeHTML),
+			Body:      []byte(buildLargeAttachmentHTML(brand, lang, results)),
 			Dirty:     true,
 		}
 		return
 	}
-	htmlPart.Body = []byte(draftpkg.InsertBeforeQuoteOrAppend(string(htmlPart.Body), largeHTML))
+
+	currentHTML := string(htmlPart.Body)
+
+	if draftpkg.HTMLContainsLargeAttachment(currentHTML) {
+		itemsHTML := buildLargeAttachmentItems(brand, lang, results)
+		before, card, after := draftpkg.SplitAtLargeAttachment(currentHTML)
+		merged := card[:len(card)-len("</div>")] + itemsHTML + "</div>"
+		htmlPart.Body = []byte(before + merged + after)
+	} else {
+		fullHTML := buildLargeAttachmentHTML(brand, lang, results)
+		htmlPart.Body = []byte(draftpkg.InsertBeforeQuoteOrAppend(currentHTML, fullHTML))
+	}
 	htmlPart.Dirty = true
 }
 

@@ -590,3 +590,110 @@ func TestStatAttachmentFiles_BlockedExtension(t *testing.T) {
 		})
 	}
 }
+
+func TestInjectLargeAttachmentHTML_MergesIntoExistingContainer(t *testing.T) {
+	existingCard := `<div id="large-file-area-123456789" style="border: 1px solid #DEE0E3;">` +
+		`<div style="font-weight: 500;">来自飞书邮箱的超大附件</div>` +
+		`<div id="large-file-item"><a data-mail-token="tok_old">下载</a></div>` +
+		`</div>`
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>Hello</p>" + existingCard),
+		},
+	}
+	newResults := []largeAttachmentResult{
+		{FileName: "new_file.txt", FileSize: 26214400, FileToken: "tok_new"},
+	}
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", newResults)
+
+	html := string(snapshot.Body.Body)
+
+	// Should still have only one large-file-area container.
+	containerCount := strings.Count(html, "large-file-area-")
+	if containerCount != 1 {
+		t.Errorf("expected 1 container, got %d", containerCount)
+	}
+
+	// Old item should still be present.
+	if !strings.Contains(html, `data-mail-token="tok_old"`) {
+		t.Error("lost existing card tok_old")
+	}
+	// New item should be present inside the same container.
+	if !strings.Contains(html, `data-mail-token="tok_new"`) {
+		t.Error("missing new card tok_new")
+	}
+	if !strings.Contains(html, "new_file.txt") {
+		t.Error("missing filename new_file.txt")
+	}
+	// Original body content preserved.
+	if !strings.Contains(html, "<p>Hello</p>") {
+		t.Error("original body lost")
+	}
+}
+
+func TestInjectLargeAttachmentHTML_CreatesContainerWhenNoneExists(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>Hello</p>"),
+		},
+	}
+	results := []largeAttachmentResult{
+		{FileName: "file.txt", FileSize: 1024, FileToken: "tok_a"},
+	}
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", results)
+
+	html := string(snapshot.Body.Body)
+	if !strings.Contains(html, "large-file-area-") {
+		t.Error("should create a new container")
+	}
+	if !strings.Contains(html, `data-mail-token="tok_a"`) {
+		t.Error("missing card for tok_a")
+	}
+	if !strings.Contains(html, "<p>Hello</p>") {
+		t.Error("original body lost")
+	}
+}
+
+func TestInjectLargeAttachmentHTML_TwoInjectionsProduceSingleContainer(t *testing.T) {
+	// Simulates the draft-edit flow: ensureLargeAttachmentCards injects
+	// the first batch, then preprocessLargeAttachmentsForDraftEdit injects
+	// newly uploaded attachments. Both should end up in one container.
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte("<p>body</p>"),
+		},
+	}
+	brand := core.BrandFeishu
+	lang := "zh_cn"
+
+	// First injection (from ensureLargeAttachmentCards)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, brand, lang, []largeAttachmentResult{
+		{FileName: "old.txt", FileSize: 27262976, FileToken: "tok_old"},
+	})
+	// Second injection (from preprocessLargeAttachmentsForDraftEdit)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, brand, lang, []largeAttachmentResult{
+		{FileName: "new.txt", FileSize: 26214400, FileToken: "tok_new"},
+	})
+
+	html := string(snapshot.Body.Body)
+
+	containerCount := strings.Count(html, "large-file-area-")
+	if containerCount != 1 {
+		t.Errorf("expected 1 container after two injections, got %d\nhtml: %s", containerCount, html)
+	}
+	if !strings.Contains(html, `data-mail-token="tok_old"`) {
+		t.Error("missing first injection card tok_old")
+	}
+	if !strings.Contains(html, `data-mail-token="tok_new"`) {
+		t.Error("missing second injection card tok_new")
+	}
+	if !strings.Contains(html, "old.txt") {
+		t.Error("missing filename old.txt")
+	}
+	if !strings.Contains(html, "new.txt") {
+		t.Error("missing filename new.txt")
+	}
+}
