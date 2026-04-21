@@ -13,14 +13,12 @@ func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	got := buildDraftSendOutput(map[string]interface{}{
 		"message_id": "msg_001",
 		"thread_id":  "thread_001",
-		"recall_status": map[string]interface{}{
-			"status": "available",
-		},
+		"recall_status": "available",
 		"automation_send_disable": map[string]interface{}{
 			"reason":    "Automation send is disabled by your mailbox setting",
 			"reference": "https://open.larksuite.com/mail/settings/automation",
 		},
-	})
+	}, "me")
 
 	if got["message_id"] != "msg_001" {
 		t.Fatalf("message_id = %v", got["message_id"])
@@ -28,8 +26,14 @@ func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	if got["thread_id"] != "thread_001" {
 		t.Fatalf("thread_id = %v", got["thread_id"])
 	}
-	if _, ok := got["recall_status"].(map[string]interface{}); !ok {
+	if got["recall_status"] != "available" {
 		t.Fatalf("recall_status missing or wrong type: %#v", got["recall_status"])
+	}
+	if got["recall_available"] != true {
+		t.Fatalf("recall_available = %v", got["recall_available"])
+	}
+	if got["recall_tip"] == "" {
+		t.Fatalf("recall_tip should be populated")
 	}
 	if _, ok := got["automation_send_disable"]; ok {
 		t.Fatalf("automation_send_disable should be omitted, got %#v", got["automation_send_disable"])

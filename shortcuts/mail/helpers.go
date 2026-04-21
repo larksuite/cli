@@ -1837,13 +1837,20 @@ func normalizeMessageID(id string) string {
 	return strings.TrimSpace(trimmed)
 }
 
-func buildDraftSendOutput(resData map[string]interface{}) map[string]interface{} {
+func buildDraftSendOutput(resData map[string]interface{}, mailboxID string) map[string]interface{} {
 	out := map[string]interface{}{
 		"message_id": resData["message_id"],
 		"thread_id":  resData["thread_id"],
 	}
 	if recallStatus, ok := resData["recall_status"]; ok {
 		out["recall_status"] = recallStatus
+	}
+	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
+		messageID, _ := resData["message_id"].(string)
+		out["recall_available"] = true
+		out["recall_tip"] = fmt.Sprintf(
+			`This message can be recalled within 24 hours. To recall: lark-cli mail user_mailbox.sent_messages recall --params '{"user_mailbox_id":"%s","message_id":"%s"}'`,
+			mailboxID, messageID)
 	}
 	if automationDisable, ok := resData["automation_send_disable"]; ok {
 		if automation, ok := automationDisable.(map[string]interface{}); ok {
@@ -2039,23 +2046,6 @@ func validateConfirmSendScope(runtime *common.RuntimeContext) error {
 			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant the send permission", strings.Join(missing, " ")))
 	}
 	return nil
-}
-
-// buildSendResult builds the output map for a successful send, including
-// recall tip if the backend indicates the message is recallable.
-func buildSendResult(resData map[string]interface{}, mailboxID string) map[string]interface{} {
-	result := map[string]interface{}{
-		"message_id": resData["message_id"],
-		"thread_id":  resData["thread_id"],
-	}
-	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
-		messageID, _ := resData["message_id"].(string)
-		result["recall_available"] = true
-		result["recall_tip"] = fmt.Sprintf(
-			`This message can be recalled within 24 hours. To recall: lark-cli mail user_mailbox.sent_messages recall --params '{"user_mailbox_id":"%s","message_id":"%s"}'`,
-			mailboxID, messageID)
-	}
-	return result
 }
 
 // validateFolderReadScope checks that the user's token includes the

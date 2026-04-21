@@ -247,7 +247,7 @@ var MailForward = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send forward (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(buildDraftSendOutput(resData), nil)
+		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

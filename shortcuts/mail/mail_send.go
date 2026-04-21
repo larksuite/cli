@@ -177,7 +177,7 @@ var MailSend = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send email (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(buildDraftSendOutput(resData), nil)
+		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
 		return nil
 	},
 }
