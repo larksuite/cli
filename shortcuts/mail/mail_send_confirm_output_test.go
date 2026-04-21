@@ -4,42 +4,10 @@
 package mail
 
 import (
-	"strings"
 	"testing"
-	"time"
 
-	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/httpmock"
 )
-
-func grantMailSendScope(t *testing.T) {
-	t.Helper()
-
-	cfg := mailTestConfig()
-	token := &auth.StoredUAToken{
-		UserOpenId:       cfg.UserOpenId,
-		AppId:            cfg.AppID,
-		AccessToken:      "test-user-access-token",
-		RefreshToken:     "test-refresh-token",
-		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
-		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),
-		Scope: strings.Join([]string{
-			"mail:user_mailbox.messages:write",
-			"mail:user_mailbox.messages:read",
-			"mail:user_mailbox.message:modify",
-			"mail:user_mailbox.message:readonly",
-			"mail:user_mailbox.message.address:read",
-			"mail:user_mailbox.message.subject:read",
-			"mail:user_mailbox.message.body:read",
-			"mail:user_mailbox.message:send",
-			"mail:user_mailbox:readonly",
-		}, " "),
-		GrantedAt: time.Now().Add(-1 * time.Hour).UnixMilli(),
-	}
-	if err := auth.SetStoredToken(token); err != nil {
-		t.Fatalf("SetStoredToken() error = %v", err)
-	}
-}
 
 func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	got := buildDraftSendOutput(map[string]interface{}{
@@ -75,8 +43,7 @@ func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 }
 
 func TestMailSendConfirmSendOutputsAutomationDisable(t *testing.T) {
-	f, stdout, _, reg := mailShortcutTestFactory(t)
-	grantMailSendScope(t)
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
 
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -144,8 +111,7 @@ func TestMailSendConfirmSendOutputsAutomationDisable(t *testing.T) {
 }
 
 func TestMailSendSaveDraftOutputsReference(t *testing.T) {
-	f, stdout, _, reg := mailShortcutTestFactory(t)
-	grantMailSendScope(t)
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
 
 	reg.Register(&httpmock.Stub{
 		Method: "GET",

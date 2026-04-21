@@ -110,6 +110,8 @@ var MailDraftCreate = common.Shortcut{
 		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft created.")
+			// Intentionally keep +draft-create output minimal: unlike reply/forward/send
+			// draft-save flows, it does not add a follow-up send tip.
 			fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
 			if reference, _ := out["reference"].(string); reference != "" {
 				fmt.Fprintf(w, "reference: %s\n", reference)

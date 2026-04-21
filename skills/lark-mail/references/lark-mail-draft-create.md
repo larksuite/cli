@@ -84,10 +84,7 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 # 1. 创建草稿
 lark-cli mail +draft-create --to alice@example.com --subject 'Q1 报告' --body '请查收附件中的报告。' --attach ./q1-report.pdf --format json
 
-# 2. 不要把 `user_mailbox.drafts get` 当作拿草稿打开链接的来源
-lark-cli mail user_mailbox.drafts get --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
-
-# 3. 发送草稿
+# 2. 发送草稿
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
 ```
 

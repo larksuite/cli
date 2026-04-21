@@ -95,7 +95,7 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 }
 ```
 
-草稿模式下，只要结果不是直接发信而是产出了草稿，就应给用户展示草稿打开链接。当前应以 `create` / `edit` / `send` 链路返回的链接信息为准，不要把 `user_mailbox.drafts get` 当作拿草稿打开链接的来源。如果返回中带有 `draft_url` / `open_url`，应把链接与 `draft_id` 一并返回；当前没有链接时，静默处理，不要伪造链接。
+草稿模式下，只要结果不是直接发信而是产出了草稿，就应给用户展示草稿打开链接。当前应以 `create` / `edit` / `send` 链路返回的链接信息为准，不要把 `user_mailbox.drafts get` 当作拿草稿打开链接的来源。如果返回中带有 `reference`，应把链接与 `draft_id` 一并返回；当前没有链接时，静默处理，不要伪造链接。
 
 **发送模式（`--confirm-send`）：**
 

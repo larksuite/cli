@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +47,42 @@ func mailShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *by
 		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),
 		Scope:            "mail:user_mailbox.messages:write mail:user_mailbox.messages:read mail:user_mailbox.message:modify mail:user_mailbox.message:readonly mail:user_mailbox.message.address:read mail:user_mailbox.message.subject:read mail:user_mailbox.message.body:read mail:user_mailbox:readonly",
 		GrantedAt:        time.Now().Add(-1 * time.Hour).UnixMilli(),
+	}
+	if err := auth.SetStoredToken(token); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = auth.RemoveStoredToken(cfg.AppID, cfg.UserOpenId)
+	})
+
+	return cmdutil.TestFactory(t, cfg)
+}
+
+func mailShortcutTestFactoryWithSendScope(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
+	t.Helper()
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := mailTestConfig()
+	token := &auth.StoredUAToken{
+		UserOpenId:       cfg.UserOpenId,
+		AppId:            cfg.AppID,
+		AccessToken:      "test-user-access-token",
+		RefreshToken:     "test-refresh-token",
+		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
+		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),
+		Scope: strings.Join([]string{
+			"mail:user_mailbox.messages:write",
+			"mail:user_mailbox.messages:read",
+			"mail:user_mailbox.message:modify",
+			"mail:user_mailbox.message:readonly",
+			"mail:user_mailbox.message.address:read",
+			"mail:user_mailbox.message.subject:read",
+			"mail:user_mailbox.message.body:read",
+			"mail:user_mailbox.message:send",
+			"mail:user_mailbox:readonly",
+		}, " "),
+		GrantedAt: time.Now().Add(-1 * time.Hour).UnixMilli(),
 	}
 	if err := auth.SetStoredToken(token); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
