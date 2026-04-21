@@ -267,19 +267,18 @@ func TestUploadDocMediaFileWithContentUsesSinglePartUpload(t *testing.T) {
 		&cobra.Command{Use: "docs +media-upload"},
 		docsTestConfigWithAppID("docs-upload-content-app"),
 		f,
+		core.AsBot,
 	)
 
 	payload := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a} // PNG magic bytes
-	fileToken, err := uploadDocMediaFile(
-		runtime,
-		"", // no FilePath
-		bytes.NewReader(payload),
-		"clipboard.png",
-		int64(len(payload)),
-		"docx_image",
-		"blk_parent",
-		"doxcnDocID123",
-	)
+	fileToken, err := uploadDocMediaFile(runtime, UploadDocMediaFileConfig{
+		Content:    bytes.NewReader(payload),
+		FileName:   "clipboard.png",
+		FileSize:   int64(len(payload)),
+		ParentType: "docx_image",
+		ParentNode: "blk_parent",
+		DocID:      "doxcnDocID123",
+	})
 	if err != nil {
 		t.Fatalf("uploadDocMediaFile() error: %v", err)
 	}
@@ -329,20 +328,19 @@ func TestUploadDocMediaFileWithContentUsesMultipart(t *testing.T) {
 		&cobra.Command{Use: "docs +media-upload"},
 		docsTestConfigWithAppID("docs-upload-content-multi"),
 		f,
+		core.AsBot,
 	)
 
 	size := common.MaxDriveMediaUploadSinglePartSize + 1
 	payload := bytes.Repeat([]byte{0xAB}, int(size))
-	fileToken, err := uploadDocMediaFile(
-		runtime,
-		"",
-		bytes.NewReader(payload),
-		"clipboard.png",
-		size,
-		"docx_image",
-		"blk_parent",
-		"", // no docID → no extra
-	)
+	fileToken, err := uploadDocMediaFile(runtime, UploadDocMediaFileConfig{
+		Content:    bytes.NewReader(payload),
+		FileName:   "clipboard.png",
+		FileSize:   size,
+		ParentType: "docx_image",
+		ParentNode: "blk_parent",
+		// no DocID → no drive_route_token extra
+	})
 	if err != nil {
 		t.Fatalf("uploadDocMediaFile() error: %v", err)
 	}

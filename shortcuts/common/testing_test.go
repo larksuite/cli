@@ -20,7 +20,7 @@ func TestTestNewRuntimeContextForAPIWiresFields(t *testing.T) {
 	cmd := &cobra.Command{Use: "testing-helper"}
 
 	ctx := context.Background()
-	rctx := TestNewRuntimeContextForAPI(ctx, cmd, cfg, f)
+	rctx := TestNewRuntimeContextForAPI(ctx, cmd, cfg, f, core.AsBot)
 	if rctx == nil {
 		t.Fatal("TestNewRuntimeContextForAPI returned nil")
 	}
@@ -38,5 +38,13 @@ func TestTestNewRuntimeContextForAPIWiresFields(t *testing.T) {
 	}
 	if rctx.Ctx() != ctx {
 		t.Errorf("ctx not wired")
+	}
+
+	// User identity should also be accepted — the whole reason for making
+	// the parameter explicit is to let user-identity code paths use this
+	// helper instead of forking a second one.
+	userRctx := TestNewRuntimeContextForAPI(ctx, cmd, cfg, f, core.AsUser)
+	if userRctx.resolvedAs != core.AsUser {
+		t.Errorf("resolvedAs AsUser not preserved, got %q", userRctx.resolvedAs)
 	}
 }

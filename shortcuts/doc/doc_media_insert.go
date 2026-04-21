@@ -180,7 +180,15 @@ var DocMediaInsert = common.Shortcut{
 			Desc(fmt.Sprintf("[%d] Bind uploaded file token to the new block", stepBase+3)).
 			Body(batchUpdateData)
 
-		return d.Set("document_id", documentID)
+		d.Set("document_id", documentID)
+		// Annotate dry-run when reading from the clipboard: DryRun never touches
+		// the pasteboard, so it cannot tell in advance whether the payload is
+		// above or below the 20MB single-part threshold. Execute will make the
+		// real decision once it reads the bytes.
+		if runtime.Bool("from-clipboard") {
+			d.Set("upload_size_note", "clipboard size unknown; single-part vs multipart decision deferred to runtime")
+		}
+		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
@@ -301,12 +309,23 @@ var DocMediaInsert = common.Shortcut{
 			return opErr
 		}
 
-		// Step 3: Upload media file
-		var clipboardReader *bytes.Reader
-		if clipboardContent != nil {
-			clipboardReader = bytes.NewReader(clipboardContent)
+		// Step 3: Upload media file.
+		// Only materialize Content when clipboard bytes exist, so the `io.Reader`
+		// interface stays a true nil for the --file path. Passing a typed-nil
+		// *bytes.Reader here would make the downstream `if cfg.Content != nil`
+		// check incorrectly take the clipboard branch and crash on Read.
+		uploadCfg := UploadDocMediaFileConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: parentTypeForMediaType(mediaType),
+			ParentNode: uploadParentNode,
+			DocID:      documentID,
 		}
-		fileToken, err := uploadDocMediaFile(runtime, filePath, clipboardReader, fileName, fileSize, parentTypeForMediaType(mediaType), uploadParentNode, documentID) //nolint:lll
+		if clipboardContent != nil {
+			uploadCfg.Content = bytes.NewReader(clipboardContent)
+		}
+		fileToken, err := uploadDocMediaFile(runtime, uploadCfg)
 		if err != nil {
 			return withRollbackWarning(err)
 		}

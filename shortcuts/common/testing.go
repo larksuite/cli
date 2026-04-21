@@ -40,14 +40,20 @@ func TestNewRuntimeContextWithBotInfo(cmd *cobra.Command, cfg *core.CliConfig, i
 }
 
 // TestNewRuntimeContextForAPI creates a RuntimeContext ready for HTTP tests:
-// sets Cmd, Config, Factory, context, and bot identity so callers can invoke
-// DoAPI / CallAPI directly without wiring through a cobra parent command.
-func TestNewRuntimeContextForAPI(ctx context.Context, cmd *cobra.Command, cfg *core.CliConfig, f *cmdutil.Factory) *RuntimeContext {
+// sets Cmd, Config, Factory, context, and the requested identity so callers
+// can invoke DoAPI / CallAPI directly without wiring through a cobra parent
+// command.
+//
+// Pass core.AsBot or core.AsUser explicitly — exposing the identity as a
+// parameter keeps the helper reusable for tests that need to exercise the
+// user-identity code path (token store, auth login, etc.) without forking
+// into a second near-identical helper.
+func TestNewRuntimeContextForAPI(ctx context.Context, cmd *cobra.Command, cfg *core.CliConfig, f *cmdutil.Factory, as core.Identity) *RuntimeContext {
 	return &RuntimeContext{
 		ctx:        ctx,
 		Cmd:        cmd,
 		Config:     cfg,
 		Factory:    f,
-		resolvedAs: core.AsBot,
+		resolvedAs: as,
 	}
 }

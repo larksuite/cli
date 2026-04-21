@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"os/exec"
@@ -50,7 +51,7 @@ func readClipboardImageBytes() ([]byte, error) {
 // The character class covers both standard (+/) and URL-safe (-_) base64 alphabets.
 var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+/\-_]+=*)`)
 
-// readClipboardDarwin reads the clipboard image on macOS and returns PNG bytes.
+// readClipboardDarwin reads the clipboard image on macOS and returns image bytes.
 //
 // Strategy:
 //  1. Ask osascript for the clipboard as PNG (hex literal on stdout) → decode.
@@ -58,16 +59,25 @@ var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+
 //     pasteboard directly.
 //  2. Scan all text-based clipboard formats (HTML, RTF, plain text) for an
 //     embedded base64 data URI image (e.g. images copied from Feishu / browsers).
+//     Decoded payload is validated against known image magic bytes so text
+//     clipboards that happen to mention a data URI literally are not treated
+//     as image data.
 //
 // No external dependencies required — osascript ships with macOS.
 func readClipboardDarwin() ([]byte, error) {
 	// Attempt 1: PNG via osascript hex literal on stdout.
-	out, err := exec.Command("osascript", "-e", "get the clipboard as «class PNGf»").CombinedOutput()
-	if err == nil && len(out) > 0 {
+	// Use Output() + separate stderr capture so osascript diagnostics
+	// (locale warnings, AppleEvent permission prompts, etc.) do not
+	// contaminate the decoded payload or mask real failures.
+	out, stderrText, runErr := runOsascript("get the clipboard as «class PNGf»")
+	if runErr == nil && len(out) > 0 {
 		if data, decErr := decodeOsascriptData(strings.TrimSpace(string(out))); decErr == nil && len(data) > 0 {
 			return data, nil
 		}
 	}
+	// First-attempt failure is expected for non-image clipboards — fall through
+	// to the base64 scan. Keep the stderr text for the final error message in
+	// case every attempt ends up empty-handed.
 
 	// Attempt 2: scan text-based clipboard formats for an embedded base64 data URI.
 	// Covers HTML (Feishu, Chrome, Safari), RTF, and plain text — tried in order.
@@ -75,7 +85,23 @@ func readClipboardDarwin() ([]byte, error) {
 		return imgData, nil
 	}
 
+	if stderrText != "" {
+		return nil, fmt.Errorf("clipboard contains no image data (osascript: %s)", stderrText)
+	}
 	return nil, fmt.Errorf("clipboard contains no image data")
+}
+
+// runOsascript invokes osascript with a single AppleScript expression and
+// returns stdout, a trimmed stderr string, and the exec error separately.
+// Using Output() (rather than CombinedOutput) keeps stderr out of the decoded
+// payload, while the captured stderr is still available for error messages.
+func runOsascript(expr string) (stdout []byte, stderrText string, err error) {
+	cmd := exec.Command("osascript", "-e", expr)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err = cmd.Output()
+	stderrText = strings.TrimSpace(stderr.String())
+	return stdout, stderrText, err
 }
 
 // clipboardTextFormats lists the osascript type coercions to try when looking
@@ -93,9 +119,13 @@ var clipboardTextFormats = []struct {
 
 // extractBase64ImageFromClipboard iterates text clipboard formats and returns
 // the first decoded image payload found, or nil if none contains image data.
+// Decoded bytes are validated against known image magic headers so that
+// text clipboards containing a literal `data:image/...;base64,...` fragment
+// (e.g. a tutorial, a code sample, pasted HTML source) are not silently
+// uploaded as an image.
 func extractBase64ImageFromClipboard() []byte {
 	for _, f := range clipboardTextFormats {
-		out, err := exec.Command("osascript", "-e", f.asExpr).CombinedOutput()
+		out, _, err := runOsascript(f.asExpr)
 		if err != nil || len(out) == 0 {
 			continue
 		}
@@ -116,9 +146,16 @@ func extractBase64ImageFromClipboard() []byte {
 		if err != nil {
 			imgData, err = base64.URLEncoding.DecodeString(b64)
 		}
-		if err == nil && len(imgData) > 0 {
-			return imgData
+		if err != nil || len(imgData) == 0 {
+			continue
 		}
+		if !hasKnownImageMagic(imgData) {
+			// Decoded payload does not look like a real image — e.g. the
+			// clipboard is a documentation sample that mentions data URIs.
+			// Keep looking in the next format rather than upload garbage.
+			continue
+		}
+		return imgData
 	}
 	return nil
 }
@@ -184,9 +221,14 @@ $ms = New-Object System.IO.MemoryStream
 $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
 [Convert]::ToBase64String($ms.ToArray())
 `
-	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
+	// Use Output() + captured stderr so PowerShell diagnostics surface in the
+	// error message but never corrupt the base64 stdout we need to decode.
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
+		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = err.Error()
 		}
@@ -206,6 +248,48 @@ var pngMagic = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
 
 func hasPNGMagic(b []byte) bool {
 	return len(b) >= len(pngMagic) && string(b[:len(pngMagic)]) == string(pngMagic)
+}
+
+// imageMagics enumerates the leading-byte signatures we accept as "this is a
+// real image payload" when a text clipboard supplies a base64 data URI. The
+// set mirrors the formats the Lark upload endpoints already accept; other
+// rare formats fall through so the caller skips to the next clipboard format.
+var imageMagics = [][]byte{
+	// PNG
+	{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a},
+	// JPEG (SOI)
+	{0xff, 0xd8, 0xff},
+	// GIF87a / GIF89a
+	[]byte("GIF87a"),
+	[]byte("GIF89a"),
+	// WebP: "RIFF????WEBP" — check the RIFF marker only; the WEBP marker
+	// lives at offset 8, validated separately below.
+	[]byte("RIFF"),
+	// BMP
+	[]byte("BM"),
+}
+
+// hasKnownImageMagic reports whether the first bytes of b match any of the
+// image signatures we trust. RIFF is further constrained to actual WebP
+// streams to avoid false positives on other RIFF-based formats (WAV, AVI).
+func hasKnownImageMagic(b []byte) bool {
+	for _, magic := range imageMagics {
+		if len(b) < len(magic) {
+			continue
+		}
+		if string(b[:len(magic)]) != string(magic) {
+			continue
+		}
+		// RIFF header must be followed at offset 8 by "WEBP" to count as an image.
+		if string(magic) == "RIFF" {
+			if len(b) >= 12 && string(b[8:12]) == "WEBP" {
+				return true
+			}
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // readClipboardLinux tries xclip (X11), wl-paste (Wayland), and xsel (X11)
@@ -254,7 +338,7 @@ func readClipboardLinux() ([]byte, error) {
 		return nil, lastErr
 	}
 	return nil, fmt.Errorf(
-		"clipboard image read failed: no supported tool found\n" +
-			"  X11:    sudo apt install xclip   (or: sudo yum install xclip)\n" +
-			"  Wayland: sudo apt install wl-clipboard")
+		"clipboard image read failed: no supported tool found. " +
+			"Install one of xclip, wl-clipboard, or xsel via your distro's package manager " +
+			"(apt, dnf, pacman, apk, brew, etc.).")
 }
