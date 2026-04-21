@@ -68,10 +68,6 @@ func Build(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOpti
 // buildInternal is a pure assembly function: it wires the command tree from
 // inv and BuildOptions alone. Any state-dependent decision (disk, network,
 // env) belongs in the caller and must be threaded in via BuildOption.
-//
-// Callers must supply WithIO; buildInternal intentionally does not default
-// the streams so tests and alternative entry points can't silently inherit
-// os.Std*.
 func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) (*cmdutil.Factory, *cobra.Command) {
 	// cfg.globals.Profile is left zero here; it's bound to the --profile
 	// flag in RegisterGlobalFlags and filled by cobra's parse step.
@@ -80,6 +76,13 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 		if o != nil {
 			o(cfg)
 		}
+	}
+	// Default streams when WithIO is not supplied so the root command's
+	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
+	// partial streams internally; keep both in sync so cfg.streams reflects
+	// the same values the Factory ends up using.
+	if cfg.streams == nil {
+		cfg.streams = cmdutil.SystemIO()
 	}
 
 	f := cmdutil.NewDefault(cfg.streams, inv)

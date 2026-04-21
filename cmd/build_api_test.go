@@ -48,3 +48,16 @@ func TestBuild_ExternalAPI(t *testing.T) {
 		t.Error("Build produced a root command with no subcommands")
 	}
 }
+
+// TestBuild_NoOptions guards against regression of the nil-streams panic:
+// calling Build without WithIO must fall back to SystemIO rather than
+// deref nil at rootCmd.SetIn/Out/Err.
+func TestBuild_NoOptions(t *testing.T) {
+	rootCmd := Build(context.Background(), cmdutil.InvocationContext{})
+	if rootCmd == nil {
+		t.Fatal("Build returned nil root command")
+	}
+	if rootCmd.Use != "lark-cli" {
+		t.Errorf("rootCmd.Use = %q, want %q", rootCmd.Use, "lark-cli")
+	}
+}
