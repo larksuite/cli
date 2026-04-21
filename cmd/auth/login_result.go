@@ -128,7 +128,7 @@ func emptyIfNil(s []string) []string {
 	return s
 }
 
-// writeLoginScopeBreakdown renders the requested/newly granted/missing scope
+// writeLoginScopeBreakdown renders the requested/newly granted scope
 // breakdown to stderr.
 func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary *loginScopeSummary) {
 	if summary == nil {
@@ -136,7 +136,6 @@ func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary 
 	}
 	fmt.Fprintf(errOut.ErrOut, msg.RequestedScopes, formatScopeList(summary.Requested, msg.NoScopes))
 	fmt.Fprintf(errOut.ErrOut, msg.NewlyGrantedScopes, formatScopeList(summary.NewlyGranted, msg.NoScopes))
-	fmt.Fprintf(errOut.ErrOut, msg.MissingScopes, formatScopeList(summary.Missing, msg.NoScopes))
 }
 
 // writeLoginSuccess emits the successful login payload in either JSON or text
