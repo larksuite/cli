@@ -96,6 +96,47 @@ func TestCheckDocsUpdateReplaceMultilineMarkdown(t *testing.T) {
 			markdown: "prose before\n```go\nfmt.Println(\"hi\")\n```\nprose after",
 			wantHint: false,
 		},
+		{
+			// CommonMark §4.5: the closing fence must be ≥ opening fence length.
+			// A 4-backtick close for a 3-backtick open is a legitimate way to
+			// embed triple-backticks in a code sample; the check must see the
+			// fence as properly closed and not treat the rest of the document
+			// as still-inside-fence.
+			name:     "longer close marker closes fence correctly",
+			mode:     "replace_range",
+			markdown: "```\nsome code\n````\n\nprose paragraph after",
+			wantHint: true, // the blank line AFTER the fence is real prose
+		},
+		{
+			name:     "longer close marker still hides blank line inside fence",
+			mode:     "replace_range",
+			markdown: "```\nbefore\n\nafter\n````",
+			wantHint: false,
+		},
+		{
+			// 4+ leading spaces make the line an indented code block, not a
+			// fence open. The "fence"-looking line is code content; the
+			// surrounding blank must still be detected.
+			name:     "four-space indented fence-like line is not a fence open",
+			mode:     "replace_range",
+			markdown: "first paragraph\n\n    ```\n    code\n    ```",
+			wantHint: true,
+		},
+		{
+			// A tab in the leading whitespace is always ≥4 columns and thus
+			// forces indented-code-block semantics.
+			name:     "tab-indented fence-like line is not a fence open",
+			mode:     "replace_range",
+			markdown: "first paragraph\n\n\t```\n\tcode\n\t```",
+			wantHint: true,
+		},
+		{
+			// 3 leading spaces is still within the fence-tolerance window.
+			name:     "three-space indented fence is still a fence",
+			mode:     "replace_range",
+			markdown: "   ```\ncode\n\nmore\n   ```",
+			wantHint: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -215,6 +256,90 @@ func TestCheckDocsUpdateBoldItalic(t *testing.T) {
 			name:     "real triple asterisks outside fenced code still flags",
 			input:    "real ***strong***\n\n```\nliteral ***keyword*** in code\n```",
 			wantHint: true,
+		},
+		// --- Triple-underscore combined emphasis: ___text___ ---
+		{
+			name:     "triple underscores flagged",
+			input:    "a ___key insight___ here",
+			wantHint: true,
+		},
+		{
+			name:     "triple underscores single char flagged",
+			input:    "a ___X___ here",
+			wantHint: true,
+		},
+		{
+			name:     "triple underscores inside fenced code not flagged",
+			input:    "sample:\n```\nuse ___keyword___ carefully\n```",
+			wantHint: false,
+		},
+		{
+			name:     "triple underscores inside inline code not flagged",
+			input:    "the literal `___phrase___` marker",
+			wantHint: false,
+		},
+		{
+			name:     "escaped triple underscores not flagged",
+			input:    `literal \___phrase___ with escaped opener`,
+			wantHint: false,
+		},
+		// --- Underscore-bold wrapping asterisk-italic: __*text*__ ---
+		{
+			name:     "underscore-bold wrapping asterisk-italic flagged",
+			input:    "note: __*important*__ text",
+			wantHint: true,
+		},
+		{
+			name:     "underscore-bold wrapping asterisk-italic inside fenced code not flagged",
+			input:    "```\nnote: __*important*__ sample\n```",
+			wantHint: false,
+		},
+		{
+			name:     "underscore-bold wrapping asterisk-italic inside inline code not flagged",
+			input:    "literal `__*important*__` marker",
+			wantHint: false,
+		},
+		// --- Asterisk-italic wrapping underscore-bold: *__text__* ---
+		{
+			name:     "asterisk-italic wrapping underscore-bold flagged",
+			input:    "note: *__phrase__* text",
+			wantHint: true,
+		},
+		{
+			name:     "asterisk-italic wrapping underscore-bold inside fenced code not flagged",
+			input:    "```md\nnote: *__phrase__* sample\n```",
+			wantHint: false,
+		},
+		// --- Positive tests: real emphasis in prose coexisting with fake in code ---
+		{
+			// Underscore-variant in prose must still fire when an asterisk
+			// variant appears inside a code span — verifies the strip does
+			// not over-sanitize across the six regex alternatives.
+			name:     "real triple underscores outside inline code still flag when asterisk variant is in code",
+			input:    "real ___strong___ and literal `***shape***` in code",
+			wantHint: true,
+		},
+		{
+			// Longer close fence closes properly; real ***emphasis*** after
+			// the fence must fire.
+			name:     "real emphasis after a fence closed by longer marker still flags",
+			input:    "```\nliteral ***phrase*** in code\n````\n\nand then real ***phrase*** after",
+			wantHint: true,
+		},
+		{
+			// 4-space indented "```" is an indented code block, not a fence
+			// open. The fence helper should refuse it; emphasis outside the
+			// (non-existent) fence must still be detected.
+			name:     "four-space indented fence-like line does not open a fence for the emphasis check",
+			input:    "prose\n\n    ```\n    not a fence\n    ```\n\nreal ***strong*** here",
+			wantHint: true,
+		},
+		{
+			// 3-space indented fence is valid per CommonMark. Emphasis inside
+			// must be sanitized away, so the check must not fire.
+			name:     "three-space indented fence still hides triple-asterisk inside",
+			input:    "   ```\n   literal ***text*** inside\n   ```",
+			wantHint: false,
 		},
 	}
 	for _, tt := range tests {

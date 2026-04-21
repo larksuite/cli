@@ -14,7 +14,8 @@ import (
 // commonly surprise users; the update is still executed — callers
 // decide whether to stop at a warning.
 //
-// Both checks ignore fenced code blocks, inline code spans, and
+// Both checks ignore fenced code blocks (```…``` and ~~~…~~~, with up
+// to 3 leading spaces per CommonMark §4.5), inline code spans, and
 // backslash-escaped emphasis markers so that literal Markdown content
 // embedded in code samples or escaped prose does not produce false
 // positives.
@@ -27,10 +28,12 @@ import (
 //     text. The resulting block will contain the blank line as literal
 //     text and appear as a single paragraph in the UI.
 //
-//  2. Lark does not round-trip bold+italic. Markdown like ***text*** or
-//     **_text_** / _**text**_ is stored as only one of the two emphases
-//     (usually italic), silently dropping the other. The user wanted
-//     both; they will get one.
+//  2. Lark does not round-trip bold+italic. Six shapes are detected:
+//     ***text***   ___text___
+//     **_text_**   __*text*__
+//     _**text**_   *__text__*
+//     Lark stores only one of the two emphases (usually italic), silently
+//     dropping the other. The user wanted both; they will get one.
 func docsUpdateWarnings(mode, markdown string) []string {
 	var warnings []string
 	if w := checkDocsUpdateReplaceMultilineMarkdown(mode, markdown); w != "" {
@@ -61,16 +64,28 @@ func checkDocsUpdateReplaceMultilineMarkdown(mode, markdown string) string {
 		"For multiple paragraphs, use --mode=delete_range followed by --mode=insert_before."
 }
 
-// reBoldItalicTriple matches ***text*** with non-whitespace text between.
-var reBoldItalicTriple = regexp.MustCompile(`\*\*\*\S[^*]*?\S\*\*\*|\*\*\*\S\*\*\*`)
+// combinedEmphasisPatterns holds the six documented combined-emphasis shapes
+// that Lark downgrades to a single emphasis. Each entry pairs a regex with a
+// short shape label for the warning message. The two forms per shape (with
+// and without `[^…]*?`) are there because the lazy quantifier needs at least
+// one non-delimiter character to match; single-rune payloads (e.g. `***X***`)
+// take the second alternation.
+var combinedEmphasisPatterns = []struct {
+	shape string
+	re    *regexp.Regexp
+}{
+	// Bold+italic with a single delimiter char.
+	{"***text***", regexp.MustCompile(`\*\*\*\S[^*]*?\S\*\*\*|\*\*\*\S\*\*\*`)},
+	{"___text___", regexp.MustCompile(`___\S[^_]*?\S___|___\S___`)},
 
-// reBoldItalicUnderscoreInside matches **_text_** — bold wrapping an
-// underscore italic. Same downgrade issue in Lark.
-var reBoldItalicUnderscoreInside = regexp.MustCompile(`\*\*_\S[^_*]*?\S_\*\*|\*\*_\S_\*\*`)
+	// Bold wrapping italic (asterisk outside).
+	{"**_text_**", regexp.MustCompile(`\*\*_\S[^_*]*?\S_\*\*|\*\*_\S_\*\*`)},
+	{"__*text*__", regexp.MustCompile(`__\*\S[^_*]*?\S\*__|__\*\S\*__`)},
 
-// reBoldItalicUnderscoreOutside matches _**text**_ — underscore italic
-// wrapping a bold.
-var reBoldItalicUnderscoreOutside = regexp.MustCompile(`_\*\*\S[^_*]*?\S\*\*_|_\*\*\S\*\*_`)
+	// Italic wrapping bold (asterisk inside).
+	{"_**text**_", regexp.MustCompile(`_\*\*\S[^_*]*?\S\*\*_|_\*\*\S\*\*_`)},
+	{"*__text__*", regexp.MustCompile(`\*__\S[^_*]*?\S__\*|\*__\S__\*`)},
+}
 
 // checkDocsUpdateBoldItalic flags Markdown emphases that attempt to
 // combine bold and italic in a way Lark cannot represent. Fenced code
@@ -82,12 +97,13 @@ func checkDocsUpdateBoldItalic(markdown string) string {
 		return ""
 	}
 	sanitized := stripEscapedEmphasisMarkers(stripMarkdownCodeRegions(markdown))
-	if reBoldItalicTriple.MatchString(sanitized) ||
-		reBoldItalicUnderscoreInside.MatchString(sanitized) ||
-		reBoldItalicUnderscoreOutside.MatchString(sanitized) {
-		return "Lark does not support combined bold+italic markers (***text***, **_text_**, _**text**_); " +
-			"the emphasis will be downgraded to either bold or italic. " +
-			"Split into two separate emphases or drop one of them."
+	for _, p := range combinedEmphasisPatterns {
+		if p.re.MatchString(sanitized) {
+			return "Lark does not support combined bold+italic markers " +
+				"(e.g. ***text***, ___text___, **_text_**, _**text**_, __*text*__, *__text__*); " +
+				"the emphasis will be downgraded to either bold or italic. " +
+				"Split into two separate emphases or drop one of them."
+		}
 	}
 	return ""
 }
@@ -105,20 +121,19 @@ func proseHasBlankLine(markdown string) bool {
 	inFence := false
 	var fenceMarker string
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
 		if inFence {
-			if isCodeFenceClose(trimmed, fenceMarker) {
+			if isCodeFenceClose(line, fenceMarker) {
 				inFence = false
 				fenceMarker = ""
 			}
 			continue
 		}
-		if marker := codeFenceOpenMarker(trimmed); marker != "" {
+		if marker := codeFenceOpenMarker(line); marker != "" {
 			inFence = true
 			fenceMarker = marker
 			continue
 		}
-		if trimmed == "" && i > 0 && i+1 < len(lines) {
+		if strings.TrimSpace(line) == "" && i > 0 && i+1 < len(lines) {
 			return true
 		}
 	}
@@ -134,16 +149,15 @@ func stripMarkdownCodeRegions(markdown string) string {
 	inFence := false
 	var fenceMarker string
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
 		if inFence {
-			if isCodeFenceClose(trimmed, fenceMarker) {
+			if isCodeFenceClose(line, fenceMarker) {
 				inFence = false
 				fenceMarker = ""
 			}
 			lines[i] = ""
 			continue
 		}
-		if marker := codeFenceOpenMarker(trimmed); marker != "" {
+		if marker := codeFenceOpenMarker(line); marker != "" {
 			inFence = true
 			fenceMarker = marker
 			lines[i] = ""
@@ -179,33 +193,82 @@ func maskInlineCodeSpans(line string) string {
 // real combined emphasis. CommonMark renders "\*" as a literal "*" with no
 // emphasis semantics; dropping the escape + its target from the detection
 // input keeps the heuristic aligned with what the renderer actually does.
+//
+// Known limitation: a doubled backslash escape ("\\" followed by a real
+// emphasis marker, e.g. `\\***text***`) renders as a literal backslash
+// followed by genuine combined emphasis, but this strip is not a proper
+// parser and will instead consume the second backslash as the opener for
+// another escape. That hides the real emphasis from the check, producing
+// a false negative. Practical impact is small (this shape is rare in the
+// kind of AI-Agent prompts we target) and the alternative — a full
+// CommonMark escape parser — is not worth the code surface here.
 func stripEscapedEmphasisMarkers(s string) string {
 	s = strings.ReplaceAll(s, `\*`, "")
 	s = strings.ReplaceAll(s, `\_`, "")
 	return s
 }
 
-// codeFenceOpenMarker returns the exact fence marker (e.g. "```" or "~~~~")
-// if trimmed opens a fenced code block, otherwise "". Supports any fence of
-// length ≥ 3 per CommonMark §4.5.
-func codeFenceOpenMarker(trimmed string) string {
+// codeFenceOpenMarker returns the fence marker (e.g. "```" or "~~~~") if
+// line opens a fenced code block, otherwise "". Applies CommonMark §4.5
+// rules: up to 3 leading spaces are tolerated; 4+ leading spaces (or any
+// leading tab, which expands to 4 columns) make the line an indented code
+// block rather than a fence.
+func codeFenceOpenMarker(line string) string {
+	body, ok := fenceIndentOK(line)
+	if !ok {
+		return ""
+	}
 	switch {
-	case strings.HasPrefix(trimmed, "```"):
-		return leadingRun(trimmed, '`')
-	case strings.HasPrefix(trimmed, "~~~"):
-		return leadingRun(trimmed, '~')
+	case strings.HasPrefix(body, "```"):
+		return leadingRun(body, '`')
+	case strings.HasPrefix(body, "~~~"):
+		return leadingRun(body, '~')
 	}
 	return ""
 }
 
-// isCodeFenceClose reports whether trimmed closes a fence opened with
-// marker. Per CommonMark, the closer must use the same fence character,
-// be at least as long as the opener, and contain no info-string text.
-func isCodeFenceClose(trimmed, marker string) bool {
-	if marker == "" || !strings.HasPrefix(trimmed, marker) {
+// isCodeFenceClose reports whether line closes a fence opened with marker.
+// Per CommonMark §4.5 the closer must use the same fence character, be at
+// least as long as the opener, sit within 0..3 leading spaces, and carry
+// no info-string text.
+func isCodeFenceClose(line, marker string) bool {
+	if marker == "" {
 		return false
 	}
-	return strings.TrimSpace(trimmed[len(marker):]) == ""
+	body, ok := fenceIndentOK(line)
+	if !ok {
+		return false
+	}
+	fenceChar := marker[0]
+	run := leadingRun(body, fenceChar)
+	if len(run) < len(marker) {
+		return false
+	}
+	return strings.TrimSpace(body[len(run):]) == ""
+}
+
+// fenceIndentOK returns (bodyWithoutLeadingSpaces, true) when line has
+// 0..3 leading spaces and no leading tab — i.e. the indentation is
+// permissible for a CommonMark fence. Returns ("", false) otherwise
+// (4+ leading spaces or any tab), meaning the line must be treated as
+// indented code block content rather than a fence boundary.
+func fenceIndentOK(line string) (string, bool) {
+	for i := 0; i < len(line) && i < 4; i++ {
+		switch line[i] {
+		case ' ':
+			continue
+		case '\t':
+			return "", false
+		default:
+			return line[i:], true
+		}
+	}
+	// Reached index 4 without hitting a non-space character: too indented.
+	if len(line) >= 4 {
+		return "", false
+	}
+	// Line shorter than 4 chars and all spaces — still valid (empty content).
+	return "", true
 }
 
 // leadingRun returns the longest prefix of s made up of the byte c.
