@@ -28,6 +28,7 @@ type attachmentFile struct {
 	FileName    string // basename
 	Size        int64  // raw file size in bytes
 	SourceIndex int    // original index in the caller's list (e.g. patch op index)
+	Data        []byte // in-memory content; when non-nil, used instead of Path for upload
 }
 
 // classifiedAttachments is the result of classifyAttachments.
@@ -154,7 +155,15 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 			fileToken string
 			err       error
 		)
-		if f.Size <= common.MaxDriveMediaUploadSinglePartSize {
+		if f.Data != nil {
+			fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+				FileName:   f.FileName,
+				FileSize:   f.Size,
+				ParentType: "email",
+				ParentNode: &userOpenId,
+				Reader:     bytes.NewReader(f.Data),
+			})
+		} else if f.Size <= common.MaxDriveMediaUploadSinglePartSize {
 			fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
 				FilePath:   f.Path,
 				FileName:   f.FileName,
@@ -182,39 +191,6 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 		})
 	}
 	return results, nil
-}
-
-// uploadLargeAttachmentBytes uploads in-memory data as a large attachment via
-// medias/upload_all. Used for forwarded original attachments that have already
-// been downloaded but need to be re-uploaded as large attachments when total
-// EML size would exceed the limit. Individual original attachments are always
-// under 20 MB (the source email's EML was ≤25 MB), so single-part upload
-// suffices.
-func uploadLargeAttachmentBytes(ctx context.Context, runtime *common.RuntimeContext, data []byte, filename string) (largeAttachmentResult, error) {
-	size := int64(len(data))
-	userOpenId := runtime.UserOpenId()
-	if userOpenId == "" {
-		return largeAttachmentResult{}, fmt.Errorf("large attachment upload requires user identity (user open_id not available)")
-	}
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Uploading large attachment: %s (%s)\n", filename, common.FormatSize(size))
-
-	fileToken, err := common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
-		FileName:   filename,
-		FileSize:   size,
-		ParentType: "email",
-		ParentNode: &userOpenId,
-		Reader:     bytes.NewReader(data),
-	})
-	if err != nil {
-		return largeAttachmentResult{}, fmt.Errorf("failed to upload large attachment %s: %w", filename, err)
-	}
-
-	return largeAttachmentResult{
-		FileName:  filename,
-		FileSize:  size,
-		FileToken: fileToken,
-	}, nil
 }
 
 // buildLargeAttachmentPreviewURL builds the download/preview URL for a large

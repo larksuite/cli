@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
@@ -287,34 +286,14 @@ var MailForward = common.Shortcut{
 					float64(totalBytes)/1024/1024)
 			}
 
-			// Write oversized original attachments (in-memory) to temp
-			// files so they can be uploaded via the file-based multipart
-			// upload path.
-			var tempFiles []string
-			defer func() {
-				for _, tf := range tempFiles {
-					os.Remove(tf)
-				}
-			}()
 			var allOversized []attachmentFile
 			for _, f := range classified.Oversized {
 				if f.Path == "" {
 					att := origAtts[f.SourceIndex]
-					tmpFile, err := os.CreateTemp("", ".lark-cli-fwd-*")
-					if err != nil {
-						return fmt.Errorf("failed to create temp file for %s: %w", att.filename, err)
-					}
-					tmpName := tmpFile.Name()
-					tmpFile.Close()
-					if err := os.WriteFile(tmpName, att.content, 0600); err != nil {
-						os.Remove(tmpName)
-						return fmt.Errorf("failed to write temp file for %s: %w", att.filename, err)
-					}
-					tempFiles = append(tempFiles, tmpName)
 					allOversized = append(allOversized, attachmentFile{
-						Path:     tmpName,
 						FileName: att.filename,
 						Size:     int64(len(att.content)),
+						Data:     att.content,
 					})
 				} else {
 					allOversized = append(allOversized, f)
