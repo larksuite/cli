@@ -19,5 +19,6 @@ func Shortcuts() []common.Shortcut {
 		DriveMove,
 		DriveDelete,
 		DriveTaskResult,
+		DriveApplyPermission,
 	}
 }

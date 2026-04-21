@@ -207,6 +207,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive |
 | [`+delete`](references/lark-drive-delete.md) | Delete a Drive file or folder with limited polling for folder deletes |
 | [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
+| [`+apply-permission`](references/lark-drive-apply-permission.md) | Apply to the document owner for view/edit access (user-only; 5/day per document) |
 
 ## API Resources
 

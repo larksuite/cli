@@ -1,20 +1,22 @@
 # Drive CLI E2E Coverage
 
 ## Metrics
-- Denominator: 28 leaf commands
-- Covered: 1
-- Coverage: 3.6%
+- Denominator: 29 leaf commands
+- Covered: 2
+- Coverage: 6.9%
 
 ## Summary
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
+- TestDrive_ApplyPermissionDryRun / TestDrive_ApplyPermissionDryRunRejectsFullAccess: dry-run coverage for `drive +apply-permission`; asserts URL→type inference for docx/sheet/slides, explicit `--type` overriding URL inference when both a recognized URL and `--type` are supplied, bare-token + explicit `--type` path, request method/URL/type-query/perm/remark body shape, optional `remark` omission when unset, and client-side rejection of `--perm full_access`. Runs without hitting the live API.
 - Cleanup note: `drive files delete` is only exercised in cleanup and is intentionally left uncovered.
-- Blocked area: upload, export, comment, permission, subscription, and reply flows still need deterministic remote fixtures and filesystem setup.
+- Blocked area: upload, export, comment, subscription, and reply flows still need deterministic remote fixtures and filesystem setup. Permission flows are partially covered via the dry-run test for `+apply-permission`; the full permission.members.* API surface remains uncovered.
 
 ## Command Table
 
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
 | ✕ | drive +add-comment | shortcut |  | none | no comment workflow yet |
+| ✓ | drive +apply-permission | shortcut | drive_apply_permission_dryrun_test.go::TestDrive_ApplyPermissionDryRun | `--token` URL vs bare; `--type` (enum) with URL inference; `--perm view\|edit`; `--remark` optional | dry-run only; no live-apply E2E because a real request pushes a card to the owner |
 | ✕ | drive +delete | shortcut |  | none | no primary delete workflow yet |
 | ✕ | drive +download | shortcut |  | none | no file fixture workflow yet |
 | ✕ | drive +export | shortcut |  | none | no export workflow yet |

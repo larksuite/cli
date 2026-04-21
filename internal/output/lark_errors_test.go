@@ -47,6 +47,20 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			wantType:     "invalid_params",
 			wantHint:     "--width / --height / --offset-x / --offset-y",
 		},
+		{
+			name:         "drive permission apply rate limit",
+			code:         LarkErrDrivePermApplyRateLimit,
+			wantExitCode: ExitAPI,
+			wantType:     "rate_limit",
+			wantHint:     "5 times per day",
+		},
+		{
+			name:         "drive permission apply not applicable",
+			code:         LarkErrDrivePermApplyNotApplicable,
+			wantExitCode: ExitAPI,
+			wantType:     "invalid_params",
+			wantHint:     "does not accept a permission-apply request",
+		},
 	}
 
 	for _, tt := range tests {

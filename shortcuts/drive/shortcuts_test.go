@@ -22,6 +22,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+move",
 		"+delete",
 		"+task_result",
+		"+apply-permission",
 	}
 
 	if len(got) != len(want) {

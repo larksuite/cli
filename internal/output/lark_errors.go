@@ -41,6 +41,14 @@ const (
 
 	// Sheets float image: width/height/offset out of range or invalid.
 	LarkErrSheetsFloatImageInvalidDims = 1310246
+
+	// Drive permission apply: per-user-per-document submission limit (5/day) reached.
+	LarkErrDrivePermApplyRateLimit = 1063006
+	// Drive permission apply: request is not applicable for this document
+	// (e.g. the document is configured to disallow access requests, or the
+	// caller already holds the requested permission, or the target type does
+	// not accept apply operations).
+	LarkErrDrivePermApplyNotApplicable = 1063007
 )
 
 // ClassifyLarkError maps a Lark API error code + message to (exitCode, errType, hint).
@@ -82,6 +90,14 @@ func ClassifyLarkError(code int, msg string) (int, string, string) {
 		return ExitAPI, "invalid_params",
 			"check --width / --height / --offset-x / --offset-y: " +
 				"width/height must be >= 20 px; offsets must be >= 0 and less than the anchor cell's width/height"
+
+	// drive permission-apply specific guidance
+	case LarkErrDrivePermApplyRateLimit:
+		return ExitAPI, "rate_limit",
+			"permission-apply quota reached: each user may request access on the same document at most 5 times per day; wait or ask the owner directly"
+	case LarkErrDrivePermApplyNotApplicable:
+		return ExitAPI, "invalid_params",
+			"this document does not accept a permission-apply request (common causes: the document is configured to disallow access requests, the caller already holds the permission, or the target type does not support apply); contact the owner directly"
 	}
 
 	return ExitAPI, "api_error", ""
