@@ -363,7 +363,7 @@ func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
 func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
 	err := handleLoginScopeIssue(&LoginOptions{}, getLoginMsg("zh"), f, &loginScopeIssue{
-		Message: "授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		Message: "授权结果异常: 以下请求 scopes 未被授予: im:message:send",
 		Hint:    "以上结果是本次授权请求用户最终确认后的结果，请勿持续重试；Scopes 未授予的原因是多样的，如 scope 被禁用；具体原因已通过授权页提示用户。可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 		Summary: &loginScopeSummary{
 			Requested: []string{"im:message:send"},
@@ -376,11 +376,10 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		"授权结果异常: 以下请求 scopes 未被授予: im:message:send",
 		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次新授予 scopes: （空）",
-		"本次未授予 scopes: im:message:send",
 		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
 		"scope 被禁用",
 		"lark-cli auth status",
@@ -394,6 +393,9 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	}
 	if strings.Contains(got, "授权成功") {
 		t.Fatalf("stderr should not contain success wording, got:\n%s", got)
+	}
+	if strings.Contains(got, "本次未授予 scopes:") {
+		t.Fatalf("stderr should not duplicate missing scopes, got:\n%s", got)
 	}
 }
 
@@ -472,10 +474,10 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 				"授权成功! 用户: tester (ou_user)",
 				"本次请求 scopes: im:message:send im:message:reply",
 				"本次新授予 scopes: im:message:send",
-				"本次未授予 scopes: （空）",
 				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 			},
 			expectedAbsent: []string{
+				"本次未授予 scopes:",
 				"最终已授权 scopes:",
 				"已有 scopes:",
 			},
@@ -490,10 +492,10 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			expectedPresent: []string{
 				"本次请求 scopes: im:message:send",
 				"本次新授予 scopes: （空）",
-				"本次未授予 scopes: （空）",
 				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 			},
 			expectedAbsent: []string{
+				"本次未授予 scopes:",
 				"最终已授权 scopes:",
 				"已有 scopes:",
 			},
@@ -508,9 +510,9 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			expectedPresent: []string{
 				"本次请求 scopes: im:message:send im:message:reply",
 				"本次新授予 scopes: （空）",
-				"本次未授予 scopes: im:message:send",
 			},
 			expectedAbsent: []string{
+				"本次未授予 scopes:",
 				"已有 scopes:",
 				"最终已授权 scopes:",
 				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
@@ -619,10 +621,9 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		"授权结果异常: 以下请求 scopes 未被授予: im:message:send",
 		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
-		"本次未授予 scopes: im:message:send",
 		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
 		"scope 被禁用",
 		"lark-cli auth status",
@@ -636,6 +637,9 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	if strings.Contains(got, "OK: 授权成功") {
 		t.Fatalf("stderr should not contain success prefix when scopes are missing, got:\n%s", got)
+	}
+	if strings.Contains(got, "本次未授予 scopes:") {
+		t.Fatalf("stderr should not duplicate missing scopes, got:\n%s", got)
 	}
 	if strings.Contains(got, "ERROR:") {
 		t.Fatalf("stderr should not contain error prefix, got:\n%s", got)
@@ -777,12 +781,14 @@ func TestWriteLoginSuccess_TextOutputEnglishIncludesStatusHintWhenNoMissingScope
 		"Authorization successful! User: tester (ou_user)",
 		"Requested scopes: im:message:send",
 		"Newly granted scopes: im:message:send",
-		"Not granted scopes: (none)",
 		"Run `lark-cli auth status` to inspect all scopes currently granted to the account.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stderr missing %q, got:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "Not granted scopes:") {
+		t.Fatalf("stderr should not contain not granted scopes, got:\n%s", got)
 	}
 }
 

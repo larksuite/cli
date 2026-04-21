@@ -4,11 +4,15 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
@@ -105,6 +109,8 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 				map[string]interface{}{
 					"file_token":                "<uploaded_file_token>",
 					"name":                      fileName,
+					"mime_type":                 "<detected_mime_type>",
+					"size":                      "<file_size>",
 					"deprecated_set_attachment": true,
 				},
 			},
@@ -243,10 +249,14 @@ func normalizeAttachmentForPatch(attachment map[string]interface{}) map[string]i
 }
 
 func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, baseToken string, fileSize int64) (map[string]interface{}, error) {
+	mimeType, err := detectAttachmentMIMEType(runtime.FileIO(), filePath, fileName)
+	if err != nil {
+		return nil, err
+	}
+
 	parentNode := baseToken
 	var (
 		fileToken string
-		err       error
 	)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
@@ -272,7 +282,78 @@ func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, 
 	attachment := map[string]interface{}{
 		"file_token":                fileToken,
 		"name":                      fileName,
+		"mime_type":                 mimeType,
+		"size":                      fileSize,
 		"deprecated_set_attachment": true,
 	}
 	return attachment, nil
+}
+
+func detectAttachmentMIMEType(fio fileio.FileIO, filePath, fileName string) (string, error) {
+	if byExt := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(fileName)))); byExt != "" {
+		return stripMIMEParams(byExt), nil
+	}
+	if byExt := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath)))); byExt != "" {
+		return stripMIMEParams(byExt), nil
+	}
+
+	f, err := fio.Open(filePath)
+	if err != nil {
+		return "", common.WrapInputStatError(err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, readErr := f.Read(buf)
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return "", output.ErrValidation("cannot read file: %s", readErr)
+	}
+	return detectAttachmentMIMEFromContent(buf[:n]), nil
+}
+
+func stripMIMEParams(value string) string {
+	if i := strings.IndexByte(value, ';'); i != -1 {
+		value = value[:i]
+	}
+	return strings.TrimSpace(value)
+}
+
+func detectAttachmentMIMEFromContent(content []byte) string {
+	if len(content) == 0 {
+		return "application/octet-stream"
+	}
+	if bytes.HasPrefix(content, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		return "image/png"
+	}
+	if bytes.HasPrefix(content, []byte{0xff, 0xd8, 0xff}) {
+		return "image/jpeg"
+	}
+	if bytes.HasPrefix(content, []byte("GIF87a")) || bytes.HasPrefix(content, []byte("GIF89a")) {
+		return "image/gif"
+	}
+	if len(content) >= 12 && bytes.Equal(content[:4], []byte("RIFF")) && bytes.Equal(content[8:12], []byte("WEBP")) {
+		return "image/webp"
+	}
+	if bytes.HasPrefix(content, []byte("%PDF-")) {
+		return "application/pdf"
+	}
+	if looksLikeText(content) {
+		return "text/plain"
+	}
+	return "application/octet-stream"
+}
+
+func looksLikeText(content []byte) bool {
+	if !utf8.Valid(content) {
+		return false
+	}
+	for _, r := range string(content) {
+		if r == '\n' || r == '\r' || r == '\t' {
+			continue
+		}
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }

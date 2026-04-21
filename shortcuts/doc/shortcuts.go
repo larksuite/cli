@@ -13,6 +13,7 @@ func Shortcuts() []common.Shortcut {
 		DocsFetch,
 		DocsUpdate,
 		DocMediaInsert,
+		DocMediaUpload,
 		DocMediaPreview,
 		DocMediaDownload,
 	}

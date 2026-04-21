@@ -1219,7 +1219,9 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			!strings.Contains(updateBody, `"image_height":480`) ||
 			!strings.Contains(updateBody, `"deprecated_set_attachment":true`) ||
 			!strings.Contains(updateBody, `"file_token":"file_tok_1"`) ||
-			!strings.Contains(updateBody, `"name":"report.txt"`) {
+			!strings.Contains(updateBody, `"name":"report.txt"`) ||
+			!strings.Contains(updateBody, `"size":16`) ||
+			!strings.Contains(updateBody, `"mime_type":"text/plain"`) {
 			t.Fatalf("update body=%s", updateBody)
 		}
 	})
@@ -1370,6 +1372,8 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		if !strings.Contains(updateBody, `"附件"`) ||
 			!strings.Contains(updateBody, `"file_token":"file_tok_big"`) ||
 			!strings.Contains(updateBody, `"name":"large-report.bin"`) ||
+			!strings.Contains(updateBody, `"size":20971521`) ||
+			!strings.Contains(updateBody, `"mime_type":"application/octet-stream"`) ||
 			!strings.Contains(updateBody, `"deprecated_set_attachment":true`) {
 			t.Fatalf("update body=%s", updateBody)
 		}
