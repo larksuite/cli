@@ -1842,9 +1842,6 @@ func buildDraftSendOutput(resData map[string]interface{}, mailboxID string) map[
 		"message_id": resData["message_id"],
 		"thread_id":  resData["thread_id"],
 	}
-	if recallStatus, ok := resData["recall_status"]; ok {
-		out["recall_status"] = recallStatus
-	}
 	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
 		messageID, _ := resData["message_id"].(string)
 		out["recall_available"] = true

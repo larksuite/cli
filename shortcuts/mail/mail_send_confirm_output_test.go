@@ -26,8 +26,8 @@ func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	if got["thread_id"] != "thread_001" {
 		t.Fatalf("thread_id = %v", got["thread_id"])
 	}
-	if got["recall_status"] != "available" {
-		t.Fatalf("recall_status missing or wrong type: %#v", got["recall_status"])
+	if _, ok := got["recall_status"]; ok {
+		t.Fatalf("recall_status should be omitted, got %#v", got["recall_status"])
 	}
 	if got["recall_available"] != true {
 		t.Fatalf("recall_available = %v", got["recall_available"])
