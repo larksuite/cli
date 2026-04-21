@@ -7,6 +7,8 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
+const crypto = require("crypto");
+
 const { getExpectedChecksum, verifyChecksum } = require("./install.js");
 
 describe("getExpectedChecksum", () => {
@@ -55,5 +57,46 @@ describe("getExpectedChecksum", () => {
     // No checksums.txt in dir
     const result = getExpectedChecksum("anything.tar.gz", dir);
     assert.equal(result, null);
+  });
+});
+
+describe("verifyChecksum", () => {
+  function makeTmpFile(content) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "checksum-test-"));
+    const filePath = path.join(dir, "archive.tar.gz");
+    fs.writeFileSync(filePath, content);
+    return filePath;
+  }
+
+  function sha256(content) {
+    return crypto.createHash("sha256").update(content).digest("hex");
+  }
+
+  it("returns normally when hash matches", () => {
+    const content = "binary content here";
+    const filePath = makeTmpFile(content);
+    const hash = sha256(content);
+    // Should not throw
+    verifyChecksum(filePath, hash);
+  });
+
+  it("matches case-insensitively", () => {
+    const content = "case test";
+    const filePath = makeTmpFile(content);
+    const hash = sha256(content).toUpperCase();
+    // Should not throw
+    verifyChecksum(filePath, hash);
+  });
+
+  it("throws [SECURITY]-prefixed Error on mismatch", () => {
+    const filePath = makeTmpFile("real content");
+    assert.throws(
+      () => verifyChecksum(filePath, "0000000000000000000000000000000000000000000000000000000000000000"),
+      (err) => {
+        assert.match(err.message, /^\[SECURITY\]/);
+        assert.match(err.message, /Checksum mismatch/);
+        return true;
+      }
+    );
   });
 });

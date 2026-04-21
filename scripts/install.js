@@ -113,7 +113,16 @@ function getExpectedChecksum(archiveName, checksumsDir) {
 }
 
 function verifyChecksum(archivePath, expectedHash) {
-  // no-op stub
+  if (expectedHash === null) return;
+
+  const content = fs.readFileSync(archivePath);
+  const actual = crypto.createHash("sha256").update(content).digest("hex");
+
+  if (actual.toLowerCase() !== expectedHash.toLowerCase()) {
+    throw new Error(
+      `[SECURITY] Checksum mismatch for ${path.basename(archivePath)}: expected ${expectedHash} but got ${actual}`
+    );
+  }
 }
 
 if (require.main === module) {
