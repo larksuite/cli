@@ -104,20 +104,47 @@ func (t *SecurityHeaderTransport) RoundTrip(req *http.Request) (*http.Response, 
 }
 
 // extensionMiddleware wraps the built-in transport chain with pre/post hooks.
-// The built-in chain always executes and cannot be skipped or overridden.
-// The original request context is restored after PreRoundTrip to prevent
+// The built-in chain always executes unless the extension is an
+// exttransport.AbortableInterceptor and its PreRoundTripE returns a non-nil
+// error; it cannot otherwise be skipped or overridden.
+//
+// The original request context is restored after the pre hook to prevent
 // extensions from tampering with cancellation, deadlines, or built-in values.
+// Cloning the request isolates header/URL/etc. mutations from the caller's
+// request object; req.Body is intentionally shared — extensions that consume
+// it are responsible for rewinding (see Interceptor doc).
 type extensionMiddleware struct {
-	Base http.RoundTripper
-	Ext  exttransport.Interceptor
+	Base    http.RoundTripper
+	Ext     exttransport.Interceptor
+	ExtName string // Provider.Name(), captured at wrap time for *AbortError.Extension
 }
 
-// RoundTrip calls PreRoundTrip, restores the original context, executes
-// the built-in chain, then calls the post hook if non-nil.
+// RoundTrip invokes the interceptor pre hook, restores the original context,
+// executes the built-in chain (unless aborted), then calls the post hook if
+// non-nil. When the extension implements AbortableInterceptor and returns a
+// non-nil error from PreRoundTripE, the built-in chain is skipped and an
+// *exttransport.AbortError is returned; the post hook is still invoked with
+// (nil, reason) so extensions can unwind resources.
 func (m *extensionMiddleware) RoundTrip(req *http.Request) (*http.Response, error) {
 	origCtx := req.Context()
-	req = req.Clone(origCtx) // isolate caller's request before extension mutations
-	post := m.Ext.PreRoundTrip(req)
+	req = req.Clone(origCtx)
+
+	var (
+		post    func(*http.Response, error)
+		abortEr error
+	)
+	if a, ok := m.Ext.(exttransport.AbortableInterceptor); ok {
+		post, abortEr = a.PreRoundTripE(req)
+	} else {
+		post = m.Ext.PreRoundTrip(req)
+	}
+	if abortEr != nil {
+		if post != nil {
+			post(nil, abortEr)
+		}
+		return nil, &exttransport.AbortError{Extension: m.ExtName, Reason: abortEr}
+	}
+
 	req = req.WithContext(origCtx) // restore original context
 	resp, err := m.Base.RoundTrip(req)
 	if post != nil {
@@ -137,5 +164,5 @@ func wrapWithExtension(transport http.RoundTripper) http.RoundTripper {
 	if tr == nil {
 		return transport
 	}
-	return &extensionMiddleware{Base: transport, Ext: tr}
+	return &extensionMiddleware{Base: transport, Ext: tr, ExtName: p.Name()}
 }

@@ -28,19 +28,65 @@ func TestDetectProxyEnv(t *testing.T) {
 	}
 }
 
-func TestNewBaseTransport_Default(t *testing.T) {
+func TestSharedTransport_DefaultReturnsStdlibSingleton(t *testing.T) {
 	t.Setenv(EnvNoProxy, "")
-	tr := NewBaseTransport()
-	if tr.Proxy == nil {
-		t.Error("expected proxy func to be set when LARK_CLI_NO_PROXY is not set")
+	tr := SharedTransport()
+	if tr != http.DefaultTransport {
+		t.Error("SharedTransport should return http.DefaultTransport when LARK_CLI_NO_PROXY is unset")
 	}
 }
 
-func TestNewBaseTransport_NoProxy(t *testing.T) {
+func TestSharedTransport_NoProxyReturnsClone(t *testing.T) {
 	t.Setenv(EnvNoProxy, "1")
-	tr := NewBaseTransport()
-	if tr.Proxy != nil {
-		t.Error("expected proxy func to be nil when LARK_CLI_NO_PROXY=1")
+	tr := SharedTransport()
+	if tr == http.DefaultTransport {
+		t.Fatal("SharedTransport should return a clone, not DefaultTransport, when LARK_CLI_NO_PROXY is set")
+	}
+	ht, ok := tr.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", tr)
+	}
+	if ht.Proxy != nil {
+		t.Error("no-proxy transport should have Proxy == nil")
+	}
+}
+
+func TestSharedTransport_NoProxyIsCachedSingleton(t *testing.T) {
+	t.Setenv(EnvNoProxy, "1")
+	a := SharedTransport()
+	b := SharedTransport()
+	if a != b {
+		t.Error("repeated SharedTransport calls with LARK_CLI_NO_PROXY set must return the same instance")
+	}
+}
+
+func TestSharedTransport_EnvUnsetAfterSetFallsBackToDefault(t *testing.T) {
+	// Simulate a process that first runs with LARK_CLI_NO_PROXY=1 (populating
+	// the no-proxy singleton), then unsets it. Subsequent calls must return
+	// http.DefaultTransport, NOT the cached no-proxy clone.
+	t.Setenv(EnvNoProxy, "1")
+	noProxy := SharedTransport()
+	if noProxy == http.DefaultTransport {
+		t.Fatal("precondition: first call with env set should not return DefaultTransport")
+	}
+
+	t.Setenv(EnvNoProxy, "")
+	after := SharedTransport()
+	if after != http.DefaultTransport {
+		t.Errorf("after unsetting LARK_CLI_NO_PROXY, SharedTransport must return http.DefaultTransport, got %T (%p)", after, after)
+	}
+}
+
+func TestSharedTransport_NoProxyOverridesSystemProxy(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://should-be-ignored:8888")
+	t.Setenv(EnvNoProxy, "1")
+
+	ht, ok := SharedTransport().(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", SharedTransport())
+	}
+	if ht.Proxy != nil {
+		t.Error("LARK_CLI_NO_PROXY should override system proxy settings")
 	}
 }
 
@@ -154,37 +200,5 @@ func TestWarnIfProxied_RedactsCredentials(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(out), []byte("***@proxy:8080")) {
 		t.Errorf("warning should contain redacted proxy URL, got: %s", out)
-	}
-}
-
-func TestNewBaseTransport_IsHTTPTransport(t *testing.T) {
-	t.Setenv(EnvNoProxy, "")
-	tr := NewBaseTransport()
-
-	// Should be a valid *http.Transport that can be used
-	var rt http.RoundTripper = tr
-	_ = rt
-
-	// Verify it's not the same pointer as DefaultTransport (should be a clone)
-	if tr == http.DefaultTransport {
-		t.Error("NewBaseTransport should return a clone, not DefaultTransport itself")
-	}
-}
-
-func TestNewBaseTransport_RespectsNoProxyEnv(t *testing.T) {
-	// Simulate: user sets both system proxy and our disable flag
-	t.Setenv("HTTPS_PROXY", "http://should-be-ignored:8888")
-	t.Setenv(EnvNoProxy, "1")
-
-	tr := NewBaseTransport()
-	if tr.Proxy != nil {
-		t.Error("LARK_CLI_NO_PROXY should override system proxy settings")
-	}
-
-	// Clean up and verify proxy is restored
-	t.Setenv(EnvNoProxy, "")
-	tr2 := NewBaseTransport()
-	if tr2.Proxy == nil {
-		t.Error("proxy should be enabled when LARK_CLI_NO_PROXY is unset")
 	}
 }

@@ -92,7 +92,7 @@ func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
 		util.WarnIfProxied(f.IOStreams.ErrOut)
 
-		var transport http.RoundTripper = util.NewBaseTransport()
+		var transport http.RoundTripper = util.SharedTransport()
 		transport = &RetryTransport{Base: transport}
 		transport = &SecurityHeaderTransport{Base: transport}
 		transport = &auth.SecurityPolicyTransport{Base: transport} // Add our global response interceptor
@@ -129,7 +129,7 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 }
 
 func buildSDKTransport() http.RoundTripper {
-	var sdkTransport http.RoundTripper = util.NewBaseTransport()
+	var sdkTransport http.RoundTripper = util.SharedTransport()
 	sdkTransport = &RetryTransport{Base: sdkTransport}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
 	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
