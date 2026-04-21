@@ -1,7 +1,7 @@
 ---
 name: lark-minutes
 version: 1.0.0
-description: "飞书妙记：妙记相关基本功能。1.查询妙记列表（按关键词/所有者/参与者/时间范围）；2.获取妙记基础信息（标题、封面、时长 等）；3.下载妙记音视频文件；4.获取妙记相关 AI 产物（总结、待办、章节）。飞书妙记 URL 格式: http(s)://<host>/minutes/<minute-token>"
+description: "飞书妙记：妙记相关基本功能。1.查询妙记列表（按关键词/所有者/参与者/时间范围）；2.获取妙记基础信息（标题、封面、时长 等）；3.下载妙记音视频文件；4.获取妙记相关 AI 产物（总结、待办、章节）；5.上传音视频生成妙记。飞书妙记 URL 格式: http(s)://<host>/minutes/<minute-token>"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -57,6 +57,15 @@ lark-cli vc +notes --minute-tokens <minute_token>
 
 > **跨 skill 路由**：逐字稿、AI 总结、待办、章节等纪要内容由 [lark-vc](../lark-vc/SKILL.md) 的 `+notes` 命令提供
 
+### 5. 上传音视频文件生成妙记
+
+1. 当用户需要通过上传本地音视频文件来生成妙记时使用。
+2. **处理流程**：
+   - **上传音视频获取 `file_token`**：使用 [`lark-cli drive +upload`](../lark-drive/references/lark-drive-upload.md) 上传本地文件到云空间并获取 `file_token`。
+   - **生成妙记**：获取到 `file_token` 后，调用 [`lark-cli minutes +upload`](references/lark-minutes-upload.md) 将文件转换为妙记并获取 `minute_url` 链接。
+
+> **注意**：必须先获取飞书云空间的 `file_token` 才能进行转换。
+
 ## 资源关系
 
 ```text
@@ -65,7 +74,7 @@ Minutes (妙记) ← minute_token 标识
 └── MediaFile (音频/视频文件) → minutes +download
 ```
 
-> **能力边界**：`minutes` 负责 **搜索妙记、查看基础元信息、下载音视频文件**。
+> **能力边界**：`minutes` 负责 **搜索妙记、查看基础元信息、下载音视频文件、上传音视频生成妙记**。
 >
 > **路由规则**：
 >
@@ -78,6 +87,7 @@ Minutes (妙记) ← minute_token 标识
 > - 用户说"这个妙记的标题 / 时长 / 封面 / 链接" → `minutes minutes get`
 > - 用户说"下载这个妙记的视频 / 音频 / 媒体文件" → `minutes +download`
 > - 用户说"这个妙记的逐字稿 / 总结 / 待办 / 章节" → 使用 [vc +notes --minute-tokens](../lark-vc/references/lark-vc-notes.md)
+> - 用户说"通过文件生成妙记 / 把音视频转妙记" → 先上传获取 `file_token`，然后使用 `minutes +upload`
 
 ## Shortcuts（推荐优先使用）
 
@@ -87,9 +97,11 @@ Shortcut 是对常用操作的高级封装（`lark-cli minutes +<verb> [flags]`�
 | -------------------------------------------------- | --------------------------------------------------------------- |
 | [`+search`](references/lark-minutes-search.md)     | Search minutes by keyword, owners, participants, and time range |
 | [`+download`](references/lark-minutes-download.md) | Download audio/video media file of a minute                     |
+| [`+upload`](references/lark-minutes-upload.md)     | Upload a media file token to generate a minute                  |
 
 - 使用 `+search` 命令时，必须阅读 [references/lark-minutes-search.md](references/lark-minutes-search.md)，了解搜索参数和返回值结构。
 - 使用 `+download` 命令时，必须阅读 [references/lark-minutes-download.md](references/lark-minutes-download.md)，了解下载参数和返回值结构。
+- 使用 `+upload` 命令时，必须阅读 [references/lark-minutes-upload.md](references/lark-minutes-upload.md)，了解生成参数和返回值结构。
 
 <!-- AUTO-GENERATED-START — gen-skills.py 管理，勿手动编辑 -->
 
