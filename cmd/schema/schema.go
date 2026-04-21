@@ -375,7 +375,7 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	}
 	cmdutil.DisableAuthCheck(cmd)
 
-	cmd.ValidArgsFunction = completeSchemaPath
+	cmd.ValidArgsFunction = completeSchemaPath(f)
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json (default) | pretty")
 	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "pretty"}, cobra.ShellCompDirectiveNoFileComp
@@ -387,74 +387,81 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 // completeSchemaPath provides tab-completion for the schema path argument.
 // It handles dotted resource names (e.g. app.table.fields) by iterating all
 // resources and classifying each as a prefix-match or fully-matched.
-func completeSchemaPath(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
+func completeSchemaPath(f *cmdutil.Factory) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
 
-	parts := strings.Split(toComplete, ".")
+		parts := strings.Split(toComplete, ".")
 
-	// Level 1: complete service names
-	if len(parts) <= 1 {
-		var completions []string
-		for _, s := range registry.ListFromMetaProjects() {
-			if strings.HasPrefix(s, toComplete) {
-				completions = append(completions, s+".")
+		// Level 1: complete service names
+		if len(parts) <= 1 {
+			var completions []string
+			for _, s := range registry.ListFromMetaProjects() {
+				if strings.HasPrefix(s, toComplete) {
+					completions = append(completions, s+".")
+				}
+			}
+			return completions, cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveNoSpace
+		}
+
+		serviceName := parts[0]
+		spec := registry.LoadFromMeta(serviceName)
+		if spec == nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		mode := f.ResolveStrictMode(cmd.Context())
+		spec = filterSpecByStrictMode(spec, mode)
+		resources, _ := spec["resources"].(map[string]interface{})
+		if resources == nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		afterService := strings.Join(parts[1:], ".")
+		completions := completeSchemaPathForSpec(serviceName, resources, afterService)
+
+		allTrailingDot := len(completions) > 0
+		for _, c := range completions {
+			if !strings.HasSuffix(c, ".") {
+				allTrailingDot = false
+				break
 			}
 		}
-		return completions, cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveNoSpace
+		directive := cobra.ShellCompDirectiveNoFileComp
+		if allTrailingDot {
+			directive |= cobra.ShellCompDirectiveNoSpace
+		}
+		return completions, directive
 	}
+}
 
-	serviceName := parts[0]
-	spec := registry.LoadFromMeta(serviceName)
-	if spec == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	resources, _ := spec["resources"].(map[string]interface{})
-	if resources == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-
-	// afterService = everything user typed after "serviceName."
-	afterService := strings.Join(parts[1:], ".")
-
+func completeSchemaPathForSpec(serviceName string, resources map[string]interface{}, afterService string) []string {
 	var completions []string
 
 	for resName, resVal := range resources {
 		if strings.HasPrefix(resName, afterService) {
-			// afterService is a prefix of this resource name → resource candidate
 			completions = append(completions, serviceName+"."+resName+".")
-		} else if strings.HasPrefix(afterService, resName+".") {
-			// This resource is fully matched; remainder is method prefix
-			methodPrefix := afterService[len(resName)+1:]
-			resMap, _ := resVal.(map[string]interface{})
-			if resMap == nil {
-				continue
-			}
-			methods, _ := resMap["methods"].(map[string]interface{})
-			for methodName := range methods {
-				if strings.HasPrefix(methodName, methodPrefix) {
-					completions = append(completions, serviceName+"."+resName+"."+methodName)
-				}
+			continue
+		}
+		if !strings.HasPrefix(afterService, resName+".") {
+			continue
+		}
+		methodPrefix := afterService[len(resName)+1:]
+		resMap, _ := resVal.(map[string]interface{})
+		if resMap == nil {
+			continue
+		}
+		methods, _ := resMap["methods"].(map[string]interface{})
+		for methodName := range methods {
+			if strings.HasPrefix(methodName, methodPrefix) {
+				completions = append(completions, serviceName+"."+resName+"."+methodName)
 			}
 		}
 	}
 
 	sort.Strings(completions)
-
-	// If all completions end with ".", user is still navigating resources → NoSpace
-	allTrailingDot := len(completions) > 0
-	for _, c := range completions {
-		if !strings.HasSuffix(c, ".") {
-			allTrailingDot = false
-			break
-		}
-	}
-	directive := cobra.ShellCompDirectiveNoFileComp
-	if allTrailingDot {
-		directive |= cobra.ShellCompDirectiveNoSpace
-	}
-	return completions, directive
+	return completions
 }
 
 func schemaRun(opts *SchemaOptions) error {

@@ -182,3 +182,49 @@ func TestHasFileFields(t *testing.T) {
 		})
 	}
 }
+
+func TestCompleteSchemaPathForSpec(t *testing.T) {
+	resources := map[string]interface{}{
+		"records": map[string]interface{}{
+			"methods": map[string]interface{}{
+				"create": map[string]interface{}{},
+				"list":   map[string]interface{}{},
+			},
+		},
+		"record_permissions": map[string]interface{}{
+			"methods": map[string]interface{}{
+				"get": map[string]interface{}{},
+			},
+		},
+	}
+
+	got := completeSchemaPathForSpec("base", resources, "records.cr")
+	if len(got) != 1 || got[0] != "base.records.create" {
+		t.Fatalf("completions = %v, want [base.records.create]", got)
+	}
+
+	got = completeSchemaPathForSpec("base", resources, "record")
+	if len(got) != 2 || got[0] != "base.record_permissions." || got[1] != "base.records." {
+		t.Fatalf("resource completions = %v", got)
+	}
+}
+
+func TestFilterSpecByStrictMode_RemovesIncompatibleMethodsFromCompletionSource(t *testing.T) {
+	spec := map[string]interface{}{
+		"resources": map[string]interface{}{
+			"records": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"list":   map[string]interface{}{"accessTokens": []interface{}{"tenant"}},
+					"create": map[string]interface{}{"accessTokens": []interface{}{"user"}},
+				},
+			},
+		},
+	}
+
+	filtered := filterSpecByStrictMode(spec, core.StrictModeBot)
+	resources, _ := filtered["resources"].(map[string]interface{})
+	got := completeSchemaPathForSpec("base", resources, "records.")
+	if len(got) != 1 || got[0] != "base.records.list" {
+		t.Fatalf("filtered completions = %v, want [base.records.list]", got)
+	}
+}
