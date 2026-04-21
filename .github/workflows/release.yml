@@ -49,8 +49,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(node -p "require('./package.json').version.replace(/-.*$/, '')")
-          gh release download "v${VERSION}" --pattern checksums.txt --dir .
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          gh release download "${TAG}" --pattern checksums.txt --dir .
+          test -s checksums.txt || { echo "checksums.txt missing or empty for ${TAG}"; exit 1; }
 
       - name: Publish to npm
         env:
