@@ -132,7 +132,6 @@ lark-cli mail multi_entity search --as user --data '{"query":"<关键词>"}'
 | **转发** | `+forward` | `+forward --confirm-send` | `+forward --confirm-send --send-time <unix_timestamp>` |
 
 - 有原邮件上下文 → 用 `+reply` / `+reply-all` / `+forward`（默认即草稿），**不要用 `+draft-create`**
-<<<<<<< HEAD
 - **发送前必须向用户确认收件人和内容；如有必要，可引导用户去飞书邮件里打开草稿查看详情；用户明确同意后才可执行发送或使用 `--confirm-send`**
 - **发送后必须调用 `send_status` 确认投递状态**；定时发送（`--send-time`）在预定发送时间后再查询，取消定时发送用 `cancel_scheduled_send`（详见下方说明）
 
