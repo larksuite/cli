@@ -156,6 +156,11 @@ var MailForward = common.Shortcut{
 			}
 			processedBody := buildBodyDiv(body, bodyIsHTML(body))
 			origLargeAttCard := stripLargeAttachmentCard(&orig)
+			for id := range sourceMsg.FailedAttachmentIDs {
+				if updated, ok := draftpkg.RemoveLargeFileItemFromHTML(origLargeAttCard, id); ok {
+					origLargeAttCard = updated
+				}
+			}
 			forwardQuote := buildForwardQuoteHTML(&orig)
 			var srcCIDs []string
 			bld, srcCIDs, srcInlineBytes, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
@@ -199,7 +204,12 @@ var MailForward = common.Shortcut{
 		}
 		var origAtts []downloadedAtt
 		var largeAttIDs []largeAttID
+		var skippedAtts []string
 		for _, att := range sourceMsg.ForwardAttachments {
+			if sourceMsg.FailedAttachmentIDs[att.ID] {
+				skippedAtts = append(skippedAtts, att.Filename)
+				continue
+			}
 			if att.AttachmentType == attachmentTypeLarge {
 				largeAttIDs = append(largeAttIDs, largeAttID{ID: att.ID})
 				continue
@@ -213,6 +223,10 @@ var MailForward = common.Shortcut{
 				contentType = "application/octet-stream"
 			}
 			origAtts = append(origAtts, downloadedAtt{content, contentType, att.Filename})
+		}
+		if len(skippedAtts) > 0 {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: skipped %d invalid attachment(s): %s\n",
+				len(skippedAtts), strings.Join(skippedAtts, ", "))
 		}
 
 		// Classify ALL attachments (original + user-added) together so that

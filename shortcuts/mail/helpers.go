@@ -1356,9 +1356,10 @@ type inlineSourcePart struct {
 }
 
 type composeSourceMessage struct {
-	Original           originalMessage
-	ForwardAttachments []forwardSourceAttachment
-	InlineImages       []inlineSourcePart
+	Original            originalMessage
+	ForwardAttachments  []forwardSourceAttachment
+	InlineImages        []inlineSourcePart
+	FailedAttachmentIDs map[string]bool
 }
 
 // fetchComposeSourceMessage loads a message via the +message pipeline and converts it
@@ -1369,13 +1370,20 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 		return composeSourceMessage{}, err
 	}
 	attIDs := extractAttachmentIDs(msg)
-	urlMap, _ := fetchAttachmentURLs(runtime, mailboxID, messageID, attIDs)
+	urlMap, warnings := fetchAttachmentURLs(runtime, mailboxID, messageID, attIDs)
+	failedIDs := make(map[string]bool)
+	for _, w := range warnings {
+		if w.Code == "attachment_download_url_failed_id" && w.AttachmentID != "" {
+			failedIDs[w.AttachmentID] = true
+		}
+	}
 	out := buildMessageForCompose(msg, urlMap, true)
 	orig := toOriginalMessageForCompose(out)
 	return composeSourceMessage{
-		Original:           orig,
-		ForwardAttachments: toForwardSourceAttachments(out),
-		InlineImages:       toInlineSourceParts(out),
+		Original:            orig,
+		ForwardAttachments:  toForwardSourceAttachments(out),
+		InlineImages:        toInlineSourceParts(out),
+		FailedAttachmentIDs: failedIDs,
 	}, nil
 }
 
@@ -1385,6 +1393,9 @@ func validateForwardAttachmentURLs(src composeSourceMessage) error {
 	var missing []string
 	for _, att := range src.ForwardAttachments {
 		if att.AttachmentType == attachmentTypeLarge {
+			continue
+		}
+		if src.FailedAttachmentIDs[att.ID] {
 			continue
 		}
 		if att.DownloadURL == "" {

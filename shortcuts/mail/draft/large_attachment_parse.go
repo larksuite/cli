@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -330,7 +331,7 @@ func removeTokenFromHTMLBody(snapshot *DraftSnapshot, token string) error {
 		return nil
 	}
 	body := string(htmlPart.Body)
-	newBody, changed := removeLargeFileItemFromHTML(body, token)
+	newBody, changed := RemoveLargeFileItemFromHTML(body, token)
 	if !changed {
 		return nil
 	}
@@ -339,11 +340,12 @@ func removeTokenFromHTMLBody(snapshot *DraftSnapshot, token string) error {
 	return nil
 }
 
-// removeLargeFileItemFromHTML parses the HTML, finds the large-file-item
-// containing an <a> with data-mail-token == token, removes that item, and
-// if the enclosing large-file-area container becomes empty, removes the
-// container as well. Returns the updated HTML and a changed flag.
-func removeLargeFileItemFromHTML(htmlBody, token string) (string, bool) {
+// RemoveLargeFileItemFromHTML parses the HTML, finds the large-file-item
+// containing an <a> whose token matches (via data-mail-token attribute or
+// href URL token= parameter), removes that item, and if the enclosing
+// large-file-area container becomes empty, removes the container as well.
+// Returns the updated HTML and a changed flag.
+func RemoveLargeFileItemFromHTML(htmlBody, token string) (string, bool) {
 	doc, err := xhtml.Parse(strings.NewReader(htmlBody))
 	if err != nil {
 		return htmlBody, false
@@ -393,14 +395,30 @@ func itemContainsToken(item *xhtml.Node, token string) bool {
 		return false
 	}
 	for c := item.FirstChild; c != nil; c = c.NextSibling {
-		if c.Type == xhtml.ElementNode && c.Data == "a" && attr(c, LargeAttachmentTokenAttr) == token {
-			return true
+		if c.Type == xhtml.ElementNode && c.Data == "a" {
+			if attr(c, LargeAttachmentTokenAttr) == token {
+				return true
+			}
+			if hrefContainsToken(attr(c, "href"), token) {
+				return true
+			}
 		}
 		if itemContainsToken(c, token) {
 			return true
 		}
 	}
 	return false
+}
+
+func hrefContainsToken(href, token string) bool {
+	if href == "" || token == "" {
+		return false
+	}
+	u, err := url.Parse(href)
+	if err != nil {
+		return false
+	}
+	return u.Query().Get("token") == token
 }
 
 func isLargeFileAreaContainer(n *xhtml.Node) bool {
