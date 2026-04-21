@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
+	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
 
 func TestEstimateBase64EMLSize(t *testing.T) {
@@ -695,6 +696,527 @@ func TestInjectLargeAttachmentHTML_TwoInjectionsProduceSingleContainer(t *testin
 	}
 	if !strings.Contains(html, "new.txt") {
 		t.Error("missing filename new.txt")
+	}
+}
+
+func TestFlattenSnapshotParts(t *testing.T) {
+	t.Run("nil root", func(t *testing.T) {
+		got := flattenSnapshotParts(nil)
+		if len(got) != 0 {
+			t.Errorf("expected nil, got %d parts", len(got))
+		}
+	})
+	t.Run("single part", func(t *testing.T) {
+		root := &draftpkg.Part{MediaType: "text/html", Body: []byte("hello")}
+		got := flattenSnapshotParts(root)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 part, got %d", len(got))
+		}
+		if string(got[0].Body) != "hello" {
+			t.Errorf("got body %q", string(got[0].Body))
+		}
+	})
+	t.Run("nested multipart", func(t *testing.T) {
+		leaf1 := &draftpkg.Part{MediaType: "text/plain", Body: []byte("text")}
+		leaf2 := &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>html</p>")}
+		leaf3 := &draftpkg.Part{MediaType: "image/png", Body: []byte("png-data")}
+		mid := &draftpkg.Part{MediaType: "multipart/alternative", Children: []*draftpkg.Part{leaf1, leaf2}}
+		root := &draftpkg.Part{MediaType: "multipart/mixed", Children: []*draftpkg.Part{mid, leaf3}}
+		got := flattenSnapshotParts(root)
+		if len(got) != 5 {
+			t.Fatalf("expected 5 parts (root+mid+3 leaves), got %d", len(got))
+		}
+	})
+}
+
+func TestSnapshotEMLBaseSize(t *testing.T) {
+	t.Run("nil body", func(t *testing.T) {
+		snapshot := &draftpkg.DraftSnapshot{}
+		got := snapshotEMLBaseSize(snapshot)
+		if got != 2048 {
+			t.Errorf("expected 2048 (header overhead only), got %d", got)
+		}
+	})
+	t.Run("single text part", func(t *testing.T) {
+		body := make([]byte, 300)
+		snapshot := &draftpkg.DraftSnapshot{
+			Body: &draftpkg.Part{MediaType: "text/plain", Body: body},
+		}
+		got := snapshotEMLBaseSize(snapshot)
+		expected := int64(2048) + estimateBase64EMLSize(300)
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
+		}
+	})
+	t.Run("multipart with children", func(t *testing.T) {
+		textBody := make([]byte, 100)
+		htmlBody := make([]byte, 500)
+		snapshot := &draftpkg.DraftSnapshot{
+			Body: &draftpkg.Part{
+				MediaType: "multipart/alternative",
+				Children: []*draftpkg.Part{
+					{MediaType: "text/plain", Body: textBody},
+					{MediaType: "text/html", Body: htmlBody},
+				},
+			},
+		}
+		got := snapshotEMLBaseSize(snapshot)
+		expected := int64(2048) + estimateBase64EMLSize(0) + estimateBase64EMLSize(100) + estimateBase64EMLSize(500)
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
+		}
+	})
+}
+
+func TestEstimateEMLBaseSize(t *testing.T) {
+	chdirTemp(t)
+	fio := &localfileio.LocalFileIO{}
+
+	t.Run("no inline files", func(t *testing.T) {
+		got := estimateEMLBaseSize(fio, 1000, nil, 0)
+		expected := int64(2048) + estimateBase64EMLSize(1000)
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
+		}
+	})
+	t.Run("with inline files", func(t *testing.T) {
+		os.WriteFile("img.png", make([]byte, 5000), 0o644)
+		got := estimateEMLBaseSize(fio, 200, []string{"img.png"}, 0)
+		expected := int64(2048) + estimateBase64EMLSize(200) + estimateBase64EMLSize(5000)
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
+		}
+	})
+	t.Run("with extra bytes", func(t *testing.T) {
+		got := estimateEMLBaseSize(fio, 100, nil, 3000)
+		expected := int64(2048) + estimateBase64EMLSize(100) + 3000
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
+		}
+	})
+	t.Run("missing inline file ignored", func(t *testing.T) {
+		got := estimateEMLBaseSize(fio, 100, []string{"nonexistent.png"}, 0)
+		expected := int64(2048) + estimateBase64EMLSize(100)
+		if got != expected {
+			t.Errorf("expected %d (missing file should be skipped), got %d", expected, got)
+		}
+	})
+}
+
+func TestNormalizeLargeAttachmentHeader(t *testing.T) {
+	t.Run("no large attachment headers", func(t *testing.T) {
+		snapshot := &draftpkg.DraftSnapshot{
+			Headers: []draftpkg.Header{
+				{Name: "Subject", Value: "test"},
+			},
+		}
+		normalizeLargeAttachmentHeader(snapshot)
+		if len(snapshot.Headers) != 1 {
+			t.Errorf("headers should be unchanged, got %d", len(snapshot.Headers))
+		}
+	})
+	t.Run("server header converted to CLI format", func(t *testing.T) {
+		serverVal := encodeServerHeader([]map[string]interface{}{
+			{"file_key": "tok_a", "file_name": "a.pdf", "file_size": 1024},
+		})
+		snapshot := &draftpkg.DraftSnapshot{
+			Headers: []draftpkg.Header{
+				{Name: draftpkg.ServerLargeAttachmentHeader, Value: serverVal},
+			},
+		}
+		normalizeLargeAttachmentHeader(snapshot)
+
+		found := false
+		for _, h := range snapshot.Headers {
+			if h.Name == draftpkg.ServerLargeAttachmentHeader {
+				t.Error("server header should have been removed")
+			}
+			if h.Name == draftpkg.LargeAttachmentIDsHeader {
+				found = true
+				decoded, _ := base64.StdEncoding.DecodeString(h.Value)
+				var ids []largeAttID
+				json.Unmarshal(decoded, &ids)
+				if len(ids) != 1 || ids[0].ID != "tok_a" {
+					t.Errorf("expected [{id:tok_a}], got %+v", ids)
+				}
+			}
+		}
+		if !found {
+			t.Error("CLI-format header not created")
+		}
+	})
+	t.Run("CLI header takes precedence over server header", func(t *testing.T) {
+		serverVal := encodeServerHeader([]map[string]interface{}{
+			{"file_key": "tok_server"},
+		})
+		cliIDs, _ := json.Marshal([]largeAttID{{ID: "tok_cli"}})
+		cliVal := base64.StdEncoding.EncodeToString(cliIDs)
+		snapshot := &draftpkg.DraftSnapshot{
+			Headers: []draftpkg.Header{
+				{Name: draftpkg.LargeAttachmentIDsHeader, Value: cliVal},
+				{Name: draftpkg.ServerLargeAttachmentHeader, Value: serverVal},
+			},
+		}
+		normalizeLargeAttachmentHeader(snapshot)
+
+		for _, h := range snapshot.Headers {
+			if h.Name == draftpkg.ServerLargeAttachmentHeader {
+				t.Error("server header should have been removed")
+			}
+			if h.Name == draftpkg.LargeAttachmentIDsHeader {
+				if h.Value != cliVal {
+					t.Error("CLI header value should be preserved as-is")
+				}
+			}
+		}
+	})
+	t.Run("multiple server headers deduped", func(t *testing.T) {
+		val1 := encodeServerHeader([]map[string]interface{}{{"file_key": "tok_a"}})
+		val2 := encodeServerHeader([]map[string]interface{}{{"file_key": "tok_a"}, {"file_key": "tok_b"}})
+		snapshot := &draftpkg.DraftSnapshot{
+			Headers: []draftpkg.Header{
+				{Name: draftpkg.ServerLargeAttachmentHeader, Value: val1},
+				{Name: draftpkg.ServerLargeAttachmentHeader, Value: val2},
+			},
+		}
+		normalizeLargeAttachmentHeader(snapshot)
+
+		var cliHeader *draftpkg.Header
+		for i := range snapshot.Headers {
+			if snapshot.Headers[i].Name == draftpkg.LargeAttachmentIDsHeader {
+				cliHeader = &snapshot.Headers[i]
+			}
+			if snapshot.Headers[i].Name == draftpkg.ServerLargeAttachmentHeader {
+				t.Error("server header should have been removed")
+			}
+		}
+		if cliHeader == nil {
+			t.Fatal("CLI header not created")
+		}
+		decoded, _ := base64.StdEncoding.DecodeString(cliHeader.Value)
+		var ids []largeAttID
+		json.Unmarshal(decoded, &ids)
+		if len(ids) != 2 {
+			t.Errorf("expected 2 deduped tokens, got %d: %+v", len(ids), ids)
+		}
+	})
+}
+
+func TestInjectLargeAttachmentHTML_EmptyResults(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>hello</p>")},
+	}
+	original := string(snapshot.Body.Body)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", nil)
+	if string(snapshot.Body.Body) != original {
+		t.Error("empty results should not modify body")
+	}
+}
+
+func TestInjectLargeAttachmentHTML_NilBodyCreatesNew(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{}
+	results := []largeAttachmentResult{
+		{FileName: "file.txt", FileSize: 1024, FileToken: "tok_a"},
+	}
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", results)
+	if snapshot.Body == nil {
+		t.Fatal("should create body part")
+	}
+	if snapshot.Body.MediaType != "text/html" {
+		t.Errorf("MediaType = %q, want text/html", snapshot.Body.MediaType)
+	}
+	if !strings.Contains(string(snapshot.Body.Body), "tok_a") {
+		t.Error("body should contain the token")
+	}
+	if !snapshot.Body.Dirty {
+		t.Error("should mark part as dirty")
+	}
+}
+
+func TestInjectLargeAttachmentHTML_SkipsWhenNonNilBodyButNoHTMLPart(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{MediaType: "text/plain", Body: []byte("text only")},
+	}
+	original := string(snapshot.Body.Body)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn",
+		[]largeAttachmentResult{{FileName: "f.txt", FileSize: 100, FileToken: "tok"}})
+	if string(snapshot.Body.Body) != original {
+		t.Error("should not modify text/plain body when looking for HTML part")
+	}
+}
+
+func TestInjectLargeAttachmentText_EmptyNilBody(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>html</p>")},
+	}
+	original := string(snapshot.Body.Body)
+	injectLargeAttachmentTextIntoSnapshot(snapshot, "\nattachment\n")
+	if string(snapshot.Body.Body) != original {
+		t.Error("should not modify when text part not found but body exists")
+	}
+}
+
+func TestStatAttachmentFiles_EmptyAndWhitespace(t *testing.T) {
+	fio := &localfileio.LocalFileIO{}
+	files, err := statAttachmentFiles(fio, []string{"", "  ", ""})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected 0 files for empty/whitespace paths, got %d", len(files))
+	}
+}
+
+func TestStatAttachmentFiles_FileNotFound(t *testing.T) {
+	chdirTemp(t)
+	fio := &localfileio.LocalFileIO{}
+	_, err := statAttachmentFiles(fio, []string{"nonexistent.txt"})
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+	if !strings.Contains(err.Error(), "failed to stat") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildLargeAttachmentItems(t *testing.T) {
+	t.Run("empty results", func(t *testing.T) {
+		got := buildLargeAttachmentItems(core.BrandFeishu, "en_us", nil)
+		if got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+	t.Run("Chinese download text", func(t *testing.T) {
+		results := []largeAttachmentResult{
+			{FileName: "doc.pdf", FileSize: 1024, FileToken: "tok1"},
+		}
+		got := buildLargeAttachmentItems(core.BrandFeishu, "zh_cn", results)
+		if !strings.Contains(got, "下载") {
+			t.Error("should contain Chinese download text")
+		}
+		if !strings.Contains(got, iconCDNCN) {
+			t.Error("should use CN icon CDN for Feishu brand")
+		}
+	})
+	t.Run("English with Lark brand uses EN CDN", func(t *testing.T) {
+		results := []largeAttachmentResult{
+			{FileName: "doc.pdf", FileSize: 1024, FileToken: "tok1"},
+		}
+		got := buildLargeAttachmentItems(core.BrandLark, "en_us", results)
+		if !strings.Contains(got, "Download") {
+			t.Error("should contain English download text")
+		}
+		if !strings.Contains(got, iconCDNEN) {
+			t.Error("should use EN icon CDN for Lark brand")
+		}
+	})
+}
+
+func TestClassifyAttachments_EmptyFiles(t *testing.T) {
+	result := classifyAttachments(nil, 0)
+	if len(result.Normal) != 0 || len(result.Oversized) != 0 {
+		t.Errorf("expected empty result for nil files, got normal=%d oversized=%d",
+			len(result.Normal), len(result.Oversized))
+	}
+}
+
+func TestProcessLargeAttachments_AttachmentCountLimit(t *testing.T) {
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	bld := emlbuilder.New()
+	paths := make([]string, MaxAttachmentCount+1)
+	for i := range paths {
+		paths[i] = "file.txt"
+	}
+	_, err := processLargeAttachments(nil, rt, bld, "<p>body</p>", "", paths, 0, 0)
+	if err == nil || !strings.Contains(err.Error(), "exceeds the limit") {
+		t.Fatalf("expected count limit error, got %v", err)
+	}
+}
+
+func TestProcessLargeAttachments_ExtraAttachCountLimit(t *testing.T) {
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	bld := emlbuilder.New()
+	_, err := processLargeAttachments(nil, rt, bld, "<p>body</p>", "", []string{"a.txt"}, 0, MaxAttachmentCount)
+	if err == nil || !strings.Contains(err.Error(), "exceeds the limit") {
+		t.Fatalf("expected count limit error, got %v", err)
+	}
+}
+
+func TestProcessLargeAttachments_FileStatError(t *testing.T) {
+	chdirTemp(t)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	bld := emlbuilder.New()
+	_, err := processLargeAttachments(nil, rt, bld, "<p>body</p>", "", []string{"nonexistent.pdf"}, 0, 0)
+	if err == nil || !strings.Contains(err.Error(), "stat") {
+		t.Fatalf("expected stat error, got %v", err)
+	}
+}
+
+func TestProcessLargeAttachments_AllFitNormal(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("small.txt", make([]byte, 1024), 0o644)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	bld := emlbuilder.New().WithFileIO(rt.FileIO())
+	result, err := processLargeAttachments(nil, rt, bld, "<p>body</p>", "", []string{"small.txt"}, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = result
+}
+
+func TestProcessLargeAttachments_OversizedEmptyBody(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("huge.zip", make([]byte, 100), 0o644)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	bld := emlbuilder.New().WithFileIO(rt.FileIO())
+	_, err := processLargeAttachments(nil, rt, bld, "", "", []string{"huge.zip"}, emlbuilder.MaxEMLSize, 0)
+	if err == nil || !strings.Contains(err.Error(), "require a body") {
+		t.Fatalf("expected empty body error, got %v", err)
+	}
+}
+
+func TestProcessLargeAttachments_OversizedNoIdentity(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("huge.zip", make([]byte, 100), 0o644)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	bld := emlbuilder.New().WithFileIO(rt.FileIO())
+	_, err := processLargeAttachments(nil, rt, bld, "<p>body</p>", "", []string{"huge.zip"}, emlbuilder.MaxEMLSize, 0)
+	if err == nil || !strings.Contains(err.Error(), "user identity") {
+		t.Fatalf("expected user identity error, got %v", err)
+	}
+}
+
+func TestPreprocessLargeAttachments_NoAddAttachmentOps(t *testing.T) {
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>hello</p>")},
+	}
+	patch := draftpkg.Patch{
+		Ops: []draftpkg.PatchOp{
+			{Op: "set_subject", Value: "test"},
+		},
+	}
+	result, err := preprocessLargeAttachmentsForDraftEdit(nil, rt, snapshot, patch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Ops) != 1 || result.Ops[0].Op != "set_subject" {
+		t.Errorf("expected patch to pass through unchanged, got %+v", result.Ops)
+	}
+}
+
+func TestPreprocessLargeAttachments_AllFitReturnsUnchanged(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("small.pdf", make([]byte, 1024), 0o644)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>hello</p>")},
+	}
+	patch := draftpkg.Patch{
+		Ops: []draftpkg.PatchOp{
+			{Op: "add_attachment", Path: "small.pdf"},
+			{Op: "set_subject", Value: "test"},
+		},
+	}
+	result, err := preprocessLargeAttachmentsForDraftEdit(nil, rt, snapshot, patch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Ops) != 2 {
+		t.Errorf("expected 2 ops (all fit, nothing removed), got %d", len(result.Ops))
+	}
+}
+
+func TestPreprocessLargeAttachments_StatError(t *testing.T) {
+	chdirTemp(t)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>hello</p>")},
+	}
+	patch := draftpkg.Patch{
+		Ops: []draftpkg.PatchOp{
+			{Op: "add_attachment", Path: "nonexistent.pdf"},
+		},
+	}
+	_, err := preprocessLargeAttachmentsForDraftEdit(nil, rt, snapshot, patch)
+	if err == nil || !strings.Contains(err.Error(), "stat") {
+		t.Fatalf("expected stat error, got %v", err)
+	}
+}
+
+func TestPreprocessLargeAttachments_OversizedEmptyBody(t *testing.T) {
+	chdirTemp(t)
+	// Create a file large enough that when base64-encoded it exceeds MaxEMLSize - header overhead
+	fileSize := emlbuilder.MaxEMLSize // guaranteed to overflow
+	os.WriteFile("big.zip", make([]byte, fileSize), 0o644)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	// Empty snapshot has no HTML or text body part
+	snapshot := &draftpkg.DraftSnapshot{}
+	patch := draftpkg.Patch{
+		Ops: []draftpkg.PatchOp{
+			{Op: "add_attachment", Path: "big.zip"},
+		},
+	}
+	_, err := preprocessLargeAttachmentsForDraftEdit(nil, rt, snapshot, patch)
+	if err == nil || !strings.Contains(err.Error(), "require a body") {
+		t.Fatalf("expected empty body error, got %v", err)
+	}
+}
+
+func TestPreprocessLargeAttachments_OversizedNoIdentity(t *testing.T) {
+	chdirTemp(t)
+	os.WriteFile("big.zip", make([]byte, 100), 0o644)
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	// Create a snapshot whose EML base is already at the limit
+	snapshot := &draftpkg.DraftSnapshot{
+		Body: &draftpkg.Part{
+			MediaType: "multipart/mixed",
+			Children: []*draftpkg.Part{
+				{MediaType: "text/html", Body: make([]byte, emlbuilder.MaxEMLSize)},
+			},
+		},
+	}
+	patch := draftpkg.Patch{
+		Ops: []draftpkg.PatchOp{
+			{Op: "add_attachment", Path: "big.zip"},
+		},
+	}
+	_, err := preprocessLargeAttachmentsForDraftEdit(nil, rt, snapshot, patch)
+	if err == nil || !strings.Contains(err.Error(), "user identity") {
+		t.Fatalf("expected user identity error, got %v", err)
+	}
+}
+
+func TestPreprocessLargeAttachments_NormalizesHeaders(t *testing.T) {
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, nil)
+	serverVal := encodeServerHeader([]map[string]interface{}{
+		{"file_key": "tok_old", "file_name": "old.pdf", "file_size": 1024},
+	})
+	snapshot := &draftpkg.DraftSnapshot{
+		Headers: []draftpkg.Header{
+			{Name: draftpkg.ServerLargeAttachmentHeader, Value: serverVal},
+		},
+		Body: &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>hello</p>")},
+	}
+	patch := draftpkg.Patch{} // no add_attachment ops
+	_, err := preprocessLargeAttachmentsForDraftEdit(nil, rt, snapshot, patch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// After processing, server header should be normalized to CLI format
+	for _, h := range snapshot.Headers {
+		if h.Name == draftpkg.ServerLargeAttachmentHeader {
+			t.Error("server header should have been normalized away")
+		}
+	}
+	found := false
+	for _, h := range snapshot.Headers {
+		if h.Name == draftpkg.LargeAttachmentIDsHeader {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("CLI-format header should have been created")
 	}
 }
 
