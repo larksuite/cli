@@ -155,15 +155,7 @@ var MailForward = common.Shortcut{
 				return fmt.Errorf("forward blocked: %w", err)
 			}
 			processedBody := buildBodyDiv(body, bodyIsHTML(body))
-			// Extract large attachment card from the original body so it
-			// appears in the main body area rather than inside the quote,
-			// matching the desktop client behavior.
-			origLargeAttCard := ""
-			if draftpkg.HTMLContainsLargeAttachment(orig.bodyRaw) {
-				bodyWithout, card, trailing := draftpkg.SplitAtLargeAttachment(orig.bodyRaw)
-				origLargeAttCard = card
-				orig.bodyRaw = bodyWithout + trailing
-			}
+			origLargeAttCard := stripLargeAttachmentCard(&orig)
 			forwardQuote := buildForwardQuoteHTML(&orig)
 			var srcCIDs []string
 			bld, srcCIDs, srcInlineBytes, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)

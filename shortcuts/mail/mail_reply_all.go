@@ -104,6 +104,7 @@ var MailReplyAll = common.Shortcut{
 			return fmt.Errorf("failed to fetch original message: %w", err)
 		}
 		orig := sourceMsg.Original
+		stripLargeAttachmentCard(&orig)
 
 		senderEmail := resolveComposeSenderEmail(runtime)
 		if senderEmail == "" {
