@@ -63,13 +63,14 @@ func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	if _, ok := got["recall_status"].(map[string]interface{}); !ok {
 		t.Fatalf("recall_status missing or wrong type: %#v", got["recall_status"])
 	}
-	if automation, ok := got["automation_send_disable"].(map[string]interface{}); !ok {
-		t.Fatalf("automation_send_disable missing or wrong type: %#v", got["automation_send_disable"])
-	} else if automation["reason"] != "Automation send is disabled by your mailbox setting" {
-		t.Fatalf("automation_send_disable.reason = %v", automation["reason"])
+	if _, ok := got["automation_send_disable"]; ok {
+		t.Fatalf("automation_send_disable should be omitted, got %#v", got["automation_send_disable"])
 	}
 	if got["automation_send_disable_reason"] != "Automation send is disabled by your mailbox setting" {
 		t.Fatalf("automation_send_disable_reason = %v", got["automation_send_disable_reason"])
+	}
+	if got["automation_send_disable_reference"] != "https://open.larksuite.com/mail/settings/automation" {
+		t.Fatalf("automation_send_disable_reference = %v", got["automation_send_disable_reference"])
 	}
 }
 
@@ -131,15 +132,14 @@ func TestMailSendConfirmSendOutputsAutomationDisable(t *testing.T) {
 	if data["thread_id"] != "thread_001" {
 		t.Fatalf("thread_id = %v", data["thread_id"])
 	}
-	automation, ok := data["automation_send_disable"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("automation_send_disable missing or wrong type: %#v", data["automation_send_disable"])
-	}
-	if automation["reason"] != "Automation send is disabled by your mailbox setting" {
-		t.Fatalf("automation_send_disable.reason = %v", automation["reason"])
+	if _, ok := data["automation_send_disable"]; ok {
+		t.Fatalf("automation_send_disable should be omitted, got %#v", data["automation_send_disable"])
 	}
 	if data["automation_send_disable_reason"] != "Automation send is disabled by your mailbox setting" {
 		t.Fatalf("automation_send_disable_reason = %v", data["automation_send_disable_reason"])
+	}
+	if data["automation_send_disable_reference"] != "https://open.larksuite.com/mail/settings/automation" {
+		t.Fatalf("automation_send_disable_reference = %v", data["automation_send_disable_reference"])
 	}
 }
 

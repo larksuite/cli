@@ -261,6 +261,12 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 }
 ```
 
+可选字段：
+
+- `reference`：草稿打开链接。**仅在当前编辑链路实际返回时才会出现**。
+
+如果更新结果里带有 `reference`，应把草稿打开链接与 `draft_id` 一起返回给用户；如果当前没有链接，则静默处理。
+
 ## 典型场景
 
 ### 获取草稿 → 编辑 → 发送

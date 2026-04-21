@@ -104,10 +104,19 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
   "ok": true,
   "data": {
     "message_id": "邮件ID",
-    "thread_id":  "会话ID"
+    "thread_id": "会话ID"
   }
 }
 ```
+
+可选字段：
+
+- `automation_send_disable_reason`：发送被邮箱自动化设置拦截时返回的原因
+- `automation_send_disable_reference`：发送被拦截时的草稿打开链接
+
+字段语义：
+
+- 若返回中包含 `automation_send_disable_reason` / `automation_send_disable_reference`，说明邮件未真正发出，而是被邮箱设置拦截。此时应直接向用户展示原因和草稿打开链接，不要继续假设已经发送成功
 
 ## 典型场景
 
@@ -153,9 +162,13 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 
 ## 发送后跟进
 
+邮件发送后，分两种情况处理：
+
+- 若返回中有 `automation_send_disable_reason` / `automation_send_disable_reference`：说明发送被邮箱设置拦截，应直接告诉用户原因并提供草稿打开链接，**不要**调用 `send_status`
+
 ### 立即发送（无 `--send-time`）
 
-邮件发送成功后（收到 `message_id`），**必须**调用 `send_status` 查询投递状态：
+若返回非空 `message_id`，调用：
 
 ```bash
 lark-cli mail user_mailbox.messages send_status --params '{"user_mailbox_id":"me","message_id":"<发送返回的 message_id>"}'

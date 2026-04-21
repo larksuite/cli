@@ -70,7 +70,11 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 }
 ```
 
-当前常见返回至少应关注创建链路本身返回的信息；不要把 `user_mailbox.drafts get` 视为打开链接来源。如果创建结果里带有 `draft_url` / `open_url` 等字段，应把链接和 `draft_id` 一起返回给用户；如果当前没有链接，则静默处理。
+可选字段：
+
+- `reference`：草稿打开链接。**仅在当前创建链路实际返回时才会出现**。
+
+如果创建结果里带有 `reference`，应把草稿打开链接与 `draft_id` 一起返回给用户；如果当前没有链接，则静默处理。
 
 ## 典型场景
 
