@@ -87,9 +87,29 @@ function install() {
   }
 }
 
-// Stub exports — implementations added in subsequent tasks
 function getExpectedChecksum(archiveName, checksumsDir) {
-  return null;
+  const dir = checksumsDir || path.join(__dirname, "..");
+  const checksumsPath = path.join(dir, "checksums.txt");
+
+  if (!fs.existsSync(checksumsPath)) {
+    console.error(
+      "[WARN] checksums.txt not found, skipping checksum verification"
+    );
+    return null;
+  }
+
+  const content = fs.readFileSync(checksumsPath, "utf8");
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf("  ");
+    if (idx === -1) continue;
+    const hash = trimmed.slice(0, idx);
+    const name = trimmed.slice(idx + 2);
+    if (name === archiveName) return hash;
+  }
+
+  throw new Error(`Checksum entry not found for ${archiveName}`);
 }
 
 function verifyChecksum(archivePath, expectedHash) {
