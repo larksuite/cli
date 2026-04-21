@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -196,5 +197,52 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 
 	if strings.Contains(eml, "cid:") {
 		t.Fatal("plain-text mode should not resolve local images")
+	}
+}
+
+func TestMailDraftCreatePrettyOutputsReference(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/profile",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"primary_email_address": "me@example.com",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"draft_id":  "draft_001",
+				"reference": "https://www.feishu.cn/mail?draftId=draft_001",
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailDraftCreate, []string{
+		"+draft-create",
+		"--subject", "hello",
+		"--body", "world",
+		"--format", "pretty",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("draft create failed: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "Draft created.") {
+		t.Fatalf("expected pretty output header, got: %s", out)
+	}
+	if !strings.Contains(out, "draft_id: draft_001") {
+		t.Fatalf("expected draft_id in pretty output, got: %s", out)
+	}
+	if !strings.Contains(out, "reference: https://www.feishu.cn/mail?draftId=draft_001") {
+		t.Fatalf("expected reference in pretty output, got: %s", out)
 	}
 }

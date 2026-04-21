@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/httpmock"
+	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
 
 func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
@@ -43,6 +44,61 @@ func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	}
 	if got["automation_send_disable_reference"] != "https://open.larksuite.com/mail/settings/automation" {
 		t.Fatalf("automation_send_disable_reference = %v", got["automation_send_disable_reference"])
+	}
+}
+
+func TestBuildDraftSendOutputOmitsOptionalFieldsWhenUnavailable(t *testing.T) {
+	got := buildDraftSendOutput(map[string]interface{}{
+		"message_id": "msg_002",
+		"thread_id":  "thread_002",
+	}, "me")
+
+	if got["message_id"] != "msg_002" {
+		t.Fatalf("message_id = %v", got["message_id"])
+	}
+	if got["thread_id"] != "thread_002" {
+		t.Fatalf("thread_id = %v", got["thread_id"])
+	}
+	if _, ok := got["recall_available"]; ok {
+		t.Fatalf("recall_available should be omitted, got %#v", got["recall_available"])
+	}
+	if _, ok := got["recall_tip"]; ok {
+		t.Fatalf("recall_tip should be omitted, got %#v", got["recall_tip"])
+	}
+	if _, ok := got["automation_send_disable_reason"]; ok {
+		t.Fatalf("automation_send_disable_reason should be omitted, got %#v", got["automation_send_disable_reason"])
+	}
+	if _, ok := got["automation_send_disable_reference"]; ok {
+		t.Fatalf("automation_send_disable_reference should be omitted, got %#v", got["automation_send_disable_reference"])
+	}
+}
+
+func TestBuildDraftSavedOutputIncludesReferenceOnlyWhenPresent(t *testing.T) {
+	withReference := buildDraftSavedOutput(draftpkg.DraftResult{
+		DraftID:   "draft_001",
+		Reference: "https://www.feishu.cn/mail?draftId=draft_001",
+	}, "me")
+	if withReference["draft_id"] != "draft_001" {
+		t.Fatalf("draft_id = %v", withReference["draft_id"])
+	}
+	if withReference["reference"] != "https://www.feishu.cn/mail?draftId=draft_001" {
+		t.Fatalf("reference = %v", withReference["reference"])
+	}
+	if withReference["tip"] == "" {
+		t.Fatalf("tip should be populated")
+	}
+
+	withoutReference := buildDraftSavedOutput(draftpkg.DraftResult{
+		DraftID: "draft_002",
+	}, "me")
+	if withoutReference["draft_id"] != "draft_002" {
+		t.Fatalf("draft_id = %v", withoutReference["draft_id"])
+	}
+	if _, ok := withoutReference["reference"]; ok {
+		t.Fatalf("reference should be omitted, got %#v", withoutReference["reference"])
+	}
+	if withoutReference["tip"] == "" {
+		t.Fatalf("tip should be populated")
 	}
 }
 
