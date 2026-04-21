@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -1190,4 +1192,71 @@ func TestBuildMessageForCompose_InlineNoCID_ClassifiedAsAttachment(t *testing.T)
 	if ids[0] != "att2" || ids[1] != "att3" {
 		t.Errorf("expected attachments [att2, att3], got %v", ids)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// validateComposeInlineAndAttachments
+// ---------------------------------------------------------------------------
+
+func TestValidateComposeInlineAndAttachments(t *testing.T) {
+	chdirTemp(t)
+	fio := &localfileio.LocalFileIO{}
+
+	t.Run("empty flags pass", func(t *testing.T) {
+		if err := validateComposeInlineAndAttachments(fio, "", "", false, ""); err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("inline with plain-text rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, true, "")
+		if err == nil || !strings.Contains(err.Error(), "--plain-text") {
+			t.Fatalf("expected plain-text rejection, got %v", err)
+		}
+	})
+
+	t.Run("inline with non-HTML body rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, false, "plain text body")
+		if err == nil || !strings.Contains(err.Error(), "HTML body") {
+			t.Fatalf("expected HTML body rejection, got %v", err)
+		}
+	})
+
+	t.Run("inline with HTML body passes format check", func(t *testing.T) {
+		os.WriteFile("img.png", []byte("png"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, false, "<p>hello</p>")
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("attach missing file rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "nonexistent.pdf", "", false, "")
+		if err == nil || !strings.Contains(err.Error(), "stat") {
+			t.Fatalf("expected stat error for missing file, got %v", err)
+		}
+	})
+
+	t.Run("attach blocked extension rejected", func(t *testing.T) {
+		os.WriteFile("malware.exe", []byte("bad"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "malware.exe", "", false, "")
+		if err == nil || !strings.Contains(err.Error(), "not allowed") {
+			t.Fatalf("expected blocked extension error, got %v", err)
+		}
+	})
+
+	t.Run("attach valid file passes", func(t *testing.T) {
+		os.WriteFile("report.pdf", []byte("pdf content"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "report.pdf", "", false, "")
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("invalid inline JSON rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", "not-json", false, "")
+		if err == nil {
+			t.Fatal("expected error for invalid inline JSON")
+		}
+	})
 }

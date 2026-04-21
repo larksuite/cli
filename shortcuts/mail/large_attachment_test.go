@@ -697,3 +697,40 @@ func TestInjectLargeAttachmentHTML_TwoInjectionsProduceSingleContainer(t *testin
 		t.Error("missing filename new.txt")
 	}
 }
+
+func TestFileTypeIcon(t *testing.T) {
+	cases := []struct {
+		filename string
+		want     string
+	}{
+		{"report.pdf", "icon_file_pdf.png"},
+		{"doc.docx", "icon_file_doc.png"},
+		{"slides.pptx", "icon_file_ppt.png"},
+		{"data.xlsx", "icon_file_excel.png"},
+		{"archive.zip", "icon_file_zip.png"},
+		{"archive.7z", "icon_file_zip.png"},
+		{"photo.png", "icon_file_image.png"},
+		{"photo.JPEG", "icon_file_image.png"},
+		{"video.mp4", "icon_file_video.png"},
+		{"song.mp3", "icon_file_audio.png"},
+		{"notes.txt", "icon_file_doc.png"},
+		{"mail.eml", "icon_file_eml.png"},
+		{"app.apk", "icon_file_android.png"},
+		{"design.psd", "icon_file_ps.png"},
+		{"logo.ai", "icon_file_ai.png"},
+		{"mockup.sketch", "icon_file_sketch.png"},
+		{"deck.key", "icon_file_keynote.png"},
+		{"budget.numbers", "icon_file_numbers.png"},
+		{"letter.pages", "icon_file_pages.png"},
+		{"random.xyz", "icon_file_unknow.png"},
+		{"noext", "icon_file_unknow.png"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.filename, func(t *testing.T) {
+			got := fileTypeIcon(tc.filename)
+			if got != tc.want {
+				t.Errorf("fileTypeIcon(%q) = %q, want %q", tc.filename, got, tc.want)
+			}
+		})
+	}
+}
