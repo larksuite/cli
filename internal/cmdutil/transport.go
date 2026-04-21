@@ -72,6 +72,24 @@ func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return util.FallbackTransport().RoundTrip(req)
 }
 
+// BuildHeaderTransport is an http.RoundTripper that force-writes the
+// X-Cli-Build header before every request. Used in the SDK transport chain,
+// where SecurityHeaderTransport is not installed, to prevent extensions from
+// tampering with the build classification. The direct HTTP chain is already
+// covered by SecurityHeaderTransport iterating BaseSecurityHeaders.
+type BuildHeaderTransport struct {
+	Base http.RoundTripper
+}
+
+func (t *BuildHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set(HeaderBuild, DetectBuildKind())
+	if t.Base != nil {
+		return t.Base.RoundTrip(req)
+	}
+	return util.FallbackTransport().RoundTrip(req)
+}
+
 // SecurityHeaderTransport is an http.RoundTripper that injects CLI security
 // headers into every request. Shortcut headers are read from the request context.
 type SecurityHeaderTransport struct {

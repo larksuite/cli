@@ -132,6 +132,7 @@ func buildSDKTransport() http.RoundTripper {
 	var sdkTransport http.RoundTripper = util.SharedTransport()
 	sdkTransport = &RetryTransport{Base: sdkTransport}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
+	sdkTransport = &BuildHeaderTransport{Base: sdkTransport}
 	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
 	return wrapWithExtension(sdkTransport)
 }

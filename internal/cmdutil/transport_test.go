@@ -97,13 +97,18 @@ func TestRetryTransport_DefaultNoRetry(t *testing.T) {
 func TestBuildSDKTransport_IncludesRetryTransport(t *testing.T) {
 	transport := buildSDKTransport()
 
+	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
 	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
 	if !ok {
 		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
 	}
-	ua, ok := sec.Base.(*UserAgentTransport)
+	bh, ok := sec.Base.(*BuildHeaderTransport)
 	if !ok {
-		t.Fatalf("middle transport type = %T, want *UserAgentTransport", sec.Base)
+		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
+	}
+	ua, ok := bh.Base.(*UserAgentTransport)
+	if !ok {
+		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
 	}
 	if _, ok := ua.Base.(*RetryTransport); !ok {
 		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
@@ -116,7 +121,7 @@ func TestBuildSDKTransport_WithExtension(t *testing.T) {
 
 	transport := buildSDKTransport()
 
-	// Chain: extensionMiddleware → SecurityPolicy → UserAgent → Retry → Base
+	// Chain: extensionMiddleware → SecurityPolicy → BuildHeader → UserAgent → Retry → Base
 	mid, ok := transport.(*extensionMiddleware)
 	if !ok {
 		t.Fatalf("outer transport type = %T, want *extensionMiddleware", transport)
@@ -125,9 +130,13 @@ func TestBuildSDKTransport_WithExtension(t *testing.T) {
 	if !ok {
 		t.Fatalf("transport type = %T, want *auth.SecurityPolicyTransport", mid.Base)
 	}
-	ua, ok := sec.Base.(*UserAgentTransport)
+	bh, ok := sec.Base.(*BuildHeaderTransport)
 	if !ok {
-		t.Fatalf("transport type = %T, want *UserAgentTransport", sec.Base)
+		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
+	}
+	ua, ok := bh.Base.(*UserAgentTransport)
+	if !ok {
+		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
 	}
 	if _, ok := ua.Base.(*RetryTransport); !ok {
 		t.Fatalf("innermost transport type = %T, want *RetryTransport", ua.Base)
@@ -139,13 +148,18 @@ func TestBuildSDKTransport_WithoutExtension(t *testing.T) {
 
 	transport := buildSDKTransport()
 
+	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
 	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
 	if !ok {
 		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
 	}
-	ua, ok := sec.Base.(*UserAgentTransport)
+	bh, ok := sec.Base.(*BuildHeaderTransport)
 	if !ok {
-		t.Fatalf("middle transport type = %T, want *UserAgentTransport", sec.Base)
+		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
+	}
+	ua, ok := bh.Base.(*UserAgentTransport)
+	if !ok {
+		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
 	}
 	if _, ok := ua.Base.(*RetryTransport); !ok {
 		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
@@ -233,6 +247,86 @@ func TestExtensionInterceptor_ExecutionOrder(t *testing.T) {
 	// Security header overridden by extension is restored by SecurityHeaderTransport
 	if got := receivedHeaders.Get(HeaderSource); got != SourceValue {
 		t.Fatalf("%s = %q, want %q (built-in should override extension)", HeaderSource, got, SourceValue)
+	}
+}
+
+// buildTamperingInterceptor tries to delete and spoof X-Cli-Build via
+// PreRoundTrip. The SDK chain's BuildHeaderTransport must restore the real
+// value before the request leaves the process.
+type buildTamperingInterceptor struct{}
+
+func (buildTamperingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	req.Header.Del(HeaderBuild)
+	req.Header.Set(HeaderBuild, "ext-tampered-build")
+	return nil
+}
+
+// TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader verifies that the
+// X-Cli-Build header is force-written by BuildHeaderTransport in the SDK
+// transport chain, even when an extension tries to delete or spoof it. This
+// closes the gap where the SDK chain had no equivalent of
+// SecurityHeaderTransport (see design doc §3.3.3).
+func TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader(t *testing.T) {
+	var receivedBuild string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedBuild = r.Header.Get(HeaderBuild)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	exttransport.Register(&stubTransportProvider{interceptor: buildTamperingInterceptor{}})
+	t.Cleanup(func() { exttransport.Register(nil) })
+
+	// Replicate the SDK chain layering used by buildSDKTransport.
+	var base http.RoundTripper = http.DefaultTransport
+	base = &RetryTransport{Base: base}
+	base = &UserAgentTransport{Base: base}
+	base = &BuildHeaderTransport{Base: base}
+	transport := wrapWithExtension(base)
+	client := &http.Client{Transport: transport}
+
+	req, _ := http.NewRequest("GET", srv.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	if receivedBuild == "ext-tampered-build" {
+		t.Fatalf("%s = %q, extension tampering leaked to network", HeaderBuild, receivedBuild)
+	}
+	want := DetectBuildKind()
+	if receivedBuild != want {
+		t.Fatalf("%s = %q, want %q", HeaderBuild, receivedBuild, want)
+	}
+}
+
+// TestBuildHeaderTransport_OverridesEvenWithoutTamper verifies that even if
+// no extension is registered, BuildHeaderTransport writes X-Cli-Build.
+func TestBuildHeaderTransport_OverridesEvenWithoutTamper(t *testing.T) {
+	var receivedBuild string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedBuild = r.Header.Get(HeaderBuild)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	transport := &BuildHeaderTransport{Base: http.DefaultTransport}
+	client := &http.Client{Transport: transport}
+
+	req, _ := http.NewRequest("GET", srv.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	if receivedBuild == "" {
+		t.Fatalf("%s header missing, BuildHeaderTransport did not inject", HeaderBuild)
+	}
+	want := DetectBuildKind()
+	if receivedBuild != want {
+		t.Fatalf("%s = %q, want %q", HeaderBuild, receivedBuild, want)
 	}
 }
 
