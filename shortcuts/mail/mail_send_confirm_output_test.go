@@ -11,8 +11,8 @@ import (
 
 func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {
 	got := buildDraftSendOutput(map[string]interface{}{
-		"message_id": "msg_001",
-		"thread_id":  "thread_001",
+		"message_id":    "msg_001",
+		"thread_id":     "thread_001",
 		"recall_status": "available",
 		"automation_send_disable": map[string]interface{}{
 			"reason":    "Automation send is disabled by your mailbox setting",
