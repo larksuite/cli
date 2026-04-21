@@ -4,9 +4,11 @@
 package doc
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -195,6 +197,60 @@ func TestReBase64DataURI_URLSafeMatch(t *testing.T) {
 func TestReBase64DataURI_NoMatch(t *testing.T) {
 	if reBase64DataURI.Match([]byte("no image here")) {
 		t.Error("expected no match for plain text")
+	}
+}
+
+// TestReBase64DataURI_LineWrapped exercises the common real-world case where
+// HTML or RTF clipboards fold a base64 payload at 76 chars (standard MIME
+// line wrapping). The regex must capture whitespace inside the payload so
+// strings.Fields can strip it before base64 decoding; otherwise the match is
+// truncated at the first newline and the decoded prefix happens to pass
+// hasKnownImageMagic (since PNG magic is just 8 bytes), silently uploading a
+// corrupt payload.
+func TestReBase64DataURI_LineWrapped(t *testing.T) {
+	// Build a deterministic payload larger than one wrap line so we force a
+	// fold. The exact bytes don't matter; the full round-trip does.
+	payload := make([]byte, 180)
+	for i := range payload {
+		payload[i] = byte(i * 7)
+	}
+	b64 := base64.StdEncoding.EncodeToString(payload)
+
+	// Insert realistic folding: a mix of \n, \r\n, and \t within a single
+	// payload, to catch regressions regardless of the clipboard source
+	// (HTML tends to use \n; RTF \par wraps use \r\n; some editors indent).
+	if len(b64) < 120 {
+		t.Fatalf("test payload too small for folding: len=%d", len(b64))
+	}
+	wrapped := b64[:40] + "\n   " + b64[40:80] + "\r\n\t" + b64[80:]
+	html := `<img src="data:image/png;base64,` + wrapped + `">`
+
+	m := reBase64DataURI.FindSubmatch([]byte(html))
+	if m == nil {
+		t.Fatal("expected regex to match line-wrapped base64 payload")
+	}
+	if string(m[1]) != "image/png" {
+		t.Errorf("mime type = %q, want %q", m[1], "image/png")
+	}
+
+	// The whole point of extending the character class: the downstream
+	// Fields strip must see the folding and normalise it away.
+	normalized := strings.Join(strings.Fields(string(m[2])), "")
+	if normalized != b64 {
+		t.Fatalf("normalized payload mismatch\n got: %q\nwant: %q", normalized, b64)
+	}
+	got, err := base64.StdEncoding.DecodeString(normalized)
+	if err != nil {
+		t.Fatalf("decode after normalisation failed: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Error("decoded bytes differ from original payload — truncation regression")
+	}
+
+	// The match must still stop at the URI boundary; extending the class
+	// with \s should not let the capture run off the end of the attribute.
+	if strings.Contains(string(m[0]), `">`) {
+		t.Errorf("regex captured past the URI terminator: %q", m[0])
 	}
 }
 

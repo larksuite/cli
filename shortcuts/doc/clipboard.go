@@ -48,8 +48,13 @@ func readClipboardImageBytes() ([]byte, error) {
 
 // reBase64DataURI matches a data URI image embedded in clipboard text content,
 // e.g. data:image/jpeg;base64,/9j/4AAQ...
-// The character class covers both standard (+/) and URL-safe (-_) base64 alphabets.
-var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+/\-_]+=*)`)
+// The character class covers both standard (+/) and URL-safe (-_) base64
+// alphabets, plus ASCII whitespace: HTML and RTF clipboard payloads commonly
+// fold long base64 at 76 chars (standard MIME folding), so whitespace must be
+// captured as part of the payload for the downstream strings.Fields strip to
+// actually have something to normalise. Terminators like ", <, ), ; remain
+// outside the class so the match still ends at the URI boundary.
+var reBase64DataURI = regexp.MustCompile(`data:(image/[^;]+);base64,([A-Za-z0-9+/\-_\s]+=*)`)
 
 // readClipboardDarwin reads the clipboard image on macOS and returns image bytes.
 //
