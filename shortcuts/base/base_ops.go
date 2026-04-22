@@ -11,7 +11,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const baseCreateHint = "New bases include a default empty table with 5-10 blank records. After finishing table/field setup on this base, ask whether to delete that default table. If yes, run +table-list first, then delete the default table."
+const baseCreateHint = "Tip: New bases include a default empty table with 5-10 blank records. After finishing table/field setup on this base, ask whether to delete that default table. If yes, run +table-list first, then delete the default table."
 
 func dryRunBaseGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
