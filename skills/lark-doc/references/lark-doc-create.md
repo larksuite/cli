@@ -8,14 +8,22 @@
 ## 重要说明
 > **⚠️ 本文档中提到的 html 标签不需要在 Markdown 中转义！若转义，会导致相关的表格，多维表格，画板等 block 插入失败**
 
+> **⚠️ `\n` 不是换行：** `--markdown "...\n..."` 里的 `\n` 在 shell 里是字面反斜杠 + n，会作为文字写入文档。请用真实换行：多行字符串、heredoc (`--markdown -`)、或 `$'...\n...'`（bash/zsh）。示例见下方。
+
 ## 命令
 
 ```bash
 # 创建简单文档
-lark-cli docs +create --title "项目计划" --markdown "## 目标\n\n- 目标 1\n- 目标 2"
+lark-cli docs +create --title "项目计划" --markdown "## 目标
+
+- 目标 1
+- 目标 2"
 
 # 创建到指定文件夹
-lark-cli docs +create --title "会议纪要" --folder-token fldcnXXXX --markdown "## 讨论议题\n\n1. 进度\n2. 计划"
+lark-cli docs +create --title "会议纪要" --folder-token fldcnXXXX --markdown "## 讨论议题
+
+1. 进度
+2. 计划"
 
 # 创建到知识库节点下
 lark-cli docs +create --title "技术文档" --wiki-node wikcnXXXX --markdown "## API 说明"
@@ -25,6 +33,19 @@ lark-cli docs +create --title "概览" --wiki-space 7000000000000000000 --markdo
 
 # 创建到个人知识库
 lark-cli docs +create --title "学习笔记" --wiki-space my_library --markdown "## 笔记"
+
+# 从 stdin 读取（适合较长的 markdown 内容）
+lark-cli docs +create --title "长文档" --markdown - <<'MD'
+## 目标
+
+- 目标 1
+- 目标 2
+
+## 计划
+
+1. 第一步
+2. 第二步
+MD
 ```
 
 ## 返回值
@@ -116,13 +137,22 @@ wiki_space 可以从知识空间设置页面 URL 中获取，格式如：`https:
 ### 示例 1：创建简单文档
 
 ```bash
-lark-cli docs +create --title "项目计划" --markdown "## 项目概述\n\n这是一个新项目。\n\n## 目标\n\n- 目标 1\n- 目标 2"
+lark-cli docs +create --title "项目计划" --markdown "## 项目概述
+
+这是一个新项目。
+
+## 目标
+
+- 目标 1
+- 目标 2"
 ```
 
 ### 示例 2：使用飞书扩展语法
 
 ```bash
-lark-cli docs +create --title "产品需求" --markdown '<callout emoji="💡" background-color="light-blue">\n重要需求说明\n</callout>'
+lark-cli docs +create --title "产品需求" --markdown '<callout emoji="💡" background-color="light-blue">
+重要需求说明
+</callout>'
 ```
 
 # 内容格式
