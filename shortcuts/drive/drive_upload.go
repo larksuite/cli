@@ -11,12 +11,74 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const (
+	driveUploadParentTypeExplorer = "explorer"
+	driveUploadParentTypeWiki     = "wiki"
+)
+
+type driveUploadSpec struct {
+	FilePath    string
+	FolderToken string
+	WikiToken   string
+	Name        string
+}
+
+type driveUploadTarget struct {
+	ParentType string
+	ParentNode string
+}
+
+func newDriveUploadSpec(runtime *common.RuntimeContext) driveUploadSpec {
+	return driveUploadSpec{
+		FilePath:    runtime.Str("file"),
+		FolderToken: strings.TrimSpace(runtime.Str("folder-token")),
+		WikiToken:   strings.TrimSpace(runtime.Str("wiki-token")),
+		Name:        runtime.Str("name"),
+	}
+}
+
+func (s driveUploadSpec) FileName() string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return filepath.Base(s.FilePath)
+}
+
+func (s driveUploadSpec) Target() driveUploadTarget {
+	if s.WikiToken != "" {
+		return driveUploadTarget{
+			ParentType: driveUploadParentTypeWiki,
+			ParentNode: s.WikiToken,
+		}
+	}
+	return driveUploadTarget{
+		ParentType: driveUploadParentTypeExplorer,
+		ParentNode: s.FolderToken,
+	}
+}
+
+func (t driveUploadTarget) Label() string {
+	switch t.ParentType {
+	case driveUploadParentTypeWiki:
+		return "wiki node " + common.MaskToken(t.ParentNode)
+	case driveUploadParentTypeExplorer:
+		if t.ParentNode == "" {
+			return "Drive root folder"
+		}
+		return "folder " + common.MaskToken(t.ParentNode)
+	default:
+		return "target " + common.MaskToken(t.ParentNode)
+	}
+}
 
 var DriveUpload = common.Shortcut{
 	Service:     "drive",
@@ -27,25 +89,28 @@ var DriveUpload = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
-		{Name: "folder-token", Desc: "target folder token (default: root)"},
+		{Name: "folder-token", Desc: "target folder token (default: root folder; mutually exclusive with --wiki-token)"},
+		{Name: "wiki-token", Desc: "target wiki node token (uploads under that wiki node; mutually exclusive with --folder-token)"},
 		{Name: "name", Desc: "uploaded file name (default: local file name)"},
 	},
+	Tips: []string{
+		"Omit both --folder-token and --wiki-token to upload into the caller's Drive root folder.",
+		"Use --wiki-token <wiki_node_token> to upload under a wiki node; the shortcut maps this to parent_type=wiki automatically.",
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateDriveUploadSpec(runtime, newDriveUploadSpec(runtime))
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		filePath := runtime.Str("file")
-		folderToken := runtime.Str("folder-token")
-		name := runtime.Str("name")
-		fileName := name
-		if fileName == "" {
-			fileName = filepath.Base(filePath)
-		}
+		spec := newDriveUploadSpec(runtime)
+		target := spec.Target()
 		d := common.NewDryRunAPI().
 			Desc("multipart/form-data upload (files > 20MB use chunked 3-step upload)").
 			POST("/open-apis/drive/v1/files/upload_all").
 			Body(map[string]interface{}{
-				"file_name":   fileName,
-				"parent_type": "explorer",
-				"parent_node": folderToken,
-				"file":        "@" + filePath,
+				"file_name":   spec.FileName(),
+				"parent_type": target.ParentType,
+				"parent_node": target.ParentNode,
+				"file":        "@" + spec.FilePath,
 			})
 		if runtime.IsBot() {
 			d.Desc("After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new file.")
@@ -53,29 +118,24 @@ var DriveUpload = common.Shortcut{
 		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		filePath := runtime.Str("file")
-		folderToken := runtime.Str("folder-token")
-		name := runtime.Str("name")
+		spec := newDriveUploadSpec(runtime)
+		fileName := spec.FileName()
+		target := spec.Target()
 
-		fileName := name
-		if fileName == "" {
-			fileName = filepath.Base(filePath)
-		}
-
-		info, err := runtime.FileIO().Stat(filePath)
+		info, err := runtime.FileIO().Stat(spec.FilePath)
 		if err != nil {
 			return common.WrapInputStatError(err)
 		}
 		fileSize := info.Size()
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s)\n", fileName, common.FormatSize(fileSize))
+		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s) -> %s\n", fileName, common.FormatSize(fileSize), target.Label())
 
 		var fileToken string
 		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
-			fileToken, err = uploadFileMultipart(ctx, runtime, filePath, fileName, folderToken, fileSize)
+			fileToken, err = uploadFileMultipart(ctx, runtime, spec.FilePath, fileName, target, fileSize)
 		} else {
-			fileToken, err = uploadFileToDrive(ctx, runtime, filePath, fileName, folderToken, fileSize)
+			fileToken, err = uploadFileToDrive(ctx, runtime, spec.FilePath, fileName, target, fileSize)
 		}
 		if err != nil {
 			return err
@@ -95,7 +155,44 @@ var DriveUpload = common.Shortcut{
 	},
 }
 
-func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, folderToken string, fileSize int64) (string, error) {
+func validateDriveUploadSpec(runtime *common.RuntimeContext, spec driveUploadSpec) error {
+	if driveUploadFlagExplicitlyEmpty(runtime, "folder-token") {
+		return common.FlagErrorf("--folder-token cannot be empty; omit --folder-token to upload into Drive root folder or pass a folder token")
+	}
+	if driveUploadFlagExplicitlyEmpty(runtime, "wiki-token") {
+		return common.FlagErrorf("--wiki-token cannot be empty; omit --wiki-token to upload into Drive root folder or pass a wiki node token")
+	}
+
+	targets := 0
+	if spec.FolderToken != "" {
+		targets++
+	}
+	if spec.WikiToken != "" {
+		targets++
+	}
+	if targets > 1 {
+		return common.FlagErrorf("--folder-token and --wiki-token are mutually exclusive")
+	}
+	if spec.FolderToken != "" {
+		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
+			return output.ErrValidation("%s", err)
+		}
+	}
+	if spec.WikiToken != "" {
+		if err := validate.ResourceName(spec.WikiToken, "--wiki-token"); err != nil {
+			return output.ErrValidation("%s", err)
+		}
+	}
+	return nil
+}
+
+func driveUploadFlagExplicitlyEmpty(runtime *common.RuntimeContext, flagName string) bool {
+	return runtime.Cmd != nil &&
+		runtime.Cmd.Flags().Changed(flagName) &&
+		strings.TrimSpace(runtime.Str(flagName)) == ""
+}
+
+func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName string, target driveUploadTarget, fileSize int64) (string, error) {
 	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
 		return "", common.WrapInputStatError(err)
@@ -105,8 +202,8 @@ func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, file
 	// Build SDK Formdata
 	fd := larkcore.NewFormdata()
 	fd.AddField("file_name", fileName)
-	fd.AddField("parent_type", "explorer")
-	fd.AddField("parent_node", folderToken)
+	fd.AddField("parent_type", target.ParentType)
+	fd.AddField("parent_node", target.ParentNode)
 	fd.AddField("size", fmt.Sprintf("%d", fileSize))
 	fd.AddFile("file", f)
 
@@ -145,12 +242,12 @@ func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, file
 // 1. upload_prepare — get upload_id, block_size, block_num
 // 2. upload_part   — upload each block sequentially
 // 3. upload_finish — finalize and get file_token
-func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, filePath, fileName, folderToken string, fileSize int64) (string, error) {
+func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, filePath, fileName string, target driveUploadTarget, fileSize int64) (string, error) {
 	// Step 1: Prepare
 	prepareBody := map[string]interface{}{
 		"file_name":   fileName,
-		"parent_type": "explorer",
-		"parent_node": folderToken,
+		"parent_type": target.ParentType,
+		"parent_node": target.ParentNode,
 		"size":        fileSize,
 	}
 	prepareResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)

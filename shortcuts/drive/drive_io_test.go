@@ -5,6 +5,10 @@ package drive
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
@@ -147,6 +151,83 @@ func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 	}
 }
 
+func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-large-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	prepareStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"upload_id":  "test-upload-id",
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize),
+				"block_num":  float64(2),
+			},
+		},
+	}
+	reg.Register(prepareStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "file_multipart_wiki_token",
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error: %v", err)
+	}
+	defer os.Chdir(origDir)
+
+	fh, err := os.Create("large.bin")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	err = mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "large.bin",
+		"--wiki-token", "wikcn_multipart_upload_test",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected multipart wiki upload to succeed, got error: %v", err)
+	}
+
+	body := decodeCapturedJSONBody(t, prepareStub)
+	if got := body["parent_type"]; got != driveUploadParentTypeWiki {
+		t.Fatalf("parent_type = %#v, want %q", got, driveUploadParentTypeWiki)
+	}
+	if got := body["parent_node"]; got != "wikcn_multipart_upload_test" {
+		t.Fatalf("parent_node = %#v, want %q", got, "wikcn_multipart_upload_test")
+	}
+}
+
 func TestDriveUploadSmallFile(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -183,6 +264,56 @@ func TestDriveUploadSmallFile(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "file_small_token") {
 		t.Fatalf("stdout missing file_token: %s", stdout.String())
+	}
+}
+
+func TestDriveUploadSmallFileToWiki(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-small-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "file_small_wiki_token",
+			},
+		},
+	}
+	reg.Register(stub)
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "small.bin",
+		"--wiki-token", "wikcn_target_upload_test",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected wiki upload to succeed, got error: %v", err)
+	}
+
+	body := decodeDriveMultipartBody(t, stub)
+	if got := body.Fields["parent_type"]; got != driveUploadParentTypeWiki {
+		t.Fatalf("parent_type = %q, want %q", got, driveUploadParentTypeWiki)
+	}
+	if got := body.Fields["parent_node"]; got != "wikcn_target_upload_test" {
+		t.Fatalf("parent_node = %q, want %q", got, "wikcn_target_upload_test")
+	}
+	if got := body.Fields["file_name"]; got != "small.bin" {
+		t.Fatalf("file_name = %q, want %q", got, "small.bin")
+	}
+	if got := body.Fields["size"]; got != "1024" {
+		t.Fatalf("size = %q, want %q", got, "1024")
 	}
 }
 
@@ -553,6 +684,254 @@ func TestDriveUploadWithCustomName(t *testing.T) {
 	}
 }
 
+func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "./report.pdf"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("wiki-token", "wikcn_dryrun_upload_target"); err != nil {
+		t.Fatalf("set --wiki-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveUpload.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API []struct {
+			Body map[string]interface{} `json:"body"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if len(got.API) != 1 {
+		t.Fatalf("expected 1 API call, got %d", len(got.API))
+	}
+	if got.API[0].Body["parent_type"] != driveUploadParentTypeWiki {
+		t.Fatalf("parent_type = %#v, want %q", got.API[0].Body["parent_type"], driveUploadParentTypeWiki)
+	}
+	if got.API[0].Body["parent_node"] != "wikcn_dryrun_upload_target" {
+		t.Fatalf("parent_node = %#v, want %q", got.API[0].Body["parent_node"], "wikcn_dryrun_upload_target")
+	}
+}
+
+func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", " report final.pdf "); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("folder-token", " fld_upload_target "); err != nil {
+		t.Fatalf("set --folder-token: %v", err)
+	}
+	if err := cmd.Flags().Set("wiki-token", " wikcn_upload_target "); err != nil {
+		t.Fatalf("set --wiki-token: %v", err)
+	}
+	if err := cmd.Flags().Set("name", " final upload.pdf "); err != nil {
+		t.Fatalf("set --name: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	got := newDriveUploadSpec(runtime)
+	if got.FilePath != " report final.pdf " {
+		t.Fatalf("FilePath = %q, want original value", got.FilePath)
+	}
+	if got.Name != " final upload.pdf " {
+		t.Fatalf("Name = %q, want original value", got.Name)
+	}
+	if got.FolderToken != "fld_upload_target" {
+		t.Fatalf("FolderToken = %q, want trimmed token", got.FolderToken)
+	}
+	if got.WikiToken != "wikcn_upload_target" {
+		t.Fatalf("WikiToken = %q, want trimmed token", got.WikiToken)
+	}
+}
+
+func TestDriveUploadTargetLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		target driveUploadTarget
+		want   string
+	}{
+		{
+			name: "wiki node",
+			target: driveUploadTarget{
+				ParentType: driveUploadParentTypeWiki,
+				ParentNode: "wikcn_upload_target",
+			},
+			want: "wiki node " + common.MaskToken("wikcn_upload_target"),
+		},
+		{
+			name: "root folder",
+			target: driveUploadTarget{
+				ParentType: driveUploadParentTypeExplorer,
+			},
+			want: "Drive root folder",
+		},
+		{
+			name: "folder",
+			target: driveUploadTarget{
+				ParentType: driveUploadParentTypeExplorer,
+				ParentNode: "fld_upload_target",
+			},
+			want: "folder " + common.MaskToken("fld_upload_target"),
+		},
+		{
+			name: "unknown target",
+			target: driveUploadTarget{
+				ParentType: "unknown",
+				ParentNode: "node_upload_target",
+			},
+			want: "target " + common.MaskToken("node_upload_target"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.target.Label(); got != tt.want {
+				t.Fatalf("Label() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDriveUploadValidateRejectsConflictingTargets(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("folder-token", "fld_upload_conflict"); err != nil {
+		t.Fatalf("set --folder-token: %v", err)
+	}
+	if err := cmd.Flags().Set("wiki-token", "wikcn_upload_conflict"); err != nil {
+		t.Fatalf("set --wiki-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	err := DriveUpload.Validate(context.Background(), runtime)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("Validate() error = %v, want mutually exclusive error", err)
+	}
+}
+
+func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "report.pdf"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("wiki-token", "   "); err != nil {
+		t.Fatalf("set --wiki-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	err := DriveUpload.Validate(context.Background(), runtime)
+	if err == nil || !strings.Contains(err.Error(), "--wiki-token cannot be empty") {
+		t.Fatalf("Validate() error = %v, want empty wiki-token error", err)
+	}
+}
+
+func TestDriveUploadValidateRejectsExplicitEmptyFolderToken(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "report.pdf"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("folder-token", "   "); err != nil {
+		t.Fatalf("set --folder-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	err := DriveUpload.Validate(context.Background(), runtime)
+	if err == nil || !strings.Contains(err.Error(), "--folder-token cannot be empty") {
+		t.Fatalf("Validate() error = %v, want empty folder-token error", err)
+	}
+}
+
+func TestDriveUploadValidateRejectsInvalidTargetTokens(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		flag    string
+		value   string
+		wantErr string
+	}{
+		{
+			name:    "folder token",
+			flag:    "folder-token",
+			value:   "fld_bad?query=true",
+			wantErr: "--folder-token contains invalid characters",
+		},
+		{
+			name:    "wiki token",
+			flag:    "wiki-token",
+			value:   "wikcn_bad#fragment",
+			wantErr: "--wiki-token contains invalid characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := &cobra.Command{Use: "drive +upload"}
+			cmd.Flags().String("file", "", "")
+			cmd.Flags().String("folder-token", "", "")
+			cmd.Flags().String("wiki-token", "", "")
+			cmd.Flags().String("name", "", "")
+			if err := cmd.Flags().Set("file", "report.pdf"); err != nil {
+				t.Fatalf("set --file: %v", err)
+			}
+			if err := cmd.Flags().Set(tt.flag, tt.value); err != nil {
+				t.Fatalf("set --%s: %v", tt.flag, err)
+			}
+
+			runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+			err := DriveUpload.Validate(context.Background(), runtime)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestDriveDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -615,4 +994,39 @@ func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	if !strings.Contains(stdout.String(), "existing.bin") {
 		t.Fatalf("stdout missing saved path: %s", stdout.String())
 	}
+}
+
+type capturedDriveMultipart struct {
+	Fields map[string]string
+	Files  map[string][]byte
+}
+
+func decodeDriveMultipartBody(t *testing.T, stub *httpmock.Stub) capturedDriveMultipart {
+	t.Helper()
+
+	contentType := stub.CapturedHeaders.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		t.Fatalf("parse content-type %q: %v", contentType, err)
+	}
+	if mediaType != "multipart/form-data" {
+		t.Fatalf("content type = %q, want multipart/form-data", mediaType)
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(stub.CapturedBody), params["boundary"])
+	body := capturedDriveMultipart{Fields: map[string]string{}, Files: map[string][]byte{}}
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			break
+		}
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(part)
+		if part.FileName() != "" {
+			body.Files[part.FormName()] = buf.Bytes()
+			continue
+		}
+		body.Fields[part.FormName()] = buf.String()
+	}
+	return body
 }

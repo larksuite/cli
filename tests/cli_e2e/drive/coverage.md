@@ -1,15 +1,16 @@
 # Drive CLI E2E Coverage
 
 ## Metrics
-- Denominator: 29 leaf commands
-- Covered: 2
-- Coverage: 6.9%
+- Denominator: 28 leaf commands
+- Covered: 1
+- Coverage: 3.6%
 
 ## Summary
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
 - TestDrive_ApplyPermissionDryRun / TestDrive_ApplyPermissionDryRunRejectsFullAccess: dry-run coverage for `drive +apply-permission`; asserts URL→type inference for docx/sheet/slides, explicit `--type` overriding URL inference when both a recognized URL and `--type` are supplied, bare-token + explicit `--type` path, request method/URL/type-query/perm/remark body shape, optional `remark` omission when unset, and client-side rejection of `--perm full_access`. Runs without hitting the live API.
 - Cleanup note: `drive files delete` is only exercised in cleanup and is intentionally left uncovered.
-- Blocked area: upload, export, comment, subscription, and reply flows still need deterministic remote fixtures and filesystem setup. Permission flows are partially covered via the dry-run test for `+apply-permission`; the full permission.members.* API surface remains uncovered.
+- Blocked area: live upload, export, comment, permission, subscription, and reply flows still need deterministic remote fixtures and filesystem setup.
+- Dry-run note: `drive_upload_dryrun_test.go::TestDriveUploadDryRun_WikiTarget` covers the wiki-target request shape for `drive +upload`, but there is still no live upload workflow coverage.
 
 ## Command Table
 
@@ -24,7 +25,7 @@
 | ✕ | drive +import | shortcut |  | none | no import workflow yet |
 | ✕ | drive +move | shortcut |  | none | no move workflow yet |
 | ✕ | drive +task_result | shortcut |  | none | no async task-result workflow yet |
-| ✕ | drive +upload | shortcut |  | none | no upload workflow yet |
+| ✕ | drive +upload | shortcut | drive_upload_dryrun_test.go::TestDriveUploadDryRun_WikiTarget (dry-run only) | `--wiki-token`; `parent_type=wiki`; `parent_node` | no live upload workflow yet |
 | ✕ | drive file.comment.replys create | api |  | none | no reply workflow yet |
 | ✕ | drive file.comment.replys delete | api |  | none | no reply workflow yet |
 | ✕ | drive file.comment.replys list | api |  | none | no reply workflow yet |

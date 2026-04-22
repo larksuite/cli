@@ -3,23 +3,22 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-上传本地文件到飞书云空间。
+上传本地文件到飞书云空间。目标位置可以是 Drive 文件夹，也可以是 wiki 节点。
 
 ## 命令
 
 ```bash
-# 推荐：使用 shortcut 一步上传
+# 上传到 Drive 文件夹
 lark-cli drive +upload --file ./report.pdf --folder-token fldbc_xxx
+
+# 上传到 wiki 节点
+lark-cli drive +upload --file ./report.pdf --wiki-token wikcn_xxx
+
+# 不指定目标时，上传到调用者的 Drive 根目录
+lark-cli drive +upload --file ./report.pdf
 
 # 自定义上传后的文件名
 lark-cli drive +upload --file ./report.pdf --name "季度总结.pdf"
-
-# 生成可用临时下载链接的上传方式（素材上传，适用于后续用 curl 下载）
-# 注意：需要可写 docx 文档 ID（用于挂载素材 block），且文件最大 20MB
-lark-cli drive +upload --as-media --doc docx_xxx --file ./report.pdf
-
-# 取出 tmp_download_url 后可直接 curl 下载
-curl -L -o report.pdf "<TMP_DOWNLOAD_URL>"
 
 # 原生命令（高级/分片上传）：预上传 + 完成上传
 lark-cli drive files upload_prepare --data '{
@@ -49,13 +48,31 @@ lark-cli schema drive.files.upload_prepare
 >
 > **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
 
+## 目标位置选择（关键）
+
+- 上传到 Drive 文件夹：传 `--folder-token <folder_token>`，shortcut 会发送 `parent_type=explorer`
+- 上传到 wiki 节点：传 `--wiki-token <wiki_token>`，shortcut 会发送 `parent_type=wiki`
+- 上传到 Drive 根目录：`--folder-token` 和 `--wiki-token` 都不传
+- 不要传空目标值：`--folder-token ""` / `--wiki-token ""` 会被视为参数错误；如需上传到 Drive 根目录，应直接省略这两个参数
+- `--folder-token` 和 `--wiki-token` 互斥，不要同时传
+- `--wiki-token` 传的是 **wiki node token**，不是 `space_id`
+
+Shortcut 参数：
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--file` | 是 | 本地文件路径 |
+| `--folder-token` | 否 | 目标文件夹 token；与 `--wiki-token` 互斥；省略时默认为 Drive 根目录；显式传空字符串会报错 |
+| `--wiki-token` | 否 | 目标 wiki 节点 token；与 `--folder-token` 互斥；会映射为 `parent_type=wiki`、`parent_node=<wiki_token>`；显式传空字符串会报错 |
+| `--name` | 否 | 上传后的文件名；默认使用本地文件名 |
+
 参数（预上传 `--data` JSON body）：
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `file_name` | 是 | 文件名 |
-| `parent_type` | 是 | 父节点类型，如 `"explorer"` |
-| `parent_node` | 是 | 父节点 token（文件夹 token） |
+| `parent_type` | 是 | 父节点类型；上传到文件夹 / 根目录时用 `"explorer"`，上传到 wiki 节点时用 `"wiki"` |
+| `parent_node` | 是 | 父节点 token；`explorer` 时传文件夹 token（根目录可为空字符串），`wiki` 时传 wiki node token |
 | `size` | 是 | 文件大小（字节） |
 
 > [!CAUTION]
