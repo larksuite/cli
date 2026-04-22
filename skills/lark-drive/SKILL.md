@@ -132,6 +132,28 @@ Drive Folder (云空间文件夹)
 
 ### 评论查询与统计口径（关键！）
 
+**强制规则**：`drive file.comments list` 默认必须传 `is_solved:false`，即仅查询未解决评论。即使用户说“所有评论”“全部评论”“把评论都列出来”，只要没有明确提到要包含已解决评论，仍然按默认口径查询未解决评论。仅当用户明确要求包含已解决评论时，才可省略 `is_solved` 参数。
+
+**正确示例：**
+
+```bash
+# 默认查询：仅未解决评论（推荐）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
+
+# 查询所有评论（用户未明确要求包含已解决评论）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
+
+# 包含已解决评论（需用户明确要求）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
+```
+
+**错误示例：**
+
+```bash
+# 不推荐：用户未明确要求但查询所有评论
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
+```
+
 - 查询文档评论时，使用 `drive file.comments list`。
 - `drive file.comments list` 返回的 `items` 应理解为"评论卡片"列表，每个 `item` 对应用户界面里看到的一张评论卡片，而不是平铺的互动消息列表。
 - 服务端语义上，创建第一条评论时会同时创建该卡片里的第一条 reply；因此真正承载正文的是每个 `item.reply_list.replies`，其中第一条 reply 在用户视角下就是这张卡片里的"评论本身"。
@@ -196,7 +218,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+upload`](references/lark-drive-upload.md) | Upload a local file to Drive |
+| [`+upload`](references/lark-drive-upload.md) | Upload a local file to a Drive folder or wiki node |
 | [`+create-folder`](references/lark-drive-create-folder.md) | Create a Drive folder, optionally under a parent folder, with bot auto-grant support |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
 | [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder |
