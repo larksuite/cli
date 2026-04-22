@@ -299,7 +299,7 @@ func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext,
 		}
 	}
 
-	// path 2 & 3: AI 产物统一归到 artifacts 字段下
+	// path 2 & 3: AI artifacts are collected under the artifacts field.
 	artifacts := map[string]any{}
 	fetchInlineArtifacts(runtime, minuteToken, artifacts)
 	transcriptPath := downloadTranscriptFile(runtime, minuteToken, title)
@@ -517,7 +517,6 @@ var VCNotes = common.Shortcut{
 				}
 			}
 		}
-		// output-dir 路径安全校验
 		if outDir := runtime.Str("output-dir"); outDir != "" {
 			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
 				return err
