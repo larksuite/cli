@@ -5,13 +5,17 @@ package cmdutil
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/output"
 )
 
 // newCmdWithAsFlag creates a cobra.Command with a --as string flag for testing.
@@ -353,5 +357,67 @@ func TestResolveAs_StrictModeBot_IgnoresDefaultAsUser(t *testing.T) {
 	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsBot {
 		t.Errorf("bot mode should override default-as user, got %s", got)
+	}
+}
+
+// stubExtProvider is a minimal extcred.Provider for testing external-provider guards.
+type stubExtProvider struct {
+	name string
+	acct *extcred.Account
+	err  error
+}
+
+func (s *stubExtProvider) Name() string { return s.name }
+func (s *stubExtProvider) ResolveAccount(_ context.Context) (*extcred.Account, error) {
+	return s.acct, s.err
+}
+func (s *stubExtProvider) ResolveToken(_ context.Context, _ extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+
+func TestRequireBuiltinCredentialProvider_BlocksExternalProvider(t *testing.T) {
+	stub := &stubExtProvider{name: "env", acct: &extcred.Account{AppID: "app"}}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("error type = %T, want *output.ExitError", err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "external_provider" {
+		t.Errorf("error type field = %v, want %q", exitErr.Detail, "external_provider")
+	}
+	if exitErr.Detail.Message == "" {
+		t.Error("expected non-empty message")
+	}
+	if exitErr.Detail.Hint == "" {
+		t.Error("expected non-empty hint")
+	}
+}
+
+func TestRequireBuiltinCredentialProvider_AllowsBuiltinProvider(t *testing.T) {
+	// No extension providers → built-in path → no error
+	f, _, _, _ := TestFactory(t, nil)
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRequireBuiltinCredentialProvider_NilCredential(t *testing.T) {
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = nil
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if err != nil {
+		t.Fatalf("unexpected error with nil Credential: %v", err)
 	}
 }

@@ -199,3 +199,29 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 		Credential: f.Credential,
 	}, nil
 }
+
+// RequireBuiltinCredentialProvider returns a structured error (exit 2, code
+// "external_provider") when an extension provider is actively managing credentials.
+// Intended for use as PersistentPreRunE on the auth and config parent commands.
+//
+// Returns nil when:
+//   - f.Credential is nil (test environments without credential setup)
+//   - No extension provider is active (built-in keychain/config path is used)
+func (f *Factory) RequireBuiltinCredentialProvider(ctx context.Context, command string) error {
+	if f.Credential == nil {
+		return nil
+	}
+	provName, err := f.Credential.ActiveExtensionProviderName(ctx)
+	if err != nil {
+		return err
+	}
+	if provName == "" {
+		return nil
+	}
+	return output.ErrWithHint(
+		output.ExitValidation,
+		"external_provider",
+		fmt.Sprintf("%q is not supported: credentials are provided externally and do not support interactive management", command),
+		"If another tool or method for authorization is available in this environment, try that. Otherwise, ask the user to set up credentials through the appropriate channel.",
+	)
+}
