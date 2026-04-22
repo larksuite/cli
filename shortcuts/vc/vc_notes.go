@@ -506,7 +506,7 @@ var VCNotes = common.Shortcut{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch"},
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch"},
 		{Name: "calendar-event-ids", Desc: "calendar event instance IDs, comma-separated for batch"},
-		{Name: "output-dir", Desc: "output directory for artifact files. When omitted, transcript lands to ./minutes/{minute_token}/transcript.txt; when set, legacy layout ./{output-dir}/artifact-{title}-{token}/transcript.txt is used."},
+		{Name: "output-dir", Desc: "output directory for artifact files (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing artifact files"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

@@ -46,8 +46,8 @@ var MinutesDownload = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch download (max 50)", Required: true},
-		{Name: "output", Desc: "output file path (single token). If the path is an existing directory, it is treated as --output-dir."},
-		{Name: "output-dir", Desc: "output directory. Default when neither --output nor --output-dir is set: ./minutes/{minute_token}/"},
+		{Name: "output", Desc: "output file path (single token)"},
+		{Name: "output-dir", Desc: "output directory (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 		{Name: "url-only", Type: "bool", Desc: "only print the download URL(s) without downloading"},
 	},
