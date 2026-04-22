@@ -5,8 +5,10 @@ package minutes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -61,6 +63,20 @@ var MinutesDownload = common.Shortcut{
 				return output.ErrValidation("invalid minute token %q: must contain only lowercase alphanumeric characters (e.g. obcnq3b9jl72l83w4f149w9c)", token)
 			}
 		}
+		// fail-fast: user-supplied path safety (traversal / cwd-escape / control chars)
+		if out := runtime.Str("output"); out != "" {
+			if err := common.ValidateSafeOutputDir(runtime.FileIO(), out); err != nil {
+				return err
+			}
+		}
+		if outDir := runtime.Str("output-dir"); outDir != "" {
+			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
+				return err
+			}
+		}
+		if runtime.Str("output") != "" && runtime.Str("output-dir") != "" {
+			return output.ErrValidation("--output and --output-dir cannot both be set")
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -78,28 +94,37 @@ var MinutesDownload = common.Shortcut{
 		errOut := runtime.IO().ErrOut
 		single := len(tokens) == 1
 
-		if rawOutput != "" && rawOutputDir != "" {
-			return output.ErrValidation("--output and --output-dir cannot both be set")
-		}
-
-		// --output 指向已存在目录：降级为 --output-dir（cp 语义），修复单 token 模式
-		// 下传目录路径报 "cannot create parent directory" 的问题。
+		// --output 的语义分情况：
+		//   - 已存在目录 → 降级为 --output-dir（cp 语义，修复单 token 传目录报 mkdir err 的 bug）
+		//   - 已存在文件 → 单 token 覆写；批量模式明确拒绝（dir 语义不兼容）
+		//   - 不存在     → 单 token 作为新文件路径；批量作为待创建目录
+		//   - 路径校验失败 / 其他 FS 错误 → 立即抛出（避免延迟到 Save 才暴露）
 		explicitOutputPath := rawOutput
 		explicitOutputDir := rawOutputDir
 		if explicitOutputPath != "" {
-			if fi, err := runtime.FileIO().Stat(explicitOutputPath); err == nil && fi.IsDir() {
+			fi, statErr := runtime.FileIO().Stat(explicitOutputPath)
+			switch {
+			case statErr == nil && fi.IsDir():
 				explicitOutputDir = explicitOutputPath
 				explicitOutputPath = ""
+			case statErr == nil && !fi.IsDir():
+				if !single {
+					return output.ErrValidation("--output %q is a file; batch mode expects a directory (use --output-dir)", explicitOutputPath)
+				}
+				// single mode: keep as explicit file path
+			case errors.Is(statErr, fs.ErrNotExist):
+				if !single {
+					// batch: treat non-existent path as directory to be created
+					explicitOutputDir = explicitOutputPath
+					explicitOutputPath = ""
+				}
+				// single mode: keep as new file path
+			default:
+				return output.ErrValidation("cannot access --output %q: %s", explicitOutputPath, statErr)
 			}
 		}
 
-		// 批量模式下 --output 仍然保留"目录"语义以兼容既有用法。
-		if !single && explicitOutputPath != "" {
-			explicitOutputDir = explicitOutputPath
-			explicitOutputPath = ""
-		}
-
-		// 用户完全未传路径：落到 ./minutes/{minute_token}/recording.{ext}
+		// 用户完全未传路径：落到 ./minutes/{minute_token}/（文件名沿用服务端）
 		useDefaultLayout := explicitOutputPath == "" && explicitOutputDir == ""
 
 		if !single {

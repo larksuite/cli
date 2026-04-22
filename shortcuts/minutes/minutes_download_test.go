@@ -200,13 +200,22 @@ func TestDownload_Validation_InvalidToken(t *testing.T) {
 	}
 }
 
-func TestDownload_Validation_OutputWithBatch(t *testing.T) {
+func TestDownload_Validation_OutputIsFileInBatchMode(t *testing.T) {
+	// 批量模式下 --output 指向已存在的文件 → 明确拒绝（dir 语义不兼容）。
+	// 非存在路径在批量模式下会被当作待创建目录（见 TestDownload_Batch_OutputNewDir）。
+	chdir(t, t.TempDir())
+	if err := os.WriteFile("already.mp4", []byte("x"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, MinutesDownload, []string{
-		"+download", "--minute-tokens", "t1,t2", "--output", "file.mp4", "--as", "user",
+		"+download", "--minute-tokens", "t1,t2", "--output", "already.mp4", "--as", "user",
 	}, f, nil)
 	if err == nil {
-		t.Fatal("expected validation error for --output with --minute-tokens")
+		t.Fatal("expected error for --output pointing at an existing file in batch mode")
+	}
+	if !strings.Contains(err.Error(), "batch mode expects a directory") {
+		t.Errorf("error should mention batch-mode directory expectation, got: %v", err)
 	}
 }
 
