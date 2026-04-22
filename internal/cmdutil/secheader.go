@@ -74,27 +74,58 @@ func DetectBuildKind() string {
 }
 
 // computeBuildKind performs the actual detection without any caching.
-// Exposed for tests.
+// Exposed for tests. Gathers runtime/global inputs and delegates the pure
+// branching logic to classifyBuild so that logic can be unit-tested without
+// mutating process-wide provider registries.
 func computeBuildKind() string {
 	info, ok := debug.ReadBuildInfo()
-	if !ok {
+	mainPath := ""
+	if ok {
+		mainPath = info.Main.Path
+	}
+
+	credProviders := credential.Providers()
+	creds := make([]any, len(credProviders))
+	for i, p := range credProviders {
+		creds[i] = p
+	}
+
+	var tp any
+	if p := exttransport.GetProvider(); p != nil {
+		tp = p
+	}
+	var fp any
+	if p := fileio.GetProvider(); p != nil {
+		fp = p
+	}
+	return classifyBuild(mainPath, ok, creds, tp, fp)
+}
+
+// classifyBuild is the pure classification logic used by computeBuildKind.
+// Callers supply concrete values so every branch is reachable from tests
+// without touching debug.ReadBuildInfo or the extension registries.
+//
+// Priority order mirrors the design doc:
+//  1. no build info → unknown
+//  2. main module path not the official one → extended (ISV wrapper)
+//  3. any non-builtin provider (credential / transport / fileio) → extended
+//  4. otherwise → official
+func classifyBuild(mainPath string, haveBuildInfo bool, credProviders []any, transportProvider, fileioProvider any) string {
+	if !haveBuildInfo {
 		return BuildKindUnknown
 	}
-	// Priority 1: main module path. ISV wrappers live under their own module,
-	// which is the strongest signal that this is a repackaged build.
-	if info.Main.Path != "" && info.Main.Path != officialModulePath {
+	if mainPath != "" && mainPath != officialModulePath {
 		return BuildKindExtended
 	}
-	// Priority 2: non-builtin extension providers.
-	for _, p := range credential.Providers() {
+	for _, p := range credProviders {
 		if !isBuiltinProvider(p) {
 			return BuildKindExtended
 		}
 	}
-	if tp := exttransport.GetProvider(); tp != nil && !isBuiltinProvider(tp) {
+	if transportProvider != nil && !isBuiltinProvider(transportProvider) {
 		return BuildKindExtended
 	}
-	if fp := fileio.GetProvider(); fp != nil && !isBuiltinProvider(fp) {
+	if fileioProvider != nil && !isBuiltinProvider(fileioProvider) {
 		return BuildKindExtended
 	}
 	return BuildKindOfficial

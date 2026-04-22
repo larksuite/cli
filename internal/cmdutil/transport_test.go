@@ -330,6 +330,35 @@ func TestBuildHeaderTransport_OverridesEvenWithoutTamper(t *testing.T) {
 	}
 }
 
+// TestBuildHeaderTransport_NilBase_UsesFallback verifies that when Base is nil,
+// the transport still sets X-Cli-Build and routes the request through
+// util.FallbackTransport rather than panicking. This covers the fallback
+// branch in RoundTrip that is otherwise unreachable with a non-nil Base.
+func TestBuildHeaderTransport_NilBase_UsesFallback(t *testing.T) {
+	var receivedBuild string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedBuild = r.Header.Get(HeaderBuild)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	transport := &BuildHeaderTransport{Base: nil}
+	client := &http.Client{Transport: transport}
+
+	req, _ := http.NewRequest("GET", srv.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request via nil-Base transport failed: %v", err)
+	}
+	resp.Body.Close()
+
+	want := DetectBuildKind()
+	if receivedBuild != want {
+		t.Fatalf("%s = %q, want %q (header must be set even on nil-Base path)",
+			HeaderBuild, receivedBuild, want)
+	}
+}
+
 // interceptorFunc adapts a function to exttransport.Interceptor.
 type interceptorFunc func(*http.Request) func(*http.Response, error)
 

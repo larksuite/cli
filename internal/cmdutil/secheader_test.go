@@ -22,7 +22,9 @@ import (
 // as builtin.
 type cmdutilLocalProvider struct{}
 
-func (cmdutilLocalProvider) Name() string { return "local" }
+// Name intentionally returns a value that mimics an external provider; the
+// PkgPath-based classifier must ignore it. See TestIsBuiltinProvider_PkgPathNotSpoofableByName.
+func (cmdutilLocalProvider) Name() string { return "external-spoofed-provider" }
 func (cmdutilLocalProvider) ResolveAccount(context.Context) (*credential.Account, error) {
 	return nil, nil
 }
@@ -53,14 +55,27 @@ func TestIsBuiltinProvider_StdlibTypeIsNotBuiltin(t *testing.T) {
 
 func TestIsBuiltinProvider_PkgPathNotSpoofableByName(t *testing.T) {
 	// Name() returns a string, but classification uses reflect.Type.PkgPath
-	// which is compile-time fixed. Confirm by using a locally-defined type
-	// that returns a name mimicking an external provider.
+	// which is compile-time fixed. The local type returns a name that looks
+	// like an ISV provider; it must still classify as builtin.
 	p := &cmdutilLocalProvider{}
-	if p.Name() != "local" {
-		t.Fatalf("sanity check: Name() = %q", p.Name())
+	if p.Name() != "external-spoofed-provider" {
+		t.Fatalf("sanity check: Name() = %q, spoof value lost", p.Name())
 	}
 	if !isBuiltinProvider(p) {
 		t.Fatal("isBuiltinProvider should decide by PkgPath, not Name()")
+	}
+}
+
+// TestIsBuiltinProvider_NonPointerValues covers the non-pointer reflect branch.
+// The existing tests only exercise pointer receivers (&T{}); when a provider
+// is passed by value the reflect.Kind is not Ptr and t.Elem() is skipped.
+func TestIsBuiltinProvider_NonPointerValues(t *testing.T) {
+	if !isBuiltinProvider(cmdutilLocalProvider{}) {
+		t.Fatal("non-pointer local type should be builtin (PkgPath still under official module)")
+	}
+	// http.Server as a non-pointer — PkgPath "net/http", not under official.
+	if isBuiltinProvider(http.Server{}) {
+		t.Fatal("non-pointer stdlib type should not be builtin")
 	}
 }
 
@@ -104,6 +119,107 @@ func TestComputeBuildKind_ReturnsKnownValue(t *testing.T) {
 	case BuildKindOfficial, BuildKindExtended, BuildKindUnknown:
 	default:
 		t.Fatalf("computeBuildKind() = %q, want one of official/extended/unknown", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// classifyBuild — pure branching logic
+// ---------------------------------------------------------------------------
+//
+// These tests cover every branch of classifyBuild with explicit inputs,
+// which is impossible from computeBuildKind alone because debug.ReadBuildInfo
+// and the process-wide provider registries can't be reshaped in a test.
+
+func TestClassifyBuild_NoBuildInfo_ReturnsUnknown(t *testing.T) {
+	if got := classifyBuild("", false, nil, nil, nil); got != BuildKindUnknown {
+		t.Fatalf("classifyBuild(haveBuildInfo=false) = %q, want %q", got, BuildKindUnknown)
+	}
+}
+
+func TestClassifyBuild_ExtendedMainPath_ReturnsExtended(t *testing.T) {
+	cases := []string{
+		"github.com/acme/lark-cli-wrapper",
+		"example.com/isv/lark",
+		"gitlab.mycorp.internal/tools/lark-cli-fork",
+	}
+	for _, mp := range cases {
+		t.Run(mp, func(t *testing.T) {
+			if got := classifyBuild(mp, true, nil, nil, nil); got != BuildKindExtended {
+				t.Fatalf("mainPath=%q classifyBuild = %q, want %q", mp, got, BuildKindExtended)
+			}
+		})
+	}
+}
+
+func TestClassifyBuild_OfficialMainPath_NoProviders_ReturnsOfficial(t *testing.T) {
+	if got := classifyBuild(officialModulePath, true, nil, nil, nil); got != BuildKindOfficial {
+		t.Fatalf("classifyBuild(official, no providers) = %q, want %q", got, BuildKindOfficial)
+	}
+}
+
+func TestClassifyBuild_EmptyMainPath_DoesNotTriggerExtended(t *testing.T) {
+	// An empty Main.Path (rare, e.g. `go run` pre-1.18) must not be treated
+	// as extended by itself — the classifier falls through to provider checks.
+	if got := classifyBuild("", true, nil, nil, nil); got != BuildKindOfficial {
+		t.Fatalf("classifyBuild(empty mainPath, no providers) = %q, want %q", got, BuildKindOfficial)
+	}
+}
+
+func TestClassifyBuild_NonBuiltinCredentialProvider_ReturnsExtended(t *testing.T) {
+	// Any non-builtin credential provider flips the verdict to extended.
+	got := classifyBuild(officialModulePath, true, []any{&http.Server{}}, nil, nil)
+	if got != BuildKindExtended {
+		t.Fatalf("classifyBuild with external credential = %q, want %q", got, BuildKindExtended)
+	}
+}
+
+func TestClassifyBuild_MixedCredentialProviders_ExtendedWins(t *testing.T) {
+	// Even if most providers are builtin, a single external one decides.
+	providers := []any{&cmdutilLocalProvider{}, &http.Server{}}
+	if got := classifyBuild(officialModulePath, true, providers, nil, nil); got != BuildKindExtended {
+		t.Fatalf("classifyBuild mixed providers = %q, want %q", got, BuildKindExtended)
+	}
+}
+
+func TestClassifyBuild_NonBuiltinTransportProvider_ReturnsExtended(t *testing.T) {
+	got := classifyBuild(officialModulePath, true, nil, &http.Server{}, nil)
+	if got != BuildKindExtended {
+		t.Fatalf("classifyBuild with external transport = %q, want %q", got, BuildKindExtended)
+	}
+}
+
+func TestClassifyBuild_NonBuiltinFileioProvider_ReturnsExtended(t *testing.T) {
+	got := classifyBuild(officialModulePath, true, nil, nil, &http.Server{})
+	if got != BuildKindExtended {
+		t.Fatalf("classifyBuild with external fileio = %q, want %q", got, BuildKindExtended)
+	}
+}
+
+func TestClassifyBuild_AllBuiltinProviders_ReturnsOfficial(t *testing.T) {
+	// All three slots filled with builtin providers must still classify as official.
+	got := classifyBuild(
+		officialModulePath, true,
+		[]any{&cmdutilLocalProvider{}},
+		&cmdutilLocalProvider{},
+		&cmdutilLocalProvider{},
+	)
+	if got != BuildKindOfficial {
+		t.Fatalf("classifyBuild all-builtin = %q, want %q", got, BuildKindOfficial)
+	}
+}
+
+// TestClassifyBuild_MainPathPriorityOverProviders documents that the main
+// module path takes precedence: even with only builtin providers, a non-
+// official main path still yields extended.
+func TestClassifyBuild_MainPathPriorityOverProviders(t *testing.T) {
+	got := classifyBuild(
+		"github.com/acme/lark-wrapper", true,
+		[]any{&cmdutilLocalProvider{}},
+		&cmdutilLocalProvider{},
+		&cmdutilLocalProvider{},
+	)
+	if got != BuildKindExtended {
+		t.Fatalf("main-path override failed: got %q, want %q", got, BuildKindExtended)
 	}
 }
 
