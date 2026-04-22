@@ -42,6 +42,7 @@ var driveImportExtToDocTypes = map[string][]string{
 	"xlsx":     {"sheet", "bitable"},
 	"xls":      {"sheet"},
 	"csv":      {"sheet", "bitable"},
+	"base":     {"bitable"},
 }
 
 // driveImportSpec contains the user-facing import inputs after normalization.
@@ -143,7 +144,7 @@ func driveImportFileSizeLimit(filePath, docType string) (int64, bool) {
 	switch strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".") {
 	case "docx", "doc":
 		return driveImport600MBFileSizeLimit, true
-	case "txt", "md", "mark", "markdown", "html", "xls":
+	case "txt", "md", "mark", "markdown", "html", "xls", "base":
 		return driveImport20MBFileSizeLimit, true
 	case "xlsx":
 		return driveImport800MBFileSizeLimit, true
@@ -198,7 +199,7 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 
 	supportedTypes, ok := driveImportExtToDocTypes[ext]
 	if !ok {
-		return output.ErrValidation("unsupported file extension: %s. Supported extensions are: docx, doc, txt, md, mark, markdown, html, xlsx, xls, csv", ext)
+		return output.ErrValidation("unsupported file extension: %s. Supported extensions are: docx, doc, txt, md, mark, markdown, html, xlsx, xls, csv, base", ext)
 	}
 
 	typeAllowed := false
@@ -217,6 +218,8 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 			hint = fmt.Sprintf(".%s files can only be imported as 'sheet' or 'bitable', not '%s'", ext, spec.DocType)
 		case "xls":
 			hint = fmt.Sprintf(".xls files can only be imported as 'sheet', not '%s'", spec.DocType)
+		case "base":
+			hint = fmt.Sprintf(".base files can only be imported as 'bitable', not '%s'", spec.DocType)
 		default:
 			hint = fmt.Sprintf(".%s files can only be imported as 'docx', not '%s'", ext, spec.DocType)
 		}

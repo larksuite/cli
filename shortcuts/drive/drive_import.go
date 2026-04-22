@@ -27,7 +27,7 @@ var DriveImport = common.Shortcut{
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (e.g. .docx, .xlsx, .md; large files auto use multipart upload)", Required: true},
+		{Name: "file", Desc: "local file path (e.g. .docx, .xlsx, .md, .base; large files auto use multipart upload; .base is capped at 20MB)", Required: true},
 		{Name: "type", Desc: "target document type (docx, sheet, bitable)", Required: true},
 		{Name: "folder-token", Desc: "target folder token (omit for root folder; API accepts empty mount_key as root)"},
 		{Name: "name", Desc: "imported file name (default: local file name without extension)"},
