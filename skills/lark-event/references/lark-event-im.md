@@ -18,6 +18,7 @@
 | `im.chat.member.user.deleted_v1` | 用户主动退群**或**被移出群聊 |
 | `im.chat.member.user.withdrawn_v1` | 撤销拉用户进群（邀请方撤回邀请，用户未真正加入） |
 
+> **Shape**：`im.message.receive_v1` 是唯一 flat（字段直接 `.xxx`），其余 10 个都是 V2 信封（字段在 `.event.xxx` 下）。
 
 ## 注意点（`im.message.receive_v1`）
 

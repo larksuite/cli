@@ -1,6 +1,6 @@
 ---
 name: lark-event
-version: 1.2.0
+version: 1.0.0
 description: "飞书事件实时订阅：通过 `lark-cli event consume <EventKey>` 消费 IM 消息等实时事件。支持 `--max-events` / `--timeout` bounded 执行，适合 AI agent 作为子进程启动。业务细节在 references 下按业务域拆分。"
 metadata:
   requires:
@@ -26,11 +26,13 @@ metadata:
 
 **子进程启动契约**：`event consume` 的 stderr 出现 `[event] ready event_key=<key>` 后，之后到达的事件保证送到 stdout。父进程 block 读 stderr 到这行再开始读 stdout，**不要 sleep 兜底**。
 
+**stdin EOF 视为退出信号**：`event consume` 把 stdin 关闭当退出信号（为 AI 子进程场景设计）。`< /dev/null` / `nohup` / systemd 默认 `StandardInput=null` 起会立刻优雅退出（stderr `reason: signal`）。要持续跑：保持 stdin 开（`< /dev/tty` 或 `< <(tail -f /dev/null)`），或用 `--max-events`/`--timeout`（bounded）
+
 **一个 consume 一个 EventKey**：命令只接 1 个位置参数，不支持 `key1,key2` 或通配符。监听 N 个 key 要开 N 个子进程。
 
 **抓样本看 payload 形态**：`event consume <key> --max-events 1 --timeout 30s` —— 收到 1 条或 30 秒后退出，常用于探测事件的 shape。
 
-**不要 `kill -9` consume 进程**：跳过 cleanup 会留下 orphan 本地 bus（用 `event status --fail-on-orphan` 检测、`event stop --all --force` 清理）；有 PreConsume 的 EventKey 还会在服务端残留订阅。
+**避免 `kill -9` consume 进程**：对**有 PreConsume 的 EventKey**（需在服务端建订阅的类型），`kill -9` 会跳过 OAPI unsubscribe，造成服务端订阅残留（症状：重启报订阅已存在、事件重复推送）。优先用 SIGTERM / 关 stdin 停。
 
 ## 业务索引
 

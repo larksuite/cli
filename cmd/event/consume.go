@@ -192,16 +192,16 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		}
 	}()
 
+	errOut := f.IOStreams.ErrOut
+	if o.quiet {
+		errOut = io.Discard
+	}
+
 	// Non-TTY: a closed stdin is a valid shutdown signal for subprocess
 	// callers. In TTY the stdin is the terminal, so we must not treat
 	// Ctrl-D as shutdown.
 	if !f.IOStreams.IsTerminal {
-		watchStdinEOF(os.Stdin, cancel)
-	}
-
-	errOut := f.IOStreams.ErrOut
-	if o.quiet {
-		errOut = io.Discard
+		watchStdinEOF(os.Stdin, cancel, errOut)
 	}
 
 	if err := consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
@@ -424,12 +424,26 @@ func parseParams(raw []string) (map[string]string, error) {
 }
 
 // watchStdinEOF launches a goroutine that drains r until EOF or any error,
-// then invokes cancel. Used to wire stdin-close → exit in non-TTY mode so
-// AI subprocess callers can signal shutdown by closing the stdin pipe.
+// writes a diagnostic line to errOut, then invokes cancel. Used to wire
+// stdin-close → exit in non-TTY mode so AI subprocess callers can signal
+// shutdown by closing the stdin pipe.
+//
+// The diagnostic is important: classic daemonisation (`< /dev/null`, `nohup`,
+// systemd's default `StandardInput=null`) delivers EOF on the first read,
+// which makes consume exit immediately — users who expected a long-running
+// daemon see "doesn't start" with no obvious cause. The stderr line names
+// the cause and points at the workarounds. Pass io.Discard for errOut to
+// suppress the line (e.g. under --quiet).
+//
 // Never called in TTY mode (would turn accidental Ctrl-D into shutdown).
-func watchStdinEOF(r io.Reader, cancel context.CancelFunc) {
+func watchStdinEOF(r io.Reader, cancel context.CancelFunc, errOut io.Writer) {
 	go func() {
 		_, _ = io.Copy(io.Discard, r)
+		fmt.Fprintln(errOut, "[event] stdin closed — shutting down. "+
+			"consume treats stdin EOF as exit signal (wired for AI subprocess callers). "+
+			"To keep running: pass --max-events/--timeout for bounded run, "+
+			"or keep stdin open (e.g. `< /dev/tty` interactive, `< <(tail -f /dev/null)` script), "+
+			"or stop via SIGTERM instead of closing stdin.")
 		cancel()
 	}()
 }

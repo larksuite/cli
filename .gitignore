@@ -39,7 +39,3 @@ cmd/api/download.bin
 app.log
 /sidecar-server-demo
 /server-demo
-span.log
-
-# Dev/test sandbox accidentally created when HOME is overridden
-.home/
