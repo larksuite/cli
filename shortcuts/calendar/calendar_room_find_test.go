@@ -8,6 +8,28 @@ import (
 	"time"
 )
 
+func TestNormalizeCommaSeparatedNames(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"木星", "木星"},
+		{"01,02,03", "01,02,03"},
+		{" 01 , 02 , 03 ", "01,02,03"},
+		{"16,17,18,19,20", "16,17,18,19,20"},
+		{"", ""},
+		{" , , ", ""},
+		{"01,,03", "01,03"},
+		{" 木星 ", "木星"},
+	}
+	for _, tt := range tests {
+		got := normalizeCommaSeparatedNames(tt.input)
+		if got != tt.want {
+			t.Errorf("normalizeCommaSeparatedNames(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestCollectRoomFindResults_LimitsConcurrency(t *testing.T) {
 	slots := []roomFindSlot{
 		{Start: "2026-03-27T14:00:00+08:00", End: "2026-03-27T15:00:00+08:00"},
