@@ -67,11 +67,15 @@ func runShortcutWithAuthTypes(t *testing.T, shortcut common.Shortcut, authTypes 
 	parent.SilenceErrors = true
 	parent.SilenceUsage = true
 	stdout.Reset()
+	if stderr, ok := factory.IOStreams.ErrOut.(*bytes.Buffer); ok {
+		stderr.Reset()
+	}
 	return parent.ExecuteContext(context.Background())
 }
 
 func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
+	stderr, _ := factory.IOStreams.ErrOut.(*bytes.Buffer)
 	permStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/permissions/app_x/members?need_notification=false&type=bitable",
@@ -96,8 +100,8 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	if data["created"] != true {
 		t.Fatalf("created = %#v, want true", data["created"])
 	}
-	if data["hint"] != baseCreateHint {
-		t.Fatalf("hint = %#v, want %q", data["hint"], baseCreateHint)
+	if !strings.Contains(stderr.String(), baseCreateHint) {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), baseCreateHint)
 	}
 	base, _ := data["base"].(map[string]interface{})
 	if got := common.GetString(base, "app_token"); got != "app_x" {
@@ -187,6 +191,7 @@ func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 
 func TestBaseWorkspaceExecuteCreateBotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
 	factory, stdout, reg := newExecuteFactoryWithUserOpenID(t, "")
+	stderr, _ := factory.IOStreams.ErrOut.(*bytes.Buffer)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases",
@@ -201,8 +206,8 @@ func TestBaseWorkspaceExecuteCreateBotAutoGrantSkippedWithoutCurrentUser(t *test
 	}
 
 	data := decodeBaseEnvelope(t, stdout)
-	if data["hint"] != baseCreateHint {
-		t.Fatalf("hint = %#v, want %q", data["hint"], baseCreateHint)
+	if !strings.Contains(stderr.String(), baseCreateHint) {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), baseCreateHint)
 	}
 	grant, _ := data["permission_grant"].(map[string]interface{})
 	if grant["status"] != common.PermissionGrantSkipped {

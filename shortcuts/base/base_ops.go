@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -64,9 +65,10 @@ func executeBaseCreate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	out := map[string]interface{}{"base": data, "created": true, "hint": baseCreateHint}
+	out := map[string]interface{}{"base": data, "created": true}
 	augmentBasePermissionGrant(runtime, out, data)
 	runtime.Out(out, nil)
+	fmt.Fprintln(runtime.IO().ErrOut, baseCreateHint)
 	return nil
 }
 
