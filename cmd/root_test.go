@@ -196,3 +196,28 @@ func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", rootLong)
 	}
 }
+
+func TestConfigureFlagCompletions(t *testing.T) {
+	t.Cleanup(func() { cmdutil.SetFlagCompletionsDisabled(false) })
+
+	tests := []struct {
+		name         string
+		args         []string
+		wantDisabled bool
+	}{
+		{"plain command", []string{"im", "+send"}, true},
+		{"help flag", []string{"im", "--help"}, true},
+		{"no args", []string{}, true},
+		{"__complete request", []string{"__complete", "im", "+send", ""}, false},
+		{"completion subcommand", []string{"completion", "bash"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmdutil.SetFlagCompletionsDisabled(!tc.wantDisabled)
+			configureFlagCompletions(tc.args)
+			if got := cmdutil.FlagCompletionsDisabled(); got != tc.wantDisabled {
+				t.Fatalf("FlagCompletionsDisabled() = %v, want %v", got, tc.wantDisabled)
+			}
+		})
+	}
+}
