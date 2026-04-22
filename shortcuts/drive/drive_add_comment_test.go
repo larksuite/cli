@@ -5,11 +5,13 @@ package drive
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 )
 
 func decodeJSONMap(t *testing.T, raw string) map[string]interface{} {
@@ -289,6 +291,112 @@ func TestParseCommentReplyElementsEscapesAngleBrackets(t *testing.T) {
 	}
 	if got[0]["text"] != "a &lt; b &gt; c" {
 		t.Fatalf("expected escaped text, got %#v", got[0]["text"])
+	}
+}
+
+func TestParseCommentReplyElementsTextLength(t *testing.T) {
+	t.Parallel()
+
+	// Boundary: 300 bytes of ASCII fits exactly; 301 does not.
+	exact300ASCII := strings.Repeat("a", 300)
+	over300ASCII := strings.Repeat("a", 301)
+
+	// Chinese: every char is 3 bytes in UTF-8. 100 chars = 300 bytes (on the
+	// boundary, must fit); 101 chars = 303 bytes (over, must reject).
+	exact100CJK := strings.Repeat("文", 100)
+	over100CJK := strings.Repeat("文", 101)
+
+	// The empirical 130-char Chinese failure the limit is designed to catch.
+	case12Reproducer := strings.Repeat("文", 130)
+
+	tests := []struct {
+		name      string
+		input     string
+		wantErr   string
+		wantHint  string // substring of the hint portion; "" means don't check hint
+		wantCount int    // expected parsed element count when no error expected
+	}{
+		{
+			name:      "ascii exactly at byte limit is accepted",
+			input:     `[{"type":"text","text":"` + exact300ASCII + `"}]`,
+			wantCount: 1,
+		},
+		{
+			name:     "ascii over byte limit is rejected",
+			input:    `[{"type":"text","text":"` + over300ASCII + `"}]`,
+			wantErr:  "--content element #1 text is 301 characters (301 bytes)",
+			wantHint: "split the content across multiple",
+		},
+		{
+			name:      "chinese exactly at byte limit is accepted",
+			input:     `[{"type":"text","text":"` + exact100CJK + `"}]`,
+			wantCount: 1,
+		},
+		{
+			name:     "chinese over byte limit is rejected",
+			input:    `[{"type":"text","text":"` + over100CJK + `"}]`,
+			wantErr:  "--content element #1 text is 101 characters (303 bytes)",
+			wantHint: "one contiguous comment",
+		},
+		{
+			name:    "case12 reproducer (130 chinese chars) is caught pre-flight",
+			input:   `[{"type":"text","text":"` + case12Reproducer + `"}]`,
+			wantErr: "390 bytes",
+		},
+		{
+			name:    "second element over limit reports correct index",
+			input:   `[{"type":"text","text":"fine"},{"type":"text","text":"` + over100CJK + `"}]`,
+			wantErr: "--content element #2",
+		},
+		{
+			// Regression: byte check must measure the post-escape length so
+			// '<' / '>' (which expand to '&lt;' / '&gt;', 4 bytes each)
+			// don't slip through the limit into the opaque server-side
+			// [1069302]. 99 ASCII chars + 75 '<' = raw 174 bytes, escaped
+			// 99 + 75*4 = 399 bytes (over 300).
+			name:    "raw under but escaped over byte limit is rejected",
+			input:   `[{"type":"text","text":"` + strings.Repeat("a", 99) + strings.Repeat("<", 75) + `"}]`,
+			wantErr: "(399 bytes)",
+		},
+		{
+			// Companion to the above: escaped form must fit, not the raw
+			// form. 60 '<' raw = 60 bytes; escaped = 240 bytes (under 300).
+			name:      "raw small enough that escape stays within limit is accepted",
+			input:     `[{"type":"text","text":"` + strings.Repeat("<", 60) + `"}]`,
+			wantCount: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseCommentReplyElements(tt.input)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil (parsed %d elements)", tt.wantErr, len(got))
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				if tt.wantHint != "" {
+					// Hint lives on ExitError.Detail.Hint, not err.Error().
+					var exitErr *output.ExitError
+					if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+						t.Fatalf("expected ExitError with Detail, got %T (%v)", err, err)
+					}
+					if !strings.Contains(exitErr.Detail.Hint, tt.wantHint) {
+						t.Errorf("expected hint substring %q, got %q", tt.wantHint, exitErr.Detail.Hint)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != tt.wantCount {
+				t.Fatalf("expected %d reply elements, got %d", tt.wantCount, len(got))
+			}
+		})
 	}
 }
 

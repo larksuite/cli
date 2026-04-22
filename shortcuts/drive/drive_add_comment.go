@@ -18,6 +18,23 @@ import (
 
 const defaultLocateDocLimit = 10
 
+// maxCommentTextElementBytes is the per-text-element byte budget the server
+// accepts in `drive +add-comment` reply_elements.
+//
+// The open-platform comment API returns an opaque `[1069302] Invalid or
+// missing parameters` when a single `{"type":"text","text":"…"}` exceeds
+// this limit, with no indication that length is the cause or which element
+// is at fault. Empirically, Chinese text up to ~80 characters (≈240 bytes
+// UTF-8) lands reliably and ~130 characters (≈390 bytes) fails. 300 bytes
+// is inside the known-safe zone: it catches the 130-char failure case
+// pre-flight while leaving headroom for typical ~100-char comments.
+//
+// ASCII callers can fit ~300 chars; Chinese callers ~100 chars per element.
+// Agents that have a longer message should split it across multiple text
+// elements — the comment UI still renders them as a single contiguous
+// comment.
+const maxCommentTextElementBytes = 300
+
 type commentDocRef struct {
 	Kind  string
 	Token string
@@ -612,12 +629,25 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 			if strings.TrimSpace(input.Text) == "" {
 				return nil, output.ErrValidation("--content element #%d type=text requires non-empty text", index)
 			}
-			if utf8.RuneCountInString(input.Text) > 1000 {
-				return nil, output.ErrValidation("--content element #%d text exceeds 1000 characters", index)
+			// Measure the escaped form, not the raw input, because the server
+			// receives the escaped text and any '<' / '>' / '&' expand to 4-5
+			// bytes (`&lt;`, `&gt;`, `&amp;`). Without this, an input that
+			// hits the limit on one of those characters would still surface
+			// as the opaque [1069302] from the server.
+			escaped := escapeCommentText(input.Text)
+			if byteLen := len(escaped); byteLen > maxCommentTextElementBytes {
+				runeCount := utf8.RuneCountInString(input.Text)
+				return nil, output.ErrWithHint(
+					output.ExitValidation,
+					"text_too_long",
+					fmt.Sprintf("--content element #%d text is %d characters (%d bytes); per-element limit is ~%d bytes (≈100 Chinese characters / 300 ASCII characters)",
+						index, runeCount, byteLen, maxCommentTextElementBytes),
+					"split the content across multiple {\"type\":\"text\",\"text\":\"...\"} elements — the comment UI still renders them as one contiguous comment. The server returns an opaque [1069302] on overflow, so this check is pre-flight. Note: '<' / '>' / '&' are HTML-escaped and counted in their escaped form (4-5 bytes each).",
+				)
 			}
 			replyElements = append(replyElements, map[string]interface{}{
 				"type": "text",
-				"text": escapeCommentText(input.Text),
+				"text": escaped,
 			})
 		case "mention_user":
 			mentionUser := firstNonEmptyString(input.MentionUser, input.Text)
