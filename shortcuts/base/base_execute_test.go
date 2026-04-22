@@ -96,6 +96,9 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	if data["created"] != true {
 		t.Fatalf("created = %#v, want true", data["created"])
 	}
+	if data["hint"] != baseCreateHint {
+		t.Fatalf("hint = %#v, want %q", data["hint"], baseCreateHint)
+	}
 	base, _ := data["base"].(map[string]interface{})
 	if got := common.GetString(base, "app_token"); got != "app_x" {
 		t.Fatalf("base.app_token = %q, want %q", got, "app_x")
@@ -198,6 +201,9 @@ func TestBaseWorkspaceExecuteCreateBotAutoGrantSkippedWithoutCurrentUser(t *test
 	}
 
 	data := decodeBaseEnvelope(t, stdout)
+	if data["hint"] != baseCreateHint {
+		t.Fatalf("hint = %#v, want %q", data["hint"], baseCreateHint)
+	}
 	grant, _ := data["permission_grant"].(map[string]interface{})
 	if grant["status"] != common.PermissionGrantSkipped {
 		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
