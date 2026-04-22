@@ -40,15 +40,20 @@ lark-cli drive +task_result \
 lark-cli drive +task_result \
   --scenario wiki_move \
   --task-id <TASK_ID>
+
+# 查询 Wiki 删除知识空间任务结果（wiki +delete-space 异步超时后的续跑）
+lark-cli drive +task_result \
+  --scenario wiki_delete_space \
+  --task-id <TASK_ID>
 ```
 
 ## 参数
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--scenario` | 是 | 任务场景，可选值：`import` (导入任务)、`export` (导出任务)、`task_check` (移动/删除文件夹任务)、`wiki_move` (Wiki 移动任务) |
+| `--scenario` | 是 | 任务场景，可选值：`import` (导入任务)、`export` (导出任务)、`task_check` (移动/删除文件夹任务)、`wiki_move` (Wiki 移动任务)、`wiki_delete_space` (Wiki 删除知识空间任务) |
 | `--ticket` | 条件必填 | 异步任务 ticket，**import/export 场景必填** |
-| `--task-id` | 条件必填 | 异步任务 ID，**task_check / wiki_move 场景必填** |
+| `--task-id` | 条件必填 | 异步任务 ID，**task_check / wiki_move / wiki_delete_space 场景必填** |
 | `--file-token` | 条件必填 | 导出任务对应的源文档 token，**export 场景必填** |
 
 ## 场景说明
@@ -59,6 +64,7 @@ lark-cli drive +task_result \
 | `export` | 文档导出任务（如云文档导出为 PDF/Word） | `--ticket`、`--file-token` |
 | `task_check` | 文件夹移动/删除任务 | `--task-id` |
 | `wiki_move` | Wiki 移动任务（`wiki +move` 的 docs-to-wiki 异步流程，超时后续跑用） | `--task-id` |
+| `wiki_delete_space` | Wiki 删除知识空间任务（`wiki +delete-space` 的异步流程，超时后续跑用） | `--task-id` |
 
 ## 返回结果
 
@@ -190,6 +196,25 @@ lark-cli drive +task_result \
 - `space_id`、`obj_token`、`obj_type`、`title` 等：从首个 `move_results[0].node` 平铺到顶层，方便直接引用
 - `move_results`: 保留完整列表（适用于一次任务移动多个文档的场景）
 
+### Wiki_delete_space 场景返回
+
+```json
+{
+  "scenario": "wiki_delete_space",
+  "task_id": "<TASK_ID>",
+  "ready": true,
+  "failed": false,
+  "status": "success",
+  "status_msg": "success"
+}
+```
+
+**字段说明：**
+- `ready`: `status=success` 时为 `true`
+- `failed`: `status=failure` 或 `failed` 时为 `true`；未知非成功状态（如 `processing`）视为进行中
+- `status`: 服务端返回的原始 `delete_space_result.status`
+- `status_msg`: 优先使用 `delete_space_result.status_msg`，否则回落到 `status`，再回落到 `processing`
+
 ## 使用场景
 
 ### 配合 +import 使用
@@ -231,6 +256,18 @@ lark-cli drive +task_result --scenario wiki_move --task-id <TASK_ID> --as user
 
 > **身份保持一致**：续跑命令的 `--as` 必须与原 `wiki +move` 调用一致；`wiki +move` 的 `next_command` 已自动带上正确的 `--as`。
 
+### 配合 wiki +delete-space 使用
+
+```bash
+# 1. 删除知识空间（高风险写操作，必须显式带 --yes；接口可能同步返回空 task_id，也可能返回异步 task_id）
+lark-cli wiki +delete-space --space-id <SPACE_ID> --yes
+# 若同步返回：直接 ready=true
+# 若轮询窗口结束仍未完成：返回 ready=false、task_id、timed_out=true 和 next_command
+
+# 2. 续跑查询 Wiki 删除结果（next_command 即下面这条）
+lark-cli drive +task_result --scenario wiki_delete_space --task-id <TASK_ID> --as user
+```
+
 ### 配合 +export 使用
 
 ```bash
@@ -254,6 +291,7 @@ lark-cli drive +export-download --file-token <EXPORTED_FILE_TOKEN>
 | export | `drive:drive.metadata:readonly` |
 | task_check | `drive:drive.metadata:readonly` |
 | wiki_move | `wiki:space:read` |
+| wiki_delete_space | `wiki:space:read` |
 
 > [!NOTE]
 > `import` 场景在 `--as bot` 且任务最终就绪时，还可能额外尝试一次协作者授权；如果 `permission_grant.status = failed`，请根据失败信息检查应用是否具备相应的文档协作者授权能力。
