@@ -159,6 +159,60 @@ func TestResolveFilenameFromResponse_InvalidContentDisposition(t *testing.T) {
 	}
 }
 
+func TestResolveFilenameFromResponse_RejectsTraversalInDisposition(t *testing.T) {
+	tests := []struct {
+		disposition string
+		wantBase    string
+	}{
+		{`attachment; filename="../evil.mp4"`, "evil.mp4"},
+		{`attachment; filename="../../etc/passwd"`, "passwd"},
+		{`attachment; filename="subdir/inner.mp4"`, "inner.mp4"},
+		{`attachment; filename=".."`, "tok001.media"},
+		{`attachment; filename="."`, "tok001.media"},
+	}
+	for _, tt := range tests {
+		resp := &http.Response{
+			Header: http.Header{
+				"Content-Disposition": []string{tt.disposition},
+			},
+		}
+		got := resolveFilenameFromResponse(resp, "tok001")
+		if got != tt.wantBase {
+			t.Errorf("disposition=%q: got %q, want %q", tt.disposition, got, tt.wantBase)
+		}
+	}
+}
+
+func TestDownload_ServerFilenameTraversalStaysInOutputDir(t *testing.T) {
+	// Integration: server returns Content-Disposition with "../evil.mp4";
+	// file must land inside minutes/{token}/ not the parent directory.
+	chdir(t, t.TempDir())
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/presigned/download"))
+	reg.Register(&httpmock.Stub{
+		URL:     "example.com/presigned/download",
+		RawBody: []byte("content"),
+		Headers: http.Header{
+			"Content-Type":        []string{"video/mp4"},
+			"Content-Disposition": []string{`attachment; filename="../evil.mp4"`},
+		},
+	})
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat("minutes/tok001/evil.mp4"); err != nil {
+		t.Errorf("expected file inside per-token subdir, got err: %v", err)
+	}
+	if _, err := os.Stat("minutes/evil.mp4"); err == nil {
+		t.Error("file escaped per-token subdir into parent: minutes/evil.mp4 exists")
+	}
+}
+
 func TestResolveFilenameFromResponse_EmptyDispositionFilename(t *testing.T) {
 	resp := &http.Response{
 		Header: http.Header{

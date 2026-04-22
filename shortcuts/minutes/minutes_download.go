@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -362,7 +363,7 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 func resolveFilenameFromResponse(resp *http.Response, minuteToken string) string {
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		if _, params, err := mime.ParseMediaType(cd); err == nil {
-			if filename := params["filename"]; filename != "" {
+			if filename := sanitizeServerFilename(params["filename"]); filename != "" {
 				return filename
 			}
 		}
@@ -371,6 +372,20 @@ func resolveFilenameFromResponse(resp *http.Response, minuteToken string) string
 		return minuteToken + ext
 	}
 	return minuteToken + ".media"
+}
+
+// sanitizeServerFilename reduces a server-provided filename to its basename,
+// defending against Content-Disposition payloads that embed directory
+// separators (e.g. "../other.mp4") and would otherwise escape the intended
+// artifact directory after filepath.Join. Empty or dot-only names return ""
+// so the caller can fall back to the next naming strategy.
+func sanitizeServerFilename(filename string) string {
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = path.Base(filename)
+	if filename == "" || filename == "." || filename == ".." {
+		return ""
+	}
+	return filename
 }
 
 // preferredExt overrides Go's mime.ExtensionsByType which returns alphabetically sorted
