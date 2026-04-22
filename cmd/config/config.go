@@ -14,6 +14,10 @@ func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Global CLI configuration management",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Pass "config" as a literal — cmd.Name() would return the subcommand name.
+			return f.RequireBuiltinCredentialProvider(cmd.Context(), "config")
+		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
 
