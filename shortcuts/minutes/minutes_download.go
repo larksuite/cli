@@ -43,7 +43,8 @@ var MinutesDownload = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch download (max 50)", Required: true},
-		{Name: "output", Desc: "output path: file path for single token, directory for batch (default: current dir)"},
+		{Name: "output", Desc: "output file path (single token). If the path is an existing directory, it is treated as --output-dir."},
+		{Name: "output-dir", Desc: "output directory. Default when neither --output nor --output-dir is set: ./minutes/{minute_token}/"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 		{Name: "url-only", Type: "bool", Desc: "only print the download URL(s) without downloading"},
 	},
@@ -70,29 +71,48 @@ var MinutesDownload = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		tokens := common.SplitCSV(runtime.Str("minute-tokens"))
-		outputPath := runtime.Str("output")
+		rawOutput := runtime.Str("output")
+		rawOutputDir := runtime.Str("output-dir")
 		overwrite := runtime.Bool("overwrite")
 		urlOnly := runtime.Bool("url-only")
 		errOut := runtime.IO().ErrOut
 		single := len(tokens) == 1
 
-		// Batch mode: --output must be a directory, not an existing file.
-		if !single && outputPath != "" {
-			if fi, err := runtime.FileIO().Stat(outputPath); err == nil && !fi.IsDir() {
-				return output.ErrValidation("--output %q is a file; batch mode expects a directory path", outputPath)
+		if rawOutput != "" && rawOutputDir != "" {
+			return output.ErrValidation("--output and --output-dir cannot both be set")
+		}
+
+		// --output 指向已存在目录：降级为 --output-dir（cp 语义），修复单 token 模式
+		// 下传目录路径报 "cannot create parent directory" 的问题。
+		explicitOutputPath := rawOutput
+		explicitOutputDir := rawOutputDir
+		if explicitOutputPath != "" {
+			if fi, err := runtime.FileIO().Stat(explicitOutputPath); err == nil && fi.IsDir() {
+				explicitOutputDir = explicitOutputPath
+				explicitOutputPath = ""
 			}
 		}
+
+		// 批量模式下 --output 仍然保留"目录"语义以兼容既有用法。
+		if !single && explicitOutputPath != "" {
+			explicitOutputDir = explicitOutputPath
+			explicitOutputPath = ""
+		}
+
+		// 用户完全未传路径：落到 ./minutes/{minute_token}/recording.{ext}
+		useDefaultLayout := explicitOutputPath == "" && explicitOutputDir == ""
 
 		if !single {
 			fmt.Fprintf(errOut, "[minutes +download] batch: %d token(s)\n", len(tokens))
 		}
 
 		type result struct {
-			MinuteToken string `json:"minute_token"`
-			SavedPath   string `json:"saved_path,omitempty"`
-			SizeBytes   int64  `json:"size_bytes,omitempty"`
-			DownloadURL string `json:"download_url,omitempty"`
-			Error       string `json:"error,omitempty"`
+			MinuteToken  string `json:"minute_token"`
+			ArtifactType string `json:"artifact_type,omitempty"`
+			SavedPath    string `json:"saved_path,omitempty"`
+			SizeBytes    int64  `json:"size_bytes,omitempty"`
+			DownloadURL  string `json:"download_url,omitempty"`
+			Error        string `json:"error,omitempty"`
 		}
 
 		results := make([]result, len(tokens))
@@ -160,12 +180,21 @@ var MinutesDownload = common.Shortcut{
 
 			fmt.Fprintf(errOut, "Downloading media: %s\n", common.MaskToken(token))
 
-			// single token: --output is a file path; batch: --output is a directory
-			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite, usedNames: usedNames}
-			if single {
-				opts.outputPath = outputPath
-			} else {
-				opts.outputDir = outputPath
+			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite}
+			switch {
+			case useDefaultLayout:
+				// 默认布局：./minutes/{token}/ 目录；文件名沿用服务端
+				// (Content-Disposition / Content-Type / {token}.media)。
+				// 每个 token 独占子目录，天然无冲突，不需要 usedNames 去重。
+				opts.outputDir = common.DefaultMinuteArtifactDir(token)
+			case explicitOutputPath != "" && single:
+				opts.outputPath = explicitOutputPath
+			default:
+				// 显式目录：文件名沿用服务端；批量模式下 usedNames 做冲突去重
+				opts.outputDir = explicitOutputDir
+				if !single {
+					opts.usedNames = usedNames
+				}
 			}
 
 			dl, err := downloadMediaFile(ctx, dlClient, downloadURL, token, opts)
@@ -173,7 +202,12 @@ var MinutesDownload = common.Shortcut{
 				results[i] = result{MinuteToken: token, Error: err.Error()}
 				continue
 			}
-			results[i] = result{MinuteToken: token, SavedPath: dl.savedPath, SizeBytes: dl.sizeBytes}
+			results[i] = result{
+				MinuteToken:  token,
+				ArtifactType: common.ArtifactTypeRecording,
+				SavedPath:    dl.savedPath,
+				SizeBytes:    dl.sizeBytes,
+			}
 		}
 
 		// output
@@ -185,7 +219,12 @@ var MinutesDownload = common.Shortcut{
 			if urlOnly {
 				runtime.Out(map[string]interface{}{"download_url": r.DownloadURL}, nil)
 			} else {
-				runtime.Out(map[string]interface{}{"saved_path": r.SavedPath, "size_bytes": r.SizeBytes}, nil)
+				runtime.Out(map[string]interface{}{
+					"minute_token":  r.MinuteToken,
+					"artifact_type": r.ArtifactType,
+					"saved_path":    r.SavedPath,
+					"size_bytes":    r.SizeBytes,
+				}, nil)
 			}
 			return nil
 		}
@@ -230,7 +269,7 @@ type downloadResult struct {
 type downloadOpts struct {
 	fio        fileio.FileIO // file I/O abstraction
 	outputPath string        // explicit output file path (single mode only)
-	outputDir  string        // output directory (batch mode)
+	outputDir  string        // output directory (single or batch)
 	overwrite  bool
 	usedNames  map[string]bool // tracks used filenames to deduplicate in batch mode
 }

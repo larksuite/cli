@@ -417,6 +417,167 @@ func TestDownload_Batch_DuplicateToken(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Integration tests: unified default layout (./minutes/{token}/)
+// ---------------------------------------------------------------------------
+
+func TestDownload_DefaultLayout_Single(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/presigned/download"))
+	reg.Register(downloadStub("example.com/presigned/download", []byte("fake-video"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 默认模式：文件名沿用服务端；mock 的 downloadStub 只有 Content-Type: video/mp4
+	// 无 Content-Disposition，于是 resolveFilenameFromResponse 落到 {token}.mp4
+	wantPath := "minutes/tok001/tok001.mp4"
+	data, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("expected file at %s: %v", wantPath, err)
+	}
+	if string(data) != "fake-video" {
+		t.Errorf("content mismatch: %q", string(data))
+	}
+
+	// JSON 输出应包含 minute_token + artifact_type + saved_path
+	var result struct {
+		Data struct {
+			MinuteToken  string `json:"minute_token"`
+			ArtifactType string `json:"artifact_type"`
+			SavedPath    string `json:"saved_path"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v\nraw: %s", err, stdout.String())
+	}
+	if result.Data.MinuteToken != "tok001" {
+		t.Errorf("minute_token = %q, want tok001", result.Data.MinuteToken)
+	}
+	if result.Data.ArtifactType != "recording" {
+		t.Errorf("artifact_type = %q, want recording", result.Data.ArtifactType)
+	}
+	if !strings.Contains(result.Data.SavedPath, "minutes/tok001/tok001.mp4") {
+		t.Errorf("saved_path = %q, want contain minutes/tok001/tok001.mp4", result.Data.SavedPath)
+	}
+}
+
+func TestDownload_DefaultLayout_Batch(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(mediaStub("tok002", "https://example.com/download/2"))
+	reg.Register(downloadStub("example.com/download/1", []byte("content-1"), "video/mp4"))
+	reg.Register(downloadStub("example.com/download/2", []byte("content-2"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok002", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, tok := range []string{"tok001", "tok002"} {
+		p := "minutes/" + tok + "/" + tok + ".mp4"
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("expected file %s: %v", p, err)
+		}
+	}
+}
+
+func TestDownload_OutputDirFlag_SingleToken(t *testing.T) {
+	chdir(t, t.TempDir())
+	if err := os.MkdirAll("dl", 0755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(downloadStub("example.com/download/1", []byte("content-1"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--output-dir", "dl", "--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 显式 --output-dir 沿用"按下载名"策略：Content-Type 解出扩展 → {token}.mp4
+	if _, err := os.Stat("dl/tok001.mp4"); err != nil {
+		t.Errorf("expected dl/tok001.mp4, got err: %v", err)
+	}
+	// 默认目录不应被创建
+	if _, err := os.Stat("minutes"); err == nil {
+		t.Errorf("minutes/ should not be created when --output-dir is explicit")
+	}
+}
+
+func TestDownload_Bug_OutputIsExistingDir(t *testing.T) {
+	// 修复：单 token 模式下 --output 传已存在目录时不再报
+	// "cannot create parent directory"，而是按 cp 语义落到该目录
+	chdir(t, t.TempDir())
+	if err := os.MkdirAll("existing", 0755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(downloadStub("example.com/download/1", []byte("x"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--output", "existing", "--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 被识别为目录后采用 --output-dir 语义：existing/{token}.mp4
+	if _, err := os.Stat("existing/tok001.mp4"); err != nil {
+		t.Errorf("expected existing/tok001.mp4, got err: %v", err)
+	}
+}
+
+func TestDownload_Validation_OutputAndOutputDirBothSet(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--output", "a.mp4", "--output-dir", "b", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error when both --output and --output-dir are set")
+	}
+	if !strings.Contains(err.Error(), "output-dir") {
+		t.Errorf("error should mention output-dir, got: %v", err)
+	}
+}
+
+func TestDownload_ExplicitOutputFile_PreservesPath(t *testing.T) {
+	// 用户显式 --output file.mp4，行为不变：落到 cwd 的文件名
+	chdir(t, t.TempDir())
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(downloadStub("example.com/download/1", []byte("x"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--output", "my.mp4", "--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat("my.mp4"); err != nil {
+		t.Errorf("expected my.mp4, got err: %v", err)
+	}
+	// 默认目录不应被创建
+	if _, err := os.Stat("minutes"); err == nil {
+		t.Errorf("minutes/ should not be created when --output is explicit file path")
+	}
+}
+
 func TestDownload_Batch_DryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, MinutesDownload, []string{
