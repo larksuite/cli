@@ -336,9 +336,8 @@ func sanitizeDirName(title, minuteToken string) string {
 func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, title string) string {
 	errOut := runtime.IO().ErrOut
 
-	// 用户未显式传 --output-dir 时，走默认布局 ./minutes/{minute_token}/transcript.txt
-	// —— 与 minutes +download 的默认录像路径同目录，Agent 可直接聚合。
-	// 传了则沿用既有 ./{output-dir}/artifact-{title}-{token}/transcript.txt，保持兼容。
+	// With no --output-dir the default layout shares the directory with
+	// `minutes +download`. Legacy layout is preserved when the flag is set.
 	var dirName string
 	if outDir := runtime.Str("output-dir"); outDir != "" {
 		dirName = filepath.Join(outDir, sanitizeDirName(title, minuteToken))

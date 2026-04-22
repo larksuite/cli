@@ -201,8 +201,6 @@ func TestDownload_Validation_InvalidToken(t *testing.T) {
 }
 
 func TestDownload_Validation_OutputIsFileInBatchMode(t *testing.T) {
-	// 批量模式下 --output 指向已存在的文件 → 明确拒绝（dir 语义不兼容）。
-	// 非存在路径在批量模式下会被当作待创建目录（见 TestDownload_Batch_OutputNewDir）。
 	chdir(t, t.TempDir())
 	if err := os.WriteFile("already.mp4", []byte("x"), 0644); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -444,8 +442,8 @@ func TestDownload_DefaultLayout_Single(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// 默认模式：文件名沿用服务端；mock 的 downloadStub 只有 Content-Type: video/mp4
-	// 无 Content-Disposition，于是 resolveFilenameFromResponse 落到 {token}.mp4
+	// The stub omits Content-Disposition, so filename resolution falls back
+	// to {token}{ext} derived from Content-Type.
 	wantPath := "minutes/tok001/tok001.mp4"
 	data, err := os.ReadFile(wantPath)
 	if err != nil {
@@ -455,7 +453,6 @@ func TestDownload_DefaultLayout_Single(t *testing.T) {
 		t.Errorf("content mismatch: %q", string(data))
 	}
 
-	// JSON 输出应包含 minute_token + artifact_type + saved_path
 	var result struct {
 		Data struct {
 			MinuteToken  string `json:"minute_token"`
@@ -517,19 +514,15 @@ func TestDownload_OutputDirFlag_SingleToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// 显式 --output-dir 沿用"按下载名"策略：Content-Type 解出扩展 → {token}.mp4
 	if _, err := os.Stat("dl/tok001.mp4"); err != nil {
 		t.Errorf("expected dl/tok001.mp4, got err: %v", err)
 	}
-	// 默认目录不应被创建
 	if _, err := os.Stat("minutes"); err == nil {
 		t.Errorf("minutes/ should not be created when --output-dir is explicit")
 	}
 }
 
 func TestDownload_Bug_OutputIsExistingDir(t *testing.T) {
-	// 修复：单 token 模式下 --output 传已存在目录时不再报
-	// "cannot create parent directory"，而是按 cp 语义落到该目录
 	chdir(t, t.TempDir())
 	if err := os.MkdirAll("existing", 0755); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -545,7 +538,6 @@ func TestDownload_Bug_OutputIsExistingDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// 被识别为目录后采用 --output-dir 语义：existing/{token}.mp4
 	if _, err := os.Stat("existing/tok001.mp4"); err != nil {
 		t.Errorf("expected existing/tok001.mp4, got err: %v", err)
 	}
@@ -565,7 +557,6 @@ func TestDownload_Validation_OutputAndOutputDirBothSet(t *testing.T) {
 }
 
 func TestDownload_ExplicitOutputFile_PreservesPath(t *testing.T) {
-	// 用户显式 --output file.mp4，行为不变：落到 cwd 的文件名
 	chdir(t, t.TempDir())
 
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
@@ -581,7 +572,6 @@ func TestDownload_ExplicitOutputFile_PreservesPath(t *testing.T) {
 	if _, err := os.Stat("my.mp4"); err != nil {
 		t.Errorf("expected my.mp4, got err: %v", err)
 	}
-	// 默认目录不应被创建
 	if _, err := os.Stat("minutes"); err == nil {
 		t.Errorf("minutes/ should not be created when --output is explicit file path")
 	}

@@ -695,7 +695,6 @@ func TestNotes_TranscriptDefaultLayout(t *testing.T) {
 		t.Errorf("content mismatch: %q", string(data))
 	}
 
-	// 旧的 artifact-{title}-{token}/ 目录不应再出现
 	if _, err := os.Stat("artifact-Meeting Title-tok001"); err == nil {
 		t.Errorf("legacy artifact dir should not appear under default layout")
 	}
@@ -724,7 +723,6 @@ func TestNotes_TranscriptExplicitOutputDir_PreservesLegacyLayout(t *testing.T) {
 	if _, err := os.Stat(wantPath); err != nil {
 		t.Errorf("expected legacy path %s preserved, got err: %v", wantPath, err)
 	}
-	// 新默认目录不应被创建
 	if _, err := os.Stat("minutes"); err == nil {
 		t.Errorf("minutes/ should not be created when --output-dir is explicit")
 	}

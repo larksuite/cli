@@ -94,11 +94,11 @@ var MinutesDownload = common.Shortcut{
 		errOut := runtime.IO().ErrOut
 		single := len(tokens) == 1
 
-		// --output 的语义分情况：
-		//   - 已存在目录 → 降级为 --output-dir（cp 语义，修复单 token 传目录报 mkdir err 的 bug）
-		//   - 已存在文件 → 单 token 覆写；批量模式明确拒绝（dir 语义不兼容）
-		//   - 不存在     → 单 token 作为新文件路径；批量作为待创建目录
-		//   - 路径校验失败 / 其他 FS 错误 → 立即抛出（避免延迟到 Save 才暴露）
+		// Re-interpret --output based on what the path points to. An existing
+		// directory is promoted to --output-dir so single-token cp semantics
+		// work. An existing file is rejected in batch mode (the flag carries
+		// directory semantics there). Unknown filesystem errors are surfaced
+		// eagerly rather than deferred to Save.
 		explicitOutputPath := rawOutput
 		explicitOutputDir := rawOutputDir
 		if explicitOutputPath != "" {
@@ -111,20 +111,16 @@ var MinutesDownload = common.Shortcut{
 				if !single {
 					return output.ErrValidation("--output %q is a file; batch mode expects a directory (use --output-dir)", explicitOutputPath)
 				}
-				// single mode: keep as explicit file path
 			case errors.Is(statErr, fs.ErrNotExist):
 				if !single {
-					// batch: treat non-existent path as directory to be created
 					explicitOutputDir = explicitOutputPath
 					explicitOutputPath = ""
 				}
-				// single mode: keep as new file path
 			default:
 				return output.ErrValidation("cannot access --output %q: %s", explicitOutputPath, statErr)
 			}
 		}
 
-		// 用户完全未传路径：落到 ./minutes/{minute_token}/（文件名沿用服务端）
 		useDefaultLayout := explicitOutputPath == "" && explicitOutputDir == ""
 
 		if !single {
@@ -208,14 +204,11 @@ var MinutesDownload = common.Shortcut{
 			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite}
 			switch {
 			case useDefaultLayout:
-				// 默认布局：./minutes/{token}/ 目录；文件名沿用服务端
-				// (Content-Disposition / Content-Type / {token}.media)。
-				// 每个 token 独占子目录，天然无冲突，不需要 usedNames 去重。
+				// Per-token subdirectory guarantees unique paths, so no dedup map.
 				opts.outputDir = common.DefaultMinuteArtifactDir(token)
 			case explicitOutputPath != "" && single:
 				opts.outputPath = explicitOutputPath
 			default:
-				// 显式目录：文件名沿用服务端；批量模式下 usedNames 做冲突去重
 				opts.outputDir = explicitOutputDir
 				if !single {
 					opts.usedNames = usedNames
