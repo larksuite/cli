@@ -377,7 +377,7 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 
 	cmd.ValidArgsFunction = completeSchemaPath(f)
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json (default) | pretty")
-	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "pretty"}, cobra.ShellCompDirectiveNoFileComp
 	})
 

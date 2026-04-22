@@ -876,7 +876,7 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		}
 		if len(fl.Enum) > 0 {
 			vals := fl.Enum
-			_ = cmd.RegisterFlagCompletionFunc(fl.Name, func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			cmdutil.RegisterFlagCompletion(cmd, fl.Name, func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 				return vals, cobra.ShellCompDirectiveNoFileComp
 			})
 		}
@@ -892,7 +892,7 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
 	if s.HasFormat {
-		_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
 		})
 	}

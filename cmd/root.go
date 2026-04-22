@@ -85,6 +85,10 @@ func Execute() int {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		return 1
 	}
+	// Only register flag completion callbacks when cobra is actually serving
+	// a completion request; see cmdutil.RegisterFlagCompletion.
+	cmdutil.SetFlagCompletionsDisabled(!isCompletionCommand(os.Args))
+
 	f, rootCmd := buildInternal(
 		context.Background(), inv,
 		WithIO(os.Stdin, os.Stdout, os.Stderr),

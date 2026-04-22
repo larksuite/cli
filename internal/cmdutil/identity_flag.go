@@ -54,7 +54,7 @@ func addIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory, target
 	}
 
 	registerIdentityFlag(cmd, target, cfg.defaultValue, cfg.usage)
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	RegisterFlagCompletion(cmd, "as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return cfg.completionValues, cobra.ShellCompDirectiveNoFileComp
 	})
 }

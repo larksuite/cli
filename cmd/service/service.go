@@ -189,7 +189,7 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 			cmd.Flags().StringVar(&opts.File, "file", "", "file to upload ([field=]path, supports - for stdin)")
 		}
 	}
-	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
 	})
 

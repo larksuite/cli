@@ -100,7 +100,7 @@ func NewCmdApiWithContext(ctx context.Context, f *cmdutil.Factory, runF func(*AP
 		}
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
