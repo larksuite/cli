@@ -604,6 +604,7 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
+	cmdutil.SetRisk(cmd, shortcut.Risk)
 	parent.AddCommand(cmd)
 }
 
@@ -650,8 +651,9 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		return handleShortcutDryRun(f, rctx, s)
 	}
 
-	if s.Risk == "high-risk-write" {
-		if err := RequireConfirmation(s.Risk, rctx.Bool("yes"), s.Description); err != nil {
+	if s.Risk == "high-risk-write" && !rctx.Bool("yes") {
+		action := s.Service + " " + s.Command
+		if err := cmdutil.RequireConfirmation(action); err != nil {
 			return err
 		}
 	}
