@@ -361,12 +361,12 @@ func TestDownload_Batch_Download(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// verify output structure
 	var result struct {
 		Data struct {
 			Downloads []struct {
-				MinuteToken string `json:"minute_token"`
-				SavedPath   string `json:"saved_path"`
+				MinuteToken  string `json:"minute_token"`
+				ArtifactType string `json:"artifact_type"`
+				SavedPath    string `json:"saved_path"`
 			} `json:"downloads"`
 		} `json:"data"`
 	}
@@ -375,6 +375,15 @@ func TestDownload_Batch_Download(t *testing.T) {
 	}
 	if len(result.Data.Downloads) != 2 {
 		t.Fatalf("expected 2 downloads, got %d", len(result.Data.Downloads))
+	}
+	for _, d := range result.Data.Downloads {
+		if d.ArtifactType != "recording" {
+			t.Errorf("token=%s: artifact_type=%q, want recording", d.MinuteToken, d.ArtifactType)
+		}
+		wantPrefix := "minutes/" + d.MinuteToken + "/"
+		if !strings.Contains(d.SavedPath, wantPrefix) {
+			t.Errorf("token=%s: saved_path=%q, want contain %q", d.MinuteToken, d.SavedPath, wantPrefix)
+		}
 	}
 }
 
@@ -519,6 +528,47 @@ func TestDownload_OutputDirFlag_SingleToken(t *testing.T) {
 	}
 	if _, err := os.Stat("minutes"); err == nil {
 		t.Errorf("minutes/ should not be created when --output-dir is explicit")
+	}
+}
+
+func TestDownload_Batch_OutputNonExistentPath(t *testing.T) {
+	// Batch mode with --output pointing at a path that doesn't exist yet:
+	// auto-upgrade to --output-dir semantics and create the directory.
+	chdir(t, t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", "https://example.com/download/1"))
+	reg.Register(mediaStub("tok002", "https://example.com/download/2"))
+	reg.Register(downloadStub("example.com/download/1", []byte("c1"), "video/mp4"))
+	reg.Register(downloadStub("example.com/download/2", []byte("c2"), "video/mp4"))
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok002", "--output", "new_dir", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, tok := range []string{"tok001", "tok002"} {
+		p := "new_dir/" + tok + ".mp4"
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("expected %s to exist: %v", p, err)
+		}
+	}
+}
+
+func TestDownload_Validation_RejectsTraversalPath(t *testing.T) {
+	// --output / --output-dir escaping the working directory must be blocked
+	// at Validate time, before any API call or file write.
+	chdir(t, t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	for _, flag := range []string{"--output", "--output-dir"} {
+		err := mountAndRun(t, MinutesDownload, []string{
+			"+download", "--minute-tokens", "tok001", flag, "../escape", "--as", "bot",
+		}, f, nil)
+		if err == nil {
+			t.Errorf("%s ../escape: expected validation error, got nil", flag)
+		}
 	}
 }
 

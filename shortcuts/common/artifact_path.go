@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+// This file defines artifact-path conventions shared between
+// `minutes +download` and `vc +notes`. Callers outside those two shortcuts
+// should not take a dependency on these symbols.
+
 package common
 
 import "path/filepath"
@@ -13,12 +17,10 @@ const DefaultMinuteArtifactSubdir = "minutes"
 // default layout. Recording files keep the server-provided name.
 const DefaultTranscriptFileName = "transcript.txt"
 
-// Artifact type values emitted in JSON output so that callers can index
-// results by kind without parsing saved_path.
-const (
-	ArtifactTypeRecording  = "recording"
-	ArtifactTypeTranscript = "transcript"
-)
+// ArtifactTypeRecording is the artifact_type value emitted by
+// `minutes +download` so that callers can index results by kind without
+// parsing saved_path.
+const ArtifactTypeRecording = "recording"
 
 // DefaultMinuteArtifactDir returns the default output directory for an
 // artifact keyed by minuteToken. The same path is shared across commands so

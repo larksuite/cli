@@ -63,19 +63,21 @@ var MinutesDownload = common.Shortcut{
 				return output.ErrValidation("invalid minute token %q: must contain only lowercase alphanumeric characters (e.g. obcnq3b9jl72l83w4f149w9c)", token)
 			}
 		}
-		// fail-fast: user-supplied path safety (traversal / cwd-escape / control chars)
-		if out := runtime.Str("output"); out != "" {
-			if err := common.ValidateSafeOutputDir(runtime.FileIO(), out); err != nil {
-				return err
-			}
-		}
-		if outDir := runtime.Str("output-dir"); outDir != "" {
-			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
-				return err
-			}
-		}
-		if runtime.Str("output") != "" && runtime.Str("output-dir") != "" {
+		// Cheap checks first, then path-safety resolution.
+		out := runtime.Str("output")
+		outDir := runtime.Str("output-dir")
+		if out != "" && outDir != "" {
 			return output.ErrValidation("--output and --output-dir cannot both be set")
+		}
+		if out != "" {
+			if err := common.ValidateSafePath(runtime.FileIO(), out); err != nil {
+				return err
+			}
+		}
+		if outDir != "" {
+			if err := common.ValidateSafePath(runtime.FileIO(), outDir); err != nil {
+				return err
+			}
 		}
 		return nil
 	},
@@ -117,7 +119,7 @@ var MinutesDownload = common.Shortcut{
 					explicitOutputPath = ""
 				}
 			default:
-				return output.ErrValidation("cannot access --output %q: %s", explicitOutputPath, statErr)
+				return output.Errorf(output.ExitAPI, "io_error", "cannot access --output %q: %s", explicitOutputPath, statErr)
 			}
 		}
 
@@ -235,7 +237,10 @@ var MinutesDownload = common.Shortcut{
 				return output.ErrAPI(0, r.Error, nil)
 			}
 			if urlOnly {
-				runtime.Out(map[string]interface{}{"download_url": r.DownloadURL}, nil)
+				runtime.Out(map[string]interface{}{
+					"minute_token": r.MinuteToken,
+					"download_url": r.DownloadURL,
+				}, nil)
 			} else {
 				runtime.Out(map[string]interface{}{
 					"minute_token":  r.MinuteToken,

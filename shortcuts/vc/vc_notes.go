@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -56,6 +57,10 @@ const (
 )
 
 const logPrefix = "[vc +notes]"
+
+// validMinuteToken matches the server's minute-token format and blocks any
+// user-supplied token from reaching filesystem paths unsanitized.
+var validMinuteToken = regexp.MustCompile(`^[a-z0-9]+$`)
 
 // sanitizeLogValue strips newlines and ANSI escape sequences from user input for safe logging.
 func sanitizeLogValue(s string) string {
@@ -518,8 +523,16 @@ var VCNotes = common.Shortcut{
 			}
 		}
 		if outDir := runtime.Str("output-dir"); outDir != "" {
-			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
+			if err := common.ValidateSafePath(runtime.FileIO(), outDir); err != nil {
 				return err
+			}
+		}
+		// Reject malformed minute tokens before they flow into filesystem paths.
+		if v := runtime.Str("minute-tokens"); v != "" {
+			for _, token := range common.SplitCSV(v) {
+				if !validMinuteToken.MatchString(token) {
+					return output.ErrValidation("invalid minute token %q: must contain only lowercase alphanumeric characters", token)
+				}
 			}
 		}
 		// dynamic scope check based on which flag is provided
