@@ -4,6 +4,7 @@
 package lockfile
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,9 +40,13 @@ func TestTryLock_Conflict(t *testing.T) {
 	defer l1.Unlock()
 
 	l2 := New(path)
-	if err := l2.TryLock(); err == nil {
+	err := l2.TryLock()
+	if err == nil {
 		l2.Unlock()
 		t.Fatal("second TryLock should fail when lock is held by another instance")
+	}
+	if !errors.Is(err, ErrHeld) {
+		t.Errorf("expected error to wrap ErrHeld, got: %v", err)
 	}
 }
 
@@ -57,8 +62,8 @@ func TestTryLock_AlreadyHeld(t *testing.T) {
 	if err == nil {
 		t.Fatal("double TryLock on same instance should fail")
 	}
-	if !strings.Contains(err.Error(), "lock already held") {
-		t.Errorf("error should mention 'lock already held', got: %v", err)
+	if !errors.Is(err, ErrHeld) {
+		t.Errorf("expected error to wrap ErrHeld, got: %v", err)
 	}
 }
 
@@ -194,4 +199,22 @@ func TestForSubscribe_RejectsEmptyAppID(t *testing.T) {
 	if err == nil {
 		t.Fatal("ForSubscribe should reject empty app ID")
 	}
+}
+
+// TestErrHeld_RelockAfterUnlock verifies that once Unlock releases the lock,
+// a fresh TryLock succeeds — the ErrHeld sentinel is not "sticky" on the
+// LockFile object.
+func TestErrHeld_RelockAfterUnlock(t *testing.T) {
+	l := newTestLock(t)
+	if err := l.TryLock(); err != nil {
+		t.Fatalf("first TryLock failed: %v", err)
+	}
+	if err := l.Unlock(); err != nil {
+		t.Fatalf("Unlock failed: %v", err)
+	}
+	// Second lock on same object should succeed (not return ErrHeld).
+	if err := l.TryLock(); err != nil {
+		t.Errorf("TryLock after Unlock should succeed; got: %v", err)
+	}
+	l.Unlock()
 }

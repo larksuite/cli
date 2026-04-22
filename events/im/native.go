@@ -1,0 +1,191 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package im
+
+import (
+	"reflect"
+
+	"github.com/larksuite/cli/internal/event/schemas"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+)
+
+// nativeIMKey curates metadata for a Native IM event. bodyType points at
+// the SDK struct (framework reflects it into a JSON Schema on demand),
+// fieldOverrides adds field-level semantic annotations the SDK struct
+// can't express (open_id / chat_id / timestamp_ms 等 Feishu-specific
+// kinds). Paths are JSON Pointer, anchored at the full resolved schema
+// (i.e. start with /event/... since Native is wrapped in V2 envelope).
+type nativeIMKey struct {
+	key            string
+	title          string
+	description    string
+	scopes         []string
+	bodyType       reflect.Type
+	fieldOverrides map[string]schemas.FieldMeta
+}
+
+// userIDOv returns `{open_id, union_id, user_id}` overrides for an SDK
+// UserID object at the given schema path prefix.
+func userIDOv(prefix string) map[string]schemas.FieldMeta {
+	return map[string]schemas.FieldMeta{
+		prefix + "/open_id":  {Kind: "open_id"},
+		prefix + "/union_id": {Kind: "union_id"},
+		prefix + "/user_id":  {Kind: "user_id"},
+	}
+}
+
+// mergeOv merges multiple FieldMeta maps left-to-right (later wins on
+// conflicting keys). Nil / empty maps are silently ignored.
+func mergeOv(ms ...map[string]schemas.FieldMeta) map[string]schemas.FieldMeta {
+	out := map[string]schemas.FieldMeta{}
+	for _, m := range ms {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+var nativeIMKeys = []nativeIMKey{
+	{
+		key:         "im.message.message_read_v1",
+		title:       "Message read",
+		description: "用户阅读机器人发送的单聊消息后触发",
+		scopes:      []string{"im:message:readonly", "im:message"},
+		bodyType:    reflect.TypeOf(larkim.P2MessageReadV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/reader/reader_id"),
+			map[string]schemas.FieldMeta{
+				"/event/reader/read_time":  {Kind: "timestamp_ms"},
+				"/event/message_id_list/*": {Kind: "message_id"},
+			},
+		),
+	},
+	{
+		key:         "im.message.reaction.created_v1",
+		title:       "Reaction added",
+		description: "消息被添加表情回复时触发",
+		scopes:      []string{"im:message:readonly", "im:message.reactions:read"},
+		bodyType:    reflect.TypeOf(larkim.P2MessageReactionCreatedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/user_id"),
+			map[string]schemas.FieldMeta{
+				"/event/message_id":  {Kind: "message_id"},
+				"/event/action_time": {Kind: "timestamp_ms"},
+			},
+		),
+	},
+	{
+		key:         "im.message.reaction.deleted_v1",
+		title:       "Reaction removed",
+		description: "消息被删除表情回复时触发",
+		scopes:      []string{"im:message:readonly", "im:message.reactions:read"},
+		bodyType:    reflect.TypeOf(larkim.P2MessageReactionDeletedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/user_id"),
+			map[string]schemas.FieldMeta{
+				"/event/message_id":  {Kind: "message_id"},
+				"/event/action_time": {Kind: "timestamp_ms"},
+			},
+		),
+	},
+	{
+		key:         "im.chat.member.bot.added_v1",
+		title:       "Bot added to chat",
+		description: "机器人被用户添加至群聊时触发",
+		scopes:      []string{"im:chat.members:bot_access"},
+		bodyType:    reflect.TypeOf(larkim.P2ChatMemberBotAddedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/operator_id"),
+			map[string]schemas.FieldMeta{
+				"/event/chat_id": {Kind: "chat_id"},
+			},
+		),
+	},
+	{
+		key:         "im.chat.member.bot.deleted_v1",
+		title:       "Bot removed from chat",
+		description: "机器人被移出群聊后触发",
+		scopes:      []string{"im:chat.members:bot_access"},
+		bodyType:    reflect.TypeOf(larkim.P2ChatMemberBotDeletedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/operator_id"),
+			map[string]schemas.FieldMeta{
+				"/event/chat_id": {Kind: "chat_id"},
+			},
+		),
+	},
+	{
+		key:         "im.chat.member.user.added_v1",
+		title:       "User added to chat",
+		description: "新用户进群（含话题群）时触发",
+		scopes:      []string{"im:chat.members:read"},
+		bodyType:    reflect.TypeOf(larkim.P2ChatMemberUserAddedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/operator_id"),
+			userIDOv("/event/users/*/user_id"),
+			map[string]schemas.FieldMeta{
+				"/event/chat_id": {Kind: "chat_id"},
+			},
+		),
+	},
+	{
+		key:         "im.chat.member.user.withdrawn_v1",
+		title:       "User invite withdrawn",
+		description: "撤销拉用户进群后触发",
+		scopes:      []string{"im:chat.members:read"},
+		bodyType:    reflect.TypeOf(larkim.P2ChatMemberUserWithdrawnV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/operator_id"),
+			userIDOv("/event/users/*/user_id"),
+			map[string]schemas.FieldMeta{
+				"/event/chat_id": {Kind: "chat_id"},
+			},
+		),
+	},
+	{
+		key:         "im.chat.member.user.deleted_v1",
+		title:       "User left chat",
+		description: "用户主动退群或被移出群聊时触发",
+		scopes:      []string{"im:chat.members:read"},
+		bodyType:    reflect.TypeOf(larkim.P2ChatMemberUserDeletedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/operator_id"),
+			userIDOv("/event/users/*/user_id"),
+			map[string]schemas.FieldMeta{
+				"/event/chat_id": {Kind: "chat_id"},
+			},
+		),
+	},
+	{
+		key:         "im.chat.updated_v1",
+		title:       "Chat updated",
+		description: "群配置（群主、头像、名称、权限等）被修改后触发",
+		scopes:      []string{"im:chat:read"},
+		bodyType:    reflect.TypeOf(larkim.P2ChatUpdatedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/operator_id"),
+			userIDOv("/event/before_change/owner_id"),
+			userIDOv("/event/after_change/owner_id"),
+			userIDOv("/event/moderator_list/added_member_list/*/user_id"),
+			userIDOv("/event/moderator_list/removed_member_list/*/user_id"),
+			map[string]schemas.FieldMeta{
+				"/event/chat_id": {Kind: "chat_id"},
+			},
+		),
+	},
+	{
+		key:         "im.chat.disbanded_v1",
+		title:       "Chat disbanded",
+		description: "群被解散后触发",
+		scopes:      []string{"im:chat:read"},
+		bodyType:    reflect.TypeOf(larkim.P2ChatDisbandedV1Data{}),
+		fieldOverrides: mergeOv(
+			userIDOv("/event/operator_id"),
+			map[string]schemas.FieldMeta{
+				"/event/chat_id": {Kind: "chat_id"},
+			},
+		),
+	},
+}
