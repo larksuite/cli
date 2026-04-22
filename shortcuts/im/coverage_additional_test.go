@@ -401,6 +401,35 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 			t.Fatalf("buildMessagesSearchRequest() error = %v", err)
 		}
 	})
+
+	t.Run("at-chatter-ids accepts user ids", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query":          "standup",
+			"at-chatter-ids": "ou_a, ou_b",
+		}, nil)
+
+		got, err := buildMessagesSearchRequest(runtime)
+		if err != nil {
+			t.Fatalf("buildMessagesSearchRequest() error = %v", err)
+		}
+
+		filter, _ := got.body["filter"].(map[string]interface{})
+		ids, _ := filter["at_chatter_ids"].([]string)
+		want := []string{"ou_a", "ou_b"}
+		if !reflect.DeepEqual(ids, want) {
+			t.Fatalf("at_chatter_ids = %#v, want %#v", ids, want)
+		}
+	})
+
+	t.Run("at-chatter-ids rejects bad id", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"at-chatter-ids": "ou_a,not_a_user",
+		}, nil)
+		_, err := buildMessagesSearchRequest(runtime)
+		if err == nil || !strings.Contains(err.Error(), "invalid user ID format") {
+			t.Fatalf("buildMessagesSearchRequest() error = %v", err)
+		}
+	})
 }
 
 func TestBuildSearchChatBodyAdditionalBranches(t *testing.T) {

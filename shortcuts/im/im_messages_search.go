@@ -42,6 +42,7 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "sender-type", Desc: "sender type", Enum: []string{"user", "bot"}},
 		{Name: "exclude-sender-type", Desc: "exclude sender type", Enum: []string{"user", "bot"}},
 		{Name: "is-at-me", Type: "bool", Desc: "only messages that @me"},
+		{Name: "at-chatter-ids", Desc: "filter by @mentioned user open_ids, comma-separated (also matches messages that @all)"},
 		{Name: "start", Desc: "start time(ISO 8601) with local timezone offset (e.g. 2026-03-24T00:00:00+08:00)"},
 		{Name: "end", Desc: "end time(ISO 8601) with local timezone offset (e.g. 2026-03-25T23:59:59+08:00)"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-50)"},
@@ -245,6 +246,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	chatTypeFlag := runtime.Str("chat-type")
 	senderTypeFlag := runtime.Str("sender-type")
 	excludeSenderTypeFlag := runtime.Str("exclude-sender-type")
+	atChatterIdsFlag := runtime.Str("at-chatter-ids")
 	startFlag := runtime.Str("start")
 	endFlag := runtime.Str("end")
 	pageToken := runtime.Str("page-token")
@@ -323,6 +325,15 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	}
 	if runtime.Bool("is-at-me") {
 		filter["is_at_me"] = true
+	}
+	if atChatterIdsFlag != "" {
+		ids := common.SplitCSV(atChatterIdsFlag)
+		for _, id := range ids {
+			if _, err := common.ValidateUserID(id); err != nil {
+				return nil, err
+			}
+		}
+		filter["at_chatter_ids"] = ids
 	}
 
 	body := map[string]interface{}{"query": query}
