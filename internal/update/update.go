@@ -61,7 +61,7 @@ func httpClient() *http.Client {
 	}
 	return &http.Client{
 		Timeout:   fetchTimeout,
-		Transport: util.NewBaseTransport(),
+		Transport: util.SharedTransport(),
 	}
 }
 

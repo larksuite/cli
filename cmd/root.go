@@ -14,15 +14,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/larksuite/cli/cmd/api"
-	"github.com/larksuite/cli/cmd/auth"
-	"github.com/larksuite/cli/cmd/completion"
-	cmdconfig "github.com/larksuite/cli/cmd/config"
-	"github.com/larksuite/cli/cmd/doctor"
-	"github.com/larksuite/cli/cmd/profile"
-	"github.com/larksuite/cli/cmd/schema"
-	"github.com/larksuite/cli/cmd/service"
-	cmdupdate "github.com/larksuite/cli/cmd/update"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -30,7 +21,6 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/update"
-	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
 
@@ -95,38 +85,11 @@ func Execute() int {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		return 1
 	}
-	f := cmdutil.NewDefault(inv)
-
-	globals := &GlobalOptions{Profile: inv.Profile}
-	rootCmd := &cobra.Command{
-		Use:     "lark-cli",
-		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
-		Long:    rootLong,
-		Version: build.Version,
-	}
-	installTipsHelpFunc(rootCmd)
-	rootCmd.SilenceErrors = true
-
-	RegisterGlobalFlags(rootCmd.PersistentFlags(), globals)
-	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		cmd.SilenceUsage = true
-	}
-
-	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))
-	rootCmd.AddCommand(auth.NewCmdAuth(f))
-	rootCmd.AddCommand(profile.NewCmdProfile(f))
-	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
-	rootCmd.AddCommand(api.NewCmdApi(f, nil))
-	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
-	rootCmd.AddCommand(completion.NewCmdCompletion(f))
-	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
-	service.RegisterServiceCommands(rootCmd, f)
-	shortcuts.RegisterShortcuts(rootCmd, f)
-
-	// Prune commands incompatible with strict mode.
-	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
-		pruneForStrictMode(rootCmd, mode)
-	}
+	f, rootCmd := buildInternal(
+		context.Background(), inv,
+		WithIO(os.Stdin, os.Stdout, os.Stderr),
+		HideProfile(isSingleAppMode()),
+	)
 
 	// --- Update check (non-blocking) ---
 	if !isCompletionCommand(os.Args) {
@@ -277,10 +240,19 @@ func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyErr
 }
 
 // installTipsHelpFunc wraps the default help function to append a TIPS section
-// when a command has tips set via cmdutil.SetTips.
+// when a command has tips set via cmdutil.SetTips. It also force-shows global
+// flags that are normally hidden in single-app mode (currently --profile)
+// when rendering the root command's own help, so users discovering the CLI
+// still see them at `lark-cli --help`.
 func installTipsHelpFunc(root *cobra.Command) {
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		if cmd == root {
+			if f := root.PersistentFlags().Lookup("profile"); f != nil && f.Hidden {
+				f.Hidden = false
+				defer func() { f.Hidden = true }()
+			}
+		}
 		defaultHelp(cmd, args)
 		tips := cmdutil.GetTips(cmd)
 		if len(tips) == 0 {

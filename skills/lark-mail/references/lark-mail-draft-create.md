@@ -10,12 +10,13 @@
 
 ## 安全约束
 
-此命令创建草稿——**不会**发送邮件。用户可以在飞书邮件 UI 中预览、编辑或删除草稿后再发送。因此：
+此命令创建草稿——**不会**发送邮件。用户可以在飞书邮件 UI 中打开草稿查看详情，确认后再进入后续操作。因此：
 
-- **不要把邮件内容以文本形式输出再请求确认。** 当用户要求"起草"/"草拟"邮件时，直接调用 `+draft-create` 在飞书邮箱中创建草稿。
+- **不要把邮件内容以文本形式输出再请求确认。** 当用户要求"起草"/"草拟"邮件时，直接调用 `+draft-create` 在飞书邮箱中创建草稿，并引导用户去飞书邮件里打开草稿。
 - **收件人未指定时省略 `--to`** — 草稿将不带收件人创建，用户之后可自行添加。
 - **仅在用户请求确实有歧义时才需确认**（例如内容有多种可能的理解方式）。
 - **发送**草稿是单独的操作，需要用户明确确认。
+- **产出草稿时要返回打开链接** — 只要当前结果是草稿而不是直接发信，就要给用户展示草稿打开链接。当前应以创建、编辑、发送链路返回的链接信息为准，不要指望 `user_mailbox.drafts get` 返回打开链接。如果当前命令输出里有草稿链接，一并返回；如果没有链接，则静默处理，也不要伪造 URL。
 
 ## 命令
 
@@ -49,7 +50,7 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 | `--cc <emails>` | 否 | 完整抄送列表，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 完整密送列表，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
-| `--attach <paths>` | 否 | 普通附件文件路径，多个用逗号分隔。相对路径 |
+| `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
@@ -69,6 +70,12 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 }
 ```
 
+可选字段：
+
+- `reference`：草稿打开链接。**仅在当前创建链路实际返回时才会出现**。
+
+如果创建结果里带有 `reference`，应把草稿打开链接与 `draft_id` 一起返回给用户；如果当前没有链接，则静默处理。
+
 ## 典型场景
 
 ### 撰写新邮件 → 创建草稿 → 预览 → 发送
@@ -77,10 +84,7 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 # 1. 创建草稿
 lark-cli mail +draft-create --to alice@example.com --subject 'Q1 报告' --body '请查收附件中的报告。' --attach ./q1-report.pdf --format json
 
-# 2. 在飞书邮件 UI 中预览草稿，或通过 API 获取：
-lark-cli mail user_mailbox.drafts get --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
-
-# 3. 发送草稿
+# 2. 发送草稿
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
 ```
 

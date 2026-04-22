@@ -24,6 +24,10 @@ import (
 
 // RegisterServiceCommands registers all service commands from from_meta specs.
 func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
+	RegisterServiceCommandsWithContext(context.Background(), parent, f)
+}
+
+func RegisterServiceCommandsWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	for _, project := range registry.ListFromMetaProjects() {
 		spec := registry.LoadFromMeta(project)
 		if spec == nil {
@@ -38,11 +42,15 @@ func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
 		if resources == nil {
 			continue
 		}
-		registerService(parent, spec, resources, f)
+		registerServiceWithContext(ctx, parent, spec, resources, f)
 	}
 }
 
 func registerService(parent *cobra.Command, spec map[string]interface{}, resources map[string]interface{}, f *cmdutil.Factory) {
+	registerServiceWithContext(context.Background(), parent, spec, resources, f)
+}
+
+func registerServiceWithContext(ctx context.Context, parent *cobra.Command, spec map[string]interface{}, resources map[string]interface{}, f *cmdutil.Factory) {
 	specName := registry.GetStrFromMap(spec, "name")
 	specDesc := registry.GetServiceDescription(specName, "en")
 	if specDesc == "" {
@@ -70,11 +78,11 @@ func registerService(parent *cobra.Command, spec map[string]interface{}, resourc
 		if resMap == nil {
 			continue
 		}
-		registerResource(svc, spec, resName, resMap, f)
+		registerResourceWithContext(ctx, svc, spec, resName, resMap, f)
 	}
 }
 
-func registerResource(parent *cobra.Command, spec map[string]interface{}, name string, resource map[string]interface{}, f *cmdutil.Factory) {
+func registerResourceWithContext(ctx context.Context, parent *cobra.Command, spec map[string]interface{}, name string, resource map[string]interface{}, f *cmdutil.Factory) {
 	res := &cobra.Command{
 		Use:   name,
 		Short: name + " operations",
@@ -87,7 +95,7 @@ func registerResource(parent *cobra.Command, spec map[string]interface{}, name s
 		if methodMap == nil {
 			continue
 		}
-		registerMethod(res, spec, methodMap, methodName, name, f)
+		registerMethodWithContext(ctx, res, spec, methodMap, methodName, name, f)
 	}
 }
 
@@ -120,12 +128,16 @@ func detectFileFields(method map[string]interface{}) []string {
 	return cmdutil.DetectFileFields(method)
 }
 
-func registerMethod(parent *cobra.Command, spec map[string]interface{}, method map[string]interface{}, name string, resName string, f *cmdutil.Factory) {
-	parent.AddCommand(NewCmdServiceMethod(f, spec, method, name, resName, nil))
+func registerMethodWithContext(ctx context.Context, parent *cobra.Command, spec map[string]interface{}, method map[string]interface{}, name string, resName string, f *cmdutil.Factory) {
+	parent.AddCommand(NewCmdServiceMethodWithContext(ctx, f, spec, method, name, resName, nil))
 }
 
 // NewCmdServiceMethod creates a command for a dynamically registered service method.
 func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
+	return NewCmdServiceMethodWithContext(context.Background(), f, spec, method, name, resName, runF)
+}
+
+func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spec, method map[string]interface{}, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
 	desc := registry.GetStrFromMap(method, "description")
 	httpMethod := registry.GetStrFromMap(method, "httpMethod")
 	specName := registry.GetStrFromMap(spec, "name")
@@ -159,7 +171,7 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 	case "POST", "PUT", "PATCH", "DELETE":
 		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
 	}
-	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
+	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
@@ -177,10 +189,6 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 			cmd.Flags().StringVar(&opts.File, "file", "", "file to upload ([field=]path, supports - for stdin)")
 		}
 	}
-
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"user", "bot"}, cobra.ShellCompDirectiveNoFileComp
-	})
 	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
 	})

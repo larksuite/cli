@@ -99,7 +99,7 @@ func run(ctx context.Context, listen, keyFile, logFile, profile string) error {
 
 	// Reuse the lark-cli credential pipeline. A production implementation
 	// would likely source credentials from a secrets manager instead.
-	factory := cmdutil.NewDefault(cmdutil.InvocationContext{Profile: profile})
+	factory := cmdutil.NewDefault(nil, cmdutil.InvocationContext{Profile: profile})
 	cfg, err := factory.Config()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %v", err)

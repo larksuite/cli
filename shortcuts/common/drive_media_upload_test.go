@@ -125,7 +125,7 @@ func TestUploadDriveMediaAllWithInMemoryContent(t *testing.T) {
 
 	payload := []byte{0x89, 0x50, 0x4e, 0x47, 0xde, 0xad}
 	fileToken, err := UploadDriveMediaAll(runtime, DriveMediaUploadAllConfig{
-		Content:    bytes.NewReader(payload),
+		Reader:     bytes.NewReader(payload),
 		FileName:   "clipboard.png",
 		FileSize:   int64(len(payload)),
 		ParentType: "docx_image",
@@ -184,7 +184,7 @@ func TestUploadDriveMediaMultipartWithInMemoryContent(t *testing.T) {
 
 	payload := bytes.Repeat([]byte{0xAB}, int(size))
 	fileToken, err := UploadDriveMediaMultipart(runtime, DriveMediaMultipartUploadConfig{
-		Content:    bytes.NewReader(payload),
+		Reader:     bytes.NewReader(payload),
 		FileName:   "clipboard.png",
 		FileSize:   size,
 		ParentType: "docx_image",

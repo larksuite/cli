@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -567,58 +566,6 @@ func TestToOriginalMessageForCompose_EmptyReferences(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// checkAttachmentSizeLimit
-// ---------------------------------------------------------------------------
-
-func TestCheckAttachmentSizeLimit_NoFiles(t *testing.T) {
-	if err := checkAttachmentSizeLimit(nil, nil, 0); err != nil { //nolint:staticcheck // fio nil ok: no files
-		t.Fatalf("unexpected error for empty: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_CountExceeded(t *testing.T) {
-	err := checkAttachmentSizeLimit(nil, nil, 0, MaxAttachmentCount+1)
-	if err == nil {
-		t.Fatal("expected error for count exceeded")
-	}
-	if !strings.Contains(err.Error(), "count") {
-		t.Errorf("error should mention count: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_SizeExceeded(t *testing.T) {
-	// extraBytes alone exceeds the limit
-	err := checkAttachmentSizeLimit(nil, nil, MaxAttachmentBytes+1)
-	if err == nil {
-		t.Fatal("expected error for size exceeded")
-	}
-	if !strings.Contains(err.Error(), "25 MB") {
-		t.Errorf("error should mention 25 MB limit: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_WithFiles(t *testing.T) {
-	// Create a small temp file to exercise the file stat path
-	dir := t.TempDir()
-	f := filepath.Join(dir, "small.txt")
-	if err := os.WriteFile(f, []byte("hello"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	// Use the temp dir as the CWD so the relative path works
-	oldWd, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(oldWd)
-
-	fio := &localfileio.LocalFileIO{}
-	err := checkAttachmentSizeLimit(fio, []string{"./small.txt"}, 0)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // validateInlineCIDs — bidirectional CID consistency
 // ---------------------------------------------------------------------------
 
@@ -743,9 +690,12 @@ func TestAddInlineImagesToBuilder_EmptyCIDSkipped(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "logo.png", ContentType: "image/png", CID: "", DownloadURL: srv.URL + "/img1"},
 	}
-	_, _, err := addInlineImagesToBuilder(rt, bld, images)
+	_, _, totalBytes, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if totalBytes != 0 {
+		t.Errorf("expected 0 totalBytes for skipped CID, got %d", totalBytes)
 	}
 }
 
@@ -764,9 +714,12 @@ func TestAddInlineImagesToBuilder_Success(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "banner.png", ContentType: "image/png", CID: "cid:banner", DownloadURL: srv.URL + "/img1"},
 	}
-	result, _, err := addInlineImagesToBuilder(rt, bld, images)
+	result, _, totalBytes, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if totalBytes != int64(len("imagedata")) {
+		t.Errorf("expected totalBytes=%d, got %d", len("imagedata"), totalBytes)
 	}
 	raw, err := result.BuildBase64URL()
 	if err != nil {
@@ -1216,4 +1169,94 @@ func TestValidatePriorityFlag(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildMessageForCompose_InlineNoCID_ClassifiedAsAttachment(t *testing.T) {
+	msg := map[string]interface{}{
+		"message_id": "msg1",
+		"subject":    "test",
+		"attachments": []interface{}{
+			map[string]interface{}{"id": "att1", "filename": "with-cid.png", "is_inline": true, "cid": "cid123", "content_type": "image/png"},
+			map[string]interface{}{"id": "att2", "filename": "no-cid.png", "is_inline": true, "cid": "", "content_type": "image/png"},
+			map[string]interface{}{"id": "att3", "filename": "regular.pdf", "is_inline": false, "content_type": "application/pdf"},
+		},
+	}
+	out := buildMessageForCompose(msg, nil, true)
+	if len(out.Images) != 1 || out.Images[0].ID != "att1" {
+		t.Errorf("expected 1 image (att1), got %d: %+v", len(out.Images), out.Images)
+	}
+	if len(out.Attachments) != 2 {
+		t.Fatalf("expected 2 attachments, got %d: %+v", len(out.Attachments), out.Attachments)
+	}
+	ids := []string{out.Attachments[0].ID, out.Attachments[1].ID}
+	if ids[0] != "att2" || ids[1] != "att3" {
+		t.Errorf("expected attachments [att2, att3], got %v", ids)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validateComposeInlineAndAttachments
+// ---------------------------------------------------------------------------
+
+func TestValidateComposeInlineAndAttachments(t *testing.T) {
+	chdirTemp(t)
+	fio := &localfileio.LocalFileIO{}
+
+	t.Run("empty flags pass", func(t *testing.T) {
+		if err := validateComposeInlineAndAttachments(fio, "", "", false, ""); err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("inline with plain-text rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, true, "")
+		if err == nil || !strings.Contains(err.Error(), "--plain-text") {
+			t.Fatalf("expected plain-text rejection, got %v", err)
+		}
+	})
+
+	t.Run("inline with non-HTML body rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, false, "plain text body")
+		if err == nil || !strings.Contains(err.Error(), "HTML body") {
+			t.Fatalf("expected HTML body rejection, got %v", err)
+		}
+	})
+
+	t.Run("inline with HTML body passes format check", func(t *testing.T) {
+		os.WriteFile("img.png", []byte("png"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, false, "<p>hello</p>")
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("attach missing file rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "nonexistent.pdf", "", false, "")
+		if err == nil || !strings.Contains(err.Error(), "stat") {
+			t.Fatalf("expected stat error for missing file, got %v", err)
+		}
+	})
+
+	t.Run("attach blocked extension rejected", func(t *testing.T) {
+		os.WriteFile("malware.exe", []byte("bad"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "malware.exe", "", false, "")
+		if err == nil || !strings.Contains(err.Error(), "not allowed") {
+			t.Fatalf("expected blocked extension error, got %v", err)
+		}
+	})
+
+	t.Run("attach valid file passes", func(t *testing.T) {
+		os.WriteFile("report.pdf", []byte("pdf content"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "report.pdf", "", false, "")
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("invalid inline JSON rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", "not-json", false, "")
+		if err == nil {
+			t.Fatal("expected error for invalid inline JSON")
+		}
+	})
 }

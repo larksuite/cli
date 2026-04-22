@@ -6,7 +6,6 @@ package mail
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -1291,7 +1290,7 @@ func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string
 			contentType := resolveAttachmentContentType(att, filename)
 			dlURL := urlMap[id]
 
-			if isInline {
+			if isInline && cid != "" {
 				images = append(images, mailImageOutput{
 					ID:          id,
 					Filename:    filename,
@@ -1358,9 +1357,10 @@ type inlineSourcePart struct {
 }
 
 type composeSourceMessage struct {
-	Original           originalMessage
-	ForwardAttachments []forwardSourceAttachment
-	InlineImages       []inlineSourcePart
+	Original            originalMessage
+	ForwardAttachments  []forwardSourceAttachment
+	InlineImages        []inlineSourcePart
+	FailedAttachmentIDs map[string]bool
 }
 
 // fetchComposeSourceMessage loads a message via the +message pipeline and converts it
@@ -1371,13 +1371,20 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 		return composeSourceMessage{}, err
 	}
 	attIDs := extractAttachmentIDs(msg)
-	urlMap, _ := fetchAttachmentURLs(runtime, mailboxID, messageID, attIDs)
+	urlMap, warnings := fetchAttachmentURLs(runtime, mailboxID, messageID, attIDs)
+	failedIDs := make(map[string]bool)
+	for _, w := range warnings {
+		if w.Code == "attachment_download_url_failed_id" && w.AttachmentID != "" {
+			failedIDs[w.AttachmentID] = true
+		}
+	}
 	out := buildMessageForCompose(msg, urlMap, true)
 	orig := toOriginalMessageForCompose(out)
 	return composeSourceMessage{
-		Original:           orig,
-		ForwardAttachments: toForwardSourceAttachments(out),
-		InlineImages:       toInlineSourceParts(out),
+		Original:            orig,
+		ForwardAttachments:  toForwardSourceAttachments(out),
+		InlineImages:        toInlineSourceParts(out),
+		FailedAttachmentIDs: failedIDs,
 	}, nil
 }
 
@@ -1386,6 +1393,12 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 func validateForwardAttachmentURLs(src composeSourceMessage) error {
 	var missing []string
 	for _, att := range src.ForwardAttachments {
+		if att.AttachmentType == attachmentTypeLarge {
+			continue
+		}
+		if src.FailedAttachmentIDs[att.ID] {
+			continue
+		}
 		if att.DownloadURL == "" {
 			missing = append(missing, fmt.Sprintf("attachment %q (%s)", att.Filename, att.ID))
 		}
@@ -1837,6 +1850,42 @@ func normalizeMessageID(id string) string {
 	return strings.TrimSpace(trimmed)
 }
 
+func buildDraftSendOutput(resData map[string]interface{}, mailboxID string) map[string]interface{} {
+	out := map[string]interface{}{
+		"message_id": resData["message_id"],
+		"thread_id":  resData["thread_id"],
+	}
+	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
+		messageID, _ := resData["message_id"].(string)
+		out["recall_available"] = true
+		out["recall_tip"] = fmt.Sprintf(
+			`This message can be recalled within 24 hours. To recall: lark-cli mail user_mailbox.sent_messages recall --params '{"user_mailbox_id":"%s","message_id":"%s"}'`,
+			mailboxID, messageID)
+	}
+	if automationDisable, ok := resData["automation_send_disable"]; ok {
+		if automation, ok := automationDisable.(map[string]interface{}); ok {
+			if reason, ok := automation["reason"].(string); ok && strings.TrimSpace(reason) != "" {
+				out["automation_send_disable_reason"] = strings.TrimSpace(reason)
+			}
+			if reference, ok := automation["reference"].(string); ok && strings.TrimSpace(reference) != "" {
+				out["automation_send_disable_reference"] = strings.TrimSpace(reference)
+			}
+		}
+	}
+	return out
+}
+
+func buildDraftSavedOutput(draftResult draftpkg.DraftResult, mailboxID string) map[string]interface{} {
+	out := map[string]interface{}{
+		"draft_id": draftResult.DraftID,
+		"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftResult.DraftID),
+	}
+	if draftResult.Reference != "" {
+		out["reference"] = draftResult.Reference
+	}
+	return out
+}
+
 func normalizeInlineCID(cid string) string {
 	trimmed := strings.TrimSpace(cid)
 	if len(trimmed) >= 4 && strings.EqualFold(trimmed[:4], "cid:") {
@@ -1868,12 +1917,13 @@ func validateInlineCIDs(html string, userCIDs, extraCIDs []string) error {
 	return nil
 }
 
-func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, []string, error) {
+func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, []string, int64, error) {
 	var cids []string
+	var totalBytes int64
 	for _, img := range images {
 		content, err := downloadAttachmentContent(runtime, img.DownloadURL)
 		if err != nil {
-			return bld, nil, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
+			return bld, nil, 0, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
 		}
 		cid := normalizeInlineCID(img.CID)
 		if cid == "" {
@@ -1885,8 +1935,9 @@ func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Bui
 		}
 		bld = bld.AddInline(content, contentType, img.Filename, cid)
 		cids = append(cids, cid)
+		totalBytes += int64(len(content))
 	}
-	return bld, cids, nil
+	return bld, cids, totalBytes, nil
 }
 
 // InlineSpec represents one inline image entry from the --inline JSON array.
@@ -1928,37 +1979,6 @@ func inlineSpecFilePaths(specs []InlineSpec) []string {
 		paths[i] = s.FilePath
 	}
 	return paths
-}
-
-// checkAttachmentSizeLimit returns an error if the combined attachment count exceeds
-// MaxAttachmentCount or the combined size exceeds MaxAttachmentBytes.
-// filePaths are read via os.Stat (no full read); extraBytes / extraCount account for
-// already-loaded content (e.g. downloaded original attachments in +forward).
-func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes int64, extraCount ...int) error {
-	extra := 0
-	for _, c := range extraCount {
-		extra += c
-	}
-	total := extra + len(filePaths)
-	if total > MaxAttachmentCount {
-		return fmt.Errorf("attachment count %d exceeds the limit of %d", total, MaxAttachmentCount)
-	}
-	totalBytes := extraBytes
-	for _, p := range filePaths {
-		info, err := fio.Stat(p)
-		if err != nil {
-			if errors.Is(err, fileio.ErrPathValidation) {
-				return fmt.Errorf("unsafe attachment path %s: %w", p, err)
-			}
-			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
-		}
-		totalBytes += info.Size()
-	}
-	if totalBytes > MaxAttachmentBytes {
-		return fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB limit",
-			float64(totalBytes)/1024/1024)
-	}
-	return nil
 }
 
 // validateSendTime checks that --send-time, if provided, requires --confirm-send,
@@ -2007,23 +2027,6 @@ func validateConfirmSendScope(runtime *common.RuntimeContext) error {
 			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant the send permission", strings.Join(missing, " ")))
 	}
 	return nil
-}
-
-// buildSendResult builds the output map for a successful send, including
-// recall tip if the backend indicates the message is recallable.
-func buildSendResult(resData map[string]interface{}, mailboxID string) map[string]interface{} {
-	result := map[string]interface{}{
-		"message_id": resData["message_id"],
-		"thread_id":  resData["thread_id"],
-	}
-	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
-		messageID, _ := resData["message_id"].(string)
-		result["recall_available"] = true
-		result["recall_tip"] = fmt.Sprintf(
-			`This message can be recalled within 24 hours. To recall: lark-cli mail user_mailbox.sent_messages recall --params '{"user_mailbox_id":"%s","message_id":"%s"}'`,
-			mailboxID, messageID)
-	}
-	return result
 }
 
 // validateFolderReadScope checks that the user's token includes the
@@ -2098,14 +2101,15 @@ func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFl
 			return fmt.Errorf("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
 		}
 	}
-	// Validate explicitly provided files (--attach + --inline) early so that
-	// dry-run and reply/forward can catch local errors before Execute.
-	// Auto-resolved local images are only known at Execute time, so Execute
-	// performs a second, complete size check that includes them.
 	inlineSpecs, err := parseInlineSpecs(inlineFlag)
 	if err != nil {
 		return err
 	}
-	allFiles := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
-	return checkAttachmentSizeLimit(fio, allFiles, 0)
+	// Preflight: verify explicit file paths exist and pass blocked-extension
+	// checks so that --dry-run surfaces local errors before Execute.
+	allPaths := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
+	if _, err := statAttachmentFiles(fio, allPaths); err != nil {
+		return err
+	}
+	return nil
 }

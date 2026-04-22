@@ -4,6 +4,8 @@
 package shortcuts
 
 import (
+	"context"
+
 	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
 
@@ -58,6 +60,10 @@ func AllShortcuts() []common.Shortcut {
 
 // RegisterShortcuts registers all +shortcut commands on the program.
 func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
+	RegisterShortcutsWithContext(context.Background(), program, f)
+}
+
+func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
 	// Group by service
 	byService := make(map[string][]common.Shortcut)
 	for _, s := range allShortcuts {
@@ -86,7 +92,7 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 		}
 
 		for _, shortcut := range shortcuts {
-			shortcut.Mount(svc, f)
+			shortcut.MountWithContext(ctx, svc, f)
 		}
 	}
 }

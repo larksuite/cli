@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.16] - 2026-04-21
+
+### Features
+
+- **mail**: Support large email attachments (#537)
+- **mail**: Add draft preview URL to draft operations (#438)
+- **doc**: Add pre-write semantic warnings to `docs +update` (#569)
+- **doc**: Add `--selection-with-ellipsis` position flag to `+media-insert` (#335)
+- **calendar**: Support event share link and error details (#583)
+
+### Bug Fixes
+
+- **doc**: Preserve round-trip formatting in `+fetch` output (#469)
+- **docs**: Validate `--selection-by-title` format early (#256)
+- **whiteboard**: Register `+media-upload` shortcut and add whiteboard parent type
+
+### Refactor
+
+- Split `Execute` into `Build` + `Execute` with explicit IO and keychain injection (#371)
+- **auth**: Simplify scope reporting in login flow (#582)
+
 ## [v1.0.15] - 2026-04-20
 
 ### Features
@@ -420,6 +441,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.16]: https://github.com/larksuite/cli/releases/tag/v1.0.16
 [v1.0.15]: https://github.com/larksuite/cli/releases/tag/v1.0.15
 [v1.0.14]: https://github.com/larksuite/cli/releases/tag/v1.0.14
 [v1.0.13]: https://github.com/larksuite/cli/releases/tag/v1.0.13

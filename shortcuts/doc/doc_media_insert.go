@@ -323,7 +323,7 @@ var DocMediaInsert = common.Shortcut{
 			DocID:      documentID,
 		}
 		if clipboardContent != nil {
-			uploadCfg.Content = bytes.NewReader(clipboardContent)
+			uploadCfg.Reader = bytes.NewReader(clipboardContent)
 		}
 		fileToken, err := uploadDocMediaFile(runtime, uploadCfg)
 		if err != nil {

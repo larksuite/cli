@@ -272,7 +272,7 @@ func TestUploadDocMediaFileWithContentUsesSinglePartUpload(t *testing.T) {
 
 	payload := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a} // PNG magic bytes
 	fileToken, err := uploadDocMediaFile(runtime, UploadDocMediaFileConfig{
-		Content:    bytes.NewReader(payload),
+		Reader:     bytes.NewReader(payload),
 		FileName:   "clipboard.png",
 		FileSize:   int64(len(payload)),
 		ParentType: "docx_image",
@@ -334,7 +334,7 @@ func TestUploadDocMediaFileWithContentUsesMultipart(t *testing.T) {
 	size := common.MaxDriveMediaUploadSinglePartSize + 1
 	payload := bytes.Repeat([]byte{0xAB}, int(size))
 	fileToken, err := uploadDocMediaFile(runtime, UploadDocMediaFileConfig{
-		Content:    bytes.NewReader(payload),
+		Reader:     bytes.NewReader(payload),
 		FileName:   "clipboard.png",
 		FileSize:   size,
 		ParentType: "docx_image",

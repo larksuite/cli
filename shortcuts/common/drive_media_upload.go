@@ -32,35 +32,40 @@ type DriveMediaMultipartUploadSession struct {
 
 type DriveMediaUploadAllConfig struct {
 	FilePath   string
-	Content    io.Reader // alternative to FilePath; used for in-memory uploads (e.g. clipboard)
 	FileName   string
 	FileSize   int64
 	ParentType string
 	ParentNode *string
 	Extra      string
+	// Reader, when non-nil, is used as the upload source instead of opening
+	// FilePath. Callers must set FileName and FileSize explicitly. The reader
+	// is NOT closed by UploadDriveMediaAll; the caller owns its lifetime.
+	// Used by the clipboard path in docs +media-insert.
+	Reader io.Reader
 }
 
 type DriveMediaMultipartUploadConfig struct {
 	FilePath   string
-	Content    io.Reader // alternative to FilePath; used for in-memory uploads (e.g. clipboard)
 	FileName   string
 	FileSize   int64
 	ParentType string
 	ParentNode string
 	Extra      string
+	// Reader mirrors DriveMediaUploadAllConfig.Reader for chunked uploads.
+	Reader io.Reader
 }
 
 func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig) (string, error) {
-	var r io.Reader
-	if cfg.Content != nil {
-		r = cfg.Content
+	var fileReader io.Reader
+	if cfg.Reader != nil {
+		fileReader = cfg.Reader
 	} else {
 		f, err := runtime.FileIO().Open(cfg.FilePath)
 		if err != nil {
 			return "", WrapInputStatError(err)
 		}
 		defer f.Close()
-		r = f
+		fileReader = f
 	}
 
 	fd := larkcore.NewFormdata()
@@ -73,7 +78,7 @@ func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig)
 	if cfg.Extra != "" {
 		fd.AddField("extra", cfg.Extra)
 	}
-	fd.AddFile("file", r)
+	fd.AddFile("file", fileReader)
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
@@ -176,8 +181,8 @@ func ExtractDriveMediaUploadFileToken(data map[string]interface{}, action string
 
 func uploadDriveMediaMultipartParts(runtime *RuntimeContext, cfg DriveMediaMultipartUploadConfig, session DriveMediaMultipartUploadSession) error {
 	var r io.Reader
-	if cfg.Content != nil {
-		r = cfg.Content
+	if cfg.Reader != nil {
+		r = cfg.Reader
 	} else {
 		f, err := runtime.FileIO().Open(cfg.FilePath)
 		if err != nil {

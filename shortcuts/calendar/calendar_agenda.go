@@ -54,6 +54,7 @@ func fetchInstanceViewRange(ctx context.Context, runtime *common.RuntimeContext,
 			"start_time": fmt.Sprintf("%d", startTime),
 			"end_time":   fmt.Sprintf("%d", endTime),
 		}, nil)
+	err = wrapPredefinedError(err)
 	if err != nil {
 		return nil, output.Errorf(output.ExitAPI, "api_error", "API call failed: %s", err)
 	}

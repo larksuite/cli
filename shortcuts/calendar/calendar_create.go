@@ -194,6 +194,7 @@ var CalendarCreate = common.Shortcut{
 		data, err := runtime.CallAPI("POST",
 			fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events", validate.EncodePathSegment(calendarId)),
 			nil, eventData)
+		err = wrapPredefinedError(err)
 		if err != nil {
 			return err
 		}
@@ -221,11 +222,13 @@ var CalendarCreate = common.Shortcut{
 					"attendees":         attendees,
 					"need_notification": true,
 				})
+			err = wrapPredefinedError(err)
 			if err != nil {
 				// Rollback: delete the event
 				_, rollbackErr := runtime.RawAPI("DELETE",
 					fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s", validate.EncodePathSegment(calendarId), validate.EncodePathSegment(eventId)),
 					map[string]interface{}{"need_notification": false}, nil)
+				rollbackErr = wrapPredefinedError(rollbackErr)
 				if rollbackErr != nil {
 					return output.Errorf(output.ExitAPI, "api_error", "failed to add attendees: %v; rollback also failed, orphan event_id=%s needs manual cleanup", rollbackErr, eventId)
 				}

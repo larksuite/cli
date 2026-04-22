@@ -560,8 +560,9 @@ func TestBuild_FoldBodyLines_7bit(t *testing.T) {
 	_ = headers
 	lines := strings.Split(strings.TrimSpace(bodyPart), "\n")
 	for i, line := range lines {
-		if len(line) > 76 {
-			t.Fatalf("7bit line %d too long: %d", i, len(line))
+		// RFC 5322: 7bit lines MUST NOT exceed 998 characters.
+		if len(line) > 998 {
+			t.Fatalf("7bit line %d too long: %d (RFC 5322 limit is 998)", i, len(line))
 		}
 	}
 }

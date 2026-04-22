@@ -123,16 +123,16 @@ var DocMediaUpload = common.Shortcut{
 // style already used by DriveMediaUploadAllConfig /
 // DriveMediaMultipartUploadConfig downstream.
 //
-// Exactly one of FilePath (on-disk source) or Content (in-memory source for
-// the clipboard flow) should be set. Leave Content at its zero value (nil
+// Exactly one of FilePath (on-disk source) or Reader (in-memory source for
+// the clipboard flow) should be set. Leave Reader at its zero value (nil
 // interface) when the caller only has FilePath — passing a typed-nil
-// pointer like (*bytes.Reader)(nil) here would make Content compare
+// pointer like (*bytes.Reader)(nil) here would make Reader compare
 // non-nil downstream and skip the FilePath open, so the field type is
 // deliberately an interface and the clipboard caller builds it only when
 // it actually has bytes.
 type UploadDocMediaFileConfig struct {
 	FilePath   string
-	Content    io.Reader
+	Reader     io.Reader
 	FileName   string
 	FileSize   int64
 	ParentType string
@@ -155,7 +155,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, cfg UploadDocMediaFileCo
 	if cfg.FileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   cfg.FilePath,
-			Content:    cfg.Content,
+			Reader:     cfg.Reader,
 			FileName:   cfg.FileName,
 			FileSize:   cfg.FileSize,
 			ParentType: cfg.ParentType,
@@ -165,7 +165,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, cfg UploadDocMediaFileCo
 	}
 	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   cfg.FilePath,
-		Content:    cfg.Content,
+		Reader:     cfg.Reader,
 		FileName:   cfg.FileName,
 		FileSize:   cfg.FileSize,
 		ParentType: cfg.ParentType,

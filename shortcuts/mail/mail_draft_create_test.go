@@ -4,10 +4,12 @@
 package mail
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -33,7 +35,7 @@ func TestBuildRawEMLForDraftCreate_ResolvesLocalImages(t *testing.T) {
 		Body:    `<p>Hello</p><p><img src="./test_image.png" /></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -58,7 +60,7 @@ func TestBuildRawEMLForDraftCreate_NoLocalImages(t *testing.T) {
 		Body:    `<p>Hello <b>world</b></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -93,12 +95,12 @@ func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 		Attach:  "./big.txt",
 	}
 
-	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err == nil {
 		t.Fatal("expected size limit error when auto-resolved image + attachment exceed 25MB")
 	}
-	if !strings.Contains(err.Error(), "25 MB") {
-		t.Fatalf("expected 25 MB limit error, got: %v", err)
+	if !strings.Contains(err.Error(), "25 MB") && !strings.Contains(err.Error(), "large attachment") {
+		t.Fatalf("expected size limit or large attachment error, got: %v", err)
 	}
 }
 
@@ -113,7 +115,7 @@ func TestBuildRawEMLForDraftCreate_OrphanedInlineSpecError(t *testing.T) {
 		Inline:  `[{"cid":"orphan","file_path":"./unused.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err == nil {
 		t.Fatal("expected error for orphaned --inline CID not referenced in body")
 	}
@@ -133,7 +135,7 @@ func TestBuildRawEMLForDraftCreate_MissingCIDRefError(t *testing.T) {
 		Inline:  `[{"cid":"present","file_path":"./present.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err == nil {
 		t.Fatal("expected error for missing CID reference")
 	}
@@ -149,7 +151,7 @@ func TestBuildRawEMLForDraftCreate_WithPriority(t *testing.T) {
 		Body:    `<p>Hello</p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "1")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "1")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -166,7 +168,7 @@ func TestBuildRawEMLForDraftCreate_NoPriority(t *testing.T) {
 		Body:    `<p>Hello</p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -187,7 +189,7 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 		PlainText: true,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -196,5 +198,52 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 
 	if strings.Contains(eml, "cid:") {
 		t.Fatal("plain-text mode should not resolve local images")
+	}
+}
+
+func TestMailDraftCreatePrettyOutputsReference(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/profile",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"primary_email_address": "me@example.com",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"draft_id":  "draft_001",
+				"reference": "https://www.feishu.cn/mail?draftId=draft_001",
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailDraftCreate, []string{
+		"+draft-create",
+		"--subject", "hello",
+		"--body", "world",
+		"--format", "pretty",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("draft create failed: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "Draft created.") {
+		t.Fatalf("expected pretty output header, got: %s", out)
+	}
+	if !strings.Contains(out, "draft_id: draft_001") {
+		t.Fatalf("expected draft_id in pretty output, got: %s", out)
+	}
+	if !strings.Contains(out, "reference: https://www.feishu.cn/mail?draftId=draft_001") {
+		t.Fatalf("expected reference in pretty output, got: %s", out)
 	}
 }

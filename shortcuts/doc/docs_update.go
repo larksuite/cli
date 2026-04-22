@@ -63,6 +63,9 @@ var DocsUpdate = common.Shortcut{
 		if needsSelection[mode] && selEllipsis == "" && selTitle == "" {
 			return common.FlagErrorf("--%s mode requires --selection-with-ellipsis or --selection-by-title", mode)
 		}
+		if err := validateSelectionByTitle(selTitle); err != nil {
+			return err
+		}
 
 		return nil
 	},
@@ -166,4 +169,18 @@ func normalizeBoardTokens(raw interface{}) []string {
 	default:
 		return []string{}
 	}
+}
+
+func validateSelectionByTitle(title string) error {
+	if title == "" {
+		return nil
+	}
+	trimmed := strings.TrimSpace(title)
+	if strings.Contains(trimmed, "\n") || strings.Contains(trimmed, "\r") {
+		return common.FlagErrorf("--selection-by-title must be a single heading line (for example: '## Section')")
+	}
+	if strings.HasPrefix(trimmed, "#") {
+		return nil
+	}
+	return common.FlagErrorf("--selection-by-title must include markdown heading prefix '#'. Example: --selection-by-title '## Section'")
 }

@@ -12,22 +12,27 @@
 
 ## CRITICAL — 发送工作流（必须遵循）
 
-此命令默认**只保存草稿**，不会发送邮件。需要发送时，**必须**按以下步骤操作：
+此命令默认**只保存草稿**，不会发送邮件。需要发送时，有两种合规方式：
 
-**Step 1** — 创建草稿（不带 `--confirm-send`）：
+**方式 A（推荐）** — 先创建草稿，再确认发送：
 ```bash
 lark-cli mail +send --to <收件人> --subject '<主题>' --body '<正文>'
 ```
 → 返回 `draft_id`
 
-**Step 2** — 向用户展示邮件摘要（收件人、主题、正文预览），请求确认发送
+向用户展示邮件摘要（收件人、主题、正文预览）；如果用户想先看效果，可引导其去飞书邮件里打开该草稿查看详情。
 
-**Step 3** — 用户明确同意后，发送该草稿：
+用户明确同意后，发送该草稿：
 ```bash
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<Step 1 返回的 draft_id>"}'
 ```
 
-**禁止跳过 Step 1 直接使用 `--confirm-send`。禁止在用户未明确同意的情况下执行 Step 3。**
+**方式 B（允许）** — 用户已经明确确认收件人和内容时，可直接使用 `--confirm-send` 立即发送：
+```bash
+lark-cli mail +send --to <收件人> --subject '<主题>' --body '<正文>' --confirm-send
+```
+
+**禁止在用户未明确同意的情况下执行发送，无论是发送草稿还是直接使用 `--confirm-send`。**
 
 ## 命令
 
@@ -68,7 +73,7 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
-| `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径 |
+| `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
@@ -90,6 +95,8 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 }
 ```
 
+草稿模式下，只要结果不是直接发信而是产出了草稿，就应给用户展示草稿打开链接。当前应以 `create` / `edit` / `send` 链路返回的链接信息为准，不要把 `user_mailbox.drafts get` 当作拿草稿打开链接的来源。如果返回中带有 `reference`，应把链接与 `draft_id` 一并返回；当前没有链接时，静默处理，不要伪造链接。
+
 **发送模式（`--confirm-send`）：**
 
 ```json
@@ -97,10 +104,19 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
   "ok": true,
   "data": {
     "message_id": "邮件ID",
-    "thread_id":  "会话ID"
+    "thread_id": "会话ID"
   }
 }
 ```
+
+可选字段：
+
+- `automation_send_disable_reason`：发送被邮箱自动化设置拦截时返回的原因
+- `automation_send_disable_reference`：发送被拦截时的草稿打开链接
+
+字段语义：
+
+- 若返回中包含 `automation_send_disable_reason` / `automation_send_disable_reference`，说明邮件未真正发出，而是被邮箱设置拦截。此时应直接向用户展示原因和草稿打开链接，不要继续假设已经发送成功
 
 ## 典型场景
 
@@ -108,18 +124,21 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 ```bash
 lark-cli mail +send --to alice@example.com --subject '周报' --body '<p>本周进展如下...</p>'
 ```
-→ 返回 `draft_id`，告诉用户草稿已创建，可在飞书邮件 UI 中预览和编辑。
+→ 返回草稿结果时，如输出中带有草稿打开链接，则一起展示给用户；如果当前输出没有链接，则静默处理。如果用户想先看效果，可去飞书邮件 UI 中打开草稿查看详情。
 
 ### 场景 2：用户说"发邮件给 Alice 说收到了"（需要发送）
 ```bash
-# Step 1: 创建草稿
+# 方式 A: 创建草稿
 lark-cli mail +send --to alice@example.com --subject '收到' --body '<p>已收到，谢谢！</p>'
 # → 返回 draft_id
 
-# Step 2: 向用户确认 "邮件草稿已创建：收件人 alice@example.com，主题「收到」。确认发送吗？"
+# 向用户确认 "当前收件人 alice@example.com，主题「收到」。如果你想先看效果，也可以先去飞书邮件里打开草稿查看详情。确认发送吗？"
 
-# Step 3: 用户确认后发送
+# 用户确认后发送
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'
+
+# 方式 B: 用户已明确确认时，直接发送
+lark-cli mail +send --to alice@example.com --subject '收到' --body '<p>已收到，谢谢！</p>' --confirm-send
 ```
 
 ### 场景 3：用户说"下午 3 点给 Alice 发一封周报"（定时发送）
@@ -143,9 +162,13 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 
 ## 发送后跟进
 
+邮件发送后，分两种情况处理：
+
+- 若返回中有 `automation_send_disable_reason` / `automation_send_disable_reference`：说明发送被邮箱设置拦截，应直接告诉用户原因并提供草稿打开链接，**不要**调用 `send_status`
+
 ### 立即发送（无 `--send-time`）
 
-邮件发送成功后（收到 `message_id`），**必须**调用 `send_status` 查询投递状态：
+若返回非空 `message_id`，调用：
 
 ```bash
 lark-cli mail user_mailbox.messages send_status --params '{"user_mailbox_id":"me","message_id":"<发送返回的 message_id>"}'
@@ -170,6 +193,7 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 - 使用 EML 构建器生成完整 MIME 邮件并 base64url 编码后发送。
 - `--attach` 作为普通附件添加。相对路径。
 - `--inline` 接受 JSON 数组，每项需提供 `cid`（唯一标识符，可用随机十六进制字符串）和 `file_path`（相对路径），作为 inline part 嵌入邮件。
+- **超大附件**：当附件导致 EML 总大小（headers + body + inline images + attachments，base64 编码后）超过 25 MB 时，超出的文件自动通过 `medias/upload_*` API 上传到云端。HTML 邮件插入与飞书客户端一致的下载卡片；纯文本邮件追加包含文件名、大小和下载链接的文本块。单个文件上限 3 GB，总附件数量上限 250 个。
 
 ## 相关命令
 
