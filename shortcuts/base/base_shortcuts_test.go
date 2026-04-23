@@ -258,8 +258,8 @@ func TestBaseRecordValidate(t *testing.T) {
 	if BaseRecordSearch.Validate == nil {
 		t.Fatalf("record search validate should reject invalid JSON before dry-run")
 	}
-	if BaseRecordGet.Validate != nil {
-		t.Fatalf("record get validate should be nil")
+	if BaseRecordGet.Validate == nil {
+		t.Fatalf("record get validate should reject invalid record selection before dry-run")
 	}
 	if BaseRecordUpsert.Validate == nil {
 		t.Fatalf("record upsert validate should reject invalid JSON before dry-run")

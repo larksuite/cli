@@ -978,41 +978,176 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_1",
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
 			Body: map[string]interface{}{
 				"code": 0,
-				"data": map[string]interface{}{"records": map[string]interface{}{
-					"schema":     []interface{}{"Name", "Age"},
-					"record_ids": []interface{}{"rec_1"},
-					"rows":       []interface{}{[]interface{}{"Alice", 18}},
-				}},
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_1"},
+					"fields":         []interface{}{"Name", "Age"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+				},
 			},
-		})
+		}
+		reg.Register(batchStub)
 		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record_ids"`) || !strings.Contains(got, `"Name"`) || strings.Contains(got, `"raw"`) {
+		if got := stdout.String(); !strings.Contains(got, `"record":`) || !strings.Contains(got, `"Name": "Alice"`) || !strings.Contains(got, `"Age": 18`) || strings.Contains(got, `"raw"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_1"]`) {
+			t.Fatalf("request body=%s", body)
 		}
 	})
 
-	t.Run("get passthrough fallback", func(t *testing.T) {
+	t.Run("get with selected fields", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_2",
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
 			Body: map[string]interface{}{
 				"code": 0,
-				"data": map[string]interface{}{"unexpected": "shape", "record_id": "rec_2"},
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_1"},
+					"fields":         []interface{}{"Name", "Age"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+				},
 			},
-		})
-		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2"}, factory, stdout); err != nil {
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--field-id", "Name", "--field-id", "Age"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"unexpected": "shape"`) || strings.Contains(got, `"raw"`) || strings.Contains(got, `"record":`) {
+		if got := stdout.String(); !strings.Contains(got, `"Name": "Alice"`) || !strings.Contains(got, `"Age": 18`) {
 			t.Fatalf("stdout=%s", got)
+		}
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_1"]`) || !strings.Contains(body, `"select_fields":["Name","Age"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
+	t.Run("get batch with repeated record-id flags", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_2", "rec_1"},
+					"fields":         []interface{}{"Name"},
+					"data":           []interface{}{[]interface{}{"Bob"}, []interface{}{"Alice"}},
+				},
+			},
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--field-id", "Name"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_2"`) || !strings.Contains(got, `"Bob"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_2","rec_1"]`) || !strings.Contains(body, `"select_fields":["Name"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
+	t.Run("get batch with json selector", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_3"},
+					"fields":         []interface{}{"Name"},
+					"data":           []interface{}{[]interface{}{"Carol"}},
+				},
+			},
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_3"],"select_fields":["Name"]}`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"Carol"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_3"]`) || !strings.Contains(body, `"select_fields":["Name"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
+	t.Run("get batch with json record ids and field flags", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_4"},
+					"fields":         []interface{}{"Status"},
+					"data":           []interface{}{[]interface{}{"Done"}},
+				},
+			},
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_4"]}`, "--field-id", "Status"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"Done"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_4"]`) || !strings.Contains(body, `"select_fields":["Status"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
+	t.Run("get rejects duplicate record ids", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--record-id", "rec_1"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "duplicate record id") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("get rejects duplicate field ids", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--field-id", "Name", "--field-id", "Name"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "duplicate field id") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("get rejects mixed record-id and json", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--json", `{"record_id_list":["rec_2"]}`}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("get rejects mixed field-id and json select_fields", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_2"],"select_fields":["Name"]}`, "--field-id", "Age"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "select_fields") || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("get rejects empty selection", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "provide at least one --record-id") {
+			t.Fatalf("err=%v", err)
 		}
 	})
 
@@ -1115,6 +1250,76 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"deleted": true`) || !strings.Contains(got, `"record_id": "rec_1"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("delete batch with repeated record-id flags", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_delete",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_2", "rec_1"},
+				},
+			},
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--yes"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_2"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_2","rec_1"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
+	t.Run("delete batch with json selector", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_delete",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_3"},
+				},
+			},
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_3"]}`, "--yes"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_3"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("delete requires yes for batch", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "requires confirmation") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("delete rejects duplicate record ids", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--record-id", "rec_1", "--yes"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "duplicate record id") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("delete rejects mixed record-id and json", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--json", `{"record_id_list":["rec_2"]}`, "--yes"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("err=%v", err)
 		}
 	})
 

@@ -112,10 +112,42 @@ func TestDryRunRecordOps(t *testing.T) {
 		nil,
 		map[string]int{"max-version": 11, "page-size": 30},
 	)
-	assertDryRunContains(t, dryRunRecordGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
 	assertDryRunContains(t, dryRunRecordUpsert(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
-	assertDryRunContains(t, dryRunRecordDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
 	assertDryRunContains(t, dryRunRecordHistoryList(ctx, rt), "GET /open-apis/base/v3/bases/app_x/record_history", "max_version=11", "page_size=30", "record_id=rec_1", "table_id=tbl_1")
+
+	getSingleRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+		map[string][]string{"record-id": {"rec_1"}},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunRecordGet(ctx, getSingleRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_get", `"record_id_list":["rec_1"]`)
+	assertDryRunContains(t, dryRunRecordDelete(ctx, getSingleRT), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
+
+	getSingleFieldsRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+		map[string][]string{"record-id": {"rec_1"}, "field-id": {"Name", "Age"}},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunRecordGet(ctx, getSingleFieldsRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_get", `"record_id_list":["rec_1"]`, `"select_fields":["Name","Age"]`)
+
+	getBatchRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+		map[string][]string{"record-id": {"rec_2", "rec_1"}, "field-id": {"Name", "Age"}},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunRecordGet(ctx, getBatchRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_get", `"record_id_list":["rec_2","rec_1"]`, `"select_fields":["Name","Age"]`)
+	assertDryRunContains(t, dryRunRecordDelete(ctx, getBatchRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_delete", `"record_id_list":["rec_2","rec_1"]`)
+
+	getJSONRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"record_id_list":["rec_3"],"select_fields":["Status"]}`},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunRecordGet(ctx, getJSONRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_get", `"record_id_list":["rec_3"]`, `"select_fields":["Status"]`)
+	assertDryRunContains(t, dryRunRecordDelete(ctx, getJSONRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_delete", `"record_id_list":["rec_3"]`)
 
 	uploadAttachmentRT := newBaseTestRuntime(
 		map[string]string{

@@ -2,7 +2,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-删除一条记录。
+删除一条或多条记录。
 
 ## 推荐命令
 
@@ -14,13 +14,23 @@ lark-cli base +record-delete \
   --yes
 ```
 
+```bash
+lark-cli base +record-delete \
+  --base-token app_xxx \
+  --table-id tbl_xxx \
+  --record-id rec_001 \
+  --record-id rec_002 \
+  --yes
+```
+
 ## 参数
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--base-token <token>` | 是 | Base Token |
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
-| `--record-id <id>` | 是 | 记录 ID |
+| `--record-id <id>` | 否 | 记录 ID，可重复使用；这是主推荐用法 |
+| `--json <object>` | 否 | 脚本/代理场景可传 `{"record_id_list":["rec_xxx"]}` |
 
 ## API 入参详情
 
@@ -28,11 +38,13 @@ lark-cli base +record-delete \
 
 ```
 DELETE /open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id
+POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_delete
 ```
 
 ## 返回重点
 
-- 返回 `deleted: true` 和 `record_id`。
+- 单个 `--record-id` 时，沿用单记录删除接口并返回 `deleted: true` 与 `record_id`。
+- 多个 `--record-id`，或使用 `--json` 时，自动切换到批量删除接口并返回接口原始 `data`。
 
 ## 工作流
 
