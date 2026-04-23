@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// validReceiveIDTypes enumerates accepted --receive-id-type values.
 var validReceiveIDTypes = map[string]bool{
 	"chat_id":  true,
 	"open_id":  true,
@@ -19,6 +20,7 @@ var validReceiveIDTypes = map[string]bool{
 	"email":    true,
 }
 
+// MailShareToChat shares an email or thread as a card to a Lark IM chat.
 var MailShareToChat = common.Shortcut{
 	Service:     "mail",
 	Command:     "+share-to-chat",
