@@ -255,11 +255,8 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	}
 
 	if registry.GetStrFromMap(opts.Method, "risk") == "high-risk-write" {
-		yes, _ := opts.Cmd.Flags().GetBool("yes")
-		if !yes {
-			if err := cmdutil.RequireConfirmation(opts.SchemaPath); err != nil {
-				return err
-			}
+		if yes, _ := opts.Cmd.Flags().GetBool("yes"); !yes {
+			return cmdutil.RequireConfirmation(opts.SchemaPath)
 		}
 	}
 

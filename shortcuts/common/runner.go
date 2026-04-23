@@ -652,10 +652,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 
 	if s.Risk == "high-risk-write" && !rctx.Bool("yes") {
-		action := s.Service + " " + s.Command
-		if err := cmdutil.RequireConfirmation(action); err != nil {
-			return err
-		}
+		return cmdutil.RequireConfirmation(s.Service + " " + s.Command)
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
