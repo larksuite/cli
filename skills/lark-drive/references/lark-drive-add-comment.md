@@ -91,7 +91,7 @@ lark-cli drive +add-comment \
 |------|------|------|
 | `--doc` | 是 | 文档 URL / token、sheet URL，或可解析到 `doc`/`docx`/`sheet` 的 wiki URL |
 | `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`sheet`。URL 输入时自动识别，无需传 |
-| `--content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'` |
+| `--content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'`。`type=text` 的文本里不能直接出现 `<`、`>`，应写成 `&lt;`、`&gt;`；shortcut 也会自动兜底转义。 |
 | `--full-comment` | 否 | 显式指定创建全文评论；未传 `--selection-with-ellipsis` / `--block-id` 时也会默认走全文评论（不适用于 sheet） |
 | `--selection-with-ellipsis` | 局部评论时二选一 | 目标文本定位表达式，支持纯文本或 `开头...结尾`；与 `--block-id` 互斥（不适用于 sheet） |
 | `--block-id` | 局部评论时二选一 | 已知目标块 ID 时直接使用；与 `--selection-with-ellipsis` 互斥。**Sheet 评论**：格式为 `<sheetId>!<cell>`（如 `a281f9!D6`） |
@@ -104,6 +104,7 @@ lark-cli drive +add-comment \
 - 全文评论支持 `docx`、旧版 `doc` URL，以及最终可解析为 `doc`/`docx` 的 wiki URL。
 - 传 `--selection-with-ellipsis` 或 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式仅支持 `docx`，以及最终可解析为 `docx` 的 wiki URL。
 - `--content` 接收结构化评论元素数组；`type` 支持 `text`、`mention_user`、`link`。为便于书写，`mention_user` / `link` 元素可以直接把用户 ID 或链接地址放在 `text` 字段中，shortcut 会转换成 OpenAPI 所需字段。
+- `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
 - 局部评论走 `locate-doc` 时，内部固定使用 `limit=10`。
 - 当 `locate-doc` 命中多处时，shortcut 会中止并提示用户继续收窄 `--selection-with-ellipsis`，不支持手动指定匹配序号。
 - 写入评论前会自动生成符合 OpenAPI 定义的请求体：

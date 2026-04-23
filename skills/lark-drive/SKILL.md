@@ -127,6 +127,8 @@ Drive Folder (云空间文件夹)
 - 全文评论：未传 `--selection-with-ellipsis` / `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
 - 局部评论：传 `--selection-with-ellipsis` 或 `--block-id` 时启用；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL。
 - `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
+- 评论写入内容（添加评论、回复评论、编辑回复）里的文本不能直接出现 `<`、`>`；提交前必须先转义：`<` -> `&lt;`，`>` -> `&gt;`。
+- 使用 `drive +add-comment` 时，shortcut 会对 `type=text` 的文本元素自动做上述转义兜底；如果直接调用 `drive file.comments create_v2`、`drive file.comment.replys create`、`drive file.comment.replys update`，则需要在请求里自行传入已转义的内容。
 - 如果 wiki 解析后不是 `doc`/`docx`，不要用 `+add-comment`。
 - 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`，局部评论传 `anchor.block_id`。
 
