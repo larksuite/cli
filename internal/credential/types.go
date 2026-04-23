@@ -21,6 +21,7 @@ type Account struct {
 	AppSecret           string
 	Brand               core.LarkBrand
 	DefaultAs           core.Identity
+	UserTokenGetterUrl  string // URL endpoint to dynamically get a user token
 	UserOpenId          string
 	UserName            string
 	SupportedIdentities uint8
@@ -63,6 +64,7 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		AppSecret:           normalizeAccountAppSecret(cfg.AppSecret),
 		Brand:               cfg.Brand,
 		DefaultAs:           cfg.DefaultAs,
+		UserTokenGetterUrl:  cfg.UserTokenGetterUrl,
 		UserOpenId:          cfg.UserOpenId,
 		UserName:            cfg.UserName,
 		SupportedIdentities: cfg.SupportedIdentities,
@@ -80,6 +82,7 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		AppSecret:           normalizeAccountAppSecret(a.AppSecret),
 		Brand:               a.Brand,
 		DefaultAs:           a.DefaultAs,
+		UserTokenGetterUrl:  a.UserTokenGetterUrl,
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
 		SupportedIdentities: a.SupportedIdentities,
