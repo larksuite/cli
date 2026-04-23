@@ -28,7 +28,6 @@ type ErrDetail struct {
 	Message    string      `json:"message"`
 	Hint       string      `json:"hint,omitempty"`
 	ConsoleURL string      `json:"console_url,omitempty"`
-	FixCommand string      `json:"fix_command,omitempty"`
 	Risk       *RiskDetail `json:"risk,omitempty"`
 	Detail     interface{} `json:"detail,omitempty"`
 }

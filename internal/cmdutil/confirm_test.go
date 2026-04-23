@@ -6,7 +6,6 @@ package cmdutil
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
@@ -50,10 +49,7 @@ func TestRequireConfirmation_EnvelopeShape(t *testing.T) {
 	}
 }
 
-func TestRequireConfirmation_JSONOmitsEmptyFields(t *testing.T) {
-	// With no os.Args[0] binary arg, fix_command may be non-empty — but for
-	// the general envelope shape test, we just confirm the output parses and
-	// the expected fields are present.
+func TestRequireConfirmation_JSONShape(t *testing.T) {
 	err := RequireConfirmation("mail +send")
 	var exitErr *output.ExitError
 	if !errors.As(err, &exitErr) {
@@ -67,6 +63,13 @@ func TestRequireConfirmation_JSONOmitsEmptyFields(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
+
+	// No fix_command field leaks into the envelope: the protocol avoids
+	// shell-quoting hazards by delegating retry to agent-side logic.
+	if _, has := back["fix_command"]; has {
+		t.Errorf("unexpected fix_command present in JSON: %s", raw)
+	}
+
 	risk, ok := back["risk"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("risk block missing in JSON: %s", raw)
@@ -77,45 +80,8 @@ func TestRequireConfirmation_JSONOmitsEmptyFields(t *testing.T) {
 	if risk["action"] != "mail +send" {
 		t.Errorf("risk.action in JSON = %v", risk["action"])
 	}
-	// Action-only protocol: no UpgradedBy field to leak into JSON.
+	// Action-only protocol: no UpgradedBy / fix_command / upgraded_by leak.
 	if _, has := risk["upgraded_by"]; has {
 		t.Errorf("unexpected upgraded_by present in JSON: %s", raw)
-	}
-}
-
-func TestBuildFixCommand_EmptyArgs(t *testing.T) {
-	orig := os.Args
-	t.Cleanup(func() { os.Args = orig })
-	os.Args = nil
-
-	if got := buildFixCommand(); got != "" {
-		t.Errorf("expected empty string for nil os.Args, got %q", got)
-	}
-}
-
-func TestBuildFixCommand_AlreadyHasYes(t *testing.T) {
-	orig := os.Args
-	t.Cleanup(func() { os.Args = orig })
-
-	os.Args = []string{"lark-cli", "drive", "+delete", "--yes"}
-	if got := buildFixCommand(); got != "" {
-		t.Errorf("expected empty string when --yes already present, got %q", got)
-	}
-
-	os.Args = []string{"lark-cli", "drive", "+delete", "-y"}
-	if got := buildFixCommand(); got != "" {
-		t.Errorf("expected empty string when -y already present, got %q", got)
-	}
-}
-
-func TestBuildFixCommand_AppendsYes(t *testing.T) {
-	orig := os.Args
-	t.Cleanup(func() { os.Args = orig })
-	os.Args = []string{"lark-cli", "drive", "+delete", "--file-token", "abc"}
-
-	got := buildFixCommand()
-	want := "lark-cli drive +delete --file-token abc --yes"
-	if got != want {
-		t.Errorf("buildFixCommand() = %q, want %q", got, want)
 	}
 }

@@ -105,7 +105,6 @@ lark-cli 对高风险写操作（`risk: "high-risk-write"`）有强制确认门�
     "type": "confirmation_required",
     "message": "drive +delete requires confirmation",
     "hint": "add --yes to confirm",
-    "fix_command": "lark-cli drive +delete --file-token xxx --type docx --yes",
     "risk": {
       "level": "high-risk-write",
       "action": "drive +delete"
@@ -118,13 +117,14 @@ lark-cli 对高风险写操作（`risk: "high-risk-write"`）有强制确认门�
 
 1. **识别**：看到子进程 exit code = `10` 且 stderr JSON 里 `error.type == "confirmation_required"`
 2. **向用户确认**：把 `error.risk.action` 和关键参数展示给用户，明确告知"这是高风险操作"，等待用户显式同意
-3. **用户同意** → 直接执行 `error.fix_command`（原样带 `--yes` 重试）
+3. **用户同意** → 在你**原始 argv 的末尾追加 `--yes`** 后重试
 4. **用户拒绝** → 终止流程，不要擅自改写参数或跳过门禁
 
 **绝对不允许**：
 - 看到 exit 10 就默认加 `--yes` 静默重试（这等于禁用门禁）
 - 把 `confirmation_required` 当网络错误/权限错误处理
-- 在用户没明确同意的前提下执行 `fix_command`
+- 在用户没明确同意的前提下追加 `--yes` 重试
+- 用 `sh -c` 等 shell 方式拼接命令重试——用 `exec.Command(argv...)` 参数数组形式，避免 shell 解析把用户参数当作语法
 
 提前预判：想先让用户 review 危险操作的具体请求，调用时加 `--dry-run`——它不触发门禁，会打印完整请求详情（URL / body / params），你可以把这个预览给用户看过再去真正执行。
 
