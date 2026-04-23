@@ -79,6 +79,27 @@ const messages = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Timeout for npm install / skills install child processes. npm install of
+// @larksuite/cli fetches a ~16MB Go binary via its postinstall script, and
+// `skills add` fetches and materialises 30+ skill manifests — both can take
+// over 120s on slow emulators (iSH, QEMU, Wine), underpowered CI runners, or
+// cold-cache runs on high-latency networks. 120s hardcoded timeouts were too
+// tight for those environments; override via env var with a safer default.
+const INSTALL_TIMEOUT_MS = (() => {
+  const n = parseInt(process.env.LARK_CLI_INSTALL_TIMEOUT_MS || "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 600000;
+})();
+
+// Strip ANSI escape sequences (colour/cursor codes) from a string. `skills ls`
+// emits cyan/gray codes around every skill name, so matching `/^lark-/m`
+// directly against its output fails because each line starts with `\x1b[36m`,
+// not `l`. Strip codes before pattern-matching content.
+function stripAnsi(s) {
+  // Covers CSI (colour, cursor, etc.) and OSC (title). Good enough for
+  // tool output — we never need to preserve formatting in regex checks.
+  return String(s).replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+}
+
 function handleCancel(value, msg) {
   if (p.isCancel(value)) {
     p.cancel(msg.cancelled);
@@ -244,7 +265,7 @@ async function stepInstallGlobally(msg) {
     s.start(fmt(msg.step1, PKG));
   }
   try {
-    await runSilentAsync("npm", ["install", "-g", PKG], { timeout: 120000 });
+    await runSilentAsync("npm", ["install", "-g", PKG], { timeout: INSTALL_TIMEOUT_MS });
     s.stop(needsUpgrade ? fmt(msg.step1Upgraded, latestVer) : msg.step1Done);
     return needsUpgrade;
   } catch (_) {
@@ -256,9 +277,13 @@ async function stepInstallGlobally(msg) {
 async function skillsAlreadyInstalled() {
   try {
     const out = await runSilentAsync("npx", ["-y", "skills", "ls", "-g"], {
-      timeout: 120000,
+      timeout: INSTALL_TIMEOUT_MS,
     });
-    return /^lark-/m.test(out.toString());
+    // `skills ls` prints ANSI colour codes before each skill name (e.g.
+    // `\x1b[36mlark-approval\x1b[0m`), so the previous `/^lark-/m` regex
+    // never matched even when lark skills were clearly listed. Strip
+    // escapes first so the content can be matched directly.
+    return /^lark-/m.test(stripAnsi(out.toString()));
   } catch (_) {
     return false;
   }
@@ -274,11 +299,11 @@ async function stepInstallSkills(msg) {
     }
     try {
       await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO, "-y", "-g"], {
-        timeout: 120000,
+        timeout: INSTALL_TIMEOUT_MS,
       });
     } catch (_) {
       await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO_FALLBACK, "-y", "-g"], {
-        timeout: 120000,
+        timeout: INSTALL_TIMEOUT_MS,
       });
     }
     s.stop(msg.step2Done);
