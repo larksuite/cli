@@ -52,7 +52,8 @@ func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *comm
 }
 
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, _ := parseRecordUpsertBody(runtime)
+	pc := newParseCtx(runtime)
+	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
 	if recordID := runtime.Str("record-id"); recordID != "" {
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
@@ -167,23 +168,6 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 	return err
 }
 
-func validateRecordUpsertJSON(runtime *common.RuntimeContext) error {
-	_, err := parseRecordUpsertBody(runtime)
-	return err
-}
-
-func parseRecordUpsertBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
-	pc := newParseCtx(runtime)
-	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := body["fields"]; ok {
-		return nil, common.FlagErrorf(`--json for +record-upsert must be Map<FieldNameOrID, CellValue>; remove the top-level "fields" wrapper, e.g. --json '{"Name":"Alice"}'`)
-	}
-	return body, nil
-}
-
 func recordListFields(runtime *common.RuntimeContext) []string {
 	return runtime.StrArray("field-id")
 }
@@ -234,7 +218,8 @@ func executeRecordSearch(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordUpsert(runtime *common.RuntimeContext) error {
-	body, err := parseRecordUpsertBody(runtime)
+	pc := newParseCtx(runtime)
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return err
 	}

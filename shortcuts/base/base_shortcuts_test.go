@@ -268,9 +268,6 @@ func TestBaseRecordValidate(t *testing.T) {
 	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"Alice"}`}, nil, nil)); err != nil {
 		t.Fatalf("record upsert map validate err=%v", err)
 	}
-	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"fields":{"Name":"Alice"}}`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "remove the top-level \"fields\" wrapper") {
-		t.Fatalf("err=%v", err)
-	}
 }
 
 func TestBaseViewValidate(t *testing.T) {
