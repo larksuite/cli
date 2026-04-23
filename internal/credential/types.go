@@ -21,6 +21,7 @@ type Account struct {
 	AppSecret           string
 	Brand               core.LarkBrand
 	DefaultAs           core.Identity
+	UserTokenGetterUrl  string // URL endpoint to dynamically get a user token
 	UserOpenId          string
 	UserName            string
 	SupportedIdentities uint8
@@ -45,6 +46,7 @@ func RuntimeAppSecret(secret string) string {
 	return runtimePlaceholderAppSecret
 }
 
+// normalizeAccountAppSecret ensures empty secrets are converted to the placeholder.
 func normalizeAccountAppSecret(secret string) string {
 	if HasRealAppSecret(secret) {
 		return secret
@@ -63,6 +65,7 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		AppSecret:           normalizeAccountAppSecret(cfg.AppSecret),
 		Brand:               cfg.Brand,
 		DefaultAs:           cfg.DefaultAs,
+		UserTokenGetterUrl:  cfg.UserTokenGetterUrl,
 		UserOpenId:          cfg.UserOpenId,
 		UserName:            cfg.UserName,
 		SupportedIdentities: cfg.SupportedIdentities,
@@ -80,6 +83,7 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		AppSecret:           normalizeAccountAppSecret(a.AppSecret),
 		Brand:               a.Brand,
 		DefaultAs:           a.DefaultAs,
+		UserTokenGetterUrl:  a.UserTokenGetterUrl,
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
 		SupportedIdentities: a.SupportedIdentities,
@@ -101,6 +105,7 @@ const (
 	TokenTypeTAT TokenType = "tat" // Tenant Access Token
 )
 
+// String returns the string representation of a TokenType.
 func (t TokenType) String() string { return string(t) }
 
 // ParseTokenType converts a string to TokenType.
@@ -139,6 +144,7 @@ type TokenUnavailableError struct {
 	Type   TokenType
 }
 
+// Error returns the error message indicating no token is available.
 func (e *TokenUnavailableError) Error() string {
 	if e.Source != "" {
 		return fmt.Sprintf("no %s available from credential source %q", e.Type, e.Source)
@@ -153,6 +159,7 @@ type MalformedTokenResultError struct {
 	Reason string
 }
 
+// Error returns the error message indicating malformed token results.
 func (e *MalformedTokenResultError) Error() string {
 	return fmt.Sprintf("credential source %q returned malformed %s token: %s", e.Source, e.Type, e.Reason)
 }

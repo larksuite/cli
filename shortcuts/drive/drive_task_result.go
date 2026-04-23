@@ -217,6 +217,7 @@ func queryTaskCheck(runtime *common.RuntimeContext, taskID string) (map[string]i
 	}, nil
 }
 
+// validateDriveTaskResultScopes ensures the user has authorized the scopes required for specific drive tasks.
 func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeContext, scenario string) error {
 	result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
 	if err != nil {
@@ -243,6 +244,7 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 	return requireDriveScopes(result.Scopes, required)
 }
 
+// requireDriveScopes returns an error if any of the required scopes are missing from storedScopes.
 func requireDriveScopes(storedScopes string, required []string) error {
 	if len(required) == 0 {
 		return nil
@@ -258,6 +260,7 @@ func requireDriveScopes(storedScopes string, required []string) error {
 		fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
 }
 
+// missingDriveScopes returns a list of scopes that are required but not present in storedScopes.
 func missingDriveScopes(storedScopes string, required []string) []string {
 	granted := make(map[string]bool)
 	for _, scope := range strings.Fields(storedScopes) {
@@ -273,17 +276,20 @@ func missingDriveScopes(storedScopes string, required []string) []string {
 	return missing
 }
 
+// wikiMoveTaskResultStatus represents the result of a single node in a move task.
 type wikiMoveTaskResultStatus struct {
 	Node      map[string]interface{}
 	Status    int
 	StatusMsg string
 }
 
+// wikiMoveTaskQueryStatus represents the overall status of a wiki move task.
 type wikiMoveTaskQueryStatus struct {
 	TaskID      string
 	MoveResults []wikiMoveTaskResultStatus
 }
 
+// Ready indicates whether all wiki move operations in the task succeeded.
 func (s wikiMoveTaskQueryStatus) Ready() bool {
 	if len(s.MoveResults) == 0 {
 		return false
@@ -296,6 +302,7 @@ func (s wikiMoveTaskQueryStatus) Ready() bool {
 	return true
 }
 
+// Failed indicates whether any wiki move operation in the task failed.
 func (s wikiMoveTaskQueryStatus) Failed() bool {
 	for _, result := range s.MoveResults {
 		if result.Status < 0 {
@@ -305,6 +312,7 @@ func (s wikiMoveTaskQueryStatus) Failed() bool {
 	return false
 }
 
+// FirstResult returns the first result in the move operation list.
 func (s wikiMoveTaskQueryStatus) FirstResult() *wikiMoveTaskResultStatus {
 	if len(s.MoveResults) == 0 {
 		return nil
@@ -330,6 +338,7 @@ func (s wikiMoveTaskQueryStatus) primaryResult() *wikiMoveTaskResultStatus {
 	return s.FirstResult()
 }
 
+// PrimaryStatusCode returns the status code of the primary result.
 func (s wikiMoveTaskQueryStatus) PrimaryStatusCode() int {
 	if r := s.primaryResult(); r != nil {
 		return r.Status
@@ -337,6 +346,7 @@ func (s wikiMoveTaskQueryStatus) PrimaryStatusCode() int {
 	return 1
 }
 
+// PrimaryStatusLabel returns the user-friendly status message.
 func (s wikiMoveTaskQueryStatus) PrimaryStatusLabel() string {
 	if r := s.primaryResult(); r != nil {
 		if msg := strings.TrimSpace(r.StatusMsg); msg != "" {
@@ -353,6 +363,7 @@ func (s wikiMoveTaskQueryStatus) PrimaryStatusLabel() string {
 	}
 }
 
+// queryWikiMoveTask returns the parsed status and metadata of a wiki move task.
 func queryWikiMoveTask(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
 	status, err := getWikiMoveTaskStatus(runtime, taskID)
 	if err != nil {
@@ -398,6 +409,7 @@ func queryWikiMoveTask(runtime *common.RuntimeContext, taskID string) (map[strin
 	return out, nil
 }
 
+// getWikiMoveTaskStatus calls the open API to fetch wiki move task status.
 func getWikiMoveTaskStatus(runtime *common.RuntimeContext, taskID string) (wikiMoveTaskQueryStatus, error) {
 	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
 		return wikiMoveTaskQueryStatus{}, output.ErrValidation("%s", err)
@@ -416,6 +428,7 @@ func getWikiMoveTaskStatus(runtime *common.RuntimeContext, taskID string) (wikiM
 	return parseWikiMoveTaskQueryStatus(taskID, common.GetMap(data, "task"))
 }
 
+// parseWikiMoveTaskQueryStatus maps the raw JSON response to a structured status.
 func parseWikiMoveTaskQueryStatus(taskID string, task map[string]interface{}) (wikiMoveTaskQueryStatus, error) {
 	if task == nil {
 		return wikiMoveTaskQueryStatus{}, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
@@ -444,6 +457,7 @@ func parseWikiMoveTaskQueryStatus(taskID string, task map[string]interface{}) (w
 	return status, nil
 }
 
+// parseWikiMoveTaskNode extracts the common attributes of a wiki move node.
 func parseWikiMoveTaskNode(node map[string]interface{}) map[string]interface{} {
 	if node == nil {
 		return nil
@@ -462,6 +476,7 @@ func parseWikiMoveTaskNode(node map[string]interface{}) map[string]interface{} {
 	}
 }
 
+// appendWikiMoveNodeFields appends a set of wiki node fields into an output map.
 func appendWikiMoveNodeFields(out, node map[string]interface{}) {
 	if out == nil || node == nil {
 		return

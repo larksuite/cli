@@ -308,7 +308,7 @@ func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T
 		},
 	}
 
-	err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "cli_prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en")
+	err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "cli_prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en", "")
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
@@ -332,7 +332,7 @@ func TestUpdateExistingProfileWithoutSecret_RejectsAppIDChange(t *testing.T) {
 		},
 	}
 
-	err := updateExistingProfileWithoutSecret(multi, "", "app-new", core.BrandLark, "en")
+	err := updateExistingProfileWithoutSecret(multi, "", "app-new", core.BrandLark, "en", "")
 	if err == nil {
 		t.Fatal("expected error when changing app ID without a new secret")
 	}

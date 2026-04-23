@@ -38,14 +38,15 @@ type AppUser struct {
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
-	Name       string      `json:"name,omitempty"`
-	AppId      string      `json:"appId"`
-	AppSecret  SecretInput `json:"appSecret"`
-	Brand      LarkBrand   `json:"brand"`
-	Lang       string      `json:"lang,omitempty"`
-	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
-	StrictMode *StrictMode `json:"strictMode,omitempty"`
-	Users      []AppUser   `json:"users"`
+	Name               string      `json:"name,omitempty"`
+	AppId              string      `json:"appId"`
+	AppSecret          SecretInput `json:"appSecret"`
+	Brand              LarkBrand   `json:"brand"`
+	Lang               string      `json:"lang,omitempty"`
+	DefaultAs          Identity    `json:"defaultAs,omitempty"`             // AsUser | AsBot | AsAuto
+	UserTokenGetterUrl string      `json:"user_token_getter_url,omitempty"` // UserTokenGetterUrl defines an endpoint for fetching user tokens without manual authorization flow.
+	StrictMode         *StrictMode `json:"strictMode,omitempty"`
+	Users              []AppUser   `json:"users"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -158,6 +159,7 @@ type CliConfig struct {
 	AppSecret           string
 	Brand               LarkBrand
 	DefaultAs           Identity // AsUser | AsBot | AsAuto | "" (from config file)
+	UserTokenGetterUrl  string   // URL to fetch user access token automatically if provided
 	UserOpenId          string
 	UserName            string
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
@@ -250,28 +252,33 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		}
 	}
 
-	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
-		return nil, &ConfigError{Code: 2, Type: "config",
-			Message: "appId and appSecret keychain key are out of sync",
-			Hint:    err.Error()}
-	}
-
-	secret, err := ResolveSecretInput(app.AppSecret, kc)
-	if err != nil {
-		// If the error comes from the keychain, it will already be wrapped as an ExitError.
-		// For other errors (e.g. file read errors, unknown sources), wrap them as ConfigError.
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) {
-			return nil, exitErr
+	var secret string
+	var err error
+	if app.UserTokenGetterUrl == "" {
+		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
+			return nil, &ConfigError{Code: 2, Type: "config",
+				Message: "appId and appSecret keychain key are out of sync",
+				Hint:    err.Error()}
 		}
-		return nil, &ConfigError{Code: 2, Type: "config", Message: err.Error()}
+
+		secret, err = ResolveSecretInput(app.AppSecret, kc)
+		if err != nil {
+			// If the error comes from the keychain, it will already be wrapped as an ExitError.
+			// For other errors (e.g. file read errors, unknown sources), wrap them as ConfigError.
+			var exitErr *output.ExitError
+			if errors.As(err, &exitErr) {
+				return nil, exitErr
+			}
+			return nil, &ConfigError{Code: 2, Type: "config", Message: err.Error()}
+		}
 	}
 	cfg := &CliConfig{
-		ProfileName: app.ProfileName(),
-		AppID:       app.AppId,
-		AppSecret:   secret,
-		Brand:       app.Brand,
-		DefaultAs:   app.DefaultAs,
+		ProfileName:        app.ProfileName(),
+		AppID:              app.AppId,
+		AppSecret:          secret,
+		Brand:              app.Brand,
+		DefaultAs:          app.DefaultAs,
+		UserTokenGetterUrl: app.UserTokenGetterUrl,
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

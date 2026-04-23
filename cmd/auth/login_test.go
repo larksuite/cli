@@ -7,11 +7,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -901,6 +905,551 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *
 	}
 	if !strings.Contains(err.Error(), "failed to write JSON output") {
 		t.Fatalf("error = %v, want JSON write failure", err)
+	}
+}
+
+func TestFetchTokenViaGetter_Success(t *testing.T) {
+	// Setup a mock getter server
+	getterMux := http.NewServeMux()
+	getterMux.HandleFunc("/getter", func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+
+		// Send token back to the callback URL asynchronously
+		go func() {
+			// Small delay to ensure the local server is fully started
+			// (although it should be since fetchTokenViaGetter waits)
+			http.Get(fmt.Sprintf("http://127.0.0.1:%s/user_access_token?token=mock_token_data", state))
+		}()
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "Mock Getter")
+	})
+
+	getterServer := &http.Server{Addr: "127.0.0.1:0", Handler: getterMux}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start mock getter server: %v", err)
+	}
+	go getterServer.Serve(listener)
+	defer getterServer.Close()
+
+	getterURL := fmt.Sprintf("http://%s/getter", listener.Addr().String())
+
+	// We need to temporarily disable openBrowser so it doesn't try to open a real browser
+	// Just for this test
+	originalOpenBrowser := openBrowserFn
+	t.Cleanup(func() { openBrowserFn = originalOpenBrowser })
+	openBrowserFn = func(ctx context.Context, u string) error {
+		// Instead of opening browser, directly query the getter server
+		go func() {
+			// Small delay to ensure the mock HTTP server is ready
+			time.Sleep(10 * time.Millisecond)
+			http.Get(u)
+		}()
+		return nil
+	}
+
+	var logs []string
+	logFn := func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Open a goroutine to act as the browser for this specific test
+	// We intercept the log messages to find out what port to hit
+
+	token, err := fetchTokenViaGetter(ctx, getterURL, "test_scope", logFn)
+
+	if err != nil {
+		t.Fatalf("fetchTokenViaGetter failed: %v", err)
+	}
+
+	if token != "mock_token_data" {
+		t.Errorf("Expected token %q, got %q", "mock_token_data", token)
+	}
+}
+
+func TestFetchTokenViaGetter_MissingToken(t *testing.T) {
+	// Setup a mock getter server that sends empty token
+	getterMux := http.NewServeMux()
+	getterMux.HandleFunc("/getter", func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+
+		go func() {
+			http.Get(fmt.Sprintf("http://127.0.0.1:%s/user_access_token", state))
+		}()
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	getterServer := &http.Server{Addr: "127.0.0.1:0", Handler: getterMux}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start mock getter server: %v", err)
+	}
+	go getterServer.Serve(listener)
+	defer getterServer.Close()
+
+	getterURL := fmt.Sprintf("http://%s/getter", listener.Addr().String())
+
+	// We need to temporarily disable openBrowser so it doesn't try to open a real browser
+	// Just for this test
+	originalOpenBrowser := openBrowserFn
+	openBrowserFn = func(ctx context.Context, u string) error {
+		go func() {
+			// Small delay to ensure the mock HTTP server is ready
+			time.Sleep(10 * time.Millisecond)
+			http.Get(u)
+		}()
+		return nil
+	}
+	defer func() { openBrowserFn = originalOpenBrowser }()
+
+	var logs []string
+	logFn := func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = fetchTokenViaGetter(ctx, getterURL, "test_scope", logFn)
+
+	if err == nil {
+		t.Fatal("fetchTokenViaGetter should fail with missing token")
+	}
+
+	if !strings.Contains(err.Error(), "missing token data in callback request") {
+		t.Errorf("Expected missing token error, got: %v", err)
+	}
+}
+
+func TestFetchTokenViaGetter_Timeout(t *testing.T) {
+	// Setup a mock getter server that does nothing
+	getterMux := http.NewServeMux()
+	getterMux.HandleFunc("/getter", func(w http.ResponseWriter, r *http.Request) {
+		// Do nothing, wait for timeout
+		w.WriteHeader(http.StatusOK)
+	})
+
+	getterServer := &http.Server{Addr: "127.0.0.1:0", Handler: getterMux}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start mock getter server: %v", err)
+	}
+	go getterServer.Serve(listener)
+	defer getterServer.Close()
+
+	getterURL := fmt.Sprintf("http://%s/getter", listener.Addr().String())
+
+	// We need to temporarily disable openBrowser so it doesn't try to open a real browser
+	// Just for this test
+	originalOpenBrowser := openBrowserFn
+	openBrowserFn = func(ctx context.Context, u string) error {
+		go func() {
+			// Small delay to ensure the mock HTTP server is ready
+			time.Sleep(10 * time.Millisecond)
+			http.Get(u)
+		}()
+		return nil
+	}
+	defer func() { openBrowserFn = originalOpenBrowser }()
+
+	var logs []string
+	logFn := func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	// Create a short timeout context to trigger the timeout quickly
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err = fetchTokenViaGetter(ctx, getterURL, "test_scope", logFn)
+
+	if err == nil {
+		t.Fatal("fetchTokenViaGetter should fail with timeout")
+	}
+
+	if !strings.Contains(err.Error(), "timeout waiting for token callback") && !strings.Contains(err.Error(), "context canceled") {
+		t.Errorf("Expected timeout or context canceled error, got: %v", err)
+	}
+}
+
+func TestAuthLoginViaGetter_SuccessWithAllFields(t *testing.T) {
+	keyring.MockInit()
+	setupLoginConfigDir(t)
+	t.Setenv("HOME", t.TempDir())
+
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "cli_test", UserTokenGetterUrl: "http://example.com/getter"},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName:        "default",
+		AppID:              "cli_test",
+		UserTokenGetterUrl: "http://example.com/getter",
+		Brand:              core.BrandFeishu,
+	})
+
+	// Instead of hitting the real fetchTokenViaGetter which would block,
+	// we will run authLoginRun but we need a way to mock fetchTokenViaGetter.
+	// We can't easily mock fetchTokenViaGetter without changing the production code to accept a mock.
+	// So we test authLoginViaGetter directly, and mock the HTTP server for the callback.
+
+	// We simulate what authLoginRun does but use a mocked local server that answers fetchTokenViaGetter
+	
+	// Mock openBrowserFn to prevent it from trying to open a real browser
+	originalOpenBrowser := openBrowserFn
+	t.Cleanup(func() { openBrowserFn = originalOpenBrowser })
+	openBrowserFn = func(ctx context.Context, u string) error {
+		go func() {
+			// Small delay to ensure the mock HTTP server is ready
+			time.Sleep(10 * time.Millisecond)
+			http.Get(u)
+		}()
+		return nil
+	}
+
+	// Setup a mock getter server
+	getterMux := http.NewServeMux()
+	getterMux.HandleFunc("/getter", func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+
+		go func() {
+			tokenData := `{"access_token":"mock_user_access_token","expires_in":7200,"name":"Mock User","open_id":"ou_mock"}`
+
+			// Try a few times in case the local server isn't up yet
+			for i := 0; i < 5; i++ {
+				resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%s/user_access_token?token=%s", state, url.QueryEscape(tokenData)))
+				if err == nil && resp.StatusCode == http.StatusOK {
+					resp.Body.Close()
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}()
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	getterServer := &http.Server{Addr: "127.0.0.1:0", Handler: getterMux}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start mock getter server: %v", err)
+	}
+	go getterServer.Serve(listener)
+	defer getterServer.Close()
+
+	getterURL := fmt.Sprintf("http://%s/getter", listener.Addr().String())
+
+	// Update config to use our mock getter server
+	config := &core.CliConfig{
+		ProfileName:        "default",
+		AppID:              "cli_test",
+		UserTokenGetterUrl: getterURL,
+		Brand:              core.BrandFeishu,
+	}
+
+	opts := &LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "test_scope",
+	}
+
+	var logs []string
+	logFn := func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	err = authLoginViaGetter(opts, config, "test_scope", getLoginMsg("en"), logFn)
+
+	if err != nil {
+		t.Fatalf("authLoginViaGetter failed: %v", err)
+	}
+
+	// Check that the token was stored correctly
+	stored := larkauth.GetStoredToken("cli_test", "ou_mock")
+	if stored == nil {
+		t.Fatal("expected token to be stored")
+	}
+	if stored.AccessToken != "mock_user_access_token" {
+		t.Errorf("expected access token 'mock_user_access_token', got '%s'", stored.AccessToken)
+	}
+
+	// Check the profile was updated
+	cfg, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if len(cfg.Apps) != 1 || len(cfg.Apps[0].Users) != 1 {
+		t.Fatalf("unexpected users in config: %#v", cfg.Apps)
+	}
+	if cfg.Apps[0].Users[0].UserOpenId != "ou_mock" {
+		t.Fatalf("stored user open id = %q", cfg.Apps[0].Users[0].UserOpenId)
+	}
+	if cfg.Apps[0].Users[0].UserName != "Mock User" {
+		t.Fatalf("stored user name = %q", cfg.Apps[0].Users[0].UserName)
+	}
+
+	// stdout shouldn't have much for text mode, stderr is tested via writeLoginSuccess elsewhere
+	_ = stdout
+	_ = stderr
+}
+
+func TestAuthLoginViaGetter_FallbackGetUserInfo(t *testing.T) {
+	keyring.MockInit()
+	setupLoginConfigDir(t)
+	t.Setenv("HOME", t.TempDir())
+
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "cli_test", UserTokenGetterUrl: "http://example.com/getter"},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName:        "default",
+		AppID:              "cli_test",
+		UserTokenGetterUrl: "http://example.com/getter",
+		Brand:              core.BrandFeishu,
+	})
+
+	// Setup mock for user info since the getter won't return open_id and name
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    larkauth.PathUserInfoV1,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"open_id": "ou_fallback",
+				"name":    "Fallback User",
+			},
+		},
+	})
+	
+	// Mock openBrowserFn to prevent it from trying to open a real browser
+	originalOpenBrowser := openBrowserFn
+	t.Cleanup(func() { openBrowserFn = originalOpenBrowser })
+	openBrowserFn = func(ctx context.Context, u string) error {
+		go func() {
+			// Small delay to ensure the mock HTTP server is ready
+			time.Sleep(10 * time.Millisecond)
+			http.Get(u)
+		}()
+		return nil
+	}
+
+	// Setup a mock getter server that returns ONLY access token
+	getterMux := http.NewServeMux()
+	getterMux.HandleFunc("/getter", func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+
+		go func() {
+			tokenData := `{"access_token":"mock_user_access_token_only"}`
+			for i := 0; i < 5; i++ {
+				resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%s/user_access_token?token=%s", state, url.QueryEscape(tokenData)))
+				if err == nil && resp.StatusCode == http.StatusOK {
+					resp.Body.Close()
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}()
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	getterServer := &http.Server{Addr: "127.0.0.1:0", Handler: getterMux}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start mock getter server: %v", err)
+	}
+	go getterServer.Serve(listener)
+	defer getterServer.Close()
+
+	getterURL := fmt.Sprintf("http://%s/getter", listener.Addr().String())
+
+	config := &core.CliConfig{
+		ProfileName:        "default",
+		AppID:              "cli_test",
+		UserTokenGetterUrl: getterURL,
+		Brand:              core.BrandFeishu,
+	}
+
+	opts := &LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "test_scope",
+	}
+
+	var logs []string
+	logFn := func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	err = authLoginViaGetter(opts, config, "test_scope", getLoginMsg("en"), logFn)
+
+	if err != nil {
+		t.Fatalf("authLoginViaGetter failed: %v", err)
+	}
+
+	// Check that the token was stored with the fallback info
+	stored := larkauth.GetStoredToken("cli_test", "ou_fallback")
+	if stored == nil {
+		t.Fatal("expected token to be stored")
+	}
+	if stored.AccessToken != "mock_user_access_token_only" {
+		t.Errorf("expected access token 'mock_user_access_token_only', got '%s'", stored.AccessToken)
+	}
+
+	// Check the profile was updated
+	cfg, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if len(cfg.Apps) != 1 || len(cfg.Apps[0].Users) != 1 {
+		t.Fatalf("unexpected users in config: %#v", cfg.Apps)
+	}
+	if cfg.Apps[0].Users[0].UserOpenId != "ou_fallback" {
+		t.Fatalf("stored user open id = %q", cfg.Apps[0].Users[0].UserOpenId)
+	}
+	if cfg.Apps[0].Users[0].UserName != "Fallback User" {
+		t.Fatalf("stored user name = %q", cfg.Apps[0].Users[0].UserName)
+	}
+}
+
+func TestAuthLoginViaGetter_InvalidJSON(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	// Mock openBrowserFn to prevent it from trying to open a real browser
+	originalOpenBrowser := openBrowserFn
+	t.Cleanup(func() { openBrowserFn = originalOpenBrowser })
+	openBrowserFn = func(ctx context.Context, u string) error {
+		go func() {
+			// Small delay to ensure the mock HTTP server is ready
+			time.Sleep(10 * time.Millisecond)
+			http.Get(u)
+		}()
+		return nil
+	}
+
+	getterMux := http.NewServeMux()
+	getterMux.HandleFunc("/getter", func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+		go func() {
+			tokenData := `invalid_json`
+			for i := 0; i < 5; i++ {
+				resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%s/user_access_token?token=%s", state, url.QueryEscape(tokenData)))
+				if err == nil {
+					resp.Body.Close()
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	getterServer := &http.Server{Addr: "127.0.0.1:0", Handler: getterMux}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start mock getter server: %v", err)
+	}
+	go getterServer.Serve(listener)
+	defer getterServer.Close()
+
+	getterURL := fmt.Sprintf("http://%s/getter", listener.Addr().String())
+
+	config := &core.CliConfig{
+		UserTokenGetterUrl: getterURL,
+	}
+
+	opts := &LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+	}
+
+	err = authLoginViaGetter(opts, config, "", getLoginMsg("en"), func(string, ...interface{}) {})
+
+	if err == nil {
+		t.Fatal("expected error due to invalid json")
+	}
+	if !strings.Contains(err.Error(), "failed to unmarshal token JSON") {
+		t.Errorf("expected json unmarshal error, got: %v", err)
+	}
+}
+
+func TestAuthLoginViaGetter_NoAccessToken(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	// Mock openBrowserFn to prevent it from trying to open a real browser
+	originalOpenBrowser := openBrowserFn
+	t.Cleanup(func() { openBrowserFn = originalOpenBrowser })
+	openBrowserFn = func(ctx context.Context, u string) error {
+		go func() {
+			// Small delay to ensure the mock HTTP server is ready
+			time.Sleep(10 * time.Millisecond)
+			http.Get(u)
+		}()
+		return nil
+	}
+
+	getterMux := http.NewServeMux()
+	getterMux.HandleFunc("/getter", func(w http.ResponseWriter, r *http.Request) {
+		state := r.URL.Query().Get("state")
+		go func() {
+			tokenData := `{"name":"User Without Token"}`
+			for i := 0; i < 5; i++ {
+				resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%s/user_access_token?token=%s", state, url.QueryEscape(tokenData)))
+				if err == nil {
+					resp.Body.Close()
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	getterServer := &http.Server{Addr: "127.0.0.1:0", Handler: getterMux}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start mock getter server: %v", err)
+	}
+	go getterServer.Serve(listener)
+	defer getterServer.Close()
+
+	getterURL := fmt.Sprintf("http://%s/getter", listener.Addr().String())
+
+	config := &core.CliConfig{
+		UserTokenGetterUrl: getterURL,
+	}
+
+	opts := &LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+	}
+
+	err = authLoginViaGetter(opts, config, "", getLoginMsg("en"), func(string, ...interface{}) {})
+
+	if err == nil {
+		t.Fatal("expected error due to missing access token")
+	}
+	if !strings.Contains(err.Error(), "no access_token returned") {
+		t.Errorf("expected no access_token error, got: %v", err)
 	}
 }
 
