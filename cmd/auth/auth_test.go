@@ -6,6 +6,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -349,12 +350,19 @@ func TestAuthBlockedByExternalProvider(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := NewCmdAuth(f)
-			cmd.SilenceUsage = true
 			cmd.SilenceErrors = true
+			cmd.SetErr(io.Discard)
 			cmd.SetArgs(tt.args)
+
+			// Locate the subcommand before execution (PersistentPreRunE receives it as cmd).
+			matched, _, _ := cmd.Find(tt.args)
 
 			err := cmd.Execute()
 
+			// PersistentPreRunE sets SilenceUsage on the matched subcommand, not the parent.
+			if matched != nil && matched != cmd && !matched.SilenceUsage {
+				t.Error("expected PersistentPreRunE to set SilenceUsage on matched subcommand")
+			}
 			var exitErr *output.ExitError
 			if !errors.As(err, &exitErr) {
 				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)

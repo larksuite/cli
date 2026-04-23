@@ -347,12 +347,22 @@ func (p *CredentialProvider) ActiveExtensionProviderName(ctx context.Context) (s
 		if err != nil {
 			var blockErr *extcred.BlockError
 			if errors.As(err, &blockErr) {
-				return blockErr.Provider, nil
+				name := blockErr.Provider
+				if name == "" {
+					name = prov.Name()
+				}
+				if name == "" {
+					name = "external"
+				}
+				return name, nil
 			}
 			return "", err
 		}
 		if acct != nil {
-			return prov.Name(), nil
+			if name := prov.Name(); name != "" {
+				return name, nil
+			}
+			return "external", nil
 		}
 	}
 	return "", nil

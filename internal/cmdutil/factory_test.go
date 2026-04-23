@@ -421,3 +421,17 @@ func TestRequireBuiltinCredentialProvider_NilCredential(t *testing.T) {
 		t.Fatalf("unexpected error with nil Credential: %v", err)
 	}
 }
+
+func TestRequireBuiltinCredentialProvider_PropagatesProviderError(t *testing.T) {
+	sentinel := errors.New("provider unavailable")
+	stub := &stubExtProvider{name: "env", err: sentinel}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("error = %v, want sentinel", err)
+	}
+}
