@@ -201,7 +201,7 @@ CLI 提供三种粒度的调用方式，覆盖从快速操作到完全自定义�
 
 ```bash
 lark-cli calendar +agenda
-lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
+lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 lark-cli docs +create --title "周报" --markdown "# 本周进展\n- 完成了 X 功能"
 ```
 
