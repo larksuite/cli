@@ -99,6 +99,10 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
+			gotCount := int(gjson.Get(out, "api.#").Int())
+			if gotCount != len(tt.wantURLs) {
+				t.Fatalf("expected %d API calls, got %d\nstdout:\n%s", len(tt.wantURLs), gotCount, out)
+			}
 			for i, wantURL := range tt.wantURLs {
 				idx := strconv.Itoa(i)
 				gotMethod := gjson.Get(out, "api."+idx+".method").String()
