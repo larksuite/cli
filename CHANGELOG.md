@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.18] - 2026-04-23
+
+### Features
+
+- **base**: Support `.base` import and export for bitable (#599)
+- **config**: Add `config bind` for per-Agent credential isolation (#515)
+- **slides**: Add `+replace-slide` shortcut for block-level XML edits (#516)
+- **wiki**: Add `+delete-space` shortcut with async task polling (#610)
+- **doc**: Add `--from-clipboard` flag to `docs +media-insert` (#508)
+- **minutes**: Unify minute artifacts output to `./minutes/{minute_token}/` (#604)
+- Add configurable content-safety scanning (#606)
+- **install**: Add SHA-256 checksum verification to `install.js` (#592)
+- **whiteboard**: Pin `whiteboard-cli` to `^0.2.9` (#617)
+
+### Bug Fixes
+
+- **drive**: Escape angle brackets in comment text (#632)
+- **im**: Unify `messages-search` pagination int flags (#446)
+- **im**: Fix markdown URL rendering issues in post content (#206)
+
+### Documentation
+
+- **base**: Refine record cell value guidance (#636)
+
 ## [v1.0.17] - 2026-04-22
 
 ### Features
@@ -464,6 +488,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.18]: https://github.com/larksuite/cli/releases/tag/v1.0.18
 [v1.0.17]: https://github.com/larksuite/cli/releases/tag/v1.0.17
 [v1.0.16]: https://github.com/larksuite/cli/releases/tag/v1.0.16
 [v1.0.15]: https://github.com/larksuite/cli/releases/tag/v1.0.15
