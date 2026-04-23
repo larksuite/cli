@@ -42,10 +42,25 @@ var MailShareToChat = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
+		msgID := runtime.Str("message-id")
+		threadID := runtime.Str("thread-id")
+		receiveID := runtime.Str("receive-id")
+		receiveIDType := runtime.Str("receive-id-type")
+
+		var createBody map[string]interface{}
+		if threadID != "" {
+			createBody = map[string]interface{}{"thread_id": threadID}
+		} else {
+			createBody = map[string]interface{}{"message_id": msgID}
+		}
+
 		return common.NewDryRunAPI().
 			Desc("Share email card: create share token → send card to IM chat").
 			POST(mailboxPath(mailboxID, "messages", "share_token")).
-			POST(mailboxPath(mailboxID, "share_tokens", "<card_id>", "send"))
+			Body(createBody).
+			POST(mailboxPath(mailboxID, "share_tokens", "<card_id>", "send")).
+			Params(map[string]interface{}{"receive_id_type": receiveIDType}).
+			Body(map[string]interface{}{"receive_id": receiveID})
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		msgID := runtime.Str("message-id")

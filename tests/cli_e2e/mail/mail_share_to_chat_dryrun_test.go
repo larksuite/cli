@@ -5,6 +5,7 @@ package mail
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -25,9 +26,12 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
 
 	tests := []struct {
-		name     string
-		args     []string
-		wantURLs []string
+		name            string
+		args            []string
+		wantURLs        []string
+		wantCreateBody  map[string]string
+		wantSendBody    map[string]string
+		wantSendParams  map[string]string
 	}{
 		{
 			name: "message-id with default chat_id",
@@ -41,6 +45,9 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 				"/open-apis/mail/v1/user_mailboxes/me/messages/share_token",
 				"/open-apis/mail/v1/user_mailboxes/me/share_tokens/%3Ccard_id%3E/send",
 			},
+			wantCreateBody: map[string]string{"message_id": "msg_001"},
+			wantSendBody:   map[string]string{"receive_id": "oc_xxx"},
+			wantSendParams: map[string]string{"receive_id_type": "chat_id"},
 		},
 		{
 			name: "thread-id with email type",
@@ -55,6 +62,9 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 				"/open-apis/mail/v1/user_mailboxes/me/messages/share_token",
 				"/open-apis/mail/v1/user_mailboxes/me/share_tokens/%3Ccard_id%3E/send",
 			},
+			wantCreateBody: map[string]string{"thread_id": "thread_001"},
+			wantSendBody:   map[string]string{"receive_id": "user@example.com"},
+			wantSendParams: map[string]string{"receive_id_type": "email"},
 		},
 		{
 			name: "custom mailbox",
@@ -69,6 +79,9 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 				"/open-apis/mail/v1/user_mailboxes/alias@example.com/messages/share_token",
 				"/open-apis/mail/v1/user_mailboxes/alias@example.com/share_tokens/%3Ccard_id%3E/send",
 			},
+			wantCreateBody: map[string]string{"message_id": "msg_002"},
+			wantSendBody:   map[string]string{"receive_id": "oc_xxx"},
+			wantSendParams: map[string]string{"receive_id_type": "chat_id"},
 		},
 	}
 
@@ -87,13 +100,33 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 
 			out := result.Stdout
 			for i, wantURL := range tt.wantURLs {
-				gotMethod := gjson.Get(out, "api."+string(rune('0'+i))+".method").String()
-				gotURL := gjson.Get(out, "api."+string(rune('0'+i))+".url").String()
+				idx := strconv.Itoa(i)
+				gotMethod := gjson.Get(out, "api."+idx+".method").String()
+				gotURL := gjson.Get(out, "api."+idx+".url").String()
 				if gotMethod != "POST" {
 					t.Fatalf("api[%d].method = %q, want POST\nstdout:\n%s", i, gotMethod, out)
 				}
 				if gotURL != wantURL {
 					t.Fatalf("api[%d].url = %q, want %q\nstdout:\n%s", i, gotURL, wantURL, out)
+				}
+			}
+
+			for k, v := range tt.wantCreateBody {
+				got := gjson.Get(out, "api.0.body."+k).String()
+				if got != v {
+					t.Fatalf("api[0].body.%s = %q, want %q\nstdout:\n%s", k, got, v, out)
+				}
+			}
+			for k, v := range tt.wantSendBody {
+				got := gjson.Get(out, "api.1.body."+k).String()
+				if got != v {
+					t.Fatalf("api[1].body.%s = %q, want %q\nstdout:\n%s", k, got, v, out)
+				}
+			}
+			for k, v := range tt.wantSendParams {
+				got := gjson.Get(out, "api.1.params."+k).String()
+				if got != v {
+					t.Fatalf("api[1].params.%s = %q, want %q\nstdout:\n%s", k, got, v, out)
 				}
 			}
 		})
