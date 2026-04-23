@@ -201,7 +201,7 @@ Prefixed with `+`, designed to be friendly for both humans and AI, with smart de
 ```bash
 lark-cli calendar +agenda
 lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
-lark-cli docs +create --title "Weekly Report" --markdown "# Progress\n- Completed feature X"
+lark-cli docs +create --api-version v2 --doc-format markdown --content $'<title>Weekly Report</title>\n# Progress\n- Completed feature X'
 ```
 
 Run `lark-cli <service> --help` to see all shortcut commands.

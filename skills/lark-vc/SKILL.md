@@ -35,7 +35,7 @@ metadata:
 3. 读取智能纪要（`note_doc_token`）内容时，纪要文档的**第一个 `<whiteboard>`** 标签是封面图（AI 生成的总结可视化），应同时下载展示给用户：
 ```bash
 # 1. 读取纪要内容
-lark-cli docs +fetch --doc <note_doc_token>
+lark-cli docs +fetch --api-version v2 --doc <note_doc_token> --doc-format markdown
 # 2. 从返回的 markdown 中提取第一个 <whiteboard token="xxx"/> 的 token
 # 3. 下载封面图到聚合目录（和逐字稿、录像同目录，保持产物归拢）
 #    并非所有纪要都有封面画板，没有 <whiteboard> 标签时跳过即可
@@ -63,7 +63,7 @@ lark-cli drive metas batch_query --data '{"request_docs": [{"doc_type": "docx", 
 3. 需要获取文档内容时，使用 `lark-cli docs +fetch`。
 ```bash
 # 获取文档内容
-lark-cli docs +fetch --doc <doc_token>
+lark-cli docs +fetch --api-version v2 --doc <doc_token> --doc-format markdown
 ```
 
 ## 资源关系

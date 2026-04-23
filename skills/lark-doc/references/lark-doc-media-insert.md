@@ -47,6 +47,12 @@
 lark-cli docs +media-insert --doc doxcnXXX --from-clipboard
 
 # 从本地文件插入
+# 除了上传本地文件，还可以在 `docs +update` 时直接通过网络 URL 插入图片，无需先下载到本地：
+lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_insert_after \
+  --block-id "目标 block_id" \
+  --content '<img href="https://example.com/photo.png"/>'
+
+# 插入图片（默认）
 lark-cli docs +media-insert --doc doxcnXXX --file ./image.png
 
 # doc 支持直接传 docx URL（自动提取 document_id）

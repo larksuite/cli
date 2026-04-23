@@ -102,8 +102,8 @@ Drive Folder (云空间文件夹)
 | 操作 | 需要的 Token | 说明 |
 |------|-------------|------|
 | 读取文档内容 | `file_token` / 通过 `docs +fetch` 自动处理 | `docs +fetch` 支持直接传入 URL |
-| 添加局部评论（划词评论） | `file_token` | 传 `--selection-with-ellipsis` 或 `--block-id` 时，`drive +add-comment` 会创建局部评论；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL |
-| 添加全文评论 | `file_token` | 不传 `--selection-with-ellipsis` / `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL |
+| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL |
+| 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL |
 | 下载文件 | `file_token` | 从文件 URL 中直接提取 |
 | 上传文件 | `folder_token` / `wiki_node_token` | 目标位置的 token |
 | 列出文档评论 | `file_token` | 同添加评论 |
@@ -111,8 +111,8 @@ Drive Folder (云空间文件夹)
 ### 评论能力边界（关键！）
 
 - `drive +add-comment` 支持两种模式。
-- 全文评论：未传 `--selection-with-ellipsis` / `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
-- 局部评论：传 `--selection-with-ellipsis` 或 `--block-id` 时启用；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL。
+- 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
+- 局部评论：传 `--block-id` 时启用；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL。block ID 可通过 `docs +fetch --api-version v2 --detail with-ids` 获取。
 - `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
 - 如果 wiki 解析后不是 `doc`/`docx`，不要用 `+add-comment`。
 - 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`，局部评论传 `anchor.block_id`。
