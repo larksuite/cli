@@ -23,7 +23,7 @@ lark-cli contact +get-user --user-id ou_xxx
 lark-cli contact +get-user --user-id 4g3f... --user-id-type user_id
 
 # 表格输出（默认 JSON）
-lark-cli contact +get-user --user-id ou_xxx --table
+lark-cli contact +get-user --user-id ou_xxx --format table
 ```
 
 ## 参数
@@ -32,7 +32,7 @@ lark-cli contact +get-user --user-id ou_xxx --table
 |------|------|------|
 | `--user-id <id>` | 否 | 用户 ID；不传则获取当前用户 |
 | `--user-id-type <type>` | 否 | `open_id`（默认）/ `union_id` / `user_id` |
-| `--table` | 否 | 表格输出（默认 JSON） |
+| `--format <format>` | 否 | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
 
 ## 常见错误（41050）
 

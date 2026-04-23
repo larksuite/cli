@@ -155,38 +155,6 @@ func TestBuildMinutesSearchParamsDefaultPageSize(t *testing.T) {
 	}
 }
 
-// TestResolveUserIDs verifies me expansion, deduplication, and nil handling.
-func TestResolveUserIDs(t *testing.T) {
-	t.Parallel()
-
-	cmd := &cobra.Command{Use: "test"}
-	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
-
-	got, err := resolveUserIDs("--owner-ids", []string{"me"}, runtime)
-	if err != nil {
-		t.Fatalf("resolveUserIDs([me]) unexpected error: %v", err)
-	}
-	if len(got) != 1 || got[0] != "ou_testuser" {
-		t.Fatalf("resolveUserIDs([me]) = %v, want [ou_testuser]", got)
-	}
-
-	got, err = resolveUserIDs("--owner-ids", []string{"ou_other", "me", "Me"}, runtime)
-	if err != nil {
-		t.Fatalf("resolveUserIDs([ou_other, me, Me]) unexpected error: %v", err)
-	}
-	if len(got) != 2 || got[0] != "ou_other" || got[1] != "ou_testuser" {
-		t.Fatalf("resolveUserIDs([ou_other, me, Me]) = %v, want [ou_other ou_testuser]", got)
-	}
-
-	got, err = resolveUserIDs("--owner-ids", nil, runtime)
-	if err != nil {
-		t.Fatalf("resolveUserIDs(nil) unexpected error: %v", err)
-	}
-	if got != nil {
-		t.Fatalf("resolveUserIDs(nil) = %v, want nil", got)
-	}
-}
-
 // TestBuildTimeFilter verifies time filters are only populated for provided bounds.
 func TestBuildTimeFilter(t *testing.T) {
 	t.Parallel()

@@ -1,7 +1,7 @@
 ---
 name: lark-contact
 version: 1.0.0
-description: "飞书通讯录：查询组织架构、人员信息和搜索员工。获取当前用户或指定用户的详细信息、通过关键词搜索员工（姓名/邮箱/手机号）。当用户需要查看个人信息、查找同事 open_id 或联系方式、按姓名搜索员工、查询部门结构时使用。"
+description: "飞书通讯录：查询组织架构、人员信息和搜索员工。获取当前用户或指定用户的详细信息、通过关键词搜索员工（姓名/邮箱/手机号），并支持按聊天关系、在职状态、租户边界、企业邮箱等维度过滤。当用户需要查看个人信息、查找同事 open_id 或联系方式、按姓名搜索员工、找聊过天的同事 / 离职同事 / 外部联系人、获取多语种姓名、查询部门结构时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -18,6 +18,6 @@ Shortcut 是对常用操作的高级封装（`lark-cli contact +<verb> [flags]`�
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+search-user`](references/lark-contact-search-user.md) | Search users (results sorted by relevance) |
+| [`+search-user`](references/lark-contact-search-user.md) | 搜索员工：关键词 + 多维 filter（聊过天 / 离职 / 同租户 / 企业邮箱 / 指定 open_id 列表），返回多语种姓名、聊天上下文、命中片段 |
 | [`+get-user`](references/lark-contact-get-user.md) | Get user info (omit user_id for self; provide user_id for specific user) |
 
