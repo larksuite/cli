@@ -37,11 +37,11 @@ metadata:
 # 1. 读取纪要内容
 lark-cli docs +fetch --doc <note_doc_token>
 # 2. 从返回的 markdown 中提取第一个 <whiteboard token="xxx"/> 的 token
-# 3. 下载封面图到 artifact 目录（和逐字稿同目录，保持产物归拢）
+# 3. 下载封面图到聚合目录（和逐字稿、录像同目录，保持产物归拢）
 #    并非所有纪要都有封面画板，没有 <whiteboard> 标签时跳过即可
-lark-cli docs +media-download --type whiteboard --token <whiteboard_token> --output ./artifact-<title>/cover
+lark-cli docs +media-download --type whiteboard --token <whiteboard_token> --output ./minutes/<minute_token>/cover
 ```
-> **产物目录规范**：同一会议的所有下载产物（封面图、逐字稿等）统一放到 `artifact-<title>/` 目录下，不要散落在当前工作目录。
+> **产物目录规范**：同一会议的所有下载产物（录像、逐字稿、封面图等）统一放到 `./minutes/{minute_token}/` 目录下。这与 `minutes +download` 和 `vc +notes --minute-tokens` 的默认落点保持一致，便于 Agent 聚合。显式路径（如封面图）需手动对齐到同一目录。
 
 > **纪要相关文档 — 根据用户意图选择：**
 > - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办 + 章节）

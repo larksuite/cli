@@ -564,7 +564,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 			}
 			replyElements = append(replyElements, map[string]interface{}{
 				"type": "text",
-				"text": input.Text,
+				"text": escapeCommentText(input.Text),
 			})
 		case "mention_user":
 			mentionUser := firstNonEmptyString(input.MentionUser, input.Text)
@@ -590,6 +590,14 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 	}
 
 	return replyElements, nil
+}
+
+func escapeCommentText(input string) string {
+	replacer := strings.NewReplacer(
+		"<", "&lt;",
+		">", "&gt;",
+	)
+	return replacer.Replace(input)
 }
 
 type sheetAnchor struct {

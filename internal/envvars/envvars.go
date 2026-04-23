@@ -15,4 +15,7 @@ const (
 	// Sidecar proxy (auth proxy mode)
 	CliAuthProxy = "LARKSUITE_CLI_AUTH_PROXY" // sidecar HTTP address, e.g. "http://127.0.0.1:16384"
 	CliProxyKey  = "LARKSUITE_CLI_PROXY_KEY"  // HMAC signing key shared with sidecar
+
+	// Content safety scanning mode
+	CliContentSafetyMode = "LARKSUITE_CLI_CONTENT_SAFETY_MODE"
 )

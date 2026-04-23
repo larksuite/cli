@@ -9,14 +9,14 @@
 ```bash
 # 单条记录
 lark-cli base +record-share-link-create \
-  --base-token xxx \
-  --table-id tbl_xxx \
-  --record-ids rec_xxx
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --record-ids <record_id>
 
 # 多条记录（使用 "," 分隔）
 lark-cli base +record-share-link-create \
-  --base-token xxx \
-  --table-id tbl_xxx \
+  --base-token <base_token> \
+  --table-id <table_id> \
   --record-ids rec001,rec002,rec003
 ```
 

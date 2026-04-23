@@ -57,6 +57,109 @@ func TestParsePresentationRef(t *testing.T) {
 	}
 }
 
+func TestEnsureShapeHasContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "self-closing shape gets content injected",
+			in:   `<shape type="rect" width="100" height="50"/>`,
+			want: `<shape type="rect" width="100" height="50"><content/></shape>`,
+		},
+		{
+			name: "self-closing shape with id already injected",
+			in:   `<shape type="rect" width="100" height="50" id="bUn"/>`,
+			want: `<shape type="rect" width="100" height="50" id="bUn"><content/></shape>`,
+		},
+		{
+			// If the user already wrote non-content children, injecting
+			// <content/> as a sibling would make <p> a sibling of <content>
+			// (schema-legal but semantically wrong per SML 2.0, which
+			// requires <p> to live inside <content>). Leave that case to
+			// the backend's 3350001 rather than silently rewrap.
+			name: "open shape with non-content children is left untouched",
+			in:   `<shape type="text"><p>hello</p></shape>`,
+			want: `<shape type="text"><p>hello</p></shape>`,
+		},
+		{
+			name: "empty open shape gets content injected",
+			in:   `<shape type="text"></shape>`,
+			want: `<shape type="text"><content/></shape>`,
+		},
+		{
+			name: "shape with content already present is unchanged",
+			in:   `<shape type="text"><content><p>hi</p></content></shape>`,
+			want: `<shape type="text"><content><p>hi</p></content></shape>`,
+		},
+		{
+			name: "shape with self-closing content is unchanged",
+			in:   `<shape type="rect"><content/></shape>`,
+			want: `<shape type="rect"><content/></shape>`,
+		},
+		{
+			name: "img self-closing is not touched",
+			in:   `<img src="tok_abc" width="100" height="80"/>`,
+			want: `<img src="tok_abc" width="100" height="80"/>`,
+		},
+		{
+			name: "img open tag is not touched",
+			in:   `<img src="tok_abc" width="100" height="80"><crop/></img>`,
+			want: `<img src="tok_abc" width="100" height="80"><crop/></img>`,
+		},
+		{
+			name: "table is not touched",
+			in:   `<table rows="3" cols="3"/>`,
+			want: `<table rows="3" cols="3"/>`,
+		},
+		{
+			name: "bare self-closing shape",
+			in:   `<shape/>`,
+			want: `<shape><content/></shape>`,
+		},
+		{
+			name: "shape with trailing space before self-close",
+			in:   `<shape type="rect" />`,
+			want: `<shape type="rect"><content/></shape>`,
+		},
+		{
+			// Regression: strings.Contains("<content") used to false-match tags
+			// like <contention/> that merely start with "content". The regex
+			// now requires the char after "content" to be \s, / or >, so the
+			// shape is correctly classified as having no <content> child.
+			// Even so, we don't inject — <contention/> counts as an existing
+			// non-content child (same rule as the <p> case above), so the
+			// shape is left untouched for the backend to reject.
+			name: "shape with contention child is left untouched",
+			in:   `<shape type="text"><contention/></shape>`,
+			want: `<shape type="text"><contention/></shape>`,
+		},
+		{
+			name: "malformed input returned as-is",
+			in:   `not xml at all`,
+			want: `not xml at all`,
+		},
+		{
+			name: "empty string returned as-is",
+			in:   ``,
+			want: ``,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := ensureShapeHasContent(tt.in)
+			if got != tt.want {
+				t.Fatalf("got  %q\nwant %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtractImagePlaceholderPaths(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +288,127 @@ func TestReplaceImagePlaceholders(t *testing.T) {
 			got := replaceImagePlaceholders(tt.in, tokens)
 			if got != tt.want {
 				t.Fatalf("got %q\nwant %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnsureXMLRootID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      string
+		want    string
+		wantOut string
+		wantErr string
+	}{
+		{
+			name:    "injects id when absent on self-closing tag",
+			in:      `<shape type="rect" width="100" height="50"/>`,
+			want:    "bUn",
+			wantOut: `<shape type="rect" width="100" height="50" id="bUn"/>`,
+		},
+		{
+			name:    "injects id when absent on open tag",
+			in:      `<shape type="text"><content><p>hi</p></content></shape>`,
+			want:    "bUn",
+			wantOut: `<shape type="text" id="bUn"><content><p>hi</p></content></shape>`,
+		},
+		{
+			name:    "leaves id alone when already matching",
+			in:      `<shape id="bUn" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape id="bUn" type="rect"/>`,
+		},
+		{
+			name:    "overrides mismatched id value preserving quotes and attrs",
+			in:      `<shape id="xxx" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape id="bUn" type="rect"/>`,
+		},
+		{
+			name:    "overrides single-quoted id",
+			in:      `<shape id='xxx' type='rect'/>`,
+			want:    "bUn",
+			wantOut: `<shape id='bUn' type='rect'/>`,
+		},
+		{
+			name:    "tolerates whitespace around equals",
+			in:      `<shape id = "xxx" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape id = "bUn" type="rect"/>`,
+		},
+		{
+			name:    "tolerates leading whitespace and XML declaration",
+			in:      `<?xml version="1.0"?><shape type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<?xml version="1.0"?><shape type="rect" id="bUn"/>`,
+		},
+		{
+			name:    "does not touch nested element id",
+			in:      `<shape type="rect"><inner id="keepme"/></shape>`,
+			want:    "bUn",
+			wantOut: `<shape type="rect" id="bUn"><inner id="keepme"/></shape>`,
+		},
+		{
+			name:    "no duplicate space before injected attr",
+			in:      `<shape  type="rect" />`,
+			want:    "bUn",
+			wantOut: `<shape  type="rect" id="bUn" />`,
+		},
+		{
+			name:    "bare tag gets id injected",
+			in:      `<shape/>`,
+			want:    "bUn",
+			wantOut: `<shape id="bUn"/>`,
+		},
+		{
+			name:    "empty string errors",
+			in:      ``,
+			want:    "bUn",
+			wantErr: "no root element",
+		},
+		{
+			name:    "whitespace-only errors",
+			in:      "  \n\t  ",
+			want:    "bUn",
+			wantErr: "no root element",
+		},
+		{
+			name:    "malformed no closing angle errors",
+			in:      `<shape type="rect"`,
+			want:    "bUn",
+			wantErr: "no root element",
+		},
+		{
+			// Regression: \bid matches the "id" suffix in data-id / xml:id.
+			// The regex now uses (?:^|\s) so only a standalone id attribute fires.
+			name:    "does not confuse data-id with id — injects fresh id",
+			in:      `<shape data-id="old" type="rect"/>`,
+			want:    "bUn",
+			wantOut: `<shape data-id="old" type="rect" id="bUn"/>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ensureXMLRootID(tt.in, tt.want)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("want error %q, got nil; out=%q", tt.wantErr, got)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("want error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if got != tt.wantOut {
+				t.Fatalf("got  %q\nwant %q", got, tt.wantOut)
 			}
 		})
 	}

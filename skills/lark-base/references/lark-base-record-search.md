@@ -15,14 +15,14 @@
 
 ```bash
 lark-cli base +record-search \
-  --base-token XXXXXX \
-  --table-id tblXXX \
-  --json '{"keyword":"Created","search_fields":["Title","fld_owner"],"offset":0,"limit":100}'
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --json '{"keyword":"Created","search_fields":["Title","<field_id>"],"offset":0,"limit":100}'
 
 lark-cli base +record-search \
-  --base-token XXXXXX \
-  --table-id tblXXX \
-  --json '{"view_id":"vewXXX","keyword":"Alice","search_fields":["Title","Owner"],"select_fields":["Title","Owner","Status"],"offset":0,"limit":50}'
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --json '{"view_id":"<view_id>","keyword":"Alice","search_fields":["Title","Owner"],"select_fields":["Title","Owner","Status"],"offset":0,"limit":50}'
 ```
 
 ## 参数

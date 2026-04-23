@@ -29,7 +29,42 @@ func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlag
 	t.Helper()
 
 	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-limit", 20, "")
 	for name := range stringFlags {
+		if name == "page-limit" {
+			continue
+		}
+		cmd.Flags().String(name, "", "")
+	}
+	for name := range boolFlags {
+		cmd.Flags().Bool(name, false, "")
+	}
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	for name, val := range stringFlags {
+		if err := cmd.Flags().Set(name, val); err != nil {
+			t.Fatalf("Flags().Set(%q) error = %v", name, err)
+		}
+	}
+	for name, val := range boolFlags {
+		if err := cmd.Flags().Set(name, map[bool]string{true: "true", false: "false"}[val]); err != nil {
+			t.Fatalf("Flags().Set(%q) error = %v", name, err)
+		}
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
+
+func newMessagesSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
+	t.Helper()
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 20, "")
+	for name := range stringFlags {
+		if name == "page-size" || name == "page-limit" {
+			continue
+		}
 		cmd.Flags().String(name, "", "")
 	}
 	for name := range boolFlags {
@@ -460,7 +495,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 
 	t.Run("ImMessagesSearch invalid page size", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":     "incident",
 			"page-size": "0",
 		}, nil)
@@ -471,7 +506,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 
 	t.Run("ImMessagesSearch invalid page limit", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":      "incident",
 			"page-limit": "41",
 		}, nil)
@@ -482,7 +517,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 
 	t.Run("ImMessagesSearch invalid sender id", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"sender": "user_1",
 		}, nil)
 		err := ImMessagesSearch.Validate(context.Background(), runtime)
@@ -492,7 +527,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 
 	t.Run("ImMessagesSearch invalid chat id", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"chat-id": "bad_chat",
 		}, nil)
 		err := ImMessagesSearch.Validate(context.Background(), runtime)
@@ -502,7 +537,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 
 	t.Run("ImMessagesSearch invalid time range", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"start": "2025-01-02T00:00:00Z",
 			"end":   "2025-01-01T00:00:00Z",
 		}, nil)
@@ -515,7 +550,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 
 func TestMessagesSearchPaginationConfig(t *testing.T) {
 	t.Run("default single page", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, nil, nil)
+		runtime := newMessagesSearchTestRuntimeContext(t, nil, nil)
 		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
 		if autoPaginate {
 			t.Fatal("messagesSearchPaginationConfig() autoPaginate = true, want false")
@@ -526,7 +561,7 @@ func TestMessagesSearchPaginationConfig(t *testing.T) {
 	})
 
 	t.Run("page all uses max limit", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, nil, map[string]bool{
+		runtime := newMessagesSearchTestRuntimeContext(t, nil, map[string]bool{
 			"page-all": true,
 		})
 		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
@@ -539,9 +574,13 @@ func TestMessagesSearchPaginationConfig(t *testing.T) {
 	})
 
 	t.Run("explicit page limit enables auto pagination", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
+			"query":      "incident",
 			"page-limit": "3",
 		}, nil)
+		if err := ImMessagesSearch.Validate(context.Background(), runtime); err != nil {
+			t.Fatalf("ImMessagesSearch.Validate() error = %v, want valid explicit --page-limit", err)
+		}
 		autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
 		if !autoPaginate {
 			t.Fatal("messagesSearchPaginationConfig() autoPaginate = false, want true")
@@ -585,7 +624,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 	})
 
 	t.Run("ImMessagesSearch dry run uses messages search endpoint", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":      "incident",
 			"page-size":  "51",
 			"page-token": "next_page",

@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -56,6 +57,10 @@ const (
 )
 
 const logPrefix = "[vc +notes]"
+
+// validMinuteToken matches the server's minute-token format and blocks any
+// user-supplied token from reaching filesystem paths unsanitized.
+var validMinuteToken = regexp.MustCompile(`^[a-z0-9]+$`)
 
 // sanitizeLogValue strips newlines and ANSI escape sequences from user input for safe logging.
 func sanitizeLogValue(s string) string {
@@ -299,7 +304,7 @@ func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext,
 		}
 	}
 
-	// path 2 & 3: AI 产物统一归到 artifacts 字段下
+	// path 2 & 3: AI artifacts are collected under the artifacts field.
 	artifacts := map[string]any{}
 	fetchInlineArtifacts(runtime, minuteToken, artifacts)
 	transcriptPath := downloadTranscriptFile(runtime, minuteToken, title)
@@ -336,12 +341,15 @@ func sanitizeDirName(title, minuteToken string) string {
 func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, title string) string {
 	errOut := runtime.IO().ErrOut
 
-	base := "."
+	// With no --output-dir the default layout shares the directory with
+	// `minutes +download`. Legacy layout is preserved when the flag is set.
+	var dirName string
 	if outDir := runtime.Str("output-dir"); outDir != "" {
-		base = outDir
+		dirName = filepath.Join(outDir, sanitizeDirName(title, minuteToken))
+	} else {
+		dirName = common.DefaultMinuteArtifactDir(minuteToken)
 	}
-	dirName := filepath.Join(base, sanitizeDirName(title, minuteToken))
-	transcriptPath := filepath.Join(dirName, "transcript.txt")
+	transcriptPath := filepath.Join(dirName, common.DefaultTranscriptFileName)
 
 	// Overwrite check via FileIO.Stat
 	if !runtime.Bool("overwrite") {
@@ -498,7 +506,7 @@ var VCNotes = common.Shortcut{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch"},
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch"},
 		{Name: "calendar-event-ids", Desc: "calendar event instance IDs, comma-separated for batch"},
-		{Name: "output-dir", Desc: "output directory for artifact files (default: current dir)"},
+		{Name: "output-dir", Desc: "output directory for artifact files (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing artifact files"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -514,10 +522,17 @@ var VCNotes = common.Shortcut{
 				}
 			}
 		}
-		// output-dir 路径安全校验
 		if outDir := runtime.Str("output-dir"); outDir != "" {
-			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
+			if err := common.ValidateSafePath(runtime.FileIO(), outDir); err != nil {
 				return err
+			}
+		}
+		// Reject malformed minute tokens before they flow into filesystem paths.
+		if v := runtime.Str("minute-tokens"); v != "" {
+			for _, token := range common.SplitCSV(v) {
+				if !validMinuteToken.MatchString(token) {
+					return output.ErrValidation("invalid minute token %q: must contain only lowercase alphanumeric characters", token)
+				}
 			}
 		}
 		// dynamic scope check based on which flag is provided

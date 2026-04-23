@@ -5,10 +5,13 @@ package minutes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -43,7 +46,8 @@ var MinutesDownload = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch download (max 50)", Required: true},
-		{Name: "output", Desc: "output path: file path for single token, directory for batch (default: current dir)"},
+		{Name: "output", Desc: "output file path (single token)"},
+		{Name: "output-dir", Desc: "output directory (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 		{Name: "url-only", Type: "bool", Desc: "only print the download URL(s) without downloading"},
 	},
@@ -60,6 +64,22 @@ var MinutesDownload = common.Shortcut{
 				return output.ErrValidation("invalid minute token %q: must contain only lowercase alphanumeric characters (e.g. obcnq3b9jl72l83w4f149w9c)", token)
 			}
 		}
+		// Cheap checks first, then path-safety resolution.
+		out := runtime.Str("output")
+		outDir := runtime.Str("output-dir")
+		if out != "" && outDir != "" {
+			return output.ErrValidation("--output and --output-dir cannot both be set")
+		}
+		if out != "" {
+			if err := common.ValidateSafePath(runtime.FileIO(), out); err != nil {
+				return err
+			}
+		}
+		if outDir != "" {
+			if err := common.ValidateSafePath(runtime.FileIO(), outDir); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -70,29 +90,53 @@ var MinutesDownload = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		tokens := common.SplitCSV(runtime.Str("minute-tokens"))
-		outputPath := runtime.Str("output")
+		rawOutput := runtime.Str("output")
+		rawOutputDir := runtime.Str("output-dir")
 		overwrite := runtime.Bool("overwrite")
 		urlOnly := runtime.Bool("url-only")
 		errOut := runtime.IO().ErrOut
 		single := len(tokens) == 1
 
-		// Batch mode: --output must be a directory, not an existing file.
-		if !single && outputPath != "" {
-			if fi, err := runtime.FileIO().Stat(outputPath); err == nil && !fi.IsDir() {
-				return output.ErrValidation("--output %q is a file; batch mode expects a directory path", outputPath)
+		// Re-interpret --output based on what the path points to. An existing
+		// directory is promoted to --output-dir so single-token cp semantics
+		// work. An existing file is rejected in batch mode (the flag carries
+		// directory semantics there). Unknown filesystem errors are surfaced
+		// eagerly rather than deferred to Save.
+		explicitOutputPath := rawOutput
+		explicitOutputDir := rawOutputDir
+		if explicitOutputPath != "" {
+			fi, statErr := runtime.FileIO().Stat(explicitOutputPath)
+			switch {
+			case statErr == nil && fi.IsDir():
+				explicitOutputDir = explicitOutputPath
+				explicitOutputPath = ""
+			case statErr == nil && !fi.IsDir():
+				if !single {
+					return output.ErrValidation("--output %q is a file; batch mode expects a directory (use --output-dir)", explicitOutputPath)
+				}
+			case errors.Is(statErr, fs.ErrNotExist):
+				if !single {
+					explicitOutputDir = explicitOutputPath
+					explicitOutputPath = ""
+				}
+			default:
+				return output.Errorf(output.ExitAPI, "io_error", "cannot access --output %q: %s", explicitOutputPath, statErr)
 			}
 		}
+
+		useDefaultLayout := explicitOutputPath == "" && explicitOutputDir == ""
 
 		if !single {
 			fmt.Fprintf(errOut, "[minutes +download] batch: %d token(s)\n", len(tokens))
 		}
 
 		type result struct {
-			MinuteToken string `json:"minute_token"`
-			SavedPath   string `json:"saved_path,omitempty"`
-			SizeBytes   int64  `json:"size_bytes,omitempty"`
-			DownloadURL string `json:"download_url,omitempty"`
-			Error       string `json:"error,omitempty"`
+			MinuteToken  string `json:"minute_token"`
+			ArtifactType string `json:"artifact_type,omitempty"`
+			SavedPath    string `json:"saved_path,omitempty"`
+			SizeBytes    int64  `json:"size_bytes,omitempty"`
+			DownloadURL  string `json:"download_url,omitempty"`
+			Error        string `json:"error,omitempty"`
 		}
 
 		results := make([]result, len(tokens))
@@ -160,12 +204,18 @@ var MinutesDownload = common.Shortcut{
 
 			fmt.Fprintf(errOut, "Downloading media: %s\n", common.MaskToken(token))
 
-			// single token: --output is a file path; batch: --output is a directory
-			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite, usedNames: usedNames}
-			if single {
-				opts.outputPath = outputPath
-			} else {
-				opts.outputDir = outputPath
+			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite}
+			switch {
+			case useDefaultLayout:
+				// Per-token subdirectory guarantees unique paths, so no dedup map.
+				opts.outputDir = common.DefaultMinuteArtifactDir(token)
+			case explicitOutputPath != "" && single:
+				opts.outputPath = explicitOutputPath
+			default:
+				opts.outputDir = explicitOutputDir
+				if !single {
+					opts.usedNames = usedNames
+				}
 			}
 
 			dl, err := downloadMediaFile(ctx, dlClient, downloadURL, token, opts)
@@ -173,7 +223,12 @@ var MinutesDownload = common.Shortcut{
 				results[i] = result{MinuteToken: token, Error: err.Error()}
 				continue
 			}
-			results[i] = result{MinuteToken: token, SavedPath: dl.savedPath, SizeBytes: dl.sizeBytes}
+			results[i] = result{
+				MinuteToken:  token,
+				ArtifactType: common.ArtifactTypeRecording,
+				SavedPath:    dl.savedPath,
+				SizeBytes:    dl.sizeBytes,
+			}
 		}
 
 		// output
@@ -183,9 +238,17 @@ var MinutesDownload = common.Shortcut{
 				return output.ErrAPI(0, r.Error, nil)
 			}
 			if urlOnly {
-				runtime.Out(map[string]interface{}{"download_url": r.DownloadURL}, nil)
+				runtime.Out(map[string]interface{}{
+					"minute_token": r.MinuteToken,
+					"download_url": r.DownloadURL,
+				}, nil)
 			} else {
-				runtime.Out(map[string]interface{}{"saved_path": r.SavedPath, "size_bytes": r.SizeBytes}, nil)
+				runtime.Out(map[string]interface{}{
+					"minute_token":  r.MinuteToken,
+					"artifact_type": r.ArtifactType,
+					"saved_path":    r.SavedPath,
+					"size_bytes":    r.SizeBytes,
+				}, nil)
 			}
 			return nil
 		}
@@ -230,7 +293,7 @@ type downloadResult struct {
 type downloadOpts struct {
 	fio        fileio.FileIO // file I/O abstraction
 	outputPath string        // explicit output file path (single mode only)
-	outputDir  string        // output directory (batch mode)
+	outputDir  string        // output directory (single or batch)
 	overwrite  bool
 	usedNames  map[string]bool // tracks used filenames to deduplicate in batch mode
 }
@@ -300,7 +363,7 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 func resolveFilenameFromResponse(resp *http.Response, minuteToken string) string {
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		if _, params, err := mime.ParseMediaType(cd); err == nil {
-			if filename := params["filename"]; filename != "" {
+			if filename := sanitizeServerFilename(params["filename"]); filename != "" {
 				return filename
 			}
 		}
@@ -309,6 +372,20 @@ func resolveFilenameFromResponse(resp *http.Response, minuteToken string) string
 		return minuteToken + ext
 	}
 	return minuteToken + ".media"
+}
+
+// sanitizeServerFilename reduces a server-provided filename to its basename,
+// defending against Content-Disposition payloads that embed directory
+// separators (e.g. "../other.mp4") and would otherwise escape the intended
+// artifact directory after filepath.Join. Empty or dot-only names return ""
+// so the caller can fall back to the next naming strategy.
+func sanitizeServerFilename(filename string) string {
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = path.Base(filename)
+	if filename == "" || filename == "." || filename == ".." {
+		return ""
+	}
+	return filename
 }
 
 // preferredExt overrides Go's mime.ExtensionsByType which returns alphabetically sorted

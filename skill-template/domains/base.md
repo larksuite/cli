@@ -7,10 +7,10 @@
    - `lark-cli base table.records create` ✅
    - `lark-cli base records create` ❌
 2. **优先使用 Shortcut** — 有 Shortcut 的操作不要手拼原生 API
-3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，再读 [lark-base-shortcut-record-value.md](../../skills/lark-base/references/lark-base-shortcut-record-value.md) 确认每个字段类型的值格式
+3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，再读 [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md)；该文档是 CellValue 的 source of truth
 4. **写字段前** — 先读 [lark-base-shortcut-field-properties.md](../../skills/lark-base/references/lark-base-shortcut-field-properties.md) 确认字段类型的 `property` 结构
 5. **筛选查询前** — 先读 [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md)，当前 `base/v3` 通过 `view.filter update + table.records list` 组合完成筛选读取
-6. **批量上限 500 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
+6. **批量上限 200 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
 7. **改名和删除按明确意图执行** — 视图重命名这类低风险改名操作，目标和新名称明确时可直接执行；删除记录 / 字段 / 表时，只要用户已经明确要求删除且目标明确，也可直接执行，不需要再补一次确认
 8. **不要走旧 bitable 路径** — Base 场景不要调用 `lark-cli api GET /open-apis/bitable/v1/...`；即使 wiki 解析结果是 `obj_type=bitable`，后续也应继续使用 `lark-cli base ...`
 9. **不要把本地文件导入误判成 Base 表内操作** — 如果目标是“把 Excel / CSV / `.base` 快照导入成 Base / 多维表格”，必须先走 `lark-cli drive +import --type bitable`；只有导入完成后，才回到 `lark-cli base ...`
@@ -34,13 +34,11 @@
 
 - **Base token 口径统一**：无论 Shortcut 还是原生 API，都统一使用 `base_token`
 - **附件字段**：上传本地文件时只能走 `lark-cli base +record-upload-attachment`
-- **人员字段 / 用户字段**：调试时注意 `user_id_type` 与执行身份（user / bot）差异
 - **能力边界**：当前 `base/v3` 原生 spec 以单表 / 单记录 / 视图筛选配置为主，批量写入和旧 `search` 场景优先走 unified Shortcut 组合能力
 - **视图重命名确认规则**：用户已经明确“把哪个视图改成什么名字”时，执行 `table.views patch` / 对应 shortcut 直接改名即可，不需要再补一句确认
 - **删除确认规则（记录 / 字段 / 表）**：执行 `table.records delete / table.fields delete / tables delete` 或对应 shortcut 时，如果用户已经明确要求删除且目标明确，可以直接执行；只有目标不明确时才先追问
 - **创建 / 复制 Base 的友好性规则**：创建或复制 Base 时，`folder_token`、`time_zone`、复制时的新名称都属于可选项；用户没特别要求时不要为这些参数额外打断
 - **创建 / 复制 Base 的结果返回规范**：成功后必须主动返回新 Base 的 token；如果返回结果里带可访问链接（如 `base.url`），也要一并返回
-- **附件字段本地文件上传**：只能使用 `lark-cli base +record-upload-attachment`
 
 ## Wiki 链接特殊处理（特别关键！）
 
@@ -103,18 +101,18 @@ lark-cli wiki spaces.get_node --params '{"token":"Pgrrwvr***********UnRb"}'
 
 | 错误码 | 含义 | 解决方案 |
 |--------|------|---------|
-| 1254064 | 日期格式错误 | 用毫秒时间戳，非字符串 / 秒级 |
-| 1254068 | 超链接格式错误 | 用 `{text, link}` 对象 |
-| 1254066 | 人员字段错误 | 用 `[{id:"ou_xxx"}]`，并确认 `user_id_type` |
+| 1254064 | 日期格式错误 | 传 `YYYY-MM-DD HH:mm:ss` 字符串，不要写相对时间 |
+| 1254068 | 超链接格式错误 | `"https://example.com"` 或 `"[文本](https://example.com)"` |
+| 1254066 | 人员字段错误 | `[{ "id": "ou_xxx" }]` |
 | 1254045 | 字段名不存在 | 检查字段名（含空格、大小写） |
 | 1254015 | 字段值类型不匹配 | 先 list 字段，再按类型构造 |
 | `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先查 `wiki.spaces.get_node`；当 `obj_type=bitable` 时，用 `node.obj_token` 作为 `base_token` 重试，不要改走 `bitable/v1` |
-| 1254104 | 批量超 500 条 | 分批调用 |
+| 1254104 | 批量超 200 条 | 分批调用 |
 | 1254291 | 并发写冲突 | 串行写入 + 批次间延迟 |
 
 ## 参考文档
 
-- [lark-base-shortcut-field-properties.md](../../skills/lark-base/references/lark-base-shortcut-field-properties.md) — 字段类型 property 配置
-- [lark-base-shortcut-record-value.md](../../skills/lark-base/references/lark-base-shortcut-record-value.md) — 记录值格式详解
+- [lark-base-shortcut-field-properties.md](../../skills/lark-base/references/lark-base-shortcut-field-properties.md) — 字段类型 JSON 配置
+- [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md) — CellValue source of truth
 - [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md) — 查询筛选指南（filter / operator / sort / 分页）
 - [examples.md](../../skills/lark-base/references/examples.md) — 完整操作示例（建表、筛选、更新）

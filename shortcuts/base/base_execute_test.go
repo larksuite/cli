@@ -584,16 +584,24 @@ func TestBaseTableExecuteUpdate(t *testing.T) {
 
 func TestBaseRecordExecuteUpsertUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
+	updateStub := &httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"record_id": "rec_x", "fields": map[string]interface{}{"Name": "Alice"}},
 		},
-	})
-	if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_x", "--json", `{"fields":{"Name":"Alice"}}`}, factory, stdout); err != nil {
+	}
+	reg.Register(updateStub)
+	if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_x", "--json", `{"Name":"Alice"}`}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
+	}
+	body := decodeCapturedJSONBody(t, updateStub)
+	if body["Name"] != "Alice" {
+		t.Fatalf("request body=%v", body)
+	}
+	if _, ok := body["fields"]; ok {
+		t.Fatalf("request body must not contain fields wrapper: %v", body)
 	}
 	if got := stdout.String(); !strings.Contains(got, `"updated": true`) || !strings.Contains(got, `"rec_x"`) {
 		t.Fatalf("stdout=%s", got)
@@ -1018,16 +1026,24 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("create", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
+		createStub := &httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"record_id": "rec_new", "fields": map[string]interface{}{"Name": "Alice"}},
 			},
-		})
-		if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"fields":{"Name":"Alice"}}`}, factory, stdout); err != nil {
+		}
+		reg.Register(createStub)
+		if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"Name":"Alice"}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
+		}
+		body := decodeCapturedJSONBody(t, createStub)
+		if body["Name"] != "Alice" {
+			t.Fatalf("request body=%v", body)
+		}
+		if _, ok := body["fields"]; ok {
+			t.Fatalf("request body must not contain fields wrapper: %v", body)
 		}
 		if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"rec_new"`) {
 			t.Fatalf("stdout=%s", got)

@@ -83,13 +83,12 @@ func ParseIntBounded(rt *RuntimeContext, name string, min, max int) int {
 	return v
 }
 
-// ValidateSafeOutputDir ensures outputDir is a relative path that resolves
-// within the current working directory, preventing path traversal attacks
-// (including symlink-based escape).
-// It delegates all validation to FileIO.ResolvePath which already performs
-// cwd-boundary checks, symlink resolution, and control-character rejection.
-func ValidateSafeOutputDir(fio fileio.FileIO, outputDir string) error {
-	_, err := fio.ResolvePath(outputDir)
+// ValidateSafePath ensures path is relative and resolves within the current
+// working directory. It catches traversal, symlink escape, and control
+// characters by delegating to FileIO.ResolvePath. Works for both file and
+// directory paths.
+func ValidateSafePath(fio fileio.FileIO, path string) error {
+	_, err := fio.ResolvePath(path)
 	return err
 }
 

@@ -172,7 +172,7 @@ func TestParseIntBounded(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ValidateSafeOutputDir — symlink escape prevention
+// ValidateSafePath — symlink escape prevention
 // ---------------------------------------------------------------------------
 
 // chdirForTest changes CWD to dir and restores the original CWD on cleanup.
@@ -188,9 +188,9 @@ func chdirForTest(t *testing.T, dir string) {
 	t.Cleanup(func() { os.Chdir(orig) })
 }
 
-// TestValidateSafeOutputDir_RejectsSymlinkEscape verifies that a relative path
+// TestValidateSafePath_RejectsSymlinkEscape verifies that a relative path
 // that resolves to a symlink pointing outside CWD is rejected.
-func TestValidateSafeOutputDir_RejectsSymlinkEscape(t *testing.T) {
+func TestValidateSafePath_RejectsSymlinkEscape(t *testing.T) {
 	outside := t.TempDir() // target outside CWD
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
@@ -200,14 +200,14 @@ func TestValidateSafeOutputDir_RejectsSymlinkEscape(t *testing.T) {
 		t.Fatalf("Symlink: %v", err)
 	}
 
-	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "evil_out"); err == nil {
+	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "evil_out"); err == nil {
 		t.Fatal("expected error for symlink pointing outside CWD, got nil")
 	}
 }
 
-// TestValidateSafeOutputDir_RejectsDanglingSymlink verifies that a dangling
+// TestValidateSafePath_RejectsDanglingSymlink verifies that a dangling
 // symlink (target does not exist) is rejected to prevent future escapes.
-func TestValidateSafeOutputDir_RejectsDanglingSymlink(t *testing.T) {
+func TestValidateSafePath_RejectsDanglingSymlink(t *testing.T) {
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 
@@ -215,14 +215,14 @@ func TestValidateSafeOutputDir_RejectsDanglingSymlink(t *testing.T) {
 		t.Fatalf("Symlink: %v", err)
 	}
 
-	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "dangling"); err == nil {
+	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "dangling"); err == nil {
 		t.Fatal("expected error for dangling symlink, got nil")
 	}
 }
 
-// TestValidateSafeOutputDir_AllowsNormalSubdir verifies that an existing real
+// TestValidateSafePath_AllowsNormalSubdir verifies that an existing real
 // subdirectory within CWD is accepted.
-func TestValidateSafeOutputDir_AllowsNormalSubdir(t *testing.T) {
+func TestValidateSafePath_AllowsNormalSubdir(t *testing.T) {
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 
@@ -231,18 +231,18 @@ func TestValidateSafeOutputDir_AllowsNormalSubdir(t *testing.T) {
 		t.Fatalf("Mkdir: %v", err)
 	}
 
-	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "output"); err != nil {
+	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "output"); err != nil {
 		t.Fatalf("expected no error for real subdir, got: %v", err)
 	}
 }
 
-// TestValidateSafeOutputDir_AllowsNonExistentPath verifies that a path that
+// TestValidateSafePath_AllowsNonExistentPath verifies that a path that
 // does not yet exist (new output directory) is accepted.
-func TestValidateSafeOutputDir_AllowsNonExistentPath(t *testing.T) {
+func TestValidateSafePath_AllowsNonExistentPath(t *testing.T) {
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 
-	if err := ValidateSafeOutputDir(&localfileio.LocalFileIO{}, "new_output_dir"); err != nil {
+	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "new_output_dir"); err != nil {
 		t.Fatalf("expected no error for non-existent path, got: %v", err)
 	}
 }

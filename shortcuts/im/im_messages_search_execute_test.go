@@ -24,15 +24,12 @@ func newMessagesSearchRuntime(t *testing.T, stringFlags map[string]string, boolF
 	runtime := newBotShortcutRuntime(t, rt)
 	cmd := &cobra.Command{Use: "test"}
 
-	stringFlagNames := []string{
-		"query",
-		"page-size",
-		"page-token",
-		"page-limit",
-	}
+	stringFlagNames := []string{"query", "page-token"}
 	for _, name := range stringFlagNames {
 		cmd.Flags().String(name, "", "")
 	}
+	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 20, "")
 	boolFlagNames := []string{"page-all"}
 	for _, name := range boolFlagNames {
 		cmd.Flags().Bool(name, false, "")

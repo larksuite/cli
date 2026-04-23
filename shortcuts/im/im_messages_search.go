@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -45,7 +44,7 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "is-at-me", Type: "bool", Desc: "only messages that @me"},
 		{Name: "start", Desc: "start time(ISO 8601) with local timezone offset (e.g. 2026-03-24T00:00:00+08:00)"},
 		{Name: "end", Desc: "end time(ISO 8601) with local timezone offset (e.g. 2026-03-25T23:59:59+08:00)"},
-		{Name: "page-size", Default: "20", Desc: "page size (1-50)"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "page token"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate search results"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
@@ -248,13 +247,11 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	excludeSenderTypeFlag := runtime.Str("exclude-sender-type")
 	startFlag := runtime.Str("start")
 	endFlag := runtime.Str("end")
-	pageSizeStr := runtime.Str("page-size")
 	pageToken := runtime.Str("page-token")
-	pageLimitStr := strings.TrimSpace(runtime.Str("page-limit"))
 
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		pageLimit, err := strconv.Atoi(pageLimitStr)
-		if err != nil || pageLimit < 1 || pageLimit > messagesSearchMaxPageLimit {
+		pageLimit := runtime.Int("page-limit")
+		if pageLimit < 1 || pageLimit > messagesSearchMaxPageLimit {
 			return nil, output.ErrValidation("--page-limit must be an integer between 1 and 40")
 		}
 	}
@@ -333,16 +330,12 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 		body["filter"] = filter
 	}
 
-	pageSize := messagesSearchDefaultPageSize
-	if pageSizeStr != "" {
-		n, err := strconv.Atoi(pageSizeStr)
-		if err != nil || n < 1 {
-			return nil, output.ErrValidation("--page-size must be an integer between 1 and 50")
-		}
-		if n > messagesSearchMaxPageSize {
-			n = messagesSearchMaxPageSize
-		}
-		pageSize = n
+	pageSize := runtime.Int("page-size")
+	if pageSize < 1 {
+		return nil, output.ErrValidation("--page-size must be an integer between 1 and 50")
+	}
+	if pageSize > messagesSearchMaxPageSize {
+		pageSize = messagesSearchMaxPageSize
 	}
 
 	params := larkcore.QueryParams{
@@ -366,9 +359,7 @@ func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginat
 
 	pageLimit = messagesSearchDefaultPageLimit
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		if n, err := strconv.Atoi(strings.TrimSpace(runtime.Str("page-limit"))); err == nil && n > 0 {
-			pageLimit = min(n, messagesSearchMaxPageLimit)
-		}
+		pageLimit = min(runtime.Int("page-limit"), messagesSearchMaxPageLimit)
 	} else if runtime.Bool("page-all") {
 		pageLimit = messagesSearchMaxPageLimit
 	}

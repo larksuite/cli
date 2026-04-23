@@ -24,6 +24,6 @@ record 相关命令索引。
 - 聚合页只保留目录职责；每个命令的详细说明请进入对应单命令文档。
 - 所有 `+xxx-list` 调用都必须串行执行；若要批量跑多个 list 请求，只能串行执行。
 - `+record-list` 支持重复传参 `--field-id` 做字段筛选。
-- 写记录 JSON 前优先阅读 [lark-base-shortcut-record-value.md](lark-base-shortcut-record-value.md)。
+- 写记录 JSON 前优先阅读 [lark-base-cell-value.md](lark-base-cell-value.md)。
 - 本地文件写入附件字段时，必须使用 `+record-upload-attachment`。
 - 从附件字段下载文件时，用 `lark-cli docs +media-download --token <file_token> --output <path>`，用法见 [`../../lark-doc/references/lark-doc-media-download.md`](../../lark-doc/references/lark-doc-media-download.md)。

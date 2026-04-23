@@ -29,6 +29,7 @@
     "scripts/install.js",
     "scripts/install-wizard.js",
     "scripts/run.js",
+    "checksums.txt",
     "CHANGELOG.md"
   ],
   "dependencies": {
