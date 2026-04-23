@@ -189,13 +189,7 @@ func TestBaseV3Helpers(t *testing.T) {
 }
 
 func TestRecordAndChunkHelpers(t *testing.T) {
-	records, err := normalizeRecordInputs(`[{"record_id":"rec_1","fields":{"Name":"Alice"}},{"Name":"Bob"}]`)
-	if err != nil || len(records) != 2 {
-		t.Fatalf("records=%v err=%v", records, err)
-	}
-	if _, err := normalizeRecordInputs(`[1]`); err == nil || !strings.Contains(err.Error(), "must be an object") {
-		t.Fatalf("err=%v", err)
-	}
+	records := []map[string]interface{}{{"record_id": "rec_1"}, {"record_id": "rec_2"}}
 	if len(chunkRecords(records, 1)) != 2 || len(chunkStringIDs([]string{"a", "b", "c"}, 2)) != 2 {
 		t.Fatalf("chunk helpers mismatch")
 	}

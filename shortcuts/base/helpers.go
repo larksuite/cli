@@ -572,30 +572,6 @@ func resolveViewRef(views []map[string]interface{}, ref string) (map[string]inte
 	return nil, fmt.Errorf("view %q not found", ref)
 }
 
-func normalizeRecordInputs(raw string) ([]map[string]interface{}, error) {
-	var records []interface{}
-	if err := common.ParseJSON([]byte(raw), &records); err != nil {
-		return nil, fmt.Errorf("--records invalid JSON, must be a record array")
-	}
-	result := make([]map[string]interface{}, 0, len(records))
-	for idx, item := range records {
-		record, ok := item.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("record %d must be an object", idx+1)
-		}
-		if fields, ok := record["fields"].(map[string]interface{}); ok {
-			normalized := map[string]interface{}{"fields": fields}
-			if recordID, ok := record["record_id"].(string); ok && recordID != "" {
-				normalized["record_id"] = recordID
-			}
-			result = append(result, normalized)
-			continue
-		}
-		result = append(result, map[string]interface{}{"fields": record})
-	}
-	return result, nil
-}
-
 func chunkRecords(records []map[string]interface{}, size int) [][]map[string]interface{} {
 	if size <= 0 {
 		size = 1

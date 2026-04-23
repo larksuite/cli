@@ -20,14 +20,14 @@ var BaseRecordUpsert = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordRefFlag(false),
-		{Name: "json", Desc: "record JSON object", Required: true},
+		{Name: "json", Desc: "record JSON object: Map<FieldNameOrID, CellValue>", Required: true},
 	},
 	Tips: []string{
 		`Example: --json '{"Name":"Alice"}'`,
 		"Agent hint: use the lark-base skill's record-upsert guide for usage and limits.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateRecordJSON(runtime)
+		return validateRecordUpsertJSON(runtime)
 	},
 	DryRun: dryRunRecordUpsert,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
