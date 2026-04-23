@@ -137,6 +137,9 @@ func buildMinutesSearchBody(runtime *common.RuntimeContext, startTime, endTime s
 		body["filter"] = filter
 	}
 
+	// Force a deterministic ordering for paginated minutes search results.
+	body["sorter"] = "create_time_desc"
+
 	return body, nil
 }
 
