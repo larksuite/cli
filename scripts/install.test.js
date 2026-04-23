@@ -9,7 +9,7 @@ const os = require("os");
 
 const crypto = require("crypto");
 
-const { getExpectedChecksum, verifyChecksum } = require("./install.js");
+const { getExpectedChecksum, verifyChecksum, assertAllowedHost } = require("./install.js");
 
 describe("getExpectedChecksum", () => {
   function makeTmpChecksums(content) {
@@ -58,6 +58,32 @@ describe("getExpectedChecksum", () => {
     const result = getExpectedChecksum("anything.tar.gz", dir);
     assert.equal(result, null);
   });
+
+  it("skips malformed lines and still finds valid entry", () => {
+    const dir = makeTmpChecksums(
+      "garbage line without separator\n" +
+      "\n" +
+      "abc123  lark-cli-1.0.0-darwin-arm64.tar.gz\n" +
+      "also garbage\n"
+    );
+    const hash = getExpectedChecksum(
+      "lark-cli-1.0.0-darwin-arm64.tar.gz",
+      dir
+    );
+    assert.equal(hash, "abc123");
+  });
+
+  it("skips tab-separated lines (only double-space is valid)", () => {
+    const dir = makeTmpChecksums(
+      "wrong\tlark-cli-1.0.0-darwin-arm64.tar.gz\n" +
+      "correct  lark-cli-1.0.0-darwin-arm64.tar.gz\n"
+    );
+    const hash = getExpectedChecksum(
+      "lark-cli-1.0.0-darwin-arm64.tar.gz",
+      dir
+    );
+    assert.equal(hash, "correct");
+  });
 });
 
 describe("verifyChecksum", () => {
@@ -97,6 +123,44 @@ describe("verifyChecksum", () => {
         assert.match(err.message, /Checksum mismatch/);
         return true;
       }
+    );
+  });
+});
+
+describe("assertAllowedHost", () => {
+  it("accepts github.com", () => {
+    assertAllowedHost("https://github.com/larksuite/cli/releases/download/v1.0.0/archive.tar.gz");
+  });
+
+  it("accepts objects.githubusercontent.com", () => {
+    assertAllowedHost("https://objects.githubusercontent.com/some/path");
+  });
+
+  it("accepts registry.npmmirror.com", () => {
+    assertAllowedHost("https://registry.npmmirror.com/-/binary/lark-cli/v1.0.0/archive.tar.gz");
+  });
+
+  it("rejects unknown host", () => {
+    assert.throws(
+      () => assertAllowedHost("https://evil.example.com/payload"),
+      { message: /Download host not allowed: evil\.example\.com/ }
+    );
+  });
+
+  it("normalizes hostname to lowercase", () => {
+    // URL constructor lowercases hostnames per spec
+    assertAllowedHost("https://GitHub.COM/larksuite/cli/releases/download/v1.0.0/a.tar.gz");
+  });
+
+  it("ignores port when matching hostname", () => {
+    // URL.hostname does not include port
+    assertAllowedHost("https://github.com:443/larksuite/cli/releases/download/v1.0.0/a.tar.gz");
+  });
+
+  it("throws on invalid URL", () => {
+    assert.throws(
+      () => assertAllowedHost("not-a-url"),
+      TypeError
     );
   });
 });

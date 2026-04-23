@@ -10,6 +10,10 @@ const crypto = require("crypto");
 const VERSION = require("../package.json").version.replace(/-.*$/, "");
 const REPO = "larksuite/cli";
 const NAME = "lark-cli";
+// Allowlist gates the *initial* request URL only. curl --location follows
+// redirects (capped by --max-redirs 3) without re-checking the target host.
+// This is acceptable because checksum verification is the primary integrity
+// control; the allowlist is defense-in-depth to reject obviously wrong URLs.
 const ALLOWED_HOSTS = [
   "github.com",
   "objects.githubusercontent.com",
@@ -127,8 +131,20 @@ function getExpectedChecksum(archiveName, checksumsDir) {
 function verifyChecksum(archivePath, expectedHash) {
   if (expectedHash === null) return;
 
-  const content = fs.readFileSync(archivePath);
-  const actual = crypto.createHash("sha256").update(content).digest("hex");
+  // Stream the file to avoid loading the entire archive into memory.
+  // Archives can be 10-100MB; streaming keeps RSS constant.
+  const hash = crypto.createHash("sha256");
+  const fd = fs.openSync(archivePath, "r");
+  try {
+    const buf = Buffer.alloc(64 * 1024);
+    let bytesRead;
+    while ((bytesRead = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      hash.update(buf.subarray(0, bytesRead));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  const actual = hash.digest("hex");
 
   if (actual.toLowerCase() !== expectedHash.toLowerCase()) {
     throw new Error(
@@ -168,4 +184,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { getExpectedChecksum, verifyChecksum };
+module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost };
