@@ -31,7 +31,7 @@ var DriveExport = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "token", Desc: "source document token", Required: true},
 		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable"}},
-		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown"}},
+		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base"}},
 		{Name: "sub-id", Desc: "sub-table/sheet ID, required when exporting sheet/bitable as csv"},
 		{Name: "output-dir", Default: ".", Desc: "local output directory (default: current directory)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},

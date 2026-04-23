@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.17] - 2026-04-22
+
+### Features
+
+- **im**: Use `Content-Disposition` filename when downloading message resources (#536)
+- **drive**: Add `+apply-permission` to request doc access (#588)
+- Support record share link (#466)
+- **whiteboard**: Add image support to `whiteboard-cli` skill (#553)
+- **cmdutil**: Add `X-Cli-Build` header for CLI build classification (#596)
+
+### Bug Fixes
+
+- **base**: Add default-table follow-up hint to `base-create` (#600)
+- Skip flag-completion registration outside completion path (#598)
+- Add `record-share-link-create` in `SKILL.md` (#597)
+- **mail**: Remove leftover conflict marker in skill docs (#594)
+
+### Documentation
+
+- **drive**: Clarify that comment listing defaults to unresolved comments only (#609)
+- **doc**: Fix `--markdown` examples that teach literal `\n` (#602)
+- **mail**: Remove `get_signatures` from skill reference, exposed via `+signature` instead (#545)
+
 ## [v1.0.16] - 2026-04-21
 
 ### Features
@@ -441,6 +464,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.17]: https://github.com/larksuite/cli/releases/tag/v1.0.17
 [v1.0.16]: https://github.com/larksuite/cli/releases/tag/v1.0.16
 [v1.0.15]: https://github.com/larksuite/cli/releases/tag/v1.0.15
 [v1.0.14]: https://github.com/larksuite/cli/releases/tag/v1.0.14

@@ -40,7 +40,7 @@ metadata:
 1. 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 2. Base 业务命令仅使用 `lark-cli base +...` 形式的 shortcut 命令；如果输入是 Wiki 链接，可先调用 `lark-cli wiki spaces get_node` 解析真实 token。
 3. 定位到命令后，先读该命令对应的 reference，再执行命令。
-4. 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
+4. 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 5. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
 
 ## 2. 模块与命令导航
@@ -223,7 +223,7 @@ metadata:
 | 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | 下载记录里的附件文件 | `lark-cli docs +media-download --token <file_token> --output <path>` | `file_token` 从 `+record-get` 返回的附件字段里取；用法见 [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) |
 | 基于视图做筛选读取 | `+view-set-filter` + `+record-list` | 不要跳过视图筛选直接猜条件 |
-| 本地 Excel / CSV 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
+| 本地 Excel / CSV / `.base` 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
 
 ### 3.3 表名、字段名与表达式引用
 

@@ -645,9 +645,16 @@ func newMediaInsertValidateRuntime(t *testing.T, doc, mediaType, fileView string
 	t.Helper()
 
 	cmd := &cobra.Command{Use: "docs +media-insert"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().Bool("from-clipboard", false, "")
 	cmd.Flags().String("doc", "", "")
 	cmd.Flags().String("type", "", "")
 	cmd.Flags().String("file-view", "", "")
+	// A non-empty --file satisfies the file/clipboard xor check so Validate
+	// reaches the --file-view logic under test below.
+	if err := cmd.Flags().Set("file", "dummy.bin"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
 	if err := cmd.Flags().Set("doc", doc); err != nil {
 		t.Fatalf("set --doc: %v", err)
 	}

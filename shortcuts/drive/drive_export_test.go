@@ -5,6 +5,7 @@ package drive
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -44,6 +45,20 @@ func TestValidateDriveExportSpec(t *testing.T) {
 			name:    "sub id on non csv rejected",
 			spec:    driveExportSpec{Token: "docx123", DocType: "docx", FileExtension: "pdf", SubID: "tbl_1"},
 			wantErr: "--sub-id is only used",
+		},
+		{
+			name: "base bitable ok",
+			spec: driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "base"},
+		},
+		{
+			name:    "base non bitable rejected",
+			spec:    driveExportSpec{Token: "sheet123", DocType: "sheet", FileExtension: "base"},
+			wantErr: "only supports --doc-type bitable",
+		},
+		{
+			name:    "unknown file extension rejected",
+			spec:    driveExportSpec{Token: "docx123", DocType: "docx", FileExtension: "rtf"},
+			wantErr: "invalid --file-extension",
 		},
 	}
 
@@ -182,6 +197,88 @@ func TestDriveExportAsyncSuccess(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"ticket": "tk_123"`) {
 		t.Fatalf("stdout missing ticket: %s", stdout.String())
+	}
+}
+
+func TestDriveExportBitableBaseAsyncSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_base"},
+		},
+	}
+	reg.Register(createStub)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_base",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"job_status":     0,
+					"file_token":     "box_base",
+					"file_name":      "crm",
+					"file_extension": "base",
+					"type":           "bitable",
+					"file_size":      8,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_base/download",
+		Status:  200,
+		RawBody: []byte("snapshot"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/octet-stream"},
+			"Content-Disposition": []string{`attachment; filename="crm.base"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "bitable123",
+		"--doc-type", "bitable",
+		"--file-extension", "base",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var createBody map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &createBody); err != nil {
+		t.Fatalf("unmarshal export_tasks body: %v", err)
+	}
+	if createBody["file_extension"] != "base" {
+		t.Fatalf("export_tasks body file_extension = %v, want %q", createBody["file_extension"], "base")
+	}
+	if createBody["type"] != "bitable" {
+		t.Fatalf("export_tasks body type = %v, want %q", createBody["type"], "bitable")
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "crm.base"))
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "snapshot" {
+		t.Fatalf("downloaded content = %q", string(data))
+	}
+	if !strings.Contains(stdout.String(), `"file_extension": "base"`) {
+		t.Fatalf("stdout missing base file_extension: %s", stdout.String())
 	}
 }
 

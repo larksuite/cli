@@ -47,6 +47,13 @@ lark-cli drive +export \
   --sub-id "<SUB_ID>" \
   --output-dir ./exports
 
+# 导出多维表格为 .base 快照（只支持 bitable）
+lark-cli drive +export \
+  --token "<BITABLE_TOKEN>" \
+  --doc-type bitable \
+  --file-extension base \
+  --output-dir ./exports
+
 # 允许覆盖已存在文件
 lark-cli drive +export \
   --token "<DOCX_TOKEN>" \
@@ -61,7 +68,7 @@ lark-cli drive +export \
 |------|------|------|
 | `--token` | 是 | 源文档 token |
 | `--doc-type` | 是 | 源文档类型：`doc` / `docx` / `sheet` / `bitable` |
-| `--file-extension` | 是 | 导出格式：`docx` / `pdf` / `xlsx` / `csv` / `markdown` |
+| `--file-extension` | 是 | 导出格式：`docx` / `pdf` / `xlsx` / `csv` / `markdown` / `base` |
 | `--sub-id` | 条件必填 | 当 `sheet` / `bitable` 导出为 `csv` 时必填 |
 | `--output-dir` | 否 | 本地输出目录，默认当前目录 |
 | `--overwrite` | 否 | 覆盖已存在文件 |
@@ -69,6 +76,7 @@ lark-cli drive +export \
 ## 关键约束
 
 - `markdown` 只支持 `docx`
+- `base` 只支持 `bitable`
 - `sheet` / `bitable` 导出为 `csv` 时必须带 `--sub-id`
 - shortcut 内部固定有限轮询：最多 10 次，每次间隔 5 秒
 - 轮询超时不是失败；会返回 `ticket`、`timed_out=true` 和 `next_command`，供后续继续查询

@@ -13,7 +13,7 @@
 6. **批量上限 500 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
 7. **改名和删除按明确意图执行** — 视图重命名这类低风险改名操作，目标和新名称明确时可直接执行；删除记录 / 字段 / 表时，只要用户已经明确要求删除且目标明确，也可直接执行，不需要再补一次确认
 8. **不要走旧 bitable 路径** — Base 场景不要调用 `lark-cli api GET /open-apis/bitable/v1/...`；即使 wiki 解析结果是 `obj_type=bitable`，后续也应继续使用 `lark-cli base ...`
-9. **不要把本地文件导入误判成 Base 表内操作** — 如果目标是“把 Excel / CSV 导入成 Base / 多维表格”，必须先走 `lark-cli drive +import --type bitable`；只有导入完成后，才回到 `lark-cli base ...`
+9. **不要把本地文件导入误判成 Base 表内操作** — 如果目标是“把 Excel / CSV / `.base` 快照导入成 Base / 多维表格”，必须先走 `lark-cli drive +import --type bitable`；只有导入完成后，才回到 `lark-cli base ...`
 
 ## 意图 → 命令索引
 
@@ -22,7 +22,7 @@
 | 查表字段 | `table.fields list` | 写记录 / 更新前必调 |
 | 查记录 | `table.records list` | GET，简单列表，可附带 `view_id` |
 | 按视图筛选查询 | `view.filter update` + `table.records list` | 当前 `base/v3` 没有独立 `search` |
-| 把本地文件导入为 Base / 多维表格 | `lark-cli drive +import --type bitable` | 导入阶段属于 `drive`，不是 `base` |
+| 把本地 Excel / CSV / `.base` 导入为 Base / 多维表格 | `lark-cli drive +import --type bitable` | 导入阶段属于 `drive`，不是 `base` |
 | 新增单条记录 | `table.records create` | 少量数据 |
 | 更新记录 | `table.records patch` | 只传需要变更的字段 |
 | 删除记录 | `table.records delete` | 单条删除 |

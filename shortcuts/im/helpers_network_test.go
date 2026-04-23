@@ -262,7 +262,7 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 	cmdutil.TestChdir(t, t.TempDir())
 
 	target := filepath.Join("nested", "resource.bin")
-	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "file_123", "file", target)
+	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "file_123", "file", target, true)
 	if err != nil {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -308,7 +308,7 @@ func TestDownloadIMResourceToPathImageUsesSingleRequestWithoutRange(t *testing.T
 
 	cmdutil.TestChdir(t, t.TempDir())
 
-	gotPath, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_img", "img_123", "image", "image")
+	gotPath, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_img", "img_123", "image", "image", true)
 	if err != nil {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -342,7 +342,7 @@ func TestDownloadIMResourceToPathHTTPErrorBody(t *testing.T) {
 
 	cmdutil.TestChdir(t, t.TempDir())
 
-	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_403", "file_403", "file", "out.bin")
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_403", "file_403", "file", "out.bin", true)
 	if err == nil || !strings.Contains(err.Error(), "HTTP 403: denied") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -372,7 +372,7 @@ func TestDownloadIMResourceToPathRetriesNetworkError(t *testing.T) {
 
 	cmdutil.TestChdir(t, t.TempDir())
 	target := "out.bin"
-	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_retry", "file_retry", "file", target)
+	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_retry", "file_retry", "file", target, true)
 	if err != nil {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -408,7 +408,7 @@ func TestDownloadIMResourceToPathRetrySecondAttemptSuccess(t *testing.T) {
 
 	cmdutil.TestChdir(t, t.TempDir())
 	target := "out.bin"
-	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_retry2", "file_retry2", "file", target)
+	_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_retry2", "file_retry2", "file", target, true)
 	if err != nil {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -444,7 +444,7 @@ func TestDownloadIMResourceToPathRetryContextCanceled(t *testing.T) {
 
 	cmdutil.TestChdir(t, t.TempDir())
 	target := "out.bin"
-	_, _, err := downloadIMResourceToPath(ctx, runtime, "om_cancel", "file_cancel", "file", target)
+	_, _, err := downloadIMResourceToPath(ctx, runtime, "om_cancel", "file_cancel", "file", target, true)
 	if err != context.Canceled {
 		t.Fatalf("downloadIMResourceToPath() error = %v, want context.Canceled", err)
 	}
@@ -525,7 +525,7 @@ func TestDownloadIMResourceToPathRangeDownload(t *testing.T) {
 
 			cmdutil.TestChdir(t, t.TempDir())
 			target := filepath.Join("nested", "resource.bin")
-			_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_range", "file_range", "file", target)
+			_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_range", "file_range", "file", target, true)
 			if err != nil {
 				t.Fatalf("downloadIMResourceToPath() error = %v", err)
 			}
@@ -567,7 +567,7 @@ func TestDownloadIMResourceToPathInvalidContentRange(t *testing.T) {
 	}))
 
 	cmdutil.TestChdir(t, t.TempDir())
-	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_bad", "file_bad", "file", "out.bin")
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_bad", "file_bad", "file", "out.bin", true)
 	if err == nil || !strings.Contains(err.Error(), "invalid Content-Range header") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -596,7 +596,7 @@ func TestDownloadIMResourceToPathRangeChunkFailureCleansOutput(t *testing.T) {
 	cmdutil.TestChdir(t, t.TempDir())
 
 	target := "out.bin"
-	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_miderr", "file_miderr", "file", target)
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_miderr", "file_miderr", "file", target, true)
 	if err == nil || !strings.Contains(err.Error(), "HTTP 500: chunk failed") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -622,7 +622,7 @@ func TestDownloadIMResourceToPathRangeOverflowCleansOutput(t *testing.T) {
 	cmdutil.TestChdir(t, t.TempDir())
 
 	target := "out.bin"
-	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_overflow", "file_overflow", "file", target)
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_overflow", "file_overflow", "file", target, true)
 	if err == nil || !strings.Contains(err.Error(), "chunk overflow") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -658,7 +658,7 @@ func TestDownloadIMResourceToPathRangeShortChunkSizeMismatch(t *testing.T) {
 
 	cmdutil.TestChdir(t, t.TempDir())
 
-	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_short", "file_short", "file", "out.bin")
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_short", "file_short", "file", "out.bin", true)
 	if err == nil || !strings.Contains(err.Error(), "file size mismatch") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
