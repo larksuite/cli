@@ -74,7 +74,7 @@ whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKIL
 
 ```bash
 # 使用 whiteboard-cli 生成 OpenAPI 格式并通过管道传递
-npx -y @larksuite/whiteboard-cli@^0.2.9 -i <产物文件> --to openapi --format json \
+npx -y @larksuite/whiteboard-cli@^0.2.10 -i <产物文件> --to openapi --format json \
   | lark-cli whiteboard +update \
     --whiteboard-token <画板Token> \
     --source - --input_format raw \
@@ -88,7 +88,7 @@ whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKIL
 
 ```bash
 # 生成 OpenAPI 格式到文件
-npx -y @larksuite/whiteboard-cli@^0.2.9 -i <DSL 文件> --to openapi --format json -o ./temp.json
+npx -y @larksuite/whiteboard-cli@^0.2.10 -i <DSL 文件> --to openapi --format json -o ./temp.json
 
 # 从文件读取并更新
 lark-cli whiteboard +update \

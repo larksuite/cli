@@ -3,13 +3,14 @@
 适用于：用户**显式要求使用图片/配图/插图**的场景（如"画一个带配图的旅行路线"、"做一个有图片的产品展示"）。
 
 > **注意**：仅当用户明确说了「图片/配图/插图/照片」等词时才进入本场景。单纯说"旅行路线图"、"产品展示"等不触发。
-> **前置条件**：进入本场景前，必须已完成 [`references/image.md`](../references/image.md) 的 Step 0（图片准备），拿到所有 file_token。
+
+> **前置条件**：进入本场景前，必须已完成 [`references/image.md`](../references/image.md) 的 Step 0（图片准备），拿到所有 media token。
 
 ## Content 约束
 
 - 图片 3-6 张，每张配标题（必需）+ 简短描述（可选，15字内）
-- **每张图必须是不同的真实图片**（不同 file_token），下载时用不同关键词/URL
-- 下载后用 `md5` 校验确保每张图不重复
+- **每张图必须是不同的真实图片**（不同 media token），下载时用不同关键词/URL
+- 下载后用 `ls -l` 比较文件大小确保每张图不重复
 - 文字仅作辅助说明，图片是信息主体
 
 ## Layout 选型
@@ -116,7 +117,10 @@
 
 生成 DSL 前确认：
 
-- [ ] 所有 image 节点的 `image.src` 都是已上传的 file_token（非 URL）
-- [ ] 每个 file_token 不同（对应不同的真实图片）
+- [ ] 所有 image 节点的 `image.src` 都是通过 `docs +media-upload --parent-type whiteboard` 上传的 media token（非 URL、非 Drive file token）
+- [ ] 所有图片已上传到目标画板（`--parent-node` 设为目标画板 token）
+- [ ] 每个 media token 不同（对应不同的真实图片）
 - [ ] 所有图片尺寸一致（同一画板内统一 width×height）
 - [ ] 图片宽高比合理（推荐 3:2，即 240×160）
+- [ ] 渲染 PNG 后查看图片内容，确认每张图片与主题相关
+- [ ] 未使用随机占位图服务（关键词参数不影响返回内容的图库）

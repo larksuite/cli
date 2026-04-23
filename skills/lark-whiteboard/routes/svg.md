@@ -30,12 +30,12 @@
 ```
 建目录   ./diagrams/YYYY-MM-DDTHHMMSS/         (例：./diagrams/2026-04-15T143022/)
 写文件   <dir>/diagram.svg
-渲染     npx -y @larksuite/whiteboard-cli@^0.2.9 -i <dir>/diagram.svg -o <dir>/diagram.png -f svg
-检查     npx -y @larksuite/whiteboard-cli@^0.2.9 -i <dir>/diagram.svg -f svg --check
-导出     npx -y @larksuite/whiteboard-cli@^0.2.9 -i <dir>/diagram.svg -f svg --to openapi --format json > <dir>/diagram.json
+渲染     npx -y @larksuite/whiteboard-cli@^0.2.10 -i <dir>/diagram.svg -o <dir>/diagram.png -f svg
+检查     npx -y @larksuite/whiteboard-cli@^0.2.10 -i <dir>/diagram.svg -f svg --check
+导出     npx -y @larksuite/whiteboard-cli@^0.2.10 -i <dir>/diagram.svg -f svg --to openapi --format json > <dir>/diagram.json
 ```
 
-`npx -y @larksuite/whiteboard-cli@^0.2.9 --check` 检测 `text-overflow` 和 `node-overlap`, 并结合视觉效果(查看 PNG)进行调整
+`npx -y @larksuite/whiteboard-cli@^0.2.10 --check` 检测 `text-overflow` 和 `node-overlap`, 并结合视觉效果(查看 PNG)进行调整
 
 ## 画板怎么处理 SVG
 
