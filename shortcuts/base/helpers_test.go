@@ -201,6 +201,91 @@ func TestRecordAndChunkHelpers(t *testing.T) {
 	}
 }
 
+func TestRecordSelectionHelpers(t *testing.T) {
+	recordIDs, err := normalizeRecordIDs([]string{" rec_1 ", "rec_2"})
+	if err != nil || !reflect.DeepEqual(recordIDs, []string{"rec_1", "rec_2"}) {
+		t.Fatalf("recordIDs=%v err=%v", recordIDs, err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{}); err == nil || !strings.Contains(err.Error(), "provide at least one --record-id") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{"rec_1", "rec_1"}); err == nil || !strings.Contains(err.Error(), "duplicate record id") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{" "}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{1}); err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("err=%v", err)
+	}
+	tooManyRecords := make([]string, maxRecordSelectionCount+1)
+	if _, err := normalizeRecordIDs(tooManyRecords); err == nil || !strings.Contains(err.Error(), "exceeds maximum limit") {
+		t.Fatalf("err=%v", err)
+	}
+
+	fields, err := normalizeRecordGetSelectFields([]interface{}{" Name ", "fld_status"})
+	if err != nil || !reflect.DeepEqual(fields, []string{"Name", "fld_status"}) {
+		t.Fatalf("fields=%v err=%v", fields, err)
+	}
+	if fields, err := normalizeRecordGetSelectFields(nil); err != nil || fields != nil {
+		t.Fatalf("fields=%v err=%v", fields, err)
+	}
+	if _, err := normalizeRecordGetSelectFields([]interface{}{"Name", "Name"}); err == nil || !strings.Contains(err.Error(), "duplicate field id") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordGetSelectFields([]interface{}{""}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordGetSelectFields([]interface{}{1}); err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("err=%v", err)
+	}
+	tooManyFields := make([]string, maxBatchGetSelectFieldCount+1)
+	if _, err := normalizeRecordGetSelectFields(tooManyFields); err == nil || !strings.Contains(err.Error(), "exceeds maximum limit") {
+		t.Fatalf("err=%v", err)
+	}
+
+	fields, err = resolveRecordGetSelectFields(nil, map[string]interface{}{"select_fields": []interface{}{"Name"}})
+	if err != nil || !reflect.DeepEqual(fields, []string{"Name"}) {
+		t.Fatalf("fields=%v err=%v", fields, err)
+	}
+	if _, err := resolveRecordGetSelectFields([]string{"Name"}, map[string]interface{}{"select_fields": []interface{}{"Age"}}); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := resolveRecordGetSelectFields(nil, map[string]interface{}{"select_fields": []interface{}{}}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("err=%v", err)
+	}
+
+	single, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
+		"record_id_list": []interface{}{"rec_1"},
+		"fields":         []interface{}{"Name"},
+		"data":           []interface{}{[]interface{}{"Alice"}},
+		"ignored_fields": []interface{}{"Attachment"},
+	})
+	if !ok || single["record_id"] != "rec_1" || single["ignored_fields"] == nil {
+		t.Fatalf("single=%v ok=%v", single, ok)
+	}
+	if _, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
+		"record_id_list": []string{"rec_1"},
+		"fields":         []interface{}{"Name"},
+		"data":           []interface{}{[]interface{}{"Alice"}},
+	}); !ok {
+		t.Fatalf("string record id list should be accepted")
+	}
+	if _, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
+		"record_id_list": []string{"rec_1", "rec_2"},
+		"fields":         []interface{}{"Name"},
+		"data":           []interface{}{[]interface{}{"Alice"}},
+	}); ok {
+		t.Fatalf("coerce should reject ambiguous record id list")
+	}
+	if _, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
+		"fields": []interface{}{"Name"},
+		"data":   []interface{}{[]interface{}{"Alice", "extra"}},
+	}); ok {
+		t.Fatalf("coerce should reject mismatched row width")
+	}
+}
+
 func TestResolveHelpers(t *testing.T) {
 	fields := []map[string]interface{}{{"id": "fld_1", "name": "Name", "type": "text"}, {"field_id": "fld_2", "field_name": "Age", "type": "number", "multiple": true}}
 	tables := []map[string]interface{}{{"id": "tbl_1", "name": "Orders"}}

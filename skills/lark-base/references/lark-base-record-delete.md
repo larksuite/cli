@@ -29,14 +29,14 @@ lark-cli base +record-delete \
 |------|------|------|
 | `--base-token <token>` | 是 | Base Token |
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
-| `--record-id <id>` | 否 | 记录 ID，可重复使用；这是主推荐用法 |
-| `--json <object>` | 否 | 脚本/代理场景可传 `{"record_id_list":["rec_xxx"]}` |
+| `--record-id <id>` | 否 | 与 `--json` 二选一；记录 ID，可重复使用；这是主推荐用法 |
+| `--json <object>` | 否 | 与 `--record-id` 二选一；脚本/代理场景可传 `{"record_id_list":["rec_xxx"]}` |
 
 ## API 入参详情
 
 **HTTP 方法和路径：**
 
-```
+```http
 DELETE /open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id
 POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_delete
 ```

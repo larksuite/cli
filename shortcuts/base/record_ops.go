@@ -175,10 +175,35 @@ func coerceBatchGetSingleRecordData(data map[string]interface{}) (map[string]int
 		record[fieldName] = rowValues[index]
 	}
 	result := map[string]interface{}{"record": record}
+	if _, exists := data["record_id_list"]; exists {
+		recordID, ok := singleRecordIDFromBatchData(data)
+		if !ok {
+			return nil, false
+		}
+		result["record_id"] = recordID
+	}
 	if ignored, ok := data["ignored_fields"]; ok {
 		result["ignored_fields"] = ignored
 	}
 	return result, true
+}
+
+func singleRecordIDFromBatchData(data map[string]interface{}) (string, bool) {
+	switch recordIDs := data["record_id_list"].(type) {
+	case []interface{}:
+		if len(recordIDs) != 1 {
+			return "", false
+		}
+		recordID, ok := recordIDs[0].(string)
+		return recordID, ok && recordID != ""
+	case []string:
+		if len(recordIDs) != 1 {
+			return "", false
+		}
+		return recordIDs[0], recordIDs[0] != ""
+	default:
+		return "", false
+	}
 }
 
 func resolveRecordGetSelectFields(flagFields []string, body map[string]interface{}) ([]string, error) {
