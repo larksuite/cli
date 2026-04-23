@@ -16,6 +16,7 @@ metadata:
 
 ## 快速决策
 
+- 用户要**搜文档 / Wiki / 电子表格 / 多维表格 / 云空间对象**，优先使用 `lark-cli drive +search`。自然语言里"最近我编辑过的"、"我创建的"、"最近一周我打开过的 xxx"、"某人创建的 docx" 等直接映射到扁平 flag，避免手写嵌套 JSON。老的 `docs +search` 进入维护期、后续会下线，不要新增对它的依赖。
 - 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
@@ -221,6 +222,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 
 | Shortcut | 说明 |
 |----------|------|
+| [`+search`](references/lark-drive-search.md) | Search Lark docs, Wiki, and spreadsheet files with flat filter flags (preferred over `docs +search`). Natural-language-friendly: `--edited-since`, `--mine`, `--doc-types`, etc. |
 | [`+upload`](references/lark-drive-upload.md) | Upload a local file to a Drive folder or wiki node |
 | [`+create-folder`](references/lark-drive-create-folder.md) | Create a Drive folder, optionally under a parent folder, with bot auto-grant support |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
