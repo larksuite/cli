@@ -272,13 +272,14 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		return output.ErrNetwork("API call failed: %s", err)
 	}
 	return client.HandleResponse(resp, client.ResponseOptions{
-		OutputPath: opts.Output,
-		Format:     format,
-		JqExpr:     opts.JqExpr,
-		Out:        out,
-		ErrOut:     f.IOStreams.ErrOut,
-		FileIO:     f.ResolveFileIO(opts.Ctx),
-		CheckError: checkErr,
+		OutputPath:  opts.Output,
+		Format:      format,
+		JqExpr:      opts.JqExpr,
+		Out:         out,
+		ErrOut:      f.IOStreams.ErrOut,
+		FileIO:      f.ResolveFileIO(opts.Ctx),
+		CommandPath: opts.Cmd.CommandPath(),
+		CheckError:  checkErr,
 	})
 }
 

@@ -5,7 +5,7 @@
 将本地文件（如 Word、TXT、Markdown、Excel 等）导入并转换为飞书在线云文档（docx、sheet、bitable）。底层统一通过 `POST /open-apis/drive/v1/import_tasks` 接口创建导入任务，并在 shortcut 内做有限次数轮询 `GET /open-apis/drive/v1/import_tasks/:ticket`。
 
 > [!IMPORTANT]
-> 当用户说“把本地 Excel / CSV 导入成 Base / 多维表格 / bitable 文档”时，第一步必须使用 `drive +import --type bitable`。
+> 当用户说“把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable 文档”时，第一步必须使用 `drive +import --type bitable`。
 > 这是 Drive 导入场景，不是 `lark-base` 的建表 / 写记录场景。
 > 只有导入完成并拿到新文档的 `token` / `url` 后，后续字段、记录、视图等表内操作才切换到 `lark-cli base +...`。
 
@@ -20,6 +20,9 @@ lark-cli drive +import --file ./data.xlsx --type sheet
 
 # 导入 Excel 为多维表格 / Base (bitable)
 lark-cli drive +import --file ./crm.xlsx --type bitable --name "客户台账"
+
+# 导入 .base 快照为多维表格 / Base (bitable)（文件不能超过 20MB）
+lark-cli drive +import --file ./snapshot.base --type bitable --name "快照还原"
 
 # 导入到指定文件夹，并指定导入后的文件名
 lark-cli drive +import --file ./data.csv --type bitable --folder-token <FOLDER_TOKEN> --name "导入数据表"
@@ -60,6 +63,7 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 | `.xlsx` | `sheet`, `bitable` | Microsoft Excel 表格 |
 | `.xls` | `sheet` | Microsoft Excel 97-2003 表格 |
 | `.csv` | `sheet`, `bitable` | CSV 数据文件 |
+| `.base` | `bitable` | 多维表格快照文件 |
 
 > [!IMPORTANT]
 > 用户口头说的 “Base” / “多维表格” / “bitable”，在命令里统一对应 `--type bitable`。
@@ -68,6 +72,7 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 > - 文档类文件（.docx, .doc, .txt, .md, .html）**只能**导入为 `docx`
 > - `.xlsx` / `.csv` 文件**只能**导入为 `sheet` 或 `bitable`
 > - `.xls` 文件**只能**导入为 `sheet`
+> - `.base` 文件**只能**导入为 `bitable`
 > - 例如：`.csv` 文件不能导入为 `docx`，`.md` 文件不能导入为 `sheet`
 
 > [!IMPORTANT]
@@ -100,6 +105,7 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 | `.csv` | `sheet` | 20MB |
 | `.csv` | `bitable` | 100MB |
 | `.xls` | `sheet` | 20MB |
+| `.base` | `bitable` | 20MB |
 
 - 如果文件超出对应上限，shortcut 会在真正上传前直接返回验证错误。
 - “超过 20MB 自动切换分片上传”只表示上传链路会切到 multipart，不代表所有格式都允许导入超过 20MB 的文件。

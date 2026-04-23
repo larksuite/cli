@@ -6,6 +6,7 @@ package doc
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	"github.com/larksuite/cli/extension/fileio"
@@ -95,7 +96,14 @@ var DocMediaUpload = common.Shortcut{
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 		}
 
-		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentType, parentNode, docId)
+		fileToken, err := uploadDocMediaFile(runtime, UploadDocMediaFileConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   stat.Size(),
+			ParentType: parentType,
+			ParentNode: parentNode,
+			DocID:      docId,
+		})
 		if err != nil {
 			return err
 		}
@@ -109,11 +117,34 @@ var DocMediaUpload = common.Shortcut{
 	},
 }
 
-func uploadDocMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentType, parentNode, docID string) (string, error) {
+// UploadDocMediaFileConfig groups the inputs to uploadDocMediaFile so the
+// call site names each value at call time, avoiding the "8 positional
+// params of mostly string/int64" ambiguity and mirroring the config-struct
+// style already used by DriveMediaUploadAllConfig /
+// DriveMediaMultipartUploadConfig downstream.
+//
+// Exactly one of FilePath (on-disk source) or Reader (in-memory source for
+// the clipboard flow) should be set. Leave Reader at its zero value (nil
+// interface) when the caller only has FilePath — passing a typed-nil
+// pointer like (*bytes.Reader)(nil) here would make Reader compare
+// non-nil downstream and skip the FilePath open, so the field type is
+// deliberately an interface and the clipboard caller builds it only when
+// it actually has bytes.
+type UploadDocMediaFileConfig struct {
+	FilePath   string
+	Reader     io.Reader
+	FileName   string
+	FileSize   int64
+	ParentType string
+	ParentNode string
+	DocID      string
+}
+
+func uploadDocMediaFile(runtime *common.RuntimeContext, cfg UploadDocMediaFileConfig) (string, error) {
 	var extra string
-	if docID != "" {
+	if cfg.DocID != "" {
 		var err error
-		extra, err = buildDriveRouteExtra(docID)
+		extra, err = buildDriveRouteExtra(cfg.DocID)
 		if err != nil {
 			return "", err
 		}
@@ -121,22 +152,24 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, filePath, fileName strin
 
 	// Doc media uploads share the generic Drive media transport. The doc-specific
 	// routing only shows up in parent_type/parent_node and optional route extra.
-	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
+	if cfg.FileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
-			FilePath:   filePath,
-			FileName:   fileName,
-			FileSize:   fileSize,
-			ParentType: parentType,
-			ParentNode: &parentNode,
+			FilePath:   cfg.FilePath,
+			Reader:     cfg.Reader,
+			FileName:   cfg.FileName,
+			FileSize:   cfg.FileSize,
+			ParentType: cfg.ParentType,
+			ParentNode: &cfg.ParentNode,
 			Extra:      extra,
 		})
 	}
 	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
-		FilePath:   filePath,
-		FileName:   fileName,
-		FileSize:   fileSize,
-		ParentType: parentType,
-		ParentNode: parentNode,
+		FilePath:   cfg.FilePath,
+		Reader:     cfg.Reader,
+		FileName:   cfg.FileName,
+		FileSize:   cfg.FileSize,
+		ParentType: cfg.ParentType,
+		ParentNode: cfg.ParentNode,
 		Extra:      extra,
 	})
 }

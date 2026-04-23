@@ -373,19 +373,171 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 	}
 }
 
+func TestMarshalStringNoEscape(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "ampersand not escaped", input: "a=1&b=2", want: `"a=1&b=2"`},
+		{name: "angle brackets not escaped", input: "<tag>", want: `"<tag>"`},
+		{name: "regular string", input: "hello world", want: `"hello world"`},
+		{name: "url with ampersand", input: "https://example.com?a=1&b=2", want: `"https://example.com?a=1&b=2"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := marshalStringNoEscape(tt.input)
+			if got != tt.want {
+				t.Errorf("marshalStringNoEscape(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildPostElements(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantSubs  []string // substrings that must appear
+		wantNsubs []string // substrings that must NOT appear
+	}{
+		{
+			name:     "plain text no URL",
+			input:    "hello **world**",
+			wantSubs: []string{`"tag":"md"`, `hello **world**`},
+		},
+		{
+			name:     "bare URL only",
+			input:    "https://example.com/path",
+			wantSubs: []string{`"tag":"a"`, `"text":"https://example.com/path"`, `"href":"https://example.com/path"`},
+		},
+		{
+			name:     "bare URL with underscores",
+			input:    "https://example.com/flow_id=abc_def",
+			wantSubs: []string{`"tag":"a"`, `flow_id=abc_def`},
+		},
+		{
+			name:     "bare URL with ampersand not escaped",
+			input:    "https://example.com?a=1&b=2",
+			wantSubs: []string{`"tag":"a"`, `a=1&b=2`},
+		},
+		{
+			name:     "text before and after URL",
+			input:    "click here: https://example.com/path ok?",
+			wantSubs: []string{`"tag":"md"`, `click here: `, `"tag":"a"`, `https://example.com/path`, ` ok?`},
+		},
+		{
+			name:     "markdown link kept in md segment",
+			input:    "[click here](https://example.com/path_with_underscore)",
+			wantSubs: []string{`"tag":"md"`, `[click here](https://example.com/path_with_underscore)`},
+		},
+		{
+			name:      "markdown link not promoted to a tag",
+			input:     "[text](https://example.com)",
+			wantSubs:  []string{`"tag":"md"`},
+			wantNsubs: []string{`"tag":"a"`},
+		},
+		{
+			name:  "multiple bare URLs",
+			input: "https://a.com/x_y and https://b.com/p_q",
+			wantSubs: []string{
+				`"tag":"a"`, `https://a.com/x_y`,
+				`https://b.com/p_q`,
+				`"tag":"md"`, ` and `,
+			},
+		},
+		{
+			name:     "mixed markdown and bare URL",
+			input:    "**bold** https://example.com/foo_bar [link](https://example.com) end",
+			wantSubs: []string{`"tag":"md"`, `**bold**`, `"tag":"a"`, `foo_bar`, `[link](https://example.com)`},
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			wantSubs: []string{`"tag":"md"`, `"text":""`},
+		},
+		{
+			name:      "URL followed by comma",
+			input:     "visit https://example.com/path, then click",
+			wantSubs:  []string{`"tag":"a"`, `"href":"https://example.com/path"`},
+			wantNsubs: []string{`https://example.com/path,`},
+		},
+		{
+			name:      "URL followed by period",
+			input:     "see https://example.com/foo.",
+			wantSubs:  []string{`"tag":"a"`, `https://example.com/foo`},
+			wantNsubs: []string{`https://example.com/foo."`},
+		},
+		{
+			name:     "URL with no trailing punctuation unchanged",
+			input:    "https://example.com/foo_bar",
+			wantSubs: []string{`"href":"https://example.com/foo_bar"`},
+		},
+		{
+			name:      "URL with balanced parentheses preserved",
+			input:     "https://en.wikipedia.org/wiki/Foo_(bar)",
+			wantSubs:  []string{`"href":"https://en.wikipedia.org/wiki/Foo_(bar)"`},
+			wantNsubs: []string{`"href":"https://en.wikipedia.org/wiki/Foo_"`},
+		},
+		{
+			name:      "code block URL stays markdown",
+			input:     "```bash\ncurl https://example.com/foo_bar\n```",
+			wantSubs:  []string{`"tag":"md"`, "```bash\\ncurl https://example.com/foo_bar\\n```"},
+			wantNsubs: []string{`"tag":"a"`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildPostElements(tt.input)
+			for _, sub := range tt.wantSubs {
+				if !strings.Contains(got, sub) {
+					t.Errorf("buildPostElements(%q)\n got: %s\n missing: %q", tt.input, got, sub)
+				}
+			}
+			for _, sub := range tt.wantNsubs {
+				if strings.Contains(got, sub) {
+					t.Errorf("buildPostElements(%q)\n got: %s\n should not contain: %q", tt.input, got, sub)
+				}
+			}
+		})
+	}
+}
+
 func TestWrapMarkdownAsPost(t *testing.T) {
-	got := wrapMarkdownAsPost("hello **world**")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 1 {
-		t.Fatalf("wrapMarkdownAsPost() content len = %d, want 1", len(content))
-	}
-	node := decodePostParagraphForTest(t, got, 0)
-	if node["tag"] != "md" {
-		t.Fatalf("wrapMarkdownAsPost() tag = %#v, want md", node["tag"])
-	}
-	if node["text"] != "hello **world**" {
-		t.Fatalf("wrapMarkdownAsPost() text = %#v, want %q", node["text"], "hello **world**")
-	}
+	t.Run("plain markdown", func(t *testing.T) {
+		got := wrapMarkdownAsPost("hello **world**")
+		content := decodePostContentForTest(t, got)
+		if len(content) != 1 {
+			t.Fatalf("wrapMarkdownAsPost() content len = %d, want 1", len(content))
+		}
+		node := decodePostParagraphForTest(t, got, 0)
+		if node["tag"] != "md" {
+			t.Fatalf("wrapMarkdownAsPost() tag = %#v, want md", node["tag"])
+		}
+		if node["text"] != "hello **world**" {
+			t.Fatalf("wrapMarkdownAsPost() text = %#v, want %q", node["text"], "hello **world**")
+		}
+	})
+
+	t.Run("bare URL becomes a tag", func(t *testing.T) {
+		got := wrapMarkdownAsPost("see https://example.com/flow_id=abc_def done")
+		if !strings.Contains(got, `"tag":"a"`) {
+			t.Fatalf("wrapMarkdownAsPost() bare URL should produce a tag: %s", got)
+		}
+		if !strings.Contains(got, `flow_id=abc_def`) {
+			t.Fatalf("wrapMarkdownAsPost() URL content missing: %s", got)
+		}
+	})
+
+	t.Run("code block URL stays md", func(t *testing.T) {
+		got := wrapMarkdownAsPost("```bash\ncurl https://example.com/foo_bar\n```")
+		if strings.Contains(got, `"tag":"a"`) {
+			t.Fatalf("wrapMarkdownAsPost() code block URL should stay markdown: %s", got)
+		}
+		if !strings.Contains(got, "```bash\\ncurl https://example.com/foo_bar\\n```") {
+			t.Fatalf("wrapMarkdownAsPost() code block content missing: %s", got)
+		}
+	})
 }
 
 func TestShouldUseSegmentedPost(t *testing.T) {

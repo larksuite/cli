@@ -106,6 +106,98 @@ func TestUploadDriveMediaAllBuildsMultipartBody(t *testing.T) {
 	}
 }
 
+func TestUploadDriveMediaAllWithInMemoryContent(t *testing.T) {
+	// When Content is provided, FilePath is ignored — the in-memory reader
+	// is streamed directly into the multipart form. Used by the clipboard
+	// upload path.
+	runtime, reg := newDriveMediaUploadTestRuntime(t)
+	withDriveMediaUploadWorkingDir(t, t.TempDir())
+
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_mem_123"},
+		},
+	}
+	reg.Register(uploadStub)
+
+	payload := []byte{0x89, 0x50, 0x4e, 0x47, 0xde, 0xad}
+	fileToken, err := UploadDriveMediaAll(runtime, DriveMediaUploadAllConfig{
+		Reader:     bytes.NewReader(payload),
+		FileName:   "clipboard.png",
+		FileSize:   int64(len(payload)),
+		ParentType: "docx_image",
+		ParentNode: strPtr("blk_parent"),
+	})
+	if err != nil {
+		t.Fatalf("UploadDriveMediaAll() error: %v", err)
+	}
+	if fileToken != "file_mem_123" {
+		t.Fatalf("fileToken = %q, want %q", fileToken, "file_mem_123")
+	}
+
+	body := decodeCapturedDriveMediaMultipartBody(t, uploadStub)
+	if got := body.Fields["file_name"]; got != "clipboard.png" {
+		t.Fatalf("file_name = %q, want %q", got, "clipboard.png")
+	}
+	if got := body.Files["file"]; !bytes.Equal(got, payload) {
+		t.Fatalf("uploaded file bytes mismatch; got %v, want %v", got, payload)
+	}
+}
+
+func TestUploadDriveMediaMultipartWithInMemoryContent(t *testing.T) {
+	// Clipboard multipart upload: Content reader replaces FilePath, and the
+	// server-declared block plan is honored exactly.
+	runtime, reg := newDriveMediaUploadTestRuntime(t)
+	withDriveMediaUploadWorkingDir(t, t.TempDir())
+
+	size := MaxDriveMediaUploadSinglePartSize + 1
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"upload_id":  "upload_mem_1",
+				"block_size": float64(4 * 1024 * 1024),
+				"block_num":  float64(6),
+			},
+		},
+	})
+	for i := 0; i < 6; i++ {
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/medias/upload_part",
+			Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+		})
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_mem_multi"},
+		},
+	})
+
+	payload := bytes.Repeat([]byte{0xAB}, int(size))
+	fileToken, err := UploadDriveMediaMultipart(runtime, DriveMediaMultipartUploadConfig{
+		Reader:     bytes.NewReader(payload),
+		FileName:   "clipboard.png",
+		FileSize:   size,
+		ParentType: "docx_image",
+		ParentNode: "",
+	})
+	if err != nil {
+		t.Fatalf("UploadDriveMediaMultipart() error: %v", err)
+	}
+	if fileToken != "file_mem_multi" {
+		t.Fatalf("fileToken = %q, want %q", fileToken, "file_mem_multi")
+	}
+}
+
 func TestUploadDriveMediaMultipartBuildsPreparePartsAndFinish(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())

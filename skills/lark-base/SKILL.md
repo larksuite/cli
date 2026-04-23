@@ -40,7 +40,7 @@ metadata:
 1. 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 2. Base 业务命令仅使用 `lark-cli base +...` 形式的 shortcut 命令；如果输入是 Wiki 链接，可先调用 `lark-cli wiki spaces get_node` 解析真实 token。
 3. 定位到命令后，先读该命令对应的 reference，再执行命令。
-4. 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
+4. 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 5. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
 
 ## 2. 模块与命令导航
@@ -102,8 +102,8 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+record-search / +record-list / +record-get` | 获取记录：关键词搜索 / 分页读取 / 按 ID 读取 | [`lark-base-record-search.md`](references/lark-base-record-search.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | 无关键词用 `+record-list`；有 record_id 用 `+record-get`；有关键词才用 `+record-search`；读取非聚合分析；`+record-get` 用 `--field-id` 裁剪字段；`+record-list` 串行、`--limit<=200`、按需翻页 |
-| `+record-upsert / +record-batch-create / +record-batch-update` | 创建、更新或批量写入记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-record-batch-create.md`](references/lark-base-record-batch-create.md)、[`lark-base-record-batch-update.md`](references/lark-base-record-batch-update.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；`+record-batch-update` 为同值更新（同一 patch 应用到多条记录）；批量单次不超过 `200` 条；附件不要走这里 |
+| `+record-search / +record-list / +record-get` | 按关键词检索记录、读取记录明细 / 分页导出，或按 ID 获取一条或多条记录 | [`lark-base-record-search.md`](references/lark-base-record-search.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | 默认优先 `+record-list`；有 record_id 用 `+record-get`；仅当用户提供明确搜索关键词时使用 `+record-search`；取数不用来做聚合分析；`+record-get` 用 `--field-id` 裁剪字段；`+record-list` 串行、`--limit<=200`、按需翻页 |
+| `+record-upsert / +record-batch-create / +record-batch-update` | 创建、更新或批量写入记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-record-batch-create.md`](references/lark-base-record-batch-create.md)、[`lark-base-record-batch-update.md`](references/lark-base-record-batch-update.md)、[`lark-base-cell-value.md`](references/lark-base-cell-value.md) | 写前先 `+field-list`；只写存储字段；`+record-batch-update` 为同值更新（同一 patch 应用到多条记录）；批量单次不超过 `200` 条；附件不要走这里 |
 | `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | `lark-cli docs +media-download` | 下载 Base 附件文件到本地 | [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) | Base 附件的 `file_token` 从 `+record-get` 返回的附件字段数组里取；**不要用 `lark-cli drive +download`**（对 Base 附件返回 403） |
 | `+record-delete` | 删除一条或多条记录 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md) | 删除多条时重复传 `--record-id` 指定多个记录；用户已明确目标可直接执行并带 `--yes` |
@@ -224,7 +224,7 @@ metadata:
 | 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | 下载记录里的附件文件 | `lark-cli docs +media-download --token <file_token> --output <path>` | `file_token` 从 `+record-get` 返回的附件字段里取；用法见 [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) |
 | 基于视图做筛选读取 | `+view-set-filter` + `+record-list` | 不要跳过视图筛选直接猜条件 |
-| 本地 Excel / CSV 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
+| 本地 Excel / CSV / `.base` 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
 
 ### 3.3 表名、字段名与表达式引用
 
@@ -274,10 +274,6 @@ lark-cli auth login --domain base
 4. 若 bot 身份仍然返回权限错误，**立即停止重试**，根据错误响应按 `lark-shared` 流程引导用户解决（引导去开发者后台开通 scope 或确认资源访问权限）。
 5. 只有在用户明确要求"用应用身份 / bot 身份操作"，才跳过 user 直接使用 `--as bot`。
 
-**补充说明**：
-
-- 人员字段 / 用户字段：注意 `user_id_type` 与执行身份（user / bot）差异。
-
 ## 4. 执行规则
 
 ### 4.1 标准执行顺序
@@ -294,7 +290,7 @@ lark-cli auth login --domain base
 1. 先拿结构，再写命令；至少先拿当前表结构，跨表时还要拿目标表结构。
 2. 不要猜表名、字段名、表达式引用，一律以真实返回为准。
 3. 只使用原子命令；不要回退到旧的聚合式 `+table / +field / +record / +view / +history / +workspace`。
-4. 写记录前先读字段结构；先 `+field-list`，再按字段类型构造写入值。
+4. 写记录前先读字段结构；先 `+field-list`，再按 [`lark-base-cell-value.md`](references/lark-base-cell-value.md) 构造 CellValue。
 5. 写字段前先看字段属性规范；先读 `lark-base-shortcut-field-properties.md`，再构造 `+field-create / +field-update` 的 JSON。
 6. 只写可写字段；系统字段、附件字段、`formula`、`lookup` 默认不作为普通记录写入目标。
 7. 聚合分析与取数分流；统计走 `+data-query`，关键词检索走 `+record-search`，明细走 `+record-list / +record-get`。
@@ -324,15 +320,15 @@ lark-cli auth login --domain base
 
 | 错误 / 现象 | 含义 | 恢复动作 |
 |-------------|------|----------|
-| `1254064` | 日期格式错误 | 用毫秒时间戳，非字符串 / 秒级 |
-| `1254068` | 超链接格式错误 | 用 `{text, link}` 对象 |
-| `1254066` | 人员字段错误 | 用 `[{id:"ou_xxx"}]`，并确认 `user_id_type` |
+| `1254064` | 日期格式错误 | 传 `YYYY-MM-DD HH:mm:ss` 字符串，不要写相对时间 |
+| `1254068` | 超链接格式错误 | `"https://example.com"` 或 `"[文本](https://example.com)"` |
+| `1254066` | 人员字段错误 | `[{ "id": "ou_xxx" }]` |
 | `1254045` | 字段名不存在 | 检查字段名（含空格、大小写） |
 | `1254015` | 字段值类型不匹配 | 先 `+field-list`，再按类型构造 |
 | `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先用 `lark-cli wiki spaces get_node` 取真实 `obj_token`；当 `obj_type=bitable` 时，用 `node.obj_token` 作为 `--base-token` 重试，不要改走 `bitable/v1` |
 | `not found` 且用户给的是 wiki 链接 | 常见于把 wiki token 当成 base token | 优先回退检查 wiki 解析，而不是改走 `bitable/v1` |
 | formula / lookup 创建失败 | 指南未读或结构不合法 | 先读 `formula-field-guide.md` / `lookup-field-guide.md`，再按 guide 重建请求 |
-| 系统字段 / 公式字段写入失败 | 只读字段被当成可写字段 | 改为写存储字段，计算结果交给 formula / lookup / 系统字段自动产出 |
+| `ignored_fields` / `READONLY` | 只读字段被当成可写字段，常见于系统字段、formula、lookup | 移除只读字段，只写存储字段；计算结果交给 formula / lookup / 系统字段自动产出 |
 | `1254104` | 批量超 200 条 | 分批调用 |
 | `1254291` | 并发写冲突 | 串行写入 + 批次间延迟 |
 | `91403` | 无权限访问该 Base | **不要重试**。按 `lark-shared` 权限不足处理流程引导用户解决权限问题 |

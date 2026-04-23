@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -142,6 +144,16 @@ func transcriptStub(token string) *httpmock.Stub {
 		Method: "GET",
 		URL:    "/open-apis/minutes/v1/minutes/" + token + "/transcript",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	}
+}
+
+// transcriptRawStub returns an actual transcript body so downloadTranscriptFile
+// writes a file to disk. Used by path-layout tests.
+func transcriptRawStub(token string, body []byte) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/minutes/v1/minutes/" + token + "/transcript",
+		RawBody: body,
 	}
 }
 
@@ -637,5 +649,81 @@ func TestNotes_CalendarPath_NeedNotes_RequestBody(t *testing.T) {
 	}
 	if _, ok := body["need_ai_meeting_notes"]; ok {
 		t.Errorf("need_ai_meeting_notes should not be requested")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Transcript path layout tests (unified ./minutes/{token}/ default)
+// ---------------------------------------------------------------------------
+
+// chdirForTest switches cwd to a temp dir for the test; restored on cleanup.
+func chdirForTest(t *testing.T) string {
+	t.Helper()
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(orig) })
+	return dir
+}
+
+func TestNotes_TranscriptDefaultLayout(t *testing.T) {
+	chdirForTest(t)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(minuteGetStub("tok001", "", "Meeting Title"))
+	reg.Register(emptyArtifactsStub("tok001"))
+	reg.Register(transcriptRawStub("tok001", []byte("speaker1: hello world\n")))
+
+	err := mountAndRun(t, VCNotes, []string{
+		"+notes", "--minute-tokens", "tok001", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantPath := "minutes/tok001/transcript.txt"
+	data, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("expected file at %s: %v", wantPath, err)
+	}
+	if string(data) != "speaker1: hello world\n" {
+		t.Errorf("content mismatch: %q", string(data))
+	}
+
+	if _, err := os.Stat("artifact-Meeting Title-tok001"); err == nil {
+		t.Errorf("legacy artifact dir should not appear under default layout")
+	}
+}
+
+func TestNotes_TranscriptExplicitOutputDir_PreservesLegacyLayout(t *testing.T) {
+	chdirForTest(t)
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(minuteGetStub("tok001", "", "Meeting Title"))
+	reg.Register(emptyArtifactsStub("tok001"))
+	reg.Register(transcriptRawStub("tok001", []byte("content")))
+
+	if err := os.MkdirAll("out", 0755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	err := mountAndRun(t, VCNotes, []string{
+		"+notes", "--minute-tokens", "tok001", "--output-dir", "out", "--as", "user",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantPath := filepath.Join("out", "artifact-Meeting Title-tok001", "transcript.txt")
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Errorf("expected legacy path %s preserved, got err: %v", wantPath, err)
+	}
+	if _, err := os.Stat("minutes"); err == nil {
+		t.Errorf("minutes/ should not be created when --output-dir is explicit")
 	}
 }

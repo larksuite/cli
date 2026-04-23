@@ -482,7 +482,17 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
+	// Content safety scanning
+	scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+	if scanResult.Blocked {
+		ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
+		return
+	}
+
 	env := output.Envelope{OK: true, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
+	if scanResult.Alert != nil {
+		env.ContentSafetyAlert = scanResult.Alert
+	}
 	if ctx.JqExpr != "" {
 		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
@@ -497,23 +507,41 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 // OutFormat prints output based on --format flag.
 // "json" (default) outputs JSON envelope; "pretty" calls prettyFn; others delegate to FormatValue.
 // When JqExpr is set, routes through Out() regardless of format.
+// For json/"" and jq paths, Out() handles content safety scanning.
+// For pretty/table/csv/ndjson, scanning is done here and the alert is written to stderr.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
 	if ctx.JqExpr != "" {
-		ctx.Out(data, meta)
+		ctx.Out(data, meta) // Out() handles scanning
 		return
 	}
 	switch ctx.Format {
+	case "json", "":
+		ctx.Out(data, meta) // Out() handles scanning
 	case "pretty":
+		scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+		if scanResult.Blocked {
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
+			return
+		}
+		if scanResult.Alert != nil {
+			output.WriteAlertWarning(ctx.IO().ErrOut, scanResult.Alert)
+		}
 		if prettyFn != nil {
 			prettyFn(ctx.IO().Out)
 		} else {
 			ctx.Out(data, meta)
 		}
-	case "json", "":
-		ctx.Out(data, meta)
 	default:
 		// table, csv, ndjson — pass data directly; FormatValue handles both
 		// plain arrays and maps with array fields (e.g. {"members":[…]})
+		scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+		if scanResult.Blocked {
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
+			return
+		}
+		if scanResult.Alert != nil {
+			output.WriteAlertWarning(ctx.IO().ErrOut, scanResult.Alert)
+		}
 		format, formatOK := output.ParseFormat(ctx.Format)
 		if !formatOK {
 			fmt.Fprintf(ctx.IO().ErrOut, "warning: unknown format %q, falling back to json\n", ctx.Format)

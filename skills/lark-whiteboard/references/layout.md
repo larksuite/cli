@@ -336,7 +336,7 @@ DSL 的语法是严格白名单，不能写原生 CSS 属性（不支持 `alignS
 先出骨架图导出坐标，再基于坐标补充连线和注解：
 
 ```bash
-npx -y @larksuite/whiteboard-cli@^0.2.0 -i skeleton.json -o step1.png -l coords.json
+npx -y @larksuite/whiteboard-cli@^0.2.9 -i skeleton.json -o step1.png -l coords.json
 ```
 
 `coords.json` 包含每个带 id 节点的精确坐标（absX, absY, width, height）。

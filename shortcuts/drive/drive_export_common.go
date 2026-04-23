@@ -137,13 +137,17 @@ func validateDriveExportSpec(spec driveExportSpec) error {
 	}
 
 	switch spec.FileExtension {
-	case "docx", "pdf", "xlsx", "csv", "markdown":
+	case "docx", "pdf", "xlsx", "csv", "markdown", "base":
 	default:
-		return output.ErrValidation("invalid --file-extension %q: allowed values are docx, pdf, xlsx, csv, markdown", spec.FileExtension)
+		return output.ErrValidation("invalid --file-extension %q: allowed values are docx, pdf, xlsx, csv, markdown, base", spec.FileExtension)
 	}
 
 	if spec.FileExtension == "markdown" && spec.DocType != "docx" {
 		return output.ErrValidation("--file-extension markdown only supports --doc-type docx")
+	}
+
+	if spec.FileExtension == "base" && spec.DocType != "bitable" {
+		return output.ErrValidation("--file-extension base only supports --doc-type bitable")
 	}
 
 	if strings.TrimSpace(spec.SubID) != "" {
@@ -367,6 +371,8 @@ func exportFileSuffix(fileExtension string) string {
 		return ".xlsx"
 	case "csv":
 		return ".csv"
+	case "base":
+		return ".base"
 	default:
 		return ""
 	}

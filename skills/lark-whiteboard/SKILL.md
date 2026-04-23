@@ -12,10 +12,8 @@ metadata:
 ---
 
 > [!IMPORTANT]
-> **执行前检查环境**：
-> - 运行 `whiteboard-cli --version`，确认版本为 `0.2.x`；未安装或版本不符 → `npm install -g @larksuite/whiteboard-cli@^0.2.0`
-> - 运行 `lark-cli --version`，确认可用。
-> - 执行任何 `npm install` 前，**必须征得用户同意**。
+> - 运行 `lark-cli --version`，确认可用，无需询问用户。
+> - 运行 `npx -y @larksuite/whiteboard-cli@^0.2.9 -v`，确认可用，无需询问用户。
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
@@ -126,7 +124,7 @@ diagram.png           ← 渲染结果
 
 ```bash
 # 第一步：dry-run 探测
-npx -y @larksuite/whiteboard-cli@^0.2.0 -i <产物文件> --to openapi --format json \
+npx -y @larksuite/whiteboard-cli@^0.2.9 -i <产物文件> --to openapi --format json \
   | lark-cli whiteboard +update \
     --whiteboard-token <Token> \
     --source - --input_format raw \
@@ -134,7 +132,7 @@ npx -y @larksuite/whiteboard-cli@^0.2.0 -i <产物文件> --to openapi --format 
     --overwrite --dry-run --as user
 
 # 第二步：确认后执行
-npx -y @larksuite/whiteboard-cli@^0.2.0 -i <产物文件> --to openapi --format json \
+npx -y @larksuite/whiteboard-cli@^0.2.9 -i <产物文件> --to openapi --format json \
   | lark-cli whiteboard +update \
     --whiteboard-token <Token> \
     --source - --input_format raw \

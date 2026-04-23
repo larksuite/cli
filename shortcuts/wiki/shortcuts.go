@@ -10,5 +10,6 @@ func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		WikiMove,
 		WikiNodeCreate,
+		WikiDeleteSpace,
 	}
 }

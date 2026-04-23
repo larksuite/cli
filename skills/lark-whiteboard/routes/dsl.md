@@ -13,7 +13,7 @@ Step 1: 路由 & 读取知识
 Step 2: 生成完整 DSL（含颜色）
   - 按 content.md 规划信息量和分组
   - 按 layout.md 选择布局模式和间距
-  - 推荐使用图标让图表更直观，运行 `npx -y @larksuite/whiteboard-cli@^0.2.0 --icons` 查看可用图标
+  - 推荐使用图标让图表更直观，运行 `npx -y @larksuite/whiteboard-cli@^0.2.9 --icons` 查看可用图标
   - 按 style.md 上色（用户没指定时用默认经典色板）
   - 按 schema.md 语法输出完整 JSON
   - 连线参考 connectors.md，排版参考 typography.md
@@ -25,12 +25,12 @@ Step 2: 生成完整 DSL（含颜色）
 
 Step 3: 渲染 & 审查 → 交付
   - 渲染前自查（见下方检查清单）
-  - 渲染 PNG（仅用于预览验证，不是最终产物）：npx -y @larksuite/whiteboard-cli@^0.2.0 -i diagram.json -o diagram.png
+  - 渲染 PNG（仅用于预览验证，不是最终产物）：npx -y @larksuite/whiteboard-cli@^0.2.9 -i diagram.json -o diagram.png
   - 检查：信息完整？布局合理？配色协调？文字无截断？连线无交叉？
   - 有问题 → 按症状表修复 → 重新渲染（最多 2 轮）
   - 2 轮后仍有严重问题 → 考虑走 Mermaid 路径兜底
   - 写入画板：用 whiteboard-cli 将 diagram.json 转换为 OpenAPI 格式并 pipe 给 +update：
-      npx -y @larksuite/whiteboard-cli@^0.2.0 -i diagram.json --to openapi --format json \
+      npx -y @larksuite/whiteboard-cli@^0.2.9 -i diagram.json --to openapi --format json \
         | lark-cli whiteboard +update --whiteboard-token <board_token> \
             --source - --input_format raw --idempotent-token <时间戳+标识> --yes --as user
       → 完整 dry-run / 确认流程见 SKILL.md [§ 写入画板](../SKILL.md#写入画板)

@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -20,6 +21,10 @@ var alignMap = map[string]int{
 	"center": 2,
 	"right":  3,
 }
+
+// readClipboardImage is the clipboard read function, swappable in tests to
+// inject synthetic image bytes without depending on the host pasteboard.
+var readClipboardImage = readClipboardImageBytes
 
 // fileViewMap maps the user-facing --file-view value to the docx File block
 // `view_type` enum. The underlying values come from the open platform spec:
@@ -41,7 +46,8 @@ var DocMediaInsert = common.Shortcut{
 	Scopes:      []string{"docs:document.media:upload", "docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
+		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)"},
+		{Name: "from-clipboard", Type: "bool", Desc: "read image from system clipboard instead of a local file (macOS/Windows built-in; Linux requires xclip, xsel or wl-paste)"},
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: "image", Desc: "type: image | file"},
 		{Name: "align", Desc: "alignment: left | center | right"},
@@ -51,6 +57,15 @@ var DocMediaInsert = common.Shortcut{
 		{Name: "file-view", Desc: "file block rendering: card (default) | preview | inline; only applies when --type=file. preview renders audio/video as an inline player"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		filePath := runtime.Str("file")
+		fromClipboard := runtime.Bool("from-clipboard")
+		if filePath == "" && !fromClipboard {
+			return common.FlagErrorf("one of --file or --from-clipboard is required")
+		}
+		if filePath != "" && fromClipboard {
+			return common.FlagErrorf("--file and --from-clipboard are mutually exclusive")
+		}
+
 		docRef, err := parseDocumentRef(runtime.Str("doc"))
 		if err != nil {
 			return err
@@ -89,6 +104,9 @@ var DocMediaInsert = common.Shortcut{
 		documentID := docRef.Token
 		stepBase := 1
 		filePath := runtime.Str("file")
+		if runtime.Bool("from-clipboard") {
+			filePath = "<clipboard image>"
+		}
 		mediaType := runtime.Str("type")
 		caption := runtime.Str("caption")
 		selection := strings.TrimSpace(runtime.Str("selection-with-ellipsis"))
@@ -162,7 +180,15 @@ var DocMediaInsert = common.Shortcut{
 			Desc(fmt.Sprintf("[%d] Bind uploaded file token to the new block", stepBase+3)).
 			Body(batchUpdateData)
 
-		return d.Set("document_id", documentID)
+		d.Set("document_id", documentID)
+		// Annotate dry-run when reading from the clipboard: DryRun never touches
+		// the pasteboard, so it cannot tell in advance whether the payload is
+		// above or below the 20MB single-part threshold. Execute will make the
+		// real decision once it reads the bytes.
+		if runtime.Bool("from-clipboard") {
+			d.Set("upload_size_note", "clipboard size unknown; single-part vs multipart decision deferred to runtime")
+		}
+		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
@@ -172,23 +198,42 @@ var DocMediaInsert = common.Shortcut{
 		caption := runtime.Str("caption")
 		fileViewType := fileViewMap[runtime.Str("file-view")]
 
+		// Clipboard path: read image bytes into memory, bypassing FileIO path validation.
+		var clipboardContent []byte
+		if runtime.Bool("from-clipboard") {
+			fmt.Fprintf(runtime.IO().ErrOut, "Reading image from clipboard...\n")
+			var err error
+			clipboardContent, err = readClipboardImage()
+			if err != nil {
+				return err
+			}
+		}
+
 		documentID, err := resolveDocxDocumentID(runtime, docInput)
 		if err != nil {
 			return err
 		}
 
-		// Validate file
-		stat, err := runtime.FileIO().Stat(filePath)
-		if err != nil {
-			return common.WrapInputStatError(err, "file not found")
-		}
-		if !stat.Mode().IsRegular() {
-			return output.ErrValidation("file must be a regular file: %s", filePath)
+		// Determine file size and name.
+		var fileSize int64
+		var fileName string
+		if clipboardContent != nil {
+			fileSize = int64(len(clipboardContent))
+			fileName = "clipboard.png"
+		} else {
+			stat, err := runtime.FileIO().Stat(filePath)
+			if err != nil {
+				return common.WrapInputStatError(err, "file not found")
+			}
+			if !stat.Mode().IsRegular() {
+				return output.ErrValidation("file must be a regular file: %s", filePath)
+			}
+			fileSize = stat.Size()
+			fileName = filepath.Base(filePath)
 		}
 
-		fileName := filepath.Base(filePath)
 		fmt.Fprintf(runtime.IO().ErrOut, "Inserting: %s -> document %s\n", fileName, common.MaskToken(documentID))
-		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
+		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 		}
 
@@ -264,8 +309,23 @@ var DocMediaInsert = common.Shortcut{
 			return opErr
 		}
 
-		// Step 3: Upload media file
-		fileToken, err := uploadDocMediaFile(runtime, filePath, fileName, stat.Size(), parentTypeForMediaType(mediaType), uploadParentNode, documentID)
+		// Step 3: Upload media file.
+		// Only materialize Content when clipboard bytes exist, so the `io.Reader`
+		// interface stays a true nil for the --file path. Passing a typed-nil
+		// *bytes.Reader here would make the downstream `if cfg.Content != nil`
+		// check incorrectly take the clipboard branch and crash on Read.
+		uploadCfg := UploadDocMediaFileConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: parentTypeForMediaType(mediaType),
+			ParentNode: uploadParentNode,
+			DocID:      documentID,
+		}
+		if clipboardContent != nil {
+			uploadCfg.Reader = bytes.NewReader(clipboardContent)
+		}
+		fileToken, err := uploadDocMediaFile(runtime, uploadCfg)
 		if err != nil {
 			return withRollbackWarning(err)
 		}

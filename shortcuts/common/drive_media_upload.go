@@ -40,6 +40,7 @@ type DriveMediaUploadAllConfig struct {
 	// Reader, when non-nil, is used as the upload source instead of opening
 	// FilePath. Callers must set FileName and FileSize explicitly. The reader
 	// is NOT closed by UploadDriveMediaAll; the caller owns its lifetime.
+	// Used by the clipboard path in docs +media-insert.
 	Reader io.Reader
 }
 
@@ -50,6 +51,8 @@ type DriveMediaMultipartUploadConfig struct {
 	ParentType string
 	ParentNode string
 	Extra      string
+	// Reader mirrors DriveMediaUploadAllConfig.Reader for chunked uploads.
+	Reader io.Reader
 }
 
 func UploadDriveMediaAll(runtime *RuntimeContext, cfg DriveMediaUploadAllConfig) (string, error) {
@@ -118,7 +121,7 @@ func UploadDriveMediaMultipart(runtime *RuntimeContext, cfg DriveMediaMultipartU
 	}
 	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", session.BlockNum, FormatSize(session.BlockSize))
 
-	if err = uploadDriveMediaMultipartParts(runtime, cfg.FilePath, cfg.FileSize, session); err != nil {
+	if err = uploadDriveMediaMultipartParts(runtime, cfg, session); err != nil {
 		return "", err
 	}
 
@@ -176,12 +179,18 @@ func ExtractDriveMediaUploadFileToken(data map[string]interface{}, action string
 	return fileToken, nil
 }
 
-func uploadDriveMediaMultipartParts(runtime *RuntimeContext, filePath string, fileSize int64, session DriveMediaMultipartUploadSession) error {
-	f, err := runtime.FileIO().Open(filePath)
-	if err != nil {
-		return WrapInputStatError(err)
+func uploadDriveMediaMultipartParts(runtime *RuntimeContext, cfg DriveMediaMultipartUploadConfig, session DriveMediaMultipartUploadSession) error {
+	var r io.Reader
+	if cfg.Reader != nil {
+		r = cfg.Reader
+	} else {
+		f, err := runtime.FileIO().Open(cfg.FilePath)
+		if err != nil {
+			return WrapInputStatError(err)
+		}
+		defer f.Close()
+		r = f
 	}
-	defer f.Close()
 
 	maxInt := int64(^uint(0) >> 1)
 	bufferSize := session.BlockSize
@@ -189,7 +198,7 @@ func uploadDriveMediaMultipartParts(runtime *RuntimeContext, filePath string, fi
 		return output.Errorf(output.ExitAPI, "api_error", "upload prepare failed: invalid block_size returned")
 	}
 	buffer := make([]byte, int(bufferSize))
-	remaining := fileSize
+	remaining := cfg.FileSize
 	// Follow the server-declared block plan exactly; upload_finish expects the
 	// same block count returned by upload_prepare.
 	for seq := 0; seq < session.BlockNum; seq++ {
@@ -198,12 +207,12 @@ func uploadDriveMediaMultipartParts(runtime *RuntimeContext, filePath string, fi
 			chunkSize = remaining
 		}
 
-		n, readErr := io.ReadFull(f, buffer[:int(chunkSize)])
+		n, readErr := io.ReadFull(r, buffer[:int(chunkSize)])
 		if readErr != nil {
 			return output.ErrValidation("cannot read file: %s", readErr)
 		}
 
-		if err = uploadDriveMediaMultipartPart(runtime, session.UploadID, seq, buffer[:n]); err != nil {
+		if err := uploadDriveMediaMultipartPart(runtime, session.UploadID, seq, buffer[:n]); err != nil {
 			return err
 		}
 		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, session.BlockNum, FormatSize(int64(n)))

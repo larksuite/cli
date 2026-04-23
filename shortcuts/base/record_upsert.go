@@ -20,7 +20,7 @@ var BaseRecordUpsert = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordRefFlag(false),
-		{Name: "json", Desc: "record JSON object", Required: true},
+		{Name: "json", Desc: "record JSON object: Map<FieldNameOrID, CellValue>", Required: true},
 	},
 	Tips: []string{
 		`Example: --json '{"Name":"Alice"}'`,

@@ -24,6 +24,7 @@ var BaseRecordBatchUpdate = common.Shortcut{
 	Tips: []string{
 		`Example: --json '{"record_id_list":["recXXX"],"patch":{"Status":"Done"}}'`,
 		"Agent hint: use the lark-base skill's record-batch-update guide for usage and limits.",
+		"Agent hint: use lark-base-cell-value.md as the source of truth for each patch CellValue.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordJSON(runtime)

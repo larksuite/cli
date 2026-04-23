@@ -13,27 +13,54 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-func TestValidateDriveImportSpecRejectsMismatchedType(t *testing.T) {
+func TestValidateDriveImportSpec(t *testing.T) {
 	t.Parallel()
 
-	err := validateDriveImportSpec(driveImportSpec{
-		FilePath: "./data.xlsx",
-		DocType:  "docx",
-	})
-	if err == nil || !strings.Contains(err.Error(), "file type mismatch") {
-		t.Fatalf("expected file type mismatch error, got %v", err)
+	tests := []struct {
+		name    string
+		spec    driveImportSpec
+		wantErr string
+	}{
+		{
+			name:    "xlsx as docx rejected",
+			spec:    driveImportSpec{FilePath: "./data.xlsx", DocType: "docx"},
+			wantErr: "file type mismatch",
+		},
+		{
+			name:    "xls bitable rejected",
+			spec:    driveImportSpec{FilePath: "./data.xls", DocType: "bitable"},
+			wantErr: ".xls files can only be imported as 'sheet'",
+		},
+		{
+			name: "base bitable ok",
+			spec: driveImportSpec{FilePath: "./snapshot.base", DocType: "bitable"},
+		},
+		{
+			name:    "base non bitable rejected",
+			spec:    driveImportSpec{FilePath: "./snapshot.base", DocType: "sheet"},
+			wantErr: ".base files can only be imported as 'bitable'",
+		},
+		{
+			name:    "unknown extension rejected",
+			spec:    driveImportSpec{FilePath: "./data.rtf", DocType: "docx"},
+			wantErr: "unsupported file extension",
+		},
 	}
-}
 
-func TestValidateDriveImportSpecRejectsXlsBitable(t *testing.T) {
-	t.Parallel()
-
-	err := validateDriveImportSpec(driveImportSpec{
-		FilePath: "./data.xls",
-		DocType:  "bitable",
-	})
-	if err == nil || !strings.Contains(err.Error(), ".xls files can only be imported as 'sheet'") {
-		t.Fatalf("expected xls-only-sheet validation error, got %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateDriveImportSpec(tt.spec)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 
@@ -73,6 +100,19 @@ func TestValidateDriveImportFileSize(t *testing.T) {
 			filePath: "./data.xlsx",
 			docType:  "sheet",
 			fileSize: driveImport800MBFileSizeLimit,
+		},
+		{
+			name:     "base exceeds 20mb limit",
+			filePath: "./snapshot.base",
+			docType:  "bitable",
+			fileSize: driveImport20MBFileSizeLimit + 1,
+			wantText: "exceeds 20.0 MB import limit for .base",
+		},
+		{
+			name:     "base within 20mb limit",
+			filePath: "./snapshot.base",
+			docType:  "bitable",
+			fileSize: driveImport20MBFileSizeLimit,
 		},
 	}
 
@@ -218,6 +258,27 @@ func TestDriveImportRejectsOversizedFileByImportLimit(t *testing.T) {
 		t.Fatal("expected size limit error, got nil")
 	}
 	if !strings.Contains(err.Error(), "exceeds 100.0 MB import limit for .csv when importing as bitable") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDriveImportRejectsOversizedBaseFile(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	writeSizedDriveImportFile(t, "too-large.base", driveImport20MBFileSizeLimit+1)
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "too-large.base",
+		"--type", "bitable",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected size limit error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds 20.0 MB import limit for .base") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

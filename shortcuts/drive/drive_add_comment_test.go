@@ -223,6 +223,21 @@ func TestParseCommentReplyElements(t *testing.T) {
 	}
 }
 
+func TestParseCommentReplyElementsEscapesAngleBrackets(t *testing.T) {
+	t.Parallel()
+
+	got, err := parseCommentReplyElements(`[{"type":"text","text":"a < b > c"}]`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 reply element, got %d", len(got))
+	}
+	if got[0]["text"] != "a &lt; b &gt; c" {
+		t.Fatalf("expected escaped text, got %#v", got[0]["text"])
+	}
+}
+
 func TestParseCommentReplyElementsInvalid(t *testing.T) {
 	t.Parallel()
 

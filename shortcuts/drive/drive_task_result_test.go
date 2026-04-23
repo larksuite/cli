@@ -414,23 +414,107 @@ func TestDriveTaskResultWikiMoveIncludesFlattenedNodeFields(t *testing.T) {
 	}
 }
 
-func TestValidateDriveTaskResultScopesWikiMoveRequiresWikiScope(t *testing.T) {
+func TestValidateDriveTaskResultScopesWikiScenariosRequireWikiScope(t *testing.T) {
 	t.Parallel()
 
-	runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "drive:drive.metadata:readonly")
-	err := validateDriveTaskResultScopes(context.Background(), runtime, "wiki_move")
-	if err == nil || !strings.Contains(err.Error(), "missing required scope(s): wiki:space:read") {
-		t.Fatalf("expected missing wiki scope error, got %v", err)
+	// wiki_move and wiki_delete_space both read wiki task status, so both must
+	// require wiki:space:read. A single table keeps this invariant explicit
+	// without duplicating near-identical test functions per scenario.
+	for _, scenario := range []string{"wiki_move", "wiki_delete_space"} {
+		t.Run(scenario+"/rejects missing scope", func(t *testing.T) {
+			t.Parallel()
+			runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "drive:drive.metadata:readonly")
+			err := validateDriveTaskResultScopes(context.Background(), runtime, scenario)
+			if err == nil || !strings.Contains(err.Error(), "missing required scope(s): wiki:space:read") {
+				t.Fatalf("expected missing wiki scope error, got %v", err)
+			}
+		})
+		t.Run(scenario+"/accepts wiki scope", func(t *testing.T) {
+			t.Parallel()
+			runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "wiki:space:read")
+			err := validateDriveTaskResultScopes(context.Background(), runtime, scenario)
+			if err != nil {
+				t.Fatalf("validateDriveTaskResultScopes() error = %v", err)
+			}
+		})
 	}
 }
 
-func TestValidateDriveTaskResultScopesWikiMoveAcceptsWikiScope(t *testing.T) {
+func TestDriveTaskResultDryRunWikiDeleteSpaceIncludesTaskTypeParam(t *testing.T) {
 	t.Parallel()
 
-	runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "wiki:space:read")
-	err := validateDriveTaskResultScopes(context.Background(), runtime, "wiki_move")
+	cmd := &cobra.Command{Use: "drive +task_result"}
+	cmd.Flags().String("scenario", "", "")
+	cmd.Flags().String("ticket", "", "")
+	cmd.Flags().String("task-id", "", "")
+	cmd.Flags().String("file-token", "", "")
+	if err := cmd.Flags().Set("scenario", "wiki_delete_space"); err != nil {
+		t.Fatalf("set --scenario: %v", err)
+	}
+	if err := cmd.Flags().Set("task-id", "task_del_1"); err != nil {
+		t.Fatalf("set --task-id: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContext(cmd, nil)
+	dry := DriveTaskResult.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
 	if err != nil {
-		t.Fatalf("validateDriveTaskResultScopes() error = %v", err)
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API []struct {
+			Params map[string]interface{} `json:"params"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if len(got.API) != 1 {
+		t.Fatalf("expected 1 API call, got %d", len(got.API))
+	}
+	if got.API[0].Params["task_type"] != "delete_space" {
+		t.Fatalf("wiki delete-space params = %#v, want task_type=delete_space", got.API[0].Params)
+	}
+}
+
+func TestDriveTaskResultWikiDeleteSpaceSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/tasks/task_del_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"task": map[string]interface{}{
+					"delete_space_result": map[string]interface{}{
+						"status": "success",
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveTaskResult, []string{
+		"+task_result",
+		"--scenario", "wiki_delete_space",
+		"--task-id", "task_del_1",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if data["scenario"] != "wiki_delete_space" || data["task_id"] != "task_del_1" {
+		t.Fatalf("unexpected wiki_delete_space envelope: %#v", data)
+	}
+	if data["ready"] != true || data["failed"] != false || data["status"] != "success" {
+		t.Fatalf("unexpected readiness fields: %#v", data)
 	}
 }
 
