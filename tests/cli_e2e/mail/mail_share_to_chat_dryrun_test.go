@@ -26,12 +26,12 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
 
 	tests := []struct {
-		name            string
-		args            []string
-		wantURLs        []string
-		wantCreateBody  map[string]string
-		wantSendBody    map[string]string
-		wantSendParams  map[string]string
+		name           string
+		args           []string
+		wantURLs       []string
+		wantCreateBody map[string]string
+		wantSendBody   map[string]string
+		wantSendParams map[string]string
 	}{
 		{
 			name: "message-id with default chat_id",
