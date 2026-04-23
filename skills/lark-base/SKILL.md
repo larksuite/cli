@@ -102,11 +102,12 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+record-search / +record-list / +record-get` | 按关键词检索记录、读取记录明细 / 分页导出，或获取一条或多条记录详情 | [`lark-base-record-search.md`](references/lark-base-record-search.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | 默认优先 `+record-list`；仅当用户提供明确搜索关键词时使用 `+record-search`；取数不用来做聚合分析；`--limit` 最大 `200`；`+record-get` 优先用重复 `--record-id` 指定目标记录，并优先用 `--field-id` 只取需要字段，避免返回体过大；仅在用户明确需要时继续翻页；`+record-list` 只能串行执行 |
+| `+record-search / +record-list / +record-get` | 获取记录：关键词搜索 / 分页读取 / 按 ID 读取 | [`lark-base-record-search.md`](references/lark-base-record-search.md)、[`lark-base-record-list.md`](references/lark-base-record-list.md)、[`lark-base-record-get.md`](references/lark-base-record-get.md) | 无关键词用 `+record-list`；有 record_id 用 `+record-get`；有关键词才用 `+record-search`；读取非聚合分析；`+record-get` 用 `--field-id` 裁剪字段；`+record-list` 串行、`--limit<=200`、按需翻页 |
 | `+record-upsert / +record-batch-create / +record-batch-update` | 创建、更新或批量写入记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-record-batch-create.md`](references/lark-base-record-batch-create.md)、[`lark-base-record-batch-update.md`](references/lark-base-record-batch-update.md)、[`lark-base-shortcut-record-value.md`](references/lark-base-shortcut-record-value.md) | 写前先 `+field-list`；只写存储字段；`+record-batch-update` 为同值更新（同一 patch 应用到多条记录）；批量单次不超过 `200` 条；附件不要走这里 |
 | `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | `lark-cli docs +media-download` | 下载 Base 附件文件到本地 | [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) | Base 附件的 `file_token` 从 `+record-get` 返回的附件字段数组里取；**不要用 `lark-cli drive +download`**（对 Base 附件返回 403） |
-| `+record-delete / +record-history-list` | 删除一条或多条记录，或查询某条记录的变更历史 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md)、[`lark-base-record-history-list.md`](references/lark-base-record-history-list.md) | 删除时优先用重复 `--record-id` 指定目标；用户已明确目标可直接执行并带 `--yes`；历史查询按 `table-id + record-id`，不支持整表扫描；`+record-history-list` 只能串行执行 |
+| `+record-delete` | 删除一条或多条记录 | [`lark-base-record-delete.md`](references/lark-base-record-delete.md) | 删除多条时重复传 `--record-id` 指定多个记录；用户已明确目标可直接执行并带 `--yes` |
+| `+record-history-list` | 查询指定记录的变更历史 | [`lark-base-record-history-list.md`](references/lark-base-record-history-list.md) | 按 `table-id + record-id` 查询，不支持整表扫描；`+record-history-list` 只能串行执行 |
 | `+record-share-link-create` | 为一条或多条记录生成分享链接 | [`lark-base-record-share-link-create.md`](references/lark-base-record-share-link-create.md) | 单次最多 100 条；重复 record_id 会自动去重；适合分享单条记录或批量分享场景 |
 
 #### 2.3.4 View 子模块
