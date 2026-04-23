@@ -49,7 +49,7 @@ func TestBase_RoleWorkflow(t *testing.T) {
 		}
 	})
 
-	t.Run("list", func(t *testing.T) {
+	t.Run("list as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+role-list", "--base-token", baseToken},
 			DefaultAs: "bot",
@@ -81,7 +81,7 @@ func TestBase_RoleWorkflow(t *testing.T) {
 		require.NotEmpty(t, roleID, "stdout:\n%s", result.Stdout)
 	})
 
-	t.Run("get", func(t *testing.T) {
+	t.Run("get role as bot", func(t *testing.T) {
 		require.NotEmpty(t, roleID, "role ID should be resolved before get")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -98,7 +98,7 @@ func TestBase_RoleWorkflow(t *testing.T) {
 		assert.Equal(t, roleID, gjson.Get(rolePayload, "role_id").String())
 	})
 
-	t.Run("update", func(t *testing.T) {
+	t.Run("update role as bot", func(t *testing.T) {
 		require.NotEmpty(t, roleID, "role ID should be resolved before update")
 
 		updatedRoleName := roleName + " Updated"

@@ -86,6 +86,21 @@ lark-cli docs +fetch --doc Z1FjxxxxxxxxxxxxxxxxxxxtnAc --format pretty
 | `bitable` | `lark-base` | 多维表格 |
 | 其他 | 告知用户暂不支持 | — |
 
+## 重要：任务卡片（task 标签）
+
+`docs +fetch` 默认不会查询/展开文档中内嵌的任务详情（例如任务标题、状态、负责人等）。
+它会在返回的 Markdown 中保留任务引用，并返回任务 ID（GUID），例如：
+
+```html
+<task task-id="30597dc9-262e-4597-97f4-f8efcd1aeb95"></task>
+```
+
+如果用户需要查看该任务的详情，需要用返回的 `task-id` 再调用任务 CLI 查询：
+
+```bash
+lark-cli task tasks get --as user --params '{"task_guid":"30597dc9-262e-4597-97f4-f8efcd1aeb95"}'
+```
+
 ## 工具组合
 
 | 需求 | 工具 |

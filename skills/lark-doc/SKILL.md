@@ -97,31 +97,19 @@ Drive Folder (云空间文件夹)
     └── file_token (直接使用)
 ```
 
-## 重要说明：画板编辑
-> **⚠️ lark-doc skill 不能直接编辑已有画板内容，但 `docs +update` 可以新建空白画板**
-### 场景 1：已通过 docs +fetch 获取到文档内容和画板 token
-如果用户已经通过 `docs +fetch` 拉取了文档内容，并且文档中已有画板（返回的 markdown 中包含 `<whiteboard token="xxx"/>` 标签），请引导用户：
-1. 记录画板的 token
-2. 查看 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md) 了解如何编辑画板内容
-### 场景 2：刚创建画板，需要编辑
-如果用户刚通过 `docs +update` 创建了空白画板，需要编辑时：
-**步骤 1：按空白画板语法创建**
-- 在 `--markdown` 中直接传 `<whiteboard type="blank"></whiteboard>`
-- 需要多个空白画板时，在同一个 `--markdown` 里重复多个 whiteboard 标签
-  **步骤 2：从响应中记录 token**
-- `docs +update` 成功后，读取响应字段 `data.board_tokens`
-- `data.board_tokens` 是新建画板的 token 列表，后续编辑直接使用这里的 token
-  **步骤 3：引导编辑**
-- 记录需要编辑的画板 token
-- 查看 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md) 了解如何编辑画板内容
-### 注意事项
-- 已有画板内容无法通过 lark-doc 的 `docs +update` 直接编辑
-- 编辑画板需要使用专门的 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md)
+## 绘图需求识别与挖掘
 
-## 文档可视化建议
-> **💡 在撰写文档时，当需要表达较为复杂的时序、架构层次、逻辑关系、数据流程等内容时，建议使用画板绘制可视化图表以显著提升文档的可阅读性。**
-> 
-> 请参考 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md) 了解如何绘制画板内容。
+用户很少主动提"画板"——**默认**使用飞书画板承载图表，命中以下任一信号即触发：
+- 用户提到图表类型：架构图、流程图、时序图、组织图、路线图、对比图、鱼骨图、飞轮图、思维导图等
+- 用户表达可视化意图：画一下、梳理关系、画个流程、给我一个图、方便汇报等
+- 文档主题涉及结构关系、流程走向、时间线、数据对比
+
+以下场景不加图：用户明确拒绝、合同/法律条款/合规声明等严谨连续文本、原样转录任务。
+
+> [!CAUTION]
+> 命中后，**MUST** 先读取 [`references/lark-doc-whiteboard.md`](references/lark-doc-whiteboard.md) 并**严格按其流程执行**。
+>
+> **绝对禁止**用 `whiteboard-cli` 渲染 PNG 后通过 `docs +media-insert` 插入文档——图表必须通过 `lark-cli whiteboard +update` 写入画板 block，这是唯一合法路径。
 
 ## 快速决策
 - 用户说“看一下文档里的图片/附件/素材”“预览素材”，优先用 `lark-cli docs +media-preview`。
@@ -131,45 +119,6 @@ Drive Folder (云空间文件夹)
 - `docs +search` 不是只搜文档 / Wiki；结果里会直接返回 `SHEET` 等云空间对象。
 - 拿到 spreadsheet URL / token 后，再切到 `lark-sheets` 做对象内部读取、筛选、写入等操作。
 - 用户说“给文档加评论”“查看评论”“回复评论”“给评论加表情 / reaction”“删除评论表情 / reaction”，**不要留在 `lark-doc`**，直接切到 `lark-drive` 处理。
-
-## 画板需求挖掘（主动识别）
-
-> **用户很少主动提"画板"。创建文档时应主动识别适合可视化的内容，用画板呈现。**
-
-### 🔴 关键要求（必须遵守）
-
-**创建空白画板 ≠ 完成任务**。创建空白画板后，**必须继续使用 lark-whiteboard 技能填充实际内容**。
-
-### 语义与画板类型映射
-
-创建/编辑文档时，文档主题涉及以下语义，应**主动**创建画板，无需用户指定：
-
-| 语义            | 画板类型  | 参考指南                                                                                        |
-|---------------|-------|---------------------------------------------------------------------------------------------|
-| 架构/分层/技术方案    | 架构图   | [lark-whiteboard-cli/scenes/architecture.md](../lark-whiteboard-cli/scenes/architecture.md) |
-| 流程/审批/部署/业务流转 | 流程图   | [lark-whiteboard-cli/scenes/flowchart.md](../lark-whiteboard-cli/scenes/flowchart.md)       |
-| 组织/层级/汇报关系    | 组织架构图 | [lark-whiteboard-cli/scenes/organization.md](../lark-whiteboard-cli/scenes/organization.md) |
-| 时间线/里程碑/版本规划  | 里程碑图  | [lark-whiteboard-cli/scenes/milestone.md](../lark-whiteboard-cli/scenes/milestone.md)       |
-| 因果/复盘/根因分析    | 鱼骨图   | [lark-whiteboard-cli/scenes/fishbone.md](../lark-whiteboard-cli/scenes/fishbone.md)         |
-| 方案对比/技术选型     | 对比图   | [lark-whiteboard-cli/scenes/comparison.md](../lark-whiteboard-cli/scenes/comparison.md)     |
-| 循环/飞轮/闭环      | 飞轮图   | [lark-whiteboard-cli/scenes/flywheel.md](../lark-whiteboard-cli/scenes/flywheel.md)         |
-| 层级占比/能力模型     | 金字塔图  | [lark-whiteboard-cli/scenes/pyramid.md](../lark-whiteboard-cli/scenes/pyramid.md)           |
-| 模块依赖/调用关系     | 架构图   | [lark-whiteboard-cli/scenes/architecture.md](../lark-whiteboard-cli/scenes/architecture.md) |
-| 分类梳理/知识体系     | 思维导图  | [lark-whiteboard-cli/scenes/mermaid.md](../lark-whiteboard-cli/scenes/mermaid.md)           |
-| 数据分布/占比       | 饼图    | [lark-whiteboard-cli/scenes/mermaid.md](../lark-whiteboard-cli/scenes/mermaid.md)           |
-
-创建画板前，务必先阅读 [`lark-whiteboard-cli`](../lark-whiteboard-cli/SKILL.md) 和 [`lark-whiteboard`](../lark-whiteboard/SKILL.md) 这两个 Skill，了解画板的创建流程。
-
-### 完整执行流程（必须完整执行）
-
-1. **创建空白画板占位**：创建场景用 `docs +create`、编辑场景用 `docs +update` 插入空白画板
-2. **获取画板 token**：从 `docs +update` 响应的 `data.board_tokens` 获取画板 token 列表
-3. **填充画板内容**：切换到 [`lark-whiteboard-cli`](../lark-whiteboard-cli/SKILL.md) 创建画板内容，并填入画板
-4. **验证完成**：确认所有画板都有实际内容，不是空白
-
-**不适用**：纯文字记录（日志/备忘）、数据密集型内容（用表格）、用户明确只要文字。
-
-> ⚠️ **警告**：如果只创建空白画板而不填充内容，任务将被视为未完成！
 
 ## 补充说明 
 `docs +search` 除了搜索文档 / Wiki，也承担“先定位云空间对象，再切回对应业务 skill 操作”的资源发现入口角色；当用户口头说“表格 / 报表”时，也优先从这里开始。
@@ -184,6 +133,6 @@ Shortcut 是对常用操作的高级封装（`lark-cli docs +<verb> [flags]`）�
 | [`+create`](references/lark-doc-create.md) | Create a Lark document |
 | [`+fetch`](references/lark-doc-fetch.md) | Fetch Lark document content |
 | [`+update`](references/lark-doc-update.md) | Update a Lark document |
-| [`+media-insert`](references/lark-doc-media-insert.md) | Insert a local image or file at the end of a Lark document (4-step orchestration + auto-rollback) |
+| [`+media-insert`](references/lark-doc-media-insert.md) | Insert an image/file at the end of a Lark document. Prefer `--from-clipboard` when the image is already on the system clipboard (screenshots, copy from Feishu/browser); use `--file` only for on-disk sources. |
 | [`+media-download`](references/lark-doc-media-download.md) | Download document media or whiteboard thumbnail (auto-detects extension) |
-| [`+whiteboard-update`](references/lark-doc-whiteboard-update.md) | Update an existing whiteboard in lark document with whiteboard dsl. Such DSL input from stdin. refer to lark-whiteboard skill for more details. |
+| [`+whiteboard-update`](../lark-whiteboard/references/lark-whiteboard-update.md) | Alias of `whiteboard +update`. Update an existing whiteboard with DSL, Mermaid or PlantUML. Prefer `whiteboard +update`; refer to lark-whiteboard skill for details. |

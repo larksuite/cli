@@ -12,9 +12,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -565,58 +566,6 @@ func TestToOriginalMessageForCompose_EmptyReferences(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// checkAttachmentSizeLimit
-// ---------------------------------------------------------------------------
-
-func TestCheckAttachmentSizeLimit_NoFiles(t *testing.T) {
-	if err := checkAttachmentSizeLimit(nil, nil, 0); err != nil { //nolint:staticcheck // fio nil ok: no files
-		t.Fatalf("unexpected error for empty: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_CountExceeded(t *testing.T) {
-	err := checkAttachmentSizeLimit(nil, nil, 0, MaxAttachmentCount+1)
-	if err == nil {
-		t.Fatal("expected error for count exceeded")
-	}
-	if !strings.Contains(err.Error(), "count") {
-		t.Errorf("error should mention count: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_SizeExceeded(t *testing.T) {
-	// extraBytes alone exceeds the limit
-	err := checkAttachmentSizeLimit(nil, nil, MaxAttachmentBytes+1)
-	if err == nil {
-		t.Fatal("expected error for size exceeded")
-	}
-	if !strings.Contains(err.Error(), "25 MB") {
-		t.Errorf("error should mention 25 MB limit: %v", err)
-	}
-}
-
-func TestCheckAttachmentSizeLimit_WithFiles(t *testing.T) {
-	// Create a small temp file to exercise the file stat path
-	dir := t.TempDir()
-	f := filepath.Join(dir, "small.txt")
-	if err := os.WriteFile(f, []byte("hello"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	// Use the temp dir as the CWD so the relative path works
-	oldWd, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(oldWd)
-
-	fio := &localfileio.LocalFileIO{}
-	err := checkAttachmentSizeLimit(fio, []string{"./small.txt"}, 0)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // validateInlineCIDs — bidirectional CID consistency
 // ---------------------------------------------------------------------------
 
@@ -741,9 +690,12 @@ func TestAddInlineImagesToBuilder_EmptyCIDSkipped(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "logo.png", ContentType: "image/png", CID: "", DownloadURL: srv.URL + "/img1"},
 	}
-	_, _, err := addInlineImagesToBuilder(rt, bld, images)
+	_, _, totalBytes, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if totalBytes != 0 {
+		t.Errorf("expected 0 totalBytes for skipped CID, got %d", totalBytes)
 	}
 }
 
@@ -762,9 +714,12 @@ func TestAddInlineImagesToBuilder_Success(t *testing.T) {
 	images := []inlineSourcePart{
 		{ID: "img1", Filename: "banner.png", ContentType: "image/png", CID: "cid:banner", DownloadURL: srv.URL + "/img1"},
 	}
-	result, _, err := addInlineImagesToBuilder(rt, bld, images)
+	result, _, totalBytes, err := addInlineImagesToBuilder(rt, bld, images)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if totalBytes != int64(len("imagedata")) {
+		t.Errorf("expected totalBytes=%d, got %d", len("imagedata"), totalBytes)
 	}
 	raw, err := result.BuildBase64URL()
 	if err != nil {
@@ -1005,4 +960,303 @@ func TestValidateComposeHasAtLeastOneRecipient_AlsoChecksCount(t *testing.T) {
 	if !strings.Contains(err.Error(), "exceeds the limit") {
 		t.Fatalf("unexpected error message: %v", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// validateSendTime
+// ---------------------------------------------------------------------------
+
+func newSendTimeRuntime(t *testing.T, sendTime string, confirmSend bool) *common.RuntimeContext {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("send-time", "", "")
+	cmd.Flags().Bool("confirm-send", false, "")
+	if sendTime != "" {
+		_ = cmd.Flags().Set("send-time", sendTime)
+	}
+	if confirmSend {
+		_ = cmd.Flags().Set("confirm-send", "true")
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
+
+func TestValidateSendTime_Empty(t *testing.T) {
+	rt := newSendTimeRuntime(t, "", false)
+	if err := validateSendTime(rt); err != nil {
+		t.Fatalf("expected nil when send-time is empty, got %v", err)
+	}
+}
+
+func TestValidateSendTime_RequiresConfirmSend(t *testing.T) {
+	future := strconv.FormatInt(time.Now().Unix()+10*60, 10)
+	rt := newSendTimeRuntime(t, future, false)
+	err := validateSendTime(rt)
+	if err == nil {
+		t.Fatal("expected error when --send-time is set without --confirm-send")
+	}
+	if !strings.Contains(err.Error(), "--confirm-send") {
+		t.Errorf("expected error to mention --confirm-send, got: %v", err)
+	}
+}
+
+func TestValidateSendTime_InvalidInteger(t *testing.T) {
+	rt := newSendTimeRuntime(t, "not-a-number", true)
+	err := validateSendTime(rt)
+	if err == nil {
+		t.Fatal("expected error when --send-time is not a valid integer")
+	}
+	if !strings.Contains(err.Error(), "Unix timestamp") {
+		t.Errorf("expected error to mention Unix timestamp, got: %v", err)
+	}
+}
+
+func TestValidateSendTime_TooSoon(t *testing.T) {
+	// Just 1 minute in the future — below the 5-minute minimum.
+	soon := strconv.FormatInt(time.Now().Unix()+60, 10)
+	rt := newSendTimeRuntime(t, soon, true)
+	err := validateSendTime(rt)
+	if err == nil {
+		t.Fatal("expected error when --send-time is less than 5 minutes in the future")
+	}
+	if !strings.Contains(err.Error(), "5 minutes") {
+		t.Errorf("expected error to mention 5 minute minimum, got: %v", err)
+	}
+}
+
+func TestValidateSendTime_Valid(t *testing.T) {
+	future := strconv.FormatInt(time.Now().Unix()+10*60, 10)
+	rt := newSendTimeRuntime(t, future, true)
+	if err := validateSendTime(rt); err != nil {
+		t.Fatalf("expected nil for valid future send-time, got %v", err)
+	}
+}
+
+func TestParsePriority(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"empty", "", "", false},
+		{"high", "high", "1", false},
+		{"normal", "normal", "", false},
+		{"low", "low", "5", false},
+		{"case-insensitive HIGH", "HIGH", "1", false},
+		{"whitespace padding", "  low  ", "5", false},
+		{"invalid", "urgent", "", true},
+		{"numeric not accepted", "1", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parsePriority(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parsePriority(%q): expected error, got nil", tc.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parsePriority(%q): unexpected error: %v", tc.input, err)
+			}
+			if got != tc.want {
+				t.Errorf("parsePriority(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildMessageOutput_PriorityFromLabels(t *testing.T) {
+	cases := []struct {
+		name         string
+		labels       []interface{}
+		priorityType string
+		wantType     string
+		wantText     string
+	}{
+		{"high from label", []interface{}{"UNREAD", "HIGH_PRIORITY"}, "", "1", "high"},
+		{"low from label", []interface{}{"LOW_PRIORITY"}, "", "5", "low"},
+		{"no priority label", []interface{}{"UNREAD"}, "", "", ""},
+		{"label overrides priority_type field", []interface{}{"HIGH_PRIORITY"}, "5", "1", "high"},
+		{"priority_type fallback when no label", []interface{}{"UNREAD"}, "1", "1", "high"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := map[string]interface{}{
+				"message_id": "m1",
+				"label_ids":  tc.labels,
+			}
+			if tc.priorityType != "" {
+				msg["priority_type"] = tc.priorityType
+			}
+			out := buildMessageOutput(msg, false)
+			gotText, _ := out["priority_type_text"].(string)
+			if gotText != tc.wantText {
+				t.Errorf("priority_type_text = %q, want %q", gotText, tc.wantText)
+			}
+			gotType, _ := out["priority_type"].(string)
+			if gotType != tc.wantType {
+				t.Errorf("priority_type = %q, want %q", gotType, tc.wantType)
+			}
+		})
+	}
+}
+
+func TestApplyPriority(t *testing.T) {
+	// Empty priority: EML must not contain X-Cli-Priority header.
+	emptyBld := emlbuilder.New().
+		From("", "sender@example.com").
+		To("", "recipient@example.com").
+		Subject("no priority").
+		TextBody([]byte("body"))
+	emptyBld = applyPriority(emptyBld, "")
+	raw, err := emptyBld.BuildBase64URL()
+	if err != nil {
+		t.Fatalf("build EML failed: %v", err)
+	}
+	eml := decodeBase64URL(raw)
+	if strings.Contains(eml, "X-Cli-Priority") {
+		t.Errorf("expected no X-Cli-Priority header when priority is empty, got EML:\n%s", eml)
+	}
+
+	// Non-empty priority: header must be present with the exact value.
+	highBld := emlbuilder.New().
+		From("", "sender@example.com").
+		To("", "recipient@example.com").
+		Subject("high priority").
+		TextBody([]byte("body"))
+	highBld = applyPriority(highBld, "1")
+	raw, err = highBld.BuildBase64URL()
+	if err != nil {
+		t.Fatalf("build EML failed: %v", err)
+	}
+	eml = decodeBase64URL(raw)
+	if !strings.Contains(eml, "X-Cli-Priority: 1") {
+		t.Errorf("expected X-Cli-Priority: 1 in EML, got:\n%s", eml)
+	}
+}
+
+func TestValidatePriorityFlag(t *testing.T) {
+	makeRuntime := func(priority string) *common.RuntimeContext {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("priority", "", "")
+		if priority != "" {
+			_ = cmd.Flags().Set("priority", priority)
+		}
+		return common.TestNewRuntimeContext(cmd, nil)
+	}
+
+	cases := []struct {
+		name     string
+		priority string
+		wantErr  bool
+	}{
+		{"empty ok", "", false},
+		{"high ok", "high", false},
+		{"normal ok", "normal", false},
+		{"low ok", "low", false},
+		{"invalid urgent", "urgent", true},
+		{"invalid numeric", "1", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePriorityFlag(makeRuntime(tc.priority))
+			if tc.wantErr && err == nil {
+				t.Errorf("validatePriorityFlag(%q): expected error, got nil", tc.priority)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("validatePriorityFlag(%q): unexpected error: %v", tc.priority, err)
+			}
+		})
+	}
+}
+
+func TestBuildMessageForCompose_InlineNoCID_ClassifiedAsAttachment(t *testing.T) {
+	msg := map[string]interface{}{
+		"message_id": "msg1",
+		"subject":    "test",
+		"attachments": []interface{}{
+			map[string]interface{}{"id": "att1", "filename": "with-cid.png", "is_inline": true, "cid": "cid123", "content_type": "image/png"},
+			map[string]interface{}{"id": "att2", "filename": "no-cid.png", "is_inline": true, "cid": "", "content_type": "image/png"},
+			map[string]interface{}{"id": "att3", "filename": "regular.pdf", "is_inline": false, "content_type": "application/pdf"},
+		},
+	}
+	out := buildMessageForCompose(msg, nil, true)
+	if len(out.Images) != 1 || out.Images[0].ID != "att1" {
+		t.Errorf("expected 1 image (att1), got %d: %+v", len(out.Images), out.Images)
+	}
+	if len(out.Attachments) != 2 {
+		t.Fatalf("expected 2 attachments, got %d: %+v", len(out.Attachments), out.Attachments)
+	}
+	ids := []string{out.Attachments[0].ID, out.Attachments[1].ID}
+	if ids[0] != "att2" || ids[1] != "att3" {
+		t.Errorf("expected attachments [att2, att3], got %v", ids)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validateComposeInlineAndAttachments
+// ---------------------------------------------------------------------------
+
+func TestValidateComposeInlineAndAttachments(t *testing.T) {
+	chdirTemp(t)
+	fio := &localfileio.LocalFileIO{}
+
+	t.Run("empty flags pass", func(t *testing.T) {
+		if err := validateComposeInlineAndAttachments(fio, "", "", false, ""); err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("inline with plain-text rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, true, "")
+		if err == nil || !strings.Contains(err.Error(), "--plain-text") {
+			t.Fatalf("expected plain-text rejection, got %v", err)
+		}
+	})
+
+	t.Run("inline with non-HTML body rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, false, "plain text body")
+		if err == nil || !strings.Contains(err.Error(), "HTML body") {
+			t.Fatalf("expected HTML body rejection, got %v", err)
+		}
+	})
+
+	t.Run("inline with HTML body passes format check", func(t *testing.T) {
+		os.WriteFile("img.png", []byte("png"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "", `[{"cid":"c1","file_path":"./img.png"}]`, false, "<p>hello</p>")
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("attach missing file rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "nonexistent.pdf", "", false, "")
+		if err == nil || !strings.Contains(err.Error(), "stat") {
+			t.Fatalf("expected stat error for missing file, got %v", err)
+		}
+	})
+
+	t.Run("attach blocked extension rejected", func(t *testing.T) {
+		os.WriteFile("malware.exe", []byte("bad"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "malware.exe", "", false, "")
+		if err == nil || !strings.Contains(err.Error(), "not allowed") {
+			t.Fatalf("expected blocked extension error, got %v", err)
+		}
+	})
+
+	t.Run("attach valid file passes", func(t *testing.T) {
+		os.WriteFile("report.pdf", []byte("pdf content"), 0o644)
+		err := validateComposeInlineAndAttachments(fio, "report.pdf", "", false, "")
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("invalid inline JSON rejected", func(t *testing.T) {
+		err := validateComposeInlineAndAttachments(fio, "", "not-json", false, "")
+		if err == nil {
+			t.Fatal("expected error for invalid inline JSON")
+		}
+	})
 }

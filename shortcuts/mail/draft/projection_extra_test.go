@@ -108,3 +108,79 @@ Content-Type: text/html; charset=UTF-8
 		t.Fatalf("BodyHTMLSummary len = %d, should be truncated", len(proj.BodyHTMLSummary))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FindTextBodyPart / FindHTMLBodyPart skip attachment-disposition parts
+// ---------------------------------------------------------------------------
+
+func TestFindTextBodyPart_SkipsAttachment(t *testing.T) {
+	snapshot := mustParseFixtureDraft(t, `Subject: Test
+From: alice@example.com
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=mix
+
+--mix
+Content-Type: text/html; charset=UTF-8
+
+<p>body</p>
+--mix
+Content-Type: text/plain; charset=UTF-8
+Content-Disposition: attachment; filename=notes.txt
+
+This is a .txt attachment.
+--mix--
+`)
+	got := FindTextBodyPart(snapshot.Body)
+	if got != nil {
+		t.Errorf("FindTextBodyPart should return nil when only text/plain part is an attachment, got %q", string(got.Body))
+	}
+}
+
+func TestFindTextBodyPart_ReturnsBodyNotAttachment(t *testing.T) {
+	snapshot := mustParseFixtureDraft(t, `Subject: Test
+From: alice@example.com
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=mix
+
+--mix
+Content-Type: text/plain; charset=UTF-8
+
+real body
+--mix
+Content-Type: text/plain; charset=UTF-8
+Content-Disposition: attachment; filename=notes.txt
+
+This is a .txt attachment.
+--mix--
+`)
+	got := FindTextBodyPart(snapshot.Body)
+	if got == nil {
+		t.Fatal("FindTextBodyPart should return the body part")
+	}
+	if string(got.Body) != "real body" {
+		t.Errorf("got %q, want body part", string(got.Body))
+	}
+}
+
+func TestFindHTMLBodyPart_SkipsAttachment(t *testing.T) {
+	snapshot := mustParseFixtureDraft(t, `Subject: Test
+From: alice@example.com
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=mix
+
+--mix
+Content-Type: text/plain; charset=UTF-8
+
+plain body
+--mix
+Content-Type: text/html; charset=UTF-8
+Content-Disposition: attachment; filename=page.html
+
+<html><body>attached page</body></html>
+--mix--
+`)
+	got := FindHTMLBodyPart(snapshot.Body)
+	if got != nil {
+		t.Errorf("FindHTMLBodyPart should return nil when only text/html part is an attachment, got %q", string(got.Body))
+	}
+}

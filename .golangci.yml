@@ -70,6 +70,14 @@ linters:
               desc: >-
                 shortcuts must not import internal/vfs/localfileio directly.
                 Use runtime.FileIO() for file operations or runtime.ValidatePath() for path validation.
+        shortcuts-no-raw-http:
+          files:
+            - "**/shortcuts/**"
+          deny:
+            - pkg: "net/http"
+              desc: >-
+                use RuntimeContext.DoAPI/CallAPI/DoAPIJSON instead of raw net/http.
+                The client layer handles auth, headers, and error normalization.
     forbidigo:
       forbid:
         # ── os: already wrapped in internal/vfs ──
@@ -100,6 +108,16 @@ linters:
           msg: >-
             Do not use os.Exit in shortcuts/. Return an error instead and let
             the caller (cmd layer) decide how to terminate.
+        # ── output: shortcuts must use ctx.Out() ──
+        - pattern: fmt\.Print(f|ln)?\b
+          msg: >-
+            use ctx.Out() or ctx.OutFormat() for structured JSON output.
+            fmt.Print* bypasses the output envelope and breaks --jq/--format.
+        # ── logging: shortcuts must return errors, not log.Fatal ──
+        - pattern: log\.(Print|Fatal|Panic)(f|ln)?\b
+          msg: >-
+            use structured error return, not log.Fatal/Panic.
+            Shortcuts must return errors to the framework for proper exit code handling.
         # ── filepath: functions that access the filesystem ──
         - pattern: filepath\.(EvalSymlinks|Walk|WalkDir|Glob|Abs)\b
           msg: >-

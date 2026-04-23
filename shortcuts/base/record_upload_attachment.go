@@ -4,15 +4,15 @@
 package base
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
+	"io"
+	"mime"
 	"path/filepath"
 	"strings"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	"unicode/utf8"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	baseAttachmentUploadMaxFileSize = 20 * 1024 * 1024
-	baseAttachmentParentType        = "bitable_file"
+	baseAttachmentUploadMaxFileSize int64 = 2 * 1024 * 1024 * 1024
+	baseAttachmentParentType              = "bitable_file"
 )
 
 var BaseRecordUploadAttachment = common.Shortcut{
@@ -37,7 +37,7 @@ var BaseRecordUploadAttachment = common.Shortcut{
 		tableRefFlag(true),
 		recordRefFlag(true),
 		fieldRefFlag(true),
-		{Name: "file", Desc: "local file path (max 20MB)", Required: true},
+		{Name: "file", Desc: "local file path (max 2GB; files > 20MB use multipart upload automatically)", Required: true},
 		{Name: "name", Desc: "attachment file name (default: local file name)"},
 	},
 	DryRun: dryRunRecordUploadAttachment,
@@ -52,7 +52,7 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 	if fileName == "" {
 		fileName = filepath.Base(filePath)
 	}
-	return common.NewDryRunAPI().
+	dry := common.NewDryRunAPI().
 		Desc("4-step orchestration: validate attachment field → read existing record attachments → upload file to Base → patch merged attachment array").
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
 		Desc("[1] Read target field and ensure it is an attachment field").
@@ -61,15 +61,42 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 		Set("field_id", runtime.Str("field-id")).
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
 		Desc("[2] Read current record to preserve existing attachments in the target cell").
-		Set("record_id", runtime.Str("record-id")).
-		POST("/open-apis/drive/v1/medias/upload_all").
-		Desc("[3] Upload local file to the current Base as attachment media (multipart/form-data)").
-		Body(map[string]interface{}{
-			"file_name":   fileName,
-			"parent_type": baseAttachmentParentType,
-			"parent_node": runtime.Str("base-token"),
-			"file":        "@" + filePath,
-		}).
+		Set("record_id", runtime.Str("record-id"))
+	if baseAttachmentShouldUseMultipart(runtime.FileIO(), filePath) {
+		dry.POST("/open-apis/drive/v1/medias/upload_prepare").
+			Desc("[3a] Initialize multipart attachment upload to the current Base").
+			Body(map[string]interface{}{
+				"file_name":   fileName,
+				"parent_type": baseAttachmentParentType,
+				"parent_node": runtime.Str("base-token"),
+				"size":        "<file_size>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_part").
+			Desc("[3b] Upload attachment parts (repeated)").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"seq":       "<chunk_index>",
+				"size":      "<chunk_size>",
+				"file":      "<chunk_binary>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_finish").
+			Desc("[3c] Finalize multipart attachment upload and get file token").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"block_num": "<block_num>",
+			})
+	} else {
+		dry.POST("/open-apis/drive/v1/medias/upload_all").
+			Desc("[3] Upload local file to the current Base as attachment media (multipart/form-data)").
+			Body(map[string]interface{}{
+				"file_name":   fileName,
+				"parent_type": baseAttachmentParentType,
+				"parent_node": runtime.Str("base-token"),
+				"file":        "@" + filePath,
+				"size":        "<file_size>",
+			})
+	}
+	return dry.
 		PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
 		Desc("[4] Update the target attachment cell with existing attachments plus the uploaded file token").
 		Body(map[string]interface{}{
@@ -82,6 +109,8 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 				map[string]interface{}{
 					"file_token":                "<uploaded_file_token>",
 					"name":                      fileName,
+					"mime_type":                 "<detected_mime_type>",
+					"size":                      "<file_size>",
 					"deprecated_set_attachment": true,
 				},
 			},
@@ -102,7 +131,7 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 		return output.ErrValidation("file not accessible: %s: %v", filePath, err)
 	}
 	if fileInfo.Size() > baseAttachmentUploadMaxFileSize {
-		return output.ErrValidation("file %.1fMB exceeds 20MB limit", float64(fileInfo.Size())/1024/1024)
+		return output.ErrValidation("file %s exceeds 2GB limit", common.FormatSize(fileInfo.Size()))
 	}
 
 	fileName := strings.TrimSpace(runtime.Str("name"))
@@ -124,6 +153,9 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Uploading attachment: %s -> record %s field %s\n", fileName, runtime.Str("record-id"), fieldName(field))
+	if fileInfo.Size() > common.MaxDriveMediaUploadSinglePartSize {
+		fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
+	}
 
 	attachment, err := uploadAttachmentToBase(runtime, filePath, fileName, runtime.Str("base-token"), fileInfo.Size())
 	if err != nil {
@@ -149,6 +181,14 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 		"updated":     true,
 	}, nil)
 	return nil
+}
+
+func baseAttachmentShouldUseMultipart(fio fileio.FileIO, filePath string) bool {
+	info, err := fio.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular() && info.Size() > common.MaxDriveMediaUploadSinglePartSize
 }
 
 func fetchBaseField(runtime *common.RuntimeContext, baseToken, tableIDValue, fieldRef string) (map[string]interface{}, error) {
@@ -209,53 +249,111 @@ func normalizeAttachmentForPatch(attachment map[string]interface{}) map[string]i
 }
 
 func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, baseToken string, fileSize int64) (map[string]interface{}, error) {
-	f, err := runtime.FileIO().Open(filePath)
+	mimeType, err := detectAttachmentMIMEType(runtime.FileIO(), filePath, fileName)
 	if err != nil {
-		return nil, output.ErrValidation("cannot open file: %v", err)
+		return nil, err
 	}
-	defer f.Close()
 
-	fd := larkcore.NewFormdata()
-	fd.AddField("file_name", fileName)
-	fd.AddField("parent_type", baseAttachmentParentType)
-	fd.AddField("parent_node", baseToken)
-	fd.AddField("size", fmt.Sprintf("%d", fileSize))
-	fd.AddFile("file", f)
-
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod: http.MethodPost,
-		ApiPath:    "/open-apis/drive/v1/medias/upload_all",
-		Body:       fd,
-	}, larkcore.WithFileUpload())
+	parentNode := baseToken
+	var (
+		fileToken string
+	)
+	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
+		fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: baseAttachmentParentType,
+			ParentNode: &parentNode,
+		})
+	} else {
+		fileToken, err = common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: baseAttachmentParentType,
+			ParentNode: parentNode,
+		})
+	}
 	if err != nil {
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) {
-			return nil, err
-		}
-		return nil, output.ErrNetwork("upload failed: %v", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "upload failed: invalid response JSON: %v", err)
-	}
-
-	code, _ := util.ToFloat64(result["code"])
-	if code != 0 {
-		msg, _ := result["msg"].(string)
-		return nil, output.ErrAPI(int(code), fmt.Sprintf("upload failed: [%d] %s", int(code), msg), result["error"])
-	}
-
-	data, _ := result["data"].(map[string]interface{})
-	fileToken, _ := data["file_token"].(string)
-	if fileToken == "" {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "upload failed: no file_token returned")
+		return nil, err
 	}
 
 	attachment := map[string]interface{}{
 		"file_token":                fileToken,
 		"name":                      fileName,
+		"mime_type":                 mimeType,
+		"size":                      fileSize,
 		"deprecated_set_attachment": true,
 	}
 	return attachment, nil
+}
+
+func detectAttachmentMIMEType(fio fileio.FileIO, filePath, fileName string) (string, error) {
+	if byExt := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(fileName)))); byExt != "" {
+		return stripMIMEParams(byExt), nil
+	}
+	if byExt := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath)))); byExt != "" {
+		return stripMIMEParams(byExt), nil
+	}
+
+	f, err := fio.Open(filePath)
+	if err != nil {
+		return "", common.WrapInputStatError(err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, readErr := f.Read(buf)
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return "", output.ErrValidation("cannot read file: %s", readErr)
+	}
+	return detectAttachmentMIMEFromContent(buf[:n]), nil
+}
+
+func stripMIMEParams(value string) string {
+	if i := strings.IndexByte(value, ';'); i != -1 {
+		value = value[:i]
+	}
+	return strings.TrimSpace(value)
+}
+
+func detectAttachmentMIMEFromContent(content []byte) string {
+	if len(content) == 0 {
+		return "application/octet-stream"
+	}
+	if bytes.HasPrefix(content, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		return "image/png"
+	}
+	if bytes.HasPrefix(content, []byte{0xff, 0xd8, 0xff}) {
+		return "image/jpeg"
+	}
+	if bytes.HasPrefix(content, []byte("GIF87a")) || bytes.HasPrefix(content, []byte("GIF89a")) {
+		return "image/gif"
+	}
+	if len(content) >= 12 && bytes.Equal(content[:4], []byte("RIFF")) && bytes.Equal(content[8:12], []byte("WEBP")) {
+		return "image/webp"
+	}
+	if bytes.HasPrefix(content, []byte("%PDF-")) {
+		return "application/pdf"
+	}
+	if looksLikeText(content) {
+		return "text/plain"
+	}
+	return "application/octet-stream"
+}
+
+func looksLikeText(content []byte) bool {
+	if !utf8.Valid(content) {
+		return false
+	}
+	for _, r := range string(content) {
+		if r == '\n' || r == '\r' || r == '\t' {
+			continue
+		}
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }

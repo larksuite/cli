@@ -26,6 +26,9 @@ var BaseRecordUpsert = common.Shortcut{
 		`Example: --json '{"Name":"Alice"}'`,
 		"Agent hint: use the lark-base skill's record-upsert guide for usage and limits.",
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateRecordJSON(runtime)
+	},
 	DryRun: dryRunRecordUpsert,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeRecordUpsert(runtime)

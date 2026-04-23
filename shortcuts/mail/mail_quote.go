@@ -408,6 +408,20 @@ func stripHTMLForQuote(s string) string {
 	return strings.TrimSpace(result)
 }
 
+// stripLargeAttachmentCard removes the large attachment HTML card from
+// orig.bodyRaw and returns the extracted card HTML (empty if none found).
+// Forward uses the returned card to re-insert it into the body area;
+// reply/reply-all discards the return value so the card doesn't appear
+// in the quoted block.
+func stripLargeAttachmentCard(orig *originalMessage) string {
+	if !draftpkg.HTMLContainsLargeAttachment(orig.bodyRaw) {
+		return ""
+	}
+	bodyWithout, card, trailing := draftpkg.SplitAtLargeAttachment(orig.bodyRaw)
+	orig.bodyRaw = bodyWithout + trailing
+	return card
+}
+
 // quoteForReply formats the original message body as a quoted block.
 // HTML replies use the Lark adit-html-block--collapsed structure;
 // plain-text replies use the classic "> " prefix format with meta header.

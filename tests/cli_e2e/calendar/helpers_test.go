@@ -30,6 +30,38 @@ func getPrimaryCalendarID(t *testing.T, ctx context.Context) string {
 	return calendarID
 }
 
+func getCurrentUserPrimaryCalendarID(t *testing.T, ctx context.Context) string {
+	t.Helper()
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"calendar", "calendars", "primary"},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	result.AssertStdoutStatus(t, 0)
+
+	calendarID := gjson.Get(result.Stdout, "data.calendars.0.calendar.calendar_id").String()
+	require.NotEmpty(t, calendarID, "stdout:\n%s", result.Stdout)
+	return calendarID
+}
+
+func getCurrentUserOpenIDForCalendar(t *testing.T, ctx context.Context) string {
+	t.Helper()
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"contact", "+get-user"},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	result.AssertStdoutStatus(t, true)
+
+	openID := gjson.Get(result.Stdout, "data.user.open_id").String()
+	require.NotEmpty(t, openID, "stdout:\n%s", result.Stdout)
+	return openID
+}
+
 func unixSecondsRFC3339(t time.Time) string {
 	return strconv.FormatInt(t.Unix(), 10)
 }

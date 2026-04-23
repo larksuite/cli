@@ -181,6 +181,12 @@ func (ctx *RuntimeContext) StrArray(name string) []string {
 	return v
 }
 
+// StrSlice returns a string-slice flag value (supports CSV splitting and repeated flags).
+func (ctx *RuntimeContext) StrSlice(name string) []string {
+	v, _ := ctx.Cmd.Flags().GetStringSlice(name)
+	return v
+}
+
 // ── API helpers ──
 
 //	CallAPI uses an internal HTTP wrapper with limited control over request/response.
@@ -263,8 +269,8 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 }
 
 // DoAPIAsBot executes a raw Lark SDK request using bot identity (tenant access token),
-// regardless of the current --as flag. Use this for bot-only APIs (e.g. image/file upload)
-// that must be called with TAT even when the surrounding shortcut runs as user.
+// regardless of the current --as flag. Use this for APIs that must always be called
+// with TAT even when the surrounding shortcut runs as user.
 func (ctx *RuntimeContext) DoAPIAsBot(req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
@@ -571,12 +577,16 @@ func enhancePermissionError(err error, requiredScopes []string) error {
 
 // Mount registers the shortcut on a parent command.
 func (s Shortcut) Mount(parent *cobra.Command, f *cmdutil.Factory) {
+	s.MountWithContext(context.Background(), parent, f)
+}
+
+func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	if s.Execute != nil {
-		s.mountDeclarative(parent, f)
+		s.mountDeclarative(ctx, parent, f)
 	}
 }
 
-func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
+func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	shortcut := s
 	if len(shortcut.AuthTypes) == 0 {
 		shortcut.AuthTypes = []string{"user"}
@@ -592,7 +602,7 @@ func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
-	registerShortcutFlags(cmd, &shortcut)
+	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	parent.AddCommand(cmd)
 }
@@ -823,7 +833,11 @@ func rejectPositionalArgs() cobra.PositionalArgs {
 	}
 }
 
-func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
+func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
+	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
+}
+
+func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	for _, fl := range s.Flags {
 		desc := fl.Desc
 		if len(fl.Enum) > 0 {
@@ -849,6 +863,8 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 			cmd.Flags().Int(fl.Name, d, desc)
 		case "string_array":
 			cmd.Flags().StringArray(fl.Name, nil, desc)
+		case "string_slice":
+			cmd.Flags().StringSlice(fl.Name, nil, desc)
 		default:
 			cmd.Flags().String(fl.Name, fl.Default, desc)
 		}
@@ -860,7 +876,7 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 		}
 		if len(fl.Enum) > 0 {
 			vals := fl.Enum
-			_ = cmd.RegisterFlagCompletionFunc(fl.Name, func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			cmdutil.RegisterFlagCompletion(cmd, fl.Name, func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 				return vals, cobra.ShellCompDirectiveNoFileComp
 			})
 		}
@@ -874,13 +890,9 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
-	cmd.Flags().String("as", s.AuthTypes[0], "identity type: user | bot")
-
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return s.AuthTypes, cobra.ShellCompDirectiveNoFileComp
-	})
+	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
 	if s.HasFormat {
-		_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
 		})
 	}

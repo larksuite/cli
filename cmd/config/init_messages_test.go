@@ -48,17 +48,20 @@ func TestInitMsgEn_AllFieldsNonEmpty(t *testing.T) {
 func assertAllFieldsNonEmpty(t *testing.T, msg *initMsg, label string) {
 	t.Helper()
 	fields := map[string]string{
-		"SelectAction":       msg.SelectAction,
-		"CreateNewApp":       msg.CreateNewApp,
-		"ConfigExistingApp":  msg.ConfigExistingApp,
-		"Platform":           msg.Platform,
-		"SelectPlatform":     msg.SelectPlatform,
-		"Feishu":             msg.Feishu,
-		"ScanOrOpenLink":     msg.ScanOrOpenLink,
-		"WaitingForScan":     msg.WaitingForScan,
-		"DetectedLarkTenant": msg.DetectedLarkTenant,
-		"AppCreated":         msg.AppCreated,
-		"ConfigSaved":        msg.ConfigSaved,
+		"SelectAction":         msg.SelectAction,
+		"CreateNewApp":         msg.CreateNewApp,
+		"ConfigExistingApp":    msg.ConfigExistingApp,
+		"Platform":             msg.Platform,
+		"SelectPlatform":       msg.SelectPlatform,
+		"Feishu":               msg.Feishu,
+		"ScanQRCode":           msg.ScanQRCode,
+		"ScanOrOpenLink":       msg.ScanOrOpenLink,
+		"WaitingForScan":       msg.WaitingForScan,
+		"OpenLinkNonTTY":       msg.OpenLinkNonTTY,
+		"WaitingForScanNonTTY": msg.WaitingForScanNonTTY,
+		"DetectedLarkTenant":   msg.DetectedLarkTenant,
+		"AppCreated":           msg.AppCreated,
+		"ConfigSaved":          msg.ConfigSaved,
 	}
 	for name, val := range fields {
 		if val == "" {

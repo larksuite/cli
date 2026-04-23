@@ -377,6 +377,9 @@ func mediaFallbackOrError(originalValue, mediaType string, uploadErr error) (str
 
 // resolveP2PChatID resolves user open_id to P2P chat_id.
 func resolveP2PChatID(runtime *common.RuntimeContext, openID string) (string, error) {
+	if runtime.IsBot() {
+		return "", output.Errorf(output.ExitValidation, "validation", "--user-id requires user identity (--as user); use --chat-id when calling with bot identity")
+	}
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/chat_p2p/batch_query",
@@ -581,6 +584,7 @@ func parseMediaDuration(runtime *common.RuntimeContext, filePath, fileType strin
 type mediaBuffer struct {
 	data []byte
 	ext  string // file extension including leading dot, e.g. ".mp4"
+	name string // original file name extracted from the source URL
 }
 
 // newMediaBuffer downloads URL content into memory via downloadURLToReader.
@@ -595,7 +599,14 @@ func newMediaBuffer(ctx context.Context, runtime *common.RuntimeContext, rawURL 
 	if err != nil {
 		return nil, fmt.Errorf("download failed: %w", err)
 	}
-	return &mediaBuffer{data: data, ext: ext}, nil
+	return newMediaBufferFromBytes(data, ext, rawURL), nil
+}
+
+// newMediaBufferFromBytes builds a mediaBuffer from already-downloaded bytes.
+// Split out from newMediaBuffer so the URL-to-filename wiring is testable
+// without going through the hardened download transport.
+func newMediaBufferFromBytes(data []byte, ext, rawURL string) *mediaBuffer {
+	return &mediaBuffer{data: data, ext: ext, name: fileNameFromURL(rawURL)}
 }
 
 // Reader returns a new io.Reader over the buffered data. Each call returns a
@@ -605,9 +616,9 @@ func (b *mediaBuffer) Reader() io.Reader {
 	return bytes.NewReader(b.data)
 }
 
-// FileName returns a synthetic file name based on the URL extension.
+// FileName returns the original file name extracted from the source URL.
 func (b *mediaBuffer) FileName() string {
-	return "media" + b.ext
+	return b.name
 }
 
 // FileType returns the IM file type detected from the extension.
@@ -886,16 +897,12 @@ func marshalMarkdownPostContent(content [][]map[string]interface{}) string {
 			"content": content,
 		},
 	}
-	data, _ := json.Marshal(payload)
-	return string(data)
+	return marshalJSONNoEscape(payload)
 }
 
 func buildSingleMDPost(markdown string) string {
 	return marshalMarkdownPostContent([][]map[string]interface{}{
-		{{
-			"tag":  "md",
-			"text": optimizeMarkdownStyle(markdown),
-		}},
+		buildPostElementNodes(optimizeMarkdownStyle(markdown)),
 	})
 }
 
@@ -919,10 +926,7 @@ func buildSegmentedPost(markdown string) string {
 		if optimized == "" {
 			continue
 		}
-		content = append(content, []map[string]interface{}{{
-			"tag":  "md",
-			"text": optimized,
-		}})
+		content = append(content, buildPostElementNodes(optimized))
 	}
 	if len(content) == 0 {
 		return buildSingleMDPost(markdown)
@@ -937,8 +941,186 @@ func buildMarkdownPostContent(markdown string) string {
 	return buildSingleMDPost(markdown)
 }
 
+// buildPostElementNodes splits optimized markdown text into Feishu post inline
+// elements. It tokenizes markdown links/images and bare http(s) URLs:
+//   - markdown links are kept verbatim inside a {"tag":"md"} segment
+//   - bare URLs become {"tag":"a"} elements rendered natively by Feishu,
+//     avoiding the md renderer misinterpreting underscores as italic markers
+//
+// Fenced code blocks are protected before tokenization so their content remains
+// a single md segment, and bare URLs support balanced parentheses in the path.
+func buildPostElementNodes(text string) []map[string]interface{} {
+	protected, codeBlocks := protectMarkdownCodeBlocks(text)
+	if protected == "" {
+		return []map[string]interface{}{{
+			"tag":  "md",
+			"text": text,
+		}}
+	}
+	elems := make([]map[string]interface{}, 0, 4)
+	prev := 0
+	for i := 0; i < len(protected); {
+		end, kind, ok := scanPostToken(protected, i)
+		if !ok {
+			i++
+			continue
+		}
+		if i > prev {
+			elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(protected[prev:i], codeBlocks))
+		}
+
+		token := protected[i:end]
+		if kind == postTokenMarkdown {
+			elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(token, codeBlocks))
+		} else {
+			url := trimBareURLToken(token)
+			if url == "" {
+				url = token
+			}
+			elems = append(elems, map[string]interface{}{
+				"tag":  "a",
+				"text": url,
+				"href": url,
+			})
+			elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(token[len(url):], codeBlocks))
+		}
+		prev = end
+		i = end
+	}
+	if prev < len(protected) {
+		elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(protected[prev:], codeBlocks))
+	}
+	if len(elems) == 0 {
+		return []map[string]interface{}{{
+			"tag":  "md",
+			"text": text,
+		}}
+	}
+	return elems
+}
+
+func trimBareURLToken(token string) string {
+	trimmed := strings.TrimRight(token, ".,;:!?")
+	for strings.HasSuffix(trimmed, ")") && strings.Count(trimmed, "(") < strings.Count(trimmed, ")") {
+		trimmed = strings.TrimSuffix(trimmed, ")")
+	}
+	return trimmed
+}
+
+type postTokenKind int
+
+const (
+	postTokenMarkdown postTokenKind = iota
+	postTokenURL
+)
+
+func appendMDPostNode(elems []map[string]interface{}, text string) []map[string]interface{} {
+	if text == "" {
+		return elems
+	}
+	return append(elems, map[string]interface{}{
+		"tag":  "md",
+		"text": text,
+	})
+}
+
+func scanPostToken(text string, start int) (end int, kind postTokenKind, ok bool) {
+	if end, ok = scanMarkdownLinkToken(text, start); ok {
+		return end, postTokenMarkdown, true
+	}
+	if end, ok = scanBareURLToken(text, start); ok {
+		return end, postTokenURL, true
+	}
+	return 0, 0, false
+}
+
+func scanMarkdownLinkToken(text string, start int) (int, bool) {
+	openBracket := start
+	if text[start] == '!' {
+		if start+1 >= len(text) || text[start+1] != '[' {
+			return 0, false
+		}
+		openBracket = start + 1
+	} else if text[start] != '[' {
+		return 0, false
+	}
+
+	closeBracket := strings.IndexByte(text[openBracket+1:], ']')
+	if closeBracket < 0 {
+		return 0, false
+	}
+	closeBracket += openBracket + 1
+	if closeBracket+1 >= len(text) || text[closeBracket+1] != '(' {
+		return 0, false
+	}
+	return scanBalancedParenToken(text, closeBracket+1)
+}
+
+func scanBareURLToken(text string, start int) (int, bool) {
+	if !strings.HasPrefix(text[start:], "http://") && !strings.HasPrefix(text[start:], "https://") {
+		return 0, false
+	}
+
+	depth := 0
+	for i := start; i < len(text); i++ {
+		switch text[i] {
+		case ' ', '\t', '\n', '\r', '<', '>', '"', '[', ']':
+			return i, i > start
+		case '(':
+			depth++
+		case ')':
+			if depth == 0 {
+				return i, i > start
+			}
+			depth--
+		}
+	}
+	return len(text), true
+}
+
+func scanBalancedParenToken(text string, openParen int) (int, bool) {
+	if openParen >= len(text) || text[openParen] != '(' {
+		return 0, false
+	}
+
+	depth := 0
+	for i := openParen; i < len(text); i++ {
+		switch text[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func buildPostElements(text string) string {
+	return marshalJSONNoEscape(buildPostElementNodes(text))
+}
+
+func marshalJSONNoEscape(v interface{}) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
+	return strings.TrimSuffix(buf.String(), "\n")
+}
+
+// marshalStringNoEscape serializes a string to JSON without HTML-escaping
+// special characters like &, <, >. Go's json.Marshal escapes them to \u0026
+// etc. by default, which breaks URLs containing & in Feishu's md renderer.
+func marshalStringNoEscape(s string) string {
+	return marshalJSONNoEscape(s)
+}
+
 // wrapMarkdownAsPost wraps markdown text into Feishu post format JSON (no network).
 // Used by DryRun. Output may include md/text paragraphs when blank-line separators are present.
+// Bare URLs are emitted as {"tag":"a"} elements to avoid Feishu's md renderer
+// misinterpreting underscores in URLs as italic markers.
 func wrapMarkdownAsPost(markdown string) string {
 	return buildMarkdownPostContent(markdown)
 }
@@ -1128,7 +1310,7 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 	fd.AddField("image_type", imageType)
 	fd.AddFile("image", f)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/images",
 		Body:       fd,
@@ -1169,7 +1351,7 @@ func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePat
 	}
 	fd.AddFile("file", f)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/files",
 		Body:       fd,
@@ -1197,7 +1379,7 @@ func uploadImageFromReader(ctx context.Context, runtime *common.RuntimeContext, 
 	fd.AddField("image_type", imageType)
 	fd.AddFile("image", r)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/images",
 		Body:       fd,
@@ -1229,7 +1411,7 @@ func uploadFileFromReader(ctx context.Context, runtime *common.RuntimeContext, r
 	}
 	fd.AddFile("file", r)
 
-	apiResp, err := runtime.DoAPIAsBot(&larkcore.ApiReq{
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    "/open-apis/im/v1/files",
 		Body:       fd,

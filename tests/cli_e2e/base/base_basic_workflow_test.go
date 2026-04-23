@@ -22,7 +22,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 	baseName := "lark-cli-e2e-base-basic-" + clie2e.GenerateSuffix()
 	baseToken := createBaseWithRetry(t, ctx, baseName)
 
-	t.Run("get base", func(t *testing.T) {
+	t.Run("get base as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+base-get", "--base-token", baseToken},
 			DefaultAs: "bot",
@@ -49,7 +49,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		`{"name":"Main","type":"grid"}`,
 	)
 
-	t.Run("get table", func(t *testing.T) {
+	t.Run("get table as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+table-get", "--base-token", baseToken, "--table-id", tableID},
 			DefaultAs: "bot",
@@ -61,7 +61,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		assert.Equal(t, tableName, gjson.Get(result.Stdout, "data.table.name").String())
 	})
 
-	t.Run("list tables and find created table", func(t *testing.T) {
+	t.Run("list tables and find created table as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+table-list", "--base-token", baseToken},
 			DefaultAs: "bot",

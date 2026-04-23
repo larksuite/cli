@@ -31,7 +31,7 @@ func TestCalendar_CreateEvent(t *testing.T) {
 	var eventID string
 	calendarID := getPrimaryCalendarID(t, ctx)
 
-	t.Run("create event with shortcut", func(t *testing.T) {
+	t.Run("create event with shortcut as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"calendar", "+create",
 				"--summary", eventSummary,
@@ -50,7 +50,7 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		require.NotEmpty(t, eventID)
 	})
 
-	t.Run("verify event created", func(t *testing.T) {
+	t.Run("verify event created as bot", func(t *testing.T) {
 		require.NotEmpty(t, eventID)
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"calendar", "events", "get"},
@@ -69,7 +69,7 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		assert.Equal(t, unixSecondsRFC3339(endAt), gjson.Get(result.Stdout, "data.event.end_time.timestamp").String())
 	})
 
-	t.Run("delete event", func(t *testing.T) {
+	t.Run("delete event as bot", func(t *testing.T) {
 		require.NotEmpty(t, eventID)
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"calendar", "events", "delete"},

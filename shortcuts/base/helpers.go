@@ -6,6 +6,7 @@ package base
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -36,7 +37,14 @@ func parseJSONObject(pc *parseCtx, raw string, flagName string) (map[string]inte
 	}
 	var result map[string]interface{}
 	if err := common.ParseJSON([]byte(resolved), &result); err != nil {
-		return nil, formatJSONError(flagName, "object", err)
+		var syntaxErr *json.SyntaxError
+		if errors.As(err, &syntaxErr) {
+			return nil, formatJSONError(flagName, "object", err)
+		}
+		return nil, common.FlagErrorf("--%s must be a JSON object; %s", flagName, jsonInputTip(flagName))
+	}
+	if result == nil {
+		return nil, common.FlagErrorf("--%s must be a JSON object; %s", flagName, jsonInputTip(flagName))
 	}
 	return result, nil
 }

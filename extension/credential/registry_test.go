@@ -37,6 +37,32 @@ func TestRegisterAndProviders(t *testing.T) {
 	}
 }
 
+type priorityProvider struct {
+	stubProvider
+	priority int
+}
+
+func (p *priorityProvider) Priority() int { return p.priority }
+
+func TestRegister_PriorityOrder(t *testing.T) {
+	mu.Lock()
+	old := providers
+	providers = nil
+	mu.Unlock()
+	defer func() { mu.Lock(); providers = old; mu.Unlock() }()
+
+	Register(&stubProvider{name: "env"})                                                  // priority 10 (default)
+	Register(&priorityProvider{stubProvider: stubProvider{name: "sidecar"}, priority: 0}) // priority 0 (first)
+
+	got := Providers()
+	if len(got) != 2 {
+		t.Fatalf("expected 2, got %d", len(got))
+	}
+	if got[0].Name() != "sidecar" || got[1].Name() != "env" {
+		t.Errorf("expected sidecar before env, got %s, %s", got[0].Name(), got[1].Name())
+	}
+}
+
 func TestProviders_ReturnsSnapshot(t *testing.T) {
 	mu.Lock()
 	old := providers

@@ -184,27 +184,6 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg) (*i
 	}
 	fmt.Fprintf(ios.ErrOut, msg.SummaryScopes, len(scopes), scopePreview)
 
-	// Phase 2: confirmation
-	var confirmed bool
-	form2 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title(msg.ConfirmAuth).
-				Value(&confirmed),
-		),
-	).WithTheme(cmdutil.ThemeFeishu())
-
-	if err := form2.Run(); err != nil {
-		if err == huh.ErrUserAborted {
-			return nil, output.ErrBare(1)
-		}
-		return nil, err
-	}
-
-	if !confirmed {
-		return nil, output.ErrBare(1)
-	}
-
 	return &interactiveResult{
 		Domains:    selectedDomains,
 		ScopeLevel: permLevel,

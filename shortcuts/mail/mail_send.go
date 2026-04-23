@@ -32,7 +32,9 @@ var MailSend = common.Shortcut{
 		{Name: "attach", Desc: "Attachment file path(s), comma-separated (relative path only)"},
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the email immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
-	},
+		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
+		signatureFlag,
+		priorityFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
@@ -62,7 +64,16 @@ var MailSend = common.Shortcut{
 		if err := validateComposeHasAtLeastOneRecipient(runtime.Str("to"), runtime.Str("cc"), runtime.Str("bcc")); err != nil {
 			return err
 		}
-		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body"))
+		if err := validateSendTime(runtime); err != nil {
+			return err
+		}
+		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+			return err
+		}
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+			return err
+		}
+		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		to := runtime.Str("to")
@@ -74,8 +85,20 @@ var MailSend = common.Shortcut{
 		attachFlag := runtime.Str("attach")
 		inlineFlag := runtime.Str("inline")
 		confirmSend := runtime.Bool("confirm-send")
+		sendTime := runtime.Str("send-time")
 
 		senderEmail := resolveComposeSenderEmail(runtime)
+		signatureID := runtime.Str("signature-id")
+		priority, err := parsePriority(runtime.Str("priority"))
+		if err != nil {
+			return err
+		}
+
+		mailboxID := resolveComposeMailboxID(runtime)
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		if err != nil {
+			return err
+		}
 
 		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
 			Subject(subject).
@@ -94,14 +117,25 @@ var MailSend = common.Shortcut{
 			return err
 		}
 		var autoResolvedPaths []string
+		var composedHTMLBody string
+		var composedTextBody string
 		if plainText {
-			bld = bld.TextBody([]byte(body))
-		} else if bodyIsHTML(body) {
-			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(body)
+			composedTextBody = body
+			bld = bld.TextBody([]byte(composedTextBody))
+		} else if bodyIsHTML(body) || sigResult != nil {
+			// If signature is requested on plain-text body, auto-upgrade to HTML.
+			htmlBody := body
+			if !bodyIsHTML(body) {
+				htmlBody = buildBodyDiv(body, false)
+			}
+			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(htmlBody)
 			if resolveErr != nil {
 				return resolveErr
 			}
-			bld = bld.HTMLBody([]byte(resolved))
+			resolved = injectSignatureIntoBody(resolved, sigResult)
+			composedHTMLBody = resolved
+			bld = bld.HTMLBody([]byte(composedHTMLBody))
+			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var allCIDs []string
 			for _, ref := range refs {
 				bld = bld.AddFileInline(ref.FilePath, ref.CID)
@@ -112,19 +146,21 @@ var MailSend = common.Shortcut{
 				bld = bld.AddFileInline(spec.FilePath, spec.CID)
 				allCIDs = append(allCIDs, spec.CID)
 			}
+			allCIDs = append(allCIDs, signatureCIDs(sigResult)...)
 			if err := validateInlineCIDs(resolved, allCIDs, nil); err != nil {
 				return err
 			}
 		} else {
-			bld = bld.TextBody([]byte(body))
+			composedTextBody = body
+			bld = bld.TextBody([]byte(composedTextBody))
 		}
-		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
+		bld = applyPriority(bld, priority)
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, 0)
+		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(attachFlag), emlBase, 0)
+		if err != nil {
 			return err
-		}
-
-		for _, path := range splitByComma(attachFlag) {
-			bld = bld.AddFileAttachment(path)
 		}
 
 		rawEML, err := bld.BuildBase64URL()
@@ -132,27 +168,20 @@ var MailSend = common.Shortcut{
 			return fmt.Errorf("failed to build EML: %w", err)
 		}
 
-		mailboxID := resolveComposeMailboxID(runtime)
-		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
-			runtime.Out(map[string]interface{}{
-				"draft_id": draftID,
-				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID),
-			}, nil)
-			hintSendDraft(runtime, mailboxID, draftID)
+			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
-		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
+		resData, err := draftpkg.Send(runtime, mailboxID, draftResult.DraftID, sendTime)
 		if err != nil {
-			return fmt.Errorf("failed to send email (draft %s created but not sent): %w", draftID, err)
+			return fmt.Errorf("failed to send email (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(map[string]interface{}{
-			"message_id": resData["message_id"],
-			"thread_id":  resData["thread_id"],
-		}, nil)
+		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
 		return nil
 	},
 }

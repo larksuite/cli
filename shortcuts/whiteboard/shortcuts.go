@@ -23,6 +23,8 @@ type WbCliOutput struct {
 }
 
 type WbCliOutputData struct {
-	To     string      `json:"to"`
-	Result interface{} `json:"result"`
+	To     string `json:"to"`
+	Result struct {
+		Nodes []interface{} `json:"nodes"`
+	} `json:"result"`
 }

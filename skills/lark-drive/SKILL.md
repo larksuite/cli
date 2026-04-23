@@ -1,7 +1,7 @@
 ---
 name: lark-drive
 version: 1.0.0
-description: "飞书云空间：管理云空间中的文件和文件夹。上传和下载文件、创建文件夹、复制/移动/删除文件、查看文件元数据、管理文档评论、管理文档权限、订阅用户评论变更事件；也负责把本地 Word/Markdown/Excel/CSV 导入为飞书在线云文档（docx、sheet、bitable）。当用户需要上传或下载文件、整理云空间目录、查看文件详情、管理评论、管理文档权限、订阅用户评论变更事件，或要把本地文件导入成新版文档、电子表格、多维表格/Base 时使用。"
+description: "飞书云空间：管理云空间中的文件和文件夹。上传和下载文件、创建文件夹、复制/移动/删除文件、查看文件元数据、管理文档评论、管理文档权限、订阅用户评论变更事件、修改文件标题（docx、sheet、bitable、file、folder、wiki）；也负责把本地 Word/Markdown/Excel/CSV 以及 Base 快照（.base）导入为飞书在线云文档（docx、sheet、bitable）。当用户需要上传或下载文件、整理云空间目录、查看文件详情、管理评论、管理文档权限、修改文件标题、订阅用户评论变更事件，或要把本地文件导入成新版文档、电子表格、多维表格/Base 时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -12,14 +12,18 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
-> **导入分流规则：** 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
+> **导入分流规则：** 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
 
 ## 快速决策
 
-- 用户要把本地 `.xlsx` / `.csv` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
+- 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
+- 用户要在云空间里新建文件夹，优先使用 `lark-cli drive +create-folder`。
 - `lark-base` 只负责导入完成后的 Base 内部操作（表、字段、记录、视图），不要在“本地文件 -> Base”这一步提前切到 `lark-base`。
+
+## 修改标题
+- 使用 `drive files patch` 命令，通过new_title字段可以修改标题，支持 docx、sheet、bitable、file、wiki、folder 类型
 
 ## 核心概念
 
@@ -128,6 +132,28 @@ Drive Folder (云空间文件夹)
 
 ### 评论查询与统计口径（关键！）
 
+**强制规则**：`drive file.comments list` 默认必须传 `is_solved:false`，即仅查询未解决评论。即使用户说“所有评论”“全部评论”“把评论都列出来”，只要没有明确提到要包含已解决评论，仍然按默认口径查询未解决评论。仅当用户明确要求包含已解决评论时，才可省略 `is_solved` 参数。
+
+**正确示例：**
+
+```bash
+# 默认查询：仅未解决评论（推荐）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
+
+# 查询所有评论（用户未明确要求包含已解决评论）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
+
+# 包含已解决评论（需用户明确要求）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
+```
+
+**错误示例：**
+
+```bash
+# 不推荐：用户未明确要求但查询所有评论
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
+```
+
 - 查询文档评论时，使用 `drive file.comments list`。
 - `drive file.comments list` 返回的 `items` 应理解为"评论卡片"列表，每个 `item` 对应用户界面里看到的一张评论卡片，而不是平铺的互动消息列表。
 - 服务端语义上，创建第一条评论时会同时创建该卡片里的第一条 reply；因此真正承载正文的是每个 `item.reply_list.replies`，其中第一条 reply 在用户视角下就是这张卡片里的"评论本身"。
@@ -156,7 +182,7 @@ Drive Folder (云空间文件夹)
 - 使用 `drive file.comments batch_query` 是**已知评论 ID 后**的批量查询，需要传入具体的评论 ID 列表。
 - 使用 `drive file.comments list` 用于分页获取评论列表，适合统计评论总数、遍历所有评论，或获取"最新/最后 N 条评论"等场景。
 
-#### Reaction 场景
+#### Reaction / 表情场景
 - 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](../../skills/lark-drive/references/lark-drive-reactions.md) 了解如何使用**。
 
 ### 典型错误与解决方案
@@ -192,7 +218,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+upload`](references/lark-drive-upload.md) | Upload a local file to Drive |
+| [`+upload`](references/lark-drive-upload.md) | Upload a local file to a Drive folder or wiki node |
+| [`+create-folder`](references/lark-drive-create-folder.md) | Create a Drive folder, optionally under a parent folder, with bot auto-grant support |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
 | [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder |
 | [`+add-comment`](references/lark-drive-add-comment.md) | Add a full-document comment, or a local comment to selected docx text (also supports wiki URL resolving to doc/docx) |
@@ -202,6 +229,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive |
 | [`+delete`](references/lark-drive-delete.md) | Delete a Drive file or folder with limited polling for folder deletes |
 | [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
+| [`+apply-permission`](references/lark-drive-apply-permission.md) | Apply to the document owner for view/edit access (user-only; 5/day per document) |
 
 ## API Resources
 
@@ -217,6 +245,7 @@ lark-cli drive <resource> <method> [flags] # 调用 API
   - `copy` — 复制文件
   - `create_folder` — 新建文件夹
   - `list` — 获取文件夹下的清单
+  - `patch` — 修改文件标题
 
 ### file.comments
 
@@ -267,6 +296,7 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 | `files.copy` | `docs:document:copy` |
 | `files.create_folder` | `space:folder:create` |
 | `files.list` | `space:document:retrieve` |
+| `files.patch` | `docx:document:write_only` |
 | `file.comments.batch_query` | `docs:document.comment:read` |
 | `file.comments.create_v2` | `docs:document.comment:create` |
 | `file.comments.list` | `docs:document.comment:read` |

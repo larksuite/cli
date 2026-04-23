@@ -193,7 +193,7 @@
 
 | 字段 | 类型 | 说明                         |
 |------|------|----------------------------|
-| `allow_edit` | bool | 可新增、删除、修改视图，未提及默认为 `false` |
+| `allow_edit` | bool | 可新增、删除、修改视图；表权限为 `edit` 时默认为 `true`，表权限为 `read_only` 或用户明确限制时为 `false` |
 | `visibility` | object | 可见的视图配置                    |
 | `visibility.all_visible` | bool | 是否全部可见                     |
 | `visibility.visible_views` | []string | 可见视图名称 列表                  |
@@ -203,7 +203,7 @@
 输出 `view_rule` 时，**必须**使用以下完整结构，根据场景选择对应模板：
 
 ```json
-// 情况 A：用户要求可编辑/新增/删除视图 → allow_edit 设为 true
+// 情况 A：表权限为 edit 且用户未明确限制 → allow_edit 默认为 true，全部可见
 {
   "view_rule": {
     "allow_edit": true,
@@ -213,7 +213,7 @@
   }
 }
 
-// 情况 B：用户未提及具体视图，未要求编辑视图 → 全部可见、不可编辑
+// 情况 B：表权限为 read_only，或用户明确说不可编辑视图 → 全部可见、不可编辑
 {
   "view_rule": {
     "allow_edit": false,
@@ -223,10 +223,10 @@
   }
 }
 
-// 情况 C：用户提及了具体视图 → 仅指定视图可见
+// 情况 C：用户提及了具体视图 → 仅指定视图可见（allow_edit 仍按 A/B 规则判断）
 {
   "view_rule": {
-    "allow_edit": false,
+    "allow_edit": true,
     "visibility": {
       "all_visible": false,
       "visible_views": ["表格视图", "看板视图"]
@@ -415,7 +415,15 @@
 | 仪表盘访问 | 不配置 | 用户明确提及该仪表盘 |
 | `base_rule_map.copy` | `false` | 用户明确要求"允许复制" |
 | `base_rule_map.download` | `false` | 用户明确要求"允许下载/打印/副本" |
-| `record_operations` 中的 `delete` | 不包含 | 用户明确说"允许删除"或使用强语义（"完全管理""可删改"） |
+
+### 默认开启项（条件性）
+
+以下能力在特定条件下**默认开启**，用户明确限制时才排除：
+
+| 能力 | 默认值 | 排除条件 |
+|------|--------|----------|
+| `record_operations` 中的 `delete` | **包含**（`perm = edit` 时） | 用户明确限制时才排除 |
+| `view_rule.allow_edit` | **`true`**（`perm = edit` 时） | 用户明确限制"不可编辑视图"或 `perm = read_only` 时设为 `false` |
 
 ---
 
@@ -436,7 +444,7 @@
 ### 记录操作默认策略
 
 **注意**:
-- 用户未提及时，默认包含 `add`，默认不包含 `delete`
+- 用户未提及时，表权限为 `edit` 时默认同时包含 `add` 和 `delete`，默认不包含 `delete` 的情况仅适用于用户明确限制操作的场景
 - 阅读范围默认对齐编辑范围：用户仅描述可编辑范围、未说明阅读范围时，可阅读范围与可编辑范围保持一致，不主动扩大
 - 当可读范围与可编辑范围一致时，**不得**生成 `read_filter_rule_group`；应设置 `other_record_all_read = false` 且 `read_filter_rule_group = null`
 
@@ -475,7 +483,7 @@
 1. **先判断用户是否提及了具体视图名称**（如"看板视图可见""甘特图不可编辑"等）
   - **是** → `all_visible = false`，`visible_views` 仅包含用户明确提及为"可见"的视图名称（非 viewID）；未提及的视图视为不可见
   - **否**（用户完全未提及任何视图）→ `all_visible = true`
-2. `allow_edit` 默认为 `false`，仅当用户明确要求"可编辑视图""可新增/删除视图""可管理视图"时才设为 `true`。设为 `true` 时仍**必须**包含 `visibility` 字段（参考视图权限 情况 A）
+2. `allow_edit` 在表权限为 `edit` 时**默认为 `true`**；仅当用户明确限制"不可编辑视图"时才设为 `false`。设为 `true` 时仍**必须**包含 `visibility` 字段（参考视图权限 情况 A）
 3. `all_visible` 为 `false` 时，`visible_views` **不可为空**，必须至少包含一个视图
 
 **❌ 常见错误 — 缺少 `visibility` 字段：**

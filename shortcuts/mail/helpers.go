@@ -6,7 +6,6 @@ package mail
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -17,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
@@ -1162,6 +1162,7 @@ func buildMessageOutput(msg map[string]interface{}, html bool) map[string]interf
 	out["date_formatted"] = normalized.DateFormatted
 	out["message_state_text"] = normalized.MessageStateText
 	if normalized.PriorityType != "" {
+		out["priority_type"] = normalized.PriorityType
 		out["priority_type_text"] = normalized.PriorityTypeText
 	}
 	out["body_plain_text"] = normalized.BodyPlainText
@@ -1240,10 +1241,21 @@ func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string
 	out.MessageStateText = messageStateText(state)
 	out.FolderID = strVal(msg["folder_id"])
 	out.LabelIDs = toStringList(msg["label_ids"])
+	// Priority: prefer label_ids (HIGH_PRIORITY/LOW_PRIORITY), fall back to priority_type field.
 	priorityType := strVal(msg["priority_type"])
 	out.PriorityType = priorityType
 	if priorityType != "" {
 		out.PriorityTypeText = priorityTypeText(priorityType)
+	}
+	for _, label := range out.LabelIDs {
+		switch label {
+		case "HIGH_PRIORITY":
+			out.PriorityType = "1"
+			out.PriorityTypeText = "high"
+		case "LOW_PRIORITY":
+			out.PriorityType = "5"
+			out.PriorityTypeText = "low"
+		}
 	}
 	if securityLevel := toSecurityLevel(msg["security_level"]); securityLevel != nil {
 		out.SecurityLevel = securityLevel
@@ -1278,7 +1290,7 @@ func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string
 			contentType := resolveAttachmentContentType(att, filename)
 			dlURL := urlMap[id]
 
-			if isInline {
+			if isInline && cid != "" {
 				images = append(images, mailImageOutput{
 					ID:          id,
 					Filename:    filename,
@@ -1345,9 +1357,10 @@ type inlineSourcePart struct {
 }
 
 type composeSourceMessage struct {
-	Original           originalMessage
-	ForwardAttachments []forwardSourceAttachment
-	InlineImages       []inlineSourcePart
+	Original            originalMessage
+	ForwardAttachments  []forwardSourceAttachment
+	InlineImages        []inlineSourcePart
+	FailedAttachmentIDs map[string]bool
 }
 
 // fetchComposeSourceMessage loads a message via the +message pipeline and converts it
@@ -1358,13 +1371,20 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 		return composeSourceMessage{}, err
 	}
 	attIDs := extractAttachmentIDs(msg)
-	urlMap, _ := fetchAttachmentURLs(runtime, mailboxID, messageID, attIDs)
+	urlMap, warnings := fetchAttachmentURLs(runtime, mailboxID, messageID, attIDs)
+	failedIDs := make(map[string]bool)
+	for _, w := range warnings {
+		if w.Code == "attachment_download_url_failed_id" && w.AttachmentID != "" {
+			failedIDs[w.AttachmentID] = true
+		}
+	}
 	out := buildMessageForCompose(msg, urlMap, true)
 	orig := toOriginalMessageForCompose(out)
 	return composeSourceMessage{
-		Original:           orig,
-		ForwardAttachments: toForwardSourceAttachments(out),
-		InlineImages:       toInlineSourceParts(out),
+		Original:            orig,
+		ForwardAttachments:  toForwardSourceAttachments(out),
+		InlineImages:        toInlineSourceParts(out),
+		FailedAttachmentIDs: failedIDs,
 	}, nil
 }
 
@@ -1373,6 +1393,12 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 func validateForwardAttachmentURLs(src composeSourceMessage) error {
 	var missing []string
 	for _, att := range src.ForwardAttachments {
+		if att.AttachmentType == attachmentTypeLarge {
+			continue
+		}
+		if src.FailedAttachmentIDs[att.ID] {
+			continue
+		}
 		if att.DownloadURL == "" {
 			missing = append(missing, fmt.Sprintf("attachment %q (%s)", att.Filename, att.ID))
 		}
@@ -1707,6 +1733,48 @@ func priorityTypeText(priorityType string) string {
 	}
 }
 
+// priorityFlag is the common flag definition for --priority, shared by all compose shortcuts.
+var priorityFlag = common.Flag{
+	Name: "priority",
+	Desc: "Email priority: high, normal, low. If omitted, no priority header is set.",
+}
+
+// parsePriority parses the --priority flag value and returns the X-Cli-Priority
+// header value. Returns "" if the priority should not be set (empty or "normal").
+func parsePriority(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return "", nil
+	case "high":
+		return "1", nil
+	case "normal":
+		return "", nil
+	case "low":
+		return "5", nil
+	default:
+		return "", fmt.Errorf("invalid --priority value %q: expected high, normal, or low", value)
+	}
+}
+
+// validatePriorityFlag validates the --priority flag value in Validate, so invalid
+// values are caught before Execute (and before dry-run prints an API plan).
+func validatePriorityFlag(runtime *common.RuntimeContext) error {
+	v := runtime.Str("priority")
+	if v == "" {
+		return nil
+	}
+	_, err := parsePriority(v)
+	return err
+}
+
+// applyPriority sets the X-Cli-Priority header on the EML builder if priority is non-empty.
+func applyPriority(bld emlbuilder.Builder, priority string) emlbuilder.Builder {
+	if priority == "" {
+		return bld
+	}
+	return bld.Header("X-Cli-Priority", priority)
+}
+
 // parseNetAddrs converts a comma-separated address string to []net/mail.Address.
 // It reuses ParseMailboxList for display-name-aware parsing and deduplicates
 // by email address (case-insensitive), preserving the first occurrence.
@@ -1782,6 +1850,42 @@ func normalizeMessageID(id string) string {
 	return strings.TrimSpace(trimmed)
 }
 
+func buildDraftSendOutput(resData map[string]interface{}, mailboxID string) map[string]interface{} {
+	out := map[string]interface{}{
+		"message_id": resData["message_id"],
+		"thread_id":  resData["thread_id"],
+	}
+	if recallStatus, ok := resData["recall_status"].(string); ok && recallStatus == "available" {
+		messageID, _ := resData["message_id"].(string)
+		out["recall_available"] = true
+		out["recall_tip"] = fmt.Sprintf(
+			`This message can be recalled within 24 hours. To recall: lark-cli mail user_mailbox.sent_messages recall --params '{"user_mailbox_id":"%s","message_id":"%s"}'`,
+			mailboxID, messageID)
+	}
+	if automationDisable, ok := resData["automation_send_disable"]; ok {
+		if automation, ok := automationDisable.(map[string]interface{}); ok {
+			if reason, ok := automation["reason"].(string); ok && strings.TrimSpace(reason) != "" {
+				out["automation_send_disable_reason"] = strings.TrimSpace(reason)
+			}
+			if reference, ok := automation["reference"].(string); ok && strings.TrimSpace(reference) != "" {
+				out["automation_send_disable_reference"] = strings.TrimSpace(reference)
+			}
+		}
+	}
+	return out
+}
+
+func buildDraftSavedOutput(draftResult draftpkg.DraftResult, mailboxID string) map[string]interface{} {
+	out := map[string]interface{}{
+		"draft_id": draftResult.DraftID,
+		"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftResult.DraftID),
+	}
+	if draftResult.Reference != "" {
+		out["reference"] = draftResult.Reference
+	}
+	return out
+}
+
 func normalizeInlineCID(cid string) string {
 	trimmed := strings.TrimSpace(cid)
 	if len(trimmed) >= 4 && strings.EqualFold(trimmed[:4], "cid:") {
@@ -1813,12 +1917,13 @@ func validateInlineCIDs(html string, userCIDs, extraCIDs []string) error {
 	return nil
 }
 
-func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, []string, error) {
+func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Builder, images []inlineSourcePart) (emlbuilder.Builder, []string, int64, error) {
 	var cids []string
+	var totalBytes int64
 	for _, img := range images {
 		content, err := downloadAttachmentContent(runtime, img.DownloadURL)
 		if err != nil {
-			return bld, nil, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
+			return bld, nil, 0, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
 		}
 		cid := normalizeInlineCID(img.CID)
 		if cid == "" {
@@ -1830,8 +1935,9 @@ func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Bui
 		}
 		bld = bld.AddInline(content, contentType, img.Filename, cid)
 		cids = append(cids, cid)
+		totalBytes += int64(len(content))
 	}
-	return bld, cids, nil
+	return bld, cids, totalBytes, nil
 }
 
 // InlineSpec represents one inline image entry from the --inline JSON array.
@@ -1875,33 +1981,23 @@ func inlineSpecFilePaths(specs []InlineSpec) []string {
 	return paths
 }
 
-// checkAttachmentSizeLimit returns an error if the combined attachment count exceeds
-// MaxAttachmentCount or the combined size exceeds MaxAttachmentBytes.
-// filePaths are read via os.Stat (no full read); extraBytes / extraCount account for
-// already-loaded content (e.g. downloaded original attachments in +forward).
-func checkAttachmentSizeLimit(fio fileio.FileIO, filePaths []string, extraBytes int64, extraCount ...int) error {
-	extra := 0
-	for _, c := range extraCount {
-		extra += c
+// validateSendTime checks that --send-time, if provided, requires --confirm-send,
+// is a valid Unix timestamp in seconds, and is at least 5 minutes in the future.
+func validateSendTime(runtime *common.RuntimeContext) error {
+	sendTime := runtime.Str("send-time")
+	if sendTime == "" {
+		return nil
 	}
-	total := extra + len(filePaths)
-	if total > MaxAttachmentCount {
-		return fmt.Errorf("attachment count %d exceeds the limit of %d", total, MaxAttachmentCount)
+	if !runtime.Bool("confirm-send") {
+		return fmt.Errorf("--send-time requires --confirm-send to be set")
 	}
-	totalBytes := extraBytes
-	for _, p := range filePaths {
-		info, err := fio.Stat(p)
-		if err != nil {
-			if errors.Is(err, fileio.ErrPathValidation) {
-				return fmt.Errorf("unsafe attachment path %s: %w", p, err)
-			}
-			return fmt.Errorf("failed to stat attachment %s: %w", p, err)
-		}
-		totalBytes += info.Size()
+	ts, err := strconv.ParseInt(sendTime, 10, 64)
+	if err != nil {
+		return fmt.Errorf("--send-time must be a valid Unix timestamp in seconds, got %q", sendTime)
 	}
-	if totalBytes > MaxAttachmentBytes {
-		return fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB limit",
-			float64(totalBytes)/1024/1024)
+	minTime := time.Now().Unix() + 5*60
+	if ts < minTime {
+		return fmt.Errorf("--send-time must be at least 5 minutes in the future (minimum: %d, got: %d)", minTime, ts)
 	}
 	return nil
 }
@@ -2005,14 +2101,15 @@ func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFl
 			return fmt.Errorf("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
 		}
 	}
-	// Validate explicitly provided files (--attach + --inline) early so that
-	// dry-run and reply/forward can catch local errors before Execute.
-	// Auto-resolved local images are only known at Execute time, so Execute
-	// performs a second, complete size check that includes them.
 	inlineSpecs, err := parseInlineSpecs(inlineFlag)
 	if err != nil {
 		return err
 	}
-	allFiles := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
-	return checkAttachmentSizeLimit(fio, allFiles, 0)
+	// Preflight: verify explicit file paths exist and pass blocked-extension
+	// checks so that --dry-run surfaces local errors before Execute.
+	allPaths := append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...)
+	if _, err := statAttachmentFiles(fio, allPaths); err != nil {
+		return err
+	}
+	return nil
 }

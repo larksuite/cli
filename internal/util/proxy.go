@@ -72,31 +72,47 @@ func WarnIfProxied(w io.Writer) {
 	})
 }
 
-// NewBaseTransport creates an *http.Transport cloned from http.DefaultTransport.
-// If LARK_CLI_NO_PROXY is set, proxy support is disabled.
-// Each call returns a new instance; use FallbackTransport for a shared singleton.
-func NewBaseTransport() *http.Transport {
+// noProxyTransport is a proxy-disabled clone of http.DefaultTransport,
+// lazily built the first time LARK_CLI_NO_PROXY is observed set.
+var noProxyTransport = sync.OnceValue(func() *http.Transport {
 	def, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return &http.Transport{}
 	}
 	t := def.Clone()
-	if os.Getenv(EnvNoProxy) != "" {
-		t.Proxy = nil
-	}
+	t.Proxy = nil
 	return t
-}
-
-// fallbackTransport is a lazily-initialized singleton used by transport
-// decorators when their Base field is nil, preserving connection pooling.
-var fallbackTransport = sync.OnceValue(func() *http.Transport {
-	return NewBaseTransport()
 })
 
-// FallbackTransport returns a shared *http.Transport singleton suitable for
-// use as a fallback when a transport decorator's Base is nil.
-// Unlike NewBaseTransport (which clones per call), this reuses a single
-// instance so that TCP connections and TLS sessions are pooled.
+// SharedTransport returns the base http.RoundTripper for CLI HTTP clients.
+//
+// By default it returns http.DefaultTransport — the stdlib-provided
+// process-wide singleton — so every HTTP client in the process shares one
+// TCP connection pool, TLS session cache, and HTTP/2 state. When
+// LARK_CLI_NO_PROXY is set it returns a separate proxy-disabled singleton
+// clone; LARK_CLI_NO_PROXY is checked on every call, but the clone is built
+// at most once.
+//
+// The returned RoundTripper MUST NOT be mutated. Callers that need a
+// customized transport should assert to *http.Transport and Clone() it.
+// Using a shared base is required so persistConn readLoop/writeLoop
+// goroutines are reused; cloning per call leaks them until IdleConnTimeout
+// (~90s) fires.
+func SharedTransport() http.RoundTripper {
+	if os.Getenv(EnvNoProxy) != "" {
+		return noProxyTransport()
+	}
+	return http.DefaultTransport
+}
+
+// FallbackTransport returns a shared *http.Transport singleton. It is a
+// thin wrapper over SharedTransport retained so modules that were already
+// on the leak-free singleton path (internal/auth, internal/cmdutil
+// transport decorators) do not have to migrate. New code should prefer
+// SharedTransport and treat the base as an http.RoundTripper.
 func FallbackTransport() *http.Transport {
-	return fallbackTransport()
+	if t, ok := SharedTransport().(*http.Transport); ok {
+		return t
+	}
+	return noProxyTransport()
 }

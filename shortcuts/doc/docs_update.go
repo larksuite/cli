@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -62,6 +63,9 @@ var DocsUpdate = common.Shortcut{
 		if needsSelection[mode] && selEllipsis == "" && selTitle == "" {
 			return common.FlagErrorf("--%s mode requires --selection-with-ellipsis or --selection-by-title", mode)
 		}
+		if err := validateSelectionByTitle(selTitle); err != nil {
+			return err
+		}
 
 		return nil
 	},
@@ -89,12 +93,22 @@ var DocsUpdate = common.Shortcut{
 			Set("mcp_tool", "update-doc").Set("args", args)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		mode := runtime.Str("mode")
+		markdown := runtime.Str("markdown")
+
+		// Static semantic checks run before the MCP call so users see
+		// warnings even if the subsequent request fails. They never block
+		// execution — the update still proceeds.
+		for _, w := range docsUpdateWarnings(mode, markdown) {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
+		}
+
 		args := map[string]interface{}{
 			"doc_id": runtime.Str("doc"),
-			"mode":   runtime.Str("mode"),
+			"mode":   mode,
 		}
-		if v := runtime.Str("markdown"); v != "" {
-			args["markdown"] = v
+		if markdown != "" {
+			args["markdown"] = markdown
 		}
 		if v := runtime.Str("selection-with-ellipsis"); v != "" {
 			args["selection_with_ellipsis"] = v
@@ -155,4 +169,18 @@ func normalizeBoardTokens(raw interface{}) []string {
 	default:
 		return []string{}
 	}
+}
+
+func validateSelectionByTitle(title string) error {
+	if title == "" {
+		return nil
+	}
+	trimmed := strings.TrimSpace(title)
+	if strings.Contains(trimmed, "\n") || strings.Contains(trimmed, "\r") {
+		return common.FlagErrorf("--selection-by-title must be a single heading line (for example: '## Section')")
+	}
+	if strings.HasPrefix(trimmed, "#") {
+		return nil
+	}
+	return common.FlagErrorf("--selection-by-title must include markdown heading prefix '#'. Example: --selection-by-title '## Section'")
 }

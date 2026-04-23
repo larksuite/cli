@@ -6,6 +6,7 @@ package slides
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -650,4 +651,176 @@ func decodeSlidesCreateEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]i
 		t.Fatalf("missing data in output envelope: %#v", envelope)
 	}
 	return data
+}
+
+// TestSlidesCreateWithImagePlaceholders verifies @path placeholders are uploaded
+// once each (with dedup) and replaced with file_tokens before slide.create runs.
+//
+// Not parallel: uses os.Chdir to pin local file paths to a temp dir.
+func TestSlidesCreateWithImagePlaceholders(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+	if err := os.WriteFile("a.png", []byte("aa"), 0o644); err != nil {
+		t.Fatalf("write a.png: %v", err)
+	}
+	if err := os.WriteFile("b.png", []byte("bb"), 0o644); err != nil {
+		t.Fatalf("write b.png: %v", err)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation_id": "pres_img",
+				"revision_id":         1,
+			},
+		},
+	})
+
+	// Two distinct images → two upload calls. a.png is referenced twice but
+	// must be uploaded only once.
+	uploadStubA := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"file_token": "tok_a"}},
+	}
+	uploadStubB := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"file_token": "tok_b"}},
+	}
+	reg.Register(uploadStubA)
+	reg.Register(uploadStubB)
+
+	// Slide stubs: capture the rewritten slide content to assert tokens were
+	// actually substituted into the XML.
+	slideStub1 := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_img/slide",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"slide_id": "s1", "revision_id": 2}},
+	}
+	slideStub2 := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_img/slide",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"slide_id": "s2", "revision_id": 3}},
+	}
+	reg.Register(slideStub1)
+	reg.Register(slideStub2)
+	registerBatchQueryStub(reg, "pres_img", "https://x.feishu.cn/slides/pres_img")
+
+	slidesJSON := `[
+	  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><img src=\"@a.png\" topLeftX=\"10\"/><img src=\"@b.png\" topLeftX=\"20\"/></data></slide>",
+	  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><img src=\"@a.png\" topLeftX=\"30\"/></data></slide>"
+	]`
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Img test",
+		"--slides", slidesJSON,
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSlidesCreateEnvelope(t, stdout)
+	if data["images_uploaded"] != float64(2) {
+		t.Fatalf("images_uploaded = %v, want 2 (a.png deduped)", data["images_uploaded"])
+	}
+	if data["slides_added"] != float64(2) {
+		t.Fatalf("slides_added = %v, want 2", data["slides_added"])
+	}
+
+	// Assert each slide.create body uses tokens (not @path placeholders), and
+	// that both upload tokens reach at least one slide so a buggy mapping
+	// where `@b.png` got rewritten to `tok_a` would still fail.
+	hasTokB := false
+	for _, stub := range []*httpmock.Stub{slideStub1, slideStub2} {
+		var body map[string]interface{}
+		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+			t.Fatalf("decode slide body: %v", err)
+		}
+		slide, _ := body["slide"].(map[string]interface{})
+		content, _ := slide["content"].(string)
+		if strings.Contains(content, "@a.png") || strings.Contains(content, "@b.png") {
+			t.Fatalf("slide content still contains placeholder: %s", content)
+		}
+		if !strings.Contains(content, "tok_a") {
+			t.Fatalf("slide content missing tok_a: %s", content)
+		}
+		if strings.Contains(content, "tok_b") {
+			hasTokB = true
+		}
+	}
+	if !hasTokB {
+		t.Fatal("expected at least one slide body to contain tok_b")
+	}
+}
+
+// TestSlidesCreatePlaceholderFileMissing verifies validation rejects a missing local file
+// up front, before the presentation is created.
+func TestSlidesCreatePlaceholderFileMissing(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	// No HTTP mocks registered — Validate must reject before any API call.
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	slidesJSON := `["<slide><data><img src=\"@./missing.png\"/></data></slide>"]`
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "missing img",
+		"--slides", slidesJSON,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error for missing placeholder file")
+	}
+	if !strings.Contains(err.Error(), "missing.png") {
+		t.Fatalf("err = %v, want mention of missing.png", err)
+	}
+}
+
+// TestSlidesCreateWithPlaceholdersDryRun verifies dry-run lists upload steps
+// with placeholder files counted into the total.
+func TestSlidesCreateWithPlaceholdersDryRun(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+	if err := os.WriteFile("p1.png", []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile("p2.png", []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	slidesJSON := `["<slide><data><img src=\"@p1.png\"/><img src=\"@p2.png\"/></data></slide>"]`
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "dry imgs",
+		"--slides", slidesJSON,
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// Bookend step markers: [1/4] = create presentation, [4/4] = add slide 1.
+	// Upload steps in between use the helper's own [N] labels (no /total).
+	for _, marker := range []string{"[1/4]", "[4/4]"} {
+		if !strings.Contains(out, marker) {
+			t.Fatalf("dry-run missing %s, got: %s", marker, out)
+		}
+	}
+	if strings.Count(out, "upload_all") != 2 {
+		t.Fatalf("dry-run should contain 2 upload_all calls, got: %s", out)
+	}
+	if !strings.Contains(out, slidesMediaParentType) {
+		t.Fatalf("dry-run missing parent_type %q, got: %s", slidesMediaParentType, out)
+	}
+	if !strings.Contains(out, "Create presentation + upload 2 image(s)") {
+		t.Fatalf("dry-run header should describe upload count, got: %s", out)
+	}
 }

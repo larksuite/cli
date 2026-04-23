@@ -34,6 +34,7 @@ lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
 - **`revision_id`**（integer）：演示文稿版本号
 - **`slide_ids`**（string[]，可选）：仅传 `--slides` 时返回，成功添加的页面 ID 列表
 - **`slides_added`**（integer，可选）：仅传 `--slides` 时返回，成功添加的页面数量
+- **`images_uploaded`**（integer，可选）：仅 `--slides` 中含 `@<本地路径>` 占位符时返回，已上传的去重后图片数量
 - **`permission_grant`**（object，可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
 
 > [!IMPORTANT]
@@ -67,6 +68,43 @@ lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
 ```
 
 JSON string 数组，每个元素是一页 slide 的完整 XML。CLI 内部负责包装成 API 所需的 `{"slide": {"content": "..."}}` 格式并逐页调用。
+
+### 本地图片：`@<path>` 占位符
+
+`<img>` 元素的 `src` 属性如果以 `@` 开头，CLI 会把它当作本地文件路径，自动上传到当前演示文稿，并把占位符替换为返回的 `file_token`。
+
+```bash
+lark-cli slides +create --as user --title "图测试" --slides '[
+  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><img src=\"@./assets/chart.png\" topLeftX=\"100\" topLeftY=\"100\" width=\"320\" height=\"180\"/></data></slide>"
+]'
+```
+
+行为：
+
+- 路径相对于**当前工作目录**（CWD）解析；**必须是 CWD 内的相对路径**（如 `./pic.png`、`./assets/x.png`）
+- 同一份图被多次引用时**只上传一次**（按路径去重）
+- `src` 不以 `@` 开头的会原样保留，但**只允许写 `slides +media-upload` 拿到的 `file_token`**；**禁止写 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 通常显示破图。要用网图必须先下载到 CWD 内、再走上传流程
+- 单张图片最大 20 MB（slides upload API 不支持分片上传）
+- 校验阶段就会检查所有占位符文件存在及大小；缺文件或超限直接报错，不会创建空白 PPT 占位
+- 创空白 PPT → 上传所有图 → 替换 token → 逐页创建 slide，按这个顺序执行
+
+> [!IMPORTANT]
+> **路径必须在 CWD 内**：`@/abs/path/x.png` 或 `@../up/x.png` 这种会被 CLI 拒绝（报 `unsafe file path`）。如果素材在别的目录，先 `cd` 过去再执行。
+
+### 给已有 PPT 加带图新页
+
+`+create --slides` 只在新建 PPT 时使用 `@` 占位符。给已有 PPT 加带图新页要分两步（CLI 没封装这个组合）：
+
+```bash
+# 1) 上传图片
+TOKEN=$(lark-cli slides +media-upload --as user \
+  --file ./pic.png --presentation $PRES_ID | jq -r .data.file_token)
+
+# 2) 用返回的 file_token 创建带图新页
+lark-cli slides xml_presentation.slide create --as user \
+  --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
+  --data "{\"slide\":{\"content\":\"<slide xmlns=\\\"http://www.larkoffice.com/sml/2.0\\\"><data><img src=\\\"$TOKEN\\\" topLeftX=\\\"100\\\" topLeftY=\\\"100\\\" width=\\\"200\\\" height=\\\"200\\\"/></data></slide>\"}}"
+```
 
 ## 创建后续步骤
 

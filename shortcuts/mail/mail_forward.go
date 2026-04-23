@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -34,7 +35,9 @@ var MailForward = common.Shortcut{
 		{Name: "attach", Desc: "Attachment file path(s), comma-separated, appended after original attachments (relative path only)"},
 		{Name: "inline", Desc: "Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
 		{Name: "confirm-send", Type: "bool", Desc: "Send the forward immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
-	},
+		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
+		signatureFlag,
+		priorityFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		to := runtime.Str("to")
@@ -59,12 +62,21 @@ var MailForward = common.Shortcut{
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
 		}
+		if err := validateSendTime(runtime); err != nil {
+			return err
+		}
 		if runtime.Bool("confirm-send") {
 			if err := validateComposeHasAtLeastOneRecipient(runtime.Str("to"), runtime.Str("cc"), runtime.Str("bcc")); err != nil {
 				return err
 			}
 		}
-		return validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), "")
+		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+			return err
+		}
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), ""); err != nil {
+			return err
+		}
+		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
@@ -76,8 +88,19 @@ var MailForward = common.Shortcut{
 		attachFlag := runtime.Str("attach")
 		inlineFlag := runtime.Str("inline")
 		confirmSend := runtime.Bool("confirm-send")
+		sendTime := runtime.Str("send-time")
 
+		priority, err := parsePriority(runtime.Str("priority"))
+		if err != nil {
+			return err
+		}
+
+		signatureID := runtime.Str("signature-id")
 		mailboxID := resolveComposeMailboxID(runtime)
+		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, runtime.Str("from"))
+		if sigErr != nil {
+			return sigErr
+		}
 		sourceMsg, err := fetchComposeSourceMessage(runtime, mailboxID, messageId)
 		if err != nil {
 			return fmt.Errorf("failed to fetch original message: %w", err)
@@ -114,7 +137,7 @@ var MailForward = common.Shortcut{
 		if messageId != "" {
 			bld = bld.LMSReplyToMessageID(messageId)
 		}
-		useHTML := !plainText && (bodyIsHTML(body) || bodyIsHTML(orig.bodyRaw))
+		useHTML := !plainText && (bodyIsHTML(body) || bodyIsHTML(orig.bodyRaw) || sigResult != nil)
 		if strings.TrimSpace(inlineFlag) != "" && !useHTML {
 			return fmt.Errorf("--inline requires HTML mode, but neither the new body nor the original message contains HTML")
 		}
@@ -123,14 +146,23 @@ var MailForward = common.Shortcut{
 			return err
 		}
 		var autoResolvedPaths []string
+		var composedHTMLBody string
+		var composedTextBody string
+		var srcInlineBytes int64
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("forward blocked: %w", err)
 			}
 			processedBody := buildBodyDiv(body, bodyIsHTML(body))
+			origLargeAttCard := stripLargeAttachmentCard(&orig)
+			for id := range sourceMsg.FailedAttachmentIDs {
+				if updated, ok := draftpkg.RemoveLargeFileItemFromHTML(origLargeAttCard, id); ok {
+					origLargeAttCard = updated
+				}
+			}
 			forwardQuote := buildForwardQuoteHTML(&orig)
 			var srcCIDs []string
-			bld, srcCIDs, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
+			bld, srcCIDs, srcInlineBytes, err = addInlineImagesToBuilder(runtime, bld, sourceMsg.InlineImages)
 			if err != nil {
 				return err
 			}
@@ -138,8 +170,13 @@ var MailForward = common.Shortcut{
 			if resolveErr != nil {
 				return resolveErr
 			}
-			fullHTML := resolved + forwardQuote
-			bld = bld.HTMLBody([]byte(fullHTML))
+			bodyWithSig := resolved
+			if sigResult != nil {
+				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
+			}
+			composedHTMLBody = bodyWithSig + origLargeAttCard + forwardQuote
+			bld = bld.HTMLBody([]byte(composedHTMLBody))
+			bld = addSignatureImagesToBuilder(bld, sigResult)
 			var userCIDs []string
 			for _, ref := range refs {
 				bld = bld.AddFileInline(ref.FilePath, ref.CID)
@@ -150,25 +187,28 @@ var MailForward = common.Shortcut{
 				bld = bld.AddFileInline(spec.FilePath, spec.CID)
 				userCIDs = append(userCIDs, spec.CID)
 			}
-			if err := validateInlineCIDs(resolved, userCIDs, srcCIDs); err != nil {
+			if err := validateInlineCIDs(bodyWithSig, append(userCIDs, signatureCIDs(sigResult)...), srcCIDs); err != nil {
 				return err
 			}
 		} else {
-			bld = bld.TextBody([]byte(buildForwardedMessage(&orig, body)))
+			composedTextBody = buildForwardedMessage(&orig, body)
+			bld = bld.TextBody([]byte(composedTextBody))
 		}
-		// Download original attachments and accumulate size for limit check
+		bld = applyPriority(bld, priority)
+		// Download original attachments, separating normal from large.
 		type downloadedAtt struct {
 			content     []byte
 			contentType string
 			filename    string
 		}
 		var origAtts []downloadedAtt
-		var origAttBytes int64
-		type largeAttID struct {
-			ID string `json:"id"`
-		}
 		var largeAttIDs []largeAttID
+		var skippedAtts []string
 		for _, att := range sourceMsg.ForwardAttachments {
+			if sourceMsg.FailedAttachmentIDs[att.ID] {
+				skippedAtts = append(skippedAtts, att.Filename)
+				continue
+			}
 			if att.AttachmentType == attachmentTypeLarge {
 				largeAttIDs = append(largeAttIDs, largeAttID{ID: att.ID})
 				continue
@@ -182,50 +222,130 @@ var MailForward = common.Shortcut{
 				contentType = "application/octet-stream"
 			}
 			origAtts = append(origAtts, downloadedAtt{content, contentType, att.Filename})
-			origAttBytes += int64(len(content))
 		}
+		if len(skippedAtts) > 0 {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: skipped %d invalid attachment(s): %s\n",
+				len(skippedAtts), strings.Join(skippedAtts, ", "))
+		}
+
+		// Classify ALL attachments (original + user-added) together so that
+		// original attachments exceeding the EML limit are uploaded as large
+		// attachments instead of being embedded.
+		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, srcInlineBytes)
+
+		var allFiles []attachmentFile
+		for i, att := range origAtts {
+			allFiles = append(allFiles, attachmentFile{
+				FileName:    att.filename,
+				Size:        int64(len(att.content)),
+				SourceIndex: i,
+			})
+		}
+		userFiles, err := statAttachmentFiles(runtime.FileIO(), splitByComma(attachFlag))
+		if err != nil {
+			return err
+		}
+		for _, f := range userFiles {
+			if f.Size > MaxLargeAttachmentSize {
+				return output.ErrValidation("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+					f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
+			}
+		}
+		totalCount := len(origAtts) + len(largeAttIDs) + len(userFiles)
+		if totalCount > MaxAttachmentCount {
+			return output.ErrValidation("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
+		}
+		allFiles = append(allFiles, userFiles...)
+		classified := classifyAttachments(allFiles, emlBase)
+
+		// Embed normal attachments.
+		for _, f := range classified.Normal {
+			if f.Path == "" {
+				att := origAtts[f.SourceIndex]
+				bld = bld.AddAttachment(att.content, att.contentType, att.filename)
+			} else {
+				bld = bld.AddFileAttachment(f.Path)
+			}
+		}
+
+		// Upload oversized attachments as large attachments.
+		if len(classified.Oversized) > 0 {
+			if composedHTMLBody == "" && composedTextBody == "" {
+				return output.ErrValidation("large attachments require a body; " +
+					"empty messages cannot include the download link")
+			}
+			if runtime.Config == nil || runtime.UserOpenId() == "" {
+				var totalBytes int64
+				for _, f := range classified.Oversized {
+					totalBytes += f.Size
+				}
+				return output.ErrValidation("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
+					"large attachment upload requires user identity (--as user)",
+					float64(totalBytes)/1024/1024)
+			}
+
+			var allOversized []attachmentFile
+			for _, f := range classified.Oversized {
+				if f.Path == "" {
+					att := origAtts[f.SourceIndex]
+					allOversized = append(allOversized, attachmentFile{
+						FileName: att.filename,
+						Size:     int64(len(att.content)),
+						Data:     att.content,
+					})
+				} else {
+					allOversized = append(allOversized, f)
+				}
+			}
+			uploadResults, err := uploadLargeAttachments(ctx, runtime, allOversized)
+			if err != nil {
+				return err
+			}
+
+			if composedHTMLBody != "" {
+				largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(composedHTMLBody, largeHTML)))
+			} else {
+				largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				bld = bld.TextBody([]byte(composedTextBody + largeText))
+			}
+
+			for _, r := range uploadResults {
+				largeAttIDs = append(largeAttIDs, largeAttID{ID: r.FileToken})
+			}
+
+			fmt.Fprintf(runtime.IO().ErrOut, "  %d normal attachment(s) embedded in EML\n", len(classified.Normal))
+			fmt.Fprintf(runtime.IO().ErrOut, "  %d large attachment(s) uploaded (download links in body)\n", len(classified.Oversized))
+		}
+
 		if len(largeAttIDs) > 0 {
 			idsJSON, err := json.Marshal(largeAttIDs)
 			if err != nil {
 				return fmt.Errorf("failed to encode large attachment IDs: %w", err)
 			}
-			bld = bld.Header("X-Lms-Large-Attachment-Ids", base64.StdEncoding.EncodeToString(idsJSON))
-		}
-		allFilePaths := append(append(splitByComma(attachFlag), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-		if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, origAttBytes, len(origAtts)); err != nil {
-			return err
-		}
-		for _, att := range origAtts {
-			bld = bld.AddAttachment(att.content, att.contentType, att.filename)
-		}
-		for _, path := range splitByComma(attachFlag) {
-			bld = bld.AddFileAttachment(path)
+			bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {
 			return fmt.Errorf("failed to build EML: %w", err)
 		}
 
-		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
-			runtime.Out(map[string]interface{}{
-				"draft_id": draftID,
-				"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftID),
-			}, nil)
-			hintSendDraft(runtime, mailboxID, draftID)
+			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
-		resData, err := draftpkg.Send(runtime, mailboxID, draftID)
+		resData, err := draftpkg.Send(runtime, mailboxID, draftResult.DraftID, sendTime)
 		if err != nil {
-			return fmt.Errorf("failed to send forward (draft %s created but not sent): %w", draftID, err)
+			return fmt.Errorf("failed to send forward (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(map[string]interface{}{
-			"message_id": resData["message_id"],
-			"thread_id":  resData["thread_id"],
-		}, nil)
+		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

@@ -478,36 +478,9 @@ invalid
 }
 
 func TestWhiteboardUpdateExecute_WithOverwrite(t *testing.T) {
-	// Skip sleep for testing
-	origSkip := skipDeleteNodesBatchSleep
-	skipDeleteNodesBatchSleep = true
-	defer func() { skipDeleteNodesBatchSleep = origSkip }()
-
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
-	// Mock 1: Get existing nodes (for clearWhiteboardContent)
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/board/v1/whiteboards/test-token-overwrite/nodes",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "",
-			"data": map[string]interface{}{
-				"nodes": []map[string]interface{}{
-					{
-						"id":       "old-node-1",
-						"children": []string{},
-					},
-					{
-						"id":       "old-node-2",
-						"children": []string{},
-					},
-				},
-			},
-		},
-	})
-
-	// Mock 2: Create nodes API response
+	// Mock: Create nodes API response with overwrite in request body
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/board/v1/whiteboards/test-token-overwrite/nodes/plantuml",
@@ -520,16 +493,6 @@ func TestWhiteboardUpdateExecute_WithOverwrite(t *testing.T) {
 		},
 	})
 
-	// Mock 3: Delete nodes batch
-	reg.Register(&httpmock.Stub{
-		Method: "DELETE",
-		URL:    "/open-apis/board/v1/whiteboards/test-token-overwrite/nodes/batch_delete",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "success",
-		},
-	})
-
 	source := `graph TD
 A-->B`
 	args := []string{"+update", "--whiteboard-token", "test-token-overwrite", "--input_format", "mermaid", "--overwrite", "--source", source}
@@ -539,36 +502,9 @@ A-->B`
 }
 
 func TestWhiteboardUpdateExecute_RawWithOverwrite(t *testing.T) {
-	// Skip sleep for testing
-	origSkip := skipDeleteNodesBatchSleep
-	skipDeleteNodesBatchSleep = true
-	defer func() { skipDeleteNodesBatchSleep = origSkip }()
-
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
-	// Mock 1: Get existing nodes (for clearWhiteboardContent)
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/board/v1/whiteboards/test-token-raw-overwrite/nodes",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "",
-			"data": map[string]interface{}{
-				"nodes": []map[string]interface{}{
-					{
-						"id":       "old-node-1",
-						"children": []string{"old-child-1"},
-					},
-					{
-						"id":       "old-child-1",
-						"children": []string{},
-					},
-				},
-			},
-		},
-	})
-
-	// Mock 2: Create nodes API response
+	// Mock: Create nodes API response with overwrite in request body
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/board/v1/whiteboards/test-token-raw-overwrite/nodes",
@@ -578,16 +514,6 @@ func TestWhiteboardUpdateExecute_RawWithOverwrite(t *testing.T) {
 			"data": map[string]interface{}{
 				"ids": []string{"new-node-1", "new-node-2"},
 			},
-		},
-	})
-
-	// Mock 3: Delete nodes batch
-	reg.Register(&httpmock.Stub{
-		Method: "DELETE",
-		URL:    "/open-apis/board/v1/whiteboards/test-token-raw-overwrite/nodes/batch_delete",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "success",
 		},
 	})
 

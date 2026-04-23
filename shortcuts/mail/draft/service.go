@@ -42,25 +42,42 @@ func GetRaw(runtime *common.RuntimeContext, mailboxID, draftID string) (DraftRaw
 	}, nil
 }
 
-func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (string, error) {
+func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (DraftResult, error) {
 	data, err := runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts"), nil, map[string]interface{}{"raw": rawEML})
 	if err != nil {
-		return "", err
+		return DraftResult{}, err
 	}
 	draftID := extractDraftID(data)
 	if draftID == "" {
-		return "", fmt.Errorf("API response missing draft_id")
+		return DraftResult{}, fmt.Errorf("API response missing draft_id")
 	}
-	return draftID, nil
+	return DraftResult{
+		DraftID:   draftID,
+		Reference: extractReference(data),
+	}, nil
 }
 
-func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML string) error {
-	_, err := runtime.CallAPI("PUT", mailboxPath(mailboxID, "drafts", draftID), nil, map[string]interface{}{"raw": rawEML})
-	return err
+func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML string) (DraftResult, error) {
+	data, err := runtime.CallAPI("PUT", mailboxPath(mailboxID, "drafts", draftID), nil, map[string]interface{}{"raw": rawEML})
+	if err != nil {
+		return DraftResult{}, err
+	}
+	gotDraftID := extractDraftID(data)
+	if gotDraftID == "" {
+		gotDraftID = draftID
+	}
+	return DraftResult{
+		DraftID:   gotDraftID,
+		Reference: extractReference(data),
+	}, nil
 }
 
-func Send(runtime *common.RuntimeContext, mailboxID, draftID string) (map[string]interface{}, error) {
-	return runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, nil)
+func Send(runtime *common.RuntimeContext, mailboxID, draftID, sendTime string) (map[string]interface{}, error) {
+	var bodyParams map[string]interface{}
+	if sendTime != "" {
+		bodyParams = map[string]interface{}{"send_time": sendTime}
+	}
+	return runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, bodyParams)
 }
 
 func extractDraftID(data map[string]interface{}) string {
@@ -87,6 +104,19 @@ func extractRawEML(data map[string]interface{}) string {
 	}
 	if draft, ok := data["draft"].(map[string]interface{}); ok {
 		return extractRawEML(draft)
+	}
+	return ""
+}
+
+func extractReference(data map[string]interface{}) string {
+	if data == nil {
+		return ""
+	}
+	if ref, ok := data["reference"].(string); ok && strings.TrimSpace(ref) != "" {
+		return strings.TrimSpace(ref)
+	}
+	if draft, ok := data["draft"].(map[string]interface{}); ok {
+		return extractReference(draft)
 	}
 	return ""
 }
