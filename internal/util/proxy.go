@@ -11,8 +11,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/larksuite/cli/internal/proxyplugin"
 )
 
+// Proxy environment constants control shared transport proxy behavior.
 const (
 	// EnvNoProxy disables automatic proxy support when set to any non-empty value.
 	EnvNoProxy = "LARK_CLI_NO_PROXY"
@@ -36,6 +39,7 @@ func DetectProxyEnv() (key, value string) {
 	return "", ""
 }
 
+// proxyWarningOnce ensures proxy environment warnings are emitted at most once.
 var proxyWarningOnce sync.Once
 
 // redactProxyURL masks userinfo (username:password) in a proxy URL.
@@ -99,6 +103,11 @@ var noProxyTransport = sync.OnceValue(func() *http.Transport {
 // goroutines are reused; cloning per call leaks them until IdleConnTimeout
 // (~90s) fires.
 func SharedTransport() http.RoundTripper {
+	// proxy plugin mode overrides all other proxy behavior (env proxies and
+	// LARK_CLI_NO_PROXY), per operator intent.
+	if t, ok := proxyplugin.SharedTransport(); ok {
+		return t
+	}
 	if os.Getenv(EnvNoProxy) != "" {
 		return noProxyTransport()
 	}
