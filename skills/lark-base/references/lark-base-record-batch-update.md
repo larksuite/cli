@@ -8,7 +8,7 @@
 
 ```bash
 lark-cli base +record-batch-update --base-token <base_token> --table-id <table_id> \
-  --json '{"record_id_list":[<record_id>],"patch":{"状态":"完成"}}'
+  --json '{"record_id_list":["<record_id>"],"patch":{"状态":"完成"}}'
 
 lark-cli base +record-batch-update --base-token <base_token> --table-id <table_id> --json @batch-update.json
 ```
@@ -45,6 +45,7 @@ lark-cli base +record-batch-update --base-token <base_token> --table-id <table_i
 - 这是“同值批量更新”：所有 `record_id_list` 都应用同一份 `patch`。
 - `record_id_list` 最大 200 条，超过会被接口校验拒绝。
 - 命令不会自动做字段/行映射转换，传什么就发什么。
+- 如果 `patch` 包含只读字段，返回里可能出现 `ignored_fields`；这些字段不会被更新。
 
 ## 参考
 

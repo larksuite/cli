@@ -50,10 +50,12 @@ lark-cli base +record-upsert --base-token <base_token> --table-id <table_id> --r
 
 - 创建时返回 `record` 和 `created: true`。
 - 更新时返回 `record` 和 `updated: true`。
+- 如果写入了 `formula / lookup / created_at / updated_at / created_by / updated_by` 等只读字段，返回里可能出现 `ignored_fields`，这些字段不会被更新。
 
 ## 坑点
 
 - 有 `--record-id` 就一定更新；不传就一定创建，不会自动查重或按业务键 upsert。
+- select 写入未知选项时平台可能自动新增选项；如果不是要新增选项，先用 `+field-list` / `+field-search-options` 确认真实选项名。
 - 这是写入操作，执行前必须确认目标表和字段。
 
 ## 参考

@@ -273,10 +273,6 @@ lark-cli auth login --domain base
 4. 若 bot 身份仍然返回权限错误，**立即停止重试**，根据错误响应按 `lark-shared` 流程引导用户解决（引导去开发者后台开通 scope 或确认资源访问权限）。
 5. 只有在用户明确要求"用应用身份 / bot 身份操作"，才跳过 user 直接使用 `--as bot`。
 
-**补充说明**：
-
-- 人员字段 / 用户字段：注意 `user_id_type` 与执行身份（user / bot）差异。
-
 ## 4. 执行规则
 
 ### 4.1 标准执行顺序
@@ -323,15 +319,15 @@ lark-cli auth login --domain base
 
 | 错误 / 现象 | 含义 | 恢复动作 |
 |-------------|------|----------|
-| `1254064` | 日期格式错误 | 用毫秒时间戳，非字符串 / 秒级 |
-| `1254068` | 超链接格式错误 | 用 `{text, link}` 对象 |
-| `1254066` | 人员字段错误 | 用 `[{id:"ou_xxx"}]`，并确认 `user_id_type` |
+| `1254064` | 日期格式错误 | 传 `YYYY-MM-DD HH:mm:ss` 字符串，不要写相对时间 |
+| `1254068` | 超链接格式错误 | `"https://example.com"` 或 `"[文本](https://example.com)"` |
+| `1254066` | 人员字段错误 | `[{ "id": "ou_xxx" }]` |
 | `1254045` | 字段名不存在 | 检查字段名（含空格、大小写） |
 | `1254015` | 字段值类型不匹配 | 先 `+field-list`，再按类型构造 |
 | `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先用 `lark-cli wiki spaces get_node` 取真实 `obj_token`；当 `obj_type=bitable` 时，用 `node.obj_token` 作为 `--base-token` 重试，不要改走 `bitable/v1` |
 | `not found` 且用户给的是 wiki 链接 | 常见于把 wiki token 当成 base token | 优先回退检查 wiki 解析，而不是改走 `bitable/v1` |
 | formula / lookup 创建失败 | 指南未读或结构不合法 | 先读 `formula-field-guide.md` / `lookup-field-guide.md`，再按 guide 重建请求 |
-| 系统字段 / 公式字段写入失败 | 只读字段被当成可写字段 | 改为写存储字段，计算结果交给 formula / lookup / 系统字段自动产出 |
+| `ignored_fields` / `READONLY` | 只读字段被当成可写字段，常见于系统字段、formula、lookup | 移除只读字段，只写存储字段；计算结果交给 formula / lookup / 系统字段自动产出 |
 | `1254104` | 批量超 200 条 | 分批调用 |
 | `1254291` | 并发写冲突 | 串行写入 + 批次间延迟 |
 | `91403` | 无权限访问该 Base | **不要重试**。按 `lark-shared` 权限不足处理流程引导用户解决权限问题 |

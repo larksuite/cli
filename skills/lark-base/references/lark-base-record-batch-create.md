@@ -50,6 +50,7 @@ lark-cli base +record-batch-create --base-token <base_token> --table-id <table_i
 - `fields` 与每行 `rows` 的列顺序必须一一对应。
 - 空单元格必须显式用 `null` 填充。
 - 单次最多 200 行，超出需分批写入。
+- select 写入未知选项时平台可能自动新增选项；如果不是要新增选项，先确认真实选项名。
 
 ## 参考
 
