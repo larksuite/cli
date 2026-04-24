@@ -20,7 +20,6 @@ func TestSetRisk_EmptyLevelShortCircuits(t *testing.T) {
 func TestSetRisk_PopulatesLevel(t *testing.T) {
 	cases := []string{"read", "write", "high-risk-write"}
 	for _, level := range cases {
-		level := level
 		t.Run(level, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "test"}
 			SetRisk(cmd, level)
