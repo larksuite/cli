@@ -678,6 +678,8 @@ func TestBuild_CalendarWithText(t *testing.T) {
 	}
 	eml := string(raw)
 
+	// text/calendar lives inside multipart/alternative as an alternative
+	// representation of the body, matching Feishu client behavior.
 	if !strings.Contains(eml, "multipart/alternative") {
 		t.Errorf("expected multipart/alternative for text+calendar:\n%s", eml)
 	}

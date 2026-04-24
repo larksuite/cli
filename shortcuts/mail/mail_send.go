@@ -39,7 +39,8 @@ var MailSend = common.Shortcut{
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
-		priorityFlag},
+		priorityFlag,
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
@@ -87,6 +88,9 @@ var MailSend = common.Shortcut{
 				return err
 			}
 		}
+		if err := validateEventSendTimeExclusion(runtime); err != nil {
+			return err
+		}
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
@@ -94,6 +98,9 @@ var MailSend = common.Shortcut{
 			return err
 		}
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+			return err
+		}
+		if err := validateEventFlags(runtime); err != nil {
 			return err
 		}
 		return validatePriorityFlag(runtime)
@@ -249,6 +256,9 @@ var MailSend = common.Shortcut{
 			return err
 		}
 		bld = applyPriority(bld, priority)
+		if calData := buildCalendarBody(runtime, senderEmail, to, ccFlag); calData != nil {
+			bld = bld.CalendarBody(calData)
+		}
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, 0) + templateSmallBytes

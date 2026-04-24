@@ -1085,7 +1085,39 @@ func TestValidateSendTime_Valid(t *testing.T) {
 	}
 }
 
-// TestParsePriority verifies parse priority.
+func TestValidateEventSendTimeExclusion(t *testing.T) {
+	future := strconv.FormatInt(time.Now().Unix()+10*60, 10)
+	cases := []struct {
+		name      string
+		eventFlag string
+		eventVal  string
+	}{
+		{"event-summary triggers exclusion", "event-summary", "Team meeting"},
+		{"event-start triggers exclusion", "event-start", "2026-05-01T10:00+08:00"},
+		{"event-end triggers exclusion", "event-end", "2026-05-01T11:00+08:00"},
+		{"event-location triggers exclusion", "event-location", "Room 5F"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "test"}
+			cmd.Flags().String("send-time", "", "")
+			for _, f := range []string{"event-summary", "event-start", "event-end", "event-location"} {
+				cmd.Flags().String(f, "", "")
+			}
+			_ = cmd.Flags().Set("send-time", future)
+			_ = cmd.Flags().Set(tc.eventFlag, tc.eventVal)
+			rt := &common.RuntimeContext{Cmd: cmd}
+			err := validateEventSendTimeExclusion(rt)
+			if err == nil {
+				t.Fatalf("expected error when --send-time and --%s are both set", tc.eventFlag)
+			}
+			if !strings.Contains(err.Error(), "--event-*") {
+				t.Errorf("expected error to mention --event-*, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestParsePriority(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -1334,7 +1366,6 @@ func newRequestReceiptRuntime(t *testing.T, requestReceipt bool) *common.Runtime
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
-// TestRequireSenderForRequestReceipt verifies require sender for request receipt.
 func TestRequireSenderForRequestReceipt(t *testing.T) {
 	cases := []struct {
 		name           string
@@ -1365,7 +1396,6 @@ func TestRequireSenderForRequestReceipt(t *testing.T) {
 	}
 }
 
-// TestShellQuoteForHint verifies shell quote for hint.
 func TestShellQuoteForHint(t *testing.T) {
 	cases := []struct {
 		name string
@@ -1391,7 +1421,6 @@ func TestShellQuoteForHint(t *testing.T) {
 	}
 }
 
-// TestSanitizeForSingleLine verifies sanitize for single line.
 func TestSanitizeForSingleLine(t *testing.T) {
 	cases := []struct {
 		name string
@@ -1415,7 +1444,6 @@ func TestSanitizeForSingleLine(t *testing.T) {
 	}
 }
 
-// TestValidateHeaderAddress verifies validate header address.
 func TestValidateHeaderAddress(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -1445,5 +1473,201 @@ func TestValidateHeaderAddress(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseEventTimeRange
+// ---------------------------------------------------------------------------
+
+func TestParseEventTimeRange_OK(t *testing.T) {
+	s, e, err := parseEventTimeRange("2026-04-25T14:00+08:00", "2026-04-25T15:00+08:00")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !e.After(s) {
+		t.Errorf("end should be after start; got start=%v end=%v", s, e)
+	}
+}
+
+func TestParseEventTimeRange_EndBeforeStart(t *testing.T) {
+	_, _, err := parseEventTimeRange("2026-04-25T15:00+08:00", "2026-04-25T14:00+08:00")
+	if err == nil {
+		t.Fatal("expected error when end < start")
+	}
+	if !strings.Contains(err.Error(), "end time must be after start time") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestParseEventTimeRange_EndEqualsStart(t *testing.T) {
+	_, _, err := parseEventTimeRange("2026-04-25T14:00+08:00", "2026-04-25T14:00+08:00")
+	if err == nil {
+		t.Fatal("expected error when end == start (zero duration)")
+	}
+}
+
+func TestParseEventTimeRange_InvalidStart(t *testing.T) {
+	_, _, err := parseEventTimeRange("not-a-time", "2026-04-25T15:00+08:00")
+	if err == nil || !strings.Contains(err.Error(), "start: invalid ISO 8601") {
+		t.Errorf("expected start parse error, got: %v", err)
+	}
+}
+
+func TestParseEventTimeRange_InvalidEnd(t *testing.T) {
+	_, _, err := parseEventTimeRange("2026-04-25T14:00+08:00", "not-a-time")
+	if err == nil || !strings.Contains(err.Error(), "end: invalid ISO 8601") {
+		t.Errorf("expected end parse error, got: %v", err)
+	}
+}
+
+func TestPrefixEventRangeError(t *testing.T) {
+	start := fmt.Errorf("start: invalid ISO 8601 time %q", "x")
+	if got := prefixEventRangeError("--event-", start).Error(); got != `--event-start: invalid ISO 8601 time "x"` {
+		t.Errorf("got %q", got)
+	}
+	end := fmt.Errorf("end: invalid ISO 8601 time %q", "x")
+	if got := prefixEventRangeError("--set-event-", end).Error(); got != `--set-event-end: invalid ISO 8601 time "x"` {
+		t.Errorf("got %q", got)
+	}
+	// Non-prefixed error passes through unchanged.
+	other := fmt.Errorf("end time must be after start time")
+	if got := prefixEventRangeError("--event-", other).Error(); got != "end time must be after start time" {
+		t.Errorf("got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validateEventFlags (runtime-backed)
+// ---------------------------------------------------------------------------
+
+func newEventFlagsRuntime(t *testing.T, summary, start, end string) *common.RuntimeContext {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("event-summary", "", "")
+	cmd.Flags().String("event-start", "", "")
+	cmd.Flags().String("event-end", "", "")
+	cmd.Flags().String("event-location", "", "")
+	if summary != "" {
+		_ = cmd.Flags().Set("event-summary", summary)
+	}
+	if start != "" {
+		_ = cmd.Flags().Set("event-start", start)
+	}
+	if end != "" {
+		_ = cmd.Flags().Set("event-end", end)
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
+
+func TestValidateEventFlags_AllEmptyOK(t *testing.T) {
+	rt := newEventFlagsRuntime(t, "", "", "")
+	if err := validateEventFlags(rt); err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestValidateEventFlags_AllSetOK(t *testing.T) {
+	rt := newEventFlagsRuntime(t, "Meeting", "2026-04-25T10:00+08:00", "2026-04-25T11:00+08:00")
+	if err := validateEventFlags(rt); err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestValidateEventFlags_PartialRejected(t *testing.T) {
+	cases := []struct {
+		name    string
+		summary string
+		start   string
+		end     string
+	}{
+		{"only_summary", "Meeting", "", ""},
+		{"only_start", "", "2026-04-25T10:00+08:00", ""},
+		{"only_end", "", "", "2026-04-25T11:00+08:00"},
+		{"missing_end", "Meeting", "2026-04-25T10:00+08:00", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := newEventFlagsRuntime(t, tc.summary, tc.start, tc.end)
+			err := validateEventFlags(rt)
+			if err == nil || !strings.Contains(err.Error(), "must all be provided together") {
+				t.Errorf("expected 'all together' error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateEventFlags_EndBeforeStartRejected(t *testing.T) {
+	rt := newEventFlagsRuntime(t, "Meeting", "2026-04-25T11:00+08:00", "2026-04-25T10:00+08:00")
+	err := validateEventFlags(rt)
+	if err == nil || !strings.Contains(err.Error(), "after start") {
+		t.Errorf("expected end-after-start error, got %v", err)
+	}
+}
+
+func TestValidateEventFlags_InvalidTimeFormatRejected(t *testing.T) {
+	rt := newEventFlagsRuntime(t, "Meeting", "not-a-time", "2026-04-25T11:00+08:00")
+	err := validateEventFlags(rt)
+	if err == nil || !strings.Contains(err.Error(), "--event-start") {
+		t.Errorf("expected --event-start error, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildCalendarBodyFromArgs
+// ---------------------------------------------------------------------------
+
+func TestBuildCalendarBodyFromArgs_EmptySummaryReturnsNil(t *testing.T) {
+	got := buildCalendarBodyFromArgs("", "2026-04-25T10:00+08:00", "2026-04-25T11:00+08:00", "", "sender@example.com", "to@example.com", "")
+	if got != nil {
+		t.Errorf("expected nil for empty summary, got %d bytes", len(got))
+	}
+}
+
+func TestBuildCalendarBodyFromArgs_IncludesSummaryAndAddresses(t *testing.T) {
+	got := buildCalendarBodyFromArgs(
+		"Product Review",
+		"2026-04-25T14:00+08:00",
+		"2026-04-25T15:00+08:00",
+		"5F Room",
+		"sender@example.com",
+		"a@example.com,b@example.com",
+		"c@example.com",
+	)
+	if got == nil {
+		t.Fatal("expected non-nil ICS bytes")
+	}
+	s := string(got)
+	checks := []string{
+		"BEGIN:VCALENDAR",
+		"SUMMARY:Product Review",
+		"LOCATION:5F Room",
+		"sender@example.com",
+		"a@example.com",
+		"b@example.com",
+		"c@example.com",
+	}
+	for _, want := range checks {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in generated ICS:\n%s", want, s)
+		}
+	}
+}
+
+func TestBuildCalendarBodyFromArgs_NoCcWorks(t *testing.T) {
+	got := buildCalendarBodyFromArgs(
+		"Meeting",
+		"2026-04-25T10:00+08:00",
+		"2026-04-25T11:00+08:00",
+		"",
+		"sender@example.com",
+		"to@example.com",
+		"",
+	)
+	if got == nil {
+		t.Fatal("expected non-nil ICS bytes")
+	}
+	if !strings.Contains(string(got), "to@example.com") {
+		t.Error("attendee missing")
 	}
 }

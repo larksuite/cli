@@ -56,6 +56,7 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
 		priorityFlag,
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveComposeMailboxID(runtime)
@@ -88,6 +89,9 @@ var MailDraftCreate = common.Shortcut{
 			return output.ErrValidation("--body is required; pass the full email body (or use --template-id)")
 		}
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+			return err
+		}
+		if err := validateEventFlags(runtime); err != nil {
 			return err
 		}
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
@@ -300,6 +304,9 @@ func buildRawEMLForDraftCreate(
 		return "", err
 	}
 	bld = applyPriority(bld, priority)
+	if calData := buildCalendarBody(runtime, senderEmail, input.To, input.CC); calData != nil {
+		bld = bld.CalendarBody(calData)
+	}
 	allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 	composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
 	emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, 0) + templateSmallBytes

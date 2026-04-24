@@ -5,6 +5,8 @@ package mail
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -13,6 +15,30 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
+
+// newRuntimeWithEventFlags creates a RuntimeContext with --from and calendar event flags.
+func newRuntimeWithEventFlags(from, summary, start, end, location string) *common.RuntimeContext {
+	cmd := &cobra.Command{Use: "test"}
+	for _, name := range []string{"from", "mailbox", "event-summary", "event-start", "event-end", "event-location"} {
+		cmd.Flags().String(name, "", "")
+	}
+	if from != "" {
+		_ = cmd.Flags().Set("from", from)
+	}
+	if summary != "" {
+		_ = cmd.Flags().Set("event-summary", summary)
+	}
+	if start != "" {
+		_ = cmd.Flags().Set("event-start", start)
+	}
+	if end != "" {
+		_ = cmd.Flags().Set("event-end", end)
+	}
+	if location != "" {
+		_ = cmd.Flags().Set("event-location", location)
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
 
 // newRuntimeWithFrom creates a minimal RuntimeContext with --from flag set.
 func newRuntimeWithFrom(from string) *common.RuntimeContext {
@@ -269,6 +295,31 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 	}
 }
 
+func TestBuildRawEMLForDraftCreate_WithCalendarEvent(t *testing.T) {
+	rt := newRuntimeWithEventFlags("sender@example.com", "Team Sync", "2026-05-10T10:00+08:00", "2026-05-10T11:00+08:00", "Room 301")
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		To:      "alice@example.com",
+		Subject: "Team Sync",
+		Body:    "<p>Please join us</p>",
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), rt, input, nil, "", nil, "", "", nil, nil)
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+	if !strings.Contains(eml, "text/calendar") {
+		t.Errorf("expected text/calendar part in EML:\n%s", eml)
+	}
+	if !strings.Contains(eml, "method=REQUEST") {
+		t.Errorf("expected method=REQUEST in Content-Type:\n%s", eml)
+	}
+	if !strings.Contains(eml, "multipart/alternative") {
+		t.Errorf("expected calendar inside multipart/alternative:\n%s", eml)
+	}
+}
+
 // TestMailDraftCreatePrettyOutputsReference verifies mail draft create pretty outputs reference.
 func TestMailDraftCreatePrettyOutputsReference(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
@@ -314,5 +365,58 @@ func TestMailDraftCreatePrettyOutputsReference(t *testing.T) {
 	}
 	if !strings.Contains(out, "reference: https://www.feishu.cn/mail?draftId=draft_001") {
 		t.Fatalf("expected reference in pretty output, got: %s", out)
+	}
+}
+
+func TestMailDraftCreate_WithCalendarEventFlags(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+
+	draftsStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "draft_cal_001"},
+		},
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/profile",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"primary_email_address": "me@example.com"},
+		},
+	})
+	reg.Register(draftsStub)
+
+	err := runMountedMailShortcut(t, MailDraftCreate, []string{
+		"+draft-create",
+		"--to", "alice@example.com",
+		"--subject", "Team Sync",
+		"--body", "<p>Please join us</p>",
+		"--event-summary", "Team Sync",
+		"--event-start", "2026-05-10T10:00+08:00",
+		"--event-end", "2026-05-10T11:00+08:00",
+		"--event-location", "Room 301",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("draft create with calendar failed: %v", err)
+	}
+
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(draftsStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal captured request body: %v", err)
+	}
+	raw, _ := reqBody["raw"].(string)
+	decoded, decErr := base64.URLEncoding.DecodeString(raw)
+	if decErr != nil {
+		t.Fatalf("base64url decode raw: %v", decErr)
+	}
+	eml := string(decoded)
+	if !strings.Contains(eml, "text/calendar") {
+		t.Errorf("expected text/calendar in EML:\n%s", eml)
+	}
+	if !strings.Contains(eml, "Team Sync") {
+		t.Errorf("expected event summary in ICS:\n%s", eml)
 	}
 }
