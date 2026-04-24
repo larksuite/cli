@@ -209,7 +209,7 @@ func printIndentedJSON(out io.Writer, raw json.RawMessage) {
 // (whether native-wrapped-in-V2-envelope or Process-declared) as a single
 // JSON object so callers can ingest schema + metadata in one pass.
 //
-// root_path_hint tells AI callers whether to write jq paths as `.field`
+// jq_root_path tells AI callers whether to write jq paths as `.field`
 // (flat / Custom schema — e.g. im.message.receive_v1) or `.event.field`
 // (V2 envelope — every Native-schema key). Without this, the caller has
 // to either inspect resolved_output_schema shape or eyeball a sample event.
@@ -221,13 +221,13 @@ func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
 		// shortened to `ResolvedSchema` after the OutputSchema/OutputType
 		// fields were removed from KeyDefinition.
 		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
-		RootPathHint   string          `json:"root_path_hint,omitempty"`
+		JQRootPath     string          `json:"jq_root_path,omitempty"`
 	}
 	resolved, _, err := resolveSchemaJSON(def)
 	if err != nil {
 		return err
 	}
-	var rootPathHint string
+	var jqRootPath string
 	if resolved != nil {
 		// isNative is the truth source: Native schemas get WrapV2Envelope
 		// applied in resolveSchemaJSON, so consumers see {schema, header,
@@ -235,15 +235,15 @@ func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
 		// schemas (like im.message.receive_v1, which Process flattens)
 		// deliver fields at the top level.
 		_, isNative := pickSpec(def.Schema)
-		rootPathHint = "."
+		jqRootPath = "."
 		if isNative {
-			rootPathHint = ".event"
+			jqRootPath = ".event"
 		}
 	}
 	output.PrintJson(f.IOStreams.Out, payload{
 		KeyDefinition:  def,
 		ResolvedSchema: resolved,
-		RootPathHint:   rootPathHint,
+		JQRootPath:     jqRootPath,
 	})
 	return nil
 }
