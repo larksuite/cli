@@ -295,7 +295,11 @@ func preflightScopes(ctx context.Context, pf *preflightCtx) error {
 	case pf.identity == core.AsUser:
 		result, err := pf.factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(pf.identity, pf.appID))
 		if err != nil || result == nil || result.Scopes == "" {
-			return nil
+			// Best-effort preflight: an unavailable user token (expired,
+			// not-yet-logged-in, keychain error) must not block consume —
+			// the bus handshake will surface the real auth error with
+			// actionable hints. Swallowing err here is intentional.
+			return nil //nolint:nilerr // intentional best-effort skip; see comment above
 		}
 		storedScopes = result.Scopes
 	default:

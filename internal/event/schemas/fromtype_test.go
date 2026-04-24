@@ -16,14 +16,18 @@ type inner struct {
 }
 
 type sample struct {
-	Name          string   `json:"name"`
-	Optional      *string  `json:"optional,omitempty"`
-	Tags          []string `json:"tags"`
-	Reader        *inner   `json:"reader,omitempty"`
-	Count         int      `json:"count"`
-	Flag          bool     `json:"flag"`
-	Skipped       string   `json:"-"`
-	unexportedStr string
+	Name     string   `json:"name"`
+	Optional *string  `json:"optional,omitempty"`
+	Tags     []string `json:"tags"`
+	Reader   *inner   `json:"reader,omitempty"`
+	Count    int      `json:"count"`
+	Flag     bool     `json:"flag"`
+	Skipped  string   `json:"-"`
+	// unexportedStr exists solely to exercise the reflection-skip path
+	// tested at L78 ("unexported field should not be in schema"). The
+	// linter can't see that the field's *presence* (not its value) is
+	// what the reflection walker under test keys off.
+	unexportedStr string //nolint:unused // see comment above
 }
 
 func TestFromType_ScalarAndOptional(t *testing.T) {

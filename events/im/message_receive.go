@@ -59,7 +59,7 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
 		// Garbage in → original bytes back out so consumers still see the event.
-		return raw.Payload, nil
+		return raw.Payload, nil //nolint:nilerr // intentional passthrough on malformed payload
 	}
 
 	msg := envelope.Event.Message

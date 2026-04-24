@@ -16,27 +16,17 @@ import (
 	"github.com/larksuite/cli/internal/event/transport"
 )
 
-// FakeTransport is a test-only transport.IPC. It supports two modes:
-//
-//   - TCP-standalone: `NewTCPFake(addr)` produces a transport that listens
-//     and dials on a localhost TCP address. Good for integration-style
-//     tests that need a real network endpoint but want to isolate from
-//     the real Unix socket path.
-//   - Wrapped-overlay: `NewWrappedFake(inner, addr)` delegates every call
-//     to an underlying real transport, rewriting `addr` to the injected
-//     value. Good for tests that want real Unix-socket behaviour but on a
-//     short per-test path (e.g. t.TempDir()).
+// FakeTransport is a test-only transport.IPC that delegates every call
+// to an underlying real transport, rewriting `addr` to the constructor-
+// supplied value. Lets tests drive real Unix-socket behaviour on a short
+// per-test path (e.g. t.TempDir()) without threading the address through
+// production interfaces.
 type FakeTransport struct {
 	addr     string
-	inner    transport.IPC // nil ⇒ TCP mode
+	inner    transport.IPC
 	mu       sync.Mutex
 	cleaned  bool
 	cleanups int
-}
-
-// NewTCPFake returns a FakeTransport that serves on the given TCP addr.
-func NewTCPFake(addr string) *FakeTransport {
-	return &FakeTransport{addr: addr}
 }
 
 // NewWrappedFake returns a FakeTransport that delegates to inner but always
@@ -48,18 +38,12 @@ func NewWrappedFake(inner transport.IPC, addr string) *FakeTransport {
 // Listen implements transport.IPC. The addr parameter is ignored — the
 // constructor-supplied address wins so tests don't have to thread it.
 func (t *FakeTransport) Listen(_ string) (net.Listener, error) {
-	if t.inner != nil {
-		return t.inner.Listen(t.addr)
-	}
-	return net.Listen("tcp", t.addr)
+	return t.inner.Listen(t.addr)
 }
 
 // Dial implements transport.IPC. See Listen comment for addr handling.
 func (t *FakeTransport) Dial(_ string) (net.Conn, error) {
-	if t.inner != nil {
-		return t.inner.Dial(t.addr)
-	}
-	return net.Dial("tcp", t.addr)
+	return t.inner.Dial(t.addr)
 }
 
 // Address implements transport.IPC. Returns the constructor address
@@ -67,15 +51,13 @@ func (t *FakeTransport) Dial(_ string) (net.Conn, error) {
 func (t *FakeTransport) Address(_ string) string { return t.addr }
 
 // Cleanup implements transport.IPC. Records the call so tests can assert
-// that Cleanup did or did not fire, and delegates to inner when wrapped.
+// that Cleanup did or did not fire, then delegates to inner.
 func (t *FakeTransport) Cleanup(_ string) {
 	t.mu.Lock()
 	t.cleaned = true
 	t.cleanups++
 	t.mu.Unlock()
-	if t.inner != nil {
-		t.inner.Cleanup(t.addr)
-	}
+	t.inner.Cleanup(t.addr)
 }
 
 // DidCleanup reports whether Cleanup has been called at least once.

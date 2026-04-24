@@ -84,7 +84,7 @@ Exit code: 2 if any target was refused or errored, 0 otherwise.
 func runStop(f *cmdutil.Factory, o stopCmdOpts) error {
 	tr := transport.New()
 
-	targets := []string{}
+	var targets []string
 	if o.all {
 		targets = discoverAppIDs()
 	} else {
