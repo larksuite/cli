@@ -15,6 +15,9 @@ const (
 	PathUserInfoV1 = "/open-apis/authen/v1/user_info"
 	// PathApplicationInfoV6Prefix is the prefix endpoint for fetching application info.
 	PathApplicationInfoV6Prefix = "/open-apis/application/v6/applications/"
+	// PathTenantAccessTokenInternal is the endpoint for exchanging app_id/app_secret
+	// for a tenant access token (internal app flow).
+	PathTenantAccessTokenInternal = "/open-apis/auth/v3/tenant_access_token/internal"
 )
 
 // ApplicationInfoPath returns the full API path for querying an application's information.

@@ -96,6 +96,8 @@ lark-cli calendar +agenda
 ## Quick Start (AI Agent)
 
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
+>
+> **Headless environments (remote agents, CI jobs, containers without a browser):** skip Steps 2–3 and inject `LARKSUITE_CLI_APP_ID` + `LARKSUITE_CLI_APP_SECRET` as environment variables instead. See [Environment-based credentials](#environment-based-credentials-agents--ci) for the full variable list.
 
 **Step 1 — Install**
 
@@ -189,6 +191,30 @@ lark-cli auth login --device-code <DEVICE_CODE>
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+### Environment-based credentials (agents & CI)
+
+Remote AI agents, CI jobs, and ephemeral containers often cannot run a browser-based device flow or rely on an OS keychain. `lark-cli` resolves credentials from environment variables with no prior `config init` or `auth login`:
+
+| Variable | Purpose |
+| -------- | ------- |
+| `LARKSUITE_CLI_APP_ID` | App ID from the Lark/Feishu open platform. |
+| `LARKSUITE_CLI_APP_SECRET` | App secret. Setting this unlocks bot identity: the CLI exchanges it for a tenant access token on demand and caches the result in-process until it expires. |
+| `LARKSUITE_CLI_BRAND` | `feishu` (default) or `lark`. |
+| `LARKSUITE_CLI_TENANT_ACCESS_TOKEN` | Pre-issued TAT. When set, the CLI uses it directly and skips the app-secret exchange. |
+| `LARKSUITE_CLI_USER_ACCESS_TOKEN` | Pre-issued UAT. Enables user-identity commands without running `auth login`. |
+| `LARKSUITE_CLI_DEFAULT_AS` | `user`, `bot`, or `auto`. Controls the default `--as` identity; inferred from available credentials when omitted. |
+| `LARKSUITE_CLI_STRICT_MODE` | `user`, `bot`, or `off`. Locks the CLI to a single identity. |
+
+Minimal bot setup — no keychain, no login, no profile:
+
+```bash
+export LARKSUITE_CLI_APP_ID=cli_xxx
+export LARKSUITE_CLI_APP_SECRET=yyy
+lark-cli docs +create --as bot --title "Report" --markdown "# Hello"
+```
+
+Environment credentials take priority over any `config init` profile on the same machine, so the same binary works interactively on a workstation and headlessly in CI without extra flags. Because user identity requires an interactive authorization step, env-only setups can call bot-capable commands only; mix in `LARKSUITE_CLI_USER_ACCESS_TOKEN` to enable `--as user`.
 
 ## Three-Layer Command System
 

@@ -96,6 +96,8 @@ lark-cli calendar +agenda
 ### 快速开始（AI Agent）
 
 > 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
+>
+> **无人值守场景（远程 Agent、CI、无浏览器容器）**：跳过第 2–3 步，改为注入 `LARKSUITE_CLI_APP_ID` + `LARKSUITE_CLI_APP_SECRET` 环境变量。完整变量列表见[基于环境变量的凭证](#基于环境变量的凭证agent--ci)。
 
 **第 1 步 — 安装**
 
@@ -190,6 +192,30 @@ lark-cli auth login --device-code <DEVICE_CODE>
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+### 基于环境变量的凭证（Agent & CI）
+
+远程 AI Agent、CI 任务和短生命周期的容器通常无法运行基于浏览器的 device flow，也没有 OS keychain。`lark-cli` 会从环境变量读取凭证，无需预先执行 `config init` 或 `auth login`：
+
+| 变量 | 用途 |
+| ---- | ---- |
+| `LARKSUITE_CLI_APP_ID` | 飞书/Lark 开放平台的 App ID。 |
+| `LARKSUITE_CLI_APP_SECRET` | App Secret。设置后自动解锁 bot 身份：CLI 会按需调用 `tenant_access_token/internal` 换取 TAT，并在进程内缓存至过期。 |
+| `LARKSUITE_CLI_BRAND` | `feishu`（默认）或 `lark`。 |
+| `LARKSUITE_CLI_TENANT_ACCESS_TOKEN` | 预先签发的 TAT。设置后 CLI 直接使用该 token，跳过 app secret 换取流程。 |
+| `LARKSUITE_CLI_USER_ACCESS_TOKEN` | 预先签发的 UAT。启用 user 身份命令，无需运行 `auth login`。 |
+| `LARKSUITE_CLI_DEFAULT_AS` | `user`、`bot` 或 `auto`。控制默认 `--as` 身份；省略时根据已有凭证自动推断。 |
+| `LARKSUITE_CLI_STRICT_MODE` | `user`、`bot` 或 `off`。将 CLI 锁定到单一身份。 |
+
+最小 bot 配置 — 无 keychain、无登录、无 profile：
+
+```bash
+export LARKSUITE_CLI_APP_ID=cli_xxx
+export LARKSUITE_CLI_APP_SECRET=yyy
+lark-cli docs +create --as bot --title "报告" --markdown "# 你好"
+```
+
+同一机器上环境变量凭证优先级高于 `config init` 写入的 profile，因此同一个二进制既能在开发机上交互使用，又能在 CI 中无头运行，无需额外参数切换。user 身份需要交互式授权，仅使用环境变量时只能调用 bot 可用的命令；若需 `--as user`，请额外导出 `LARKSUITE_CLI_USER_ACCESS_TOKEN`。
 
 ## 三层命令调用
 

@@ -4,9 +4,7 @@
 package credential
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -136,41 +134,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 		return nil, err
 	}
 	ep := core.ResolveEndpoints(acct.Brand)
-	url := ep.Open + "/open-apis/auth/v3/tenant_access_token/internal"
-
-	body, err := json.Marshal(map[string]string{
-		"app_id":     acct.AppID,
-		"app_secret": acct.AppSecret,
-	})
+	res, err := auth.FetchTenantAccessToken(ctx, httpClient, ep.Open, acct.AppID, acct.AppSecret)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal TAT request: %w", err)
+		return nil, fmt.Errorf("fetch tenant access token: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TAT API returned HTTP %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		TenantAccessToken string `json:"tenant_access_token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to parse TAT response: %w", err)
-	}
-	if result.Code != 0 {
-		return nil, fmt.Errorf("TAT API error: [%d] %s", result.Code, result.Msg)
-	}
-	return &TokenResult{Token: result.TenantAccessToken}, nil
+	return &TokenResult{Token: res.Token}, nil
 }

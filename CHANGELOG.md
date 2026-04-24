@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **auth**: env credential provider now exchanges `LARKSUITE_CLI_APP_ID` + `LARKSUITE_CLI_APP_SECRET` for a tenant access token on demand, enabling zero-config bot auth for remote AI agents, CI jobs, and ephemeral containers with no keychain or `auth login` step. The token is cached per-process until it expires.
+- **auth**: infer `SupportsBot` and `DefaultAs=bot` from `LARKSUITE_CLI_APP_SECRET` so commands work without an explicit `--as bot` flag when only app credentials are provided.
+
+### Refactor
+
+- **auth**: extract the tenant_access_token exchange into a shared `auth.FetchTenantAccessToken` helper, reused by the default and env credential providers.
+
+### Documentation
+
+- README / README.zh: document environment-based credential resolution under the Authentication section, with a pointer from the Quick Start (AI Agent) for headless setups.
+- `lark-shared` skill: note env-based bot auth as an alternative to `config init` + `auth login` for headless agents.
+
 ## [v1.0.17] - 2026-04-22
 
 ### Features

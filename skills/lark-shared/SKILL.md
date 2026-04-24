@@ -19,6 +19,18 @@ description: "飞书/Lark CLI 共享基础：应用配置初始化、认证登�
 lark-cli config init --new
 ```
 
+### 无人值守 / 远程 Agent 场景
+
+如果你作为远程 AI Agent 运行在容器、沙盒或 CI 中，**无法打开浏览器**完成 device flow，优先走环境变量路径。CLI 会直接从环境读取凭证，不需要 `config init`、不需要 `auth login`、不写 keychain：
+
+```bash
+export LARKSUITE_CLI_APP_ID=cli_xxx
+export LARKSUITE_CLI_APP_SECRET=yyy        # 自动换取并缓存 tenant_access_token
+# 可选：export LARKSUITE_CLI_BRAND=lark    # 国际版
+```
+
+该模式仅支持 `--as bot` 身份；若需 `--as user`，请额外 `export LARKSUITE_CLI_USER_ACCESS_TOKEN=<uat>`。环境变量优先级高于同机器的 `config init` profile。
+
 ## 认证
 
 ### 身份类型
@@ -28,7 +40,7 @@ lark-cli config init --new
 | 身份 | 标识 | 获取方式 | 适用场景 |
 |------|------|---------|---------|
 | user 用户身份 | `--as user` | `lark-cli auth login` 等 | 访问用户自己的资源（日历、云空间等） |
-| bot 应用身份 | `--as bot` | 自动，只需 appId + appSecret | 应用级操作,访问bot自己的资源 |
+| bot 应用身份 | `--as bot` | 自动：`config init` 写入的 appId + appSecret，或 `LARKSUITE_CLI_APP_ID` + `LARKSUITE_CLI_APP_SECRET` 环境变量 | 应用级操作,访问bot自己的资源 |
 
 ### 身份选择原则
 
