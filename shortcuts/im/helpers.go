@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
@@ -818,6 +820,7 @@ func restoreMarkdownCodeBlocks(text string, codeBlocks []string) string {
 
 func optimizeMarkdownStyle(text string) string {
 	r, codeBlocks := protectMarkdownCodeBlocks(text)
+	r = normalizeMarkdownEmphasisSpacing(r)
 
 	// Only downgrade when original text has H1~H3; order matters (H2~H6 first).
 	if reHasH1toH3.MatchString(text) {
@@ -847,6 +850,159 @@ func optimizeMarkdownStyle(text string) string {
 	}
 
 	return r
+}
+
+// normalizeMarkdownEmphasisSpacing trims whitespace immediately inside simple
+// *...* and **...** spans while preserving fenced code blocks and inline code.
+// This hardens AI-generated markdown such as "** bold **" into "**bold**" so
+// Feishu's md renderer can recognize emphasis instead of leaking literal '*'.
+func normalizeMarkdownEmphasisSpacing(markdown string) string {
+	lines := strings.Split(markdown, "\n")
+	inFence := false
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		lines[i] = normalizeMarkdownEmphasisSpacingLine(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// scanInlineCodeSpans returns byte ranges [start, end) for inline code spans
+// using matching backtick runs, so emphasis normalization skips literal code.
+func scanInlineCodeSpans(line string) [][2]int {
+	var spans [][2]int
+	i := 0
+	for i < len(line) {
+		if line[i] != '`' {
+			i++
+			continue
+		}
+		start := i
+		for i < len(line) && line[i] == '`' {
+			i++
+		}
+		delim := line[start:i]
+		j := i
+		for j <= len(line)-len(delim) {
+			if line[j] == '`' {
+				k := j
+				for k < len(line) && line[k] == '`' {
+					k++
+				}
+				if k-j == len(delim) {
+					spans = append(spans, [2]int{start, k})
+					i = k
+					break
+				}
+				j = k
+			} else {
+				j++
+			}
+		}
+	}
+	return spans
+}
+
+func normalizeMarkdownEmphasisSpacingLine(line string) string {
+	spans := scanInlineCodeSpans(line)
+	if len(spans) == 0 {
+		return normalizeEmphasisSpacingSegment(line)
+	}
+	var sb strings.Builder
+	pos := 0
+	for _, loc := range spans {
+		sb.WriteString(normalizeEmphasisSpacingSegment(line[pos:loc[0]]))
+		sb.WriteString(line[loc[0]:loc[1]])
+		pos = loc[1]
+	}
+	sb.WriteString(normalizeEmphasisSpacingSegment(line[pos:]))
+	return sb.String()
+}
+
+func normalizeEmphasisSpacingSegment(seg string) string {
+	if !strings.Contains(seg, "*") {
+		return seg
+	}
+
+	var sb strings.Builder
+	pos := 0
+	for pos < len(seg) {
+		openStart, openEnd, ok := nextAsteriskRun(seg, pos)
+		if !ok {
+			sb.WriteString(seg[pos:])
+			break
+		}
+
+		sb.WriteString(seg[pos:openStart])
+
+		markerLen := openEnd - openStart
+		if markerLen != 1 && markerLen != 2 {
+			sb.WriteString(seg[openStart:openEnd])
+			pos = openEnd
+			continue
+		}
+
+		closeStart, closeEnd, ok := nextAsteriskRun(seg, openEnd)
+		if !ok || closeEnd-closeStart != markerLen {
+			sb.WriteString(seg[openStart:openEnd])
+			pos = openEnd
+			continue
+		}
+
+		payload := seg[openEnd:closeStart]
+		normalized, shouldNormalize := normalizeEmphasisPayload(payload)
+		if !shouldNormalize {
+			sb.WriteString(seg[openStart:closeEnd])
+			pos = closeEnd
+			continue
+		}
+
+		marker := seg[openStart:openEnd]
+		sb.WriteString(marker)
+		sb.WriteString(normalized)
+		sb.WriteString(marker)
+		pos = closeEnd
+	}
+	return sb.String()
+}
+
+func nextAsteriskRun(s string, start int) (runStart, runEnd int, ok bool) {
+	for i := start; i < len(s); i++ {
+		if s[i] != '*' {
+			continue
+		}
+		j := i
+		for j < len(s) && s[j] == '*' {
+			j++
+		}
+		return i, j, true
+	}
+	return 0, 0, false
+}
+
+func normalizeEmphasisPayload(payload string) (string, bool) {
+	trimmedLeft := strings.TrimLeftFunc(payload, unicode.IsSpace)
+	trimmed := strings.TrimRightFunc(trimmedLeft, unicode.IsSpace)
+	if trimmed == "" {
+		return payload, false
+	}
+
+	hasLeadingSpace := len(trimmedLeft) != len(payload)
+	hasTrailingSpace := len(trimmed) != len(trimmedLeft)
+	if !hasLeadingSpace && !hasTrailingSpace {
+		return payload, true
+	}
+
+	if hasLeadingSpace && hasTrailingSpace && utf8.RuneCountInString(trimmed) == 1 {
+		return payload, false
+	}
+	return trimmed, true
 }
 
 func shouldUseSegmentedPost(markdown string) bool {

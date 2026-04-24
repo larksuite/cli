@@ -519,6 +519,24 @@ func TestWrapMarkdownAsPost(t *testing.T) {
 		}
 	})
 
+	t.Run("normalizes malformed bold spacing", func(t *testing.T) {
+		got := wrapMarkdownAsPost("hello ** world **")
+		node := decodePostParagraphForTest(t, got, 0)
+		if node["text"] != "hello **world**" {
+			t.Fatalf("wrapMarkdownAsPost() text = %#v, want %q", node["text"], "hello **world**")
+		}
+	})
+
+	t.Run("preserves inline code and fenced code spacing", func(t *testing.T) {
+		input := "code `** keep **` and prose ** fix **\n```md\n** keep fenced **\n```"
+		got := wrapMarkdownAsPost(input)
+		node := decodePostParagraphForTest(t, got, 0)
+		text, _ := node["text"].(string)
+		if text != "code `** keep **` and prose **fix**\n```md\n** keep fenced **\n```" {
+			t.Fatalf("wrapMarkdownAsPost() text = %#v", node["text"])
+		}
+	})
+
 	t.Run("bare URL becomes a tag", func(t *testing.T) {
 		got := wrapMarkdownAsPost("see https://example.com/flow_id=abc_def done")
 		if !strings.Contains(got, `"tag":"a"`) {
