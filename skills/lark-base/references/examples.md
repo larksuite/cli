@@ -15,8 +15,8 @@ lark-cli base +table-create \
   --base-token bascnXXXXXXXX \
   --name "客户管理表" \
   --fields '[
-    {"name":"客户名称","type":"text"},
-    {"name":"负责人","type":"user","multiple":false},
+    {"name":"客户名称","type":"text","description":"主标题字段"},
+    {"name":"负责人","type":"user","multiple":false,"description":"用于标记客户跟进的直接负责人"},
     {"name":"签约日期","type":"datetime"},
     {"name":"状态","type":"select","multiple":false,"options":[{"name":"进行中"},{"name":"已完成"}]}
   ]'

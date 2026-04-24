@@ -50,7 +50,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义，不要再套一层。
 - 顶层最少包含：`name`、`type`。
-- 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
+- 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
 - `type` 不同，必填子字段不同：
   - `select`：`multiple` 控制是否多选，`options` 定义静态选项，`dynamic_options_source` 定义动态选项来源。静态与动态选项配置二选一，不能同时传。
   - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。

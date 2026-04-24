@@ -8,17 +8,18 @@
 
 - `--json` 必须是 JSON 对象。
 - 顶层统一使用：`type` + `name` + 类型特有字段。
-- 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接。
+- 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
 - `+field-update` 使用同样的字段 JSON 结构，但语义是 `PUT`；建议先 `+field-get` 再按目标状态全量提交。
 - `type=formula` 或 `type=lookup` 创建/更新前，必须先读对应 guide。
 
-最小示例：
+推荐示例：
 
 ```json
 {
   "type": "text",
-  "name": "需求背景"
+  "name": "需求背景",
+  "description": "记录需求背景与已知约束"
 }
 ```
 
@@ -34,10 +35,12 @@
 | `user` / `group_chat` | `type` `name` | `multiple` |
 | `created_by` / `updated_by` | `type` `name` | 无 |
 | `link` | `type` `name` `link_table` | `bidirectional` `bidirectional_link_field_name` |
-| `formula` | `type` `name` `expression` | `description` |
+| `formula` | `type` `name` `expression` | 无 |
 | `lookup` | `type` `name` `from` `select` `where` | `aggregate` |
 | `auto_number` | `type` `name` | `style.rules` |
-| `attachment` / `location` / `checkbox` | `type` `name` | `description` |
+| `attachment` / `location` / `checkbox` | `type` `name` | 无 |
+
+所有类型都可额外传 `description`；上表的“常见补充字段”只列类型特有配置。
 
 ## 3. 各类型写法
 
@@ -55,6 +58,14 @@
 ```
 
 常用写法：
+
+```json
+{
+  "type": "text",
+  "name": "标题",
+  "description": "主标题字段"
+}
+```
 
 ```json
 {
