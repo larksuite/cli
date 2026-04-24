@@ -134,7 +134,7 @@
 默认值 / 约束：
 - `percentage` 默认 `true`
 - `color` 必填
-- `color` 可用：`Blue`、`Purple`、`DarkGreen`、`Green`、`Cyan`、`Orange`、`Red`、`Gray`、`WhiteToBlueGradient`、`WhiteToPurpleGradient`、`WhiteToOrangeGradient`、`GreedToRedGradient`、`RedToGreenGradient`、`BlueToPinkGradient`、`PinkToBlueGradient`、`SpectralGradient`
+- `color` 可用：`Blue`、`Purple`、`DarkGreen`、`Green`、`Cyan`、`Orange`、`Red`、`Gray`、`WhiteToBlueGradient`、`WhiteToPurpleGradient`、`WhiteToOrangeGradient`、`GreenToRedGradient`、`RedToGreenGradient`、`BlueToPinkGradient`、`PinkToBlueGradient`、`SpectralGradient`
 
 ```json
 {
