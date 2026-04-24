@@ -52,7 +52,7 @@ func TestDoHello_ReadDeadline(t *testing.T) {
 		// Accept any error — the concrete type may be a net.OpError
 		// wrapping "i/o timeout" — we assert only on wall-clock elapsed.
 		// The deadline is expected to be in the low single-digit seconds;
-		// we bound at helloAckTimeout + 1s of slack.
+		// we bound at helloAckTimeout + 2s of slack.
 		if elapsed > helloAckTimeout+2*time.Second {
 			t.Errorf("doHello returned %v after %v; deadline should fire within ~%v", err, elapsed, helloAckTimeout)
 		}

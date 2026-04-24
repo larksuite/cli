@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
 package bus
 
 import (
@@ -98,4 +101,30 @@ func TestReleaseCleanupLockIsIdempotent(t *testing.T) {
 	h := NewHub()
 	h.ReleaseCleanupLock("never.locked.key") // should not panic
 	h.ReleaseCleanupLock("never.locked.key") // still should not panic
+}
+
+// TestAcquireCleanupLockRejectsIfZeroSubscribers guards the count==0 hole:
+// a bogus or duplicate PreShutdownCheck for a key with no live subscriber
+// must NOT be granted a cleanup lock. Granting it would install a
+// reservation for a key nobody owns, distorting last-subscriber
+// bookkeeping and blocking any future RegisterAndIsFirst for that key
+// until something happened to release it.
+func TestAcquireCleanupLockRejectsIfZeroSubscribers(t *testing.T) {
+	h := NewHub()
+
+	// Never-registered key: count is 0, must reject.
+	if h.AcquireCleanupLock("never.registered.key") {
+		t.Error("AcquireCleanupLock should reject for a never-registered key (count==0)")
+	}
+
+	// Register then unregister: count returns to 0 (and the key entry
+	// gets deleted by UnregisterAndIsLast). A late PreShutdownCheck from
+	// an already-gone peer must still not slip through.
+	sub := newTestConn("transient.key", []string{"t"})
+	sub.pid = 1
+	h.RegisterAndIsFirst(sub)
+	h.UnregisterAndIsLast(sub)
+	if h.AcquireCleanupLock("transient.key") {
+		t.Error("AcquireCleanupLock should reject after all subscribers have unregistered (count==0)")
+	}
 }

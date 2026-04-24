@@ -149,7 +149,7 @@ func TestDeriveStatuses_ScannerErrorIsNotFatal(t *testing.T) {
 func TestWriteStatusText_OrphanBlock(t *testing.T) {
 	var buf bytes.Buffer
 	statuses := []appStatus{{
-		AppID:     "cli_a96a42f48438dbd2",
+		AppID:     "cli_XXXXXXXXXXXXXXXX",
 		State:     stateOrphan,
 		PID:       70926,
 		UptimeSec: 68400, // 19 hours
@@ -158,7 +158,7 @@ func TestWriteStatusText_OrphanBlock(t *testing.T) {
 	out := buf.String()
 
 	for _, want := range []string{
-		"── cli_a96a42f48438dbd2 ──",
+		"── cli_XXXXXXXXXXXXXXXX ──",
 		"Bus:     orphan (PID 70926, started 19h ago)",
 		"Issue:   socket file missing — consumers cannot connect",
 		"Action:  kill 70926",
@@ -176,7 +176,7 @@ func TestWriteStatusText_OrphanBlock(t *testing.T) {
 func TestWriteStatusJSON_OrphanFields(t *testing.T) {
 	var buf bytes.Buffer
 	statuses := []appStatus{{
-		AppID:     "cli_a96a42f48438dbd2",
+		AppID:     "cli_XXXXXXXXXXXXXXXX",
 		State:     stateOrphan,
 		PID:       70926,
 		UptimeSec: 68400,

@@ -10,11 +10,11 @@ import (
 )
 
 func TestConsoleScopeGrantURL_Feishu(t *testing.T) {
-	got := consoleScopeGrantURL(core.BrandFeishu, "cli_a96bbe46d5a15bc3", []string{
+	got := consoleScopeGrantURL(core.BrandFeishu, "cli_XXXXXXXXXXXXXXXX", []string{
 		"im:message:readonly",
 		"im:message.group_at_msg",
 	})
-	want := "https://open.feishu.cn/app/cli_a96bbe46d5a15bc3/auth?q=im:message:readonly,im:message.group_at_msg&op_from=openapi&token_type=tenant"
+	want := "https://open.feishu.cn/app/cli_XXXXXXXXXXXXXXXX/auth?q=im:message:readonly,im:message.group_at_msg&op_from=openapi&token_type=tenant"
 	if got != want {
 		t.Errorf("url\n got: %s\nwant: %s", got, want)
 	}

@@ -20,7 +20,7 @@ func TestSanitizeAppID_RejectsPathTraversal(t *testing.T) {
 		wantClean   string // exact expected sanitized output
 		forbidChars string // characters that MUST NOT appear in output
 	}{
-		{"happy path", "cli_a96a42f48438dbd2", "cli_a96a42f48438dbd2", "/\\\x00"},
+		{"happy path", "cli_XXXXXXXXXXXXXXXX", "cli_XXXXXXXXXXXXXXXX", "/\\\x00"},
 		{"empty", "", "_", ""},
 		{"dot", ".", "_", ""},
 		{"double-dot only", "..", "_", ".."},
@@ -43,8 +43,10 @@ func TestSanitizeAppID_RejectsPathTraversal(t *testing.T) {
 			}
 			// Structural guarantee: when joined as a path segment, the
 			// result must not introduce a "..", absolute-path escape,
-			// or NUL byte.
-			joined := filepath.Join("/root/events", got, "bus.log")
+			// or NUL byte. Normalize separators via filepath.ToSlash so
+			// the same assertions work on Windows (where filepath.Join
+			// emits backslashes).
+			joined := filepath.ToSlash(filepath.Join("/root/events", got, "bus.log"))
 			if strings.Contains(joined, "..") {
 				t.Errorf("joined path %q contains .. after sanitization", joined)
 			}

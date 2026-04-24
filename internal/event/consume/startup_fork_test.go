@@ -22,9 +22,9 @@ func TestBuildForkArgs(t *testing.T) {
 	}{
 		{
 			name:    "no domain (lark default)",
-			profile: "cli_a96bbe46d5a15bc3",
+			profile: "cli_XXXXXXXXXXXXXXXX",
 			domain:  "",
-			want:    []string{"event", "_bus", "--profile", "cli_a96bbe46d5a15bc3"},
+			want:    []string{"event", "_bus", "--profile", "cli_XXXXXXXXXXXXXXXX"},
 		},
 		{
 			name:    "custom domain appended",

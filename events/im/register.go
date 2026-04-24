@@ -26,7 +26,13 @@ func Keys() []event.KeyDefinition {
 			Schema: event.SchemaDef{
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(ImMessageReceiveOutput{})},
 			},
-			Process:               processImMessageReceive,
+			Process: processImMessageReceive,
+			// Narrowest grant that lets a bot read incoming p2p messages;
+			// broader scopes (im:message, im:message:readonly) cover this
+			// too but shouldn't be required up-front. MissingScopes uses
+			// AND semantics so we keep this list single-element rather
+			// than listing every acceptable substitute.
+			Scopes:                []string{"im:message.p2p_msg:readonly"},
 			AuthTypes:             []string{"bot"},
 			RequiredConsoleEvents: []string{"im.message.receive_v1"},
 		},

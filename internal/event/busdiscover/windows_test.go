@@ -19,7 +19,7 @@ func TestWindowsScanner_ParsesBusProcesses(t *testing.T) {
   {
     "Pid": 4711,
     "CreationDate": "2026-04-19T03:03:40.1234567+08:00",
-    "CommandLine": "\"C:\\Program Files\\lark-cli\\lark-cli.exe\" event _bus --profile cli_b1c2d3e4f5g6h7i8 --domain https://open.larksuite.com"
+    "CommandLine": "\"C:\\Program Files\\lark-cli\\lark-cli.exe\" event _bus --profile cli_XXXXXXXXXXXXXXXX --domain https://open.larksuite.com"
   },
   {
     "Pid": 4712,
@@ -39,8 +39,8 @@ func TestWindowsScanner_ParsesBusProcesses(t *testing.T) {
 	if procs[0].PID != 4711 {
 		t.Errorf("PID = %d, want 4711", procs[0].PID)
 	}
-	if procs[0].AppID != "cli_b1c2d3e4f5g6h7i8" {
-		t.Errorf("AppID = %q, want cli_b1c2d3e4f5g6h7i8", procs[0].AppID)
+	if procs[0].AppID != "cli_XXXXXXXXXXXXXXXX" {
+		t.Errorf("AppID = %q, want cli_XXXXXXXXXXXXXXXX", procs[0].AppID)
 	}
 	// Compare in UTC to side-step local-timezone flakiness on CI runners.
 	wantUTC := time.Date(2026, 4, 18, 19, 3, 40, 123456700, time.UTC)

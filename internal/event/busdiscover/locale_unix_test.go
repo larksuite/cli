@@ -31,10 +31,12 @@ func TestPSLocaleForcedC(t *testing.T) {
 	// to C) and the test passes vacuously even pre-fix. macOS bundles
 	// ICU locales universally; Linux CI runners typically have only C
 	// + en_US. Skip explicitly rather than silently pass.
-	if out, err := exec.Command("locale", "-a").Output(); err == nil {
-		if !strings.Contains(string(out), "zh_CN") {
-			t.Skip("no non-C locale (zh_CN) installed; can't prove LC_ALL override")
-		}
+	out, err := exec.Command("locale", "-a").Output()
+	if err != nil {
+		t.Skipf("locale command unavailable: %v", err)
+	}
+	if !strings.Contains(string(out), "zh_CN") {
+		t.Skip("no non-C locale (zh_CN) installed; can't prove LC_ALL override")
 	}
 
 	// Force a non-English LC_TIME on the test process. If the production
@@ -47,7 +49,7 @@ func TestPSLocaleForcedC(t *testing.T) {
 	t.Setenv("LANG", "zh_CN.UTF-8")
 
 	s := newPlatformScanner().(*unixScanner)
-	out, err := s.runPS()
+	out, err = s.runPS()
 	if err != nil {
 		t.Skipf("runPS failed (likely no ps on this host): %v", err)
 	}

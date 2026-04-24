@@ -89,7 +89,7 @@ func TestPreflightEventTypes_MissingBlocks(t *testing.T) {
 	appVer := &appmeta.AppVersion{EventTypes: []string{
 		"mail.user_mailbox.event.message_received_v1",
 	}}
-	err := preflightEventTypes(newPreflightCtx("cli_a96bbe46d5a15bc3", "feishu", "", def, appVer))
+	err := preflightEventTypes(newPreflightCtx("cli_XXXXXXXXXXXXXXXX", "feishu", "", def, appVer))
 	if err == nil {
 		t.Fatal("expected error for missing subscription")
 	}
@@ -106,7 +106,7 @@ func TestPreflightEventTypes_MissingBlocks(t *testing.T) {
 	if exit.Detail == nil {
 		t.Fatal("expected Detail with hint")
 	}
-	wantURL := "https://open.feishu.cn/app/cli_a96bbe46d5a15bc3/event"
+	wantURL := "https://open.feishu.cn/app/cli_XXXXXXXXXXXXXXXX/event"
 	if !strings.Contains(exit.Detail.Hint, wantURL) {
 		t.Errorf("hint missing subscription URL %q\ngot: %s", wantURL, exit.Detail.Hint)
 	}

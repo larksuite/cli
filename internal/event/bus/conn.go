@@ -22,9 +22,9 @@ const (
 
 // Conn represents a single consume client connection in the Bus.
 type Conn struct {
-	conn    net.Conn
-	reader  *bufio.Reader
-	sendCh  chan interface{}
+	conn   net.Conn
+	reader *bufio.Reader
+	sendCh chan interface{}
 	sendMu sync.Mutex // serialises PushDropOldest to keep drop+push atomic
 	// writeMu serialises all net.Conn writes. protocol.Encode plus
 	// SetWriteDeadline is a 2-call sequence shared between SenderLoop

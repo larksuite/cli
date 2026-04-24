@@ -13,13 +13,13 @@ func TestParseAppIDFromCmdline(t *testing.T) {
 	}{
 		{
 			name:    "unix full path bus",
-			cmdline: "/Users/bytedance/go/src/github/cli/lark-cli event _bus --profile cli_a96a42f48438dbd2 --domain https://open.feishu.cn",
-			want:    "cli_a96a42f48438dbd2",
+			cmdline: "/Users/bytedance/go/src/github/cli/lark-cli event _bus --profile cli_XXXXXXXXXXXXXXXX --domain https://open.feishu.cn",
+			want:    "cli_XXXXXXXXXXXXXXXX",
 		},
 		{
 			name:    "windows quoted exe bus",
-			cmdline: `"C:\Program Files\lark-cli\lark-cli.exe" event _bus --profile cli_b1c2d3e4f5g6h7i8 --domain https://open.larksuite.com`,
-			want:    "cli_b1c2d3e4f5g6h7i8",
+			cmdline: `"C:\Program Files\lark-cli\lark-cli.exe" event _bus --profile cli_XXXXXXXXXXXXXXXX --domain https://open.larksuite.com`,
+			want:    "cli_XXXXXXXXXXXXXXXX",
 		},
 		{
 			name:    "no profile flag",

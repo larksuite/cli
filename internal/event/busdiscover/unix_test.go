@@ -15,7 +15,7 @@ func TestUnixScanner_ParsesBusProcesses(t *testing.T) {
 	// Header line + three processes: one bus, one vim, one lark-cli consume
 	// (not a bus). Only the bus should be returned.
 	canned := []byte(`  PID                  LSTART COMMAND
-70926 Sun Apr 19 03:03:40 2026 /Users/bytedance/go/src/github/cli/lark-cli event _bus --profile cli_a96a42f48438dbd2 --domain https://open.feishu.cn
+70926 Sun Apr 19 03:03:40 2026 /Users/bytedance/go/src/github/cli/lark-cli event _bus --profile cli_XXXXXXXXXXXXXXXX --domain https://open.feishu.cn
 12345 Mon Apr 20 10:00:00 2026 /usr/bin/vim /tmp/foo.txt
 54321 Mon Apr 20 11:00:00 2026 /usr/local/bin/lark-cli event consume im.message.receive_v1
 `)
@@ -31,8 +31,8 @@ func TestUnixScanner_ParsesBusProcesses(t *testing.T) {
 	if procs[0].PID != 70926 {
 		t.Errorf("PID = %d, want 70926", procs[0].PID)
 	}
-	if procs[0].AppID != "cli_a96a42f48438dbd2" {
-		t.Errorf("AppID = %q, want cli_a96a42f48438dbd2", procs[0].AppID)
+	if procs[0].AppID != "cli_XXXXXXXXXXXXXXXX" {
+		t.Errorf("AppID = %q, want cli_XXXXXXXXXXXXXXXX", procs[0].AppID)
 	}
 	wantTime := time.Date(2026, 4, 19, 3, 3, 40, 0, time.Local)
 	if !procs[0].StartTime.Equal(wantTime) {
@@ -68,7 +68,7 @@ func TestUnixScanner_PSFailurePropagates(t *testing.T) {
 func TestUnixScanner_SkipsMalformedLines(t *testing.T) {
 	// Line too short to contain an lstart field should be silently skipped.
 	canned := []byte(`  PID                  LSTART COMMAND
-70926 Sun Apr 19 03:03:40 2026 /usr/local/bin/lark-cli event _bus --profile cli_a96a42f48438dbd2
+70926 Sun Apr 19 03:03:40 2026 /usr/local/bin/lark-cli event _bus --profile cli_XXXXXXXXXXXXXXXX
 short_line
 99999 bogus_date_format /usr/local/bin/lark-cli event _bus --profile cli_xyz
 `)

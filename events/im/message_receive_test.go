@@ -37,6 +37,13 @@ func TestIMKeys_ProcessedReceiveRegistered(t *testing.T) {
 	if def.Process == nil {
 		t.Error("Process must not be nil for Processed key")
 	}
+	// Guard against re-regressing: preflightScopes skips validation when
+	// Scopes is empty. im.message.receive_v1 must declare its required
+	// scopes so a bot missing im:message gets a preflight error instead of
+	// a silent "no events" at runtime.
+	if len(def.Scopes) == 0 {
+		t.Error("Scopes must not be empty — preflightScopes would bypass validation")
+	}
 }
 
 func TestIMKeys_NativeEventsRegistered(t *testing.T) {

@@ -90,9 +90,17 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 		announceForkedBus(errOut, pid)
 	}
 
+	// Honour ctx cancellation on the dial retry loop so a SIGINT during
+	// fork+dial doesn't wait out the full dialTimeout. time.After is safe
+	// here — the loop runs ~dialTimeout/dialRetryInterval times worst case
+	// (3s/50ms = 60 iters), so per-iter timer allocation is negligible.
 	deadline := time.Now().Add(dialTimeout)
 	for time.Now().Before(deadline) {
-		time.Sleep(dialRetryInterval)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(dialRetryInterval):
+		}
 		if conn, err := tr.Dial(addr); err == nil {
 			return conn, nil
 		}

@@ -101,17 +101,23 @@ func (h *Hub) UnregisterAndIsLast(s Subscriber) bool {
 }
 
 // AcquireCleanupLock is the race-free replacement for "check last then
-// cleanup". Returns true iff this subscriber is still the only one
-// registered for eventKey AND no other cleanup is already in progress. On
-// true return, caller MUST eventually call ReleaseCleanupLock to unblock
-// any waiting RegisterAndIsFirst. Both checks (count <= 1 and
-// already-locked) run under the same write lock so they are atomic —
-// preventing a late-arriving Hello from slipping in between the check and
-// the reservation.
+// cleanup". Returns true iff exactly one subscriber is registered for
+// eventKey (i.e. the caller is the sole remaining holder) AND no other
+// cleanup is already in progress. On true return, caller MUST eventually
+// call ReleaseCleanupLock to unblock any waiting RegisterAndIsFirst. Both
+// checks (count == 1 and already-locked) run under the same write lock so
+// they are atomic — preventing a late-arriving Hello from slipping in
+// between the check and the reservation.
+//
+// A count of 0 (no live subscriber for this key — e.g. a bogus or
+// duplicate PreShutdownCheck from an already-unregistered peer) is
+// explicitly rejected: granting a cleanup lock there would install a
+// reservation for a key nobody owns, blocking future RegisterAndIsFirst
+// on that key until somebody happens to Release it.
 func (h *Hub) AcquireCleanupLock(eventKey string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.keyCounts[eventKey] > 1 {
+	if h.keyCounts[eventKey] != 1 {
 		return false
 	}
 	if _, alreadyLocked := h.cleanupInProgress[eventKey]; alreadyLocked {

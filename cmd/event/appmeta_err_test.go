@@ -12,7 +12,7 @@ import (
 // realisticPermError mirrors the error shape seen when the app lacks the
 // application:application.app_version:readonly scope — HTTP 400 + OAPI
 // business code 99991672 + a grant URL buried in the msg field.
-const realisticPermError = `API GET /open-apis/application/v6/applications/cli_a96bbe46d5a15bc3/app_versions?lang=zh_cn&page_size=2 returned 400: {"code":99991672,"msg":"Access denied. One of the following scopes is required: [application:application:self_manage, application:application.app_version:readonly].应用尚未开通所需的应用身份权限：[application:application:self_manage, application:application.app_version:readonly]，点击链接申请并开通任一权限即可：https://open.feishu.cn/app/cli_a96bbe46d5a15bc3/auth?q=application:application:self_manage,application:application.app_version:readonly&op_from=openapi&token_type=tenant","error":{"message":"Refer to the documentation...","log_id":"20260421101203E2A5F141245B6F43B3A6"}}`
+const realisticPermError = `API GET /open-apis/application/v6/applications/cli_XXXXXXXXXXXXXXXX/app_versions?lang=zh_cn&page_size=2 returned 400: {"code":99991672,"msg":"Access denied. One of the following scopes is required: [application:application:self_manage, application:application.app_version:readonly].应用尚未开通所需的应用身份权限：[application:application:self_manage, application:application.app_version:readonly]，点击链接申请并开通任一权限即可：https://open.feishu.cn/app/cli_XXXXXXXXXXXXXXXX/auth?q=application:application:self_manage,application:application.app_version:readonly&op_from=openapi&token_type=tenant","error":{"message":"Refer to the documentation...","log_id":"20260421101203E2A5F141245B6F43B3A6"}}`
 
 func TestDescribeAppMetaErr_PermissionDeniedShort(t *testing.T) {
 	got := describeAppMetaErr(errors.New(realisticPermError))
@@ -27,7 +27,7 @@ func TestDescribeAppMetaErr_PermissionDeniedShort(t *testing.T) {
 	}
 	// Must preserve the actionable grant URL — that's the whole point of the
 	// long OAPI message, everything else is noise.
-	wantURL := "https://open.feishu.cn/app/cli_a96bbe46d5a15bc3/auth?q=application:application:self_manage,application:application.app_version:readonly&op_from=openapi&token_type=tenant"
+	wantURL := "https://open.feishu.cn/app/cli_XXXXXXXXXXXXXXXX/auth?q=application:application:self_manage,application:application.app_version:readonly&op_from=openapi&token_type=tenant"
 	if !strings.Contains(got, wantURL) {
 		t.Errorf("summary missing grant URL\ngot:  %q\nwant: %q", got, wantURL)
 	}
