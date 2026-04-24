@@ -250,6 +250,34 @@ lark-cli mail user_mailbox.sent_messages get_recall_detail --as user \
 - 需要同时授权 mail 和 im 两个域的 scope
 - 分享的卡片包含邮件摘要信息，收件人可点击查看
 
+### 发送日程邀请邮件
+
+在邮件中嵌入日程邀请（`text/calendar`），收件人收信后可直接接受或拒绝日程。`To`/`Cc` 收件人自动成为参会人（ATTENDEE），发件人自动成为组织者（ORGANIZER）。
+
+```bash
+# 发送带日程邀请的新邮件（先保存草稿，确认后发送）
+lark-cli mail +send --as user \
+    --to alice@example.com --cc bob@example.com \
+    --subject '产品评审' \
+    --body '<p>请参加本次产品评审会议。</p>' \
+    --event-summary '产品评审' \
+    --event-start '2026-05-10T14:00+08:00' \
+    --event-end '2026-05-10T15:00+08:00' \
+    --event-location '5F 大会议室' \
+    --confirm-send
+```
+
+**参数说明：**
+- `--event-summary`：日程标题，设置此参数即开启日程邀请模式，需同时设置 `--event-start` 和 `--event-end`
+- `--event-start` / `--event-end`：ISO 8601 格式时间，如 `2026-05-10T14:00+08:00`
+- `--event-location`：可选，日程地点
+
+**约束：**
+- `--event-*` 与 `--send-time`（定时发送）互斥，不可同时使用
+- `Bcc` 收件人不会成为日程参会人；如果邮件同时包含 Bcc 和日程，后端在发送时会拒绝该请求
+
+读取含日程邀请的邮件时，`calendar_event` 字段包含日程详情（`method`、`summary`、`start`、`end`、`organizer`、`attendees` 等）。
+
 ### 正文格式：优先使用 HTML
 
 撰写邮件正文时，**默认使用 HTML 格式**（body 内容会被自动检测）。仅当用户明确要求纯文本时，才使用 `--plain-text` 标志强制纯文本模式。
