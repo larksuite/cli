@@ -136,6 +136,10 @@ func applyOp(dctx *DraftCtx, snapshot *DraftSnapshot, op PatchOp, options PatchO
 		return insertSignatureOp(snapshot, op)
 	case "remove_signature":
 		return removeSignatureOp(snapshot)
+	case "set_calendar":
+		return applyCalendarSet(snapshot, op.CalendarICS)
+	case "remove_calendar":
+		return applyCalendarRemove(snapshot)
 	default:
 		return fmt.Errorf("unsupported patch op %q", op.Op)
 	}
