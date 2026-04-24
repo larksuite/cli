@@ -403,7 +403,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("at-chatter-ids accepts user ids", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":          "standup",
 			"at-chatter-ids": "ou_a, ou_b",
 		}, nil)
@@ -422,7 +422,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("at-chatter-ids rejects bad id", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"at-chatter-ids": "ou_a,not_a_user",
 		}, nil)
 		_, err := buildMessagesSearchRequest(runtime)
