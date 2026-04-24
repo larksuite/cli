@@ -724,11 +724,11 @@ $.{stepId}.{pathId}.{childPathId}.{grandChildPathId}
 下钻引用示例：
 
 ```
-$.{stepId}.{fieldId}              → 字段值本身
-$.{stepId}.{fieldId}.fieldId      → 字段 ID（string）
+$.{stepId}.{fieldId} → 字段值本身
+$.{stepId}.{fieldId}.fieldId → 字段 ID（string）
 $.{stepId}.{fieldId}.fieldName    → 字段名称（string）
-$.{stepId}.{fieldId}.name         → 人员姓名列表（array<string>，仅人员字段）
-$.{stepId}.{fieldId}.unionId      → 人员 unionId 列表（array<string>，仅人员字段）
+$.{stepId}.{fieldId}.name → 人员姓名列表（array<string>，仅人员字段）
+$.{stepId}.{fieldId}.unionId → 人员 unionId 列表（array<string>，仅人员字段）
 $.{stepId}.{fieldId}.timestamp    → 时间戳（array<number>，仅日期字段）
 $.{stepId}.{fieldId}.fileName     → 文件名列表（array<string>，仅附件字段）
 $.{stepId}.{fieldId}.fileToken    → 文件 Token 列表（array<string>，仅附件字段）

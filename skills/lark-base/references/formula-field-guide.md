@@ -46,8 +46,8 @@ This is the foundation of formula logic. You must determine this before writing 
 - **LISTCOMBINE flattening rule**: When a FILTER's result column is itself a multi-value field (`select` with `multiple=true`, `link`, etc.), it produces a 2D array and **must** be flattened with `.LISTCOMBINE()`; for single-value fields (`number`, `text`, etc.) it can be omitted, but adding it is never wrong:
 
   ```
-  [Table].FILTER(CurrentValue.[Field] = [Value]).[Tags].LISTCOMBINE()              ← required for multi-value columns
-  [Table].FILTER(CurrentValue.[Field] = [Value]).[NumberCol].LISTCOMBINE()          ← optional for single-value columns
+  [Table].FILTER(CurrentValue.[Field] = [Value]).[Tags].LISTCOMBINE() ← required for multi-value columns
+  [Table].FILTER(CurrentValue.[Field] = [Value]).[NumberCol].LISTCOMBINE() ← optional for single-value columns
   ```
 
 ---
@@ -190,7 +190,7 @@ Retrieves the target field values for all linked records as a list. Supports con
   ```
   Correct: [Sales].FILTER(CurrentValue.[Amount] > 100).[Customer]
   Correct: [Sales].FILTER(condition).SORTBY([Sales].[SortCol]).[Customer]  ← result column at end of chain
-  Wrong:   [Sales].FILTER(CurrentValue.[Amount] > 100)                     ← missing result column
+  Wrong: [Sales].FILTER(CurrentValue.[Amount] > 100) ← missing result column
   ```
 
 - **When data range is a column** `[TableName].[Field]` or a list, FILTER returns the filtered list directly — **no** result column needed:
@@ -256,7 +256,7 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 ### 8.2 Numeric functions
 
 | Function                                                          | Signature                                | Return type | Description                                                                                                                                                                                                                                                |
-| ----------------------------------------------------------------- | ---------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| --- | --- | --- | --- |
 | SUM                                                               | `SUM(val1, val2, ...)`                   | Number      | Sum; accepts multiple values or a list                                                                                                                                                                                                                     |
 | AVERAGE                                                           | `AVERAGE(val1, val2, ...)`               | Number      | Average                                                                                                                                                                                                                                                    |
 | MAX                                                               | `MAX(val1, val2, ...)`                   | Number      | Maximum                                                                                                                                                                                                                                                    |
@@ -336,7 +336,7 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 ### 8.5 List functions
 
 | Function    | Signature                                                                    | Return type | Description                                                                                                                                                                                                      |
-| ----------- | ---------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| --- | --- | --- | --- |
 | LIST        | `LIST(val1, val2, ...)`                                                      | List        | Create a list                                                                                                                                                                                                    |
 | FIRST       | `FIRST(list)`                                                                | Scalar      | First element                                                                                                                                                                                                    |
 | LAST        | `LAST(list)`                                                                 | Scalar      | Last element                                                                                                                                                                                                     |
@@ -584,8 +584,8 @@ Reason: CONTAIN checks if a list or `select` (`multiple=true`) contains a whole 
 ### Mistake 9: Date concatenation without formatting
 
 ```
-Not recommended: "Deadline: " & [DateField]                          ← output format is uncontrolled
-Recommended:     "Deadline: " & TEXT([DateField], "YYYY-MM-DD")
+Not recommended: "Deadline: " & [DateField] ← output format is uncontrolled
+Recommended: "Deadline: " & TEXT([DateField], "YYYY-MM-DD")
 ```
 
 Reason: Concatenating a date with `&` won't error, but uses the default format. Use TEXT to specify the format explicitly.

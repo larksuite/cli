@@ -25,13 +25,13 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 > `+field-list` 返回的字段类型以字段操作接口为准：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
 
 ```
-text:                                 is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
-number:                               is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
-select（multiple=false）:             is, isNot, isEmpty, isNotEmpty
-select（multiple=true）:              is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
-datetime:                            is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
-checkbox:                            is (value: true/false)
-user / created_by / updated_by:      is, isNot, isEmpty, isNotEmpty
+text: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
+number: is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
+select（multiple=false）: is, isNot, isEmpty, isNotEmpty
+select（multiple=true）: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
+datetime: is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
+checkbox: is (value: true/false)
+user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 ```
 
 ## data_config 通用结构

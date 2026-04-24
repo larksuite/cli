@@ -288,8 +288,8 @@ How to handle multiple matching records?
 When the source table has a Link pointing to the current table:
 
 ```
-Exhibition table: ExhibitionName (primaryField)           ← current table
-Artwork table:    ArtworkName (primaryField),             ← source table (Link is here)
+Exhibition table: ExhibitionName (primaryField) ← current table
+Artwork table: ArtworkName (primaryField), ← source table (Link is here)
                   Exhibition (Link → Exhibition table)
 ```
 
@@ -316,8 +316,8 @@ Artwork table:    ArtworkName (primaryField),             ← source table (Link
 When the current table has a Link pointing to the source table:
 
 ```
-Supplier table:  SupplierName (primaryField), Contact (Text)       ← source table
-Inventory table: ProductName (primaryField),                        ← current table (Link is here)
+Supplier table: SupplierName (primaryField), Contact (Text) ← source table
+Inventory table: ProductName (primaryField), ← current table (Link is here)
                  Supplier (Link → Supplier table)
 ```
 
@@ -341,8 +341,8 @@ Inventory table: ProductName (primaryField),                        ← current 
 **Scenario**: "Sum order amounts per project" (tables share a "ProjectName" field but no Link)
 
 ```
-Project table: ProjectName (primaryField)                          ← current table
-Order table:   OrderID (primaryField), ProjectName (Text),         ← source table
+Project table: ProjectName (primaryField) ← current table
+Order table: OrderID (primaryField), ProjectName (Text), ← source table
                Amount (Number)
 ```
 
