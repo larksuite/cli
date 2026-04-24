@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/transport"
 	"github.com/larksuite/cli/internal/lockfile"
@@ -99,7 +100,7 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 
 	// Per spec §6.4: three-line friendly diagnostic. Path expands at runtime
 	// from core.GetConfigDir() so LARKSUITE_CLI_CONFIG_DIR overrides are honoured.
-	logPath := filepath.Join(core.GetConfigDir(), "events", appID, "bus.log")
+	logPath := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.log")
 	fmt.Fprintln(errOut, "[event] event bus exited unexpectedly.")
 	fmt.Fprintln(errOut, "[event] please check app credentials (lark-cli config show) and retry.")
 	fmt.Fprintf(errOut, "[event] logs: %s\n", logPath)
@@ -146,7 +147,7 @@ func probeAndDialBus(tr transport.IPC, addr string) (net.Conn, error) {
 // are platform-specific (see startup_unix.go / startup_windows.go); the
 // lock + argv + --profile-based credential lookup are shared.
 func forkBus(appID, profileName, domain string) (int, error) {
-	lockPath := filepath.Join(core.GetConfigDir(), "events", appID, "bus.fork.lock")
+	lockPath := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.fork.lock")
 	if err := vfs.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
 		return 0, err
 	}

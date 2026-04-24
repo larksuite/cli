@@ -337,7 +337,22 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 	b.mu.Unlock()
 
 	ack := protocol.NewHelloAck("v1", firstForKey)
-	_ = protocol.EncodeWithDeadline(conn, ack, protocol.WriteTimeout)
+	// Route through bc.writeFrame so all writes to this connection go
+	// through the same mutex (see writeMu docs). On failure we must
+	// undo the hub + bus-level registration — otherwise the consumer
+	// lives on in b.conns / hub.subscribers without ever receiving an
+	// ack, skewing first/last bookkeeping and keeping the bus non-idle.
+	// bc.Close() triggers the onClose callback which handles both,
+	// including the firstForKey==true case (keyCounts incremented to 1
+	// by RegisterAndIsFirst is decremented back to 0 by
+	// UnregisterAndIsLast; no PreConsume was triggered because the
+	// client never received the ack).
+	if err := bc.writeFrame(ack); err != nil {
+		b.logger.Printf("WARN: hello_ack write to pid=%d key=%q failed: %v (rejecting connection)",
+			hello.PID, hello.EventKey, err)
+		bc.Close()
+		return
+	}
 
 	// Quote untrusted fields — EventKey / EventTypes come straight off
 	// the wire from an unprivileged local process, and a value with

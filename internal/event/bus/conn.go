@@ -22,10 +22,17 @@ const (
 
 // Conn represents a single consume client connection in the Bus.
 type Conn struct {
-	conn            net.Conn
-	reader          *bufio.Reader
-	sendCh          chan interface{}
-	sendMu          sync.Mutex // serialises PushDropOldest to keep drop+push atomic
+	conn    net.Conn
+	reader  *bufio.Reader
+	sendCh  chan interface{}
+	sendMu sync.Mutex // serialises PushDropOldest to keep drop+push atomic
+	// writeMu serialises all net.Conn writes. protocol.Encode plus
+	// SetWriteDeadline is a 2-call sequence shared between SenderLoop
+	// (event frames), handleControlMessage (PreShutdownAck), and the
+	// HelloAck write in bus.handleHello — all of which can race if the
+	// mutex is bypassed. Without it the shared write deadline corrupts
+	// and large frames interleave bytes on the wire.
+	writeMu         sync.Mutex
 	eventKey        string
 	eventTypes      []string
 	pid             int
@@ -108,6 +115,19 @@ func (c *Conn) Start() {
 	go c.ReaderLoop()
 }
 
+// writeFrame is the single write path to c.conn. Serialised via writeMu
+// so SenderLoop (event frames), handleControlMessage (PreShutdownAck),
+// and bus.handleHello (HelloAck) never interleave bytes or race the
+// shared SetWriteDeadline call.
+func (c *Conn) writeFrame(msg interface{}) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if err := c.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+		return err
+	}
+	return protocol.Encode(c.conn, msg)
+}
+
 // SenderLoop writes messages from sendCh to the connection.
 // It exits when the closed channel is signaled, not when sendCh is closed,
 // so that Hub.Publish can safely send to sendCh without risk of panic.
@@ -117,8 +137,7 @@ func (c *Conn) SenderLoop() {
 		case <-c.closed:
 			return
 		case msg := <-c.sendCh:
-			c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-			if err := protocol.Encode(c.conn, msg); err != nil {
+			if err := c.writeFrame(msg); err != nil {
 				if c.logger != nil {
 					c.logger.Printf("WARN: write to pid=%d failed: %v", c.pid, err)
 				}
@@ -165,8 +184,9 @@ func (c *Conn) handleControlMessage(msg interface{}) {
 			lastForKey = c.checkLastForKey(m.EventKey)
 		}
 		ack := protocol.NewPreShutdownAck(lastForKey)
-		c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-		protocol.Encode(c.conn, ack)
+		if err := c.writeFrame(ack); err != nil && c.logger != nil {
+			c.logger.Printf("WARN: pre_shutdown_ack to pid=%d failed: %v", c.pid, err)
+		}
 	}
 }
 
@@ -181,6 +201,25 @@ func (c *Conn) shutdown() {
 			c.onClose(c)
 		}
 	})
+}
+
+// TrySend enqueues msg onto sendCh without evicting, under sendMu so it
+// respects PushDropOldest's atomicity contract. Returns true iff the
+// channel had room. Used by Hub.BroadcastSourceStatus for best-effort
+// fan-out of source-level status messages — a source-status that can't
+// fit the queue is dropped silently (the event itself isn't event data
+// worth applying back-pressure for) but the send still synchronises
+// with concurrent PushDropOldest so a broadcaster cannot steal a slot
+// in the window between another goroutine's drop and retry push.
+func (c *Conn) TrySend(msg interface{}) bool {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	select {
+	case c.sendCh <- msg:
+		return true
+	default:
+		return false
+	}
 }
 
 // PushDropOldest enqueues msg onto sendCh. If sendCh is full, it drops

@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/bus"
 	"github.com/larksuite/cli/internal/event/transport"
 )
@@ -35,7 +36,11 @@ func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 				return err
 			}
 
-			eventsDir := filepath.Join(core.GetConfigDir(), "events", cfg.AppID)
+			// Sanitize AppID before joining into the filesystem path —
+			// a corrupted/hostile AppID could otherwise escape events/
+			// via ".." or separators and place bus.log anywhere under
+			// the config dir. See event.SanitizeAppID.
+			eventsDir := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(cfg.AppID))
 
 			logger, err := bus.SetupBusLogger(eventsDir)
 			if err != nil {

@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/Microsoft/go-winio"
+
+	"github.com/larksuite/cli/internal/event"
 )
 
 // pipeBufferSize is the per-direction kernel buffer for each named pipe.
@@ -58,26 +60,11 @@ func (t *windowsTransport) Dial(addr string) (net.Conn, error) {
 
 // Address returns the pipe path for a given appID. Named pipe names live
 // in a global kernel namespace, keyed by appID so multiple bus daemons
-// for different apps coexist without collision. Backslash and NUL are
-// stripped defensively — a corrupt AppID should not be able to reshape
-// the pipe path.
+// for different apps coexist without collision. SanitizeAppID strips
+// separators / NUL / ".." — a corrupt AppID should not be able to
+// reshape the pipe path.
 func (t *windowsTransport) Address(appID string) string {
-	return `\\.\pipe\lark-cli-` + sanitizePipeAppID(appID)
-}
-
-func sanitizePipeAppID(appID string) string {
-	if appID == "" {
-		return "_"
-	}
-	out := make([]rune, 0, len(appID))
-	for _, r := range appID {
-		if r == '\\' || r == '/' || r == 0 {
-			out = append(out, '_')
-			continue
-		}
-		out = append(out, r)
-	}
-	return string(out)
+	return `\\.\pipe\lark-cli-` + event.SanitizeAppID(appID)
 }
 
 // Cleanup is a no-op on Windows: named pipes are kernel objects that

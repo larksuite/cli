@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -22,7 +23,16 @@ const lstartLayout = "Mon Jan _2 15:04:05 2006"
 func newPlatformScanner() Scanner {
 	return &unixScanner{
 		runPS: func() ([]byte, error) {
-			return exec.Command("ps", "-eo", "pid,lstart,command").Output()
+			cmd := exec.Command("ps", "-eo", "pid,lstart,command")
+			// Force C locale so `ps -o lstart` emits English weekday /
+			// month names ("Mon Apr 19 …") matching lstartLayout. Without
+			// this, on hosts with LC_TIME=zh_CN / de_DE / fr_FR the output
+			// is localized ("一 4月 19 …") and parseOneUnixPSLine silently
+			// drops every row — orphan bus detection fails entirely.
+			// Inherit the rest of the environment so ps can still find
+			// system paths etc.
+			cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+			return cmd.Output()
 		},
 	}
 }

@@ -104,6 +104,48 @@ func TestHub_Unregister(t *testing.T) {
 	}
 }
 
+// TestHub_UnregisterAndIsLast_NeverRegistered — regression for the
+// "decrements unregistered subscribers" finding. Calling
+// UnregisterAndIsLast on a Subscriber that was never registered must
+// return false (it was never the last of anything) and MUST NOT
+// corrupt keyCounts for that EventKey.
+func TestHub_UnregisterAndIsLast_NeverRegistered(t *testing.T) {
+	h := NewHub()
+	real := newTestConn("im", []string{"im.msg"})
+	h.RegisterAndIsFirst(real)
+	ghost := newTestConn("im", []string{"im.msg"}) // same EventKey, never registered
+
+	if h.UnregisterAndIsLast(ghost) {
+		t.Error("ghost unregister returned true: must be false when subscriber never registered")
+	}
+	if got := h.EventKeyCount("im"); got != 1 {
+		t.Errorf("keyCount for 'im' = %d after ghost unregister; want 1 (real still registered)", got)
+	}
+	// Now unregistering the real subscriber should still correctly
+	// report last=true. If the ghost path decremented the counter, this
+	// would have been clobbered.
+	if !h.UnregisterAndIsLast(real) {
+		t.Error("real unregister returned false; expected true (sole subscriber)")
+	}
+}
+
+// TestHub_UnregisterAndIsLast_DoubleUnregister — second call on the
+// same already-unregistered subscriber must return false. Prior code
+// returned true because keyCounts[key]==0 fell through the isLast check
+// on the stale second call, potentially firing cleanup twice.
+func TestHub_UnregisterAndIsLast_DoubleUnregister(t *testing.T) {
+	h := NewHub()
+	c := newTestConn("im", []string{"im.msg"})
+	h.RegisterAndIsFirst(c)
+
+	if !h.UnregisterAndIsLast(c) {
+		t.Fatal("first unregister returned false; expected true (sole subscriber)")
+	}
+	if h.UnregisterAndIsLast(c) {
+		t.Error("second unregister returned true: duplicate unregister must report false")
+	}
+}
+
 func TestHub_EventKeyCount(t *testing.T) {
 	h := NewHub()
 	c1 := newTestConn("mail.user_mailbox.event.message_received_v1", []string{"mail.v1"})
@@ -253,5 +295,17 @@ func (c *testConn) PushDropOldest(msg interface{}) (enqueued, dropped bool) {
 		return true, dropped
 	default:
 		return false, dropped
+	}
+}
+
+// TrySend satisfies the Subscriber interface. Non-evicting best-effort
+// send; tests that care about the sendMu serialisation guarantee should
+// use a production *Conn.
+func (c *testConn) TrySend(msg interface{}) bool {
+	select {
+	case c.sendCh <- msg:
+		return true
+	default:
+		return false
 	}
 }

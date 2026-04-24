@@ -52,6 +52,23 @@ func TestPublishRaceBookkeepingAccurate(t *testing.T) {
 			}
 		}()
 	}
+	// Concurrent TrySend contenders — the key witness for Bug 3 (source-
+	// status broadcast bypassing sendMu). TrySend must share the same
+	// sendMu as PushDropOldest; if it races in between another
+	// goroutine's drop and its retry-push, the retry-push hits default
+	// and returnedFalse bumps (caught by the existing assertion below).
+	// With sendMu correctly held, TrySend serialises with Publish's
+	// PushDropOldest and returnedFalse stays 0.
+	const trySenders = 20
+	for i := 0; i < trySenders; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < perPublisher; j++ {
+				sub.TrySend("source-status")
+			}
+		}()
+	}
 
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
@@ -163,6 +180,14 @@ func (s *alwaysFailSubscriber) Received() int64          { return s.received.Loa
 func (s *alwaysFailSubscriber) DroppedCount() int64      { return s.dropped.Load() }
 func (s *alwaysFailSubscriber) IncrementDropped()        { s.dropped.Add(1) }
 func (s *alwaysFailSubscriber) NextSeq() uint64          { return 0 }
+func (s *alwaysFailSubscriber) TrySend(msg interface{}) bool {
+	select {
+	case s.sendCh <- msg:
+		return true
+	default:
+		return false
+	}
+}
 func (s *alwaysFailSubscriber) PushDropOldest(msg interface{}) (enqueued, dropped bool) {
 	return false, false
 }
@@ -201,6 +226,20 @@ func (s *raceSubscriber) Received() int64          { return s.received.Load() }
 func (s *raceSubscriber) DroppedCount() int64      { return s.dropped.Load() }
 func (s *raceSubscriber) IncrementDropped()        { s.dropped.Add(1) }
 func (s *raceSubscriber) NextSeq() uint64          { return 0 }
+
+// TrySend satisfies the Subscriber interface. Non-evicting; shares
+// s.sendMu with PushDropOldest so the test can assert serialised
+// behaviour under concurrent broadcast+publish.
+func (s *raceSubscriber) TrySend(msg interface{}) bool {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	select {
+	case s.sendCh <- msg:
+		return true
+	default:
+		return false
+	}
+}
 
 // PushDropOldest mirrors the production Conn.PushDropOldest semantics and
 // additionally tracks actual enqueues so the test can compare them to

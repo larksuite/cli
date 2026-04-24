@@ -28,6 +28,11 @@ type Subscriber interface {
 	// other into a state where the channel refills between the drop and the
 	// retry push.
 	PushDropOldest(msg interface{}) (enqueued, dropped bool)
+	// TrySend enqueues msg non-evictively, sharing the same mutex as
+	// PushDropOldest so a best-effort sender (e.g. source-status
+	// broadcast) cannot slip into the drop-then-retry window of a
+	// concurrent PushDropOldest. Returns true iff the channel had room.
+	TrySend(msg interface{}) bool
 	// DroppedCount returns the total number of events evicted via the
 	// drop-oldest path on this subscriber's send channel, surfaced to the
 	// status command via ConsumerInfo.Dropped.
@@ -75,13 +80,19 @@ func (h *Hub) SetLogger(l *log.Logger) { h.logger.Store(l) }
 // UnregisterAndIsLast removes s and returns whether s was the last
 // subscriber for s.EventKey() at the moment of removal. Pairs with
 // RegisterAndIsFirst for atomic lifecycle decisions.
+//
+// If s was never registered (or has already been unregistered), this
+// returns false and leaves keyCounts unchanged — a stale/duplicate
+// unregister must not corrupt first/last bookkeeping for an active
+// subscriber of the same EventKey nor fire a spurious cleanup.
 func (h *Hub) UnregisterAndIsLast(s Subscriber) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	delete(h.subscribers, s)
-	if h.keyCounts[s.EventKey()] > 0 {
-		h.keyCounts[s.EventKey()]--
+	if _, registered := h.subscribers[s]; !registered {
+		return false
 	}
+	delete(h.subscribers, s)
+	h.keyCounts[s.EventKey()]--
 	isLast := h.keyCounts[s.EventKey()] == 0
 	if isLast {
 		delete(h.keyCounts, s.EventKey())
@@ -216,16 +227,16 @@ func (h *Hub) EventKeyCount(eventKey string) int {
 
 // BroadcastSourceStatus fans out a source-level status change to every
 // subscriber. Best-effort: channel full → drop silently (status isn't
-// worth applying back-pressure for).
+// worth applying back-pressure for). Routes through Subscriber.TrySend
+// so the send shares PushDropOldest's sendMu — without this a status
+// broadcast could slip into the tiny window between another
+// goroutine's drop and its retry push and break the atomicity contract.
 func (h *Hub) BroadcastSourceStatus(source, state, detail string) {
 	msg := protocol.NewSourceStatus(source, state, detail)
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for s := range h.subscribers {
-		select {
-		case s.SendCh() <- msg:
-		default:
-		}
+		s.TrySend(msg)
 	}
 }
 
