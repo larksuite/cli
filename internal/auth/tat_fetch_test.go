@@ -68,6 +68,16 @@ func TestFetchTenantAccessToken_RejectsEmptyAppID(t *testing.T) {
 	}
 }
 
+func TestFetchTenantAccessToken_RejectsEmptyAppSecret(t *testing.T) {
+	_, err := FetchTenantAccessToken(context.Background(), http.DefaultClient, "https://open.feishu.cn", "app", "")
+	if err == nil {
+		t.Fatal("expected error for empty app secret")
+	}
+	if !strings.Contains(err.Error(), "app secret") {
+		t.Errorf("error should mention app secret, got: %v", err)
+	}
+}
+
 func TestFetchTenantAccessToken_Non200IncludesBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

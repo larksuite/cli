@@ -233,16 +233,19 @@ func (p *Provider) mintTenantAccessToken(ctx context.Context, requestedAppID str
 	if token == "" {
 		return nil, fmt.Errorf("env provider: tenant_access_token exchange returned empty token")
 	}
-	ttl := time.Duration(expiresIn) * time.Second
-	if ttl > tatSafetyMargin {
-		ttl -= tatSafetyMargin
+	ttl := time.Duration(expiresIn)*time.Second - tatSafetyMargin
+	if ttl > 0 {
+		p.tatCache = tatCacheEntry{
+			token:     token,
+			expiresAt: time.Now().Add(ttl),
+			appID:     appID,
+			brand:     brand,
+		}
 	}
-	p.tatCache = tatCacheEntry{
-		token:     token,
-		expiresAt: time.Now().Add(ttl),
-		appID:     appID,
-		brand:     brand,
-	}
+	// If ttl <= 0 (server-reported life too short to honour the safety
+	// margin, or expiresIn==0), surface the token once without caching so
+	// the next call re-mints rather than returning a token that already
+	// violates the margin invariant.
 	return &credential.Token{Value: token, Source: "env:" + envvars.CliAppSecret}, nil
 }
 

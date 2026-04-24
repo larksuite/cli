@@ -11,7 +11,14 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// defaultTATExchangeTimeout bounds the TAT exchange request when the caller
+// supplies a nil *http.Client. http.DefaultClient has no timeout, so a slow
+// or stalled server would otherwise hang a call indefinitely (especially
+// problematic for callers that also serialize TAT mints behind a mutex).
+const defaultTATExchangeTimeout = 30 * time.Second
 
 // TenantAccessTokenResult holds the result of a TAT exchange.
 type TenantAccessTokenResult struct {
@@ -23,11 +30,15 @@ type TenantAccessTokenResult struct {
 // using the internal-app flow. openBaseURL must be the Open API base URL
 // (e.g. "https://open.feishu.cn"), resolved by the caller from brand.
 //
+// Pass a *http.Client that carries a request timeout; if hc is nil the helper
+// falls back to a local client with a 30s timeout rather than http.DefaultClient
+// so a hung TCP connection cannot block the caller indefinitely.
+//
 // The returned token is short-lived; callers should cache it for less than
 // ExpiresIn seconds.
 func FetchTenantAccessToken(ctx context.Context, hc *http.Client, openBaseURL, appID, appSecret string) (*TenantAccessTokenResult, error) {
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = &http.Client{Timeout: defaultTATExchangeTimeout}
 	}
 	if appID == "" {
 		return nil, fmt.Errorf("app id is empty")
@@ -66,8 +77,8 @@ func FetchTenantAccessToken(ctx context.Context, hc *http.Client, openBaseURL, a
 
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		if trimmed := bytes.TrimSpace(snippet); len(trimmed) > 0 {
-			return nil, fmt.Errorf("TAT API returned HTTP %d: %s", resp.StatusCode, trimmed)
+		if body := bytes.TrimSpace(snippet); len(body) > 0 {
+			return nil, fmt.Errorf("TAT API returned HTTP %d: %s", resp.StatusCode, body)
 		}
 		return nil, fmt.Errorf("TAT API returned HTTP %d", resp.StatusCode)
 	}

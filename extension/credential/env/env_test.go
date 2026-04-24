@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,12 +17,14 @@ import (
 )
 
 // withStubFetcher installs a TAT fetcher stub on p and returns a pointer to a
-// call counter. Scoping the stub to a single Provider avoids cross-test
-// interference when tests run in parallel.
-func withStubFetcher(p *Provider, fn func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error)) *int {
-	calls := 0
+// goroutine-safe call counter. Scoping the stub to a single Provider avoids
+// cross-test interference when tests run in parallel, and the atomic counter
+// keeps race-detector runs clean even if a future test drives the stub
+// concurrently.
+func withStubFetcher(p *Provider, fn func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error)) *atomic.Int32 {
+	var calls atomic.Int32
 	p.fetchTAT = func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error) {
-		calls++
+		calls.Add(1)
 		return fn(ctx, hc, brand, appID, appSecret)
 	}
 	return &calls
@@ -331,8 +334,8 @@ func TestResolveToken_TATMintedFromAppSecret(t *testing.T) {
 	if tok == nil || tok.Value != "minted-tat" {
 		t.Fatalf("unexpected token: %+v", tok)
 	}
-	if *calls != 1 {
-		t.Errorf("expected 1 fetch call, got %d", *calls)
+	if calls.Load() != 1 {
+		t.Errorf("expected 1 fetch call, got %d", calls.Load())
 	}
 
 	// Second call within TTL should hit the cache, not refetch.
@@ -343,8 +346,8 @@ func TestResolveToken_TATMintedFromAppSecret(t *testing.T) {
 	if tok2.Value != "minted-tat" {
 		t.Errorf("cached value mismatch: %+v", tok2)
 	}
-	if *calls != 1 {
-		t.Errorf("cache miss: expected 1 fetch call total, got %d", *calls)
+	if calls.Load() != 1 {
+		t.Errorf("cache miss: expected 1 fetch call total, got %d", calls.Load())
 	}
 }
 
@@ -366,8 +369,8 @@ func TestResolveToken_TATPreferredOverMintWhenEnvSet(t *testing.T) {
 	if tok.Value != "env-tat" {
 		t.Errorf("expected env TAT, got %q", tok.Value)
 	}
-	if *calls != 0 {
-		t.Errorf("expected 0 fetcher calls, got %d", *calls)
+	if calls.Load() != 0 {
+		t.Errorf("expected 0 fetcher calls, got %d", calls.Load())
 	}
 }
 
@@ -391,8 +394,8 @@ func TestResolveToken_TATRefetchAfterExpiry(t *testing.T) {
 	if _, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"}); err != nil {
 		t.Fatal(err)
 	}
-	if *calls != 2 {
-		t.Errorf("expected 2 fetch calls across cache expiry, got %d", *calls)
+	if calls.Load() != 2 {
+		t.Errorf("expected 2 fetch calls across cache expiry, got %d", calls.Load())
 	}
 }
 
@@ -429,6 +432,40 @@ func TestResolveToken_TATReturnsNilWhenSecretMissing(t *testing.T) {
 	}
 	if tok != nil {
 		t.Errorf("expected nil token when app_secret missing, got %+v", tok)
+	}
+	if p.tatCache != (tatCacheEntry{}) {
+		t.Errorf("expected empty tat cache, got %+v", p.tatCache)
+	}
+}
+
+func TestResolveToken_TATShortLifetimeNotCached(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "app")
+	t.Setenv(envvars.CliAppSecret, "secret")
+
+	p := &Provider{}
+	calls := withStubFetcher(p, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
+		// expiresIn well under the safety margin; caching would violate
+		// the margin invariant, so mintTenantAccessToken must re-mint
+		// on the next call instead of serving a nearly-dead entry.
+		return "short-life", 1, nil
+	})
+
+	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Value != "short-life" {
+		t.Errorf("unexpected token value: %q", tok.Value)
+	}
+	if p.tatCache != (tatCacheEntry{}) {
+		t.Errorf("expected empty cache when ttl <= safety margin, got %+v", p.tatCache)
+	}
+
+	if _, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"}); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 2 {
+		t.Errorf("expected re-mint when prior call was not cached, got %d calls", calls.Load())
 	}
 }
 
