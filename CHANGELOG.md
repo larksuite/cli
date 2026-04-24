@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.19] - 2026-04-24
+
+### Features
+
+- **mail**: Add read receipt support — `--request-receipt` on compose, `+send-receipt` / `+decline-receipt` for response
+- **doc**: Add v2 API for `docs +create` / `+fetch` / `+update` (#638)
+- **im**: Request thread roots for chat message list (#635)
+- **drive**: Support wiki node targets in `+upload` (#611)
+- **config**: Block `auth` / `config` when external credential provider is active (#627)
+- **whiteboard**: Pin `whiteboard-cli` to `v0.2.10` in `lark-whiteboard` skill (#649)
+
 ## [v1.0.18] - 2026-04-23
 
 ### Features
@@ -488,6 +499,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.19]: https://github.com/larksuite/cli/releases/tag/v1.0.19
 [v1.0.18]: https://github.com/larksuite/cli/releases/tag/v1.0.18
 [v1.0.17]: https://github.com/larksuite/cli/releases/tag/v1.0.17
 [v1.0.16]: https://github.com/larksuite/cli/releases/tag/v1.0.16
