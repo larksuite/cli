@@ -8,9 +8,6 @@
 ## 限制
 
 - **权限要求**：调用者必须是目标多维表格的管理员，它才能拥有目标多维表格的 **FA（Full Access / 完全访问权限）**，否则返回权限错误
-- **支持的字段类型**（白名单，仅以下类型可用于 dimensions / measures / filters / sort）：
-  文本、邮箱、条码、数字、进度、货币、评分、单选、多选、日期、复选框、人员、超链接
-- **不支持的字段类型**：公式、查找引用、附件、时长、阶段、创建时间、修改时间、创建人、修改人、群组、电话号码、自动编号、地理位置、关联、双向关联 —— 不可用于 dimensions / measures / filters / sort，使用会返回校验错误
 
 ## 推荐命令
 
@@ -119,8 +116,8 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 | 聚合函数 | 适用字段类型 |
 |----------|-------------|
-| `sum` / `avg` | 数字、进度、货币、评分（不含复选框） |
-| `min` / `max` | 数字、进度、货币、评分、日期 |
+| `sum` / `avg` | `number` |
+| `min` / `max` | `number`、`datetime` |
 | `count` | 白名单内所有类型，计数非空值 |
 | `count_all` | 白名单内所有类型，计数所有行 |
 | `distinct_count` | 白名单内所有类型 |
@@ -172,14 +169,16 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 **按各字段类型筛选时 value 格式详解：**
 
-*文本 / 邮箱 / 条码*
+*`text`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
 | `is` / `isNot` / `contains` / `doesNotContain` | `["文本内容"]` | 仅 1 个 | `["Hello"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
-*数字 / 货币*
+> 当 `style.type=url` 时，value 筛选的是链接显示名称，而不是 URL 本身。
+
+*`number`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
@@ -187,24 +186,10 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
 > value 必须为合法数字的字符串形式。
+> 当 `style.type=progress` 时，34% 对应 0.34 而不是 34。
+> 当 `style.type=rating` 时，必须输入整数，代表评分。
 
-*进度*
-
-| 运算符 | value 格式 | 元素个数 | 示例 |
-|--------|-----------|---------|------|
-| `is` / `isNot` / `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual` | `["小数字符串"]` | 仅 1 个 | `["0.34"]`（= 34%） |
-| `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
-
-> **用小数表示百分比**：`["0.34"]` 表示 34%，不是 `["34"]`。
-
-*评分*
-
-| 运算符 | value 格式 | 元素个数 | 示例 |
-|--------|-----------|---------|------|
-| `is` / `isNot` / `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual` | `["数字字符串"]` | 仅 1 个 | `["4"]` |
-| `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
-
-*单选 / 多选*
+*`select` (`multiple=false/true`)*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
@@ -212,7 +197,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | `contains` / `doesNotContain` | `["选项A", "选项B"]` | 可多个 | `["选项A", "选项B"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
-*人员*
+*`user` / `created_by` / `updated_by`*
 
 | 运算符 | value 格式 | 元素个数 | 示例                     |
 |--------|-----------|---------|------------------------|
@@ -222,16 +207,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 > 用户 ID 使用 `open_id`（`ou_` 前缀），接口层会自动做 ID 转换。
 
-*超链接*
-
-| 运算符 | value 格式 | 元素个数 | 示例 |
-|--------|-----------|---------|------|
-| `is` / `isNot` / `contains` / `doesNotContain` | `["链接显示名称"]` | 仅 1 个 | `["点击查看"]` |
-| `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
-
-> **按显示名称筛选**，不是按 URL 本身。
-
-*复选框*
+*`checkbox`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
@@ -239,7 +215,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 > 仅支持 `is` 运算符，不支持其他运算符。
 
-*日期*
+*`datetime` / `created_at` / `updated_at`*
 
 日期字段仅支持 `is`、`isEmpty`、`isNotEmpty`、`isGreater`、`isLess` 五种运算符。
 

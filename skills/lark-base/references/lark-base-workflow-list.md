@@ -119,5 +119,6 @@ POST /open-apis/base/v3/bases/:base_token/workflows/list
 ## 参考
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
-- [lark-base-workflow-enable-disable](lark-base-workflow-enable-disable.md) — 启用/禁用工作流
+- [lark-base-workflow-enable](lark-base-workflow-enable.md) — 启用工作流
+- [lark-base-workflow-disable](lark-base-workflow-disable.md) — 禁用工作流
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

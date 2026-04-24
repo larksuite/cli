@@ -231,17 +231,15 @@ func TestDryRunViewOps(t *testing.T) {
 	assertDryRunContains(t, dryRunViewRename(ctx, setJSONObjectRT), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1")
 
 	setWrappedRT := newBaseTestRuntime(
-		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1", "json": `[{"field":"fld_status"}]`},
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1", "json": `{"group_config":[{"field":"fld_status"}]}`},
 		nil, nil,
 	)
 	assertDryRunContains(t, dryRunViewSetGroup(ctx, setWrappedRT), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/group")
-	assertDryRunContains(t, dryRunViewSetSort(ctx, setWrappedRT), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/sort")
-
-	setWrappedInvalidRT := newBaseTestRuntime(
-		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1", "json": `{`},
+	setSortRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1", "json": `{"sort_config":[{"field":"fld_status"}]}`},
 		nil, nil,
 	)
-	assertDryRunContains(t, dryRunViewSetWrapped(setWrappedInvalidRT, "group", "group_config"), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/group")
+	assertDryRunContains(t, dryRunViewSetSort(ctx, setSortRT), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/sort")
 
 	assertDryRunContains(t, dryRunViewGetFilter(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/filter")
 	assertDryRunContains(t, dryRunViewGetVisibleFields(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/visible_fields")

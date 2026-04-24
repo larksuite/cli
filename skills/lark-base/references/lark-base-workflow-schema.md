@@ -248,7 +248,7 @@
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `table_name` | 是 | 数据表名 |
-| `field_name` | 是 | 日期字段名（必须为 DateTime / CreatedTime / Formula / Lookup 类型） |
+| `field_name` | 是 | 日期字段名（必须为 `datetime` / `created_at` / `formula` / `lookup` 类型） |
 | `unit` | 是 | 偏移单位：`MINUTE` / `HOUR` / `DAY` / `WEEK` / `MONTH` |
 | `offset` | 是 | 提前/延后的偏移量（正数=提前，负数=延后；范围由 `unit` 决定）：`MINUTE` ∈ {0, 5, 15, 30, -5, -15, -30}；`HOUR` ∈ [-6, -1] ∪ [1, 6]；`DAY` ∈ [-7, 7]；`WEEK` ∈ [-7, -1] ∪ [1, 7]；`MONTH` ∈ [-7, -1] ∪ [1, 7] |
 | `hour` | 是 | 触发小时 (0-23)，默认 9 |
@@ -708,18 +708,18 @@ $.{stepId}.{pathId}.{childPathId}.{grandChildPathId}
 |----------|---------|-------------|--------------|------|
 | **所有字段（基础）** | 字段 ID | `fieldId` | `string` | 字段的唯一标识 |
 | | 字段名称 | `fieldName` | `string` | 字段的显示名称 |
-| **人员字段**（User / CreatedUser / ModifiedUser） | 姓名 | `name` | `string` | 用户姓名 |
-| **日期字段**（DateTime / CreatedTime / ModifiedTime） | 时间戳 | `timestamp` | `number` | 时间戳数值 |
-| **附件字段**（Attachment） | 文件名 | `fileName` | `string` | 附件文件名 |
+| **人员字段**（`user` / `created_by` / `updated_by`） | 姓名 | `name` | `string` | 用户姓名 |
+| **日期字段**（`datetime` / `created_at` / `updated_at`） | 时间戳 | `timestamp` | `number` | 时间戳数值 |
+| **附件字段**（`attachment`） | 文件名 | `fileName` | `string` | 附件文件名 |
 | | 文件类型 | `fileType` | `string` | MIME 类型 |
 | | 文件大小 | `size` | `number` | 文件字节数 |
 | | 文件 Token | `fileToken` | `string` | 附件 token |
-| **超链接字段**（URL） | 文本 | `text` | `string` | 链接文本部分 |
+| **超链接文本字段**（`text` 且 `style.type=url`） | 文本 | `text` | `string` | 链接文本部分 |
 | | 链接 | `link` | `string` | 链接 URL 部分 |
-| **自动编号字段**（AutoNumber） | 序号 | `sequence` | `number` | 编号的纯数字序号 |
-| **关联字段**（SingleLink / DuplexLink） | 字段下钻 | `{fieldId}` | - | 可下钻到关联表的字段 |
+| **自动编号字段**（`auto_number`） | 序号 | `sequence` | `number` | 编号的纯数字序号 |
+| **关联字段**（`link`） | 字段下钻 | `{fieldId}` | - | 可下钻到关联表的字段 |
 
-> 其他字段类型（如文本、数字、复选框、单选/多选、电话、地理位置、进度、公式、引用查找等）仅支持 `fieldId` 和 `fieldName` 两个基础属性。
+> 其他字段类型（如 `text`、`number`、`checkbox`、`select`、`location`、`formula`、`lookup` 等）仅支持 `fieldId` 和 `fieldName` 两个基础属性。
 
 下钻引用示例：
 
@@ -820,7 +820,7 @@ $.{stepId}.{fieldId}.fileToken    → 文件 Token 列表（array<string>，仅�
 }
 ```
 
-### Select / MultiSelect 字段多值匹配
+### `select` 字段多值匹配
 
 | 操作 | operator | 正确写法 |
 |------|---------|---------|

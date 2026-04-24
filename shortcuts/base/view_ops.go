@@ -65,17 +65,6 @@ func dryRunViewSetJSONObject(runtime *common.RuntimeContext, segment string) *co
 		Body(body)
 }
 
-func dryRunViewSetWrapped(runtime *common.RuntimeContext, segment string, wrapper string) *common.DryRunAPI {
-	pc := newParseCtx(runtime)
-	raw, err := parseJSONValue(pc, runtime.Str("json"), "json")
-	if err != nil {
-		raw = nil
-	}
-	return dryRunViewBase(runtime).
-		PUT(fmt.Sprintf("/open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/%s", url.PathEscape(segment))).
-		Body(wrapViewPropertyBody(raw, wrapper))
-}
-
 func dryRunViewGetFilter(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return dryRunViewGetProperty(runtime, "filter")
 }
@@ -97,7 +86,7 @@ func dryRunViewGetGroup(_ context.Context, runtime *common.RuntimeContext) *comm
 }
 
 func dryRunViewSetGroup(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	return dryRunViewSetWrapped(runtime, "group", "group_config")
+	return dryRunViewSetJSONObject(runtime, "group")
 }
 
 func dryRunViewGetSort(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -105,7 +94,7 @@ func dryRunViewGetSort(_ context.Context, runtime *common.RuntimeContext) *commo
 }
 
 func dryRunViewSetSort(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	return dryRunViewSetWrapped(runtime, "sort", "sort_config")
+	return dryRunViewSetJSONObject(runtime, "sort")
 }
 
 func dryRunViewGetTimebar(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -128,13 +117,6 @@ func dryRunViewRename(_ context.Context, runtime *common.RuntimeContext) *common
 	return dryRunViewBase(runtime).
 		PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id").
 		Body(map[string]interface{}{"name": runtime.Str("name")})
-}
-
-func wrapViewPropertyBody(raw interface{}, key string) interface{} {
-	if items, ok := raw.([]interface{}); ok {
-		return map[string]interface{}{key: items}
-	}
-	return raw
 }
 
 func validateViewCreate(runtime *common.RuntimeContext) error {
@@ -239,25 +221,7 @@ func executeViewSetJSONObject(runtime *common.RuntimeContext, segment string, ke
 	return nil
 }
 
-func executeViewSetWrapped(runtime *common.RuntimeContext, segment string, wrapper string, key string) error {
-	pc := newParseCtx(runtime)
-	baseToken := runtime.Str("base-token")
-	tableIDValue := baseTableID(runtime)
-	viewRef := runtime.Str("view-id")
-	raw, err := parseJSONValue(pc, runtime.Str("json"), "json")
-	if err != nil {
-		return err
-	}
-	payload := wrapViewPropertyBody(raw, wrapper)
-	data, err := baseV3CallAny(runtime, "PUT", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef, segment), nil, payload)
-	if err != nil {
-		return err
-	}
-	runtime.Out(map[string]interface{}{key: data}, nil)
-	return nil
-}
-
-func executeViewSetVisibleFields(runtime *common.RuntimeContext) error {
+func executeViewSetJSONObjectAny(runtime *common.RuntimeContext, segment string, key string) error {
 	pc := newParseCtx(runtime)
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
@@ -266,12 +230,16 @@ func executeViewSetVisibleFields(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	data, err := baseV3CallAny(runtime, "PUT", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef, "visible_fields"), nil, body)
+	data, err := baseV3CallAny(runtime, "PUT", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef, segment), nil, body)
 	if err != nil {
 		return err
 	}
-	runtime.Out(map[string]interface{}{"visible_fields": data}, nil)
+	runtime.Out(map[string]interface{}{key: data}, nil)
 	return nil
+}
+
+func executeViewSetVisibleFields(runtime *common.RuntimeContext) error {
+	return executeViewSetJSONObjectAny(runtime, "visible_fields", "visible_fields")
 }
 
 func executeViewRename(runtime *common.RuntimeContext) error {

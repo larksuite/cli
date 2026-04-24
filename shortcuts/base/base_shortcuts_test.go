@@ -5,7 +5,6 @@ package base
 
 import (
 	"context"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -100,23 +99,6 @@ func TestParseObjectList(t *testing.T) {
 	_, err = parseObjectList(testPC, `[1]`, "view")
 	if err == nil || !strings.Contains(err.Error(), "must be an object") {
 		t.Fatalf("err=%v", err)
-	}
-}
-
-func TestWrapViewPropertyBody(t *testing.T) {
-	arr := []interface{}{map[string]interface{}{"field": "fld_status", "desc": false}}
-	wrapped := wrapViewPropertyBody(arr, "group_config")
-	wrappedMap, ok := wrapped.(map[string]interface{})
-	if !ok {
-		t.Fatalf("wrapped type=%T", wrapped)
-	}
-	if !reflect.DeepEqual(wrappedMap["group_config"], arr) {
-		t.Fatalf("wrapped group_config=%v want=%v", wrappedMap["group_config"], arr)
-	}
-
-	obj := map[string]interface{}{"group_config": arr}
-	if got := wrapViewPropertyBody(obj, "group_config"); !reflect.DeepEqual(got, obj) {
-		t.Fatalf("got=%v want=%v", got, obj)
 	}
 }
 
@@ -280,6 +262,12 @@ func TestBaseViewValidate(t *testing.T) {
 	}
 	if err := BaseViewSetSort.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": `[{"field":"fld_1"}]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
 		t.Fatalf("err=%v", err)
+	}
+	if err := BaseViewSetGroup.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": `{"group_config":[{"field":"fld_1"}]}`}, nil, nil)); err != nil {
+		t.Fatalf("group object validate err=%v", err)
+	}
+	if err := BaseViewSetSort.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": `{"sort_config":[{"field":"fld_1"}]}`}, nil, nil)); err != nil {
+		t.Fatalf("sort object validate err=%v", err)
 	}
 	if err := BaseViewSetTimebar.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
 		t.Fatalf("err=%v", err)

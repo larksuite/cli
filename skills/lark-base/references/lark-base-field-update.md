@@ -8,15 +8,15 @@
 
 ```bash
 lark-cli base +field-update \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --field-id fld_xxx \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --field-id <field_id> \
   --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}'
 
 lark-cli base +field-update \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --field-id fld_xxx \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --field-id <field_id> \
   --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人；协作约定可参考[团队字段约定](https://example.com/field-spec)"}'
 ```
 

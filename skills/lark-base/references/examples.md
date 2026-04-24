@@ -16,9 +16,9 @@ lark-cli base +table-create \
   --name "客户管理表" \
   --fields '[
     {"name":"客户名称","type":"text"},
-    {"name":"负责人","type":"user","property":{"multiple":false}},
+    {"name":"负责人","type":"user","multiple":false},
     {"name":"签约日期","type":"datetime"},
-    {"name":"状态","type":"single_select","property":{"options":["进行中","已完成"]}}
+    {"name":"状态","type":"select","multiple":false,"options":[{"name":"进行中"},{"name":"已完成"}]}
   ]'
 ```
 

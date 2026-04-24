@@ -645,21 +645,54 @@ func TestBaseViewExecutePropertyActions(t *testing.T) {
 		}
 	})
 
+	t.Run("set-group-array-invalid", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(
+			t,
+			BaseViewSetGroup,
+			[]string{"+view-set-group", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_x", "--json", `[{"field":"fld_status","desc":false}]`},
+			factory,
+			stdout,
+		)
+		if err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
 	t.Run("set-sort", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
+		updateStub := &httpmock.Stub{
 			Method: "PUT",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_x/sort",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": []interface{}{map[string]interface{}{"field": "fld_amount", "desc": true}},
 			},
-		})
+		}
+		reg.Register(updateStub)
 		if err := runShortcut(t, BaseViewSetSort, []string{"+view-set-sort", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_x", "--json", `{"sort_config":[{"field":"fld_amount","desc":true}]}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
+		body := string(updateStub.CapturedBody)
+		if !strings.Contains(body, `"sort_config":[{"desc":true,"field":"fld_amount"}]`) && !strings.Contains(body, `"sort_config":[{"field":"fld_amount","desc":true}]`) {
+			t.Fatalf("request body=%s", body)
+		}
 		if got := stdout.String(); !strings.Contains(got, `"sort"`) || !strings.Contains(got, `"fld_amount"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("set-sort-array-invalid", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(
+			t,
+			BaseViewSetSort,
+			[]string{"+view-set-sort", "--base-token", "app_x", "--table-id", "tbl_x", "--view-id", "vew_x", "--json", `[{"field":"fld_amount","desc":true}]`},
+			factory,
+			stdout,
+		)
+		if err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
+			t.Fatalf("err=%v", err)
 		}
 	})
 

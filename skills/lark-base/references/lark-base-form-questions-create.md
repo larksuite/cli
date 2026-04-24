@@ -83,10 +83,10 @@ lark-cli base +form-questions-create \
 
 | 类型 | style 结构 | 说明 |
 |------|------|------|
-| `text` | `{"type":"plain"}` | type 可选：`plain`（纯文本）、`phone`（电话）、`url`（链接）、`email`（邮件）、`barcode`（扫码） |
+| `text` | `{"type":"plain"}` | 当前仅支持 `plain` |
 | `number` | `{"type":"plain","precision":2}` | precision 为小数位数 |
 | `number`（评分） | `{"type":"rating","icon":"star","min":1,"max":5}` | icon 可选：`star`/`heart`/`thumbsup`/`fire`/`smile`/`lightning`/`flower`/`number` |
-| `datetime` | `{"type":"plain","format":"yyyy/MM/dd"}` | format 可选：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy` |
+| `datetime` | `{"format":"yyyy/MM/dd"}` | format 可选：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy` |
 
 ## 输出格式
 

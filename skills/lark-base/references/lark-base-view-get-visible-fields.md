@@ -4,34 +4,24 @@
 
 获取可见字段配置。
 
-## 推荐命令
+## 1. 顶层规则
+
+- 读取当前视图的可见字段列表与顺序。
+- 仅 `grid` / `kanban` / `gallery` / `calendar` / `gantt` 视图支持。
+
+## 2. 推荐命令
 
 ```bash
 lark-cli base +view-get-visible-fields \
-  --base-token XXXXXX \
-  --table-id tblXXX \
-  --view-id vewXXX
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --view-id <view_id>
 ```
 
-## 参数
-
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `--base-token <token>` | 是 | Base Token |
-| `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
-| `--view-id <id_or_name>` | 是 | 视图 ID 或视图名 |
-
-## API 入参详情
-
-**HTTP 方法和路径：**
-
-```
-GET /open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/visible_fields
-```
-
-## 返回重点
+## 3. 返回重点
 
 - 返回当前视图可见字段列表。
+- 返回结果中的主字段会位于第一位。
 
 ## 参考
 

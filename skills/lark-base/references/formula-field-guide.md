@@ -43,10 +43,10 @@ This is the foundation of formula logic. You must determine this before writing 
 - Scalars can be used directly in operations: `[Price] * [Quantity]`
 - Lists cannot be used as scalars — they must be processed first: use `SUM()` for sum, `ARRAYJOIN(",")` for joining, `FIRST()`/`LAST()`/`NTH()` for single value extraction
 - Link field access `[LinkField].[TargetField]` returns a list (values of the target field for all linked records)
-- **LISTCOMBINE flattening rule**: When a FILTER's result column is itself a multi-value field (MultiSelect, Link, etc.), it produces a 2D array and **must** be flattened with `.LISTCOMBINE()`; for single-value fields (Number, Text, etc.) it can be omitted, but adding it is never wrong:
+- **LISTCOMBINE flattening rule**: When a FILTER's result column is itself a multi-value field (`select` with `multiple=true`, `link`, etc.), it produces a 2D array and **must** be flattened with `.LISTCOMBINE()`; for single-value fields (`number`, `text`, etc.) it can be omitted, but adding it is never wrong:
 
   ```
-  [Table].FILTER(CurrentValue.[Field] = [Value]).[MultiSelectCol].LISTCOMBINE()    ← required for multi-value columns
+  [Table].FILTER(CurrentValue.[Field] = [Value]).[Tags].LISTCOMBINE()              ← required for multi-value columns
   [Table].FILTER(CurrentValue.[Field] = [Value]).[NumberCol].LISTCOMBINE()          ← optional for single-value columns
   ```
 
@@ -56,14 +56,14 @@ This is the foundation of formula logic. You must determine this before writing 
 
 ### Field storage types
 
-| Type        | Description                  | Supported operations                                                                                                                              |
-| ----------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Number      | Stored as numeric value      | Math operations, comparisons, auto-converts to string for concatenation                                                                           |
-| Text        | Stored as string             | String operations; can participate in math if content is numeric, otherwise errors                                                                |
-| Date        | Date object                  | Date functions, add/subtract with numbers; auto-converts to default format string when using `&` — use TEXT to format first for controlled output |
-| MultiSelect | Data list                    | List functions, CONTAIN checks                                                                                                                    |
-| Link        | Links to other table records | Chained access `[LinkField].[Field]`, result is a list                                                                                            |
-| Boolean     | TRUE/FALSE                   | Logical operations; auto-converts to number when compared with numbers                                                                            |
+| Type | Description | Supported operations |
+|------|-------------|----------------------|
+| `number` | Stored as numeric value | Math operations, comparisons, auto-converts to string for concatenation |
+| `text` | Stored as string | String operations; can participate in math if content is numeric, otherwise errors |
+| `datetime` | Date object | Date functions, add/subtract with numbers; auto-converts to default format string when using `&` — use TEXT to format first for controlled output |
+| `select` (`multiple=true`) | Data list | List functions, CONTAIN checks |
+| `link` | Links to other table records | Chained access `[LinkField].[Field]`, result is a list |
+| `checkbox` | TRUE/FALSE | Logical operations; auto-converts to number when compared with numbers |
 
 ### Implicit type conversion
 
@@ -81,11 +81,11 @@ When using comparison operators (`>`, `>=`, `<`, `<=`, `=`, `!=`), **both sides 
 
 **Principle**: When types differ, explicitly convert one side rather than relying on implicit conversion:
 
-- Number vs Text → use `VALUE()` to convert text to number
-- Date vs Text → use `TEXT()` to convert date to text
-- Date vs Date equality → Dates include time components, so direct `=` comparison may fail due to different hours/minutes/seconds. For day-level equality, convert to text first: `TEXT([DateA], "YYYY/MM/DD") = TEXT([DateB], "YYYY/MM/DD")`
-- Select and User fields can be compared with both same-type values and text
-- Text fields in numeric aggregation (SUM/AVERAGE/MIN/MAX etc.) → convert to number with `VALUE()` first. For FILTER results, use `.MAP(VALUE(CurrentValue)).SUM()`
+- `number` vs `text` → use `VALUE()` to convert text to number
+- `datetime` vs `text` → use `TEXT()` to convert date to text
+- `datetime` vs `datetime` equality → dates include time components, so direct `=` comparison may fail due to different hours/minutes/seconds. For day-level equality, convert to text first: `TEXT([DateA], "YYYY/MM/DD") = TEXT([DateB], "YYYY/MM/DD")`
+- `select` and `user` fields can be compared with both same-type values and text
+- `text` fields in numeric aggregation (SUM/AVERAGE/MIN/MAX etc.) → convert to number with `VALUE()` first. For FILTER results, use `.MAP(VALUE(CurrentValue)).SUM()`
 
 ---
 
@@ -99,7 +99,7 @@ When using comparison operators (`>`, `>=`, `<`, `<=`, `=`, `!=`), **both sides 
 | ---------------------------- | ----------------------- | --------------------------- | --------------------------------------------------------- |
 | Entire table `[TableName]`   | A row in the table      | `CurrentValue.[FieldName]`  | `[Orders].FILTER(CurrentValue.[Amount] > 100).[Customer]` |
 | Column `[TableName].[Field]` | A single field value    | Use `CurrentValue` directly | `[Orders].[Amount].FILTER(CurrentValue > 100)`            |
-| MultiSelect field `[Tags]`   | One option              | Use `CurrentValue` directly | `[Tags].FILTER(CurrentValue = "Important")`               |
+| `select` (`multiple=true`) field `[Tags]` | One option | Use `CurrentValue` directly | `[Tags].FILTER(CurrentValue = "Important")` |
 | LIST-generated list          | One element             | Use `CurrentValue` directly | `LIST(1,2,3).MAP(CurrentValue * 2)`                       |
 
 ### Key rules
@@ -244,9 +244,9 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 | ISNULL        | `ISNULL(value)`                                                    | Boolean              | Tests if NULL (only NULL is true; empty string is not)                                       |
 | ISERROR       | `ISERROR(expr)`                                                    | Boolean              | Tests if expression errors                                                                   |
 | ISNUMBER      | `ISNUMBER(value)`                                                  | Boolean              | Tests if value is a number                                                                   |
-| CONTAIN       | `CONTAIN(search_range, value, ...)`                                | Boolean              | Tests if list/MultiSelect contains the value; **does NOT do text substring matching**        |
-| CONTAINSALL   | `CONTAINSALL(search_range, value, ...)`                            | Boolean              | Tests if list/MultiSelect contains all specified values                                      |
-| CONTAINSONLY  | `CONTAINSONLY(search_range, value, ...)`                           | Boolean              | Tests if list/MultiSelect contains only the specified values                                 |
+| CONTAIN       | `CONTAIN(search_range, value, ...)`                                | Boolean              | Tests if a list or `select` (`multiple=true`) contains the value; **does NOT do text substring matching** |
+| CONTAINSALL   | `CONTAINSALL(search_range, value, ...)`                            | Boolean              | Tests if a list or `select` (`multiple=true`) contains all specified values |
+| CONTAINSONLY  | `CONTAINSONLY(search_range, value, ...)`                           | Boolean              | Tests if a list or `select` (`multiple=true`) contains only the specified values |
 | TRUE          | `TRUE()`                                                           | Boolean              | Returns TRUE                                                                                 |
 | FALSE         | `FALSE()`                                                          | Boolean              | Returns FALSE                                                                                |
 | RECORD_ID     | `RECORD_ID()`                                                      | Text                 | Returns the current row's record ID                                                          |
@@ -358,7 +358,7 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 
 |             | CONTAIN                                                        | CONTAINTEXT                                                |
 | ----------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
-| Purpose     | Tests if **list/MultiSelect** contains a value                 | Tests if **text** contains a substring                     |
+| Purpose     | Tests if a **list / `select` (`multiple=true`)** contains a value | Tests if **text** contains a substring                     |
 | Example     | `[Tags].CONTAIN("Urgent")`                                     | `[Notes].CONTAINTEXT("completed")`                         |
 | Wrong usage | `CONTAIN([Notes], "completed")` — cannot do substring matching | `CONTAINTEXT([Tags], "Urgent")` — Tags is a list, not text |
 
@@ -494,7 +494,7 @@ DAYS([EndDate], [StartDate])
 ### Pattern 7: List element mapping
 
 ```
-[MultiSelectField].MAP(CurrentValue & " tag")
+[SelectField(which multiple=true)].MAP(CurrentValue & " tag")
 SPLIT([TextField], ",").MAP(TRIM(CurrentValue))
 ```
 
@@ -579,7 +579,7 @@ Wrong:   CONTAIN([Notes], "urgent")
 Correct: CONTAINTEXT([Notes], "urgent")
 ```
 
-Reason: CONTAIN checks if a list/MultiSelect contains a whole value, not substring matching. Use CONTAINTEXT for text substrings.
+Reason: CONTAIN checks if a list or `select` (`multiple=true`) contains a whole value, not substring matching. Use CONTAINTEXT for text substrings.
 
 ### Mistake 9: Date concatenation without formatting
 
@@ -649,9 +649,9 @@ IF(
 
 **Table structure**:
 
-- Orders: ID (AutoNumber), OrderItems (Link [target: OrderItems, foreign key: ID])
-- OrderItems: ID (AutoNumber), Product (Link [target: Products, foreign key: ID])
-- Products: ID (AutoNumber), ProductName (Text)
+- Orders: ID (`auto_number`), OrderItems (`link` [target: OrderItems, foreign key: ID])
+- OrderItems: ID (`auto_number`), Product (`link` [target: Products, foreign key: ID])
+- Products: ID (`auto_number`), ProductName (`text`)
 
 **Current table**: Orders
 

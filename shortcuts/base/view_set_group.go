@@ -31,6 +31,6 @@ var BaseViewSetGroup = common.Shortcut{
 	},
 	DryRun: dryRunViewSetGroup,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return executeViewSetWrapped(runtime, "group", "group_config", "group")
+		return executeViewSetJSONObjectAny(runtime, "group", "group")
 	},
 }
