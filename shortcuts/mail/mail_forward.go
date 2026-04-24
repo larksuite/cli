@@ -43,7 +43,8 @@ var MailForward = common.Shortcut{
 		{Name: "subject", Desc: "Optional. Override the auto-generated Fw: subject. When set, the shortcut uses this value verbatim instead of prefixing the original subject."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are merged into the forward draft (template values appended to user flags / forward-derived values; no de-duplication)."},
 		signatureFlag,
-		priorityFlag},
+		priorityFlag,
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		to := runtime.Str("to")
@@ -74,6 +75,9 @@ var MailForward = common.Shortcut{
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
 		}
+		if err := validateEventSendTimeExclusion(runtime); err != nil {
+			return err
+		}
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
@@ -85,6 +89,9 @@ var MailForward = common.Shortcut{
 			}
 		}
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+			return err
+		}
+		if err := validateEventFlags(runtime); err != nil {
 			return err
 		}
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), ""); err != nil {
@@ -295,6 +302,11 @@ var MailForward = common.Shortcut{
 			return err
 		}
 		bld = applyPriority(bld, priority)
+		if calData := buildCalendarBody(runtime, senderEmail, to, ccFlag); calData != nil {
+			bld = bld.CalendarBody(calData)
+		} else if len(sourceMsg.OriginalCalendarICS) > 0 {
+			bld = bld.CalendarBody(sourceMsg.OriginalCalendarICS)
+		}
 		// Download original attachments, separating normal from large.
 		type downloadedAtt struct {
 			content     []byte
