@@ -29,7 +29,14 @@ export LARKSUITE_CLI_APP_SECRET=yyy        # 自动换取并缓存 tenant_access
 # 可选：export LARKSUITE_CLI_BRAND=lark    # 国际版
 ```
 
-该模式仅支持 `--as bot` 身份；若需 `--as user`，请额外 `export LARKSUITE_CLI_USER_ACCESS_TOKEN=<uat>`。环境变量优先级高于同机器的 `config init` profile。
+环境变量路径支持两种身份，取决于导出的变量：
+
+| 目标身份 | 必需环境变量 |
+| -------- | ------------ |
+| `--as bot` | `LARKSUITE_CLI_APP_ID` + `LARKSUITE_CLI_APP_SECRET`（自动换取并缓存 TAT），或直接提供 `LARKSUITE_CLI_TENANT_ACCESS_TOKEN` |
+| `--as user` | `LARKSUITE_CLI_APP_ID` + `LARKSUITE_CLI_USER_ACCESS_TOKEN`（预先签发的 UAT） |
+
+环境变量优先级高于同机器的 `config init` profile。
 
 ## 认证
 

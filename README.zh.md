@@ -215,7 +215,7 @@ export LARKSUITE_CLI_APP_SECRET=yyy
 lark-cli docs +create --as bot --title "报告" --markdown "# 你好"
 ```
 
-同一机器上环境变量凭证优先级高于 `config init` 写入的 profile，因此同一个二进制既能在开发机上交互使用，又能在 CI 中无头运行，无需额外参数切换。user 身份需要交互式授权，仅使用环境变量时只能调用 bot 可用的命令；若需 `--as user`，请额外导出 `LARKSUITE_CLI_USER_ACCESS_TOKEN`。
+同一机器上环境变量凭证优先级高于 `config init` 写入的 profile，因此同一个二进制既能在开发机上交互使用，又能在 CI 中无头运行，无需额外参数切换。user 身份通常需要走 `auth login` 的交互式授权，所以仅设 `APP_ID + APP_SECRET` 时只授予 bot 身份。若要在纯环境变量下跑 `--as user`，请提前签发 user access token 并导出为 `LARKSUITE_CLI_USER_ACCESS_TOKEN`（配合 `LARKSUITE_CLI_APP_ID`）。
 
 ## 三层命令调用
 

@@ -214,7 +214,7 @@ export LARKSUITE_CLI_APP_SECRET=yyy
 lark-cli docs +create --as bot --title "Report" --markdown "# Hello"
 ```
 
-Environment credentials take priority over any `config init` profile on the same machine, so the same binary works interactively on a workstation and headlessly in CI without extra flags. Because user identity requires an interactive authorization step, env-only setups can call bot-capable commands only; mix in `LARKSUITE_CLI_USER_ACCESS_TOKEN` to enable `--as user`.
+Environment credentials take priority over any `config init` profile on the same machine, so the same binary works interactively on a workstation and headlessly in CI without extra flags. User identity normally requires an interactive `auth login`, so `APP_ID + APP_SECRET` alone grants bot identity. To run `--as user` purely from environment, issue a user access token ahead of time and export it as `LARKSUITE_CLI_USER_ACCESS_TOKEN` alongside `LARKSUITE_CLI_APP_ID`.
 
 ## Three-Layer Command System
 

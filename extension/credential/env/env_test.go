@@ -15,16 +15,15 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 )
 
-// stubTATFetcher replaces tatFetcher for the duration of t and counts calls.
-func stubTATFetcher(t *testing.T, fn func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error)) *int {
-	t.Helper()
-	orig := tatFetcher
+// withStubFetcher installs a TAT fetcher stub on p and returns a pointer to a
+// call counter. Scoping the stub to a single Provider avoids cross-test
+// interference when tests run in parallel.
+func withStubFetcher(p *Provider, fn func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error)) *int {
 	calls := 0
-	tatFetcher = func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error) {
+	p.fetchTAT = func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error) {
 		calls++
 		return fn(ctx, hc, brand, appID, appSecret)
 	}
-	t.Cleanup(func() { tatFetcher = orig })
 	return &calls
 }
 
@@ -314,7 +313,8 @@ func TestResolveToken_TATMintedFromAppSecret(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "app")
 	t.Setenv(envvars.CliAppSecret, "secret")
 
-	calls := stubTATFetcher(t, func(_ context.Context, _ *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error) {
+	p := &Provider{}
+	calls := withStubFetcher(p, func(_ context.Context, _ *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error) {
 		if appID != "app" || appSecret != "secret" {
 			t.Fatalf("unexpected creds passed to fetcher: appID=%q appSecret=%q", appID, appSecret)
 		}
@@ -324,7 +324,6 @@ func TestResolveToken_TATMintedFromAppSecret(t *testing.T) {
 		return "minted-tat", 7200, nil
 	})
 
-	p := &Provider{}
 	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"})
 	if err != nil {
 		t.Fatal(err)
@@ -354,12 +353,13 @@ func TestResolveToken_TATPreferredOverMintWhenEnvSet(t *testing.T) {
 	t.Setenv(envvars.CliAppSecret, "secret")
 	t.Setenv(envvars.CliTenantAccessToken, "env-tat")
 
-	calls := stubTATFetcher(t, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
+	p := &Provider{}
+	calls := withStubFetcher(p, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
 		t.Fatal("fetcher should not be called when TAT env var is set")
 		return "", 0, nil
 	})
 
-	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"})
+	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +376,7 @@ func TestResolveToken_TATRefetchAfterExpiry(t *testing.T) {
 	t.Setenv(envvars.CliAppSecret, "secret")
 
 	p := &Provider{}
-	calls := stubTATFetcher(t, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
+	calls := withStubFetcher(p, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
 		return "fresh", 1, nil
 	})
 
@@ -400,12 +400,13 @@ func TestResolveToken_TATRequestedAppIDMismatchBlocks(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "app")
 	t.Setenv(envvars.CliAppSecret, "secret")
 
-	stubTATFetcher(t, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
+	p := &Provider{}
+	withStubFetcher(p, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
 		t.Fatal("fetcher should not be called on app_id mismatch")
 		return "", 0, nil
 	})
 
-	_, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "other"})
+	_, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "other"})
 	var blockErr *credential.BlockError
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %v", err)
@@ -416,12 +417,13 @@ func TestResolveToken_TATReturnsNilWhenSecretMissing(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "app")
 	t.Setenv(envvars.CliUserAccessToken, "u-tok") // keeps ResolveAccount valid, but no secret for mint
 
-	stubTATFetcher(t, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
+	p := &Provider{}
+	withStubFetcher(p, func(_ context.Context, _ *http.Client, _ credential.Brand, _, _ string) (string, int, error) {
 		t.Fatal("fetcher should not be called without app_secret")
 		return "", 0, nil
 	})
 
-	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"})
+	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "app"})
 	if err != nil {
 		t.Fatal(err)
 	}

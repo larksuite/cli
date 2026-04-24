@@ -27,15 +27,29 @@ import (
 // always see a token with enough remaining life to complete a request.
 const tatSafetyMargin = 30 * time.Second
 
-// tatFetcher performs the app_id + app_secret → tenant_access_token exchange.
-// Exposed as a package-level variable so tests can stub it out.
-var tatFetcher = func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error) {
+// defaultTATTimeout bounds the token-exchange call when the Provider's
+// HTTPClient field is nil. A finite timeout prevents a hung TCP connection
+// from indefinitely blocking concurrent callers on the minter lock.
+const defaultTATTimeout = 30 * time.Second
+
+// tatFetcherFunc performs the app_id + app_secret → tenant_access_token exchange.
+// Production code uses realTATFetcher; tests substitute a stub on Provider.
+type tatFetcherFunc func(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error)
+
+// realTATFetcher is the production implementation wired by default.
+func realTATFetcher(ctx context.Context, hc *http.Client, brand credential.Brand, appID, appSecret string) (string, int, error) {
 	ep := core.ResolveEndpoints(core.LarkBrand(brand))
 	res, err := auth.FetchTenantAccessToken(ctx, hc, ep.Open, appID, appSecret)
 	if err != nil {
 		return "", 0, err
 	}
 	return res.Token, res.ExpiresIn, nil
+}
+
+// defaultHTTPClient returns a timeout-protected client used when the caller
+// does not supply one via Provider.HTTPClient.
+func defaultHTTPClient() *http.Client {
+	return &http.Client{Timeout: defaultTATTimeout}
 }
 
 // Provider resolves credentials from environment variables.
@@ -52,8 +66,14 @@ var tatFetcher = func(ctx context.Context, hc *http.Client, brand credential.Bra
 //     (optionally combined with LARKSUITE_CLI_APP_SECRET for bot fallback).
 type Provider struct {
 	// HTTPClient is used for the tenant_access_token exchange. A nil value
-	// falls back to http.DefaultClient.
+	// falls back to a dedicated client with a 30-second timeout so a hung
+	// exchange cannot wedge the minter lock indefinitely.
 	HTTPClient *http.Client
+
+	// fetchTAT overrides the production TAT exchange for tests. Unit tests
+	// assign a stub here instead of mutating package state so concurrent
+	// tests cannot interfere with each other.
+	fetchTAT tatFetcherFunc
 
 	tatMu    sync.Mutex
 	tatCache tatCacheEntry
@@ -169,6 +189,12 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 // mintTenantAccessToken exchanges app_id + app_secret for a tenant access token.
 // Returns nil, nil when app_secret is absent so the credential layer surfaces a
 // clean TokenUnavailableError rather than a harder-to-debug exchange failure.
+//
+// The lock is intentionally held across the HTTP exchange: concurrent callers
+// share the same result and do not stampede the auth endpoint. The default
+// HTTP client carries a 30-second timeout (see defaultTATTimeout) so a hung
+// exchange cannot wedge the mutex indefinitely; callers needing a different
+// budget should set Provider.HTTPClient or pass a context with a deadline.
 func (p *Provider) mintTenantAccessToken(ctx context.Context, requestedAppID string) (*credential.Token, error) {
 	appID := os.Getenv(envvars.CliAppID)
 	appSecret := os.Getenv(envvars.CliAppSecret)
@@ -194,9 +220,13 @@ func (p *Provider) mintTenantAccessToken(ctx context.Context, requestedAppID str
 
 	hc := p.HTTPClient
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = defaultHTTPClient()
 	}
-	token, expiresIn, err := tatFetcher(ctx, hc, brand, appID, appSecret)
+	fetch := p.fetchTAT
+	if fetch == nil {
+		fetch = realTATFetcher
+	}
+	token, expiresIn, err := fetch(ctx, hc, brand, appID, appSecret)
 	if err != nil {
 		return nil, fmt.Errorf("env provider: tenant_access_token exchange failed: %w", err)
 	}
