@@ -42,6 +42,7 @@ type Shortcut struct {
 	Flags     []Flag   // flag definitions; --dry-run is auto-injected
 	HasFormat bool     // auto-inject --format flag (json|pretty|table|ndjson|csv)
 	Tips      []string // optional tips shown in --help output
+	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
 	// Business logic hooks.
 	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set

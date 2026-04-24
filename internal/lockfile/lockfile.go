@@ -4,6 +4,7 @@
 package lockfile
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,14 @@ import (
 // safeIDChars strips everything except alphanumerics, underscores, hyphens, and dots
 // to prevent path traversal via crafted app IDs (e.g. "../../tmp/evil").
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+
+// ErrHeld is returned (wrapped) when TryLock cannot acquire the lock because
+// another owner holds it — either this same LockFile instance was already
+// locked, or another process holds the flock (Unix) / LockFileEx (Windows)
+// on the underlying file. Callers use errors.Is(err, ErrHeld) to distinguish
+// benign contention (retryable) from real failures (e.g. EACCES, missing
+// parent dir) which should surface.
+var ErrHeld = errors.New("lockfile: lock already held")
 
 // LockFile represents an exclusive file lock.
 type LockFile struct {
@@ -55,7 +64,7 @@ func ForSubscribe(appID string) (*LockFile, error) {
 // The lock is automatically released when the process exits.
 func (l *LockFile) TryLock() error {
 	if l.file != nil {
-		return fmt.Errorf("lock already held: %s", l.path)
+		return fmt.Errorf("%w: %s", ErrHeld, l.path)
 	}
 	f, err := vfs.OpenFile(l.path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {

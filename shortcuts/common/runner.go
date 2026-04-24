@@ -709,9 +709,10 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	botOnly := len(shortcut.AuthTypes) == 1 && shortcut.AuthTypes[0] == "bot"
 
 	cmd := &cobra.Command{
-		Use:   shortcut.Command,
-		Short: shortcut.Description,
-		Args:  rejectPositionalArgs(),
+		Use:    shortcut.Command,
+		Short:  shortcut.Description,
+		Hidden: shortcut.Hidden,
+		Args:   rejectPositionalArgs(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},

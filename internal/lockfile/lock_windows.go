@@ -36,7 +36,7 @@ func tryLockFile(f *os.File) error {
 		uintptr(unsafe.Pointer(&ol)),
 	)
 	if r1 == 0 {
-		return fmt.Errorf("lock already held by another process (lock: %s): %v", f.Name(), err)
+		return fmt.Errorf("%w (lock: %s, syscall: %v)", ErrHeld, f.Name(), err)
 	}
 	return nil
 }

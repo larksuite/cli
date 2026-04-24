@@ -3,6 +3,7 @@ module github.com/larksuite/cli
 go 1.23.0
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/gofrs/flock v0.8.1
