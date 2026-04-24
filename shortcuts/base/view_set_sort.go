@@ -31,6 +31,6 @@ var BaseViewSetSort = common.Shortcut{
 	},
 	DryRun: dryRunViewSetSort,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return executeViewSetJSONObjectAny(runtime, "sort", "sort")
+		return executeViewSetWrapped(runtime, "sort", "sort_config", "sort")
 	},
 }
