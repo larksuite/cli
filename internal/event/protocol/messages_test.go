@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -20,16 +21,6 @@ import (
 // omit Type and shake out as decode errors at runtime — the helpers are
 // the only safe call-site.
 func TestConstructors_PinTypeField(t *testing.T) {
-	cases := []struct {
-		name     string
-		msg      interface{ typeField() string }
-		wantType string
-	}{}
-	_ = cases
-
-	// Plain table below — Go generics would help but existing tests follow
-	// the straight-line style, so we inline each assertion rather than
-	// adding a type-switched helper.
 	if got := NewHello(1, "k", []string{"t"}, "v1"); got.Type != MsgTypeHello {
 		t.Errorf("NewHello.Type = %q, want %q", got.Type, MsgTypeHello)
 	}
@@ -77,7 +68,7 @@ func TestEncode_DecodeRoundtripAllTypes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("decode: %v", err)
 		}
-		if gotT, wantT := typeOf(got), typeOf(want); gotT != wantT {
+		if gotT, wantT := fmt.Sprintf("%T", got), fmt.Sprintf("%T", want); gotT != wantT {
 			t.Errorf("decoded type = %s, want %s", gotT, wantT)
 		}
 	}
@@ -89,46 +80,6 @@ func TestEncode_DecodeRoundtripAllTypes(t *testing.T) {
 	roundtrip(t, NewShutdown(), &Shutdown{})
 	roundtrip(t, NewSourceStatus("feishu", SourceStateReconnecting, "attempt 2"), &SourceStatus{})
 	roundtrip(t, &Bye{Type: MsgTypeBye}, &Bye{})
-}
-
-func typeOf(v interface{}) string {
-	if v == nil {
-		return "<nil>"
-	}
-	return reflectTypeName(v)
-}
-
-// reflectTypeName avoids pulling reflect into the test just for a name —
-// fmt.Sprintf("%T") does the same job.
-func reflectTypeName(v interface{}) string {
-	return stringType(v)
-}
-
-func stringType(v interface{}) string {
-	// Minimalist: avoid fmt/reflect churn — switch on known concrete types.
-	switch v.(type) {
-	case *Hello:
-		return "*Hello"
-	case *HelloAck:
-		return "*HelloAck"
-	case *Event:
-		return "*Event"
-	case *Bye:
-		return "*Bye"
-	case *PreShutdownCheck:
-		return "*PreShutdownCheck"
-	case *PreShutdownAck:
-		return "*PreShutdownAck"
-	case *StatusQuery:
-		return "*StatusQuery"
-	case *StatusResponse:
-		return "*StatusResponse"
-	case *Shutdown:
-		return "*Shutdown"
-	case *SourceStatus:
-		return "*SourceStatus"
-	}
-	return "<unknown>"
 }
 
 // TestEncodeWithDeadline_AppliesDeadline verifies the deadline is set

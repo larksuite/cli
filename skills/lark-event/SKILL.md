@@ -83,7 +83,7 @@ AI 编排按 `reason` 区分"业务到期"（limit/timeout/signal 均 exit 0）�
 
 ### 永远不 `kill -9`
 
-`kill -9` 跳过 Go defer 链里的 PreConsume cleanup（反注销 OAPI 订阅的回调）→ 服务端订阅泄漏，等后端 TTL 自清。优雅退出走 SIGTERM / Ctrl+C / 关 stdin / `--max-events`/`--timeout` 到达。当前 11 个 IM key 均未使用 PreConsume hook，`kill -9` 实际不会泄漏；**铁规则先立**防未来接入 PreConsume 类 key 时埋雷。bus 在最后一个 consumer 断开后 30s idle 自退；要主动清用 `lark-cli event stop --all --force`。
+**避免 `kill -9` consume 进程**：对**提前订阅类**的 EventKey，`kill -9` 会跳过 OAPI unsubscribe，造成服务端订阅残留（症状：重启报订阅已存在、事件重复推送）。优先用 SIGTERM / 关 stdin 停。
 
 ### 一个 consume 一个 EventKey（多 key = 多 shell）
 
@@ -93,7 +93,7 @@ AI 编排按 `reason` 区分"业务到期"（limit/timeout/signal 均 exit 0）�
 - 故障隔离（一个 key 挂不牵连其他）
 - 独立 `--as` / `--jq` / `--max-events` / `--timeout`
 
-N 个 consume 共用同一 bus 守护进程（UDS 本地 IPC），资源开销小。多 shell 编排模板见 [`references/lark-event-im.md`](references/lark-event-im.md) 场景 5。
+N 个 consume 共用同一 bus 守护进程（UDS 本地 IPC），资源开销小
 
 ## Output Schema 指南
 
@@ -102,7 +102,7 @@ N 个 consume 共用同一 bus 守护进程（UDS 本地 IPC），资源开销�
 | 字段 | 含义 |
 |---|---|
 | `root_path_hint` | jq 路径前缀：`"."`（flat）或 `".event"`（V2 信封）。写 jq 直接看这个，不用猜 |
-| `params`（`omitempty`） | 这个 key 接受的 `--param`：含 `name` / `type` / `required` / `enum` / `default` / `description`。**字段不存在 = 这个 key 不接受任何 `--param`**（本期 11 个 IM key 均属此类） |
+| `params`（`omitempty`） | 这个 key 接受的 `--param`：含 `name` / `type` / `required` / `enum` / `default` / `description`。**字段不存在 = 这个 key 不接受任何 `--param`** |
 | `resolved_output_schema.properties.*.format` | 字段语义标记：`open_id` / `chat_id` / `timestamp_ms` / `email` 等。可用于反查 API 或格式转换 |
 
 **schema 长什么样，jq 就怎么写**。
