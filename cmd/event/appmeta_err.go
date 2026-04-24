@@ -9,10 +9,11 @@ import (
 )
 
 // authURLPattern matches the "grant-scope" URL the Feishu open platform
-// embeds in 99991672-family permission errors. Host allowlist keeps us from
-// matching unrelated open.feishu.cn documentation links that happen to
-// carry a ?q= query.
-var authURLPattern = regexp.MustCompile(`https?://open\.(?:feishu\.cn|feishu\.net|larksuite\.com|larkoffice\.com)/app/[^/\s"']+/auth\?q=[^\s"'<>]+`)
+// embeds in 99991672-family permission errors. Host allowlist kept in
+// sync with consoleScopeGrantURL's output (cmd/event/console_url.go,
+// which resolves via core.ResolveEndpoints).Open to feishu.cn or
+// larksuite.com). If you add a brand there, widen this regex too.
+var authURLPattern = regexp.MustCompile(`https?://open\.(?:feishu\.cn|larksuite\.com)/app/[^/\s"']+/auth\?q=[^\s"'<>]+`)
 
 // describeAppMetaErr reduces an appmeta.FetchCurrentPublished error to a one-
 // line stderr-friendly summary. The app_versions OAPI dumps a multi-hundred-

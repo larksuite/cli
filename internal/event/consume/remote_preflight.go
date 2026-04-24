@@ -30,12 +30,22 @@ func CheckRemoteConnections(ctx context.Context, client APIClient) (int, error) 
 		return 0, fmt.Errorf("connection check: %w", err)
 	}
 	var result struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
 		Data struct {
 			OnlineInstanceCnt int `json:"online_instance_cnt"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return 0, fmt.Errorf("connection check: decode: %w (body=%s)", err, truncateForError(raw))
+	}
+	// A non-zero business code (auth failure, rate-limit, etc.) produces
+	// no `data` payload and would decode to OnlineInstanceCnt=0 — which
+	// callers interpret as "no remote buses". Surface the OAPI error
+	// instead so the caller can distinguish "verified zero" from "check
+	// failed and we don't actually know".
+	if result.Code != 0 {
+		return 0, fmt.Errorf("connection check: api error code=%d msg=%q", result.Code, result.Msg)
 	}
 	return result.Data.OnlineInstanceCnt, nil
 }

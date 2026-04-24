@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -176,6 +178,8 @@ func truncateDuration(d time.Duration) time.Duration {
 
 // validateParams fills in declared defaults for unspecified params, then
 // checks that all required params are present and no unknown params are given.
+// Errors name the EventKey and list the valid param names inline so AI callers
+// don't need a second `event schema` round-trip to recover from a typo.
 func validateParams(def *event.KeyDefinition, params map[string]string) error {
 	for _, p := range def.Params {
 		if _, ok := params[p.Name]; !ok && p.Default != "" {
@@ -185,18 +189,28 @@ func validateParams(def *event.KeyDefinition, params map[string]string) error {
 	for _, p := range def.Params {
 		if p.Required {
 			if _, ok := params[p.Name]; !ok {
-				return fmt.Errorf("required param %q missing. Run 'lark-cli event schema %s' for details", p.Name, def.Key)
+				return fmt.Errorf("required param %q missing for EventKey %s. Run 'lark-cli event schema %s' for details",
+					p.Name, def.Key, def.Key)
 			}
 		}
 	}
-	known := make(map[string]bool)
+	known := make(map[string]bool, len(def.Params))
+	validNames := make([]string, 0, len(def.Params))
 	for _, p := range def.Params {
 		known[p.Name] = true
+		validNames = append(validNames, p.Name)
 	}
+	sort.Strings(validNames)
 	for k := range params {
-		if !known[k] {
-			return fmt.Errorf("unknown param %q for EventKey %s. Run 'lark-cli event schema %s' for details", k, def.Key, def.Key)
+		if known[k] {
+			continue
 		}
+		if len(validNames) == 0 {
+			return fmt.Errorf("unknown param %q: EventKey %s accepts no params. Run 'lark-cli event schema %s' for details",
+				k, def.Key, def.Key)
+		}
+		return fmt.Errorf("unknown param %q for EventKey %s. valid params: %s. Run 'lark-cli event schema %s' for details",
+			k, def.Key, strings.Join(validNames, ", "), def.Key)
 	}
 	return nil
 }

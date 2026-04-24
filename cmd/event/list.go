@@ -38,7 +38,9 @@ func runList(f *cmdutil.Factory, asJSON bool) error {
 	}
 
 	if len(all) == 0 {
-		fmt.Fprintln(f.IOStreams.Out, "No EventKeys registered.")
+		// Informational, not data — go to stderr so `event list | jq` etc.
+		// don't ingest it as a row.
+		fmt.Fprintln(f.IOStreams.ErrOut, "No EventKeys registered.")
 		return nil
 	}
 
@@ -101,7 +103,8 @@ func runList(f *cmdutil.Factory, asJSON bool) error {
 			printTableRow(out, widths, row, colGap)
 		}
 	}
-	fmt.Fprintln(out, "\nUse 'event schema <key>' for details.")
+	// Hint is progress/UX, not table data — keep stdout pipe-clean.
+	fmt.Fprintln(f.IOStreams.ErrOut, "\nUse 'event schema <key>' for details.")
 	return nil
 }
 

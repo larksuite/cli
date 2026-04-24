@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/event/busctl"
 	"github.com/larksuite/cli/internal/event/transport"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // stopStatus is the outcome tag for one appID's stop attempt. The wire
@@ -255,7 +256,7 @@ func writeStopText(out, errOut io.Writer, results []stopResult) {
 // on disk; Windows callers use --app-id.
 func discoverAppIDs() []string {
 	eventsDir := filepath.Join(core.GetConfigDir(), "events")
-	entries, err := os.ReadDir(eventsDir)
+	entries, err := vfs.ReadDir(eventsDir)
 	if err != nil {
 		return nil
 	}
@@ -265,7 +266,7 @@ func discoverAppIDs() []string {
 			continue
 		}
 		sockPath := filepath.Join(eventsDir, e.Name(), "bus.sock")
-		if _, statErr := os.Stat(sockPath); statErr != nil {
+		if _, statErr := vfs.Stat(sockPath); statErr != nil {
 			continue
 		}
 		ids = append(ids, e.Name())

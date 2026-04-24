@@ -174,7 +174,7 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 
 	resolved, _, err := resolveSchemaJSON(def)
 	if err != nil {
-		return fmt.Errorf("resolve schema: %w", err)
+		return output.Errorf(output.ExitInternal, "internal", "resolve schema: %v", err)
 	}
 	if resolved != nil {
 		fmt.Fprintf(out, "\nOutput Schema:\n")
@@ -208,6 +208,11 @@ func printIndentedJSON(out io.Writer, raw json.RawMessage) {
 // writeSchemaJSON emits the EventKey definition plus the resolved schema
 // (whether native-wrapped-in-V2-envelope or Process-declared) as a single
 // JSON object so callers can ingest schema + metadata in one pass.
+//
+// root_path_hint tells AI callers whether to write jq paths as `.field`
+// (flat / Custom schema — e.g. im.message.receive_v1) or `.event.field`
+// (V2 envelope — every Native-schema key). Without this, the caller has
+// to either inspect resolved_output_schema shape or eyeball a sample event.
 func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
 	type payload struct {
 		*eventlib.KeyDefinition
@@ -216,14 +221,29 @@ func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
 		// shortened to `ResolvedSchema` after the OutputSchema/OutputType
 		// fields were removed from KeyDefinition.
 		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
+		RootPathHint   string          `json:"root_path_hint,omitempty"`
 	}
 	resolved, _, err := resolveSchemaJSON(def)
 	if err != nil {
 		return err
 	}
+	var rootPathHint string
+	if resolved != nil {
+		// isNative is the truth source: Native schemas get WrapV2Envelope
+		// applied in resolveSchemaJSON, so consumers see {schema, header,
+		// event, ...} and must reach fields via `.event.xxx`. Custom
+		// schemas (like im.message.receive_v1, which Process flattens)
+		// deliver fields at the top level.
+		_, isNative := pickSpec(def.Schema)
+		rootPathHint = "."
+		if isNative {
+			rootPathHint = ".event"
+		}
+	}
 	output.PrintJson(f.IOStreams.Out, payload{
 		KeyDefinition:  def,
 		ResolvedSchema: resolved,
+		RootPathHint:   rootPathHint,
 	})
 	return nil
 }

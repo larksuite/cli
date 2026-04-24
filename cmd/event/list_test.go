@@ -48,7 +48,7 @@ func TestRunList_JSONOutput(t *testing.T) {
 		t.Fatal("expected at least one EventKey in JSON output")
 	}
 
-	// Every row should carry at minimum key / event_type / kind.
+	// Every row should carry at minimum key / event_type / schema.
 	for _, row := range rows {
 		for _, field := range []string{"key", "event_type", "schema"} {
 			if row[field] == nil {

@@ -36,32 +36,30 @@ func NewDedupFilterWithSize(ringSize int, ttl time.Duration) *DedupFilter {
 	}
 }
 
-// IsDuplicate returns true if eventID has been seen within TTL or is in the ring buffer.
-// The ring buffer serves as a fallback for events whose TTL map entries were evicted
-// (e.g., by the ring eviction mechanism). TTL expiry always takes precedence.
+// IsDuplicate returns true if eventID has been seen within TTL. The seen
+// map is the sole authority for duplicate decisions; the ring buffer only
+// bounds map size via overflow eviction (line 71 below).
+//
+// Earlier revisions also scanned the ring as a fallback when the map lookup
+// missed. That scan introduced a correctness bug: after cleanupExpired runs
+// (triggered every 1000 inserts) it removes TTL-expired IDs from seen but
+// leaves them in the ring. A follow-up IsDuplicate on such an ID would miss
+// the map, find the ring entry, and incorrectly flag it as duplicate — a
+// valid event already past its TTL was then silently dropped by
+// internal/event/bus.Publish's dedup check. The ring-scan branch is gone;
+// TTL expiry now always means "treat as first-seen, record again".
 func (d *DedupFilter) IsDuplicate(eventID string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	now := time.Now()
 
-	// Check TTL map first — TTL expiry takes precedence over ring presence.
 	if ts, ok := d.seen[eventID]; ok {
 		if now.Sub(ts) < d.ttl {
 			return true
 		}
 		// TTL expired: treat as not seen, remove stale entry and re-record below.
 		delete(d.seen, eventID)
-	} else {
-		// Not in TTL map — check ring buffer as fallback.
-		// This covers events evicted from the map by ring overflow but still recent.
-		for _, id := range d.ring {
-			if id == eventID {
-				// Restore to TTL map and report as duplicate.
-				d.seen[eventID] = now
-				return true
-			}
-		}
 	}
 
 	// Not seen (or TTL expired) — record it.

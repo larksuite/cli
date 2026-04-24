@@ -6,6 +6,7 @@ package consume
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/event/testutil"
@@ -53,5 +54,30 @@ func TestCheckRemoteConnections_MalformedJSON(t *testing.T) {
 	_, err := CheckRemoteConnections(context.Background(), c)
 	if err == nil {
 		t.Fatal("expected decode error")
+	}
+}
+
+// TestCheckRemoteConnections_NonZeroAPICodeSurfaced guards the fallback
+// where a non-zero business code (auth failure, rate-limit, etc.) with no
+// `data` payload decodes successfully — `online_instance_cnt` defaults to
+// 0, and callers would interpret that as "no remote buses" and happily
+// fork a local one that duplicates events. The decoder must promote
+// code != 0 into an error so the caller can distinguish verified-zero
+// from check-failed.
+func TestCheckRemoteConnections_NonZeroAPICodeSurfaced(t *testing.T) {
+	c := &testutil.StubAPIClient{Body: `{"code":99991663,"msg":"token is invalid","data":{}}`}
+	count, err := CheckRemoteConnections(context.Background(), c)
+	if err == nil {
+		t.Fatal("expected error for non-zero OAPI code, got nil")
+	}
+	if count != 0 {
+		t.Errorf("count = %d, want 0 on error", count)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "99991663") {
+		t.Errorf("error message missing code 99991663: %q", msg)
+	}
+	if !strings.Contains(msg, "token is invalid") {
+		t.Errorf("error message missing msg field: %q", msg)
 	}
 }

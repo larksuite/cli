@@ -66,7 +66,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 	cmd.Flags().StringArrayVarP(&o.params, "param", "p", nil, "Key=value parameter (repeatable)")
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
 	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress informational messages on stderr")
-	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory")
+	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
 	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop.")
 	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout').")
 	cmd.Flags().String("as", "auto", "identity type: user | bot | auto (must match EventKey's declared AuthTypes)")
@@ -100,7 +100,15 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 
 	if o.jqExpr != "" {
 		if err := output.ValidateJqExpression(o.jqExpr); err != nil {
-			return err
+			// Re-wrap with an event-specific hint. ValidateJqExpression is
+			// shared with other commands, so we keep its core message and
+			// layer the "look at consume --help / event schema" guidance on
+			// top — avoids polluting the shared validator with event lingo.
+			return output.ErrWithHint(
+				output.ExitValidation, "validation",
+				err.Error(),
+				fmt.Sprintf("see `lark-cli event consume --help` EXAMPLES for common patterns, or `lark-cli event schema %s` for valid field paths", eventKey),
+			)
 		}
 	}
 

@@ -117,6 +117,37 @@ func TestDedupFilter_ConcurrentFirstSeenExactlyOnce(t *testing.T) {
 	}
 }
 
+// TestDedupFilter_TTLExpiryAfterCleanupRunRespected guards the bug where
+// cleanupExpired (fired every 1000 inserts once d.pos wraps to 0) removed
+// TTL-expired IDs from seen but left them in the ring — a prior revision
+// of IsDuplicate then fell back to a ring scan, found the stale ID, and
+// incorrectly returned true, causing the bus to silently drop a legitimate
+// (post-TTL, not-actually-duplicate) event. With ring scan removed, the
+// seen map is the sole authority and TTL expiry really means "re-accept".
+func TestDedupFilter_TTLExpiryAfterCleanupRunRespected(t *testing.T) {
+	// ringSize=10 so d.pos wraps to 0 on the 10th insert, triggering
+	// cleanupExpired there. TTL=10ms so "A" is expired by the time
+	// cleanupExpired scans.
+	d := NewDedupFilterWithSize(10, 10*time.Millisecond)
+	if d.IsDuplicate("A") {
+		t.Fatal("first IsDuplicate(A) should be false")
+	}
+	// Let A's TTL elapse before the fillers run, so cleanupExpired deletes
+	// seen[A]. Fillers themselves are inserted rapidly so their TTL hasn't
+	// expired — only A's has.
+	time.Sleep(25 * time.Millisecond)
+	for i := 0; i < 9; i++ {
+		d.IsDuplicate("f" + string(rune('0'+i)))
+	}
+	// After the 10th total insert: cleanupExpired has removed seen[A];
+	// ring[0] still contains "A" (ring hasn't wrapped far enough to
+	// overwrite slot 0 yet — ring[0] only gets rewritten on insert 11).
+	if d.IsDuplicate("A") {
+		t.Error("A is past TTL — must NOT be reported as duplicate, " +
+			"even though the ring still carries it")
+	}
+}
+
 // TestDedupFilter_ConcurrentRingEviction exercises the ring's eviction
 // path under concurrent writers. With ringSize=16 and 100 unique IDs,
 // eviction runs continuously; the invariant is "once evicted and TTL
