@@ -341,7 +341,6 @@ func (b *Bus) handleShutdown(conn net.Conn) {
 	}
 }
 
-
 const (
 	aliveLockMaxWait      = 2 * time.Second
 	aliveLockPollInterval = 50 * time.Millisecond
