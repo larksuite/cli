@@ -51,8 +51,8 @@ func WritePIDFile(eventsDir string, pid int) (*Handle, error) {
 		_ = lock.Unlock()
 		return nil, fmt.Errorf("busdiscover: write pid tmp: %w", err)
 	}
-	if err := os.Rename(tmpPath, pidPath); err != nil {
-		_ = os.Remove(tmpPath)
+	if err := vfs.Rename(tmpPath, pidPath); err != nil {
+		_ = vfs.Remove(tmpPath)
 		_ = lock.Unlock()
 		return nil, fmt.Errorf("busdiscover: rename pid file: %w", err)
 	}
@@ -92,7 +92,7 @@ func isBusAlive(appDir string) bool {
 		return true
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[busdiscover] probe %s: %v\n", lockPath, err)
+		fmt.Fprintf(os.Stderr, "[busdiscover] probe %s: %v\n", lockPath, err) //nolint:forbidigo // internal diagnostic; scanner has no IOStreams plumbing
 		return false
 	}
 	_ = probe.Unlock()
@@ -119,7 +119,7 @@ func scanLiveBuses(eventsDir string) ([]Process, error) {
 		}
 		pid, startTime, err := readPIDFile(appDir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[busdiscover] live bus at %s but pid file unreadable: %v\n", appDir, err)
+			fmt.Fprintf(os.Stderr, "[busdiscover] live bus at %s but pid file unreadable: %v\n", appDir, err) //nolint:forbidigo // internal diagnostic; scanner has no IOStreams plumbing
 			result = append(result, Process{PID: 0, AppID: appID})
 			continue
 		}
