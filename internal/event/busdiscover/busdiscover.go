@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package busdiscover scans the OS process table for live bus processes to detect orphans.
+// Package busdiscover enumerates live bus daemons via per-AppID PID files protected by a process-lifetime advisory lock.
 package busdiscover
 
 import (
-	"regexp"
-	"strings"
+	"path/filepath"
 	"time"
+
+	"github.com/larksuite/cli/internal/core"
 )
 
 type Process struct {
@@ -21,22 +22,13 @@ type Scanner interface {
 }
 
 func Default() Scanner {
-	return newPlatformScanner()
+	return &fsScanner{eventsDir: filepath.Join(core.GetConfigDir(), "events")}
 }
 
-// appIDPattern requires the cli_ prefix to avoid matching unrelated --profile values.
-var appIDPattern = regexp.MustCompile(`--profile\s+(cli_[a-zA-Z0-9_]+)`)
+type fsScanner struct {
+	eventsDir string
+}
 
-func parseAppIDFromCmdline(cmdline string) string {
-	if !strings.Contains(cmdline, "lark-cli") {
-		return ""
-	}
-	if !strings.Contains(cmdline, "event _bus") {
-		return ""
-	}
-	m := appIDPattern.FindStringSubmatch(cmdline)
-	if len(m) < 2 {
-		return ""
-	}
-	return m[1]
+func (s *fsScanner) ScanBusProcesses() ([]Process, error) {
+	return scanLiveBuses(s.eventsDir)
 }

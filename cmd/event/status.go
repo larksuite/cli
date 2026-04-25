@@ -262,6 +262,12 @@ func writeStatusText(out io.Writer, statuses []appStatus) {
 				}
 			}
 		case stateOrphan:
+			if s.PID == 0 {
+				fmt.Fprintln(out, "  Bus:     orphan (PID unknown — bus.pid file unreadable)")
+				fmt.Fprintln(out, "  Issue:   live bus detected but pid file is missing or corrupt")
+				fmt.Fprintln(out, "  Action:  inspect ~/.lark-cli/events/<app>/bus.pid and kill manually")
+				break
+			}
 			fmt.Fprintf(out, "  Bus:     orphan (PID %d, started %s)\n",
 				s.PID, humanizeDuration(time.Duration(s.UptimeSec)*time.Second))
 			fmt.Fprintln(out, "  Issue:   socket file missing — consumers cannot connect")
@@ -294,8 +300,13 @@ func writeStatusJSON(w io.Writer, statuses []appStatus) error {
 			Consumers: s.Consumers,
 		}
 		if s.State == stateOrphan {
-			js.Issue = "socket file missing"
-			js.SuggestedAction = fmt.Sprintf("kill %d", s.PID)
+			if s.PID == 0 {
+				js.Issue = "live bus detected but pid file is missing or corrupt"
+				js.SuggestedAction = "inspect events dir and kill manually"
+			} else {
+				js.Issue = "socket file missing"
+				js.SuggestedAction = fmt.Sprintf("kill %d", s.PID)
+			}
 		}
 		payload = append(payload, js)
 	}

@@ -8,17 +8,22 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/busdiscover"
 	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/source"
 	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/lockfile"
 )
 
 const (
@@ -41,6 +46,9 @@ type Bus struct {
 	conns      map[*Conn]struct{}
 	idleTimer  *time.Timer
 	shutdownCh chan struct{}
+
+	// pidHandle pins the alive.lock fd to the bus lifetime; OS releases on exit.
+	pidHandle *busdiscover.Handle
 }
 
 func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logger) *Bus {
@@ -63,9 +71,22 @@ func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logge
 func (b *Bus) Run(ctx context.Context) error {
 	addr := b.transport.Address(b.appID)
 
+	// alive.lock before bind: closes the cleanup-TOCTOU race where two newly forked
+	// buses each unlink and rebind the socket. Brief retry covers stop-then-restart.
+	eventsDir := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(b.appID))
+	pidHandle, pidErr := acquireAliveLock(eventsDir)
+	if pidErr != nil {
+		if errors.Is(pidErr, lockfile.ErrHeld) {
+			b.logger.Printf("Another bus already holds %s/bus.alive.lock, exiting", eventsDir)
+			return nil
+		}
+		b.logger.Printf("[bus] pid file write failed: %v (status discovery may miss this bus)", pidErr)
+	} else {
+		b.pidHandle = pidHandle
+	}
+
 	ln, err := b.transport.Listen(addr)
 	if err != nil {
-		// Probe: live bus (bow out) vs stale socket (clean up). Dial timeout bounds a wedged peer.
 		if probe, dialErr := b.transport.Dial(addr); dialErr == nil {
 			probe.Close()
 			b.logger.Printf("Another bus is already running for %s, exiting", b.appID)
@@ -317,5 +338,26 @@ func (b *Bus) handleShutdown(conn net.Conn) {
 	select {
 	case b.shutdownCh <- struct{}{}:
 	default:
+	}
+}
+
+
+const (
+	aliveLockMaxWait      = 2 * time.Second
+	aliveLockPollInterval = 50 * time.Millisecond
+)
+
+// acquireAliveLock retries on ErrHeld so a stop-then-immediate-restart finds the lock free.
+func acquireAliveLock(eventsDir string) (*busdiscover.Handle, error) {
+	deadline := time.Now().Add(aliveLockMaxWait)
+	for {
+		h, err := busdiscover.WritePIDFile(eventsDir, os.Getpid())
+		if err == nil {
+			return h, nil
+		}
+		if !errors.Is(err, lockfile.ErrHeld) || time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(aliveLockPollInterval)
 	}
 }

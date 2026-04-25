@@ -62,7 +62,7 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 	}
 
 	// ErrHeld = another consume is forking; let dial retry catch its bus.
-	pid, forkErr := forkBus(appID, profileName, domain)
+	pid, forkErr := forkBus(tr, appID, profileName, domain)
 	if forkErr != nil && !errors.Is(forkErr, lockfile.ErrHeld) {
 		eventsRoot := filepath.Join(core.GetConfigDir(), "events")
 		return nil, fmt.Errorf("failed to start event bus daemon: %w\n"+
@@ -119,7 +119,8 @@ func probeAndDialBus(tr transport.IPC, addr string) (net.Conn, error) {
 	return tr.Dial(addr)
 }
 
-func forkBus(appID, profileName, domain string) (int, error) {
+// forkBus holds bus.fork.lock until the spawned daemon is dial-able, so concurrent callers can't race past the empty-socket gap and fork independent buses.
+func forkBus(tr transport.IPC, appID, profileName, domain string) (int, error) {
 	lockPath := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.fork.lock")
 	if err := vfs.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
 		return 0, err
@@ -146,10 +147,19 @@ func forkBus(appID, profileName, domain string) (int, error) {
 	if err := cmd.Start(); err != nil {
 		return 0, err
 	}
-	return cmd.Process.Pid, nil
+
+	addr := tr.Address(appID)
+	deadline := time.Now().Add(dialTimeout)
+	for time.Now().Before(deadline) {
+		if conn, dialErr := tr.Dial(addr); dialErr == nil {
+			conn.Close()
+			return cmd.Process.Pid, nil
+		}
+		time.Sleep(dialRetryInterval)
+	}
+	return cmd.Process.Pid, fmt.Errorf("bus did not become ready within %v", dialTimeout)
 }
 
-// buildForkArgs: cmdline shape parsed by busdiscover.parseAppIDFromCmdline — keep in lockstep.
 func buildForkArgs(profileName, domain string) []string {
 	args := []string{"event", "_bus", "--profile", profileName}
 	if domain != "" {
