@@ -7,6 +7,7 @@ package protocol
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,9 @@ import (
 )
 
 const MaxFrameBytes = 1 << 20 // reject larger frames to bound reader buffer growth
+
+// ErrFrameTooLarge is returned by ReadFrame when a single frame exceeds MaxFrameBytes.
+var ErrFrameTooLarge = errors.New("protocol: frame exceeds MaxFrameBytes")
 
 const WriteTimeout = 5 * time.Second // bound writes against wedged peer kernel buffer
 
@@ -49,12 +53,12 @@ func ReadFrame(br *bufio.Reader) ([]byte, error) {
 				return chunk, nil
 			}
 			if len(buf)+len(chunk) > MaxFrameBytes {
-				return nil, fmt.Errorf("protocol: frame exceeds %d bytes", MaxFrameBytes)
+				return nil, ErrFrameTooLarge
 			}
 			return append(buf, chunk...), nil
 		case bufio.ErrBufferFull:
 			if len(buf)+len(chunk) > MaxFrameBytes {
-				return nil, fmt.Errorf("protocol: frame exceeds %d bytes", MaxFrameBytes)
+				return nil, ErrFrameTooLarge
 			}
 			buf = append(buf, chunk...)
 		default:

@@ -7,10 +7,10 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"testing"
 	"time"
 )
@@ -93,11 +93,8 @@ func TestReadFrame_RejectsOversized(t *testing.T) {
 	big = append(big, '\n')
 	br := bufio.NewReader(bytes.NewReader(big))
 	_, err := ReadFrame(br)
-	if err == nil {
-		t.Fatal("expected error on oversized frame")
-	}
-	if !strings.Contains(err.Error(), "frame too large") && !strings.Contains(err.Error(), "exceeds") && !strings.Contains(err.Error(), "too") {
-		t.Logf("error: %v", err)
+	if !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("ReadFrame on oversized input: err = %v, want ErrFrameTooLarge", err)
 	}
 }
 

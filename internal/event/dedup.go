@@ -49,7 +49,7 @@ func (d *DedupFilter) IsDuplicate(eventID string) bool {
 
 	d.seen[eventID] = now
 
-	if old := d.ring[d.pos]; old != "" {
+	if old := d.ring[d.pos]; old != "" && old != eventID {
 		delete(d.seen, old)
 	}
 	d.ring[d.pos] = eventID

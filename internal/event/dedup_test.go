@@ -103,6 +103,20 @@ func TestDedupFilter_ConcurrentFirstSeenExactlyOnce(t *testing.T) {
 	}
 }
 
+// Reinserting an ID that already occupies its own ring slot must not delete the fresh seen entry.
+func TestDedupFilter_SelfEvictionPreservesFreshEntry(t *testing.T) {
+	d := NewDedupFilterWithSize(2, time.Hour)
+	d.ring[0] = "X"
+	d.pos = 0
+
+	if d.IsDuplicate("X") {
+		t.Fatal("first call should not be duplicate (seen empty)")
+	}
+	if !d.IsDuplicate("X") {
+		t.Error("self-slot reinsert wiped seen[X] — duplicate signal lost")
+	}
+}
+
 // After cleanupExpired, an ID past its TTL must not be reported as duplicate even if still in the ring.
 func TestDedupFilter_TTLExpiryAfterCleanupRunRespected(t *testing.T) {
 	d := NewDedupFilterWithSize(10, 10*time.Millisecond)
