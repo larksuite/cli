@@ -71,9 +71,29 @@ func mergePagedResults(w io.Writer, results []interface{}) interface{} {
 		mergedData[k] = v
 	}
 	mergedData[arrayField] = merged
-	mergedData["has_more"] = false
-	delete(mergedData, "page_token")
-	delete(mergedData, "next_page_token")
+
+	// Preserve the last page's real pagination state so callers can detect
+	// truncation when --page-limit stops the loop before the API is exhausted.
+	lastHasMore := false
+	var lastPageToken, lastNextPageToken string
+	if lastMap, ok := results[len(results)-1].(map[string]interface{}); ok {
+		if lastData, ok := lastMap["data"].(map[string]interface{}); ok {
+			lastHasMore, _ = lastData["has_more"].(bool)
+			lastPageToken, _ = lastData["page_token"].(string)
+			lastNextPageToken, _ = lastData["next_page_token"].(string)
+		}
+	}
+	mergedData["has_more"] = lastHasMore
+	if lastHasMore && lastPageToken != "" {
+		mergedData["page_token"] = lastPageToken
+	} else {
+		delete(mergedData, "page_token")
+	}
+	if lastHasMore && lastNextPageToken != "" {
+		mergedData["next_page_token"] = lastNextPageToken
+	} else {
+		delete(mergedData, "next_page_token")
+	}
 
 	result := make(map[string]interface{})
 	for k, v := range firstMap {
