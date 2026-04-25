@@ -14,9 +14,7 @@ var (
 	mu   sync.RWMutex
 )
 
-// RegisterKey adds an KeyDefinition to the global registry.
-// Panics on duplicates, empty EventType, or Schema/Process contract
-// violations (see SchemaDef docs).
+// RegisterKey panics on duplicate Key, empty EventType, or schema/process contract violations.
 func RegisterKey(def KeyDefinition) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -44,9 +42,7 @@ func RegisterKey(def KeyDefinition) {
 	keys[def.Key] = &def
 }
 
-// validateSchema enforces the Native / Custom / Process invariants documented
-// on SchemaDef. Exactly one of Native or Custom must be set; Native is
-// incompatible with Process (Process produces a complete shape — use Custom).
+// validateSchema: exactly one of Native/Custom; Native incompatible with Process.
 func validateSchema(def KeyDefinition) {
 	nativeSet := def.Schema.Native != nil
 	customSet := def.Schema.Custom != nil
@@ -67,22 +63,18 @@ func validateSchema(def KeyDefinition) {
 	}
 }
 
-// validateSpec requires exactly one of Type or Raw on a SchemaSpec.
 func validateSpec(key, field string, s *SchemaSpec) {
 	typeSet := s.Type != nil
 	rawSet := len(s.Raw) > 0
-	if typeSet == rawSet { // both set OR both empty
+	if typeSet == rawSet {
 		panic(fmt.Sprintf("EventKey %s: %s requires exactly one of Type or Raw", key, field))
 	}
 }
 
-// validateParams checks that Enum/Multi params have non-empty Values and
-// every value has a non-empty Desc (AI consumers need Desc to decide).
 func validateParams(def KeyDefinition) {
 	for _, p := range def.Params {
 		switch p.Type {
 		case "", ParamString, ParamBool, ParamInt:
-			// no Values required
 		case ParamEnum, ParamMulti:
 			if len(p.Values) == 0 {
 				panic(fmt.Sprintf("EventKey %s: param %q type %q requires Values", def.Key, p.Name, p.Type))
@@ -106,7 +98,6 @@ func validateAuth(def KeyDefinition) {
 	}
 }
 
-// Lookup returns the definition for a given EventKey.
 func Lookup(key string) (*KeyDefinition, bool) {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -114,7 +105,7 @@ func Lookup(key string) (*KeyDefinition, bool) {
 	return def, ok
 }
 
-// ListAll returns all registered KeyDefinitions sorted by Key.
+// ListAll returns all KeyDefinitions sorted by Key.
 func ListAll() []*KeyDefinition {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -128,21 +119,16 @@ func ListAll() []*KeyDefinition {
 	return result
 }
 
-// resetRegistry clears the registry (for testing only).
 func resetRegistry() {
 	mu.Lock()
 	defer mu.Unlock()
 	keys = map[string]*KeyDefinition{}
 }
 
-// ResetRegistryForTest clears the registry. Only for testing.
 func ResetRegistryForTest() { resetRegistry() }
 
-// UnregisterKeyForTest removes a single EventKey from the registry without
-// affecting others. Use this (not ResetRegistryForTest) in tests that
-// register a synthetic key alongside production keys — otherwise -count=N
-// reruns will either panic on duplicate registration or wipe keys that
-// other tests depend on.
+// UnregisterKeyForTest removes one key — use this (not Reset) in tests with synthetic keys
+// alongside production keys to keep -count=N reruns idempotent.
 func UnregisterKeyForTest(key string) {
 	mu.Lock()
 	defer mu.Unlock()

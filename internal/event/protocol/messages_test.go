@@ -15,11 +15,7 @@ import (
 	"time"
 )
 
-// TestConstructors_PinTypeField guards the Type-field auto-fill contract:
-// every NewXxx helper must set the discriminator, because Decode rejects
-// messages without it. Struct-literal construction elsewhere would silently
-// omit Type and shake out as decode errors at runtime — the helpers are
-// the only safe call-site.
+// Every NewXxx helper must set the Type discriminator (Decode rejects messages without it).
 func TestConstructors_PinTypeField(t *testing.T) {
 	if got := NewHello(1, "k", []string{"t"}, "v1"); got.Type != MsgTypeHello {
 		t.Errorf("NewHello.Type = %q, want %q", got.Type, MsgTypeHello)
@@ -50,12 +46,6 @@ func TestConstructors_PinTypeField(t *testing.T) {
 	}
 }
 
-// TestEncode_DecodeRoundtripAllTypes exercises each wire type through
-// Encode → Decode — the discriminator-based dispatch in Decode must
-// return the same concrete Go type and preserve payload fields. Fills
-// the largest gap in protocol coverage: individual constructors were
-// previously only called transitively by other packages (which doesn't
-// count toward this package's coverage).
 func TestEncode_DecodeRoundtripAllTypes(t *testing.T) {
 	roundtrip := func(t *testing.T, msg interface{}, want interface{}) {
 		t.Helper()
@@ -82,17 +72,11 @@ func TestEncode_DecodeRoundtripAllTypes(t *testing.T) {
 	roundtrip(t, &Bye{Type: MsgTypeBye}, &Bye{})
 }
 
-// TestEncodeWithDeadline_AppliesDeadline verifies the deadline is set
-// before Encode writes — a wedged peer's kernel buffer must not be
-// able to stall the writer forever. We use a no-deadline pipe so the
-// deadline is the only bound that can make the write return; confirm
-// the write fails with a timeout error in under the deadline + slack.
+// EncodeWithDeadline must apply a write deadline so a wedged peer can't stall the writer forever.
 func TestEncodeWithDeadline_AppliesDeadline(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
 	defer server.Close()
-	// Don't read server side — client's write will block waiting for
-	// the reader to consume. The deadline should fire and error out.
 	start := time.Now()
 	err := EncodeWithDeadline(client, NewShutdown(), 100*time.Millisecond)
 	elapsed := time.Since(start)
@@ -104,11 +88,7 @@ func TestEncodeWithDeadline_AppliesDeadline(t *testing.T) {
 	}
 }
 
-// TestReadFrame_RejectsOversized confirms MaxFrameBytes is enforced on
-// read — a runaway upstream (or hostile local peer) that dribbles a huge
-// line cannot grow the reader's buffer unbounded and OOM the process.
 func TestReadFrame_RejectsOversized(t *testing.T) {
-	// MaxFrameBytes+1 non-newline bytes followed by '\n'.
 	big := bytes.Repeat([]byte("a"), MaxFrameBytes+1)
 	big = append(big, '\n')
 	br := bufio.NewReader(bytes.NewReader(big))
@@ -117,13 +97,10 @@ func TestReadFrame_RejectsOversized(t *testing.T) {
 		t.Fatal("expected error on oversized frame")
 	}
 	if !strings.Contains(err.Error(), "frame too large") && !strings.Contains(err.Error(), "exceeds") && !strings.Contains(err.Error(), "too") {
-		t.Logf("error: %v", err) // informational — any non-nil error means the cap fired
+		t.Logf("error: %v", err)
 	}
 }
 
-// TestReadFrame_PropagatesEOF ensures a clean EOF surfaces as io.EOF
-// (not a synthetic "empty frame" success) so callers can break their
-// read loop correctly.
 func TestReadFrame_PropagatesEOF(t *testing.T) {
 	br := bufio.NewReader(bytes.NewReader(nil))
 	_, err := ReadFrame(br)

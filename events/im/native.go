@@ -10,12 +10,7 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
-// nativeIMKey curates metadata for a Native IM event. bodyType points at
-// the SDK struct (framework reflects it into a JSON Schema on demand),
-// fieldOverrides adds field-level semantic annotations the SDK struct
-// can't express (open_id / chat_id / timestamp_ms 等 Feishu-specific
-// kinds). Paths are JSON Pointer, anchored at the full resolved schema
-// (i.e. start with /event/... since Native is wrapped in V2 envelope).
+// nativeIMKey curates metadata for a Native IM event; fieldOverrides paths are JSON Pointer anchored at the V2-wrapped schema (start with /event/...).
 type nativeIMKey struct {
 	key            string
 	title          string
@@ -25,8 +20,7 @@ type nativeIMKey struct {
 	fieldOverrides map[string]schemas.FieldMeta
 }
 
-// userIDOv returns `{open_id, union_id, user_id}` overrides for an SDK
-// UserID object at the given schema path prefix.
+// userIDOv returns open_id/union_id/user_id overrides for a UserID object at prefix.
 func userIDOv(prefix string) map[string]schemas.FieldMeta {
 	return map[string]schemas.FieldMeta{
 		prefix + "/open_id":  {Kind: "open_id"},
@@ -35,8 +29,7 @@ func userIDOv(prefix string) map[string]schemas.FieldMeta {
 	}
 }
 
-// mergeOv merges multiple FieldMeta maps left-to-right (later wins on
-// conflicting keys). Nil / empty maps are silently ignored.
+// mergeOv merges FieldMeta maps left-to-right (later wins).
 func mergeOv(ms ...map[string]schemas.FieldMeta) map[string]schemas.FieldMeta {
 	out := map[string]schemas.FieldMeta{}
 	for _, m := range ms {

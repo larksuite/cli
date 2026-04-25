@@ -12,8 +12,6 @@ import (
 )
 
 func TestUnixScanner_ParsesBusProcesses(t *testing.T) {
-	// Header line + three processes: one bus, one vim, one lark-cli consume
-	// (not a bus). Only the bus should be returned.
 	canned := []byte(`  PID                  LSTART COMMAND
 70926 Sun Apr 19 03:03:40 2026 /Users/bytedance/go/src/github/cli/lark-cli event _bus --profile cli_XXXXXXXXXXXXXXXX --domain https://open.feishu.cn
 12345 Mon Apr 20 10:00:00 2026 /usr/bin/vim /tmp/foo.txt
@@ -66,7 +64,6 @@ func TestUnixScanner_PSFailurePropagates(t *testing.T) {
 }
 
 func TestUnixScanner_SkipsMalformedLines(t *testing.T) {
-	// Line too short to contain an lstart field should be silently skipped.
 	canned := []byte(`  PID                  LSTART COMMAND
 70926 Sun Apr 19 03:03:40 2026 /usr/local/bin/lark-cli event _bus --profile cli_XXXXXXXXXXXXXXXX
 short_line
@@ -78,9 +75,8 @@ short_line
 	if err != nil {
 		t.Fatalf("ScanBusProcesses: %v", err)
 	}
-	// The malformed lines should be dropped; the valid one kept.
 	if len(procs) != 1 {
-		t.Fatalf("got %d processes, want 1 (malformed lines must be skipped): %+v", len(procs), procs)
+		t.Fatalf("got %d processes, want 1: %+v", len(procs), procs)
 	}
 	if procs[0].PID != 70926 {
 		t.Errorf("PID = %d, want 70926", procs[0].PID)

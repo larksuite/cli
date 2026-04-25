@@ -11,9 +11,6 @@ import (
 	"testing"
 )
 
-// TestCompileJQReportsErrorEarly verifies that invalid jq expressions fail
-// at CompileJQ time, not when the first event arrives. Before the fix,
-// a bad expression would fail repeatedly on every event via applyJQ.
 func TestCompileJQReportsErrorEarly(t *testing.T) {
 	_, err := CompileJQ("invalid{{{")
 	if err == nil {
@@ -25,8 +22,6 @@ func TestCompileJQReportsErrorEarly(t *testing.T) {
 	}
 }
 
-// TestCompileJQReturnsUsableCode verifies a valid expression compiles to
-// a gojq.Code that applyJQ can invoke.
 func TestCompileJQReturnsUsableCode(t *testing.T) {
 	code, err := CompileJQ(".foo")
 	if err != nil {
@@ -46,9 +41,6 @@ func TestCompileJQReturnsUsableCode(t *testing.T) {
 	}
 }
 
-// TestApplyJQReusesCompiledCode confirms that applyJQ can be called many
-// times without reallocating compilation state. This is the core perf goal:
-// pre-fix, this test loop would have called gojq.Parse + Compile 10000 times.
 func TestApplyJQReusesCompiledCode(t *testing.T) {
 	code, err := CompileJQ(".foo")
 	if err != nil {
@@ -66,15 +58,11 @@ func TestApplyJQReusesCompiledCode(t *testing.T) {
 	}
 }
 
-// TestApplyJQFilterReturnsNilOnNoOutput verifies that expressions producing
-// no output (e.g., select that filters out) return (nil, nil), not error.
-// The existing applyJQ had this semantic; the refactor must preserve it.
 func TestApplyJQFilterReturnsNilOnNoOutput(t *testing.T) {
 	code, err := CompileJQ(`select(.type == "match")`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// This input doesn't match the filter, so select produces no output.
 	result, err := applyJQ(code, json.RawMessage(`{"type":"nomatch"}`))
 	if err != nil {
 		t.Fatalf("should not error on filter-out: %v", err)
@@ -84,11 +72,6 @@ func TestApplyJQFilterReturnsNilOnNoOutput(t *testing.T) {
 	}
 }
 
-// TestApplyJQConcurrentSafe verifies that a single compiled *gojq.Code
-// can be safely shared across many goroutines concurrently — the whole
-// point of pre-compile is that workers share one Code instance without
-// mutex overhead. A regression (e.g., gojq Code becoming internally
-// stateful) would manifest as a -race failure or a wrong result.
 func TestApplyJQConcurrentSafe(t *testing.T) {
 	code, err := CompileJQ(".value")
 	if err != nil {
@@ -106,7 +89,6 @@ func TestApplyJQConcurrentSafe(t *testing.T) {
 		go func(gid int) {
 			defer wg.Done()
 			for i := 0; i < iterationsPerGoroutine; i++ {
-				// Different input per goroutine to catch any shared-buffer mistakes.
 				input := json.RawMessage(fmt.Sprintf(`{"value":"goroutine-%d-iter-%d"}`, gid, i))
 				result, err := applyJQ(code, input)
 				if err != nil {

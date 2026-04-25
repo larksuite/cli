@@ -15,7 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// fakeScanner implements busdiscover.Scanner for tests.
 type fakeScanner struct {
 	procs []busdiscover.Process
 	err   error
@@ -25,8 +24,6 @@ func (f *fakeScanner) ScanBusProcesses() ([]busdiscover.Process, error) {
 	return f.procs, f.err
 }
 
-// fakeBusQuerier implements the bus status query — returns StatusResponse
-// for appIDs in respByAppID, error otherwise (simulating socket absent).
 type fakeBusQuerier struct {
 	respByAppID map[string]*protocol.StatusResponse
 }
@@ -63,7 +60,6 @@ func TestDeriveStatuses_RunningBus(t *testing.T) {
 }
 
 func TestDeriveStatuses_OrphanBus(t *testing.T) {
-	// Socket dial fails but the scanner finds a live bus process.
 	q := &fakeBusQuerier{respByAppID: map[string]*protocol.StatusResponse{}}
 	sc := &fakeScanner{procs: []busdiscover.Process{
 		{PID: 70926, AppID: "cli_a", StartTime: time.Now().Add(-19 * time.Hour)},
@@ -81,7 +77,6 @@ func TestDeriveStatuses_OrphanBus(t *testing.T) {
 	if s.PID != 70926 {
 		t.Errorf("PID = %d, want 70926", s.PID)
 	}
-	// Uptime should be ~19h (within 1 minute tolerance for test timing).
 	wantUptime := int((19 * time.Hour).Seconds())
 	if s.UptimeSec < wantUptime-60 || s.UptimeSec > wantUptime+60 {
 		t.Errorf("UptimeSec = %d, want ~%d", s.UptimeSec, wantUptime)
@@ -103,8 +98,6 @@ func TestDeriveStatuses_NotRunning(t *testing.T) {
 }
 
 func TestDeriveStatuses_DiscoversOrphanAppIDsFromProcessScan(t *testing.T) {
-	// Caller passes only cli_known; the scanner finds cli_orphan too.
-	// Both should appear in the result.
 	q := &fakeBusQuerier{respByAppID: map[string]*protocol.StatusResponse{}}
 	sc := &fakeScanner{procs: []busdiscover.Process{
 		{PID: 70926, AppID: "cli_orphan", StartTime: time.Now().Add(-1 * time.Hour)},
@@ -114,7 +107,6 @@ func TestDeriveStatuses_DiscoversOrphanAppIDsFromProcessScan(t *testing.T) {
 	if len(statuses) != 2 {
 		t.Fatalf("expected 2 statuses, got %d: %+v", len(statuses), statuses)
 	}
-	// Both statuses present regardless of order.
 	byID := map[string]appStatus{}
 	for _, s := range statuses {
 		byID[s.AppID] = s
@@ -128,8 +120,6 @@ func TestDeriveStatuses_DiscoversOrphanAppIDsFromProcessScan(t *testing.T) {
 }
 
 func TestDeriveStatuses_ScannerErrorIsNotFatal(t *testing.T) {
-	// If scanner fails (e.g. ps not available), we still want running/not_running
-	// states to work — orphans just can't be detected.
 	q := &fakeBusQuerier{
 		respByAppID: map[string]*protocol.StatusResponse{
 			"cli_a": protocol.NewStatusResponse(12345, 150, 1, nil),
@@ -152,7 +142,7 @@ func TestWriteStatusText_OrphanBlock(t *testing.T) {
 		AppID:     "cli_XXXXXXXXXXXXXXXX",
 		State:     stateOrphan,
 		PID:       70926,
-		UptimeSec: 68400, // 19 hours
+		UptimeSec: 68400,
 	}}
 	writeStatusText(&buf, statuses)
 	out := buf.String()
@@ -167,7 +157,6 @@ func TestWriteStatusText_OrphanBlock(t *testing.T) {
 			t.Errorf("output missing %q\nfull output:\n%s", want, out)
 		}
 	}
-	// Explicitly assert no "running" line leaked into an orphan block.
 	if strings.Contains(out, "running (PID") {
 		t.Errorf("orphan block must not contain 'running' text; got:\n%s", out)
 	}
@@ -206,7 +195,6 @@ func TestWriteStatusJSON_OrphanFields(t *testing.T) {
 	if a["suggested_action"] != "kill 70926" {
 		t.Errorf("suggested_action = %v, want \"kill 70926\"", a["suggested_action"])
 	}
-	// pid should be numeric 70926 (float64 from JSON decode).
 	if pid, ok := a["pid"].(float64); !ok || int(pid) != 70926 {
 		t.Errorf("pid = %v, want 70926", a["pid"])
 	}
@@ -225,7 +213,6 @@ func TestWriteStatusJSON_RunningOmitsOrphanFields(t *testing.T) {
 		t.Fatalf("writeStatusJSON: %v", err)
 	}
 	out := buf.String()
-	// Orphan-specific fields should not leak onto running rows.
 	if strings.Contains(out, `"issue"`) {
 		t.Errorf("running status must not include 'issue' field; got:\n%s", out)
 	}

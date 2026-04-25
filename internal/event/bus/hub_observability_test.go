@@ -12,23 +12,17 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// TestHubDroppedCountIncrements verifies Publish increments a per-conn
-// Dropped counter when the drop-oldest path fires.
 func TestHubDroppedCountIncrements(t *testing.T) {
 	h := NewHub()
-	// Use a real Conn for its IncrementDropped path.
 	server, client := testNetPipe(t)
 	defer server.Close()
 	defer client.Close()
 	c := NewConn(server, nil, "k", []string{"t"}, 1)
-	c.sendCh = make(chan interface{}, 1) // tiny buffer to force drops
+	c.sendCh = make(chan interface{}, 1)
 	h.RegisterAndIsFirst(c)
 
-	// First publish fills the channel.
 	h.Publish(&event.RawEvent{EventType: "t"})
-	// Second publish triggers drop-oldest.
 	h.Publish(&event.RawEvent{EventType: "t"})
-	// Third publish also triggers drop-oldest.
 	h.Publish(&event.RawEvent{EventType: "t"})
 
 	if got := c.DroppedCount(); got != 2 {
@@ -36,8 +30,6 @@ func TestHubDroppedCountIncrements(t *testing.T) {
 	}
 }
 
-// TestPublishAssignsIncrementalSeq verifies each event sent to a consumer
-// has a monotonically increasing Seq starting from 1.
 func TestPublishAssignsIncrementalSeq(t *testing.T) {
 	h := NewHub()
 	server, client := testNetPipe(t)
@@ -63,8 +55,6 @@ func TestPublishAssignsIncrementalSeq(t *testing.T) {
 	}
 }
 
-// TestPublishPopulatesEventIDAndSourceTime verifies the protocol.Event
-// carries EventID and SourceTime derived from the RawEvent.
 func TestPublishPopulatesEventIDAndSourceTime(t *testing.T) {
 	h := NewHub()
 	server, client := testNetPipe(t)
@@ -91,10 +81,7 @@ func TestPublishPopulatesEventIDAndSourceTime(t *testing.T) {
 	}
 }
 
-// TestPublishSourceTimeTakesPrecedence verifies that when RawEvent carries
-// an explicit SourceTime (from the upstream header.create_time), it wins
-// over Timestamp — Timestamp is a local observability field; SourceTime
-// is the upstream publisher's intent and should flow through unchanged.
+// Explicit SourceTime (upstream header.create_time) must win over local Timestamp.
 func TestPublishSourceTimeTakesPrecedence(t *testing.T) {
 	h := NewHub()
 	server, client := testNetPipe(t)
@@ -109,21 +96,16 @@ func TestPublishSourceTimeTakesPrecedence(t *testing.T) {
 		EventID:    "evt-1",
 		EventType:  "t",
 		SourceTime: upstreamTs,
-		// Local arrival time — different from upstream publish time.
-		Timestamp: time.UnixMilli(1999999999999),
+		Timestamp:  time.UnixMilli(1999999999999),
 	})
 
 	msg := <-c.SendCh()
 	ev := msg.(*protocol.Event)
 	if ev.SourceTime != upstreamTs {
-		t.Errorf("SourceTime: got %q, want %q (explicit SourceTime must beat derived Timestamp)", ev.SourceTime, upstreamTs)
+		t.Errorf("SourceTime: got %q, want %q", ev.SourceTime, upstreamTs)
 	}
 }
 
-// TestPublishSourceTimeFallback verifies that when SourceTime is empty
-// (e.g. a test source that didn't populate it), Publish falls back to
-// formatting Timestamp as UnixMilli so protocol.Event.SourceTime is still
-// populated for downstream consumers that rely on it.
 func TestPublishSourceTimeFallback(t *testing.T) {
 	h := NewHub()
 	server, client := testNetPipe(t)
@@ -146,7 +128,6 @@ func TestPublishSourceTimeFallback(t *testing.T) {
 	}
 }
 
-// testNetPipe is a test helper that returns an net.Pipe pair.
 func testNetPipe(t *testing.T) (net.Conn, net.Conn) {
 	t.Helper()
 	return net.Pipe()

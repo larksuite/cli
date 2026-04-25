@@ -21,14 +21,8 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// maxEventBodyBytes caps an individual inbound event payload. Feishu's
-// own upstream events are well under 100 KB in practice; 1 MB is a
-// defensive headroom. Oversized payloads are dropped with a log line
-// rather than fanned out — otherwise each subscriber's sendCh (cap 100)
-// could hold 100× the oversized payload in memory.
-const maxEventBodyBytes = 1 << 20
+const maxEventBodyBytes = 1 << 20 // bound per-subscriber sendCh memory under runaway payloads
 
-// FeishuSource connects to the Feishu WebSocket gateway and emits events.
 type FeishuSource struct {
 	AppID     string
 	AppSecret string
@@ -72,11 +66,7 @@ func (s *FeishuSource) Start(ctx context.Context, eventTypes []string, emit func
 	}
 }
 
-// buildRawHandler returns the per-event callback passed to the SDK
-// dispatcher. Extracted from Start so unit tests can exercise the
-// three failure modes (nil body, malformed JSON, missing header
-// fields) without spinning up a WebSocket client. A nil Logger is
-// tolerated — callers constructed with minimal test setup won't panic.
+// buildRawHandler is extracted from Start so unit tests can exercise it without a WS client.
 func (s *FeishuSource) buildRawHandler(emit func(*event.RawEvent)) func(context.Context, *larkevent.EventReq) error {
 	return func(_ context.Context, e *larkevent.EventReq) error {
 		if e.Body == nil {
@@ -123,9 +113,7 @@ func (s *FeishuSource) buildRawHandler(emit func(*event.RawEvent)) func(context.
 	}
 }
 
-// sdkLogger adapts *log.Logger to larkcore.Logger. Every SDK line goes
-// to bus.log; lines matching known lifecycle patterns also fire notify
-// so consumers see WebSocket connect/disconnect/reconnect in real time.
+// sdkLogger forwards every SDK line to bus.log; lifecycle lines also fire notify.
 type sdkLogger struct {
 	l      *log.Logger
 	notify StatusNotifier
@@ -151,25 +139,13 @@ func (a *sdkLogger) Error(_ context.Context, args ...interface{}) {
 	if a.l != nil {
 		a.l.Output(2, "[SDK ERROR] "+msg)
 	}
-	// Errors usually manifest as disconnects; surface them with the error
-	// text as detail so users see why.
+	// Errors usually manifest as disconnects; pass msg as detail.
 	a.tryNotify(msg, msg)
 }
 
-// reconnectAttemptRe captures the attempt number from SDK's "trying to
-// reconnect: N" lines so we can surface it as detail.
 var reconnectAttemptRe = regexp.MustCompile(`reconnect:?\s*(\d+)`)
 
-// tryNotify classifies an SDK log line into a lifecycle state. A nil
-// notify or a line we don't recognise is a no-op — non-lifecycle noise
-// (e.g. heartbeat) stays in bus.log but doesn't reach the user.
-//
-// Matching is HasPrefix, not Contains: SDK log lines are of the form
-// "<verb> to <url>[conn_id=...]", so "connected to " and "disconnected
-// to " are mutually exclusive at the start of the string. A prior
-// Contains-based switch accidentally matched "connected to ws" inside
-// "disconnected to wss://...", misreporting every disconnect as a
-// reconnect. See TestTryNotify_Classify for the regression case.
+// tryNotify uses HasPrefix (not Contains): "connected to" matches inside "disconnected to" otherwise.
 func (a *sdkLogger) tryNotify(msg, errDetail string) {
 	if a.notify == nil {
 		return

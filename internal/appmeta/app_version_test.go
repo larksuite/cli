@@ -47,7 +47,7 @@ func TestFetchCurrentPublished_SelectsLatestPublished(t *testing.T) {
 		t.Fatal("expected a version, got nil")
 	}
 	if v.VersionID != "oav_latest" {
-		t.Errorf("VersionID = %q, want oav_latest (draft must be skipped)", v.VersionID)
+		t.Errorf("VersionID = %q, want oav_latest", v.VersionID)
 	}
 	if v.Version != "1.0.2" {
 		t.Errorf("Version = %q, want 1.0.2", v.Version)
@@ -63,10 +63,9 @@ func TestFetchCurrentPublished_SelectsLatestPublished(t *testing.T) {
 		}
 	}
 
-	// Only scopes where token_types contains "tenant" belong to TenantScopes.
 	wantTenant := map[string]bool{"im:message": true, "im:message.group_at_msg": true}
 	if len(v.TenantScopes) != len(wantTenant) {
-		t.Fatalf("TenantScopes = %v, want %v (contact:user:readonly is user-only)", v.TenantScopes, wantTenant)
+		t.Fatalf("TenantScopes = %v, want %v", v.TenantScopes, wantTenant)
 	}
 	for _, s := range v.TenantScopes {
 		if !wantTenant[s] {
@@ -78,8 +77,6 @@ func TestFetchCurrentPublished_SelectsLatestPublished(t *testing.T) {
 func TestFetchCurrentPublished_PathContainsQuery(t *testing.T) {
 	c := &testutil.StubAPIClient{Body: respFourVersions}
 	_, _ = FetchCurrentPublished(context.Background(), c, "cli_x")
-	// The fetcher must encode lang and page_size in the path so callers don't
-	// need to know about Params vs body semantics of the underlying client.
 	for _, want := range []string{
 		"/open-apis/application/v6/applications/cli_x/app_versions",
 		"lang=zh_cn",
@@ -128,8 +125,6 @@ func TestFetchCurrentPublished_APIErrorPropagated(t *testing.T) {
 }
 
 func TestFetchCurrentPublished_PublishTimeEmptyStringTreatedAsUnpublished(t *testing.T) {
-	// Defensive: if the OAPI ever emits "" instead of null for publish_time on
-	// an unpublished record, we must still skip it.
 	c := &testutil.StubAPIClient{Body: `{"code":0,"data":{"items":[
     {"version_id":"oav_x","status":1,"publish_time":"","event_infos":[],"scopes":[]}
   ]}}`}

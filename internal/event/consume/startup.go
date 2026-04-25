@@ -29,23 +29,10 @@ const (
 	dialTimeout       = 3 * time.Second
 )
 
-// EnsureBus dials the bus daemon for appID, forking a new one if none is
-// running. profileName lets the forked bus pull credentials from the
-// keychain instead of taking them as process arguments. Passing
-// io.Discard as errOut (--quiet) silences the diagnostic chain.
-//
-// apiClient is a bot-identity client used for the remote-connection probe;
-// pass nil to skip the probe entirely (degrades to "assume no remote bus").
-// domain is still required because the forked bus daemon receives it via
-// --domain (the parent is the one that resolved which brand's endpoints to
-// use).
-//
-// Known limitation: if a local bus answers the dial we skip the remote
-// check — a bus on another machine for the same AppID will duplicate
-// events and we won't notice from here (see `event status`).
+// EnsureBus dials the bus daemon for appID, forking a new one if none is running.
+// apiClient nil skips remote-connection probe. Local-bus hits skip remote check (see `event status`).
 func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain string, apiClient APIClient, errOut io.Writer) (net.Conn, error) {
 	if errOut == nil {
-		// Defensive fallback; cmd layer always wires IOStreams.ErrOut.
 		errOut = os.Stderr //nolint:forbidigo // library-caller fallback
 	}
 	addr := tr.Address(appID)
@@ -74,26 +61,17 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 		fmt.Fprintf(errOut, "[event] no API client supplied; skipping remote connection check\n")
 	}
 
-	// Lock contention (lockfile.ErrHeld) means another consume is already
-	// forking — let the dial retry catch its bus. Other fork errors
-	// (missing exe, no write perms) should surface now rather than
-	// waiting out the dial timeout.
+	// ErrHeld = another consume is forking; let dial retry catch its bus.
 	pid, forkErr := forkBus(appID, profileName, domain)
 	if forkErr != nil && !errors.Is(forkErr, lockfile.ErrHeld) {
 		eventsRoot := filepath.Join(core.GetConfigDir(), "events")
 		return nil, fmt.Errorf("failed to start event bus daemon: %w\n"+
 			"Check: disk space, permissions on %s, and 'lark-cli doctor'", forkErr, eventsRoot)
 	}
-	// pid==0 when another consume already forked and we hit ErrHeld — that
-	// bus is not ours to announce, and the dial loop below will still catch it.
 	if pid > 0 {
 		announceForkedBus(errOut, pid)
 	}
 
-	// Honour ctx cancellation on the dial retry loop so a SIGINT during
-	// fork+dial doesn't wait out the full dialTimeout. time.After is safe
-	// here — the loop runs ~dialTimeout/dialRetryInterval times worst case
-	// (3s/50ms = 60 iters), so per-iter timer allocation is negligible.
 	deadline := time.Now().Add(dialTimeout)
 	for time.Now().Before(deadline) {
 		select {
@@ -106,8 +84,6 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 		}
 	}
 
-	// Per spec §6.4: three-line friendly diagnostic. Path expands at runtime
-	// from core.GetConfigDir() so LARKSUITE_CLI_CONFIG_DIR overrides are honoured.
 	logPath := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.log")
 	fmt.Fprintln(errOut, "[event] event bus exited unexpectedly.")
 	fmt.Fprintln(errOut, "[event] please check app credentials (lark-cli config show) and retry.")
@@ -115,15 +91,8 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 	return nil, fmt.Errorf("failed to connect to event bus within %v (app=%s)", dialTimeout, appID)
 }
 
-// probeAndDialBus sends a StatusQuery to verify the bus is actually serving,
-// then returns a fresh connection for the caller's Hello handshake. This
-// distinguishes a healthy bus from a mid-shutdown or half-dead listener
-// (where Dial would succeed but doHello would EOF with a misleading error).
-//
-// If the probe times out or decodes a non-StatusResponse, returns an error
-// so the caller can fall through to fork a new bus.
+// probeAndDialBus distinguishes a healthy bus from a mid-shutdown listener via StatusQuery first.
 func probeAndDialBus(tr transport.IPC, addr string) (net.Conn, error) {
-	// Step 1: probe with StatusQuery.
 	probe, err := tr.Dial(addr)
 	if err != nil {
 		return nil, err
@@ -147,13 +116,9 @@ func probeAndDialBus(tr transport.IPC, addr string) (net.Conn, error) {
 		return nil, fmt.Errorf("bus probe: expected StatusResponse, got %T", msg)
 	}
 
-	// Step 2: Bus is healthy — Dial a fresh conn for the caller.
 	return tr.Dial(addr)
 }
 
-// forkBus spawns the bus daemon as a detached child. Detach mechanics
-// are platform-specific (see startup_unix.go / startup_windows.go); the
-// lock + argv + --profile-based credential lookup are shared.
 func forkBus(appID, profileName, domain string) (int, error) {
 	lockPath := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.fork.lock")
 	if err := vfs.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
@@ -184,15 +149,7 @@ func forkBus(appID, profileName, domain string) (int, error) {
 	return cmd.Process.Pid, nil
 }
 
-// buildForkArgs builds the argv (minus argv[0]) used to re-invoke this
-// binary as a bus daemon. Extracted as a pure function so tests can
-// assert the shape without actually forking a child process.
-//
-// NOTE: The cmdline shape "event _bus --profile cli_..." is parsed by
-// internal/event/busdiscover to detect orphan bus processes. If you
-// change arg splitting or flag names here, update the two-gate filter
-// in busdiscover.parseAppIDFromCmdline in lockstep, or orphans for the
-// changed shape will become invisible to `event status`.
+// buildForkArgs: cmdline shape parsed by busdiscover.parseAppIDFromCmdline — keep in lockstep.
 func buildForkArgs(profileName, domain string) []string {
 	args := []string{"event", "_bus", "--profile", profileName}
 	if domain != "" {
@@ -201,9 +158,7 @@ func buildForkArgs(profileName, domain string) []string {
 	return args
 }
 
-// announceForkedBus writes an AI-visible line to w confirming a bus daemon
-// was forked. The "auto-exits 30s" hint corresponds to bus.idleTimeout;
-// if that constant ever changes, update this text too.
+// announceForkedBus: "auto-exits 30s" must track bus.idleTimeout.
 func announceForkedBus(w io.Writer, pid int) {
 	fmt.Fprintf(w, "[event] started bus daemon pid=%d (auto-exits 30s after last consumer)\n", pid)
 }

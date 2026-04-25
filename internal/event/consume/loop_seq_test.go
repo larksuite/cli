@@ -13,9 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// seqGapDetector mirrors the inline gap-detection logic from consumeLoop's
-// reader goroutine so tests can exercise it in isolation. If this logic
-// changes in loop.go, update here too.
+// Mirrors the inline gap-detection logic from consumeLoop's reader; keep in sync with loop.go.
 type seqGapDetector struct {
 	lastSeq uint64
 	errOut  io.Writer
@@ -30,8 +28,7 @@ func (d *seqGapDetector) observe(m *protocol.Event) {
 				d.lastSeq, m.Seq, gap)
 		}
 	}
-	// CRITICAL: only advance forward to tolerate out-of-order arrivals from
-	// concurrent Publishers winning sendMu races.
+	// CRITICAL: only advance forward — concurrent Publishers may deliver Seq out-of-order.
 	if m.Seq > d.lastSeq {
 		d.lastSeq = m.Seq
 	}
@@ -61,7 +58,7 @@ func TestSeqGapDetectorWarnsOnActualGap(t *testing.T) {
 	var buf bytes.Buffer
 	d := &seqGapDetector{errOut: &buf}
 	d.observe(&protocol.Event{Seq: 1})
-	d.observe(&protocol.Event{Seq: 5}) // skipped 2, 3, 4
+	d.observe(&protocol.Event{Seq: 5})
 	out := buf.String()
 	if !strings.Contains(out, "gap 1->5") {
 		t.Errorf("expected 'gap 1->5' in output, got: %s", out)
@@ -71,16 +68,12 @@ func TestSeqGapDetectorWarnsOnActualGap(t *testing.T) {
 	}
 }
 
-// TestSeqGapDetectorHandlesOutOfOrderWithoutFalsePositive is the regression
-// test for the bug where lastSeq went backwards. Under concurrent Publishers,
-// msg Seq=6 may arrive before msg Seq=5 (B wins sendMu). The detector must
-// NOT emit a false gap warning when Seq=7 arrives after that sequence.
 func TestSeqGapDetectorHandlesOutOfOrderWithoutFalsePositive(t *testing.T) {
 	var buf bytes.Buffer
 	d := &seqGapDetector{errOut: &buf}
-	d.observe(&protocol.Event{Seq: 6}) // arrives first
-	d.observe(&protocol.Event{Seq: 5}) // arrives out-of-order
-	d.observe(&protocol.Event{Seq: 7}) // next real event
+	d.observe(&protocol.Event{Seq: 6})
+	d.observe(&protocol.Event{Seq: 5})
+	d.observe(&protocol.Event{Seq: 7})
 	if buf.Len() > 0 {
 		t.Errorf("unexpected warning for out-of-order (no actual gap): %s", buf.String())
 	}
@@ -90,20 +83,18 @@ func TestSeqGapDetectorQuietMode(t *testing.T) {
 	var buf bytes.Buffer
 	d := &seqGapDetector{errOut: &buf, quiet: true}
 	d.observe(&protocol.Event{Seq: 1})
-	d.observe(&protocol.Event{Seq: 10}) // big gap
+	d.observe(&protocol.Event{Seq: 10})
 	if buf.Len() > 0 {
 		t.Errorf("quiet mode should suppress warnings, got: %s", buf.String())
 	}
 }
 
 func TestSeqGapDetectorZeroSeqIgnored(t *testing.T) {
-	// Legacy events without Seq (old Bus version) have Seq=0. The detector
-	// should neither warn nor advance lastSeq on these.
 	var buf bytes.Buffer
 	d := &seqGapDetector{errOut: &buf}
 	d.observe(&protocol.Event{Seq: 5})
-	d.observe(&protocol.Event{Seq: 0}) // legacy
-	d.observe(&protocol.Event{Seq: 6}) // expected next
+	d.observe(&protocol.Event{Seq: 0})
+	d.observe(&protocol.Event{Seq: 6})
 	if buf.Len() > 0 {
 		t.Errorf("unexpected warning across legacy zero-seq event: %s", buf.String())
 	}

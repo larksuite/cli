@@ -12,8 +12,6 @@ import (
 	"testing"
 )
 
-// mustPanic is a test helper: use with defer right before the call that
-// should panic. Verifies the panic message contains `substring`.
 func mustPanic(t *testing.T, substring string) {
 	t.Helper()
 	r := recover()

@@ -20,9 +20,6 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// NewCmdStatus creates the "event status" subcommand. Default lists all
-// discoverable Bus daemons on this machine; --current narrows to the
-// current profile's AppID only.
 func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {
 	var (
 		asJSON       bool
@@ -43,7 +40,6 @@ func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-// busState is the three-way discriminator for an AppID's bus.
 type busState int
 
 const (
@@ -63,12 +59,7 @@ func (s busState) String() string {
 	}
 }
 
-// appStatus bundles one AppID's derived status for rendering.
-// State drives which fields are meaningful:
-//
-//	stateRunning    → PID, UptimeSec, Active, Consumers (socket-sourced)
-//	stateOrphan     → PID, UptimeSec (process-scan-sourced)
-//	stateNotRunning → none
+// appStatus bundles one AppID's derived status; State picks which fields are meaningful.
 type appStatus struct {
 	AppID     string
 	State     busState
@@ -78,14 +69,11 @@ type appStatus struct {
 	Consumers []protocol.ConsumerInfo
 }
 
-// busQuerier abstracts the socket-based status query so tests can inject.
 type busQuerier interface {
 	QueryBusStatus(appID string) (*protocol.StatusResponse, error)
 }
 
-// singleAppScanner wraps a Scanner and filters its results down to a
-// single AppID — used by `--current` to prevent unrelated orphan
-// processes from appearing in a profile-scoped status query.
+// singleAppScanner wraps a Scanner and filters to one AppID for --current queries.
 type singleAppScanner struct {
 	appID string
 	inner busdiscover.Scanner
@@ -108,7 +96,6 @@ func (s singleAppScanner) ScanBusProcesses() ([]busdiscover.Process, error) {
 	return out, nil
 }
 
-// transportQuerier is the production busQuerier — dials the IPC socket.
 type transportQuerier struct {
 	tr transport.IPC
 }
@@ -123,7 +110,6 @@ func runStatus(f *cmdutil.Factory, current, asJSON, failOnOrphan bool) error {
 		return err
 	}
 
-	// Seed: socket-discovered appIDs, plus optionally the current profile's AppID.
 	seeds := map[string]struct{}{}
 	if current {
 		seeds[cfg.AppID] = struct{}{}
@@ -131,8 +117,7 @@ func runStatus(f *cmdutil.Factory, current, asJSON, failOnOrphan bool) error {
 		for _, id := range discoverAppIDs() {
 			seeds[id] = struct{}{}
 		}
-		// Always include the current profile so users aren't told "no bus"
-		// when they've never run one — they see their current app as not_running.
+		// Always include the current profile so a first-time user sees it as not_running.
 		seeds[cfg.AppID] = struct{}{}
 	}
 	seedList := make([]string, 0, len(seeds))
@@ -141,12 +126,7 @@ func runStatus(f *cmdutil.Factory, current, asJSON, failOnOrphan bool) error {
 	}
 
 	tr := transport.New()
-	// With --current, deriveStatuses must not fold in scanner-discovered
-	// AppIDs — users asked for their current profile, not "this profile
-	// plus any orphan bus processes on the host". Passing sc=nil makes
-	// orphan-detection for OTHER apps a no-op while still letting us
-	// classify the current profile as orphan if its socket is missing
-	// but its process is alive.
+	// --current: scope the scanner to this AppID so unrelated orphans don't surface.
 	var scanner busdiscover.Scanner
 	if current {
 		scanner = singleAppScanner{appID: cfg.AppID, inner: busdiscover.Default()}
@@ -170,19 +150,7 @@ func runStatus(f *cmdutil.Factory, current, asJSON, failOnOrphan bool) error {
 	return exitForOrphan(statuses, failOnOrphan)
 }
 
-// deriveStatuses computes per-AppID state from socket + process-scan inputs.
-//
-// Algorithm:
-//  1. Start with the seed AppIDs (socket-discovered + current profile).
-//  2. Scan live bus processes; union their AppIDs into the seed set.
-//     (This is how orphan AppIDs get picked up: no socket, but a live process.)
-//  3. For each AppID:
-//     - Query bus socket. Success ⇒ stateRunning.
-//     - Failure: check if we have a live process for this AppID ⇒ stateOrphan.
-//     - No process either ⇒ stateNotRunning.
-//
-// Scanner errors are non-fatal — orphan detection is a nice-to-have; we
-// mustn't break `event status` if `ps` is missing (container, minimal image).
+// deriveStatuses classifies each AppID as running/orphan/not_running from socket + process-scan inputs; scanner errors are non-fatal.
 func deriveStatuses(seedAppIDs []string, sc busdiscover.Scanner, q busQuerier, now time.Time) []appStatus {
 	procByAppID := map[string]busdiscover.Process{}
 	if sc != nil {
@@ -193,7 +161,6 @@ func deriveStatuses(seedAppIDs []string, sc busdiscover.Scanner, q busQuerier, n
 		}
 	}
 
-	// Union seeds with scanner-discovered AppIDs.
 	ids := map[string]struct{}{}
 	for _, id := range seedAppIDs {
 		ids[id] = struct{}{}
@@ -207,9 +174,7 @@ func deriveStatuses(seedAppIDs []string, sc busdiscover.Scanner, q busQuerier, n
 	}
 	sort.Strings(sorted)
 
-	// Query bus sockets in parallel so one wedged peer can't drag out the
-	// whole command — per-op deadlines on the wire cap each query around
-	// 15s, but serial iteration compounds that for every configured app.
+	// Query in parallel so one wedged peer can't compound the per-op deadline across many apps.
 	type probe struct {
 		resp *protocol.StatusResponse
 		err  error
@@ -245,9 +210,7 @@ func deriveStatuses(seedAppIDs []string, sc busdiscover.Scanner, q busQuerier, n
 	return result
 }
 
-// humanizeDuration formats d as a coarse "N unit ago" string, choosing the
-// largest unit where the count is >= 1. Used for orphan "started Xh ago"
-// text where exact precision matters less than quick legibility.
+// humanizeDuration formats d as a coarse "N unit ago" string.
 func humanizeDuration(d time.Duration) string {
 	s := int(d.Seconds())
 	if s < 60 {
@@ -340,12 +303,7 @@ func writeStatusJSON(w io.Writer, statuses []appStatus) error {
 	return nil
 }
 
-// exitForOrphan returns an ExitValidation error when failOnOrphan is true
-// and at least one status is in stateOrphan. Default (failOnOrphan=false)
-// always returns nil — `event status` is primarily an observation
-// command, and silently converting the exit code would break existing
-// scripts that treat exit 0 as "command ran fine". Scripts that want
-// health-check semantics opt in explicitly.
+// exitForOrphan returns ExitValidation iff failOnOrphan and any status is orphan; default exit 0 preserves observe-only semantics.
 func exitForOrphan(statuses []appStatus, failOnOrphan bool) error {
 	if !failOnOrphan {
 		return nil

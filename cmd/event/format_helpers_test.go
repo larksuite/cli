@@ -16,16 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// The helpers covered here are pure input → text/JSON formatters — they
-// don't touch the filesystem, network, or factory state. We test them
-// directly rather than via the cobra RunE wrappers (which would need a
-// real bus to satisfy). Together these raise coverage on stop.go,
-// status.go, and the shared cobra factories without requiring integration.
-
-// --- event stop helpers ---
-
 func TestWriteStopJSON_ShapeAndEmpty(t *testing.T) {
-	// Happy: non-empty results survive marshalling with app_id / status / pid / reason.
 	var buf bytes.Buffer
 	if err := writeStopJSON(&buf, []stopResult{
 		{AppID: "cli_XXXXXXXXXXXXXXXX", Status: stopStopped, PID: 42},
@@ -49,7 +40,6 @@ func TestWriteStopJSON_ShapeAndEmpty(t *testing.T) {
 		t.Errorf("results[1].status = %v, want refused", got.Results[1]["status"])
 	}
 
-	// Nil input → empty array, not null — scripts expecting `.results | length` must not crash.
 	buf.Reset()
 	if err := writeStopJSON(&buf, nil); err != nil {
 		t.Fatalf("writeStopJSON(nil): %v", err)
@@ -70,29 +60,22 @@ func TestWriteStopText_RoutesToStdoutOrStderr(t *testing.T) {
 		{AppID: "cli_ZZZZZZZZZZZZZZZZ", Status: stopRefused, Reason: "busy"},
 		{AppID: "cli_WWWWWWWWWWWWWWWW", Status: stopErrored, Reason: "kill failed"},
 	})
-	// Success lines ("stopped" / "no bus") go to stdout.
 	if !strings.Contains(out.String(), "Bus stopped for cli_XXXXXXXXXXXXXXXX") {
 		t.Errorf("stopped line missing from stdout: %q", out.String())
 	}
 	if !strings.Contains(out.String(), "No bus running for cli_YYYYYYYYYYYYYYYY") {
 		t.Errorf("no-bus line missing from stdout: %q", out.String())
 	}
-	// Failure lines go to stderr so exit-code-based scripts still see them
-	// on stderr even when stdout is captured.
 	if !strings.Contains(errOut.String(), "Refused stopping cli_ZZZZZZZZZZZZZZZZ: busy") {
 		t.Errorf("refused line missing from stderr: %q", errOut.String())
 	}
 	if !strings.Contains(errOut.String(), "Error stopping cli_WWWWWWWWWWWWWWWW: kill failed") {
 		t.Errorf("error line missing from stderr: %q", errOut.String())
 	}
-	// Conversely: failure lines must NOT leak into stdout, or `event stop --all
-	// --json` callers that also parse text would see mixed signals.
 	if strings.Contains(out.String(), "Refused") || strings.Contains(out.String(), "Error") {
 		t.Errorf("failure lines leaked to stdout: %q", out.String())
 	}
 }
-
-// --- event status helpers ---
 
 func TestBusState_String(t *testing.T) {
 	for _, tc := range []struct {
@@ -177,8 +160,6 @@ func TestWriteStatusJSON_OrphanHint(t *testing.T) {
 	if len(got.Apps) != 2 {
 		t.Fatalf("apps len = %d", len(got.Apps))
 	}
-	// Orphan entry must carry the structured hint fields so AI agents can
-	// act on them without parsing free text.
 	orphan := got.Apps[0]
 	if orphan["status"] != "orphan" {
 		t.Errorf("orphan status = %v", orphan["status"])
@@ -189,8 +170,6 @@ func TestWriteStatusJSON_OrphanHint(t *testing.T) {
 	if orphan["issue"] == nil {
 		t.Error("orphan issue missing")
 	}
-	// Running entry must NOT carry orphan-only hint fields — leaking them
-	// would confuse scripts that key on issue != \"\".
 	run := got.Apps[1]
 	if run["issue"] != nil {
 		t.Errorf("running entry leaked issue: %v", run["issue"])
@@ -204,7 +183,6 @@ func TestExitForOrphan(t *testing.T) {
 	orphan := []appStatus{{State: stateOrphan}}
 	running := []appStatus{{State: stateRunning}}
 
-	// Default flag=false: never errors, regardless of state.
 	if err := exitForOrphan(orphan, false); err != nil {
 		t.Errorf("flag off + orphan → nil expected, got %v", err)
 	}
@@ -212,7 +190,6 @@ func TestExitForOrphan(t *testing.T) {
 		t.Errorf("flag off + running → nil expected, got %v", err)
 	}
 
-	// Flag on: errors iff at least one orphan is present.
 	if err := exitForOrphan(running, true); err != nil {
 		t.Errorf("flag on + no orphan → nil expected, got %v", err)
 	}
@@ -226,8 +203,6 @@ func TestExitForOrphan(t *testing.T) {
 	}
 }
 
-// errorAs is a tiny local errors.As wrapper; Go's errors.As would also work
-// but the import shuffle isn't worth it for a one-liner test.
 func errorAs(err error, target interface{}) bool {
 	if e, ok := err.(*output.ExitError); ok {
 		if t, ok := target.(**output.ExitError); ok {
@@ -238,13 +213,6 @@ func errorAs(err error, target interface{}) bool {
 	return false
 }
 
-// --- cobra factory sanity ---
-
-// TestNewCmdFactories_WireFlags makes sure each NewCmd* factory registers
-// the documented flags and a RunE handler. These run in CI as part of
-// `lark-cli event --help`, but the factories themselves weren't covered
-// by any existing test — just exercising them lifts cmd/event coverage
-// by a chunk and catches accidental flag-name drift in review.
 func TestNewCmdFactories_WireFlags(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "cli_XXXXXXXXXXXXXXXX"})
 

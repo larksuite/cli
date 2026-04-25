@@ -12,13 +12,6 @@ import (
 	"github.com/larksuite/cli/internal/event/schemas"
 )
 
-// TestAllKeys_FieldOverridePointersResolve guarantees every FieldOverrides
-// path on every registered EventKey resolves to at least one node in the
-// rendered schema. Orphan paths typically mean a typo or an SDK field
-// rename — failing the build on orphans prevents silent schema drift.
-//
-// The package-level init() in register.go has already registered all
-// domain keys by the time tests run, so we just iterate event.ListAll().
 func TestAllKeys_FieldOverridePointersResolve(t *testing.T) {
 	for _, def := range event.ListAll() {
 		if len(def.Schema.FieldOverrides) == 0 {
@@ -41,10 +34,6 @@ func TestAllKeys_FieldOverridePointersResolve(t *testing.T) {
 	}
 }
 
-// renderDefSchemaForLint mirrors cmd/events/schema.go's resolve pipeline
-// enough to produce the schema overrides are applied against. Kept inline
-// here so the lint test has no dependency on cmd/events (which would
-// create a package cycle).
 func renderDefSchemaForLint(t *testing.T, def *event.KeyDefinition) json.RawMessage {
 	t.Helper()
 	spec, isNative := pickSpec(def.Schema)
@@ -71,8 +60,6 @@ func pickSpec(s event.SchemaDef) (*event.SchemaSpec, bool) {
 	return nil, false
 }
 
-// renderSpec never gets the "neither set" branch in production (validateSpec
-// panics at RegisterKey time). Silent nil here is fine for the lint path.
 func renderSpec(t *testing.T, s *event.SchemaSpec) json.RawMessage {
 	t.Helper()
 	if s.Type != nil {
@@ -84,12 +71,7 @@ func renderSpec(t *testing.T, s *event.SchemaSpec) json.RawMessage {
 	return nil
 }
 
-// TestOrphanDetectionMechanism proves the pipeline itself catches orphan
-// paths — without this, TestAllKeys_FieldOverridePointersResolve would
-// pass vacuously whenever no registered key uses FieldOverrides (which is
-// the current state; both IM and mail rely on struct tags). The synthetic
-// key below has one valid path and one deliberately-broken path; the
-// valid one must resolve and the broken one must be reported.
+// Proves the pipeline catches orphan FieldOverrides paths, so TestAllKeys_FieldOverridePointersResolve isn't vacuous.
 func TestOrphanDetectionMechanism(t *testing.T) {
 	type synthetic struct {
 		ValidField string `json:"valid_field"`
@@ -106,7 +88,7 @@ func TestOrphanDetectionMechanism(t *testing.T) {
 	overrides := map[string]schemas.FieldMeta{
 		"/valid_field":   {Kind: "open_id"},
 		"/broken_typo":   {Kind: "chat_id"},
-		"/valid_field/x": {Kind: "email"}, // dives past a scalar
+		"/valid_field/x": {Kind: "email"},
 	}
 	orphans := schemas.ApplyFieldOverrides(parsed, overrides)
 	wantOrphans := map[string]bool{"/broken_typo": true, "/valid_field/x": true}
@@ -118,7 +100,6 @@ func TestOrphanDetectionMechanism(t *testing.T) {
 			t.Errorf("unexpected orphan %q", o)
 		}
 	}
-	// Confirm the valid path got applied.
 	vf := parsed["properties"].(map[string]interface{})["valid_field"].(map[string]interface{})
 	if vf["format"] != "open_id" {
 		t.Errorf("valid path not applied: %v", vf)

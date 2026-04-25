@@ -9,11 +9,7 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// TestTryNotify_Classify covers the four log shapes we care about plus
-// the regression case: SDK's "disconnected to <wss-url>" literally
-// contains the substring "connected to ws", so a Contains-based switch
-// misreported every disconnect as a reconnect. HasPrefix matching makes
-// "connected to " and "disconnected to " mutually exclusive.
+// "disconnected to <url>" contains "connected to ws" — must use HasPrefix to avoid misclassifying as connect.
 func TestTryNotify_Classify(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -30,9 +26,6 @@ func TestTryNotify_Classify(t *testing.T) {
 			wantCalled: true,
 		},
 		{
-			// REGRESSION: prior Contains-based switch matched "connected to ws"
-			// inside "disconnected to wss...", misclassifying every disconnect
-			// as a Connected notification. Must now land in Disconnected.
 			name:       "disconnected must not be misclassified as connected",
 			msg:        "disconnected to wss://example.com/gw [conn_id=abc]",
 			wantState:  protocol.SourceStateDisconnected,
@@ -67,8 +60,6 @@ func TestTryNotify_Classify(t *testing.T) {
 			wantCalled: true,
 		},
 		{
-			// Generic SDK errors shouldn't mutate source state; they stay in
-			// bus.log but don't reach the user as a lifecycle event.
 			name:       "ignore generic connect-failed error",
 			msg:        "connect failed, err: dial tcp: i/o timeout",
 			errDetail:  "connect failed, err: dial tcp: i/o timeout",
@@ -114,9 +105,6 @@ func TestTryNotify_Classify(t *testing.T) {
 	}
 }
 
-// TestTryNotify_NilNotifySafe protects the early-return guard: a logger
-// without a notify callback (the l-only path used before bus wiring) must
-// not panic when classifying lines.
 func TestTryNotify_NilNotifySafe(t *testing.T) {
 	lg := &sdkLogger{notify: nil}
 	lg.tryNotify("disconnected to wss://example.com", "")

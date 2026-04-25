@@ -1,11 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package bus implements the event-bus daemon: it listens on an IPC
-// socket, accepts consumer connections, starts event sources, and fans
-// out events to matching subscribers via the Hub. The daemon is a
-// single-user, per-AppID process; lifecycle is driven by consumer
-// presence (idle timeout) and explicit shutdown commands.
+// Package bus implements the per-AppID event-bus daemon; lifecycle is driven by consumer presence (idle timeout) and explicit shutdown.
 package bus
 
 import (
@@ -29,9 +25,7 @@ const (
 	idleTimeout = 30 * time.Second
 )
 
-// Bus is the central event bus daemon. It listens on an IPC socket,
-// accepts consume client connections, starts event sources, and fans
-// out events to matching subscribers via the Hub.
+// Bus is the central event bus daemon.
 type Bus struct {
 	appID     string
 	appSecret string
@@ -49,7 +43,6 @@ type Bus struct {
 	shutdownCh chan struct{}
 }
 
-// NewBus creates a new Bus daemon instance.
 func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logger) *Bus {
 	return &Bus{
 		appID:     appID,
@@ -61,31 +54,18 @@ func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logge
 		logger:    logger,
 		startTime: time.Now(),
 		conns:     make(map[*Conn]struct{}),
-		// Buffered so handleShutdown and source-exit paths never drop the signal when
-		// Run hasn't entered its select yet, or has already left it for another reason.
-		// Run will observe the latched value whenever it next enters select.
+		// Buffered so shutdown and source-exit paths never drop the signal.
 		shutdownCh: make(chan struct{}, 1),
 	}
 }
 
-// Run binds the IPC socket, starts event sources, and enters the accept
-// loop. Blocks until ctx is cancelled, the idle timer fires (no active
-// connections for idleTimeout), or a shutdown command is received.
+// Run binds the IPC socket, starts event sources, and blocks in the accept loop until shutdown.
 func (b *Bus) Run(ctx context.Context) error {
 	addr := b.transport.Address(b.appID)
 
 	ln, err := b.transport.Listen(addr)
 	if err != nil {
-		// Probe: is this a live bus (bow out) or a stale socket (clean up)?
-		// Dial uses the transport's baseline timeout (5s via DialTimeout
-		// on Unix — see transport_unix.go dialTimeout; 5s via winio on
-		// Windows) so a wedged peer can't hang startup here. There is a
-		// tiny residual race where another bus cleans up and re-listens
-		// between our probe and our Listen retry below — acceptable in
-		// practice since listen-contending buses are a rare user error
-		// (not an attacker), and both end up owning different socket
-		// incarnations at worst (the loser just exits on its own Listen
-		// failure on the next attempt).
+		// Probe: live bus (bow out) vs stale socket (clean up). Dial timeout bounds a wedged peer.
 		if probe, dialErr := b.transport.Dial(addr); dialErr == nil {
 			probe.Close()
 			b.logger.Printf("Another bus is already running for %s, exiting", b.appID)
@@ -112,11 +92,7 @@ func (b *Bus) Run(ctx context.Context) error {
 		b.acceptLoop(ctx)
 	}()
 
-	// A bare `<-b.idleTimer.C` can observe a stale fire latched just before
-	// a new Hello registered — Stop() doesn't drain .C, and the tick can
-	// linger in the channel across the concurrent Stop+Reset in handleHello
-	// / OnClose. Re-check the live conn count under lock before treating
-	// the tick as "idle"; if a race happened, re-arm the timer and keep running.
+	// Re-check live conn count under lock: a stale idle tick can linger past a concurrent Stop+Reset.
 	for {
 		select {
 		case <-ctx.Done():
@@ -138,19 +114,14 @@ func (b *Bus) Run(ctx context.Context) error {
 	}
 
 	b.listener.Close()
-	// Don't delete the socket: Run() already handles stale sockets (probe
-	// → cleanup → re-listen), and unconditional deletion races a new bus
-	// that may have already recreated the socket at the same path.
+	// Don't delete the socket: Run() handles stale sockets on startup, and deletion races a new bus.
 	shutdownConns(b)
 	<-acceptDone
 	b.logger.Printf("Bus exited cleanly")
 	return nil
 }
 
-// shutdownConns closes every connection managed by b. It snapshots b.conns
-// under lock then releases before calling Close() — without this, c.Close()
-// synchronously invokes onClose which re-acquires b.mu, causing a deterministic
-// deadlock. Do not refactor this back into a persistent hold on b.mu.
+// shutdownConns snapshots b.conns under lock then releases before Close() — Close→onClose reacquires b.mu.
 func shutdownConns(b *Bus) {
 	b.mu.Lock()
 	conns := make([]*Conn, 0, len(b.conns))
@@ -163,11 +134,7 @@ func shutdownConns(b *Bus) {
 	}
 }
 
-// startSources launches every registered source (or a default
-// FeishuSource when none are registered). If any source exits before
-// shutdown, the whole bus shuts down — a source-less bus is a zombie
-// (consumers stay connected but never receive events, idle timer never
-// fires).
+// startSources launches registered sources (or a default FeishuSource); any source exit triggers full bus shutdown.
 func (b *Bus) startSources(ctx context.Context) {
 	sources := source.All()
 	if len(sources) == 0 {
@@ -209,9 +176,7 @@ func (b *Bus) startSources(ctx context.Context) {
 	}
 }
 
-// subscribedEventTypes returns the deduplicated union of EventTypes from
-// every registered EventKey. Sources that talk to a server-side
-// dispatcher use this list to avoid subscribing to events no one wants.
+// subscribedEventTypes returns the deduplicated union of EventTypes from every registered EventKey.
 func subscribedEventTypes() []string {
 	seen := make(map[string]struct{})
 	var types []string
@@ -225,7 +190,7 @@ func subscribedEventTypes() []string {
 	return types
 }
 
-// acceptLoop accepts incoming IPC connections until the listener is closed.
+// acceptLoop accepts IPC connections until the listener is closed.
 func (b *Bus) acceptLoop(ctx context.Context) {
 	for {
 		conn, err := b.listener.Accept()
@@ -233,8 +198,6 @@ func (b *Bus) acceptLoop(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			// listener.Close() also causes Accept to return an error.
-			// Check if we should exit by testing the listener.
 			select {
 			case <-ctx.Done():
 				return
@@ -247,9 +210,7 @@ func (b *Bus) acceptLoop(ctx context.Context) {
 	}
 }
 
-// handleConn reads the first protocol message and dispatches by type.
-// The bufio.Reader is handed to Conn so bytes buffered past the first
-// frame aren't lost to a second Scanner reading the same socket.
+// handleConn reads the first protocol message and dispatches; the bufio.Reader is handed to Conn so buffered bytes carry over.
 func (b *Bus) handleConn(conn net.Conn) {
 	br := bufio.NewReader(conn)
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -278,33 +239,20 @@ func (b *Bus) handleConn(conn net.Conn) {
 	}
 }
 
-// handleHello registers a consume connection with the hub. reader
-// carries any bytes handleConn already pulled off conn.
+// handleHello registers a consume connection with the hub; reader carries bytes already pulled off conn.
 func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.Hello) {
 	bc := NewConn(conn, reader, hello.EventKey, hello.EventTypes, hello.PID)
 	bc.SetLogger(b.logger)
 
-	// Register + isFirst decision under one lock so concurrent Hellos
-	// can't both trigger PreConsume. Waits if another conn is currently
-	// holding a cleanup lock for the same EventKey, closing the
-	// PreShutdownCheck × Hello TOCTOU race.
+	// Register + isFirst under one lock; blocks on any in-progress cleanup lock for the same EventKey.
 	firstForKey := b.hub.RegisterAndIsFirst(bc)
 
 	bc.SetCheckLastForKey(func(eventKey string) bool {
-		// Atomically reserve cleanup rights. If someone else is already
-		// cleaning up, or another subscriber exists, this returns false so
-		// consume doesn't run cleanup (and won't tear down upstream
-		// subscription while a peer is still using it). On true return,
-		// the lock is released in OnClose.
 		return b.hub.AcquireCleanupLock(eventKey)
 	})
 	bc.SetOnClose(func(c *Conn) {
 		b.hub.UnregisterAndIsLast(c)
-		// Release cleanup lock if this connection had acquired one. Release
-		// is idempotent — safe even when AcquireCleanupLock was never
-		// called or returned false. Must fire on every disconnect path
-		// (PreShutdownCheck, socket EOF, forced shutdown) so waiters in
-		// RegisterAndIsFirst don't block forever.
+		// Release is idempotent and must fire on every disconnect path so waiters don't block forever.
 		b.hub.ReleaseCleanupLock(c.EventKey())
 		b.mu.Lock()
 		delete(b.conns, c)
@@ -312,8 +260,7 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 		b.mu.Unlock()
 		b.logger.Printf("Consumer disconnected: pid=%d key=%s (remaining=%d)", c.PID(), c.EventKey(), remaining)
 		if remaining == 0 {
-			// Stop+drain before Reset — Go docs require this to avoid
-			// resetting a timer with a stale fire already sitting in .C.
+			// Stop+drain before Reset (Go docs) to avoid a stale fire in .C.
 			if !b.idleTimer.Stop() {
 				select {
 				case <-b.idleTimer.C:
@@ -326,8 +273,7 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 
 	b.mu.Lock()
 	b.conns[bc] = struct{}{}
-	// Stop+drain the idle timer while holding mu so a fire can't slip
-	// past a fresh registration — Run re-checks count under the same lock.
+	// Stop+drain under mu so a fire can't slip past a fresh registration.
 	if !b.idleTimer.Stop() {
 		select {
 		case <-b.idleTimer.C:
@@ -337,16 +283,7 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 	b.mu.Unlock()
 
 	ack := protocol.NewHelloAck("v1", firstForKey)
-	// Route through bc.writeFrame so all writes to this connection go
-	// through the same mutex (see writeMu docs). On failure we must
-	// undo the hub + bus-level registration — otherwise the consumer
-	// lives on in b.conns / hub.subscribers without ever receiving an
-	// ack, skewing first/last bookkeeping and keeping the bus non-idle.
-	// bc.Close() triggers the onClose callback which handles both,
-	// including the firstForKey==true case (keyCounts incremented to 1
-	// by RegisterAndIsFirst is decremented back to 0 by
-	// UnregisterAndIsLast; no PreConsume was triggered because the
-	// client never received the ack).
+	// writeFrame shares writeMu with every other write; bc.Close on failure unwinds hub+bus registration via onClose.
 	if err := bc.writeFrame(ack); err != nil {
 		b.logger.Printf("WARN: hello_ack write to pid=%d key=%q failed: %v (rejecting connection)",
 			hello.PID, hello.EventKey, err)
@@ -354,16 +291,14 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 		return
 	}
 
-	// Quote untrusted fields — EventKey / EventTypes come straight off
-	// the wire from an unprivileged local process, and a value with
-	// embedded newlines would forge bus.log entries.
+	// Quote untrusted fields to prevent log forging via embedded newlines.
 	b.logger.Printf("Consumer connected: pid=%d key=%q event_types=%q first=%v",
 		hello.PID, hello.EventKey, hello.EventTypes, firstForKey)
 
 	bc.Start()
 }
 
-// handleStatusQuery responds with Bus status information and closes the connection.
+// handleStatusQuery replies with status and closes.
 func (b *Bus) handleStatusQuery(conn net.Conn) {
 	defer conn.Close()
 	resp := protocol.NewStatusResponse(
@@ -375,7 +310,7 @@ func (b *Bus) handleStatusQuery(conn net.Conn) {
 	_ = protocol.EncodeWithDeadline(conn, resp, protocol.WriteTimeout)
 }
 
-// handleShutdown signals Run() to exit gracefully.
+// handleShutdown signals Run() to exit.
 func (b *Bus) handleShutdown(conn net.Conn) {
 	defer conn.Close()
 	b.logger.Printf("Received shutdown command")

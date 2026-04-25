@@ -38,9 +38,6 @@ func TestCheckRemoteConnections_ZeroConnections(t *testing.T) {
 }
 
 func TestCheckRemoteConnections_APIErrorPropagated(t *testing.T) {
-	// Errors from the underlying client layer (CheckLarkResponse) come
-	// through as structured *output.ExitError — the preflight only needs
-	// to surface them, not decode code/msg itself.
 	want := errors.New("API GET /open-apis/event/v1/connection: [99991663] token is invalid")
 	c := &testutil.StubAPIClient{Err: want}
 	_, err := CheckRemoteConnections(context.Background(), c)
@@ -57,13 +54,7 @@ func TestCheckRemoteConnections_MalformedJSON(t *testing.T) {
 	}
 }
 
-// TestCheckRemoteConnections_NonZeroAPICodeSurfaced guards the fallback
-// where a non-zero business code (auth failure, rate-limit, etc.) with no
-// `data` payload decodes successfully — `online_instance_cnt` defaults to
-// 0, and callers would interpret that as "no remote buses" and happily
-// fork a local one that duplicates events. The decoder must promote
-// code != 0 into an error so the caller can distinguish verified-zero
-// from check-failed.
+// Non-zero OAPI business code must surface as error so callers don't mistake it for "verified zero remote buses".
 func TestCheckRemoteConnections_NonZeroAPICodeSurfaced(t *testing.T) {
 	c := &testutil.StubAPIClient{Body: `{"code":99991663,"msg":"token is invalid","data":{}}`}
 	count, err := CheckRemoteConnections(context.Background(), c)

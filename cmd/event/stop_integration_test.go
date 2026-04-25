@@ -16,13 +16,9 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// mockTransport routes every Address(appID) to a fixed TCP address so we can
-// drive stopBusOne against a synthetic in-process "Bus". Listen is unused here
-// (the fake Bus binds its own listener manually), but the method is required
-// by the transport.IPC interface.
 type mockTransport struct {
 	mu      sync.Mutex
-	addr    string // "127.0.0.1:<port>"
+	addr    string
 	cleaned bool
 }
 
@@ -31,7 +27,6 @@ func (t *mockTransport) Listen(addr string) (net.Listener, error) {
 }
 
 func (t *mockTransport) Dial(addr string) (net.Conn, error) {
-	// 500ms timeout so a dead address fails promptly during the poll loop.
 	return net.DialTimeout("tcp", addr, 500*time.Millisecond)
 }
 
@@ -53,14 +48,10 @@ func (t *mockTransport) didCleanup() bool {
 	return t.cleaned
 }
 
-// fakeBus is an in-process stand-in for the real Bus process. It accepts TCP
-// connections, answers StatusQuery with a canned StatusResponse, and (on
-// receiving Shutdown) either closes its listener after exitDelay or simply
-// keeps accepting new connections forever (unresponsive mode).
 type fakeBus struct {
 	listener     net.Listener
 	pid          int
-	exitDelay    time.Duration // 0 means never exit (unresponsive)
+	exitDelay    time.Duration
 	unresponsive bool
 
 	shutdownCount int32
@@ -70,7 +61,6 @@ type fakeBus struct {
 	done     chan struct{}
 }
 
-// newFakeBus starts listening on a random localhost TCP port.
 func newFakeBus(t *testing.T, pid int, exitDelay time.Duration, unresponsive bool) *fakeBus {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -96,7 +86,7 @@ func (b *fakeBus) serve() {
 	for {
 		conn, err := b.listener.Accept()
 		if err != nil {
-			return // listener closed
+			return
 		}
 		b.wg.Add(1)
 		go b.handle(conn)
@@ -129,7 +119,7 @@ func (b *fakeBus) handle(conn net.Conn) {
 	case *protocol.Shutdown:
 		atomic.AddInt32(&b.shutdownCount, 1)
 		if b.unresponsive {
-			return // keep listener open; test must observe timeout
+			return
 		}
 		if b.exitDelay > 0 {
 			go func() {
@@ -137,7 +127,6 @@ func (b *fakeBus) handle(conn net.Conn) {
 				b.stop()
 			}()
 		} else {
-			// exit immediately
 			go b.stop()
 		}
 	}
@@ -164,8 +153,6 @@ func (b *fakeBus) wait(t *testing.T, budget time.Duration) {
 	}
 }
 
-// TestStopReturnsStoppedOnlyAfterBusExits asserts stopBusOne waits for the
-// listener to actually disappear rather than declaring success on Encode.
 func TestStopReturnsStoppedOnlyAfterBusExits(t *testing.T) {
 	const pid = 44441
 	const exitDelay = 500 * time.Millisecond
@@ -184,8 +171,6 @@ func TestStopReturnsStoppedOnlyAfterBusExits(t *testing.T) {
 	if res.PID != pid {
 		t.Fatalf("pid = %d; want %d", res.PID, pid)
 	}
-	// Must wait long enough for the Bus to actually exit. Allow slight
-	// scheduler slack, but be strict enough to catch "returns on Encode".
 	if elapsed < 400*time.Millisecond {
 		t.Fatalf("stopBusOne returned in %v; expected >= %v (waited for bus to exit)", elapsed, exitDelay)
 	}
@@ -199,13 +184,9 @@ func TestStopReturnsStoppedOnlyAfterBusExits(t *testing.T) {
 	}
 }
 
-// TestStopTimesOutOnUnresponsiveBusWithoutForce asserts that when the Bus
-// keeps listening past the 5s budget, stopBusOne returns "error" with an
-// actionable reason and does NOT kill the process.
 func TestStopTimesOutOnUnresponsiveBusWithoutForce(t *testing.T) {
 	const pid = 44442
 
-	// Track killProcess calls to prove --force is not implied.
 	origKill := killProcess
 	t.Cleanup(func() { killProcess = origKill })
 	var killCalls []int
@@ -221,7 +202,6 @@ func TestStopTimesOutOnUnresponsiveBusWithoutForce(t *testing.T) {
 	defer bus.stop()
 	tr := &mockTransport{addr: bus.addr()}
 
-	// Shrink the shutdown budget so this test doesn't wait 5s of wallclock.
 	origBudget := shutdownBudget
 	t.Cleanup(func() { shutdownBudget = origBudget })
 	shutdownBudget = 500 * time.Millisecond
@@ -236,7 +216,6 @@ func TestStopTimesOutOnUnresponsiveBusWithoutForce(t *testing.T) {
 	if res.PID != pid {
 		t.Errorf("pid = %d; want %d", res.PID, pid)
 	}
-	// Bound is the shrunken budget + per-iteration poll slack.
 	if elapsed < shutdownBudget || elapsed > shutdownBudget+2*time.Second {
 		t.Fatalf("elapsed = %v; want >= %v and < %v", elapsed, shutdownBudget, shutdownBudget+2*time.Second)
 	}
@@ -253,9 +232,6 @@ func TestStopTimesOutOnUnresponsiveBusWithoutForce(t *testing.T) {
 	}
 }
 
-// TestStopForceKillsUnresponsiveBus asserts that with --force, after the
-// shutdown budget expires, killProcess is invoked with the Bus PID and the
-// socket is cleaned up. Result is "stopped" with a reason flagging ungraceful.
 func TestStopForceKillsUnresponsiveBus(t *testing.T) {
 	const pid = 44443
 
@@ -305,13 +281,10 @@ func TestStopForceKillsUnresponsiveBus(t *testing.T) {
 	}
 }
 
-// TestStopReturnsStoppedFastWhenBusExitsImmediately verifies that when Bus
-// exits as soon as it receives Shutdown, stopBusOne returns quickly — within
-// one poll interval (~200ms) — not after the full 5s budget.
 func TestStopReturnsStoppedFastWhenBusExitsImmediately(t *testing.T) {
 	const pid = 12345
 
-	bus := newFakeBus(t, pid, 0, false) // exitDelay=0, unresponsive=false
+	bus := newFakeBus(t, pid, 0, false)
 	defer bus.stop()
 	tr := &mockTransport{addr: bus.addr()}
 
@@ -325,21 +298,14 @@ func TestStopReturnsStoppedFastWhenBusExitsImmediately(t *testing.T) {
 	if res.PID != pid {
 		t.Errorf("expected PID=%d, got %d", pid, res.PID)
 	}
-	// Should return on the first failed probe (100ms interval + small scheduling
-	// slack). Budget is 5s; we expect well under 500ms.
 	if elapsed > 500*time.Millisecond {
 		t.Errorf("expected fast return (<500ms), got %v — possibly waiting the full budget", elapsed)
 	}
 }
 
-// TestStopForceHandlesProcessAlreadyDeadRace verifies that when killProcess
-// returns os.ErrProcessDone (Bus exited during the kill attempt window), we
-// treat it as success rather than reporting a misleading error.
 func TestStopForceHandlesProcessAlreadyDeadRace(t *testing.T) {
 	const pid = 99999
 
-	// Inject killProcess that simulates the Bus having died between
-	// our timeout check and the kill call.
 	origKill := killProcess
 	t.Cleanup(func() { killProcess = origKill })
 	var killCalls []int
@@ -351,7 +317,7 @@ func TestStopForceHandlesProcessAlreadyDeadRace(t *testing.T) {
 		return os.ErrProcessDone
 	}
 
-	bus := newFakeBus(t, pid, 0, true) // unresponsive
+	bus := newFakeBus(t, pid, 0, true)
 	defer bus.stop()
 	tr := &mockTransport{addr: bus.addr()}
 

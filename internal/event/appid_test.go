@@ -9,16 +9,12 @@ import (
 	"testing"
 )
 
-// TestSanitizeAppID_RejectsPathTraversal — regression guard for the
-// "AppID path traversal" finding (CodeRabbit Bug 8). The sanitizer must
-// neutralise any input that, when joined into a filepath, would escape
-// the events/ subtree.
 func TestSanitizeAppID_RejectsPathTraversal(t *testing.T) {
 	cases := []struct {
 		name        string
 		input       string
-		wantClean   string // exact expected sanitized output
-		forbidChars string // characters that MUST NOT appear in output
+		wantClean   string
+		forbidChars string
 	}{
 		{"happy path", "cli_XXXXXXXXXXXXXXXX", "cli_XXXXXXXXXXXXXXXX", "/\\\x00"},
 		{"empty", "", "_", ""},
@@ -41,11 +37,6 @@ func TestSanitizeAppID_RejectsPathTraversal(t *testing.T) {
 					t.Errorf("SanitizeAppID(%q) = %q contains forbidden rune %q", tc.input, got, c)
 				}
 			}
-			// Structural guarantee: when joined as a path segment, the
-			// result must not introduce a "..", absolute-path escape,
-			// or NUL byte. Normalize separators via filepath.ToSlash so
-			// the same assertions work on Windows (where filepath.Join
-			// emits backslashes).
 			joined := filepath.ToSlash(filepath.Join("/root/events", got, "bus.log"))
 			if strings.Contains(joined, "..") {
 				t.Errorf("joined path %q contains .. after sanitization", joined)

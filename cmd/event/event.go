@@ -9,7 +9,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 )
 
-// NewCmdEvents creates the parent "event" command group.
 func NewCmdEvents(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "event",

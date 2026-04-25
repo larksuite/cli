@@ -19,10 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/event/transport"
 )
 
-// NewCmdBus creates the hidden `event _bus` daemon subcommand. Forked
-// by the consume client; not meant to be called directly. The fork
-// command line is built in internal/event/consume/startup.go — keep the
-// two in sync when changing the command path.
+// NewCmdBus creates the hidden `event _bus` daemon subcommand, forked by the consume client; fork argv lives in consume/startup.go.
 func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 	var domain string
 
@@ -36,10 +33,7 @@ func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 				return err
 			}
 
-			// Sanitize AppID before joining into the filesystem path —
-			// a corrupted/hostile AppID could otherwise escape events/
-			// via ".." or separators and place bus.log anywhere under
-			// the config dir. See event.SanitizeAppID.
+			// Sanitize AppID: an unsanitized value could escape events/ via ".." or separators.
 			eventsDir := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(cfg.AppID))
 
 			logger, err := bus.SetupBusLogger(eventsDir)

@@ -12,9 +12,6 @@ import (
 )
 
 func TestWindowsScanner_ParsesBusProcesses(t *testing.T) {
-	// Canned output for the 2+ results case where ConvertTo-Json emits a JSON
-	// array of objects, each with Pid, CreationDate (ISO 8601 after .ToString('o')),
-	// CommandLine.
 	canned := []byte(`[
   {
     "Pid": 4711,
@@ -42,7 +39,6 @@ func TestWindowsScanner_ParsesBusProcesses(t *testing.T) {
 	if procs[0].AppID != "cli_XXXXXXXXXXXXXXXX" {
 		t.Errorf("AppID = %q, want cli_XXXXXXXXXXXXXXXX", procs[0].AppID)
 	}
-	// Compare in UTC to side-step local-timezone flakiness on CI runners.
 	wantUTC := time.Date(2026, 4, 18, 19, 3, 40, 123456700, time.UTC)
 	if !procs[0].StartTime.UTC().Equal(wantUTC) {
 		t.Errorf("StartTime UTC = %v, want %v", procs[0].StartTime.UTC(), wantUTC)
@@ -71,8 +67,6 @@ func TestWindowsScanner_PSFailurePropagates(t *testing.T) {
 }
 
 func TestWindowsScanner_SingleObjectFallback(t *testing.T) {
-	// PowerShell's ConvertTo-Json without -AsArray collapses a single-item array
-	// into a bare object. Scanner must handle both.
 	canned := []byte(`{
   "Pid": 4711,
   "CreationDate": "2026-04-19T03:03:40.0000000+00:00",

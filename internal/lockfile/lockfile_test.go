@@ -118,12 +118,10 @@ func TestUnlock_KeepsFileOnDisk(t *testing.T) {
 func TestUnlock_Idempotent(t *testing.T) {
 	l := newTestLock(t)
 
-	// Unlock without prior lock
 	if err := l.Unlock(); err != nil {
 		t.Fatalf("Unlock without lock should not error: %v", err)
 	}
 
-	// Lock then double unlock
 	if err := l.TryLock(); err != nil {
 		t.Fatalf("TryLock failed: %v", err)
 	}
@@ -185,7 +183,6 @@ func TestForSubscribe_SanitizesAppID(t *testing.T) {
 			if gotBase != tt.wantBase {
 				t.Errorf("Base(Path()) = %q, want %q", gotBase, tt.wantBase)
 			}
-			// Lock file must always be under the locks directory
 			locksDir := filepath.Join(dir, "locks")
 			if !strings.HasPrefix(l.Path(), locksDir) {
 				t.Errorf("path %q escapes locks dir %q", l.Path(), locksDir)
@@ -201,9 +198,6 @@ func TestForSubscribe_RejectsEmptyAppID(t *testing.T) {
 	}
 }
 
-// TestErrHeld_RelockAfterUnlock verifies that once Unlock releases the lock,
-// a fresh TryLock succeeds — the ErrHeld sentinel is not "sticky" on the
-// LockFile object.
 func TestErrHeld_RelockAfterUnlock(t *testing.T) {
 	l := newTestLock(t)
 	if err := l.TryLock(); err != nil {
@@ -212,7 +206,6 @@ func TestErrHeld_RelockAfterUnlock(t *testing.T) {
 	if err := l.Unlock(); err != nil {
 		t.Fatalf("Unlock failed: %v", err)
 	}
-	// Second lock on same object should succeed (not return ErrHeld).
 	if err := l.TryLock(); err != nil {
 		t.Errorf("TryLock after Unlock should succeed; got: %v", err)
 	}

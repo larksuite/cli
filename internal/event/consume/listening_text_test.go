@@ -49,11 +49,8 @@ func TestListeningText_NonTTY_MaxEventsAndTimeout(t *testing.T) {
 	}
 }
 
+// AI-facing contract: must name "kill -9" + "cleanup" so agents parsing stderr are steered away from SIGKILL.
 func TestStopHintText_Content(t *testing.T) {
-	// The string itself is part of the AI-facing contract: it must name
-	// `kill -9` explicitly so AI agents parsing stderr are steered away
-	// from SIGKILL. If you rename the signal or drop the word "cleanup",
-	// update skills/lark-event/SKILL.md's matching warning too.
 	got := stopHintText()
 	mustContain := []string{"SIGTERM", "kill -9", "cleanup"}
 	for _, s := range mustContain {

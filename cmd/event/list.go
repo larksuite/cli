@@ -15,7 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// NewCmdList creates the "event list" subcommand that shows all registered EventKeys.
 func NewCmdList(f *cmdutil.Factory) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
@@ -38,13 +37,11 @@ func runList(f *cmdutil.Factory, asJSON bool) error {
 	}
 
 	if len(all) == 0 {
-		// Informational, not data — go to stderr so `event list | jq` etc.
-		// don't ingest it as a row.
+		// stderr so `event list | jq` doesn't ingest it as a row.
 		fmt.Fprintln(f.IOStreams.ErrOut, "No EventKeys registered.")
 		return nil
 	}
 
-	// Group by domain (first segment before '.').
 	type group struct {
 		domain string
 		keys   []*eventlib.KeyDefinition
@@ -66,9 +63,7 @@ func runList(f *cmdutil.Factory, asJSON bool) error {
 		g.keys = append(g.keys, def)
 	}
 
-	// Build rows per domain, plus a flat slice for global width computation.
-	// We need global widths (not per-section) so the "── domain ──" dividers
-	// don't break alignment across groups.
+	// Global widths (not per-section) keep "── domain ──" dividers aligned across groups.
 	headers := []string{"KEY", "AUTH", "PARAMS", "DESCRIPTION"}
 	rowsByDomain := make(map[string][][]string, len(order))
 	var allRows [][]string
@@ -103,19 +98,14 @@ func runList(f *cmdutil.Factory, asJSON bool) error {
 			printTableRow(out, widths, row, colGap)
 		}
 	}
-	// Hint is progress/UX, not table data — keep stdout pipe-clean.
+	// stderr keeps stdout pipe-clean for `event list | jq`.
 	fmt.Fprintln(f.IOStreams.ErrOut, "\nUse 'event schema <key>' for details.")
 	return nil
 }
 
-// writeListJSON emits the list as a JSON array. KeyDefinition has
-// the right json tags; we only need to splice in the per-key resolved
-// schema so the caller doesn't have to look it up separately per key.
 func writeListJSON(f *cmdutil.Factory, all []*eventlib.KeyDefinition) error {
 	type row struct {
 		*eventlib.KeyDefinition
-		// JSON wire name kept as `resolved_output_schema` for backward
-		// compatibility with existing AI / script consumers.
 		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
 	}
 	rows := make([]row, len(all))

@@ -24,10 +24,8 @@ const (
 )
 
 func tryLockFile(f *os.File) error {
-	// OVERLAPPED structure (zeroed)
 	var ol syscall.Overlapped
 	handle := syscall.Handle(f.Fd())
-	// LockFileEx(handle, flags, reserved, nNumberOfBytesToLockLow, nNumberOfBytesToLockHigh, *overlapped)
 	r1, _, err := procLockFileEx.Call(
 		uintptr(handle),
 		uintptr(lockfileExclusiveLock|lockfileFailImmediately),

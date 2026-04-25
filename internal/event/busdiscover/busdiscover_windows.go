@@ -13,21 +13,8 @@ import (
 	"time"
 )
 
-// psCommand is the PowerShell one-liner that emits JSON for bus candidate
-// processes. We filter by Name='lark-cli.exe' in WQL to avoid enumerating
-// the entire process table. .ToString('o') produces ISO 8601 with fractional
-// seconds and timezone — stable across locales.
-//
-// PowerShell 5.1 compatibility: we deliberately do NOT use `-AsArray`, which
-// was introduced in PowerShell 6.0 (Core). Without it, ConvertTo-Json emits
-// a JSON array for 2+ results and a bare object for a single result; 0
-// results produces empty output. parseWindowsPS handles all three shapes.
-//
-// WQL filter limitation: this matches only the standard `lark-cli.exe`
-// binary name (as distributed by npm and GitHub releases). Renamed binaries
-// will not be detected — unlike the Unix scanner, which matches any cmdline
-// containing "lark-cli". Documented asymmetry; acceptable trade-off for the
-// performance win of avoiding a full process-table enumeration.
+// psCommand omits -AsArray (PS 6.0+) so PS 5.1 works; parseWindowsPS handles 0/1/N shapes.
+// Matches only lark-cli.exe by name — renamed binaries are not detected (asymmetric vs unix).
 const psCommand = `Get-CimInstance Win32_Process -Filter "Name='lark-cli.exe'" | ` +
 	`ForEach-Object { [pscustomobject]@{ Pid = $_.ProcessId; ` +
 	`CreationDate = $_.CreationDate.ToString('o'); ` +
@@ -42,13 +29,10 @@ func newPlatformScanner() Scanner {
 	}
 }
 
-// windowsScanner shells out to PowerShell's Get-CimInstance Win32_Process.
-// runPS is a field for test injection.
 type windowsScanner struct {
 	runPS func() ([]byte, error)
 }
 
-// psRecord matches the JSON shape emitted by our PowerShell command.
 type psRecord struct {
 	Pid          int    `json:"Pid"`
 	CreationDate string `json:"CreationDate"`
@@ -58,9 +42,7 @@ type psRecord struct {
 func (s *windowsScanner) ScanBusProcesses() ([]Process, error) {
 	out, err := s.runPS()
 	if err != nil {
-		// When PowerShell exits non-zero, the real diagnostic (parameter
-		// errors, missing CIM class, unavailable WinRM) lives in Stderr.
-		// Surface it — `exit status 1` alone is never actionable.
+		// Surface PowerShell stderr — `exit status 1` alone is not actionable.
 		if ee, ok := err.(*exec.ExitError); ok && len(bytes.TrimSpace(ee.Stderr)) > 0 {
 			return nil, fmt.Errorf("busdiscover: run powershell: %w: %s", err, bytes.TrimSpace(ee.Stderr))
 		}
@@ -69,14 +51,7 @@ func (s *windowsScanner) ScanBusProcesses() ([]Process, error) {
 	return parseWindowsPS(out)
 }
 
-// parseWindowsPS decodes PowerShell JSON output and filters to bus processes.
-// ConvertTo-Json (without -AsArray, which is PS 6.0+) emits:
-//   - empty output for 0 results
-//   - a bare `{...}` object for 1 result
-//   - a `[...]` array for 2+ results
-//
-// We handle all three shapes. An unexpected first byte surfaces as an error
-// so we can debug environments where PowerShell behaves differently.
+// parseWindowsPS handles 0/1/N ConvertTo-Json shapes (empty / object / array).
 func parseWindowsPS(out []byte) ([]Process, error) {
 	trimmed := bytes.TrimSpace(out)
 	if len(trimmed) == 0 {
@@ -106,9 +81,7 @@ func parseWindowsPS(out []byte) ([]Process, error) {
 		}
 		t, err := time.Parse(time.RFC3339Nano, r.CreationDate)
 		if err != nil {
-			// Skip entries with unparseable timestamps rather than failing
-			// the whole scan — one bad row shouldn't hide other buses.
-			continue
+			continue // one bad row shouldn't hide other buses
 		}
 		result = append(result, Process{
 			PID:       r.Pid,

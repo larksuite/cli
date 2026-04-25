@@ -2,16 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 // Package schemas derives JSON Schema fragments from Go types via reflection.
-//
-// The intended use case is translating typed event structs from the open
-// Feishu SDK (e.g. larkim.P2MessageReadV1Data) into a JSON Schema that
-// describes the shape of the `event` body an EventKey delivers. Domain
-// packages register event keys with an SDK type reference; framework code
-// calls FromType to produce the schema at lookup time.
-//
-// Only publicly exported fields with a `json` tag (or the field name) are
-// included. Unexported fields, embedded anonymous structs, and fields
-// tagged `json:"-"` are skipped.
 package schemas
 
 import (
@@ -21,8 +11,7 @@ import (
 	"sync"
 )
 
-// FromType returns a JSON Schema describing the shape of the given Go type.
-// The result is cached per reflect.Type.
+// FromType derives a JSON Schema for t (cached per reflect.Type).
 func FromType(t reflect.Type) json.RawMessage {
 	if t == nil {
 		return nil
@@ -30,11 +19,7 @@ func FromType(t reflect.Type) json.RawMessage {
 	if cached, ok := cacheLoad(t); ok {
 		return cached
 	}
-	// localCache is shared across reflection recursion so a shared subtype
-	// (e.g. UserID referenced from multiple event structs in the same root)
-	// is only walked once. Scoped per FromType call to avoid coupling the
-	// package-level cache (which stores marshaled JSON) to the intermediate
-	// *schemaNode tree.
+	// per-call cache so shared subtypes are walked once; not coupled to the marshaled-JSON cache.
 	localCache := map[reflect.Type]*schemaNode{}
 	node := reflectSchema(t, map[reflect.Type]bool{}, localCache)
 	out, err := json.Marshal(node)
@@ -64,8 +49,6 @@ func cacheStore(t reflect.Type, v json.RawMessage) {
 	cache[t] = v
 }
 
-// schemaNode is the internal building block we marshal to JSON. Keys use
-// JSON Schema naming so the marshaled output is directly usable.
 type schemaNode struct {
 	Type                 string                 `json:"type,omitempty"`
 	Description          string                 `json:"description,omitempty"`
@@ -76,13 +59,8 @@ type schemaNode struct {
 	AdditionalProperties *schemaNode            `json:"additionalProperties,omitempty"`
 }
 
-// reflectSchema walks t and produces a schemaNode. The visiting map breaks
-// cycles: if a type references itself (directly or transitively) we stop
-// at {type:object} without recursing further. cache memoises already-seen
-// types within a single FromType call so shared subtypes (same *schemaNode
-// referenced from multiple parents) are walked once.
+// reflectSchema walks t; visiting breaks cycles, cache memoises shared subtypes.
 func reflectSchema(t reflect.Type, visiting map[reflect.Type]bool, cache map[reflect.Type]*schemaNode) *schemaNode {
-	// Unwrap pointers.
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
@@ -107,9 +85,8 @@ func reflectSchema(t reflect.Type, visiting map[reflect.Type]bool, cache map[ref
 		node = &schemaNode{Type: "number"}
 	case reflect.Slice, reflect.Array:
 		elem := t.Elem()
-		// []byte → string (common JSON convention)
 		if elem.Kind() == reflect.Uint8 {
-			node = &schemaNode{Type: "string"}
+			node = &schemaNode{Type: "string"} // []byte → string
 		} else {
 			node = &schemaNode{
 				Type:  "array",
@@ -117,15 +94,11 @@ func reflectSchema(t reflect.Type, visiting map[reflect.Type]bool, cache map[ref
 			}
 		}
 	case reflect.Map:
-		// JSON objects with dynamic keys: enumerate the value type via
-		// additionalProperties so consumers know what map[string]V becomes.
 		node = &schemaNode{
 			Type:                 "object",
 			AdditionalProperties: reflectSchema(t.Elem(), visiting, cache),
 		}
 	case reflect.Interface:
-		// Unconstrained — anything could be here. Leave type unset so the
-		// schema is permissive.
 		node = &schemaNode{}
 	case reflect.Struct:
 		node = reflectStruct(t, visiting, cache)
@@ -133,9 +106,6 @@ func reflectSchema(t reflect.Type, visiting map[reflect.Type]bool, cache map[ref
 		node = &schemaNode{}
 	}
 
-	// Only cache structs and named types where reuse actually pays off; for
-	// anonymous leaf nodes (reflect returns the same reflect.Type for any
-	// string field, so caching helps) we still populate — it's cheap.
 	cache[t] = node
 	return node
 }
@@ -157,17 +127,12 @@ func reflectStruct(t reflect.Type, visiting map[reflect.Type]bool, cache map[ref
 	return node
 }
 
-// collectFields walks struct fields, handling anonymous embedded fields by
-// recursing into their fields (so the embedded type's JSON fields appear
-// alongside the parent's).
 func collectFields(t reflect.Type, props map[string]*schemaNode, visiting map[reflect.Type]bool, cache map[reflect.Type]*schemaNode) {
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 
-		// Anonymous embed: recurse into its fields (after unwrapping pointer).
-		// This must come before the exported check because reflect reports
-		// an anonymous field of a lowercase type as unexported, yet its
-		// exported fields still promote through encoding/json.
+		// Anonymous embed must precede the IsExported check — embedded fields of
+		// lowercase types still promote through encoding/json.
 		if f.Anonymous {
 			embedded := f.Type
 			for embedded.Kind() == reflect.Ptr {
@@ -179,7 +144,6 @@ func collectFields(t reflect.Type, props map[string]*schemaNode, visiting map[re
 			continue
 		}
 
-		// Skip unexported fields.
 		if !f.IsExported() {
 			continue
 		}
@@ -191,16 +155,9 @@ func collectFields(t reflect.Type, props map[string]*schemaNode, visiting map[re
 
 		child := reflectSchema(f.Type, visiting, cache)
 
-		// Field-level tags (desc, enum, kind) are annotations on a specific
-		// field, not on the underlying type. The cache shares *schemaNode
-		// across all fields of the same type, so we must clone before
-		// mutating to avoid leaking one field's annotation onto another.
-		//
-		// For array fields (child.Type == "array" && child.Items != nil),
-		// enum/kind describe the element type, not the array itself. We dive
-		// into items: clone the items node, annotate it, then rebuild the
-		// array node with the new items pointer. desc always stays on the
-		// outer field.
+		// Clone before mutating: the cache shares *schemaNode across all fields of the same type,
+		// so direct mutation would leak one field's annotation onto another.
+		// For arrays, enum/kind apply to items; desc stays on the outer field.
 		desc := f.Tag.Get("desc")
 		enumTag := f.Tag.Get("enum")
 		kindTag := f.Tag.Get("kind")
@@ -210,7 +167,6 @@ func collectFields(t reflect.Type, props map[string]*schemaNode, visiting map[re
 			isArray := child != nil && child.Type == "array" && child.Items != nil
 
 			if isArray {
-				// Clone the items node and apply enum/kind to it.
 				itemsClone := *child.Items
 				if enumTag != "" {
 					itemsClone.Enum = splitCSV(enumTag)
@@ -218,8 +174,6 @@ func collectFields(t reflect.Type, props map[string]*schemaNode, visiting map[re
 				if kindTag != "" {
 					itemsClone.Format = kindTag
 				}
-				// Rebuild the array node with cloned+annotated items.
-				// desc stays on the array node itself.
 				newArr := *child
 				newArr.Items = &itemsClone
 				if desc != "" {
@@ -227,7 +181,6 @@ func collectFields(t reflect.Type, props map[string]*schemaNode, visiting map[re
 				}
 				child = &newArr
 			} else {
-				// Scalar (or map, etc.) — clone the field node and annotate.
 				cloned := *child
 				if desc != "" {
 					cloned.Description = desc
@@ -246,8 +199,6 @@ func collectFields(t reflect.Type, props map[string]*schemaNode, visiting map[re
 	}
 }
 
-// splitCSV splits a comma-separated string into trimmed, non-empty parts.
-// Used for parsing `enum:"a,b,c"` struct tags.
 func splitCSV(s string) []string {
 	parts := strings.Split(s, ",")
 	out := make([]string, 0, len(parts))
@@ -259,8 +210,7 @@ func splitCSV(s string) []string {
 	return out
 }
 
-// parseJSONTag returns the wire name. `json:"-"` stays as "-" so callers
-// can detect and skip. Empty / missing tags fall back to Go field name.
+// parseJSONTag returns the wire name; "-" propagates so callers can skip.
 func parseJSONTag(f reflect.StructField) string {
 	tag := f.Tag.Get("json")
 	if tag == "" {

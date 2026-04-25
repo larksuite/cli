@@ -94,7 +94,6 @@ func TestApplyFieldOverrides_ArrayItemsWildcard(t *testing.T) {
 	}
 }
 
-// Smoke test the full pipeline: FromType → overlay on parsed result.
 type overlaySample struct {
 	Type      string `json:"type"`
 	MessageID string `json:"message_id"`

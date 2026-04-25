@@ -21,51 +21,25 @@ type Subscriber interface {
 	PID() int
 	IncrementReceived()
 	Received() int64
-	// PushDropOldest enqueues msg with drop-oldest backpressure atomically.
-	// Returns enqueued=true iff msg is now in the channel, and dropped=true
-	// iff an older event was evicted to make room. Implementations must
-	// serialise drop+push so concurrent Publish callers cannot race each
-	// other into a state where the channel refills between the drop and the
-	// retry push.
+	// PushDropOldest enqueues atomically with drop-oldest backpressure.
 	PushDropOldest(msg interface{}) (enqueued, dropped bool)
-	// TrySend enqueues msg non-evictively, sharing the same mutex as
-	// PushDropOldest so a best-effort sender (e.g. source-status
-	// broadcast) cannot slip into the drop-then-retry window of a
-	// concurrent PushDropOldest. Returns true iff the channel had room.
+	// TrySend is non-evictive but shares PushDropOldest's mutex.
 	TrySend(msg interface{}) bool
-	// DroppedCount returns the total number of events evicted via the
-	// drop-oldest path on this subscriber's send channel, surfaced to the
-	// status command via ConsumerInfo.Dropped.
 	DroppedCount() int64
-	// IncrementDropped records that one event was evicted via the drop-oldest
-	// path. Hub.Publish calls this when PushDropOldest reports dropped=true.
 	IncrementDropped()
-	// NextSeq returns a monotonically increasing sequence number for events
-	// destined for this subscriber. Hub.Publish stamps the returned value on
-	// protocol.Event.Seq so the consumer side can detect gaps from drops.
-	// Implementations that do not care about sequence numbers (e.g. tests)
-	// may return 0.
+	// NextSeq returns a monotonic per-subscriber seq; tests may return 0.
 	NextSeq() uint64
 }
 
-// Hub manages event fan-out to registered subscribers.
 type Hub struct {
 	mu          sync.RWMutex
 	subscribers map[Subscriber]struct{}
 	keyCounts   map[string]int
-	// cleanupInProgress maps an EventKey to a "release" channel that is
-	// closed when cleanup finishes. Presence of a key means a cleanup lock
-	// is currently held; RegisterAndIsFirst waits on the channel to avoid
-	// the PreShutdownCheck × Hello TOCTOU race.
+	// cleanupInProgress[key] holds a channel closed on release; presence means a cleanup lock is held.
 	cleanupInProgress map[string]chan struct{}
-	// logger is read from Publish (per-event hot path) and written by
-	// SetLogger. atomic.Pointer avoids a race even though in today's
-	// wiring SetLogger fires before any source goroutine starts — the
-	// guarantee becomes an invariant of the type, not of the caller.
-	logger atomic.Pointer[log.Logger]
+	logger            atomic.Pointer[log.Logger]
 }
 
-// NewHub returns a freshly initialised Hub with no subscribers.
 func NewHub() *Hub {
 	return &Hub{
 		subscribers:       make(map[Subscriber]struct{}),
@@ -74,17 +48,10 @@ func NewHub() *Hub {
 	}
 }
 
-// SetLogger attaches a logger for backpressure diagnostics. nil is tolerated.
+// SetLogger attaches a logger (nil tolerated).
 func (h *Hub) SetLogger(l *log.Logger) { h.logger.Store(l) }
 
-// UnregisterAndIsLast removes s and returns whether s was the last
-// subscriber for s.EventKey() at the moment of removal. Pairs with
-// RegisterAndIsFirst for atomic lifecycle decisions.
-//
-// If s was never registered (or has already been unregistered), this
-// returns false and leaves keyCounts unchanged — a stale/duplicate
-// unregister must not corrupt first/last bookkeeping for an active
-// subscriber of the same EventKey nor fire a spurious cleanup.
+// UnregisterAndIsLast removes s and reports whether it was last for its EventKey; stale unregisters are no-ops.
 func (h *Hub) UnregisterAndIsLast(s Subscriber) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -100,20 +67,8 @@ func (h *Hub) UnregisterAndIsLast(s Subscriber) bool {
 	return isLast
 }
 
-// AcquireCleanupLock is the race-free replacement for "check last then
-// cleanup". Returns true iff exactly one subscriber is registered for
-// eventKey (i.e. the caller is the sole remaining holder) AND no other
-// cleanup is already in progress. On true return, caller MUST eventually
-// call ReleaseCleanupLock to unblock any waiting RegisterAndIsFirst. Both
-// checks (count == 1 and already-locked) run under the same write lock so
-// they are atomic — preventing a late-arriving Hello from slipping in
-// between the check and the reservation.
-//
-// A count of 0 (no live subscriber for this key — e.g. a bogus or
-// duplicate PreShutdownCheck from an already-unregistered peer) is
-// explicitly rejected: granting a cleanup lock there would install a
-// reservation for a key nobody owns, blocking future RegisterAndIsFirst
-// on that key until somebody happens to Release it.
+// AcquireCleanupLock reserves cleanup rights iff exactly one subscriber exists for eventKey and no lock is held.
+// Count==0 is rejected (would block future Register calls). On true return, caller MUST Release.
 func (h *Hub) AcquireCleanupLock(eventKey string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -127,10 +82,7 @@ func (h *Hub) AcquireCleanupLock(eventKey string) bool {
 	return true
 }
 
-// ReleaseCleanupLock signals that cleanup for eventKey has finished. Any
-// RegisterAndIsFirst calls waiting on this key will proceed. Safe to call
-// even if no lock is held (no-op in that case), so OnClose can call it
-// unconditionally on every disconnect path.
+// ReleaseCleanupLock is idempotent; OnClose calls unconditionally.
 func (h *Hub) ReleaseCleanupLock(eventKey string) {
 	h.mu.Lock()
 	ch := h.cleanupInProgress[eventKey]

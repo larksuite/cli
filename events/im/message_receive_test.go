@@ -13,9 +13,6 @@ import (
 	"github.com/larksuite/cli/internal/event"
 )
 
-// TestMain registers this subpackage's keys before tests run. In production
-// the aggregator in package events does this; in isolated `go test ./events/im/...`
-// runs the aggregator is not linked, so tests register locally.
 func TestMain(m *testing.M) {
 	for _, k := range Keys() {
 		event.RegisterKey(k)
@@ -37,10 +34,6 @@ func TestIMKeys_ProcessedReceiveRegistered(t *testing.T) {
 	if def.Process == nil {
 		t.Error("Process must not be nil for Processed key")
 	}
-	// Guard against re-regressing: preflightScopes skips validation when
-	// Scopes is empty. im.message.receive_v1 must declare its required
-	// scopes so a bot missing im:message gets a preflight error instead of
-	// a silent "no events" at runtime.
 	if len(def.Scopes) == 0 {
 		t.Error("Scopes must not be empty — preflightScopes would bypass validation")
 	}
@@ -151,7 +144,7 @@ func TestProcessImMessageReceive_Interactive(t *testing.T) {
 	out := runReceive(t, payload)
 
 	if out.Type != "im.message.receive_v1" {
-		t.Errorf("Type = %q (interactive should NOT fall back to envelope form)", out.Type)
+		t.Errorf("Type = %q", out.Type)
 	}
 	if out.MessageType != "interactive" {
 		t.Errorf("MessageType = %q", out.MessageType)

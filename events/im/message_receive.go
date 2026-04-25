@@ -11,14 +11,7 @@ import (
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 )
 
-// ImMessageReceiveOutput is the flattened shape emitted for im.message.receive_v1.
-// The `desc` tags drive the reflection-based schema shown by `event schema`.
-//
-// Content semantics (see processImMessageReceive):
-//   - text / post / image / file / audio: human-readable text from convertlib
-//     with @mentions resolved to display names.
-//   - interactive (card): raw `content` JSON string — card payloads carry
-//     structured actions that a flat rendering would lose.
+// ImMessageReceiveOutput is the flattened shape for im.message.receive_v1; `desc` tags drive the reflected schema.
 type ImMessageReceiveOutput struct {
 	Type        string `json:"type"                   desc:"事件类型，恒定为 im.message.receive_v1"`
 	EventID     string `json:"event_id,omitempty"     desc:"飞书事件唯一 ID，可用于去重"`
@@ -58,8 +51,7 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		// Garbage in → original bytes back out so consumers still see the event.
-		return raw.Payload, nil //nolint:nilerr // intentional passthrough on malformed payload
+		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
 	}
 
 	msg := envelope.Event.Message

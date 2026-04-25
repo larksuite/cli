@@ -34,24 +34,19 @@ func TestDedupFilter_TTLExpiry(t *testing.T) {
 }
 
 func TestDedupFilter_RingBuffer(t *testing.T) {
-	d := NewDedupFilterWithSize(5, 10*time.Millisecond) // small ring + short TTL for test
-	// Fill ring buffer
+	d := NewDedupFilterWithSize(5, 10*time.Millisecond)
 	for i := 0; i < 5; i++ {
 		d.IsDuplicate("evt-" + string(rune('a'+i)))
 	}
-	// All 5 should be duplicates (still in TTL map + ring)
 	for i := 0; i < 5; i++ {
 		if !d.IsDuplicate("evt-" + string(rune('a'+i))) {
 			t.Errorf("evt-%c should still be duplicate", rune('a'+i))
 		}
 	}
-	// Wait for TTL to expire
 	time.Sleep(20 * time.Millisecond)
-	// Push 5 more, evicting the first 5 from ring
 	for i := 5; i < 10; i++ {
 		d.IsDuplicate("evt-" + string(rune('a'+i)))
 	}
-	// After eviction + TTL expiry, first 5 should no longer be duplicates
 	for i := 0; i < 5; i++ {
 		if d.IsDuplicate("evt-" + string(rune('a'+i))) {
 			t.Errorf("evt-%c should not be duplicate after ring eviction + TTL expiry", rune('a'+i))
@@ -73,13 +68,7 @@ func TestDedupFilter_ConcurrentSafe(t *testing.T) {
 	}
 }
 
-// TestDedupFilter_ConcurrentFirstSeenExactlyOnce asserts the stronger
-// invariant the existing "ConcurrentSafe" test fails to check: under
-// N concurrent writers, exactly N IsDuplicate calls observe "first
-// seen" (returned false) across the set of unique IDs — not N-1 (a
-// lost update) and not N+1 (unlikely but would mean the map + ring
-// drift). Without this, a buggy IsDuplicate that silently dropped
-// writes would still pass ConcurrentSafe.
+// Under N concurrent writers, exactly N IsDuplicate calls must observe first-seen.
 func TestDedupFilter_ConcurrentFirstSeenExactlyOnce(t *testing.T) {
 	const n = 200
 	d := NewDedupFilter()
@@ -92,7 +81,7 @@ func TestDedupFilter_ConcurrentFirstSeenExactlyOnce(t *testing.T) {
 	results := make(chan bool, n)
 	for i := 0; i < n; i++ {
 		go func(id string) {
-			results <- d.IsDuplicate(id) // false on first-seen
+			results <- d.IsDuplicate(id)
 		}(ids[i])
 	}
 
@@ -103,56 +92,32 @@ func TestDedupFilter_ConcurrentFirstSeenExactlyOnce(t *testing.T) {
 		}
 	}
 	if firstSeen != n {
-		t.Errorf("first-seen count = %d, want %d (IsDuplicate lost a write under contention)", firstSeen, n)
+		t.Errorf("first-seen count = %d, want %d", firstSeen, n)
 	}
 
-	// Follow-up: every ID must now read as duplicate, even after the
-	// concurrent burst. Catches a class of bug where the map write and
-	// ring update race and one side loses.
 	for _, id := range ids {
 		if !d.IsDuplicate(id) {
-			t.Errorf("ID %q not flagged as duplicate on second call (map/ring inconsistency)", id)
+			t.Errorf("ID %q not flagged as duplicate on second call", id)
 			break
 		}
 	}
 }
 
-// TestDedupFilter_TTLExpiryAfterCleanupRunRespected guards the bug where
-// cleanupExpired (fired every 1000 inserts once d.pos wraps to 0) removed
-// TTL-expired IDs from seen but left them in the ring — a prior revision
-// of IsDuplicate then fell back to a ring scan, found the stale ID, and
-// incorrectly returned true, causing the bus to silently drop a legitimate
-// (post-TTL, not-actually-duplicate) event. With ring scan removed, the
-// seen map is the sole authority and TTL expiry really means "re-accept".
+// After cleanupExpired, an ID past its TTL must not be reported as duplicate even if still in the ring.
 func TestDedupFilter_TTLExpiryAfterCleanupRunRespected(t *testing.T) {
-	// ringSize=10 so d.pos wraps to 0 on the 10th insert, triggering
-	// cleanupExpired there. TTL=10ms so "A" is expired by the time
-	// cleanupExpired scans.
 	d := NewDedupFilterWithSize(10, 10*time.Millisecond)
 	if d.IsDuplicate("A") {
 		t.Fatal("first IsDuplicate(A) should be false")
 	}
-	// Let A's TTL elapse before the fillers run, so cleanupExpired deletes
-	// seen[A]. Fillers themselves are inserted rapidly so their TTL hasn't
-	// expired — only A's has.
 	time.Sleep(25 * time.Millisecond)
 	for i := 0; i < 9; i++ {
 		d.IsDuplicate("f" + string(rune('0'+i)))
 	}
-	// After the 10th total insert: cleanupExpired has removed seen[A];
-	// ring[0] still contains "A" (ring hasn't wrapped far enough to
-	// overwrite slot 0 yet — ring[0] only gets rewritten on insert 11).
 	if d.IsDuplicate("A") {
-		t.Error("A is past TTL — must NOT be reported as duplicate, " +
-			"even though the ring still carries it")
+		t.Error("A is past TTL — must NOT be reported as duplicate")
 	}
 }
 
-// TestDedupFilter_ConcurrentRingEviction exercises the ring's eviction
-// path under concurrent writers. With ringSize=16 and 100 unique IDs,
-// eviction runs continuously; the invariant is "once evicted and TTL
-// expired, ID is no longer considered duplicate" — no deadlock, no
-// panic, no wedged-state.
 func TestDedupFilter_ConcurrentRingEviction(t *testing.T) {
 	const ringSize = 16
 	const writers = 8
@@ -171,13 +136,10 @@ func TestDedupFilter_ConcurrentRingEviction(t *testing.T) {
 	}
 	wg.Wait()
 
-	// After TTL expires and more writes push them out of the ring,
-	// early IDs must be re-acceptable as first-seen.
 	time.Sleep(10 * time.Millisecond)
 	for i := 0; i < ringSize*4; i++ {
 		d.IsDuplicate("evt-fill-" + string(rune('0'+i%10)) + string(rune('a'+i/10)))
 	}
-	// This old ID should have been evicted from both map (TTL) and ring (capacity).
 	if d.IsDuplicate("evt-w0-0a") {
 		t.Error("evicted ID should not be reported as duplicate")
 	}

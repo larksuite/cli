@@ -27,7 +27,7 @@ func TestUnixTransport_Address(t *testing.T) {
 func TestUnixTransport_ListenAndDial(t *testing.T) {
 	tr := New()
 	dir := t.TempDir()
-	addr := filepath.Join(dir, "t.sock") // short name: macOS limits unix socket paths to 103 bytes
+	addr := filepath.Join(dir, "t.sock") // macOS unix socket path limit is 103 bytes
 
 	ln, err := tr.Listen(addr)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestUnixTransport_ListenAndDial(t *testing.T) {
 func TestUnixTransport_ListenTwiceFails(t *testing.T) {
 	tr := New()
 	dir := t.TempDir()
-	addr := filepath.Join(dir, "s") // 1-char name: macOS limits unix socket paths to 103 bytes
+	addr := filepath.Join(dir, "s")
 
 	ln1, err := tr.Listen(addr)
 	if err != nil {
@@ -86,7 +86,7 @@ func TestUnixTransport_ListenTwiceFails(t *testing.T) {
 func TestUnixTransport_Cleanup(t *testing.T) {
 	tr := New()
 	dir := t.TempDir()
-	addr := filepath.Join(dir, "t.sock") // short name: macOS limits unix socket paths to 103 bytes
+	addr := filepath.Join(dir, "t.sock") // macOS unix socket path limit is 103 bytes
 
 	ln, _ := tr.Listen(addr)
 	ln.Close()
@@ -97,20 +97,11 @@ func TestUnixTransport_Cleanup(t *testing.T) {
 	}
 }
 
-// TestUnixDialTimeout verifies Dial fails-fast rather than blocking
-// indefinitely when nothing is listening. Uses a valid but abandoned
-// socket path (not a file, not a listener) so the OS treats it as
-// "connection refused" / ENOENT immediately.
-//
-// A non-existent path typically returns ENOENT synchronously without
-// exercising the 5s timeout; the real guarantee here is "Dial doesn't
-// hang forever" — the ceiling just has to sit safely above the 5s
-// timeout so a truly wedged peer also bounces out.
+// Dial must fail-fast or honor 5s timeout when nothing is listening — never block forever.
 func TestUnixDialTimeout(t *testing.T) {
 	tmpDir := t.TempDir()
-	sockPath := filepath.Join(tmpDir, "n.sock") // short name for macOS 103-byte limit
+	sockPath := filepath.Join(tmpDir, "n.sock")
 
-	// Ensure the file doesn't exist.
 	os.Remove(sockPath)
 
 	tr := &unixTransport{}

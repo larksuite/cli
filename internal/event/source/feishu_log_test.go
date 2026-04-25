@@ -15,8 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/event"
 )
 
-// TestRawHandlerLogsMalformedJSON ensures invalid JSON is logged rather than
-// silently dropped.
 func TestRawHandlerLogsMalformedJSON(t *testing.T) {
 	var buf bytes.Buffer
 	s := &FeishuSource{Logger: log.New(&buf, "", 0)}
@@ -40,18 +38,14 @@ func TestRawHandlerLogsMalformedJSON(t *testing.T) {
 	}
 }
 
-// TestRawHandlerLogsMissingHeaderFields ensures valid JSON with empty
-// event_id or event_type is logged and dropped.
 func TestRawHandlerLogsMissingHeaderFields(t *testing.T) {
 	var buf bytes.Buffer
 	s := &FeishuSource{Logger: log.New(&buf, "", 0)}
 	emitted := 0
 	handler := s.buildRawHandler(func(_ *event.RawEvent) { emitted++ })
 
-	// Missing event_id
 	req := &larkevent.EventReq{Body: []byte(`{"header":{"event_type":"im.receive"}}`)}
 	handler(context.Background(), req)
-	// Missing event_type
 	req2 := &larkevent.EventReq{Body: []byte(`{"header":{"event_id":"abc"}}`)}
 	handler(context.Background(), req2)
 
@@ -64,9 +58,6 @@ func TestRawHandlerLogsMissingHeaderFields(t *testing.T) {
 	}
 }
 
-// TestRawHandlerNilBodyNoLog verifies that a nil body (legit SDK quirk)
-// doesn't trigger any log noise — it's a silent skip, which is the correct
-// behavior per the comment in Start().
 func TestRawHandlerNilBodyNoLog(t *testing.T) {
 	var buf bytes.Buffer
 	s := &FeishuSource{Logger: log.New(&buf, "", 0)}
@@ -84,9 +75,6 @@ func TestRawHandlerNilBodyNoLog(t *testing.T) {
 	}
 }
 
-// TestRawHandlerValidEnvelopeEmits verifies the happy path still works —
-// well-formed envelope calls emit with the right fields, including
-// SourceTime carried over from the upstream header.create_time.
 func TestRawHandlerValidEnvelopeEmits(t *testing.T) {
 	s := &FeishuSource{}
 	var captured *event.RawEvent
@@ -105,18 +93,15 @@ func TestRawHandlerValidEnvelopeEmits(t *testing.T) {
 		t.Errorf("EventType: got %q, expected im.message.receive_v1", captured.EventType)
 	}
 	if captured.SourceTime != "1700000000000" {
-		t.Errorf("SourceTime: got %q, expected 1700000000000 (from header.create_time)", captured.SourceTime)
+		t.Errorf("SourceTime: got %q, expected 1700000000000", captured.SourceTime)
 	}
 	if string(captured.Payload) != string(body) {
 		t.Errorf("Payload should be raw bytes")
 	}
 }
 
-// TestRawHandlerNilLoggerDoesNotPanic verifies graceful degradation when
-// FeishuSource was constructed without a logger (e.g. minimal test setup).
 func TestRawHandlerNilLoggerDoesNotPanic(t *testing.T) {
-	s := &FeishuSource{Logger: nil} // no logger
+	s := &FeishuSource{Logger: nil}
 	handler := s.buildRawHandler(func(_ *event.RawEvent) {})
 	handler(context.Background(), &larkevent.EventReq{Body: []byte("bad json")})
-	// Pass if we reach here without panicking.
 }

@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// TestWatchStdinEOF_CancelsOnEOF — feeding an already-closed reader
-// causes the watcher to cancel the context quickly (< 1s).
 func TestWatchStdinEOF_CancelsOnEOF(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -22,19 +20,15 @@ func TestWatchStdinEOF_CancelsOnEOF(t *testing.T) {
 
 	select {
 	case <-ctx.Done():
-		// Expected — cancel fired on EOF.
 	case <-time.After(1 * time.Second):
 		t.Fatal("watchStdinEOF did not cancel within 1s of EOF")
 	}
 }
 
-// TestWatchStdinEOF_StaysAliveWhileReaderBlocks — if the reader never
-// delivers EOF, the watcher must not fire the cancel.
 func TestWatchStdinEOF_StaysAliveWhileReaderBlocks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// io.Pipe gives us a reader that will block forever (no writer).
 	pr, _ := io.Pipe()
 	defer pr.Close()
 
@@ -44,15 +38,10 @@ func TestWatchStdinEOF_StaysAliveWhileReaderBlocks(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("watchStdinEOF cancelled without EOF")
 	case <-time.After(200 * time.Millisecond):
-		// Expected — still alive.
 	}
 }
 
-// TestWatchStdinEOF_DiagnosticMessage — on EOF the watcher writes a
-// self-explanatory diagnostic to errOut that names the cause and points
-// at the workarounds. This is the single biggest footgun for daemon-
-// style callers (`< /dev/null`, `nohup`, systemd), so the message must
-// stay descriptive enough to unstick a new user in seconds.
+// On EOF the watcher must emit a diagnostic naming stdin close + workarounds (daemon-style callers depend on it).
 func TestWatchStdinEOF_DiagnosticMessage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -21,8 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
-// stopStatus is the outcome tag for one appID's stop attempt. The wire
-// format (JSON) is the string form, so values MUST stay stable.
+// stopStatus is the outcome tag; JSON wire format is the string form — keep values stable.
 type stopStatus string
 
 const (
@@ -32,8 +31,6 @@ const (
 	stopErrored stopStatus = "error"
 )
 
-// stopResult is the outcome for one appID — serialized as JSON and used
-// by the text formatter.
 type stopResult struct {
 	AppID  string     `json:"app_id"`
 	Status stopStatus `json:"status"`
@@ -41,7 +38,6 @@ type stopResult struct {
 	Reason string     `json:"reason,omitempty"`
 }
 
-// stopCmdOpts bundles the flag-backed inputs for `event stop`.
 type stopCmdOpts struct {
 	appID  string
 	all    bool
@@ -49,7 +45,6 @@ type stopCmdOpts struct {
 	asJSON bool
 }
 
-// NewCmdStop creates the "event stop" subcommand that stops the bus daemon.
 func NewCmdStop(f *cmdutil.Factory) *cobra.Command {
 	var o stopCmdOpts
 
@@ -117,8 +112,7 @@ func runStop(f *cmdutil.Factory, o stopCmdOpts) error {
 	}
 	writeStopText(f.IOStreams.Out, f.IOStreams.ErrOut, results)
 
-	// Any refused or errored result triggers a non-zero exit so scripts
-	// that don't parse --json still get a signal.
+	// Non-zero exit for refused/errored so non-JSON callers still get a signal.
 	for _, r := range results {
 		if r.Status == stopRefused || r.Status == stopErrored {
 			return output.ErrBare(output.ExitValidation)
@@ -127,14 +121,7 @@ func runStop(f *cmdutil.Factory, o stopCmdOpts) error {
 	return nil
 }
 
-// stopBusOne attempts to stop the bus for appID. Never returns an error;
-// failures live in result.Status / result.Reason.
-//
-// After sending Shutdown the function polls tr.Dial until the listener is
-// gone (proving the Bus process actually exited) or the budget elapses.
-// Declaring success on Encode alone is a lie: the bytes only reached the
-// kernel buffer, and the bus may still be alive — users then see "Bus
-// stopped" while `ps` still shows the process.
+// stopBusOne attempts to stop appID's bus; polls tr.Dial post-Shutdown until listener is gone or budget elapses.
 func stopBusOne(tr transport.IPC, appID string, force bool) stopResult {
 	resp, err := busctl.QueryStatus(tr, appID)
 	if err != nil {
@@ -158,7 +145,6 @@ func stopBusOne(tr transport.IPC, appID string, force bool) stopResult {
 		return stopResult{AppID: appID, Status: stopErrored, PID: resp.PID, Reason: err.Error()}
 	}
 
-	// Poll until Bus exits (Dial fails) or budget elapses.
 	const pollInterval = 100 * time.Millisecond
 	deadline := time.Now().Add(shutdownBudget)
 	for time.Now().Before(deadline) {
@@ -170,7 +156,6 @@ func stopBusOne(tr transport.IPC, appID string, force bool) stopResult {
 		probe.Close()
 	}
 
-	// Bus did not exit in time.
 	if !force {
 		return stopResult{
 			AppID:  appID,
@@ -180,12 +165,10 @@ func stopBusOne(tr transport.IPC, appID string, force bool) stopResult {
 		}
 	}
 
-	// --force: SIGKILL and clean up the stale socket so the next `event start`
-	// doesn't trip on a leftover listener address.
+	// --force: SIGKILL and clean up the stale socket.
 	if err := killProcess(resp.PID); err != nil {
 		if errors.Is(err, os.ErrProcessDone) {
-			// Bus exited in the narrow window between timeout and kill. Treat as
-			// success — the user's intent was "make bus go away", and it's gone.
+			// Bus exited between timeout and kill — treat as success.
 			tr.Cleanup(tr.Address(appID))
 			return stopResult{
 				AppID:  appID,
@@ -210,9 +193,7 @@ func stopBusOne(tr transport.IPC, appID string, force bool) stopResult {
 	}
 }
 
-// killProcess terminates a bus process by PID. It's a package-level var so
-// tests can swap it out without spawning real sub-processes (which would
-// require permission-sensitive PIDs and slow the suite down).
+// killProcess is a var so tests can swap it without spawning sub-processes.
 var killProcess = func(pid int) error {
 	p, err := os.FindProcess(pid)
 	if err != nil {
@@ -221,9 +202,7 @@ var killProcess = func(pid int) error {
 	return p.Kill()
 }
 
-// shutdownBudget bounds how long stopBusOne waits for the bus to actually
-// exit after a Shutdown message. A var rather than const so integration
-// tests can shrink it — production uses 5s (see test helper withShortBudget).
+// shutdownBudget (var so tests can shrink it) bounds the post-Shutdown exit wait.
 var shutdownBudget = 5 * time.Second
 
 func writeStopJSON(w io.Writer, results []stopResult) error {
@@ -249,11 +228,7 @@ func writeStopText(out, errOut io.Writer, results []stopResult) {
 	}
 }
 
-// discoverAppIDs returns appIDs with a live-looking bus.sock under the
-// events dir. Skips directories without a socket file: stopped buses
-// leave bus.log / bus.fork.lock behind but the sock is gone, so we
-// treat those as "not running". Unix-only: Windows named pipes aren't
-// on disk; Windows callers use --app-id.
+// discoverAppIDs returns appIDs with a live-looking bus.sock under events dir; Unix-only (Windows uses --app-id).
 func discoverAppIDs() []string {
 	eventsDir := filepath.Join(core.GetConfigDir(), "events")
 	entries, err := vfs.ReadDir(eventsDir)

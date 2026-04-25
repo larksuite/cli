@@ -8,23 +8,10 @@ import (
 	"regexp"
 )
 
-// authURLPattern matches the "grant-scope" URL the Feishu open platform
-// embeds in 99991672-family permission errors. Host allowlist kept in
-// sync with consoleScopeGrantURL's output (cmd/event/console_url.go,
-// which resolves via core.ResolveEndpoints).Open to feishu.cn or
-// larksuite.com). If you add a brand there, widen this regex too.
+// authURLPattern matches the grant-scope URL embedded in 99991672 errors; widen when adding brands in consoleScopeGrantURL.
 var authURLPattern = regexp.MustCompile(`https?://open\.(?:feishu\.cn|larksuite\.com)/app/[^/\s"']+/auth\?q=[^\s"'<>]+`)
 
-// describeAppMetaErr reduces an appmeta.FetchCurrentPublished error to a one-
-// line stderr-friendly summary. The app_versions OAPI dumps a multi-hundred-
-// character JSON body (full msg + troubleshooter + log_id + permission_
-// violations) when the bot lacks application-info scopes — useless for
-// humans and noisy for AI agents parsing stderr.
-//
-// Strategy:
-//   - If the error contains a /auth?q=... grant URL (the 99991672 shape),
-//     emit a short "needs scope X; grant at URL" line.
-//   - Otherwise truncate to keep stderr single-screen.
+// describeAppMetaErr reduces a FetchCurrentPublished error to a one-line stderr summary.
 func describeAppMetaErr(err error) string {
 	msg := err.Error()
 	if url := authURLPattern.FindString(msg); url != "" {

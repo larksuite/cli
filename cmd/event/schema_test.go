@@ -46,7 +46,6 @@ func TestRunSchema_NativeKey_WrapsEnvelope(t *testing.T) {
 	}
 
 	out := stdout.String()
-	// Native keys should show the V2 envelope wrapper (schema/header/event keys).
 	for _, want := range []string{
 		"Output Schema:",
 		`"schema"`,
@@ -62,7 +61,7 @@ func TestRunSchema_NativeKey_WrapsEnvelope(t *testing.T) {
 func TestRunSchema_UnknownKey_SuggestsAlternatives(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	err := runSchema(f, "im.message.recieve_v1", false) // typo: recieve
+	err := runSchema(f, "im.message.recieve_v1", false)
 	if err == nil {
 		t.Fatal("expected error for unknown key")
 	}

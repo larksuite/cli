@@ -5,14 +5,7 @@ package schemas
 
 import "encoding/json"
 
-// v2Envelope is the JSON Schema for the Feishu V2 event envelope. Native
-// EventKeys deliver payloads in this shape; WrapV2Envelope splices a
-// specific body schema into the `event` property.
-//
-// This is a wire-format contract with the server, not a Go struct we
-// could reflect — if upstream introduces V3 or changes header fields,
-// this constant needs a bump. Source of truth:
-// https://open.feishu.cn/document/server-docs/event-subscription-guide/overview
+// v2Envelope is the Feishu V2 envelope JSON Schema; bump when upstream changes header shape.
 var v2Envelope = map[string]interface{}{
 	"type":        "object",
 	"description": "飞书事件",
@@ -37,9 +30,7 @@ var v2Envelope = map[string]interface{}{
 	},
 }
 
-// WrapV2Envelope returns a JSON Schema that describes the V2 envelope
-// with body spliced in as the `event` property. If body can't be parsed
-// it's returned unchanged.
+// WrapV2Envelope splices body into the `event` property; passes body through unchanged on parse fail.
 func WrapV2Envelope(body json.RawMessage) json.RawMessage {
 	var parsed interface{}
 	if err := json.Unmarshal(body, &parsed); err != nil {
@@ -49,8 +40,7 @@ func WrapV2Envelope(body json.RawMessage) json.RawMessage {
 	for k, v := range v2Envelope {
 		envelope[k] = v
 	}
-	// Rebuild properties so the caller's body goes into `event` without
-	// mutating the package-level template.
+	// Rebuild properties so we don't mutate the package-level template.
 	props := map[string]interface{}{}
 	for k, v := range v2Envelope["properties"].(map[string]interface{}) {
 		props[k] = v

@@ -22,9 +22,6 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// echoKeyDef returns a KeyDefinition with a trivial Process that echoes the
-// raw payload unchanged — enough to exercise consumeLoop's Process → sink
-// path without depending on a real EventKey registration.
 func echoKeyDef(key string) *event.KeyDefinition {
 	return &event.KeyDefinition{
 		Key:        key,
@@ -37,10 +34,6 @@ func echoKeyDef(key string) *event.KeyDefinition {
 	}
 }
 
-// busSide simulates the bus end of the consume pipe: writes a burst of
-// Events then, on receiving PreShutdownCheck, replies with a
-// PreShutdownAck{LastForKey: lastForKey}. Returns when either the writer
-// closes the pipe or we've replied with the ack.
 func busSide(t *testing.T, server net.Conn, events []*protocol.Event, ackLast bool) {
 	t.Helper()
 	for _, evt := range events {
@@ -58,7 +51,7 @@ func busSide(t *testing.T, server net.Conn, events []*protocol.Event, ackLast bo
 			if errors.As(err, &ne) && ne.Timeout() {
 				continue
 			}
-			return // EOF / conn closed
+			return
 		}
 		msg, decErr := protocol.Decode(bytes.TrimRight(line, "\n"))
 		if decErr != nil {
@@ -71,13 +64,6 @@ func busSide(t *testing.T, server net.Conn, events []*protocol.Event, ackLast bo
 	}
 }
 
-// TestConsumeLoop_DeliversEventsAndExitsOnMaxEvents exercises the primary
-// happy path of consumeLoop: events arriving over conn are decoded,
-// Process runs, the sink receives NDJSON, and MaxEvents triggers the
-// ctx.Done shutdown branch (which sends PreShutdownCheck and reads the
-// ack for lastForKey). Covers the reader goroutine + worker loop +
-// max-events cancel + shutdown handshake interaction that earlier tests
-// miss entirely (loop.go was 0% covered at patch time).
 func TestConsumeLoop_DeliversEventsAndExitsOnMaxEvents(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
@@ -121,10 +107,6 @@ func TestConsumeLoop_DeliversEventsAndExitsOnMaxEvents(t *testing.T) {
 	}
 }
 
-// TestConsumeLoop_SeqGapEmitsWarning guards the seq-gap detection inside
-// the reader goroutine: the bus assigns monotonic per-conn seqs, so a
-// skip at the consumer side means the bus dropped events via backpressure.
-// The WARN line is the only observable that silent loss is detected.
 func TestConsumeLoop_SeqGapEmitsWarning(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
@@ -132,7 +114,7 @@ func TestConsumeLoop_SeqGapEmitsWarning(t *testing.T) {
 
 	events := []*protocol.Event{
 		protocol.NewEvent("test.evt", "e1", "", 1, json.RawMessage(`{"n":1}`)),
-		protocol.NewEvent("test.evt", "e5", "", 5, json.RawMessage(`{"n":5}`)), // gap of 3
+		protocol.NewEvent("test.evt", "e5", "", 5, json.RawMessage(`{"n":5}`)),
 	}
 	go busSide(t, server, events, true)
 
@@ -141,7 +123,7 @@ func TestConsumeLoop_SeqGapEmitsWarning(t *testing.T) {
 		EventKey:  "test.key",
 		Out:       &stdout,
 		ErrOut:    &stderr,
-		Quiet:     false, // must be false for seq-gap WARN to print
+		Quiet:     false,
 		MaxEvents: 2,
 	}
 
@@ -161,16 +143,11 @@ func TestConsumeLoop_SeqGapEmitsWarning(t *testing.T) {
 	}
 }
 
-// TestConsumeLoop_JQFilterAppliedPerEvent verifies the JQ pre-compile and
-// per-event apply path. CompileJQ errors fail fast in Run(); once we're
-// in consumeLoop a valid expression must filter every event's processed
-// payload before it reaches the sink.
 func TestConsumeLoop_JQFilterAppliedPerEvent(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
 	defer server.Close()
 
-	// Payloads: keep={"keep":true,"n":1} and drop={"keep":false,"n":2}.
 	events := []*protocol.Event{
 		protocol.NewEvent("test.evt", "e1", "", 1, json.RawMessage(`{"keep":true,"n":1}`)),
 		protocol.NewEvent("test.evt", "e2", "", 2, json.RawMessage(`{"keep":false,"n":2}`)),
@@ -184,7 +161,7 @@ func TestConsumeLoop_JQFilterAppliedPerEvent(t *testing.T) {
 		ErrOut:    io.Discard,
 		Quiet:     true,
 		JQExpr:    "select(.keep) | .n",
-		MaxEvents: 1, // keep event emits once; drop event produces no sink write so we bound on the keep
+		MaxEvents: 1,
 	}
 
 	var lastForKey bool
@@ -196,18 +173,14 @@ func TestConsumeLoop_JQFilterAppliedPerEvent(t *testing.T) {
 		t.Fatalf("consumeLoop: %v", err)
 	}
 	if got := emitted.Load(); got != 1 {
-		t.Errorf("emitted = %d, want 1 (only the selected event should count)", got)
+		t.Errorf("emitted = %d, want 1", got)
 	}
 	out := strings.TrimSpace(stdout.String())
 	if out != "1" {
-		t.Errorf("stdout = %q, want %q (only .n of the kept event)", out, "1")
+		t.Errorf("stdout = %q, want %q", out, "1")
 	}
 }
 
-// TestConsumeLoop_CompileJQFailsEarly guards the jq pre-compile gate
-// inside consumeLoop: library callers that skip Run's own pre-compile
-// (tests, direct use) still get an immediate error instead of a
-// long-running consume that never emits.
 func TestConsumeLoop_CompileJQFailsEarly(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
@@ -229,9 +202,6 @@ func TestConsumeLoop_CompileJQFailsEarly(t *testing.T) {
 	}
 }
 
-// TestIsTerminalSinkError covers the classifier. EPIPE / fs.ErrClosed
-// are terminal (downstream pipe permanently gone → must shut down),
-// anything else is transient.
 func TestIsTerminalSinkError(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -241,7 +211,7 @@ func TestIsTerminalSinkError(t *testing.T) {
 		{"nil", nil, false},
 		{"EPIPE raw", syscall.EPIPE, true},
 		{"EPIPE wrapped", fmt.Errorf("write: %w", syscall.EPIPE), true},
-		{"ErrClosed", io.ErrClosedPipe, false}, // not fs.ErrClosed
+		{"ErrClosed", io.ErrClosedPipe, false},
 		{"transient disk full", errors.New("no space left on device"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

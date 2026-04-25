@@ -14,13 +14,7 @@ import (
 
 const maxSuggestions = 3
 
-// suggestEventKeys returns up to maxSuggestions registered EventKeys that
-// resemble input, ranked closest-first. Empty slice means no guess.
-//
-// Substring match wins over edit distance: "im.message" should surface
-// every im.message.* key even when some unrelated key is a closer typo.
-// Levenshtein handles the remaining case — real character typos like
-// "recieve" → "receive".
+// suggestEventKeys returns up to maxSuggestions keys resembling input (substring match beats edit distance).
 func suggestEventKeys(input string) []string {
 	type match struct {
 		key  string
@@ -48,8 +42,7 @@ func suggestEventKeys(input string) []string {
 	return out
 }
 
-// formatSuggestions renders keys as a human-readable tail, e.g.
-// `"im.message.receive_v1"` or `one of: "a", "b", "c"`.
+// formatSuggestions renders keys as a human-readable quoted tail.
 func formatSuggestions(keys []string) string {
 	if len(keys) == 0 {
 		return ""
@@ -64,8 +57,7 @@ func formatSuggestions(keys []string) string {
 	return "one of: " + strings.Join(quoted, ", ")
 }
 
-// unknownEventKeyErr is the standard "unknown EventKey" error with a
-// suggestion tail when available. Shared by `consume` and `schema`.
+// unknownEventKeyErr builds the shared "unknown EventKey" error with a suggestion tail when available.
 func unknownEventKeyErr(key string) error {
 	msg := fmt.Sprintf("unknown EventKey: %s", key)
 	if guesses := suggestEventKeys(key); len(guesses) > 0 {
@@ -78,9 +70,7 @@ func unknownEventKeyErr(key string) error {
 	)
 }
 
-// levenshtein computes classic edit distance. Inputs are short (EventKey
-// strings <60 chars) against a small registry (tens of entries), so the
-// straightforward two-row DP is plenty.
+// levenshtein computes classic edit distance (two-row DP).
 func levenshtein(a, b string) int {
 	if a == b {
 		return 0

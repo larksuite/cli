@@ -14,18 +14,13 @@ import (
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
-// probeMockTransport is a minimal mock for probeAndDialBus tests. It
-// owns a listener plus a WaitGroup so `stop()` is a hard barrier: when
-// stop returns, no accept/read goroutine remains running. Earlier
-// versions leaked goroutines via accept loops that never woke up on
-// listener close and per-conn readers that held the conn past test end.
 type probeMockTransport struct {
 	mu       sync.Mutex
 	listener net.Listener
 	addr     string
 
-	wg    sync.WaitGroup // accept + per-conn reader goroutines
-	conns []net.Conn     // every accepted conn, closed in stop()
+	wg    sync.WaitGroup
+	conns []net.Conn
 }
 
 func newProbeMockTransport(t *testing.T) *probeMockTransport {
@@ -48,16 +43,12 @@ func (m *probeMockTransport) Dial(addr string) (net.Conn, error) {
 func (m *probeMockTransport) Address(appID string) string { return m.addr }
 func (m *probeMockTransport) Cleanup(addr string)         {}
 
-// trackConn records conn so stop() can close it, ensuring readers don't
-// block on a dangling peer past test cleanup.
 func (m *probeMockTransport) trackConn(c net.Conn) {
 	m.mu.Lock()
 	m.conns = append(m.conns, c)
 	m.mu.Unlock()
 }
 
-// stop closes the listener and every tracked conn, then waits for all
-// spawned goroutines (accept loop, per-conn readers) to exit.
 func (m *probeMockTransport) stop() {
 	m.mu.Lock()
 	_ = m.listener.Close()
@@ -70,15 +61,11 @@ func (m *probeMockTransport) stop() {
 	m.wg.Wait()
 }
 
-// runHealthyBus spawns a goroutine that accepts one probe + one real
-// Hello conn. The real conn is tracked so stop() closes it; the
-// goroutine exits when the listener errors or the test ends.
 func runHealthyBus(t *testing.T, m *probeMockTransport) {
 	t.Helper()
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		// Accept probe
 		probeConn, err := m.listener.Accept()
 		if err != nil {
 			return
@@ -92,19 +79,14 @@ func runHealthyBus(t *testing.T, m *probeMockTransport) {
 		}
 		_ = probeConn.Close()
 
-		// Accept the "real" conn the caller Dials after probe succeeds.
 		realConn, err := m.listener.Accept()
 		if err != nil {
 			return
 		}
 		m.trackConn(realConn)
-		// Leave it open; caller will use this for Hello. stop() will close it.
 	}()
 }
 
-// runDeadBus accepts conns but never responds to StatusQuery — simulates
-// a mid-shutdown bus where the listener is still up but the handler
-// layer isn't responsive. Tracked conns ensure readers unblock on stop.
 func runDeadBus(t *testing.T, m *probeMockTransport) {
 	t.Helper()
 	m.wg.Add(1)
@@ -158,7 +140,6 @@ func TestProbeAndDialBusUnresponsive(t *testing.T) {
 		conn.Close()
 		t.Fatal("expected error on unresponsive bus")
 	}
-	// Should fail within ~2s deadline plus a bit of scheduling slack.
 	if elapsed > 3*time.Second {
 		t.Errorf("expected ~2s timeout, got %v", elapsed)
 	}

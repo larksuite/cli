@@ -13,16 +13,10 @@ import (
 	"testing"
 )
 
-// TestWriterSink_PrettyFallbackWarnsOnce verifies that WriterSink logs a
-// single WARN to ErrOut when asked to pretty-print a non-JSON payload
-// and suppresses duplicates on subsequent malformed writes. Callers rely
-// on this to notice that --pretty silently degraded, while avoiding log
-// spam on pathological streams.
 func TestWriterSink_PrettyFallbackWarnsOnce(t *testing.T) {
 	var out, errOut bytes.Buffer
 	s := &WriterSink{W: &out, Pretty: true, ErrOut: &errOut}
 
-	// Two malformed payloads back-to-back.
 	if err := s.Write(json.RawMessage("not json {{{")); err != nil {
 		t.Fatalf("first write: %v", err)
 	}
@@ -32,20 +26,17 @@ func TestWriterSink_PrettyFallbackWarnsOnce(t *testing.T) {
 
 	warnings := strings.Count(errOut.String(), "WARN:")
 	if warnings != 1 {
-		t.Errorf("expected exactly 1 WARN line (once-semantics), got %d: %q", warnings, errOut.String())
+		t.Errorf("expected exactly 1 WARN line, got %d: %q", warnings, errOut.String())
 	}
 	if !strings.Contains(errOut.String(), "pretty") {
 		t.Errorf("warning should mention pretty: %q", errOut.String())
 	}
 
-	// Raw passthrough should have been written both times.
 	if strings.Count(out.String(), "not json") != 2 {
 		t.Errorf("expected 2 raw passthrough lines in W, got: %q", out.String())
 	}
 }
 
-// TestWriterSink_PrettyHappyPath verifies that valid JSON is formatted
-// with 2-space indent and no warning fires.
 func TestWriterSink_PrettyHappyPath(t *testing.T) {
 	var out, errOut bytes.Buffer
 	s := &WriterSink{W: &out, Pretty: true, ErrOut: &errOut}
@@ -61,25 +52,18 @@ func TestWriterSink_PrettyHappyPath(t *testing.T) {
 	}
 }
 
-// TestWriterSink_PrettyNoErrOut verifies that omitting ErrOut suppresses
-// the warning (no panic, silent degradation) — legacy callers that don't
-// wire ErrOut still get the prior behaviour.
 func TestWriterSink_PrettyNoErrOut(t *testing.T) {
 	var out bytes.Buffer
-	s := &WriterSink{W: &out, Pretty: true} // ErrOut left nil
+	s := &WriterSink{W: &out, Pretty: true}
 
 	if err := s.Write(json.RawMessage("not json")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	// Reached here without panic, raw output emitted — good enough.
 	if !strings.Contains(out.String(), "not json") {
 		t.Errorf("expected raw passthrough, got: %q", out.String())
 	}
 }
 
-// TestDirSink_FilenameIncludesPID verifies filenames embed os.Getpid() so
-// two processes writing to the same output dir can't collide even if
-// their nanosecond clocks and sequence values happen to align.
 func TestDirSink_FilenameIncludesPID(t *testing.T) {
 	dir := t.TempDir()
 	s := &DirSink{Dir: dir, pid: os.Getpid()}
@@ -102,9 +86,6 @@ func TestDirSink_FilenameIncludesPID(t *testing.T) {
 	}
 }
 
-// TestDirSink_FilenameFormat verifies the full "<ns>_<pid>_<seq>.json"
-// shape — guards against a refactor silently dropping the seq or pid
-// segment and reintroducing the collision risk.
 func TestDirSink_FilenameFormat(t *testing.T) {
 	dir := t.TempDir()
 	s := &DirSink{Dir: dir, pid: 12345}
@@ -124,7 +105,6 @@ func TestDirSink_FilenameFormat(t *testing.T) {
 	}
 	for _, e := range entries {
 		name := e.Name()
-		// Expect three numeric segments then .json: ns_pid_seq.json.
 		trimmed := strings.TrimSuffix(name, ".json")
 		parts := strings.Split(trimmed, "_")
 		if len(parts) != 3 {

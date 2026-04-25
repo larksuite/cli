@@ -15,15 +15,10 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
-// dialTimeout bounds how long Dial will block waiting for the server
-// side to accept. Without this, an accept-queue-full or otherwise
-// wedged bus would hang the caller indefinitely. Matches the Windows
-// winio.DialPipe timeout for symmetric behaviour across platforms.
-const dialTimeout = 5 * time.Second
+const dialTimeout = 5 * time.Second // matches winio.DialPipe for cross-platform symmetry
 
 type unixTransport struct{}
 
-// New returns a Unix socket transport.
 func New() IPC {
 	return &unixTransport{}
 }
@@ -39,12 +34,7 @@ func (t *unixTransport) Dial(addr string) (net.Conn, error) {
 	return net.DialTimeout("unix", addr, dialTimeout)
 }
 
-// Address returns the bus socket path under the project's config dir.
-// Using core.GetConfigDir rather than os.UserHomeDir keeps the event
-// subsystem consistent with the rest of the CLI (credentials, config,
-// lockfile all go through the same helper) and honours the
-// LARKSUITE_CLI_CONFIG_DIR env override so container/tmpdir-based tests
-// get real isolation.
+// Address: NOT os.UserHomeDir — honours LARKSUITE_CLI_CONFIG_DIR override.
 func (t *unixTransport) Address(appID string) string {
 	return filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.sock")
 }

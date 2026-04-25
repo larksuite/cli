@@ -12,10 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
-// consumeRuntime implements event.APIClient by routing every call through
-// the project's client.APIClient with the identity resolved at session
-// start. Keeps business-side CallAPI on the same HTTP stack (UA, retry,
-// tracing, auth) as regular shortcut commands.
+// consumeRuntime routes event.APIClient calls through the shared client.APIClient with a pinned identity.
 type consumeRuntime struct {
 	client         *client.APIClient
 	accessIdentity core.Identity
@@ -41,10 +38,6 @@ func (r *consumeRuntime) CallAPI(ctx context.Context, method, path string, body 
 		}
 		return nil, fmt.Errorf("api %s %s returned %d: %s", method, path, resp.StatusCode, body)
 	}
-	// ParseJSONResponse + CheckLarkResponse give us the same structured
-	// *output.ExitError path as regular shortcut commands: Lark business
-	// code, ClassifyLarkError-driven exit code, hint, and permission
-	// remediation URL enrichment — all for free.
 	result, err := client.ParseJSONResponse(resp)
 	if err != nil {
 		return nil, err

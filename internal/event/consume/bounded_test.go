@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// TestBoundedLoop_MaxEvents — when MaxEvents is set, the loop cancels the
-// context after that many successful emits, regardless of how many more
-// events are queued.
 func TestBoundedLoop_MaxEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -21,7 +18,6 @@ func TestBoundedLoop_MaxEvents(t *testing.T) {
 	var emitted atomic.Int64
 	opts := Options{MaxEvents: 3, ErrOut: io.Discard}
 
-	// Simulate 5 successful emits.
 	for i := 0; i < 5; i++ {
 		emitted.Add(1)
 		stopNow := checkMaxEvents(opts, &emitted)
@@ -38,7 +34,6 @@ func TestBoundedLoop_MaxEvents(t *testing.T) {
 	_ = ctx
 }
 
-// TestBoundedLoop_NoLimitWhenZero — MaxEvents=0 means unlimited.
 func TestBoundedLoop_NoLimitWhenZero(t *testing.T) {
 	var emitted atomic.Int64
 	opts := Options{MaxEvents: 0, ErrOut: io.Discard}
@@ -50,10 +45,9 @@ func TestBoundedLoop_NoLimitWhenZero(t *testing.T) {
 	}
 }
 
-// TestExitReason_Limit — emitted >= MaxEvents → reason="limit".
 func TestExitReason_Limit(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // mimic loop cancelling itself after hitting limit
+	cancel()
 
 	opts := Options{MaxEvents: 5, Timeout: 0}
 	reason := exitReason(ctx, 5, opts)
@@ -62,7 +56,6 @@ func TestExitReason_Limit(t *testing.T) {
 	}
 }
 
-// TestExitReason_Timeout — ctx.Err() == DeadlineExceeded → reason="timeout".
 func TestExitReason_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
@@ -75,7 +68,6 @@ func TestExitReason_Timeout(t *testing.T) {
 	}
 }
 
-// TestExitReason_Signal — ctx cancelled, no timeout deadline → reason="signal".
 func TestExitReason_Signal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

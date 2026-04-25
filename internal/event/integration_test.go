@@ -27,19 +27,12 @@ import (
 	"github.com/larksuite/cli/internal/event/transport"
 )
 
-// integNativeSchema returns a minimal SchemaDef with a Native spec for
-// integration tests that just need a valid registration.
 type integTestOut struct{ A string }
 
 func integNativeSchema() event.SchemaDef {
 	return event.SchemaDef{Native: &event.SchemaSpec{Type: reflect.TypeOf(integTestOut{})}}
 }
 
-// waitForBusReady polls tr.Dial until it succeeds, timing out after 2s.
-// Replaces opaque `time.Sleep(300ms)` after `go b.Run(ctx)` — the sleep
-// was both flaky (CI slow path sometimes needed >300ms to bind) and
-// wasteful (the common path binds in <5ms). Returns when a Dial
-// succeeds; the test keeps the conn and continues.
 func waitForBusReady(t *testing.T, tr transport.IPC, addr string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -53,11 +46,6 @@ func waitForBusReady(t *testing.T, tr transport.IPC, addr string) {
 	t.Fatalf("bus at %s did not come up within 2s", addr)
 }
 
-// runBus spawns `b.Run(ctx)` in a goroutine and installs a t.Cleanup
-// that verifies the bus exited cleanly. Without this, `go b.Run(ctx)`
-// fire-and-forget tests silently pass when Run fails with e.g. a listen
-// error — the consumer dial times out instead and the test failure
-// message points at the symptom, not the cause.
 func runBus(t *testing.T, b *bus.Bus, ctx context.Context) {
 	t.Helper()
 	errCh := make(chan error, 1)
@@ -74,9 +62,6 @@ func runBus(t *testing.T, b *bus.Bus, ctx context.Context) {
 	})
 }
 
-// mockIntegSource is an event source that emits events on demand via emit().
-// emitFn is set by Start (goroutine) and read by emit (test goroutine), so
-// they're coordinated via a sync.Mutex to keep the race detector happy.
 type mockIntegSource struct {
 	mu     sync.Mutex
 	emitFn func(*event.RawEvent)
@@ -102,24 +87,20 @@ func (s *mockIntegSource) emit(e *event.RawEvent) {
 }
 
 func TestIntegration_BusToConsume(t *testing.T) {
-	// 1. Reset registries to get a clean state.
 	event.ResetRegistryForTest()
 	source.ResetForTest()
 
-	// 2. Register a test EventKey (native so no Process func needed).
 	event.RegisterKey(event.KeyDefinition{
 		Key:       "test.event.v1",
 		EventType: "test.event.v1",
 		Schema:    integNativeSchema(),
 	})
 
-	// 3. Register a mock source that can emit events on demand.
 	mockSrc := &mockIntegSource{}
 	source.Register(mockSrc)
 
-	// 4. Create Bus with a temp socket path.
 	dir := t.TempDir()
-	addr := filepath.Join(dir, "t.sock") // short name to avoid macOS 104-char limit
+	addr := filepath.Join(dir, "t.sock")
 
 	tr := transport.New()
 	logger := log.New(os.Stderr, "[test-bus] ", log.LstdFlags)
@@ -133,7 +114,6 @@ func TestIntegration_BusToConsume(t *testing.T) {
 	runBus(t, b, ctx)
 	waitForBusReady(t, testTr, addr)
 
-	// 6. Connect as a consumer (dial + Hello handshake).
 	conn, err := testTr.Dial(addr)
 	if err != nil {
 		t.Fatalf("dial failed: %v", err)
@@ -151,7 +131,6 @@ func TestIntegration_BusToConsume(t *testing.T) {
 		t.Fatalf("encode hello: %v", err)
 	}
 
-	// Read HelloAck from Bus.
 	scanner := bufio.NewScanner(conn)
 	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if !scanner.Scan() {
@@ -169,7 +148,6 @@ func TestIntegration_BusToConsume(t *testing.T) {
 		t.Error("expected first_for_key to be true")
 	}
 
-	// 7. Trigger an event from the mock source.
 	mockSrc.emit(&event.RawEvent{
 		EventID:   "evt-integration-1",
 		EventType: "test.event.v1",
@@ -177,7 +155,6 @@ func TestIntegration_BusToConsume(t *testing.T) {
 		Timestamp: time.Now(),
 	})
 
-	// 8. Verify the event is received on the consume side.
 	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if !scanner.Scan() {
 		t.Fatal("no event received")
@@ -201,16 +178,13 @@ func TestIntegration_BusToConsume(t *testing.T) {
 		t.Errorf("unexpected payload: %s", string(evt.Payload))
 	}
 
-	// Close consumer connection before cancelling so Bus can clean up.
 	conn.Close()
 	time.Sleep(100 * time.Millisecond)
 
-	// Shut down cleanly. runBus's t.Cleanup waits for Run to exit.
 	cancel()
 }
 
 func TestIntegration_MultipleConsumers(t *testing.T) {
-	// Verify that events are fanned out to multiple consumers subscribed to the same event type.
 	event.ResetRegistryForTest()
 	source.ResetForTest()
 
@@ -237,7 +211,6 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 	runBus(t, b, ctx)
 	waitForBusReady(t, testTr, addr)
 
-	// Connect two consumers.
 	connectConsumer := func(name string) (net.Conn, *bufio.Scanner) {
 		conn, err := testTr.Dial(addr)
 		if err != nil {
@@ -268,10 +241,8 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 	conn2, sc2 := connectConsumer("consumer-2")
 	defer conn2.Close()
 
-	// Small delay to ensure both are registered with the Hub.
 	time.Sleep(100 * time.Millisecond)
 
-	// Emit an event.
 	mockSrc.emit(&event.RawEvent{
 		EventID:   "evt-multi-1",
 		EventType: "multi.event.v1",
@@ -279,7 +250,6 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 		Timestamp: time.Now(),
 	})
 
-	// Both consumers should receive it.
 	for _, tc := range []struct {
 		name string
 		conn net.Conn
@@ -309,7 +279,6 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 }
 
 func TestIntegration_DedupFilter(t *testing.T) {
-	// Verify that duplicate events (same EventID) are not delivered twice.
 	event.ResetRegistryForTest()
 	source.ResetForTest()
 
@@ -356,7 +325,6 @@ func TestIntegration_DedupFilter(t *testing.T) {
 		t.Fatal("no hello_ack")
 	}
 
-	// Emit the same event twice (same EventID).
 	for i := 0; i < 2; i++ {
 		mockSrc.emit(&event.RawEvent{
 			EventID:   "evt-dedup-same",
@@ -366,7 +334,6 @@ func TestIntegration_DedupFilter(t *testing.T) {
 		})
 	}
 
-	// Should receive exactly one event.
 	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	if !sc.Scan() {
 		t.Fatal("expected at least one event")
@@ -376,7 +343,6 @@ func TestIntegration_DedupFilter(t *testing.T) {
 		t.Fatalf("expected Event, got %T", evtMsg)
 	}
 
-	// Second read should timeout (no duplicate delivered).
 	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 	if sc.Scan() {
 		t.Error("received duplicate event; dedup filter should have blocked it")

@@ -13,26 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/event"
 )
 
-// TestPublishRaceBookkeepingAccurate verifies that under concurrent Publish
-// calls with a tiny send channel, the Received counter never drifts above
-// the number of events actually enqueued. The pre-fix code handled full
-// channels via two independent select statements:
-//
-//	select { case <-sendCh: default: }         // A2: drop oldest
-//	select { case sendCh <- msg: default: }    // A3: push new
-//	s.IncrementReceived()                      // unconditional
-//
-// Between A2 and A3 another Publish goroutine can refill the slot, causing
-// A3 to hit default and silently drop the message — but Received is still
-// incremented. With the fix, PushDropOldest holds a per-subscriber mutex
-// across drop+push and Received is only incremented when enqueued == true.
-//
-// Strategy: use a test subscriber that counts actual enqueues in its
-// PushDropOldest implementation. With the fix wired through Hub.Publish,
-// IncrementReceived is gated by enqueued, so Received == actual_enqueues
-// exactly. If Hub.Publish reverts to the old pattern (ignoring the return
-// values and always calling IncrementReceived), the test observes
-// Received > actual_enqueues under contention.
+// Under concurrent Publish with a tiny channel, Received must equal actual enqueues (sendMu + enqueued gate).
 func TestPublishRaceBookkeepingAccurate(t *testing.T) {
 	h := NewHub()
 	sub := newRaceSubscriber("race.key", []string{"race.type"}, 2)
@@ -55,13 +36,6 @@ func TestPublishRaceBookkeepingAccurate(t *testing.T) {
 			}
 		}()
 	}
-	// Concurrent TrySend contenders — the key witness for Bug 3 (source-
-	// status broadcast bypassing sendMu). TrySend must share the same
-	// sendMu as PushDropOldest; if it races in between another
-	// goroutine's drop and its retry-push, the retry-push hits default
-	// and returnedFalse bumps (caught by the existing assertion below).
-	// With sendMu correctly held, TrySend serialises with Publish's
-	// PushDropOldest and returnedFalse stays 0.
 	const trySenders = 20
 	for i := 0; i < trySenders; i++ {
 		wg.Add(1)
@@ -85,49 +59,20 @@ func TestPublishRaceBookkeepingAccurate(t *testing.T) {
 	enqueued := atomic.LoadInt64(&sub.actualEnqueued)
 	returnedFalse := atomic.LoadInt64(&sub.returnedFalse)
 
-	// Layer-B invariant (Hub.Publish gates IncrementReceived on enqueued):
-	//   Received == actual_enqueues
-	// Hub.Publish must increment Received iff PushDropOldest returned
-	// enqueued=true. A subscriber whose PushDropOldest tracks true enqueues
-	// internally must have Received exactly equal to that count.
-	//
-	// Under the buggy two-select pattern in Hub.Publish (no PushDropOldest
-	// gate), Received is incremented unconditionally, so under contention
-	// Received > actual_enqueues whenever any A3 push fell through to default.
 	if received != enqueued {
-		t.Errorf("counter drift: Received=%d actual_enqueued=%d (diff=%d) "+
-			"-- Hub.Publish is incrementing Received for pushes that did not enqueue",
+		t.Errorf("counter drift: Received=%d actual_enqueued=%d (diff=%d)",
 			received, enqueued, received-enqueued)
 	}
 
-	// Also sanity-check Received never exceeds total Publish count.
 	if received > int64(N) {
-		t.Errorf("Received=%d > N=%d -- Received exceeds total Publish calls", received, N)
+		t.Errorf("Received=%d > N=%d", received, N)
 	}
 
-	// Layer-A sensitivity (PushDropOldest holds sendMu across drop+push):
-	// under the fix, PushDropOldest should never return enqueued=false in
-	// this test — no SenderLoop is draining the channel, so either the fast
-	// path succeeds (room available), the slow path drops one and refills
-	// (we made room under the lock), or the slow-path fast-path succeeds
-	// (empty-on-entry, other goroutines blocked on sendMu). The final
-	// default branch of PushDropOldest is effectively unreachable under
-	// sendMu with no external drainer.
-	//
-	// If sendMu is removed, the classic A2/A3 race becomes visible: between
-	// one goroutine's drop (select <-sendCh) and its push (select sendCh <- msg),
-	// another goroutine races in and refills, so the first's push hits the
-	// default branch and returns (false, dropped). returnedFalse > 0 is a
-	// direct witness that sendMu protection is missing or broken.
 	if returnedFalse > 0 {
-		t.Errorf("PushDropOldest returned enqueued=false %d times — sendMu missing or broken; A2/A3 race not fixed",
+		t.Errorf("PushDropOldest returned enqueued=false %d times — sendMu missing or broken",
 			returnedFalse)
 	}
 
-	// Conservation of Publish calls: every Publish reaches PushDropOldest
-	// exactly once (filter match is 1:1 here), so each call must resolve
-	// either to an actual enqueue or to a returned-false. Any drift here
-	// signals lost accounting somewhere in the path.
 	totalPublishes := int64(N)
 	if enqueued+returnedFalse != totalPublishes {
 		t.Errorf("publish accounting drift: enqueued=%d + returnedFalse=%d != total=%d",
@@ -135,13 +80,7 @@ func TestPublishRaceBookkeepingAccurate(t *testing.T) {
 	}
 }
 
-// TestPublishDoesNotIncrementWhenPushDropOldestFails is a direct, non-racy
-// check that Hub.Publish gates IncrementReceived on the enqueued flag. It
-// uses a stub subscriber that always returns enqueued=false. If Hub.Publish
-// ever drops the `if enqueued` guard (layer-B bug), Received will go up
-// even though no events actually landed. This catches the subtle variant
-// that the stress test above may miss because production PushDropOldest's
-// sendMu makes enqueued=false essentially unreachable in practice.
+// Hub.Publish must gate IncrementReceived on enqueued=true.
 func TestPublishDoesNotIncrementWhenPushDropOldestFails(t *testing.T) {
 	h := NewHub()
 	sub := &alwaysFailSubscriber{
@@ -159,13 +98,10 @@ func TestPublishDoesNotIncrementWhenPushDropOldestFails(t *testing.T) {
 	}
 
 	if got := sub.Received(); got != 0 {
-		t.Errorf("Received=%d after 100 Publishes that all failed to enqueue; "+
-			"Hub.Publish is ignoring the enqueued flag (layer-B bug)", got)
+		t.Errorf("Received=%d after 100 Publishes that all failed to enqueue", got)
 	}
 }
 
-// alwaysFailSubscriber implements Subscriber and always reports PushDropOldest
-// as failing. Used to verify Hub.Publish honours the enqueued return value.
 type alwaysFailSubscriber struct {
 	eventKey   string
 	eventTypes []string
@@ -195,19 +131,15 @@ func (s *alwaysFailSubscriber) PushDropOldest(msg interface{}) (enqueued, droppe
 	return false, false
 }
 
-// raceSubscriber implements Subscriber and tracks actual enqueues (vs.
-// IncrementReceived calls) to let tests detect counter drift. The sendCh
-// is deliberately tiny and never drained so PushDropOldest must hit the
-// drop-and-retry path on every Publish after the first few.
 type raceSubscriber struct {
 	eventKey       string
 	eventTypes     []string
 	sendCh         chan interface{}
 	pid            int
 	received       atomic.Int64
-	actualEnqueued int64        // incremented only when PushDropOldest actually enqueues
-	returnedFalse  int64        // incremented each time PushDropOldest returns enqueued=false
-	dropped        atomic.Int64 // incremented each time PushDropOldest evicts an older msg
+	actualEnqueued int64
+	returnedFalse  int64
+	dropped        atomic.Int64
 	sendMu         sync.Mutex
 }
 
@@ -230,9 +162,6 @@ func (s *raceSubscriber) DroppedCount() int64      { return s.dropped.Load() }
 func (s *raceSubscriber) IncrementDropped()        { s.dropped.Add(1) }
 func (s *raceSubscriber) NextSeq() uint64          { return 0 }
 
-// TrySend satisfies the Subscriber interface. Non-evicting; shares
-// s.sendMu with PushDropOldest so the test can assert serialised
-// behaviour under concurrent broadcast+publish.
 func (s *raceSubscriber) TrySend(msg interface{}) bool {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
@@ -244,11 +173,6 @@ func (s *raceSubscriber) TrySend(msg interface{}) bool {
 	}
 }
 
-// PushDropOldest mirrors the production Conn.PushDropOldest semantics and
-// additionally tracks actual enqueues so the test can compare them to
-// Received. Dropped accounting is driven by Hub.Publish via IncrementDropped
-// (matching production), so this method does not touch s.dropped directly —
-// it just signals dropped=true in the return value.
 func (s *raceSubscriber) PushDropOldest(msg interface{}) (enqueued, dropped bool) {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()

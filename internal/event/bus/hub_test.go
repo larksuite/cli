@@ -66,17 +66,16 @@ func TestHub_Publish_SkipsUnmatchedSubscriber(t *testing.T) {
 	case <-c.sendCh:
 		t.Fatal("should not receive unmatched event")
 	case <-time.After(50 * time.Millisecond):
-		// OK
 	}
 }
 
 func TestHub_Publish_NonBlocking(t *testing.T) {
 	h := NewHub()
 	c := newTestConn("im", []string{"im.message.receive_v1"})
-	c.sendCh = make(chan interface{}, 1) // tiny buffer
+	c.sendCh = make(chan interface{}, 1)
 	h.RegisterAndIsFirst(c)
 
-	c.sendCh <- &protocol.Event{} // fill it
+	c.sendCh <- &protocol.Event{}
 
 	done := make(chan struct{})
 	go func() {
@@ -90,7 +89,6 @@ func TestHub_Publish_NonBlocking(t *testing.T) {
 
 	select {
 	case <-done:
-		// Publish returned without blocking
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Publish blocked on full channel")
 	}
@@ -107,16 +105,11 @@ func TestHub_Unregister(t *testing.T) {
 	}
 }
 
-// TestHub_UnregisterAndIsLast_NeverRegistered — regression for the
-// "decrements unregistered subscribers" finding. Calling
-// UnregisterAndIsLast on a Subscriber that was never registered must
-// return false (it was never the last of anything) and MUST NOT
-// corrupt keyCounts for that EventKey.
 func TestHub_UnregisterAndIsLast_NeverRegistered(t *testing.T) {
 	h := NewHub()
 	real := newTestConn("im", []string{"im.msg"})
 	h.RegisterAndIsFirst(real)
-	ghost := newTestConn("im", []string{"im.msg"}) // same EventKey, never registered
+	ghost := newTestConn("im", []string{"im.msg"})
 
 	if h.UnregisterAndIsLast(ghost) {
 		t.Error("ghost unregister returned true: must be false when subscriber never registered")
@@ -124,18 +117,11 @@ func TestHub_UnregisterAndIsLast_NeverRegistered(t *testing.T) {
 	if got := h.EventKeyCount("im"); got != 1 {
 		t.Errorf("keyCount for 'im' = %d after ghost unregister; want 1 (real still registered)", got)
 	}
-	// Now unregistering the real subscriber should still correctly
-	// report last=true. If the ghost path decremented the counter, this
-	// would have been clobbered.
 	if !h.UnregisterAndIsLast(real) {
 		t.Error("real unregister returned false; expected true (sole subscriber)")
 	}
 }
 
-// TestHub_UnregisterAndIsLast_DoubleUnregister — second call on the
-// same already-unregistered subscriber must return false. Prior code
-// returned true because keyCounts[key]==0 fell through the isLast check
-// on the stale second call, potentially firing cleanup twice.
 func TestHub_UnregisterAndIsLast_DoubleUnregister(t *testing.T) {
 	h := NewHub()
 	c := newTestConn("im", []string{"im.msg"})
@@ -166,11 +152,6 @@ func TestHub_EventKeyCount(t *testing.T) {
 	}
 }
 
-// TestHub_RegisterAndIsFirst_Concurrent proves the atomic variant does not
-// allow two concurrent Hellos to both observe isFirst=true. Before the
-// atomic API, handleHello did `EventKeyCount == 0` read, then `Register`
-// write — this test reliably caught the race window when run with `-race`
-// and the old two-step code.
 func TestHub_RegisterAndIsFirst_Concurrent(t *testing.T) {
 	h := NewHub()
 	const N = 200
@@ -201,8 +182,6 @@ func TestHub_RegisterAndIsFirst_Concurrent(t *testing.T) {
 	}
 }
 
-// TestHub_UnregisterAndIsLast_Concurrent proves symmetric behavior for
-// the leave path: only one concurrent Unregister sees isLast=true.
 func TestHub_UnregisterAndIsLast_Concurrent(t *testing.T) {
 	h := NewHub()
 	const N = 200
@@ -239,8 +218,6 @@ func TestHub_UnregisterAndIsLast_Concurrent(t *testing.T) {
 	}
 }
 
-// --- Test helpers ---
-
 type testConn struct {
 	eventKey   string
 	eventTypes []string
@@ -265,23 +242,12 @@ func (c *testConn) PID() int                 { return c.pid }
 func (c *testConn) IncrementReceived()       { c.received.Add(1) }
 func (c *testConn) Received() int64          { return c.received.Load() }
 
-// DroppedCount satisfies the Subscriber interface. testConn does not
-// track drops in its PushDropOldest implementation, so this is always 0.
 func (c *testConn) DroppedCount() int64 { return 0 }
 
-// IncrementDropped satisfies the Subscriber interface. testConn does not
-// track drops, so this is a no-op — tests that care about drop counters
-// should use a real *Conn via NewConn.
 func (c *testConn) IncrementDropped() {}
 
-// NextSeq satisfies the Subscriber interface. testConn does not track
-// sequence numbers; tests that assert on Seq use a real *Conn.
 func (c *testConn) NextSeq() uint64 { return 0 }
 
-// PushDropOldest mirrors the production Conn.PushDropOldest behaviour
-// (drop oldest on full, push new) but omits the sendMu because tests here
-// do not exercise concurrent Publish stress. Callers that need the atomic
-// drop+push guarantee should use a production *Conn.
 func (c *testConn) PushDropOldest(msg interface{}) (enqueued, dropped bool) {
 	select {
 	case c.sendCh <- msg:
@@ -301,9 +267,6 @@ func (c *testConn) PushDropOldest(msg interface{}) (enqueued, dropped bool) {
 	}
 }
 
-// TrySend satisfies the Subscriber interface. Non-evicting best-effort
-// send; tests that care about the sendMu serialisation guarantee should
-// use a production *Conn.
 func (c *testConn) TrySend(msg interface{}) bool {
 	select {
 	case c.sendCh <- msg:

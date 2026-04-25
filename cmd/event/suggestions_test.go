@@ -31,16 +31,13 @@ func TestLevenshtein(t *testing.T) {
 	}
 }
 
-// TestSuggestEventKeys uses the real registry populated by events
-// blank-import. Assertions are loose (prefix / size) so new EventKey
-// registrations don't break the test.
 func TestSuggestEventKeys(t *testing.T) {
 	cases := []struct {
 		name              string
 		input             string
 		wantEmpty         bool
-		wantAllHavePrefix string // every suggestion must start with this
-		wantContains      string // this exact key must be present
+		wantAllHavePrefix string
+		wantContains      string
 	}{
 		{
 			name:         "typo via Levenshtein (recieve → receive)",
@@ -122,7 +119,7 @@ func TestFormatSuggestions(t *testing.T) {
 }
 
 func TestUnknownEventKeyErr_IncludesSuggestion(t *testing.T) {
-	err := unknownEventKeyErr("im.message.recieve_v1") // typo
+	err := unknownEventKeyErr("im.message.recieve_v1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

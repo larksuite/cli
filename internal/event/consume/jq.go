@@ -10,14 +10,7 @@ import (
 	"github.com/itchyny/gojq"
 )
 
-// CompileJQ parses and compiles a jq expression once. The returned
-// *gojq.Code is reused across every event on the hot path — compiling per
-// event is a noticeable CPU tax on high-frequency streams.
-//
-// Exported so CLI entry points can pre-flight validate the expression
-// BEFORE spinning up the bus daemon + handshake + running any PreConsume
-// side effects (e.g. server-side subscription creation). A bad jq should
-// fail immediately rather than after expensive setup.
+// CompileJQ compiles once for hot-path reuse; exported so callers can preflight before side effects.
 func CompileJQ(expr string) (*gojq.Code, error) {
 	query, err := gojq.Parse(expr)
 	if err != nil {
@@ -30,10 +23,7 @@ func CompileJQ(expr string) (*gojq.Code, error) {
 	return code, nil
 }
 
-// applyJQ runs a pre-compiled jq program against a JSON event and returns
-// the result. Returns (nil, nil) when the expression produces no output
-// (e.g. select(.foo) filters the event out) so the caller can skip the
-// event without treating it as an error.
+// applyJQ returns (nil, nil) when the expression filters out the event (e.g. select).
 func applyJQ(code *gojq.Code, data json.RawMessage) (json.RawMessage, error) {
 	var input interface{}
 	if err := json.Unmarshal(data, &input); err != nil {

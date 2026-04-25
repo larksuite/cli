@@ -10,9 +10,7 @@ import (
 	"syscall"
 )
 
-// applyDetachAttrs sets Unix-specific SysProcAttr so the forked bus
-// daemon detaches from the controlling terminal. Without Setsid, the
-// bus would receive SIGHUP when the parent shell exits and die with it.
+// applyDetachAttrs: Setsid prevents SIGHUP-on-shell-exit from killing the bus.
 func applyDetachAttrs(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }

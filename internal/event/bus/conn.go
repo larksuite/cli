@@ -22,17 +22,11 @@ const (
 
 // Conn represents a single consume client connection in the Bus.
 type Conn struct {
-	conn   net.Conn
-	reader *bufio.Reader
-	sendCh chan interface{}
-	sendMu sync.Mutex // serialises PushDropOldest to keep drop+push atomic
-	// writeMu serialises all net.Conn writes. protocol.Encode plus
-	// SetWriteDeadline is a 2-call sequence shared between SenderLoop
-	// (event frames), handleControlMessage (PreShutdownAck), and the
-	// HelloAck write in bus.handleHello — all of which can race if the
-	// mutex is bypassed. Without it the shared write deadline corrupts
-	// and large frames interleave bytes on the wire.
-	writeMu         sync.Mutex
+	conn            net.Conn
+	reader          *bufio.Reader
+	sendCh          chan interface{}
+	sendMu          sync.Mutex // serialises drop+push atomically
+	writeMu         sync.Mutex // serialises all net.Conn writes (Encode+SetWriteDeadline is a 2-call sequence)
 	eventKey        string
 	eventTypes      []string
 	pid             int
@@ -41,15 +35,12 @@ type Conn struct {
 	logger          *log.Logger
 	closed          chan struct{}
 	closeOnce       sync.Once
-	received        atomic.Int64  // events Hub has fanned out to us (post-filter)
+	received        atomic.Int64  // events fanned out to us (post-filter)
 	seqCounter      atomic.Uint64 // per-conn monotonic seq assigned by Hub.Publish
 	dropped         atomic.Int64  // events evicted via drop-oldest backpressure
 }
 
-// NewConn creates a Conn. reader may be a *bufio.Reader already
-// attached to conn (handed over from Bus.handleConn so any buffered
-// bytes aren't lost during handoff). Passing nil is acceptable — the
-// conn-bound test helpers do this — and we construct a fresh Reader.
+// NewConn creates a Conn; pass a reader with pre-buffered bytes (handoff from Bus.handleConn) or nil for a fresh one.
 func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []string, pid int) *Conn {
 	if reader == nil {
 		reader = bufio.NewReader(conn)
@@ -65,60 +56,34 @@ func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []
 	}
 }
 
-// SetOnClose installs a callback invoked once when the connection
-// shuts down (socket EOF, peer Bye, or explicit Close).
 func (c *Conn) SetOnClose(fn func(*Conn)) { c.onClose = fn }
 
-// SetCheckLastForKey installs the callback used to answer a
-// PreShutdownCheck from the consumer. Returning true means "you are the
-// last subscriber for this EventKey, run cleanup."
+// SetCheckLastForKey: returning true means "you are the last subscriber, run cleanup".
 func (c *Conn) SetCheckLastForKey(fn func(string) bool) { c.checkLastForKey = fn }
 
-// SetLogger attaches a logger for write-failure / control-message
-// diagnostics. nil is tolerated (logging becomes a no-op).
+// SetLogger attaches a logger (nil tolerated).
 func (c *Conn) SetLogger(l *log.Logger) { c.logger = l }
 
-// EventKey returns the EventKey this connection subscribed to during Hello.
-func (c *Conn) EventKey() string { return c.eventKey }
-
-// EventTypes returns the upstream event types this connection wants to receive.
-func (c *Conn) EventTypes() []string { return c.eventTypes }
-
-// SendCh returns the buffered outbound channel the Hub pushes events into.
+func (c *Conn) EventKey() string         { return c.eventKey }
+func (c *Conn) EventTypes() []string     { return c.eventTypes }
 func (c *Conn) SendCh() chan interface{} { return c.sendCh }
+func (c *Conn) PID() int                 { return c.pid }
+func (c *Conn) IncrementReceived()       { c.received.Add(1) }
+func (c *Conn) Received() int64          { return c.received.Load() }
 
-// PID returns the consumer-reported PID (for observability only; not trusted).
-func (c *Conn) PID() int { return c.pid }
-
-// IncrementReceived bumps the per-conn events-fanned-out counter.
-func (c *Conn) IncrementReceived() { c.received.Add(1) }
-
-// Received returns the current events-fanned-out counter value.
-func (c *Conn) Received() int64 { return c.received.Load() }
-
-// NextSeq returns a monotonically increasing seq number for this connection.
-// Used by Hub.Publish to assign sequence numbers to events destined for this
-// consumer, so the consumer can detect gaps caused by backpressure drops.
-// First call returns 1 (atomic.Uint64 starts at 0, Add returns the new value).
+// NextSeq returns the next monotonic seq for this conn (first call returns 1).
 func (c *Conn) NextSeq() uint64 { return c.seqCounter.Add(1) }
 
-// DroppedCount returns the number of events dropped due to backpressure on
-// this connection.
 func (c *Conn) DroppedCount() int64 { return c.dropped.Load() }
+func (c *Conn) IncrementDropped()   { c.dropped.Add(1) }
 
-// IncrementDropped records that one event was dropped due to backpressure.
-func (c *Conn) IncrementDropped() { c.dropped.Add(1) }
-
-// Start launches the sender and reader goroutines. Must be called exactly once.
+// Start launches the sender and reader goroutines; call exactly once.
 func (c *Conn) Start() {
 	go c.SenderLoop()
 	go c.ReaderLoop()
 }
 
-// writeFrame is the single write path to c.conn. Serialised via writeMu
-// so SenderLoop (event frames), handleControlMessage (PreShutdownAck),
-// and bus.handleHello (HelloAck) never interleave bytes or race the
-// shared SetWriteDeadline call.
+// writeFrame is the sole write path, serialised via writeMu.
 func (c *Conn) writeFrame(msg interface{}) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
@@ -128,9 +93,7 @@ func (c *Conn) writeFrame(msg interface{}) error {
 	return protocol.Encode(c.conn, msg)
 }
 
-// SenderLoop writes messages from sendCh to the connection.
-// It exits when the closed channel is signaled, not when sendCh is closed,
-// so that Hub.Publish can safely send to sendCh without risk of panic.
+// SenderLoop exits on closed (not sendCh close) so Hub.Publish can send without panic risk.
 func (c *Conn) SenderLoop() {
 	for {
 		select {
@@ -148,10 +111,7 @@ func (c *Conn) SenderLoop() {
 	}
 }
 
-// ReaderLoop monitors the connection for EOF/close and processes any
-// control messages (Bye, PreShutdownCheck) the consume client sends.
-// Uses the bufio.Reader handed in from handleConn so buffered bytes
-// carried over from the Hello read aren't dropped.
+// ReaderLoop reads control messages (Bye, PreShutdownCheck) until EOF.
 func (c *Conn) ReaderLoop() {
 	for {
 		line, err := protocol.ReadFrame(c.reader)
@@ -176,9 +136,6 @@ func (c *Conn) handleControlMessage(msg interface{}) {
 	case *protocol.Bye:
 		c.shutdown()
 	case *protocol.PreShutdownCheck:
-		// Query the Hub (via callback) and reply with whether this is the
-		// last consumer for the given EventKey. The consume client uses this
-		// to decide whether to run cleanup (e.g. unsubscribe mailbox).
 		lastForKey := true
 		if c.checkLastForKey != nil {
 			lastForKey = c.checkLastForKey(m.EventKey)
@@ -194,23 +151,14 @@ func (c *Conn) shutdown() {
 	c.closeOnce.Do(func() {
 		close(c.closed)
 		c.conn.Close()
-		// NOTE: sendCh is intentionally NOT closed here. SenderLoop exits via
-		// the closed channel. Closing sendCh would race with Hub.Publish which
-		// may still hold a reference to this conn's SendCh() after RUnlock.
+		// sendCh is NOT closed: would race with Hub.Publish holding SendCh() after RUnlock.
 		if c.onClose != nil {
 			c.onClose(c)
 		}
 	})
 }
 
-// TrySend enqueues msg onto sendCh without evicting, under sendMu so it
-// respects PushDropOldest's atomicity contract. Returns true iff the
-// channel had room. Used by Hub.BroadcastSourceStatus for best-effort
-// fan-out of source-level status messages — a source-status that can't
-// fit the queue is dropped silently (the event itself isn't event data
-// worth applying back-pressure for) but the send still synchronises
-// with concurrent PushDropOldest so a broadcaster cannot steal a slot
-// in the window between another goroutine's drop and retry push.
+// TrySend enqueues non-evictively under sendMu so it respects PushDropOldest's atomicity contract.
 func (c *Conn) TrySend(msg interface{}) bool {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
@@ -222,46 +170,30 @@ func (c *Conn) TrySend(msg interface{}) bool {
 	}
 }
 
-// PushDropOldest enqueues msg onto sendCh. If sendCh is full, it drops
-// exactly one oldest event and retries the push atomically under sendMu —
-// preventing concurrent Publish callers from racing each other into a state
-// where the channel refills between drop and push.
-//
-// Returns (enqueued, dropped) where enqueued=true means msg is now in the
-// channel, and dropped=true means an older event was evicted to make room.
-//
-// If the push would require evicting but the channel drained on its own
-// between operations (SenderLoop raced us), the eviction is skipped and the
-// push still succeeds — in that case returns (true, false).
+// PushDropOldest enqueues msg; on full channel evicts one oldest and retries, atomically under sendMu.
+// Returns (enqueued, dropped). A rare concurrent drain may make drop unnecessary — still succeeds with dropped=false.
 func (c *Conn) PushDropOldest(msg interface{}) (enqueued, dropped bool) {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	// Fast path: channel has room.
 	select {
 	case c.sendCh <- msg:
 		return true, false
 	default:
 	}
-	// Slow path: drop one oldest if we can, then push.
 	select {
 	case <-c.sendCh:
 		dropped = true
 	default:
-		// SenderLoop drained it between our check and here — harmless.
 	}
 	select {
 	case c.sendCh <- msg:
 		return true, dropped
 	default:
-		// Should essentially never happen under sendMu: we either dropped
-		// one (making room) or the channel was empty. But if something
-		// external drained and refilled at exactly the wrong instant,
-		// fail gracefully rather than block.
 		return false, dropped
 	}
 }
 
-// Close shuts the connection down idempotently (safe to call multiple times).
+// Close is idempotent.
 func (c *Conn) Close() {
 	c.shutdown()
 }

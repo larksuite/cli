@@ -11,13 +11,7 @@ import (
 	"time"
 )
 
-// TestRunShutdownWithMultipleConns reproduces the Run() × onClose re-entrant
-// deadlock. With the buggy code that holds b.mu across c.Close(), the FIRST
-// conn's onClose callback re-acquires b.mu and deadlocks forever.
-//
-// The test installs onClose callbacks that mirror handleHello's real callback:
-// they acquire b.mu.Lock() and delete(b.conns, c). Under the fix, shutdownConns
-// releases b.mu before calling Close(), so each onClose can re-acquire it.
+// Reproduces Run × onClose re-entrant deadlock if b.mu is held across Close.
 func TestRunShutdownWithMultipleConns(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 	hub := NewHub()
@@ -43,8 +37,6 @@ func TestRunShutdownWithMultipleConns(t *testing.T) {
 		bc.SetLogger(logger)
 		hub.RegisterAndIsFirst(bc)
 
-		// Mirror handleHello's onClose: takes b.mu, mutates b.conns, releases.
-		// If shutdownConns holds b.mu during c.Close(), this will deadlock.
 		bc.SetOnClose(func(c *Conn) {
 			b.hub.UnregisterAndIsLast(c)
 			b.mu.Lock()
@@ -65,7 +57,6 @@ func TestRunShutdownWithMultipleConns(t *testing.T) {
 
 	select {
 	case <-done:
-		// Completed without deadlock.
 	case <-time.After(2 * time.Second):
 		t.Fatal("shutdownConns deadlocked: did not complete within 2s")
 	}
@@ -81,25 +72,18 @@ func TestRunShutdownWithMultipleConns(t *testing.T) {
 	}
 }
 
-// TestShutdownSignalNotDroppedBeforeRunSelects verifies that sending on
-// shutdownCh before Run enters its select still delivers. The bug was that an
-// unbuffered channel drops the signal (via select/default) if nobody is ready
-// to receive; the fix is a buffered (cap=1) channel so the signal is latched.
+// shutdownCh must be buffered so a signal sent before Run's select loop is still delivered.
 func TestShutdownSignalNotDroppedBeforeRunSelects(t *testing.T) {
 	b := NewBus("test-app", "test-secret", "", nil, log.New(io.Discard, "", 0))
 
-	// Fire the same pattern used by handleShutdown — the producer is NOT
-	// blocked on a receiver, so it must rely on the buffer to latch.
 	select {
 	case b.shutdownCh <- struct{}{}:
 	default:
 		t.Fatal("handleShutdown's send took default branch — signal would be lost")
 	}
 
-	// A later receiver must see the signal.
 	select {
 	case <-b.shutdownCh:
-		// Passed
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("shutdown signal was not latched")
 	}

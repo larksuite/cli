@@ -8,11 +8,7 @@ import (
 	"testing"
 )
 
-// The fork argv shape is a contract with internal/event/busdiscover —
-// that package parses running-process cmdlines to detect orphan buses
-// by looking for "event", "_bus", "--profile", <appID>. If this test
-// breaks, the orphan detector needs a matching update; do not silence
-// one without the other.
+// Fork argv ("event", "_bus", "--profile", appID) is a contract with internal/event/busdiscover orphan detector.
 func TestBuildForkArgs(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -37,7 +33,7 @@ func TestBuildForkArgs(t *testing.T) {
 			},
 		},
 		{
-			name:    "empty profile still keeps flag skeleton (defensive — prod never passes this)",
+			name:    "empty profile still keeps flag skeleton",
 			profile: "",
 			domain:  "",
 			want:    []string{"event", "_bus", "--profile", ""},
@@ -53,14 +49,10 @@ func TestBuildForkArgs(t *testing.T) {
 	}
 }
 
-// TestBuildForkArgs_SubcommandStable pins the two positional args
-// ("event", "_bus") because busdiscover's orphan-detection regex
-// keys off them. Separate test so a single failure message names the
-// exact contract violated.
 func TestBuildForkArgs_SubcommandStable(t *testing.T) {
 	got := buildForkArgs("cli_x", "")
 	if len(got) < 2 || got[0] != "event" || got[1] != "_bus" {
-		t.Fatalf("argv[0:2] = %v, want [event _bus] — busdiscover relies on this shape", got[:min(2, len(got))])
+		t.Fatalf("argv[0:2] = %v, want [event _bus]", got[:min(2, len(got))])
 	}
 }
 

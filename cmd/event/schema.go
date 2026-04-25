@@ -17,12 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// resolveSchemaJSON returns the final JSON Schema a consumer would see
-// for this EventKey: reflected / parsed base, envelope-wrapped for Native,
-// plus FieldOverrides overlay applied. Returns (schema, orphans, err):
-// `orphans` is the list of FieldOverrides pointers that did not resolve
-// in the rendered schema (used by CI lint; callers that don't care can
-// ignore).
+// resolveSchemaJSON returns the final JSON Schema for an EventKey (reflected base, V2-wrapped for Native, overlay applied); orphans lists unresolved FieldOverrides pointers.
 func resolveSchemaJSON(def *eventlib.KeyDefinition) (json.RawMessage, []string, error) {
 	spec, isNative := pickSpec(def.Schema)
 	if spec == nil {
@@ -57,8 +52,7 @@ func resolveSchemaJSON(def *eventlib.KeyDefinition) (json.RawMessage, []string, 
 	return base, nil, nil
 }
 
-// pickSpec returns the non-nil spec and whether it is the Native slot
-// (framework must wrap V2 envelope around it).
+// pickSpec returns the non-nil spec and whether it is Native (requires V2 envelope wrap).
 func pickSpec(s eventlib.SchemaDef) (*eventlib.SchemaSpec, bool) {
 	if s.Native != nil {
 		return s.Native, true
@@ -69,8 +63,7 @@ func pickSpec(s eventlib.SchemaDef) (*eventlib.SchemaSpec, bool) {
 	return nil, false
 }
 
-// renderSpec produces a JSON Schema for a single spec. Type is reflected;
-// Raw is returned as a copy so callers can mutate safely.
+// renderSpec produces a JSON Schema from Type (reflected) or Raw (copied).
 func renderSpec(s *eventlib.SchemaSpec) (json.RawMessage, error) {
 	if s.Type != nil {
 		return schemas.FromType(s.Type), nil
@@ -83,7 +76,6 @@ func renderSpec(s *eventlib.SchemaSpec) (json.RawMessage, error) {
 	return nil, fmt.Errorf("schemaSpec has neither Type nor Raw")
 }
 
-// NewCmdSchema creates the "event schema" subcommand that shows details for an EventKey.
 func NewCmdSchema(f *cmdutil.Factory) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
@@ -156,9 +148,7 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 		}
 		w.Flush()
 
-		// Render Values inline below the param table for Enum / Multi params
-		// so AI consumers can see which values are allowed and what each
-		// means without having to parse --json.
+		// Inline Values below the table so AI consumers see allowed enum/multi values without --json.
 		for _, p := range def.Params {
 			if len(p.Values) == 0 {
 				continue
@@ -190,8 +180,7 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 	return nil
 }
 
-// printIndentedJSON pretty-prints raw JSON to out with a 2-space leading
-// indent so it lines up under the "Output Schema:" label.
+// printIndentedJSON pretty-prints raw JSON with a 2-space leading indent.
 func printIndentedJSON(out io.Writer, raw json.RawMessage) {
 	var parsed json.RawMessage
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -205,21 +194,10 @@ func printIndentedJSON(out io.Writer, raw json.RawMessage) {
 	fmt.Fprintf(out, "  %s\n", string(formatted))
 }
 
-// writeSchemaJSON emits the EventKey definition plus the resolved schema
-// (whether native-wrapped-in-V2-envelope or Process-declared) as a single
-// JSON object so callers can ingest schema + metadata in one pass.
-//
-// jq_root_path tells AI callers whether to write jq paths as `.field`
-// (flat / Custom schema — e.g. im.message.receive_v1) or `.event.field`
-// (V2 envelope — every Native-schema key). Without this, the caller has
-// to either inspect resolved_output_schema shape or eyeball a sample event.
+// writeSchemaJSON emits the EventKey definition plus resolved schema; jq_root_path tells callers whether fields live at `.` or `.event`.
 func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
 	type payload struct {
 		*eventlib.KeyDefinition
-		// JSON wire name kept as `resolved_output_schema` for backward
-		// compatibility with existing AI / script consumers; Go field was
-		// shortened to `ResolvedSchema` after the OutputSchema/OutputType
-		// fields were removed from KeyDefinition.
 		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
 		JQRootPath     string          `json:"jq_root_path,omitempty"`
 	}
@@ -229,11 +207,7 @@ func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
 	}
 	var jqRootPath string
 	if resolved != nil {
-		// isNative is the truth source: Native schemas get WrapV2Envelope
-		// applied in resolveSchemaJSON, so consumers see {schema, header,
-		// event, ...} and must reach fields via `.event.xxx`. Custom
-		// schemas (like im.message.receive_v1, which Process flattens)
-		// deliver fields at the top level.
+		// Native → V2 envelope ⇒ `.event.xxx`; Custom → flat ⇒ `.`.
 		_, isNative := pickSpec(def.Schema)
 		jqRootPath = "."
 		if isNative {

@@ -25,7 +25,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// BuildOption configures optional aspects of the command tree construction.
 type BuildOption func(*buildConfig)
 
 type buildConfig struct {
@@ -34,25 +33,19 @@ type buildConfig struct {
 	globals  GlobalOptions
 }
 
-// WithIO sets the IO streams for the CLI by wrapping raw reader/writers.
-// Terminal detection is delegated to cmdutil.NewIOStreams.
 func WithIO(in io.Reader, out, errOut io.Writer) BuildOption {
 	return func(c *buildConfig) {
 		c.streams = cmdutil.NewIOStreams(in, out, errOut)
 	}
 }
 
-// WithKeychain sets the secret storage backend. If not provided, the platform keychain is used.
 func WithKeychain(kc keychain.KeychainAccess) BuildOption {
 	return func(c *buildConfig) {
 		c.keychain = kc
 	}
 }
 
-// HideProfile sets the visibility policy for the root-level --profile flag.
-// When hide is true the flag stays registered (so existing invocations still
-// parse) but is omitted from help and shell completion. Typically called as
-// HideProfile(isSingleAppMode()).
+// HideProfile keeps --profile registered but omits it from help/completion.
 func HideProfile(hide bool) BuildOption {
 	return func(c *buildConfig) {
 		c.globals.HideProfile = hide
@@ -60,29 +53,18 @@ func HideProfile(hide bool) BuildOption {
 }
 
 // Build constructs the full command tree without executing.
-// Returns only the cobra.Command; Factory is internal.
-// Use Execute for the standard production entry point.
 func Build(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) *cobra.Command {
 	_, rootCmd := buildInternal(ctx, inv, opts...)
 	return rootCmd
 }
 
-// buildInternal is a pure assembly function: it wires the command tree from
-// inv and BuildOptions alone. Any state-dependent decision (disk, network,
-// env) belongs in the caller and must be threaded in via BuildOption.
 func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) (*cmdutil.Factory, *cobra.Command) {
-	// cfg.globals.Profile is left zero here; it's bound to the --profile
-	// flag in RegisterGlobalFlags and filled by cobra's parse step.
 	cfg := &buildConfig{}
 	for _, o := range opts {
 		if o != nil {
 			o(cfg)
 		}
 	}
-	// Default streams when WithIO is not supplied so the root command's
-	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
-	// partial streams internally; keep both in sync so cfg.streams reflects
-	// the same values the Factory ends up using.
 	if cfg.streams == nil {
 		cfg.streams = cmdutil.SystemIO()
 	}
@@ -123,7 +105,6 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 
-	// Prune commands incompatible with strict mode.
 	if mode := f.ResolveStrictMode(ctx); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}

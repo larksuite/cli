@@ -14,8 +14,8 @@ func TestParseParams(t *testing.T) {
 		name       string
 		in         []string
 		want       map[string]string
-		wantSentry error  // sentinel to pin on (preferred over wantErr substring)
-		wantEcho   string // optional: substring that MUST appear (usually the bad kv)
+		wantSentry error
+		wantEcho   string
 	}{
 		{
 			name: "empty input",
