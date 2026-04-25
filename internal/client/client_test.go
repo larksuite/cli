@@ -224,15 +224,16 @@ func TestPaginateAll_PageLimitStopsPagination(t *testing.T) {
 		t.Errorf("expected page limit log, got: %s", errBuf.String())
 	}
 
-	// Truncation must surface in the merged output: has_more stays true and the
-	// next page_token is preserved so callers can detect loss and resume.
+	// Truncation must surface in the merged output: has_more stays true so
+	// callers can detect loss. page_token is intentionally dropped from the
+	// aggregate view — to fetch more, re-run with a larger --page-limit.
 	resultMap, _ := result.(map[string]interface{})
 	data, _ := resultMap["data"].(map[string]interface{})
 	if hasMore, _ := data["has_more"].(bool); !hasMore {
 		t.Errorf("expected has_more=true when page limit truncates, got false")
 	}
-	if token, _ := data["page_token"].(string); token != "next" {
-		t.Errorf("expected page_token=\"next\" preserved on truncation, got %q", token)
+	if _, exists := data["page_token"]; exists {
+		t.Errorf("expected page_token to be dropped from merged output, got %v", data["page_token"])
 	}
 }
 
