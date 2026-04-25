@@ -21,9 +21,9 @@ type ImMessageReceiveOutput struct {
 	CreateTime  string `json:"create_time,omitempty"  desc:"消息发送时间（毫秒时间戳字符串）"                                                  kind:"timestamp_ms"`
 	ChatID      string `json:"chat_id,omitempty"      desc:"群组/会话 ID，以 oc_ 开头"                                                      kind:"chat_id"`
 	ChatType    string `json:"chat_type,omitempty"    desc:"会话类型"                                                                     enum:"p2p,group"`
-	MessageType string `json:"message_type,omitempty" desc:"消息类型；interactive 保留原始 JSON，其余已渲染为可读文本"`
+	MessageType string `json:"message_type,omitempty" desc:"消息类型"`
 	SenderID    string `json:"sender_id,omitempty"    desc:"发送者 open_id，以 ou_ 开头"                                                    kind:"open_id"`
-	Content     string `json:"content,omitempty"      desc:"消息内容；interactive（卡片）保持原始 JSON 字符串，调用方需 fromjson 自行解析"`
+	Content     string `json:"content,omitempty"      desc:"消息内容。多数类型（text/post/image/file/audio 等）：已渲染为人类可读文本，直接取用。interactive（卡片）：保持原始 JSON 字符串，调用方需 fromjson 解析"`
 }
 
 func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {

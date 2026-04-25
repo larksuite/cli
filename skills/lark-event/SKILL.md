@@ -39,27 +39,20 @@ metadata:
 ## Examples
 
 ```bash
+# Default: stream every event for the key (no filter, no projection)
+lark-cli event consume im.message.receive_v1 --as bot
+
 # Grab one sample event to inspect payload shape
 lark-cli event consume im.message.receive_v1 --max-events 1 --timeout 30s --as bot
 
 # Run for 10 minutes then auto-exit
 lark-cli event consume im.message.receive_v1 --timeout 10m --as bot
 
-# P2P text messages only
-lark-cli event consume im.message.receive_v1 --as bot \
-  --jq 'select(.chat_type=="p2p" and .message_type=="text")'
-
-# Project to just sender + content
-lark-cli event consume im.message.receive_v1 --as bot \
-  --jq '{from: .sender_id, msg: .content}'
-
 # Consume multiple EventKeys concurrently (one shape per process, no dispatcher)
 lark-cli event consume im.message.receive_v1          --as bot > receive.ndjson &
 lark-cli event consume im.message.reaction.created_v1 --as bot > reaction.ndjson &
 wait
 
-# Human-readable pretty print
-lark-cli event consume im.message.receive_v1 --max-events 1 --timeout 30s --as bot | jq .
 ```
 
 ## Call flow
@@ -110,7 +103,7 @@ All N consumers share a single bus daemon (UDS local IPC), so the overhead is sm
 
 ## Writing jq via schema
 
-`event schema <key> --json` is the source of truth for writing `--jq`. Three things to look at:
+`event schema <key> --json` is the source of truth for writing `--jq`. Four things to look at:
 
 **(1) Where fields start** — see `jq_root_path`
 
@@ -133,6 +126,14 @@ Each field carries `type` / `description`, and some also have `format`. Snippet 
 
 Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common values: `open_id` / `chat_id` / `message_id` / `timestamp_ms` / `email`. Purpose: distinguish "same string type, different meanings" fields so you can reverse-lookup via API or convert formats.
 
+**(4) Decoded state** — read the field's `description`
+
+`event consume` runs Process hooks that may pre-decode some payload fields (flattening V2 envelopes, rendering `.content` to plain text, etc.) — behavior differs from raw OAPI. **Always read the field's `description` before writing jq**, especially for generic field names like `content` / `data` / `body` / `payload`.
+
+**Why it matters**: blindly applying `fromjson` to an already-decoded text field makes jq error on every event and silently drop it — the consumer looks alive but emits nothing, with only a single `WARN` line buried on stderr. (This is the general behavior: any jq runtime error skips the event with a one-line WARN; the loop does not abort.)
+
+**Don't shortcut the schema**: when projecting `event schema --json` with jq, do not strip `.description` from `properties` — that's the field that tells you whether a field is already decoded. Dump the full property objects, not just keys.
+
 ---
 
 **Aside**: `--param`'s valid parameters also live in the schema — the `params` section lists `name` / `type` / `required` / `enum` / `default` / `description`; **section missing = this key accepts no `--param`**.
@@ -141,4 +142,4 @@ Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common val
 
 | Topic | Reference | Coverage |
 |---|---|---|
-| IM | [`references/lark-event-im.md`](references/lark-event-im.md) | Catalog of 11 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` requires `fromjson`) + common jq recipes (filter by chat_type / message_type) |
+| IM | [`references/lark-event-im.md`](references/lark-event-im.md) | Catalog of 11 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender) |
