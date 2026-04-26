@@ -1027,20 +1027,7 @@ func normalizeEmphasisPayload(payload string) (string, bool) {
 	if strings.Contains(trimmed, "*") {
 		return payload, false
 	}
-	if hasLeadingSpace && hasTrailingSpace && utf8.RuneCountInString(trimmed) == 1 {
-		return payload, false
-	}
-	first, _ := utf8.DecodeRuneInString(trimmed)
-	last, _ := utf8.DecodeLastRuneInString(trimmed)
-	if !isWordLikeRune(first) || !isWordLikeRune(last) {
-		return payload, false
-	}
-	for _, r := range trimmed {
-		if isWordLikeRune(r) {
-			return trimmed, true
-		}
-	}
-	return payload, false
+	return trimmed, true
 }
 
 func shouldUseSegmentedPost(markdown string) bool {

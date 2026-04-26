@@ -545,10 +545,10 @@ func TestWrapMarkdownAsPost(t *testing.T) {
 		}
 	})
 
-	t.Run("preserves non emphatic spaced asterisks", func(t *testing.T) {
-		got := wrapMarkdownAsPost("literal ** /tmp/demo ** and ** x ** and hello** world **there")
+	t.Run("preserves embedded non emphatic spaced asterisks", func(t *testing.T) {
+		got := wrapMarkdownAsPost("hello** world **there")
 		node := decodePostParagraphForTest(t, got, 0)
-		if node["text"] != "literal ** /tmp/demo ** and ** x ** and hello** world **there" {
+		if node["text"] != "hello** world **there" {
 			t.Fatalf("wrapMarkdownAsPost() text = %#v", node["text"])
 		}
 	})
