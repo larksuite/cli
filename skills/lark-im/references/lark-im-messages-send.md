@@ -35,6 +35,11 @@ When using `--as user`, the message is sent as the authorized end user and requi
 - Use `--markdown` when you want basic Markdown-style rendering and you accept that the shortcut will normalize and rewrite parts of the content before sending.
 - Use `--content` when `--markdown` is not enough, especially if you need exact `post` JSON, a title, multiple locales, cards, or unsupported rich structures.
 
+### If you choose `--markdown`, write emphasis without inner edge spaces
+
+- `**bold**`, not `** bold **`
+- `*italic*`, not `* italic *`
+
 ## What `--markdown` Really Does
 
 `--markdown` is **not** sent as raw Markdown API content.

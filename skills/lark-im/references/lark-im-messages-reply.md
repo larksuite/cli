@@ -35,6 +35,11 @@ When using `--as user`, the reply is sent as the authorized end user and require
 - Use `--markdown` when you want a lightweight formatted reply and you accept that the shortcut will normalize and rewrite parts of the content before sending.
 - Use `--content` when you need exact `post` JSON, a card, a title, multiple locales, or any structure that `--markdown` cannot express reliably.
 
+### If you choose `--markdown`, write emphasis without inner edge spaces
+
+- `**bold**`, not `** bold **`
+- `*italic*`, not `* italic *`
+
 ## What `--markdown` Really Does
 
 `--markdown` does **not** send arbitrary raw Markdown to the API.
