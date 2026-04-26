@@ -19,3 +19,4 @@ Shortcut 是对常用操作的高级封装（`lark-cli event +<verb> [flags]`）
 | Shortcut | 说明 |
 |----------|------|
 | [`+subscribe`](references/lark-event-subscribe.md) | Subscribe to Lark events via WebSocket long connection (read-only, NDJSON output); bot-only; supports compact agent-friendly format, regex routing, file output |
+| [`+bot-receive-diagnose`](references/lark-event-bot-receive-diagnose.md) | Diagnose why a bot does not receive events (default `im.message.receive_v1`); bot-only; read-only; structured `{summary, checks, next_steps}` output |
