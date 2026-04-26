@@ -545,6 +545,16 @@ func TestWrapMarkdownAsPost(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves multiple inline code spans and tilde fenced code", func(t *testing.T) {
+		input := "`** keep **` prose ** fix ** ``* keep *``\n~~~md\n* keep fenced *\n~~~"
+		got := wrapMarkdownAsPost(input)
+		node := decodePostParagraphForTest(t, got, 0)
+		text, _ := node["text"].(string)
+		if text != "`** keep **` prose **fix** ``* keep *``\n~~~md\n* keep fenced *\n~~~" {
+			t.Fatalf("wrapMarkdownAsPost() text = %#v", node["text"])
+		}
+	})
+
 	t.Run("preserves embedded non emphatic spaced asterisks", func(t *testing.T) {
 		got := wrapMarkdownAsPost("hello** world **there")
 		node := decodePostParagraphForTest(t, got, 0)

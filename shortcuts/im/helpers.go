@@ -785,13 +785,13 @@ var (
 	reTableAfter         = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
 	reExcessNL           = regexp.MustCompile(`\n{3,}`)
 	reInvalidImg         = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
-	reCodeBlock          = regexp.MustCompile("```[\\s\\S]*?```")
 	reBlankLineSeparator = regexp.MustCompile(`\n(?:[ \t]*\n)+`)
 )
 
 const (
-	markdownCodeBlockPlaceholder = "___CB_"
-	postBlankLinePlaceholder     = "\u200B"
+	markdownCodeBlockPlaceholder  = "___CB_"
+	markdownInlineCodePlaceholder = "___IC_"
+	postBlankLinePlaceholder      = "\u200B"
 )
 
 type markdownPart struct {
@@ -801,19 +801,90 @@ type markdownPart struct {
 }
 
 func protectMarkdownCodeBlocks(text string) (string, []string) {
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
 	var codeBlocks []string
-	protected := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
+	var block []string
+	inFence := false
+	fenceMarker := ""
+
+	flushBlock := func() {
 		idx := len(codeBlocks)
-		codeBlocks = append(codeBlocks, m)
-		return fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx)
-	})
-	return protected, codeBlocks
+		codeBlocks = append(codeBlocks, strings.Join(block, "\n"))
+		out = append(out, fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx))
+		block = nil
+	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		marker := ""
+		if strings.HasPrefix(trimmed, "```") {
+			marker = "```"
+		} else if strings.HasPrefix(trimmed, "~~~") {
+			marker = "~~~"
+		}
+
+		if !inFence {
+			if marker == "" {
+				out = append(out, line)
+				continue
+			}
+			inFence = true
+			fenceMarker = marker
+			block = append(block, line)
+			continue
+		}
+
+		block = append(block, line)
+		if marker == fenceMarker {
+			flushBlock()
+			inFence = false
+			fenceMarker = ""
+		}
+	}
+
+	if inFence {
+		flushBlock()
+	}
+
+	return strings.Join(out, "\n"), codeBlocks
 }
 
 func restoreMarkdownCodeBlocks(text string, codeBlocks []string) string {
 	restored := text
 	for i, block := range codeBlocks {
 		restored = strings.Replace(restored, fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, i), block, 1)
+	}
+	return restored
+}
+
+func protectMarkdownInlineCode(text string) (string, []string) {
+	var inlineCodes []string
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		spans := scanInlineCodeSpans(line)
+		if len(spans) == 0 {
+			continue
+		}
+		var sb strings.Builder
+		pos := 0
+		for _, span := range spans {
+			sb.WriteString(line[pos:span[0]])
+			idx := len(inlineCodes)
+			inlineCodes = append(inlineCodes, line[span[0]:span[1]])
+			sb.WriteString(fmt.Sprintf("%s%d___", markdownInlineCodePlaceholder, idx))
+			pos = span[1]
+		}
+		sb.WriteString(line[pos:])
+		lines[i] = sb.String()
+	}
+	return strings.Join(lines, "\n"), inlineCodes
+}
+
+func restoreMarkdownInlineCode(text string, inlineCodes []string) string {
+	restored := text
+	for i, code := range inlineCodes {
+		restored = strings.Replace(restored, fmt.Sprintf("%s%d___", markdownInlineCodePlaceholder, i), code, 1)
 	}
 	return restored
 }
@@ -858,20 +929,17 @@ func optimizeMarkdownStyle(text string) string {
 // "**bold**" so Feishu's md renderer can recognize emphasis instead of
 // leaking literal '*'.
 func normalizeMarkdownEmphasisSpacing(markdown string) string {
-	lines := strings.Split(markdown, "\n")
-	inFence := false
+	protected, codeBlocks := protectMarkdownCodeBlocks(markdown)
+	protected, inlineCodes := protectMarkdownInlineCode(protected)
+
+	lines := strings.Split(protected, "\n")
 	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		lines[i] = normalizeMarkdownEmphasisSpacingLine(line)
+		lines[i] = normalizeEmphasisSpacingSegment(line)
 	}
-	return strings.Join(lines, "\n")
+
+	normalized := strings.Join(lines, "\n")
+	normalized = restoreMarkdownInlineCode(normalized, inlineCodes)
+	return restoreMarkdownCodeBlocks(normalized, codeBlocks)
 }
 
 // scanInlineCodeSpans returns byte ranges [start, end) for inline code spans
@@ -908,22 +976,6 @@ func scanInlineCodeSpans(line string) [][2]int {
 		}
 	}
 	return spans
-}
-
-func normalizeMarkdownEmphasisSpacingLine(line string) string {
-	spans := scanInlineCodeSpans(line)
-	if len(spans) == 0 {
-		return normalizeEmphasisSpacingSegment(line)
-	}
-	var sb strings.Builder
-	pos := 0
-	for _, loc := range spans {
-		sb.WriteString(normalizeEmphasisSpacingSegment(line[pos:loc[0]]))
-		sb.WriteString(line[loc[0]:loc[1]])
-		pos = loc[1]
-	}
-	sb.WriteString(normalizeEmphasisSpacingSegment(line[pos:]))
-	return sb.String()
 }
 
 func normalizeEmphasisSpacingSegment(seg string) string {
