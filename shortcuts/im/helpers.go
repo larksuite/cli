@@ -785,6 +785,7 @@ var (
 	reTableAfter         = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
 	reExcessNL           = regexp.MustCompile(`\n{3,}`)
 	reInvalidImg         = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
+	reCodeBlock          = regexp.MustCompile("```[\\s\\S]*?```")
 	reBlankLineSeparator = regexp.MustCompile(`\n(?:[ \t]*\n)+`)
 )
 
@@ -801,53 +802,13 @@ type markdownPart struct {
 }
 
 func protectMarkdownCodeBlocks(text string) (string, []string) {
-	lines := strings.Split(text, "\n")
-	out := make([]string, 0, len(lines))
 	var codeBlocks []string
-	var block []string
-	inFence := false
-	fenceMarker := ""
-
-	flushBlock := func() {
+	protected := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
 		idx := len(codeBlocks)
-		codeBlocks = append(codeBlocks, strings.Join(block, "\n"))
-		out = append(out, fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx))
-		block = nil
-	}
-
-	for _, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-		marker := ""
-		if strings.HasPrefix(trimmed, "```") {
-			marker = "```"
-		} else if strings.HasPrefix(trimmed, "~~~") {
-			marker = "~~~"
-		}
-
-		if !inFence {
-			if marker == "" {
-				out = append(out, line)
-				continue
-			}
-			inFence = true
-			fenceMarker = marker
-			block = append(block, line)
-			continue
-		}
-
-		block = append(block, line)
-		if marker == fenceMarker {
-			flushBlock()
-			inFence = false
-			fenceMarker = ""
-		}
-	}
-
-	if inFence {
-		flushBlock()
-	}
-
-	return strings.Join(out, "\n"), codeBlocks
+		codeBlocks = append(codeBlocks, m)
+		return fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx)
+	})
+	return protected, codeBlocks
 }
 
 func restoreMarkdownCodeBlocks(text string, codeBlocks []string) string {

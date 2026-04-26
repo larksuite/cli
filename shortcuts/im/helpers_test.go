@@ -545,12 +545,12 @@ func TestWrapMarkdownAsPost(t *testing.T) {
 		}
 	})
 
-	t.Run("preserves multiple inline code spans and tilde fenced code", func(t *testing.T) {
-		input := "`** keep **` prose ** fix ** ``* keep *``\n~~~md\n* keep fenced *\n~~~"
+	t.Run("preserves multiple inline code spans", func(t *testing.T) {
+		input := "`** keep **` prose ** fix ** ``* keep *`` and * okay *"
 		got := wrapMarkdownAsPost(input)
 		node := decodePostParagraphForTest(t, got, 0)
 		text, _ := node["text"].(string)
-		if text != "`** keep **` prose **fix** ``* keep *``\n~~~md\n* keep fenced *\n~~~" {
+		if text != "`** keep **` prose **fix** ``* keep *`` and *okay*" {
 			t.Fatalf("wrapMarkdownAsPost() text = %#v", node["text"])
 		}
 	})
