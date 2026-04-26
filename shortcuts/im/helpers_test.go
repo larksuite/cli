@@ -527,12 +527,28 @@ func TestWrapMarkdownAsPost(t *testing.T) {
 		}
 	})
 
+	t.Run("normalizes malformed italic and bold italic spacing", func(t *testing.T) {
+		got := wrapMarkdownAsPost("* italic * and *** both ***")
+		node := decodePostParagraphForTest(t, got, 0)
+		if node["text"] != "*italic* and ***both***" {
+			t.Fatalf("wrapMarkdownAsPost() text = %#v, want %q", node["text"], "*italic* and ***both***")
+		}
+	})
+
 	t.Run("preserves inline code and fenced code spacing", func(t *testing.T) {
 		input := "code `** keep **` and prose ** fix **\n```md\n** keep fenced **\n```"
 		got := wrapMarkdownAsPost(input)
 		node := decodePostParagraphForTest(t, got, 0)
 		text, _ := node["text"].(string)
 		if text != "code `** keep **` and prose **fix**\n```md\n** keep fenced **\n```" {
+			t.Fatalf("wrapMarkdownAsPost() text = %#v", node["text"])
+		}
+	})
+
+	t.Run("preserves non emphatic spaced asterisks", func(t *testing.T) {
+		got := wrapMarkdownAsPost("literal ** /tmp/demo ** and ** x ** and hello** world **there")
+		node := decodePostParagraphForTest(t, got, 0)
+		if node["text"] != "literal ** /tmp/demo ** and ** x ** and hello** world **there" {
 			t.Fatalf("wrapMarkdownAsPost() text = %#v", node["text"])
 		}
 	})

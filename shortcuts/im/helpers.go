@@ -853,9 +853,10 @@ func optimizeMarkdownStyle(text string) string {
 }
 
 // normalizeMarkdownEmphasisSpacing trims whitespace immediately inside simple
-// *...* and **...** spans while preserving fenced code blocks and inline code.
-// This hardens AI-generated markdown such as "** bold **" into "**bold**" so
-// Feishu's md renderer can recognize emphasis instead of leaking literal '*'.
+// *...*, **...**, and ***...*** spans while preserving fenced code blocks and
+// inline code. This hardens AI-generated markdown such as "** bold **" into
+// "**bold**" so Feishu's md renderer can recognize emphasis instead of
+// leaking literal '*'.
 func normalizeMarkdownEmphasisSpacing(markdown string) string {
 	lines := strings.Split(markdown, "\n")
 	inFence := false
@@ -942,7 +943,7 @@ func normalizeEmphasisSpacingSegment(seg string) string {
 		sb.WriteString(seg[pos:openStart])
 
 		markerLen := openEnd - openStart
-		if markerLen != 1 && markerLen != 2 {
+		if markerLen != 1 && markerLen != 2 && markerLen != 3 {
 			sb.WriteString(seg[openStart:openEnd])
 			pos = openEnd
 			continue
@@ -952,6 +953,11 @@ func normalizeEmphasisSpacingSegment(seg string) string {
 		if !ok || closeEnd-closeStart != markerLen {
 			sb.WriteString(seg[openStart:openEnd])
 			pos = openEnd
+			continue
+		}
+		if !hasSimpleEmphasisBoundaries(seg, openStart, closeEnd) {
+			sb.WriteString(seg[openStart:closeEnd])
+			pos = closeEnd
 			continue
 		}
 
@@ -986,6 +992,26 @@ func nextAsteriskRun(s string, start int) (runStart, runEnd int, ok bool) {
 	return 0, 0, false
 }
 
+func hasSimpleEmphasisBoundaries(s string, openStart, closeEnd int) bool {
+	if openStart > 0 {
+		prev, _ := utf8.DecodeLastRuneInString(s[:openStart])
+		if isWordLikeRune(prev) {
+			return false
+		}
+	}
+	if closeEnd < len(s) {
+		next, _ := utf8.DecodeRuneInString(s[closeEnd:])
+		if isWordLikeRune(next) {
+			return false
+		}
+	}
+	return true
+}
+
+func isWordLikeRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.Is(unicode.Han, r)
+}
+
 func normalizeEmphasisPayload(payload string) (string, bool) {
 	trimmedLeft := strings.TrimLeftFunc(payload, unicode.IsSpace)
 	trimmed := strings.TrimRightFunc(trimmedLeft, unicode.IsSpace)
@@ -996,13 +1022,25 @@ func normalizeEmphasisPayload(payload string) (string, bool) {
 	hasLeadingSpace := len(trimmedLeft) != len(payload)
 	hasTrailingSpace := len(trimmed) != len(trimmedLeft)
 	if !hasLeadingSpace && !hasTrailingSpace {
-		return payload, true
+		return payload, false
 	}
-
+	if strings.Contains(trimmed, "*") {
+		return payload, false
+	}
 	if hasLeadingSpace && hasTrailingSpace && utf8.RuneCountInString(trimmed) == 1 {
 		return payload, false
 	}
-	return trimmed, true
+	first, _ := utf8.DecodeRuneInString(trimmed)
+	last, _ := utf8.DecodeLastRuneInString(trimmed)
+	if !isWordLikeRune(first) || !isWordLikeRune(last) {
+		return payload, false
+	}
+	for _, r := range trimmed {
+		if isWordLikeRune(r) {
+			return trimmed, true
+		}
+	}
+	return payload, false
 }
 
 func shouldUseSegmentedPost(markdown string) bool {
