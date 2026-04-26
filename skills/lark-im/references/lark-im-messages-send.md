@@ -35,11 +35,6 @@ When using `--as user`, the message is sent as the authorized end user and requi
 - Use `--markdown` when you want basic Markdown-style rendering and you accept that the shortcut will normalize and rewrite parts of the content before sending.
 - Use `--content` when `--markdown` is not enough, especially if you need exact `post` JSON, a title, multiple locales, cards, or unsupported rich structures.
 
-### If you choose `--markdown`, write emphasis without inner edge spaces
-
-- `**bold**`, not `** bold **`
-- `*italic*`, not `* italic *`
-
 ## What `--markdown` Really Does
 
 `--markdown` is **not** sent as raw Markdown API content.
@@ -69,6 +64,7 @@ This means `--markdown` is convenient, but it is not a full-fidelity Markdown tr
 - Block spacing and line breaks may be normalized during conversion.
 - Code blocks are preserved as code blocks.
 - Excess blank lines are compressed.
+- Emphasis with `*`, `**`, or `***` should not contain inner edge spaces. Use `**bold**` instead of `** bold **`, `** bold**`, or `**bold **`; use `*italic*` instead of `* italic *`, `* italic*`, or `*italic *`.
 - Only `http://...`, `https://...`, or already-uploaded `img_xxx` Markdown images are kept reliably.
 - Local paths in Markdown image syntax like `![x](./a.png)` are **not** auto-uploaded by `--markdown`; they may be stripped during optimization.
 - If remote Markdown image download/upload fails, that image is removed with a warning.
