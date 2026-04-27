@@ -37,7 +37,6 @@ func TestOKR_CycleDetailDryRun(t *testing.T) {
 
 func setDryRunConfigEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_APP_ID", "cli_dryrun_test")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "dryrun_secret")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
