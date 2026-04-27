@@ -197,6 +197,7 @@ func TestCLIStdinRegression_ErrorCases(t *testing.T) {
 
 func setDryRunConfigEnv(t *testing.T) {
 	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
