@@ -8,35 +8,46 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+
+	"github.com/larksuite/cli/internal/event/busdiscover"
 )
 
-func TestDiscoverAppIDs_OnlyDirsWithSocket(t *testing.T) {
+func TestDiscoverAppIDs_OnlyLiveLockHolders(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
 
 	eventsDir := filepath.Join(tmp, "events")
-	if err := os.MkdirAll(eventsDir, 0700); err != nil {
-		t.Fatal(err)
-	}
 
+	// Two live buses (lock held until t.Cleanup releases it).
 	for _, app := range []string{"cli_XXXXXXXXXXXXXXXX", "cli_YYYYYYYYYYYYYYYY"} {
 		appDir := filepath.Join(eventsDir, app)
-		if err := os.MkdirAll(appDir, 0700); err != nil {
-			t.Fatal(err)
+		h, err := busdiscover.WritePIDFile(appDir, 1234)
+		if err != nil {
+			t.Fatalf("WritePIDFile %s: %v", app, err)
 		}
-		if err := os.WriteFile(filepath.Join(appDir, "bus.sock"), nil, 0600); err != nil {
-			t.Fatal(err)
-		}
+		t.Cleanup(func() { _ = h.Release() })
 	}
 
-	stoppedDir := filepath.Join(eventsDir, "cli_ZZZZZZZZZZZZZZZZ")
-	if err := os.MkdirAll(stoppedDir, 0700); err != nil {
+	// Dead bus: lock acquired then released → looks like a stale dir on disk.
+	deadDir := filepath.Join(eventsDir, "cli_ZZZZZZZZZZZZZZZZ")
+	hDead, err := busdiscover.WritePIDFile(deadDir, 9999)
+	if err != nil {
+		t.Fatalf("WritePIDFile dead: %v", err)
+	}
+	if err := hDead.Release(); err != nil {
+		t.Fatalf("Release dead: %v", err)
+	}
+
+	// Stale bus.sock without alive.lock — old behavior would surface it; new must not.
+	staleSockDir := filepath.Join(eventsDir, "cli_SSSSSSSSSSSSSSSS")
+	if err := os.MkdirAll(staleSockDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(stoppedDir, "bus.log"), []byte("stale"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(staleSockDir, "bus.sock"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 
+	// Stray non-dir file under events/.
 	if err := os.WriteFile(filepath.Join(eventsDir, "stray.txt"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +67,7 @@ func TestDiscoverAppIDs_OnlyDirsWithSocket(t *testing.T) {
 
 func TestDiscoverAppIDs_MissingEventsDir(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	if got := discoverAppIDs(); got != nil {
-		t.Errorf("discoverAppIDs() on missing events/ = %v, want nil", got)
+	if got := discoverAppIDs(); len(got) != 0 {
+		t.Errorf("discoverAppIDs() on missing events/ = %v, want empty", got)
 	}
 }

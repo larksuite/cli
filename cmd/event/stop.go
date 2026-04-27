@@ -8,17 +8,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event/busctl"
+	"github.com/larksuite/cli/internal/event/busdiscover"
 	"github.com/larksuite/cli/internal/event/transport"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/vfs"
 )
 
 // stopStatus is the outcome tag; JSON wire format is the string form — keep values stable.
@@ -228,23 +226,16 @@ func writeStopText(out, errOut io.Writer, results []stopResult) {
 	}
 }
 
-// discoverAppIDs returns appIDs with a live-looking bus.sock under events dir; Unix-only (Windows uses --app-id).
+// discoverAppIDs returns appIDs whose bus.alive.lock is held by a live process.
+// Cross-platform via lockfile (flock on Unix, LockFileEx on Windows); ignores stale socket files.
 func discoverAppIDs() []string {
-	eventsDir := filepath.Join(core.GetConfigDir(), "events")
-	entries, err := vfs.ReadDir(eventsDir)
+	procs, err := busdiscover.Default().ScanBusProcesses()
 	if err != nil {
 		return nil
 	}
-	var ids []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		sockPath := filepath.Join(eventsDir, e.Name(), "bus.sock")
-		if _, statErr := vfs.Stat(sockPath); statErr != nil {
-			continue
-		}
-		ids = append(ids, e.Name())
+	ids := make([]string, 0, len(procs))
+	for _, p := range procs {
+		ids = append(ids, p.AppID)
 	}
 	return ids
 }

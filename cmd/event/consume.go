@@ -75,6 +75,9 @@ Use 'event schema <EventKey>' for parameter details.`,
 }
 
 func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consumeCmdOpts) error {
+	// Pipe-close (e.g. `... | head -n 1`) must reach the EPIPE error path in the loop, not SIGPIPE-kill.
+	ignoreBrokenPipe()
+
 	cfg, err := f.Config()
 	if err != nil {
 		return err
