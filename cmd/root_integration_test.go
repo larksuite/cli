@@ -149,20 +149,6 @@ func resetBuffers(stdout *bytes.Buffer, stderr *bytes.Buffer) {
 	stderr.Reset()
 }
 
-func parseDryRunJSON(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
-	t.Helper()
-	out := stdout.String()
-	const prefix = "=== Dry Run ===\n"
-	if !strings.HasPrefix(out, prefix) {
-		t.Fatalf("expected dry-run prefix, got:\n%s", out)
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(out, prefix)), &payload); err != nil {
-		t.Fatalf("failed to parse dry-run payload: %v\nstdout: %s", err, out)
-	}
-	return payload
-}
-
 // --- api command ---
 
 func TestIntegration_Api_BusinessError_OutputsEnvelope(t *testing.T) {
