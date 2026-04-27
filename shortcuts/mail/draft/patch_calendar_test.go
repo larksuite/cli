@@ -94,6 +94,9 @@ Content-Type: text/html; charset=UTF-8
 	if string(part.Body) != fixtureCalData {
 		t.Errorf("calendar part body mismatch: got %q", part.Body)
 	}
+	if part.MediaParams["method"] != "REQUEST" {
+		t.Errorf("calendar part missing method=REQUEST in MediaParams: %v", part.MediaParams)
+	}
 }
 
 // ---------------------------------------------------------------------------

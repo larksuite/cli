@@ -34,7 +34,7 @@ func applyCalendarRemove(snapshot *DraftSnapshot) error {
 func setCalendarPart(snapshot *DraftSnapshot, icsData []byte) {
 	newPart := &Part{
 		MediaType:   calendarMediaType,
-		MediaParams: map[string]string{"charset": "UTF-8"},
+		MediaParams: map[string]string{"charset": "UTF-8", "method": "REQUEST"},
 		Body:        icsData,
 		Dirty:       true,
 	}
