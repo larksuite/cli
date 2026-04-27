@@ -33,6 +33,7 @@ var DriveExport = common.Shortcut{
 		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable"}},
 		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base"}},
 		{Name: "sub-id", Desc: "sub-table/sheet ID, required when exporting sheet/bitable as csv"},
+		{Name: "file-name", Desc: "preferred output filename (optional)"},
 		{Name: "output-dir", Default: ".", Desc: "local output directory (default: current directory)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 	},
@@ -54,14 +55,19 @@ var DriveExport = common.Shortcut{
 		// Markdown export is a special case: docx markdown comes from docs content
 		// directly instead of the Drive export task API.
 		if spec.FileExtension == "markdown" {
-			return common.NewDryRunAPI().
+			dr := common.NewDryRunAPI().
 				Desc("2-step orchestration: fetch docx markdown -> write local file").
 				GET("/open-apis/docs/v1/content").
 				Params(map[string]interface{}{
 					"doc_token":    spec.Token,
 					"doc_type":     "docx",
 					"content_type": "markdown",
-				})
+				}).
+				Set("output_dir", runtime.Str("output-dir"))
+			if name := strings.TrimSpace(runtime.Str("file-name")); name != "" {
+				dr.Set("file_name", ensureExportFileExtension(sanitizeExportFileName(name, spec.Token), spec.FileExtension))
+			}
+			return dr
 		}
 
 		body := map[string]interface{}{
@@ -73,10 +79,15 @@ var DriveExport = common.Shortcut{
 			body["sub_id"] = spec.SubID
 		}
 
-		return common.NewDryRunAPI().
+		dr := common.NewDryRunAPI().
 			Desc("3-step orchestration: create export task -> limited polling -> download file").
 			POST("/open-apis/drive/v1/export_tasks").
-			Body(body)
+			Body(body).
+			Set("output_dir", runtime.Str("output-dir"))
+		if name := strings.TrimSpace(runtime.Str("file-name")); name != "" {
+			dr.Set("file_name", ensureExportFileExtension(sanitizeExportFileName(name, spec.Token), spec.FileExtension))
+		}
+		return dr
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := driveExportSpec{
@@ -86,6 +97,7 @@ var DriveExport = common.Shortcut{
 			SubID:         runtime.Str("sub-id"),
 		}
 		outputDir := runtime.Str("output-dir")
+		preferredFileName := strings.TrimSpace(runtime.Str("file-name"))
 		overwrite := runtime.Bool("overwrite")
 
 		// Markdown export bypasses the async export task and writes the fetched
@@ -106,14 +118,18 @@ var DriveExport = common.Shortcut{
 				return err
 			}
 
-			// Prefer the remote title for the exported file name, but still fall
-			// back to the token if metadata is empty.
-			title, err := fetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
-			if err != nil {
-				fmt.Fprintf(runtime.IO().ErrOut, "Title lookup failed, using token as filename: %v\n", err)
-				title = spec.Token
+			fileName := preferredFileName
+			if fileName == "" {
+				// Prefer the remote title for the exported file name, but still fall
+				// back to the token if metadata is empty.
+				title, err := fetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
+				if err != nil {
+					fmt.Fprintf(runtime.IO().ErrOut, "Title lookup failed, using token as filename: %v\n", err)
+					title = spec.Token
+				}
+				fileName = title
 			}
-			fileName := ensureExportFileExtension(sanitizeExportFileName(title, spec.Token), spec.FileExtension)
+			fileName = ensureExportFileExtension(sanitizeExportFileName(fileName, spec.Token), spec.FileExtension)
 			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(common.GetString(data, "content")), overwrite)
 			if err != nil {
 				return err
@@ -166,7 +182,11 @@ var DriveExport = common.Shortcut{
 
 			if status.Ready() {
 				fmt.Fprintf(runtime.IO().ErrOut, "Export task completed: %s\n", common.MaskToken(status.FileToken))
-				fileName := ensureExportFileExtension(sanitizeExportFileName(status.FileName, spec.Token), spec.FileExtension)
+				fileName := preferredFileName
+				if fileName == "" {
+					fileName = status.FileName
+				}
+				fileName = ensureExportFileExtension(sanitizeExportFileName(fileName, spec.Token), spec.FileExtension)
 				out, err := downloadDriveExportFile(ctx, runtime, status.FileToken, outputDir, fileName, overwrite)
 				if err != nil {
 					recoveryCommand := driveExportDownloadCommand(status.FileToken, fileName, outputDir, overwrite)
@@ -227,7 +247,7 @@ var DriveExport = common.Shortcut{
 		}
 		// Return the last observed status so callers can resume from a known task
 		// state instead of losing all progress information on timeout.
-		runtime.Out(map[string]interface{}{
+		result := map[string]interface{}{
 			"ticket":           ticket,
 			"token":            spec.Token,
 			"doc_type":         spec.DocType,
@@ -238,7 +258,11 @@ var DriveExport = common.Shortcut{
 			"job_status_label": jobStatusLabel,
 			"timed_out":        true,
 			"next_command":     nextCommand,
-		}, nil)
+		}
+		if preferredFileName != "" {
+			result["file_name"] = ensureExportFileExtension(sanitizeExportFileName(preferredFileName, spec.Token), spec.FileExtension)
+		}
+		runtime.Out(result, nil)
 		fmt.Fprintf(runtime.IO().ErrOut, "Export task is still in progress. Continue with: %s\n", nextCommand)
 		return nil
 	},
