@@ -62,11 +62,21 @@ func setCalendarPart(snapshot *DraftSnapshot, icsData []byte) {
 	// wrap it in multipart/alternative together with the calendar.
 	if !snapshot.Body.IsMultipart() {
 		original := *snapshot.Body
+		// Reset all header-carrying fields so the serializer constructs a fresh
+		// Content-Type from MediaType instead of reusing the stale leaf headers.
+		snapshot.Body.Headers = nil
 		snapshot.Body.MediaType = "multipart/alternative"
 		snapshot.Body.MediaParams = nil
+		snapshot.Body.ContentDisposition = ""
+		snapshot.Body.ContentDispositionArg = nil
+		snapshot.Body.ContentID = ""
+		snapshot.Body.PartID = ""
 		snapshot.Body.Body = nil
 		snapshot.Body.TransferEncoding = ""
 		snapshot.Body.RawEntity = nil
+		snapshot.Body.Preamble = nil
+		snapshot.Body.Epilogue = nil
+		snapshot.Body.EncodingProblem = false
 		snapshot.Body.Children = []*Part{&original, newPart}
 		snapshot.Body.Dirty = true
 		return
