@@ -177,3 +177,55 @@ func TestBuildDraftEditPatch_SetEventMissingStartEnd(t *testing.T) {
 		t.Fatal("expected error when --set-event-summary set without start/end, got nil")
 	}
 }
+
+func TestEffectiveRecipients_SetReplaces(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		To: []draftpkg.Address{{Address: "old@example.com"}},
+		Cc: []draftpkg.Address{{Address: "cc@example.com"}},
+	}
+	ops := []draftpkg.PatchOp{
+		{Op: "set_recipients", Field: "to", Addresses: []draftpkg.Address{{Address: "new@example.com"}}},
+	}
+	to, cc := effectiveRecipients(snapshot, ops)
+	if len(to) != 1 || to[0].Address != "new@example.com" {
+		t.Errorf("expected to=[new@example.com], got %v", to)
+	}
+	if len(cc) != 1 || cc[0].Address != "cc@example.com" {
+		t.Errorf("expected cc unchanged, got %v", cc)
+	}
+}
+
+func TestEffectiveRecipients_AddAndRemove(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		To: []draftpkg.Address{{Address: "alice@example.com"}, {Address: "bob@example.com"}},
+	}
+	ops := []draftpkg.PatchOp{
+		{Op: "add_recipient", Field: "to", Address: "carol@example.com"},
+		{Op: "remove_recipient", Field: "to", Address: "bob@example.com"},
+	}
+	to, _ := effectiveRecipients(snapshot, ops)
+	if len(to) != 2 {
+		t.Fatalf("expected 2 recipients, got %v", to)
+	}
+	addrs := map[string]bool{}
+	for _, a := range to {
+		addrs[a.Address] = true
+	}
+	if !addrs["alice@example.com"] || !addrs["carol@example.com"] || addrs["bob@example.com"] {
+		t.Errorf("unexpected recipient set: %v", to)
+	}
+}
+
+func TestEffectiveRecipients_NoOpsReturnsCopy(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		To: []draftpkg.Address{{Address: "alice@example.com"}},
+		Cc: []draftpkg.Address{{Address: "bob@example.com"}},
+	}
+	to, cc := effectiveRecipients(snapshot, nil)
+	if len(to) != 1 || to[0].Address != "alice@example.com" {
+		t.Errorf("unexpected to: %v", to)
+	}
+	if len(cc) != 1 || cc[0].Address != "bob@example.com" {
+		t.Errorf("unexpected cc: %v", cc)
+	}
+}

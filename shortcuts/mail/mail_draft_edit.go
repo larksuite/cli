@@ -150,21 +150,9 @@ var MailDraftEdit = common.Shortcut{
 				if _, _, err := parseEventTimeRange(patch.Ops[i].EventStart, patch.Ops[i].EventEnd); err != nil {
 					return output.ErrValidation("set_calendar: %v", err)
 				}
-				// Use post-edit recipients if --set-to/--set-cc was also passed,
-				// so the ATTENDEE list reflects the final draft recipients.
-				toAddrs := snapshot.To
-				ccAddrs := snapshot.Cc
-				for _, op := range patch.Ops {
-					if op.Op != "set_recipients" {
-						continue
-					}
-					switch op.Field {
-					case "to":
-						toAddrs = op.Addresses
-					case "cc":
-						ccAddrs = op.Addresses
-					}
-				}
+				// Derive effective To/Cc by replaying all pending recipient ops so
+				// the ICS ATTENDEE list matches the final post-edit recipients.
+				toAddrs, ccAddrs := effectiveRecipients(snapshot, patch.Ops)
 				calData := buildCalendarBodyFromArgs(
 					patch.Ops[i].EventSummary,
 					patch.Ops[i].EventStart,
@@ -569,4 +557,46 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 		"command_example":    "lark-cli mail +draft-edit --print-patch-template",
 		"patch_file_example": "lark-cli mail +draft-edit --draft-id d_xxx --patch-file ./patch.json",
 	}
+}
+
+// effectiveRecipients returns the To and Cc address slices that will result
+// after all pending set_recipients / add_recipient / remove_recipient ops in
+// ops have been applied. Used by the set_calendar pre-processor to build ICS
+// with the correct post-edit ATTENDEE list before Apply() runs.
+func effectiveRecipients(snapshot *draftpkg.DraftSnapshot, ops []draftpkg.PatchOp) (to, cc []draftpkg.Address) {
+	to = append([]draftpkg.Address{}, snapshot.To...)
+	cc = append([]draftpkg.Address{}, snapshot.Cc...)
+
+	apply := func(addrs []draftpkg.Address, op draftpkg.PatchOp) []draftpkg.Address {
+		switch op.Op {
+		case "set_recipients":
+			return append([]draftpkg.Address{}, op.Addresses...)
+		case "add_recipient":
+			for _, a := range addrs {
+				if strings.EqualFold(a.Address, op.Address) {
+					return addrs
+				}
+			}
+			return append(addrs, draftpkg.Address{Name: op.Name, Address: op.Address})
+		case "remove_recipient":
+			next := addrs[:0:0]
+			for _, a := range addrs {
+				if !strings.EqualFold(a.Address, op.Address) {
+					next = append(next, a)
+				}
+			}
+			return next
+		}
+		return addrs
+	}
+
+	for _, op := range ops {
+		switch op.Field {
+		case "to":
+			to = apply(to, op)
+		case "cc":
+			cc = apply(cc, op)
+		}
+	}
+	return to, cc
 }
