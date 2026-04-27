@@ -383,6 +383,9 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 	// user-supplied fields and validate the flag combination.
 	hasEventSet := runtime.Str("set-event-summary") != ""
 	hasEventRemove := runtime.Bool("remove-event")
+	if !hasEventSet && (runtime.Str("set-event-start") != "" || runtime.Str("set-event-end") != "" || runtime.Str("set-event-location") != "") {
+		return patch, output.ErrValidation("--set-event-start, --set-event-end, and --set-event-location require --set-event-summary")
+	}
 	if hasEventSet && hasEventRemove {
 		return patch, output.ErrValidation("--set-event-summary and --remove-event are mutually exclusive")
 	}
