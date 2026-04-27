@@ -217,7 +217,6 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 > **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：选项为枚举值，无自然顺序。
 > 通过 `multiple` 区分单选（`multiple=false`，默认）/ 多选（`multiple=true`）。
-> 阶段字段（`stage`）的 API 类型同 `select`，运算符与 value 格式完全一致。
 
 *`user` / `created_by` / `updated_by`*
 
