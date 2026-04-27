@@ -1496,10 +1496,10 @@ func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string
 					Attendees: parsed.Attendees,
 				}
 				if !parsed.Start.IsZero() {
-					ce.Start = parsed.Start.Format(time.RFC3339)
+					ce.Start = parsed.Start.UTC().Format(time.RFC3339)
 				}
 				if !parsed.End.IsZero() {
-					ce.End = parsed.End.Format(time.RFC3339)
+					ce.End = parsed.End.UTC().Format(time.RFC3339)
 				}
 				out.CalendarEvent = ce
 			}
