@@ -676,3 +676,44 @@ func TestRoundTrip(t *testing.T) {
 		t.Errorf("Attendees roundtrip: %v", parsed.Attendees)
 	}
 }
+
+func TestParseEvent_LowercaseAndParameterizedProps(t *testing.T) {
+	ics := "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n" +
+		"uid:lowercased-uid-value\r\n" +
+		"SUMMARY;LANGUAGE=en-US:Team Sync\r\n" +
+		"location;ALTREP=\"cid:part1\":Room 301\r\n" +
+		"DTSTART:20260501T100000Z\r\n" +
+		"DTEND:20260501T110000Z\r\n" +
+		"END:VEVENT\r\nEND:VCALENDAR\r\n"
+	ev := ParseEvent(ics)
+	if ev == nil {
+		t.Fatal("ParseEvent returned nil")
+	}
+	if ev.UID != "lowercased-uid-value" {
+		t.Errorf("UID: got %q", ev.UID)
+	}
+	if ev.Summary != "Team Sync" {
+		t.Errorf("Summary: got %q", ev.Summary)
+	}
+	if ev.Location != "Room 301" {
+		t.Errorf("Location: got %q", ev.Location)
+	}
+}
+
+func TestParseEvent_StartEndUTCInOutput(t *testing.T) {
+	// Verify that times with TZID are parsed with correct offset
+	// (UTC normalization in output is done by the helpers layer; parser
+	// returns time.Time which callers can call .UTC() on).
+	ics := "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n" +
+		"DTSTART;TZID=Asia/Shanghai:20260501T180000\r\n" +
+		"DTEND;TZID=Asia/Shanghai:20260501T190000\r\n" +
+		"END:VEVENT\r\nEND:VCALENDAR\r\n"
+	ev := ParseEvent(ics)
+	if ev == nil {
+		t.Fatal("ParseEvent returned nil")
+	}
+	wantStart := "2026-05-01T10:00:00Z"
+	if got := ev.Start.UTC().Format(time.RFC3339); got != wantStart {
+		t.Errorf("Start UTC: got %q, want %q", got, wantStart)
+	}
+}

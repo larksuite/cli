@@ -70,28 +70,30 @@ func ParseEvent(icsText string) *ParsedEvent {
 			continue
 		}
 
-		// VEVENT properties
+		// VEVENT properties — RFC 5545 §3.1: property names are
+		// case-insensitive and may carry parameters (NAME;PARAM=v:value).
 		name, value := splitProperty(line)
+		propUpper := strings.ToUpper(name)
 		switch {
-		case name == "UID":
+		case propUpper == "UID" || strings.HasPrefix(propUpper, "UID;"):
 			event.UID = value
-		case name == "SUMMARY":
+		case propUpper == "SUMMARY" || strings.HasPrefix(propUpper, "SUMMARY;"):
 			event.Summary = unescapeTextValue(value)
-		case name == "LOCATION":
+		case propUpper == "LOCATION" || strings.HasPrefix(propUpper, "LOCATION;"):
 			event.Location = unescapeTextValue(value)
-		case name == "DTSTART" || strings.HasPrefix(name, "DTSTART;"):
+		case propUpper == "DTSTART" || strings.HasPrefix(propUpper, "DTSTART;"):
 			event.Start = parseICSTime(value, name)
-		case name == "DTEND" || strings.HasPrefix(name, "DTEND;"):
+		case propUpper == "DTEND" || strings.HasPrefix(propUpper, "DTEND;"):
 			event.End = parseICSTime(value, name)
-		case name == "RECURRENCE-ID" || strings.HasPrefix(name, "RECURRENCE-ID;"):
+		case propUpper == "RECURRENCE-ID" || strings.HasPrefix(propUpper, "RECURRENCE-ID;"):
 			if t := parseICSTime(value, name); !t.IsZero() {
 				event.OriginalTime = t.Unix()
 			}
-		case name == "ORGANIZER" || strings.HasPrefix(name, "ORGANIZER;"):
+		case propUpper == "ORGANIZER" || strings.HasPrefix(propUpper, "ORGANIZER;"):
 			if email := extractMailto(value); email != "" {
 				event.Organizer = email
 			}
-		case name == "ATTENDEE" || strings.HasPrefix(name, "ATTENDEE;"):
+		case propUpper == "ATTENDEE" || strings.HasPrefix(propUpper, "ATTENDEE;"):
 			if email := extractMailto(value); email != "" {
 				event.Attendees = append(event.Attendees, email)
 			}
