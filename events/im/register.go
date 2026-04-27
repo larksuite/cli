@@ -16,7 +16,7 @@ func Keys() []event.KeyDefinition {
 		{
 			Key:         "im.message.receive_v1",
 			DisplayName: "Receive message",
-			Description: "接收 IM 消息",
+			Description: "Receive IM messages",
 			EventType:   "im.message.receive_v1",
 			Schema: event.SchemaDef{
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(ImMessageReceiveOutput{})},

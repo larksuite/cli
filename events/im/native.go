@@ -44,7 +44,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.message.message_read_v1",
 		title:       "Message read",
-		description: "用户阅读机器人发送的单聊消息后触发",
+		description: "Triggered after a user reads a P2P message sent by the bot",
 		scopes:      []string{"im:message:readonly", "im:message"},
 		bodyType:    reflect.TypeOf(larkim.P2MessageReadV1Data{}),
 		fieldOverrides: mergeOv(
@@ -58,7 +58,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.message.reaction.created_v1",
 		title:       "Reaction added",
-		description: "消息被添加表情回复时触发",
+		description: "Triggered when a reaction is added to a message",
 		scopes:      []string{"im:message:readonly", "im:message.reactions:read"},
 		bodyType:    reflect.TypeOf(larkim.P2MessageReactionCreatedV1Data{}),
 		fieldOverrides: mergeOv(
@@ -72,7 +72,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.message.reaction.deleted_v1",
 		title:       "Reaction removed",
-		description: "消息被删除表情回复时触发",
+		description: "Triggered when a reaction is removed from a message",
 		scopes:      []string{"im:message:readonly", "im:message.reactions:read"},
 		bodyType:    reflect.TypeOf(larkim.P2MessageReactionDeletedV1Data{}),
 		fieldOverrides: mergeOv(
@@ -86,7 +86,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.chat.member.bot.added_v1",
 		title:       "Bot added to chat",
-		description: "机器人被用户添加至群聊时触发",
+		description: "Triggered when the bot is added to a chat",
 		scopes:      []string{"im:chat.members:bot_access"},
 		bodyType:    reflect.TypeOf(larkim.P2ChatMemberBotAddedV1Data{}),
 		fieldOverrides: mergeOv(
@@ -99,7 +99,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.chat.member.bot.deleted_v1",
 		title:       "Bot removed from chat",
-		description: "机器人被移出群聊后触发",
+		description: "Triggered after the bot is removed from a chat",
 		scopes:      []string{"im:chat.members:bot_access"},
 		bodyType:    reflect.TypeOf(larkim.P2ChatMemberBotDeletedV1Data{}),
 		fieldOverrides: mergeOv(
@@ -112,7 +112,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.chat.member.user.added_v1",
 		title:       "User added to chat",
-		description: "新用户进群（含话题群）时触发",
+		description: "Triggered when a new user joins a chat (including topic chats)",
 		scopes:      []string{"im:chat.members:read"},
 		bodyType:    reflect.TypeOf(larkim.P2ChatMemberUserAddedV1Data{}),
 		fieldOverrides: mergeOv(
@@ -126,7 +126,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.chat.member.user.withdrawn_v1",
 		title:       "User invite withdrawn",
-		description: "撤销拉用户进群后触发",
+		description: "Triggered after a pending user invite is withdrawn",
 		scopes:      []string{"im:chat.members:read"},
 		bodyType:    reflect.TypeOf(larkim.P2ChatMemberUserWithdrawnV1Data{}),
 		fieldOverrides: mergeOv(
@@ -140,7 +140,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.chat.member.user.deleted_v1",
 		title:       "User left chat",
-		description: "用户主动退群或被移出群聊时触发",
+		description: "Triggered when a user leaves or is removed from a chat",
 		scopes:      []string{"im:chat.members:read"},
 		bodyType:    reflect.TypeOf(larkim.P2ChatMemberUserDeletedV1Data{}),
 		fieldOverrides: mergeOv(
@@ -154,7 +154,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.chat.updated_v1",
 		title:       "Chat updated",
-		description: "群配置（群主、头像、名称、权限等）被修改后触发",
+		description: "Triggered after chat settings (owner, avatar, name, permissions, etc.) are updated",
 		scopes:      []string{"im:chat:read"},
 		bodyType:    reflect.TypeOf(larkim.P2ChatUpdatedV1Data{}),
 		fieldOverrides: mergeOv(
@@ -171,7 +171,7 @@ var nativeIMKeys = []nativeIMKey{
 	{
 		key:         "im.chat.disbanded_v1",
 		title:       "Chat disbanded",
-		description: "群被解散后触发",
+		description: "Triggered after a chat is disbanded",
 		scopes:      []string{"im:chat:read"},
 		bodyType:    reflect.TypeOf(larkim.P2ChatDisbandedV1Data{}),
 		fieldOverrides: mergeOv(

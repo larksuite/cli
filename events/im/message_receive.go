@@ -13,17 +13,17 @@ import (
 
 // ImMessageReceiveOutput is the flattened shape for im.message.receive_v1; `desc` tags drive the reflected schema.
 type ImMessageReceiveOutput struct {
-	Type        string `json:"type"                   desc:"事件类型，恒定为 im.message.receive_v1"`
-	EventID     string `json:"event_id,omitempty"     desc:"飞书事件唯一 ID，可用于去重"`
-	Timestamp   string `json:"timestamp,omitempty"    desc:"事件投递时间（毫秒时间戳字符串），优先取自 header.create_time"                  kind:"timestamp_ms"`
-	ID          string `json:"id,omitempty"           desc:"消息 ID（等同于 message_id，历史别名，保留兼容）"                                kind:"message_id"`
-	MessageID   string `json:"message_id,omitempty"   desc:"消息 ID，以 om_ 开头"                                                          kind:"message_id"`
-	CreateTime  string `json:"create_time,omitempty"  desc:"消息发送时间（毫秒时间戳字符串）"                                                  kind:"timestamp_ms"`
-	ChatID      string `json:"chat_id,omitempty"      desc:"群组/会话 ID，以 oc_ 开头"                                                      kind:"chat_id"`
-	ChatType    string `json:"chat_type,omitempty"    desc:"会话类型"                                                                     enum:"p2p,group"`
-	MessageType string `json:"message_type,omitempty" desc:"消息类型"`
-	SenderID    string `json:"sender_id,omitempty"    desc:"发送者 open_id，以 ou_ 开头"                                                    kind:"open_id"`
-	Content     string `json:"content,omitempty"      desc:"消息内容。多数类型（text/post/image/file/audio 等）：已渲染为人类可读文本，直接取用。interactive（卡片）：保持原始 JSON 字符串，调用方需 fromjson 解析"`
+	Type        string `json:"type"                   desc:"Event type; always im.message.receive_v1"`
+	EventID     string `json:"event_id,omitempty"     desc:"Globally unique event ID; safe for deduplication"`
+	Timestamp   string `json:"timestamp,omitempty"    desc:"Event delivery time (ms timestamp string); prefers header.create_time"                                                                                                              kind:"timestamp_ms"`
+	ID          string `json:"id,omitempty"           desc:"Message ID (legacy alias of message_id, kept for compatibility)"                                                                                                                     kind:"message_id"`
+	MessageID   string `json:"message_id,omitempty"   desc:"Message ID; prefixed with om_"                                                                                                                                                       kind:"message_id"`
+	CreateTime  string `json:"create_time,omitempty"  desc:"Message creation time (ms timestamp string)"                                                                                                                                         kind:"timestamp_ms"`
+	ChatID      string `json:"chat_id,omitempty"      desc:"Chat/conversation ID; prefixed with oc_"                                                                                                                                             kind:"chat_id"`
+	ChatType    string `json:"chat_type,omitempty"    desc:"Conversation type"                                                                                                                                                                   enum:"p2p,group"`
+	MessageType string `json:"message_type,omitempty" desc:"Message type"`
+	SenderID    string `json:"sender_id,omitempty"    desc:"Sender open_id; prefixed with ou_"                                                                                                                                                   kind:"open_id"`
+	Content     string `json:"content,omitempty"      desc:"Message content. For most types (text/post/image/file/audio, etc.) this is pre-rendered human-readable text. For interactive (cards) it stays as the raw JSON string and callers must fromjson to parse it."`
 }
 
 func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
