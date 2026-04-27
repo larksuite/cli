@@ -22,14 +22,12 @@ func newSearchUserTestCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("query", "", "")
 	cmd.Flags().String("user-ids", "", "")
-	cmd.Flags().Bool("is-resigned", false, "")
+	cmd.Flags().Bool("left-organization", false, "")
 	cmd.Flags().Bool("has-chatted", false, "")
-	cmd.Flags().Bool("exclude-outer-contact", false, "")
+	cmd.Flags().Bool("exclude-external-users", false, "")
 	cmd.Flags().Bool("has-enterprise-email", false, "")
 	cmd.Flags().String("lang", "", "")
-	cmd.Flags().String("page-size", "20", "")
-	cmd.Flags().Bool("page-all", false, "")
-	cmd.Flags().Int("page-limit", 20, "")
+	cmd.Flags().Int("page-size", 20, "")
 	return cmd
 }
 
@@ -41,162 +39,212 @@ func searchUserDefaultConfig() *core.CliConfig {
 }
 
 func TestPickName_ExplicitLang_Hit(t *testing.T) {
-	meta := map[string]interface{}{
-		"i18n_names": map[string]interface{}{"zh_cn": "张三", "en_us": "Zhangsan"},
-	}
-	got := pickName(meta, "en-US", core.BrandFeishu, "ou_x")
+	i18n := map[string]string{"zh_cn": "张三", "en_us": "Zhangsan"}
+	got := pickName(i18n, "en-US", core.BrandFeishu, "ou_x")
 	if got != "Zhangsan" {
 		t.Errorf("got %q, want Zhangsan", got)
 	}
 }
 
 func TestPickName_ExplicitLang_MissFallsToBrand(t *testing.T) {
-	meta := map[string]interface{}{
-		"i18n_names": map[string]interface{}{"zh_cn": "张三"},
-	}
-	got := pickName(meta, "ja-JP", core.BrandFeishu, "ou_x")
+	i18n := map[string]string{"zh_cn": "张三"}
+	got := pickName(i18n, "ja-JP", core.BrandFeishu, "ou_x")
 	if got != "张三" {
 		t.Errorf("got %q, want 张三 (brand fallback)", got)
 	}
 }
 
 func TestPickName_BrandFeishu_PicksZh(t *testing.T) {
-	meta := map[string]interface{}{
-		"i18n_names": map[string]interface{}{"zh_cn": "张三", "en_us": "Zhangsan"},
-	}
-	got := pickName(meta, "", core.BrandFeishu, "ou_x")
+	i18n := map[string]string{"zh_cn": "张三", "en_us": "Zhangsan"}
+	got := pickName(i18n, "", core.BrandFeishu, "ou_x")
 	if got != "张三" {
 		t.Errorf("got %q, want 张三", got)
 	}
 }
 
 func TestPickName_BrandLark_PicksEn(t *testing.T) {
-	meta := map[string]interface{}{
-		"i18n_names": map[string]interface{}{"zh_cn": "张三", "en_us": "Zhangsan"},
-	}
-	got := pickName(meta, "", core.BrandLark, "ou_x")
+	i18n := map[string]string{"zh_cn": "张三", "en_us": "Zhangsan"}
+	got := pickName(i18n, "", core.BrandLark, "ou_x")
 	if got != "Zhangsan" {
 		t.Errorf("got %q, want Zhangsan", got)
 	}
 }
 
 func TestPickName_FixedLocaleList_HitJaJp(t *testing.T) {
-	meta := map[string]interface{}{
-		"i18n_names": map[string]interface{}{"ja_jp": "Yamada"},
-	}
-	got := pickName(meta, "", core.BrandFeishu, "ou_x")
+	i18n := map[string]string{"ja_jp": "Yamada"}
+	got := pickName(i18n, "", core.BrandFeishu, "ou_x")
 	if got != "Yamada" {
 		t.Errorf("got %q, want Yamada (fixed locale list fallback)", got)
 	}
 }
 
 func TestPickName_DictOrderFallback(t *testing.T) {
-	meta := map[string]interface{}{
-		"i18n_names": map[string]interface{}{"xx_yy": "Foo", "aa_bb": "Bar"},
-	}
-	got := pickName(meta, "", core.BrandFeishu, "ou_x")
+	i18n := map[string]string{"xx_yy": "Foo", "aa_bb": "Bar"}
+	got := pickName(i18n, "", core.BrandFeishu, "ou_x")
 	if got != "Bar" {
 		t.Errorf("got %q, want Bar (alphabetical tie-break, first non-empty is 'aa_bb')", got)
 	}
 }
 
 func TestPickName_AllEmpty_FallsToOpenID(t *testing.T) {
-	got := pickName(map[string]interface{}{}, "", core.BrandFeishu, "ou_x")
+	got := pickName(map[string]string{}, "", core.BrandFeishu, "ou_x")
 	if got != "ou_x" {
 		t.Errorf("got %q, want ou_x", got)
 	}
 }
 
 func TestPickName_Determinism(t *testing.T) {
-	meta := map[string]interface{}{
-		"i18n_names": map[string]interface{}{
-			"xx_yy": "Foo", "aa_bb": "Bar", "mm_nn": "Baz",
-		},
-	}
-	first := pickName(meta, "", core.BrandFeishu, "ou_x")
+	i18n := map[string]string{"xx_yy": "Foo", "aa_bb": "Bar", "mm_nn": "Baz"}
+	first := pickName(i18n, "", core.BrandFeishu, "ou_x")
 	for i := 0; i < 50; i++ {
-		got := pickName(meta, "", core.BrandFeishu, "ou_x")
+		got := pickName(i18n, "", core.BrandFeishu, "ou_x")
 		if got != first {
 			t.Fatalf("non-deterministic: iter %d got %q, expected %q (map iteration leaked)", i, got, first)
 		}
 	}
 }
 
+func TestParseDisplayInfo_FullShape(t *testing.T) {
+	raw := "<h>李海峰</h>\nLark Office Engineering-Intelligence-Search\n\n[Contacted 2 days ago]"
+	segments, dept, recency := parseDisplayInfo(raw)
+	if len(segments) != 1 || segments[0] != "李海峰" {
+		t.Errorf("segments: got %v, want [李海峰]", segments)
+	}
+	if dept != "Lark Office Engineering-Intelligence-Search" {
+		t.Errorf("department: got %q", dept)
+	}
+	if recency != "Contacted 2 days ago" {
+		t.Errorf("chat_recency_hint: got %q", recency)
+	}
+}
+
+func TestParseDisplayInfo_NoRecency(t *testing.T) {
+	raw := "<h>张三</h>\nMarketing\n"
+	segments, dept, recency := parseDisplayInfo(raw)
+	if len(segments) != 1 || segments[0] != "张三" {
+		t.Errorf("segments: got %v", segments)
+	}
+	if dept != "Marketing" {
+		t.Errorf("department: got %q, want Marketing", dept)
+	}
+	if recency != "" {
+		t.Errorf("chat_recency_hint: got %q, want empty", recency)
+	}
+}
+
+func TestParseDisplayInfo_EmptyDept(t *testing.T) {
+	raw := "<h>李海峰</h>\n\n"
+	segments, dept, recency := parseDisplayInfo(raw)
+	if len(segments) != 1 || segments[0] != "李海峰" {
+		t.Errorf("segments: got %v", segments)
+	}
+	if dept != "" {
+		t.Errorf("department: got %q, want empty", dept)
+	}
+	if recency != "" {
+		t.Errorf("chat_recency_hint: got %q, want empty", recency)
+	}
+}
+
+func TestParseDisplayInfo_MultipleHighlights(t *testing.T) {
+	raw := "<h>ali</h>ce <h>wang</h>\nEng\n"
+	segments, _, _ := parseDisplayInfo(raw)
+	if len(segments) != 2 || segments[0] != "ali" || segments[1] != "wang" {
+		t.Errorf("segments: got %v, want [ali wang]", segments)
+	}
+}
+
+func TestParseDisplayInfo_Empty(t *testing.T) {
+	segments, dept, recency := parseDisplayInfo("")
+	if segments == nil {
+		t.Errorf("segments: got nil, want empty (non-nil) slice")
+	}
+	if len(segments) != 0 {
+		t.Errorf("segments: got %v, want empty", segments)
+	}
+	if dept != "" || recency != "" {
+		t.Errorf("dept/recency: got %q / %q, want empty", dept, recency)
+	}
+}
+
 func TestRowFromItem_FullMapping(t *testing.T) {
-	item := map[string]interface{}{
-		"id": "ou_a",
-		"meta_data": map[string]interface{}{
-			"i18n_names":              map[string]interface{}{"zh_cn": "张三", "en_us": "Z"},
-			"mail_address":            "z@example.com",
-			"enterprise_mail_address": "z@corp.example.com",
-			"is_registered":           true,
-			"chat_id":                 "oc_abc",
-			"is_cross_tenant":         false,
-			"tenant_id":               "tenant_x",
-			"description":             "Director / Marketing",
+	item := &searchUserAPIItem{
+		ID:          "ou_a",
+		DisplayInfo: "<h>张三</h>\nMarketing\n\n[Contacted 2 days ago]",
+		MetaData: searchUserAPIMeta{
+			I18nNames:             map[string]string{"zh_cn": "张三", "en_us": "Z"},
+			MailAddress:           "z@example.com",
+			EnterpriseMailAddress: "z@corp.example.com",
+			IsRegistered:          true,
+			ChatID:                "oc_abc",
+			IsCrossTenant:         false,
+			Description:           "Coffee fanatic ☕",
 		},
-		"display_info": "<h>张三</h>\nMarketing\n\n[Contacted 2 days ago]",
 	}
 	got := rowFromItem(item, "", core.BrandFeishu)
 
-	checks := []struct {
-		key  string
-		want interface{}
-	}{
-		{"open_id", "ou_a"},
-		{"name", "张三"},
-		{"email", "z@example.com"},
-		{"enterprise_email", "z@corp.example.com"},
-		{"is_registered", true},
-		{"chat_id", "oc_abc"},
-		{"has_chatted", true},
-		{"is_cross_tenant", false},
-		{"tenant_id", "tenant_x"},
-		{"description", "Director / Marketing"},
-		{"display_info", "<h>张三</h>\nMarketing\n\n[Contacted 2 days ago]"},
+	if got.OpenID != "ou_a" {
+		t.Errorf("OpenID: got %q, want ou_a", got.OpenID)
 	}
-	for _, c := range checks {
-		if got[c.key] != c.want {
-			t.Errorf("key %q: got %v, want %v", c.key, got[c.key], c.want)
-		}
+	if got.LocalizedName != "张三" {
+		t.Errorf("LocalizedName: got %q, want 张三", got.LocalizedName)
 	}
-	i18n, ok := got["i18n_names"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("i18n_names: expected map, got %T", got["i18n_names"])
+	if got.Email != "z@example.com" {
+		t.Errorf("Email: got %q", got.Email)
 	}
-	if i18n["zh_cn"] != "张三" || i18n["en_us"] != "Z" {
-		t.Errorf("i18n_names content: got %v", i18n)
+	if got.EnterpriseEmail != "z@corp.example.com" {
+		t.Errorf("EnterpriseEmail: got %q", got.EnterpriseEmail)
+	}
+	if !got.IsActivated {
+		t.Errorf("IsActivated: got false, want true")
+	}
+	if got.P2PChatID != "oc_abc" {
+		t.Errorf("P2PChatID: got %q", got.P2PChatID)
+	}
+	if !got.HasChatted {
+		t.Errorf("HasChatted: got false, want true")
+	}
+	if got.IsCrossTenant {
+		t.Errorf("IsCrossTenant: got true, want false")
+	}
+	if got.Department != "Marketing" {
+		t.Errorf("Department: got %q", got.Department)
+	}
+	if got.Signature != "Coffee fanatic ☕" {
+		t.Errorf("Signature: got %q (must come from meta.description)", got.Signature)
+	}
+	if got.ChatRecencyHint != "Contacted 2 days ago" {
+		t.Errorf("ChatRecencyHint: got %q", got.ChatRecencyHint)
+	}
+	if len(got.MatchSegments) != 1 || got.MatchSegments[0] != "张三" {
+		t.Errorf("MatchSegments: got %v", got.MatchSegments)
 	}
 }
 
 func TestRowFromItem_HasChattedFalseWhenChatIDEmpty(t *testing.T) {
-	item := map[string]interface{}{
-		"id":        "ou_a",
-		"meta_data": map[string]interface{}{},
-	}
+	item := &searchUserAPIItem{ID: "ou_a"}
 	got := rowFromItem(item, "", core.BrandFeishu)
-	if got["has_chatted"] != false {
-		t.Errorf("has_chatted: got %v, want false", got["has_chatted"])
+	if got.HasChatted {
+		t.Errorf("HasChatted: got true, want false")
 	}
-	if got["chat_id"] != "" {
-		t.Errorf("chat_id: got %q, want empty string", got["chat_id"])
+	if got.P2PChatID != "" {
+		t.Errorf("P2PChatID: got %q, want empty", got.P2PChatID)
 	}
 }
 
 func TestRowFromItem_CrossTenantEmptyEmailNoPanic(t *testing.T) {
-	item := map[string]interface{}{
-		"id": "ou_outer",
-		"meta_data": map[string]interface{}{
-			"is_cross_tenant": true,
-			"tenant_id":       "other_tenant",
+	item := &searchUserAPIItem{
+		ID: "ou_outer",
+		MetaData: searchUserAPIMeta{
+			IsCrossTenant: true,
 		},
 	}
 	got := rowFromItem(item, "", core.BrandFeishu)
-	if got["email"] != "" {
-		t.Errorf("email: expected empty, got %q", got["email"])
+	if got.Email != "" {
+		t.Errorf("Email: expected empty, got %q", got.Email)
 	}
-	if got["enterprise_email"] != "" {
-		t.Errorf("enterprise_email: expected empty, got %q", got["enterprise_email"])
+	if got.EnterpriseEmail != "" {
+		t.Errorf("EnterpriseEmail: expected empty, got %q", got.EnterpriseEmail)
 	}
 }
 
@@ -206,6 +254,12 @@ func TestValidateSearchUser_AllEmpty_Errors(t *testing.T) {
 	err := validateSearchUser(rt)
 	if err == nil || !strings.Contains(err.Error(), "specify at least one of") {
 		t.Fatalf("expected AtLeastOne error, got %v", err)
+	}
+	// Error message must list the new flag names so agents see the right hints.
+	for _, want := range []string{"--query", "--user-ids", "--has-chatted", "--exclude-external-users", "--left-organization"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error message missing %q; got %v", want, err)
+		}
 	}
 }
 
@@ -286,6 +340,28 @@ func TestValidateSearchUser_MeWithoutLogin_Errors(t *testing.T) {
 	}
 }
 
+// =false on any bool filter must fail validation. Agents passing =false almost
+// always mean "do not filter", but the API treats it as "must NOT match";
+// silent acceptance produces wrong results. Hard reject up front.
+func TestValidateSearchUser_BoolFalse_Rejected(t *testing.T) {
+	cases := []string{"has-chatted", "has-enterprise-email", "exclude-external-users", "left-organization"}
+	for _, flag := range cases {
+		t.Run(flag, func(t *testing.T) {
+			cmd := newSearchUserTestCommand()
+			_ = cmd.Flags().Set("query", "x")
+			_ = cmd.Flags().Set(flag, "false")
+			rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+			err := validateSearchUser(rt)
+			if err == nil || !strings.Contains(err.Error(), "--"+flag) {
+				t.Fatalf("expected rejection mentioning --%s, got %v", flag, err)
+			}
+			if !strings.Contains(err.Error(), "=false is rejected") {
+				t.Errorf("error should explain why =false is rejected; got %v", err)
+			}
+		})
+	}
+}
+
 func TestBuildBody_QueryOnly(t *testing.T) {
 	cmd := newSearchUserTestCommand()
 	_ = cmd.Flags().Set("query", "hello")
@@ -294,51 +370,77 @@ func TestBuildBody_QueryOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	if body["query"] != "hello" {
-		t.Errorf("query: got %v", body["query"])
+	if body.Query != "hello" {
+		t.Errorf("Query: got %q, want hello", body.Query)
 	}
-	if _, ok := body["filter"]; ok {
-		t.Errorf("filter: should not exist when no filter set, got %v", body["filter"])
+	if body.Filter != nil {
+		t.Errorf("Filter: should be nil when no filter set, got %+v", body.Filter)
 	}
 }
 
-func TestBuildBody_BoolTriState_NotSet_Omitted(t *testing.T) {
+func TestBuildBody_BoolNotSet_Omitted(t *testing.T) {
 	cmd := newSearchUserTestCommand()
 	_ = cmd.Flags().Set("query", "x")
 	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
 	body, _ := buildSearchUserBody(rt)
-	if _, ok := body["filter"]; ok {
-		t.Errorf("filter: should be omitted when no bool changed, got %v", body["filter"])
+	if body.Filter != nil {
+		t.Errorf("Filter: should be nil when no bool changed, got %+v", body.Filter)
 	}
 }
 
-func TestBuildBody_BoolTriState_True(t *testing.T) {
+func TestBuildBody_BoolTrue_MapsToAPI(t *testing.T) {
 	cmd := newSearchUserTestCommand()
 	_ = cmd.Flags().Set("query", "x")
 	_ = cmd.Flags().Set("has-chatted", "true")
 	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
 	body, _ := buildSearchUserBody(rt)
-	filter, ok := body["filter"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("filter: expected map, got %v", body["filter"])
+	if body.Filter == nil {
+		t.Fatalf("Filter: expected non-nil")
 	}
-	if filter["has_contact"] != true {
-		t.Errorf("filter.has_contact: got %v, want true", filter["has_contact"])
+	// Flag --has-chatted must map to API field has_contact (the rename
+	// rationale lives in searchUserBoolFilters).
+	if !body.Filter.HasContact {
+		t.Errorf("Filter.HasContact: got false, want true")
 	}
 }
 
-func TestBuildBody_BoolTriState_False(t *testing.T) {
+func TestBuildBody_BoolFalse_NotInBody(t *testing.T) {
+	// Validate rejects =false up front, but buildSearchUserBody must also
+	// defensively skip it (in case a code path bypasses Validate).
 	cmd := newSearchUserTestCommand()
 	_ = cmd.Flags().Set("query", "x")
 	_ = cmd.Flags().Set("has-chatted", "false")
 	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
 	body, _ := buildSearchUserBody(rt)
-	filter, ok := body["filter"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("filter: expected map, got %v", body["filter"])
+	if body.Filter != nil && body.Filter.HasContact {
+		t.Errorf("Filter.HasContact: must stay false when flag is =false")
 	}
-	if filter["has_contact"] != false {
-		t.Errorf("filter.has_contact: got %v, want false (distinct from omitted)", filter["has_contact"])
+}
+
+func TestBuildBody_RenamedFlagsMapToAPI(t *testing.T) {
+	// Each renamed CLI flag must still hit its original API field. Using a
+	// getter closure keeps the assertion compile-time typed against the
+	// searchUserAPIFilter struct.
+	cases := []struct {
+		flag string
+		get  func(*searchUserAPIFilter) bool
+	}{
+		{"has-chatted", func(f *searchUserAPIFilter) bool { return f.HasContact }},
+		{"exclude-external-users", func(f *searchUserAPIFilter) bool { return f.ExcludeOuterContact }},
+		{"left-organization", func(f *searchUserAPIFilter) bool { return f.IsResigned }},
+		{"has-enterprise-email", func(f *searchUserAPIFilter) bool { return f.HasEnterpriseEmail }},
+	}
+	for _, c := range cases {
+		t.Run(c.flag, func(t *testing.T) {
+			cmd := newSearchUserTestCommand()
+			_ = cmd.Flags().Set("query", "x")
+			_ = cmd.Flags().Set(c.flag, "true")
+			rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+			body, _ := buildSearchUserBody(rt)
+			if body.Filter == nil || !c.get(body.Filter) {
+				t.Errorf("--%s did not set the corresponding filter field; body.Filter=%+v", c.flag, body.Filter)
+			}
+		})
 	}
 }
 
@@ -347,90 +449,42 @@ func TestBuildBody_UserIDsResolveAndDedup(t *testing.T) {
 	_ = cmd.Flags().Set("user-ids", "me,ou_a,me,ou_a")
 	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
 	body, _ := buildSearchUserBody(rt)
-	filter, ok := body["filter"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("filter: expected map, got %v", body["filter"])
+	if body.Filter == nil {
+		t.Fatalf("Filter: expected non-nil")
 	}
-	ids, _ := filter["user_ids"].([]string)
+	ids := body.Filter.UserIDs
 	if len(ids) != 2 || ids[0] != "ou_self" || ids[1] != "ou_a" {
-		t.Errorf("user_ids: got %v, want [ou_self ou_a]", ids)
+		t.Errorf("UserIDs: got %v, want [ou_self ou_a]", ids)
 	}
 }
 
-func TestBuildParams_PageSize(t *testing.T) {
-	cmd := newSearchUserTestCommand()
-	_ = cmd.Flags().Set("query", "x")
-	_ = cmd.Flags().Set("page-size", "25")
-	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
-	params := buildSearchUserParams(rt)
-	if params["page_size"] != 25 {
-		t.Errorf("page_size: got %v, want 25", params["page_size"])
-	}
-	if _, ok := params["page_token"]; ok {
-		t.Errorf("page_token: should never appear in initial params (managed by the pagination loop)")
-	}
-}
-
-func TestBuildParams_DefaultPageSize(t *testing.T) {
-	cmd := newSearchUserTestCommand()
-	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
-	params := buildSearchUserParams(rt)
-	if params["page_size"] != 20 {
-		t.Errorf("page_size: got %v, want 20 (default)", params["page_size"])
+func TestValidateSearchUser_PageSizeOutOfRange_Errors(t *testing.T) {
+	for _, n := range []int{0, 31} {
+		cmd := newSearchUserTestCommand()
+		_ = cmd.Flags().Set("query", "x")
+		_ = cmd.Flags().Set("page-size", fmt.Sprintf("%d", n))
+		rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+		err := validateSearchUser(rt)
+		if err == nil || !strings.Contains(err.Error(), "page-size") {
+			t.Errorf("page-size=%d: expected range error, got %v", n, err)
+		}
 	}
 }
 
-func TestPaginationConfig_Defaults(t *testing.T) {
-	cmd := newSearchUserTestCommand()
-	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
-	auto, limit := searchUserPaginationConfig(rt)
-	if auto {
-		t.Errorf("autoPaginate: want false when no flags set, got true")
-	}
-	if limit != defaultSearchUserPageLimit {
-		t.Errorf("pageLimit: want %d default, got %d", defaultSearchUserPageLimit, limit)
-	}
-}
-
-func TestPaginationConfig_PageAllAloneUsesMax(t *testing.T) {
-	cmd := newSearchUserTestCommand()
-	_ = cmd.Flags().Set("page-all", "true")
-	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
-	auto, limit := searchUserPaginationConfig(rt)
-	if !auto {
-		t.Errorf("autoPaginate: want true, got false")
-	}
-	if limit != maxSearchUserPageLimit {
-		t.Errorf("pageLimit: --page-all alone should use max %d, got %d", maxSearchUserPageLimit, limit)
-	}
-}
-
-func TestPaginationConfig_PageLimitAloneImpliesAuto(t *testing.T) {
-	cmd := newSearchUserTestCommand()
-	_ = cmd.Flags().Set("page-limit", "5")
-	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
-	auto, limit := searchUserPaginationConfig(rt)
-	if !auto {
-		t.Errorf("autoPaginate: --page-limit alone should imply auto, got false")
-	}
-	if limit != 5 {
-		t.Errorf("pageLimit: got %d, want 5", limit)
-	}
-}
-
-func TestPaginationConfig_PageLimitCapsAtMax(t *testing.T) {
-	cmd := newSearchUserTestCommand()
-	_ = cmd.Flags().Set("page-limit", "999")
-	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
-	_, limit := searchUserPaginationConfig(rt)
-	if limit != maxSearchUserPageLimit {
-		t.Errorf("pageLimit: should cap at %d, got %d", maxSearchUserPageLimit, limit)
+func TestValidateSearchUser_PageSizeBoundaries_OK(t *testing.T) {
+	for _, n := range []int{1, 30} {
+		cmd := newSearchUserTestCommand()
+		_ = cmd.Flags().Set("query", "x")
+		_ = cmd.Flags().Set("page-size", fmt.Sprintf("%d", n))
+		rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+		if err := validateSearchUser(rt); err != nil {
+			t.Errorf("page-size=%d: unexpected error %v", n, err)
+		}
 	}
 }
 
 // mountAndRun mounts the shortcut under a parent cobra command and runs it
-// with the given args. Mirrors the pattern used in other shortcut packages
-// (e.g. minutes_download_test.go).
+// with the given args. Mirrors the pattern used in other shortcut packages.
 func mountAndRun(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
 	parent := &cobra.Command{Use: "contact"}
@@ -460,10 +514,9 @@ func searchUserStub() *httpmock.Stub {
 							"is_registered":   true,
 							"chat_id":         "oc_abc",
 							"is_cross_tenant": false,
-							"tenant_id":       "tenant_1",
-							"description":     "Director",
+							"description":     "Coffee fanatic ☕",
 						},
-						"display_info": "<h>张三</h>\nMarketing",
+						"display_info": "<h>张三</h>\nMarketing\n\n[Contacted 2 days ago]",
 					},
 				},
 				"has_more":   false,
@@ -473,7 +526,7 @@ func searchUserStub() *httpmock.Stub {
 	}
 }
 
-func TestSearchUser_Integration_PrettyRendersAllColumns(t *testing.T) {
+func TestSearchUser_Integration_PrettyRendersExpectedColumns(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(searchUserStub())
 
@@ -482,21 +535,22 @@ func TestSearchUser_Integration_PrettyRendersAllColumns(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	out := stdout.String()
-	// internal/output sorts table columns alphabetically (house behavior shared
-	// with all PrintTable callers), so we assert presence of each pretty column
-	// rather than a specific layout.
-	for _, col := range []string{"display_info", "name", "open_id", "email", "is_registered", "has_chatted"} {
+	for _, col := range []string{"localized_name", "department", "open_id", "enterprise_email", "has_chatted", "chat_recency_hint"} {
 		if !strings.Contains(out, col) {
 			t.Errorf("pretty output missing column %q; got=%q", col, out)
 		}
 	}
-	// The hit-highlight payload should make it into the rendered cell.
-	if !strings.Contains(out, "<h>张三</h>") {
-		t.Errorf("expected display_info hit-highlight in output, got=%q", out)
+	// department is the disambiguation field — must reach the rendered cell.
+	if !strings.Contains(out, "Marketing") {
+		t.Errorf("expected department 'Marketing' in pretty output, got=%q", out)
+	}
+	// Legacy column must be gone.
+	if strings.Contains(out, "display_info ") || strings.Contains(out, "| display_info") {
+		t.Errorf("legacy 'display_info' column must not appear; got=%q", out)
 	}
 }
 
-func TestSearchUser_Integration_JSONFullFields(t *testing.T) {
+func TestSearchUser_Integration_JSONStructuredFields(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(searchUserStub())
 
@@ -509,7 +563,6 @@ func TestSearchUser_Integration_JSONFullFields(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("json: %v\noutput=%s", err, stdout.String())
 	}
-	// CLI wraps all structured output in an {ok, identity, data, meta} envelope.
 	data, ok := got["data"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("envelope.data: expected object, got %v\nraw=%s", got["data"], stdout.String())
@@ -519,17 +572,40 @@ func TestSearchUser_Integration_JSONFullFields(t *testing.T) {
 		t.Fatalf("users: expected 1, got %d (output=%s)", len(users), stdout.String())
 	}
 	u, _ := users[0].(map[string]interface{})
+
+	// New schema keys must all be present.
 	for _, k := range []string{
-		"name", "open_id", "i18n_names", "email", "is_registered", "chat_id",
-		"has_chatted", "is_cross_tenant", "tenant_id", "description", "display_info",
+		"open_id", "localized_name", "email", "enterprise_email",
+		"is_activated", "is_cross_tenant",
+		"p2p_chat_id", "has_chatted",
+		"department", "signature", "chat_recency_hint", "match_segments",
 	} {
 		if _, ok := u[k]; !ok {
 			t.Errorf("missing JSON key %q in user object", k)
 		}
 	}
+	// Legacy keys must be gone.
+	for _, k := range []string{"name", "chat_id", "is_registered", "description", "display_info", "display_info_raw", "match_rank", "tenant_id", "i18n_names"} {
+		if _, ok := u[k]; ok {
+			t.Errorf("legacy JSON key %q must not appear", k)
+		}
+	}
+
+	// Spot-check a few values that prove structured parsing works end-to-end.
+	if u["department"] != "Marketing" {
+		t.Errorf("department: got %v, want Marketing", u["department"])
+	}
+	if u["chat_recency_hint"] != "Contacted 2 days ago" {
+		t.Errorf("chat_recency_hint: got %v", u["chat_recency_hint"])
+	}
+	// Signature must come through from raw meta.description, under the
+	// agent-friendly key "signature" (not "description").
+	if u["signature"] != "Coffee fanatic ☕" {
+		t.Errorf("signature: got %v, want %q", u["signature"], "Coffee fanatic ☕")
+	}
 }
 
-func TestSearchUser_Integration_NDJSONHasNoPaginationHint(t *testing.T) {
+func TestSearchUser_Integration_NDJSONHasNoRefineHint(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: "/open-apis/contact/v3/users/search",
@@ -547,15 +623,15 @@ func TestSearchUser_Integration_NDJSONHasNoPaginationHint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if strings.Contains(stdout.String(), "more available") {
-		t.Errorf("ndjson stdout must not contain the pagination hint (would corrupt the stream); got=%q", stdout.String())
+	if strings.Contains(stdout.String(), "refine") {
+		t.Errorf("ndjson stdout must not contain the refine hint (would corrupt the stream); got=%q", stdout.String())
 	}
-	if strings.Contains(stderr.String(), "more available") {
-		t.Errorf("ndjson stderr must not contain the pagination hint either (non-human format opts out entirely); got=%q", stderr.String())
+	if strings.Contains(stderr.String(), "refine") {
+		t.Errorf("ndjson stderr must not contain the refine hint either (non-human format opts out entirely); got=%q", stderr.String())
 	}
 }
 
-func TestSearchUser_Integration_PrettyHintGoesToStderr(t *testing.T) {
+func TestSearchUser_Integration_PrettyRefineHintGoesToStderr(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: "/open-apis/contact/v3/users/search",
@@ -573,11 +649,16 @@ func TestSearchUser_Integration_PrettyHintGoesToStderr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if strings.Contains(stdout.String(), "more available") {
+	if strings.Contains(stdout.String(), "refine") {
 		t.Errorf("pretty stdout must not carry the hint (informational text belongs on stderr); got=%q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "more available") || !strings.Contains(stderr.String(), "--page-all") {
-		t.Errorf("pretty stderr should guide the user toward --page-all when has_more=true; got=%q", stderr.String())
+	if !strings.Contains(stderr.String(), "refine") {
+		t.Errorf("pretty stderr should suggest refining the query when has_more=true; got=%q", stderr.String())
+	}
+	// The hint must explicitly NOT recommend pagination — by design there
+	// is no auto-pagination and agents must refine instead.
+	if strings.Contains(stderr.String(), "--page-all") || strings.Contains(stderr.String(), "auto-paginate") {
+		t.Errorf("hint must not mention pagination flags; got=%q", stderr.String())
 	}
 }
 
@@ -623,8 +704,6 @@ func TestSearchUser_Integration_EmptyResult_JSONArray(t *testing.T) {
 	if !ok {
 		t.Fatalf("envelope.data: expected object, got %v\nraw=%s", got["data"], stdout.String())
 	}
-	// Empty result must serialize as [] (not null) so jq consumers can iterate
-	// without special-casing: `jq '.data.users[]'` / `.data.users | length`.
 	usersRaw, exists := data["users"]
 	if !exists {
 		t.Fatalf("data.users key missing\nraw=%s", stdout.String())
@@ -692,90 +771,44 @@ func TestSearchUser_Integration_RequestShape(t *testing.T) {
 	}
 }
 
-func TestSearchUser_Integration_AutoPaginateAggregates(t *testing.T) {
+// Guards against the int/string flag mismatch: the stub URL match requires
+// page_size=25 to appear in the query string, which only happens if --page-size
+// actually reaches DoAPI's QueryParams. A regression that silently defaults
+// to 20 would fail the stub match.
+func TestSearchUser_Integration_PageSizeFlowsToQuery(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
-	// First page: has_more=true, token=p2
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/contact/v3/users/search",
+		Method: "POST",
+		URL:    "/open-apis/contact/v3/users/search?page_size=25",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
-				"items":      []interface{}{map[string]interface{}{"id": "ou_a"}},
-				"has_more":   true,
-				"page_token": "p2",
-			},
-		},
-	})
-	// Second page: has_more=false, ends the loop
-	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/contact/v3/users/search",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
-				"items":      []interface{}{map[string]interface{}{"id": "ou_b"}},
-				"has_more":   false,
-				"page_token": "",
-			},
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false, "page_token": ""},
 		},
 	})
 
-	err := mountAndRun(t, ContactSearchUser, []string{"+search-user", "--query", "x", "--page-all", "--format", "json", "--as", "user"}, f, stdout)
+	err := mountAndRun(t, ContactSearchUser, []string{"+search-user", "--query", "x", "--page-size", "25", "--as", "user"}, f, stdout)
 	if err != nil {
-		t.Fatalf("execute: %v", err)
+		t.Fatalf("execute: %v (likely page-size did not reach the request)", err)
 	}
-	reg.Verify(t) // ensures both stubs were consumed
-
-	var got map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("json: %v\noutput=%s", err, stdout.String())
-	}
-	data, _ := got["data"].(map[string]interface{})
-	users, _ := data["users"].([]interface{})
-	if len(users) != 2 {
-		t.Fatalf("users: want 2 aggregated across pages, got %d (output=%s)", len(users), stdout.String())
-	}
-	if data["has_more"] != false {
-		t.Errorf("has_more: want false when last page ended, got %v", data["has_more"])
-	}
+	reg.Verify(t)
 }
 
-func TestSearchUser_Integration_PageLimitTruncates(t *testing.T) {
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
-	// Two pages; both return has_more=true — limit 2 should stop after the
-	// second and emit a truncation warning.
-	for i := 0; i < 2; i++ {
-		reg.Register(&httpmock.Stub{
-			Method: "POST", URL: "/open-apis/contact/v3/users/search",
-			Body: map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"data": map[string]interface{}{
-					"items":      []interface{}{map[string]interface{}{"id": fmt.Sprintf("ou_%d", i)}},
-					"has_more":   true,
-					"page_token": fmt.Sprintf("p%d", i+1),
-				},
-			},
+// Verifies that with the auto-pagination flags removed, --page-all / --page-limit
+// are no longer accepted. cobra must reject the unknown flag at parse time —
+// no stub is registered because the command should never reach the API.
+func TestSearchUser_Integration_NoAutoPaginationFlags(t *testing.T) {
+	for _, removed := range []string{"--page-all", "--page-limit"} {
+		t.Run(removed, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, searchUserDefaultConfig())
+			args := []string{"+search-user", "--query", "x", removed}
+			if removed == "--page-limit" {
+				args = append(args, "5")
+			}
+			args = append(args, "--as", "user")
+			err := mountAndRun(t, ContactSearchUser, args, f, stdout)
+			if err == nil {
+				t.Errorf("%s should be rejected (unknown flag), but command succeeded", removed)
+			}
 		})
-	}
-
-	err := mountAndRun(t, ContactSearchUser, []string{"+search-user", "--query", "x", "--page-limit", "2", "--format", "pretty", "--as", "user"}, f, stdout)
-	if err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-	if !strings.Contains(stderr.String(), "stopped after fetching 2 page(s)") {
-		t.Errorf("expected truncation warning on stderr, got=%q", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "--page-limit") {
-		t.Errorf("warning should mention --page-limit hint, got=%q", stderr.String())
-	}
-}
-
-func TestValidateSearchUser_PageLimitOutOfRange_Errors(t *testing.T) {
-	cmd := newSearchUserTestCommand()
-	_ = cmd.Flags().Set("query", "x")
-	_ = cmd.Flags().Set("page-limit", "100")
-	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
-	err := validateSearchUser(rt)
-	if err == nil || !strings.Contains(err.Error(), "40") {
-		t.Fatalf("expected --page-limit range error mentioning 40, got %v", err)
 	}
 }

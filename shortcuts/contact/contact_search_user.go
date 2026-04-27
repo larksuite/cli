@@ -5,72 +5,158 @@ package contact
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 const (
 	searchUserURL = "/open-apis/contact/v3/users/search"
 
-	// Caps reflect the runtime constraints the API owner ships with (tighter
-	// than the schema's declared maxLen, which is upper bound not effective).
-	maxSearchUserQueryRunes    = 64
-	maxSearchUserUserIDs       = 100
-	defaultSearchUserPageSize  = 20
-	maxSearchUserPageSize      = 30
-	defaultSearchUserPageLimit = 20
-	maxSearchUserPageLimit     = 40
+	maxSearchUserQueryRunes = 64
+	maxSearchUserUserIDs    = 100
+	maxSearchUserPageSize   = 30
 )
 
-// searchUserBoolFilters is the single source of truth binding each bool filter
-// flag to its API body field. One flag name diverges from the API field name
-// to reduce ambiguity: "has-chatted" maps to API has_contact. The API name
-// overloads "contact" to mean chat history, which collides with the other
-// filter exclude_outer_contact (where "contact" means person); the flag name
-// matches our output field has_chatted so callers do not have to juggle two
-// meanings.
-var searchUserBoolFilters = []struct{ Flag, API string }{
-	{"is-resigned", "is_resigned"},
-	{"has-chatted", "has_contact"},
-	{"exclude-outer-contact", "exclude_outer_contact"},
-	{"has-enterprise-email", "has_enterprise_email"},
+type searchUserBoolFilter struct {
+	Flag  string
+	Apply func(*searchUserAPIFilter)
 }
 
-// fixedLocaleFallback is the ordered locale list used by pickName after
-// brand-preferred locales fail to match; keeps the picked name deterministic
-// beyond zh_cn / en_us.
+// Three flags rename their API counterparts to remove jargon / overloaded
+// terms: has-chatted→has_contact, exclude-external-users→exclude_outer_contact,
+// left-organization→is_resigned. Reading API docs alongside this CLI requires
+// translating through this table.
+var searchUserBoolFilters = []searchUserBoolFilter{
+	{"left-organization", func(f *searchUserAPIFilter) { f.IsResigned = true }},
+	{"has-chatted", func(f *searchUserAPIFilter) { f.HasContact = true }},
+	{"exclude-external-users", func(f *searchUserAPIFilter) { f.ExcludeOuterContact = true }},
+	{"has-enterprise-email", func(f *searchUserAPIFilter) { f.HasEnterpriseEmail = true }},
+}
+
 var fixedLocaleFallback = []string{
 	"ja_jp", "zh_hk", "zh_tw", "ko_kr",
 	"id_id", "vi_vn", "th_th",
 	"pt_br", "es_es", "de_de", "fr_fr", "it_it", "ru_ru",
 }
 
+// display_info is empirically observed as up to 3 newline-separated segments:
+//
+//	<h>{matched}</h>...   ← hit highlights (line 0)
+//	{department}          ← may be empty (line 1, optional)
+//	[Contacted X days ago] ← recency hint (last line, optional)
+//
+// The format is undocumented and segments may be omitted; we extract by role
+// (regex for highlights, line-1 for department, last bracketed line for
+// recency) rather than by fixed index, so missing segments degrade gracefully.
+var (
+	displayInfoHighlightRE = regexp.MustCompile(`<h>(.*?)</h>`)
+	displayInfoRecencyRE   = regexp.MustCompile(`^\[(.+)\]$`)
+)
+
+type searchUserAPIRequest struct {
+	Query  string               `json:"query,omitempty"`
+	Filter *searchUserAPIFilter `json:"filter,omitempty"`
+}
+
+// All bool fields use omitempty: validation rejects =false, so any field set
+// here is true; unset fields stay out of the request entirely.
+type searchUserAPIFilter struct {
+	UserIDs             []string `json:"user_ids,omitempty"`
+	IsResigned          bool     `json:"is_resigned,omitempty"`
+	HasContact          bool     `json:"has_contact,omitempty"`
+	ExcludeOuterContact bool     `json:"exclude_outer_contact,omitempty"`
+	HasEnterpriseEmail  bool     `json:"has_enterprise_email,omitempty"`
+}
+
+type searchUserAPIEnvelope struct {
+	Code int                `json:"code"`
+	Msg  string             `json:"msg"`
+	Data *searchUserAPIData `json:"data"`
+}
+
+type searchUserAPIData struct {
+	Items     []searchUserAPIItem `json:"items"`
+	HasMore   bool                `json:"has_more"`
+	PageToken string              `json:"page_token"`
+}
+
+type searchUserAPIItem struct {
+	ID          string            `json:"id"`
+	DisplayInfo string            `json:"display_info"`
+	MetaData    searchUserAPIMeta `json:"meta_data"`
+}
+
+type searchUserAPIMeta struct {
+	I18nNames             map[string]string `json:"i18n_names"`
+	MailAddress           string            `json:"mail_address"`
+	EnterpriseMailAddress string            `json:"enterprise_mail_address"`
+	IsRegistered          bool              `json:"is_registered"`
+	ChatID                string            `json:"chat_id"`
+	IsCrossTenant         bool              `json:"is_cross_tenant"`
+	// API ships the user's profile signature in `description`; the field name
+	// is misleading because it carries the personal signature ("个性签名"),
+	// not a generic description. We surface it as `signature` downstream.
+	Description string `json:"description"`
+}
+
+// JSON tags on searchUser are the public contract for agents and downstream
+// scripts; never rename without bumping the shortcut version.
+type searchUser struct {
+	OpenID          string   `json:"open_id"`
+	LocalizedName   string   `json:"localized_name"`
+	Email           string   `json:"email"`
+	EnterpriseEmail string   `json:"enterprise_email"`
+	IsActivated     bool     `json:"is_activated"`
+	IsCrossTenant   bool     `json:"is_cross_tenant"`
+	P2PChatID       string   `json:"p2p_chat_id"`
+	HasChatted      bool     `json:"has_chatted"`
+	Department      string   `json:"department"`
+	Signature       string   `json:"signature"`
+	ChatRecencyHint string   `json:"chat_recency_hint"`
+	MatchSegments   []string `json:"match_segments"`
+}
+
+type searchUserResponse struct {
+	Users   []searchUser `json:"users"`
+	HasMore bool         `json:"has_more"`
+}
+
 var ContactSearchUser = common.Shortcut{
 	Service:     "contact",
 	Command:     "+search-user",
-	Description: "Search users (results sorted by relevance)",
+	Description: "Search Lark/Feishu users by keyword, open_id list, or filter (requires --as user)",
 	Risk:        "read",
 	Scopes:      []string{"contact:user:search"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "search keyword (max 64 runes; recommended for best results)"},
-		{Name: "user-ids", Desc: "filter results to these open_id list, CSV; supports \"me\"; max 100"},
-		{Name: "is-resigned", Type: "bool", Desc: "set to restrict to resigned-and-chatted users (opt-in filter)"},
-		{Name: "has-chatted", Type: "bool", Desc: "set to restrict to users you've chatted with (opt-in filter)"},
-		{Name: "exclude-outer-contact", Type: "bool", Desc: "set to exclude outer contacts and only return same-tenant users (opt-in filter)"},
-		{Name: "has-enterprise-email", Type: "bool", Desc: "set to restrict to users with enterprise email (opt-in filter)"},
-		{Name: "lang", Desc: "override locale for the picked name (e.g. zh_cn, en_us, ja_jp); default: tenant brand"},
-		{Name: "page-size", Default: "20", Desc: "page size, 1-30 (default 20)"},
-		{Name: "page-all", Type: "bool", Desc: "auto-paginate results until has_more=false or --page-limit reached"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages fetched when auto-paginating (default 20, max 40; passing this flag alone implicitly enables --page-all)"},
+		{Name: "query", Desc: "search keyword (≤ 64 runes)"},
+		{Name: "user-ids", Desc: "open_ids to look up or restrict --query against (CSV; me = caller; ≤ 100)"},
+		{Name: "has-chatted", Type: "bool", Desc: "restrict to users you've chatted with (omit to disable; =false rejected)"},
+		{Name: "has-enterprise-email", Type: "bool", Desc: "restrict to users with enterprise email (omit to disable; =false rejected)"},
+		{Name: "exclude-external-users", Type: "bool", Desc: "exclude external (cross-tenant) users; default includes them (omit to disable; =false rejected)"},
+		{Name: "left-organization", Type: "bool", Desc: "restrict to users who have left the organization (omit to disable; =false rejected)"},
+		{Name: "lang", Desc: "override locale for localized_name (e.g. zh_cn, en_us)"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
+	},
+	Tips: []string{
+		"Keyword search: lark-cli contact +search-user --query 'alice' --format json",
+		"Look up by ID (or 'me' for self): lark-cli contact +search-user --user-ids 'ou_xxx,me' --format json",
+		"Filter-only enumeration — users you've chatted with: lark-cli contact +search-user --has-chatted --format json",
+		"Refine same-name hits: lark-cli contact +search-user --query '张三' --has-chatted --exclude-external-users",
+		"open_id is the stable identifier for follow-up commands; on has_more=true add filters or tighten --query — there is no auto-pagination.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateSearchUser(runtime)
@@ -82,154 +168,120 @@ var ContactSearchUser = common.Shortcut{
 		}
 		return common.NewDryRunAPI().
 			POST(searchUserURL).
-			Params(buildSearchUserParams(runtime)).
+			Params(map[string]interface{}{"page_size": runtime.Int("page-size")}).
 			Body(body)
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		body, err := buildSearchUserBody(runtime)
-		if err != nil {
-			return err
-		}
-		autoPaginate, pageLimit := searchUserPaginationConfig(runtime)
-
-		var (
-			// Initialized as non-nil so empty result sets serialize as [] (not null).
-			allUsers         = make([]map[string]interface{}, 0)
-			lastHasMore      bool
-			lastPageToken    string
-			truncatedByLimit bool
-			pageCount        int
-		)
-		lang := runtime.Str("lang")
-		brand := runtime.Config.Brand
-		params := buildSearchUserParams(runtime)
-
-		for {
-			pageCount++
-			data, err := runtime.CallAPI("POST", searchUserURL, params, body)
-			if err != nil {
-				return err
-			}
-			users, hasMore, pageToken := extractSearchUsers(data, lang, brand)
-			allUsers = append(allUsers, users...)
-			lastHasMore = hasMore
-			lastPageToken = pageToken
-
-			if !autoPaginate || !hasMore || pageCount >= pageLimit {
-				if autoPaginate && hasMore && pageCount >= pageLimit {
-					truncatedByLimit = true
-				}
-				break
-			}
-			// Prepare params for the next iteration with the fresh page_token.
-			nextParams := make(map[string]interface{}, len(params)+1)
-			for k, v := range params {
-				nextParams[k] = v
-			}
-			nextParams["page_token"] = pageToken
-			params = nextParams
-		}
-
-		outData := map[string]interface{}{
-			"users":      allUsers,
-			"has_more":   lastHasMore,
-			"page_token": lastPageToken,
-		}
-		runtime.OutFormat(outData, &output.Meta{Count: len(allUsers)}, func(w io.Writer) {
-			if len(allUsers) == 0 {
-				fmt.Fprintln(w, "No users found.")
-				return
-			}
-			output.PrintTable(w, prettyUserRows(allUsers))
-		})
-		if lastHasMore && isHumanReadableFormat(runtime.Format) {
-			// Hints go to stderr so stdout stays clean for the actual table
-			// output, matching the CLI convention used elsewhere by the runner
-			// for warnings and informational messages.
-			if truncatedByLimit {
-				fmt.Fprintf(runtime.IO().ErrOut,
-					"\nwarning: stopped after fetching %d page(s); refine the query with more filters, or raise --page-limit (max %d)\n",
-					pageCount, maxSearchUserPageLimit)
-			} else {
-				fmt.Fprintf(runtime.IO().ErrOut,
-					"\n(more available; refine the query or use --page-all to auto-paginate)\n")
-			}
-		}
-		return nil
-	},
+	Execute: executeSearchUser,
 }
 
-// isHumanReadableFormat reports whether the given output format is meant for
-// human reading (so a "(more available, ...)" hint can be appended without
-// corrupting structured output streams like ndjson or csv).
+func executeSearchUser(ctx context.Context, runtime *common.RuntimeContext) error {
+	body, err := buildSearchUserBody(runtime)
+	if err != nil {
+		return err
+	}
+
+	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+		HttpMethod:  http.MethodPost,
+		ApiPath:     searchUserURL,
+		Body:        body,
+		QueryParams: larkcore.QueryParams{"page_size": []string{strconv.Itoa(runtime.Int("page-size"))}},
+	})
+	if err != nil {
+		return err
+	}
+	if apiResp.StatusCode != http.StatusOK {
+		return output.ErrAPI(apiResp.StatusCode, http.StatusText(apiResp.StatusCode), string(apiResp.RawBody))
+	}
+
+	var resp searchUserAPIEnvelope
+	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
+		return output.ErrWithHint(output.ExitInternal, "validation", "unmarshal response failed", err.Error())
+	}
+	if resp.Code != 0 {
+		return output.ErrAPI(resp.Code, resp.Msg, string(apiResp.RawBody))
+	}
+
+	users, hasMore := projectUsers(resp.Data, runtime.Str("lang"), runtime.Config.Brand)
+	out := searchUserResponse{Users: users, HasMore: hasMore}
+
+	runtime.OutFormat(out, &output.Meta{Count: len(users)}, func(w io.Writer) {
+		if len(users) == 0 {
+			fmt.Fprintln(w, "No users found.")
+			return
+		}
+		output.PrintTable(w, prettyUserRows(users))
+	})
+	if hasMore && isHumanReadableFormat(runtime.Format) {
+		fmt.Fprintln(runtime.IO().ErrOut,
+			"\nhint: more matches exist; refine the query (e.g., add --has-chatted, a full email, or a department keyword)")
+	}
+	return nil
+}
+
 func isHumanReadableFormat(format string) bool {
 	return format == "pretty" || format == "table"
 }
 
-// searchUserPaginationConfig resolves the (autoPaginate, pageLimit) tuple from
-// user flags. Rules (mirroring shortcuts/im/im_messages_search.go for
-// consistency across search-type shortcuts):
-//   - --page-all alone                   → auto-paginate, pageLimit = max (40)
-//   - --page-limit N alone               → auto-paginate, pageLimit = N  (implicit enable)
-//   - --page-all + --page-limit N        → auto-paginate, pageLimit = N
-//   - neither                            → single-page (manual pagination)
-func searchUserPaginationConfig(runtime *common.RuntimeContext) (autoPaginate bool, pageLimit int) {
-	autoPaginate = runtime.Bool("page-all")
-	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		autoPaginate = true
+// We deliberately do not surface a numeric rank: the API returns no relevance
+// score, and a derived ordinal would tempt agents to over-trust it.
+func projectUsers(data *searchUserAPIData, lang string, brand core.LarkBrand) ([]searchUser, bool) {
+	if data == nil {
+		return []searchUser{}, false
 	}
-	pageLimit = defaultSearchUserPageLimit
-	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		pageLimit = runtime.Int("page-limit")
-		if pageLimit > maxSearchUserPageLimit {
-			pageLimit = maxSearchUserPageLimit
+	users := make([]searchUser, 0, len(data.Items))
+	for i := range data.Items {
+		users = append(users, rowFromItem(&data.Items[i], lang, brand))
+	}
+	return users, data.HasMore
+}
+
+func parseDisplayInfo(raw string) (segments []string, department, recencyHint string) {
+	segments = make([]string, 0)
+	if raw == "" {
+		return segments, "", ""
+	}
+	for _, m := range displayInfoHighlightRE.FindAllStringSubmatch(raw, -1) {
+		segments = append(segments, m[1])
+	}
+	lines := strings.Split(raw, "\n")
+	if len(lines) >= 2 {
+		department = strings.TrimSpace(lines[1])
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
 		}
-	} else if runtime.Bool("page-all") {
-		pageLimit = maxSearchUserPageLimit
+		if m := displayInfoRecencyRE.FindStringSubmatch(line); m != nil {
+			recencyHint = m[1]
+		}
+		break
 	}
-	return autoPaginate, pageLimit
+	return segments, department, recencyHint
 }
 
-// extractSearchUsers projects the API response into the shortcut's user
-// objects and surfaces pagination metadata.
-func extractSearchUsers(data map[string]interface{}, lang string, brand core.LarkBrand) ([]map[string]interface{}, bool, string) {
-	items := common.GetSlice(data, "items")
-	users := make([]map[string]interface{}, 0, len(items))
-	common.EachMap(items, func(item map[string]interface{}) {
-		users = append(users, rowFromItem(item, lang, brand))
-	})
-	return users, common.GetBool(data, "has_more"), common.GetString(data, "page_token")
-}
-
-// prettyUserRows projects the 12-field user objects down to the 6 pretty
-// table columns, with display_info truncated and its newlines flattened.
-func prettyUserRows(users []map[string]interface{}) []map[string]interface{} {
+// map[] shape forced by output.PrintTable; this is the only map conversion in
+// this file.
+func prettyUserRows(users []searchUser) []map[string]interface{} {
 	rows := make([]map[string]interface{}, 0, len(users))
 	for _, u := range users {
-		di := common.GetString(u, "display_info")
 		rows = append(rows, map[string]interface{}{
-			"display_info":  common.TruncateStr(strings.ReplaceAll(di, "\n", " "), 60),
-			"name":          u["name"],
-			"open_id":       u["open_id"],
-			"email":         u["email"],
-			"is_registered": u["is_registered"],
-			"has_chatted":   u["has_chatted"],
+			"localized_name":    u.LocalizedName,
+			"department":        common.TruncateStr(u.Department, 50),
+			"enterprise_email":  u.EnterpriseEmail,
+			"has_chatted":       u.HasChatted,
+			"chat_recency_hint": u.ChatRecencyHint,
+			"open_id":           u.OpenID,
 		})
 	}
 	return rows
 }
 
-// pickName returns a single display name from meta.i18n_names, deterministically.
-// Priority: explicit --lang, then brand-preferred locales (feishu → zh_cn first,
-// lark → en_us first), then fixedLocaleFallback order, then the dictionary-order
-// sweep that tolerates locales not in the fixed list, and finally the
-// caller-provided openID.
-//
-// It does NOT fall back to display_info — the hit-highlight segment there may
-// be a phone number or email, not a name.
-func pickName(meta map[string]interface{}, lang string, brand core.LarkBrand, openID string) string {
-	i18n := common.GetMap(meta, "i18n_names")
-
+// Priority: explicit --lang → brand-preferred locales (feishu→zh_cn first,
+// lark→en_us first) → fixedLocaleFallback → dictionary order → openID.
+// Does NOT fall back to display_info, which may contain phone/email instead
+// of a name.
+func pickName(i18n map[string]string, lang string, brand core.LarkBrand, openID string) string {
 	primary := make([]string, 0, 3)
 	if lang != "" {
 		primary = append(primary, strings.ReplaceAll(strings.ToLower(lang), "-", "_"))
@@ -237,17 +289,17 @@ func pickName(meta map[string]interface{}, lang string, brand core.LarkBrand, op
 	switch brand {
 	case core.BrandLark:
 		primary = append(primary, "en_us", "zh_cn")
-	default: // feishu or unknown brand: Chinese first
+	default:
 		primary = append(primary, "zh_cn", "en_us")
 	}
 
 	for _, loc := range primary {
-		if v := common.GetString(i18n, loc); v != "" {
+		if v := i18n[loc]; v != "" {
 			return v
 		}
 	}
 	for _, loc := range fixedLocaleFallback {
-		if v := common.GetString(i18n, loc); v != "" {
+		if v := i18n[loc]; v != "" {
 			return v
 		}
 	}
@@ -258,7 +310,7 @@ func pickName(meta map[string]interface{}, lang string, brand core.LarkBrand, op
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if v := common.GetString(i18n, k); v != "" {
+			if v := i18n[k]; v != "" {
 				return v
 			}
 		}
@@ -266,44 +318,42 @@ func pickName(meta map[string]interface{}, lang string, brand core.LarkBrand, op
 	return openID
 }
 
-// rowFromItem projects a single items[i] from the API response into the
-// 12-field user shape. Cross-tenant users may have missing email / department
-// fields; those pass through as empty string / nil rather than defaults so
-// consumers can distinguish "unknown" from "confirmed absent".
-func rowFromItem(item map[string]interface{}, lang string, brand core.LarkBrand) map[string]interface{} {
-	openID := common.GetString(item, "id")
-	meta := common.GetMap(item, "meta_data")
-	chatID := common.GetString(meta, "chat_id")
+// Cross-tenant users may have empty email / department; pass through as empty
+// string so consumers can distinguish "unknown" from "confirmed absent".
+func rowFromItem(item *searchUserAPIItem, lang string, brand core.LarkBrand) searchUser {
+	meta := &item.MetaData
+	i18n := meta.I18nNames
+	if i18n == nil {
+		i18n = map[string]string{}
+	}
+	segments, department, recencyHint := parseDisplayInfo(item.DisplayInfo)
 
-	return map[string]interface{}{
-		"name":             pickName(meta, lang, brand, openID),
-		"open_id":          openID,
-		"i18n_names":       common.GetMap(meta, "i18n_names"),
-		"email":            common.GetString(meta, "mail_address"),
-		"enterprise_email": common.GetString(meta, "enterprise_mail_address"),
-		"is_registered":    common.GetBool(meta, "is_registered"),
-		"chat_id":          chatID,
-		"has_chatted":      chatID != "",
-		"is_cross_tenant":  common.GetBool(meta, "is_cross_tenant"),
-		"tenant_id":        common.GetString(meta, "tenant_id"),
-		"description":      common.GetString(meta, "description"),
-		"display_info":     common.GetString(item, "display_info"),
+	return searchUser{
+		OpenID:          item.ID,
+		LocalizedName:   pickName(i18n, lang, brand, item.ID),
+		Email:           meta.MailAddress,
+		EnterpriseEmail: meta.EnterpriseMailAddress,
+		IsActivated:     meta.IsRegistered,
+		IsCrossTenant:   meta.IsCrossTenant,
+		P2PChatID:       meta.ChatID,
+		HasChatted:      meta.ChatID != "",
+		Department:      department,
+		Signature:       meta.Description,
+		ChatRecencyHint: recencyHint,
+		MatchSegments:   segments,
 	}
 }
 
-// validateSearchUser enforces the input contract: at least one search input
-// (query or filter) must be provided — "empty search" is rejected because
-// the API owner flags it as unsupported in practice.
 func validateSearchUser(runtime *common.RuntimeContext) error {
 	if !hasAnySearchInput(runtime) {
 		return common.FlagErrorf(
-			"specify at least one of --query, --user-ids, --is-resigned, --has-chatted, --exclude-outer-contact, --has-enterprise-email",
+			"specify at least one of --query, --user-ids, --has-chatted, --has-enterprise-email, --exclude-external-users, --left-organization",
 		)
 	}
 
 	if q := strings.TrimSpace(runtime.Str("query")); q != "" {
 		if utf8.RuneCountInString(q) > maxSearchUserQueryRunes {
-			return common.FlagErrorf("--query: length must be between 1 and %d characters", maxSearchUserQueryRunes)
+			return common.FlagErrorf("--query: length must be between 1 and %d runes", maxSearchUserQueryRunes)
 		}
 	}
 
@@ -322,21 +372,26 @@ func validateSearchUser(runtime *common.RuntimeContext) error {
 		}
 	}
 
-	if _, err := common.ValidatePageSize(runtime, "page-size", defaultSearchUserPageSize, 1, maxSearchUserPageSize); err != nil {
-		return err
-	}
-	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		if n := runtime.Int("page-limit"); n < 1 || n > maxSearchUserPageLimit {
-			return common.FlagErrorf("--page-limit: must be an integer between 1 and %d", maxSearchUserPageLimit)
+	// Reject explicit =false: agents passing it almost always mean "do not
+	// filter", but the API treats it as "must NOT match". Hard error prevents
+	// silent wrong-result bugs.
+	for _, bf := range searchUserBoolFilters {
+		if runtime.Cmd.Flags().Changed(bf.Flag) && !runtime.Bool(bf.Flag) {
+			return common.FlagErrorf(
+				"--%s: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)",
+				bf.Flag,
+			)
 		}
+	}
+
+	if n := runtime.Int("page-size"); n < 1 || n > maxSearchUserPageSize {
+		return common.FlagErrorf("--page-size: must be between 1 and %d", maxSearchUserPageSize)
 	}
 	return nil
 }
 
-// hasAnySearchInput reports whether the user supplied any of the six search
-// inputs. Cannot be replaced with common.AtLeastOne: that helper only
-// inspects string flags, whereas the bool filters need Changed() detection
-// to preserve tri-state semantics.
+// Cannot use common.AtLeastOne: it only inspects string flags; bool filters
+// need Changed() detection.
 func hasAnySearchInput(runtime *common.RuntimeContext) bool {
 	if strings.TrimSpace(runtime.Str("query")) != "" {
 		return true
@@ -352,17 +407,15 @@ func hasAnySearchInput(runtime *common.RuntimeContext) bool {
 	return false
 }
 
-// buildSearchUserBody constructs the POST body. Bool filters enter the body
-// only when the user explicitly set them (Changed()), preserving the
-// tri-state distinction between "unset" and "explicit false".
-func buildSearchUserBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
-	body := map[string]interface{}{}
+func buildSearchUserBody(runtime *common.RuntimeContext) (*searchUserAPIRequest, error) {
+	req := &searchUserAPIRequest{}
 
 	if q := strings.TrimSpace(runtime.Str("query")); q != "" {
-		body["query"] = q
+		req.Query = q
 	}
 
-	filter := map[string]interface{}{}
+	filter := &searchUserAPIFilter{}
+	hasFilter := false
 
 	if raw := strings.TrimSpace(runtime.Str("user-ids")); raw != "" {
 		ids, err := common.ResolveOpenIDs("--user-ids", common.SplitCSV(raw), runtime)
@@ -370,28 +423,20 @@ func buildSearchUserBody(runtime *common.RuntimeContext) (map[string]interface{}
 			return nil, err
 		}
 		if len(ids) > 0 {
-			filter["user_ids"] = ids
+			filter.UserIDs = ids
+			hasFilter = true
 		}
 	}
 
 	for _, bf := range searchUserBoolFilters {
-		if runtime.Cmd.Flags().Changed(bf.Flag) {
-			filter[bf.API] = runtime.Bool(bf.Flag)
+		if runtime.Cmd.Flags().Changed(bf.Flag) && runtime.Bool(bf.Flag) {
+			bf.Apply(filter)
+			hasFilter = true
 		}
 	}
 
-	if len(filter) > 0 {
-		body["filter"] = filter
+	if hasFilter {
+		req.Filter = filter
 	}
-	return body, nil
-}
-
-// buildSearchUserParams constructs the query-string params. page_size falls
-// back to the default when omitted. page_token is managed internally by the
-// Execute loop when auto-paginating, not exposed as a CLI flag.
-func buildSearchUserParams(runtime *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{}
-	pageSize, _ := common.ValidatePageSize(runtime, "page-size", defaultSearchUserPageSize, 1, maxSearchUserPageSize)
-	params["page_size"] = pageSize
-	return params
+	return req, nil
 }
