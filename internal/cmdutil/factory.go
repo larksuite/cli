@@ -60,18 +60,20 @@ func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
 
-	// Strict mode: force identity regardless of flags or config.
-	if forced := f.ResolveStrictMode(ctx).ForcedIdentity(); forced != "" {
-		f.ResolvedIdentity = forced
-		return forced
-	}
-
 	if cmd != nil && cmd.Flags().Changed("as") {
-		if flagAs != "auto" {
+		if flagAs != core.AsAuto {
 			f.ResolvedIdentity = flagAs
 			return flagAs
 		}
 		// --as auto: fall through to auto-detect
+	}
+
+	mode := f.ResolveStrictMode(ctx)
+	// Strict mode forces implicit identity choices. Explicit --as user/bot is
+	// preserved above so CheckStrictMode can reject incompatible requests.
+	if forced := mode.ForcedIdentity(); forced != "" {
+		f.ResolvedIdentity = forced
+		return forced
 	}
 
 	hint := f.resolveIdentityHint(ctx)

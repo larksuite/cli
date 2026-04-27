@@ -350,6 +350,42 @@ func TestResolveAs_StrictModeUser_ForceUser(t *testing.T) {
 	}
 }
 
+func TestResolveAs_StrictModeUser_PreservesExplicitBot(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("bot", true)
+	got := f.ResolveAs(context.Background(), cmd, core.AsBot)
+	if got != core.AsBot {
+		t.Errorf("explicit bot should be preserved for strict-mode validation, got %s", got)
+	}
+	if err := f.CheckStrictMode(context.Background(), got); err == nil {
+		t.Fatal("expected strict-mode error for explicit bot in user mode")
+	}
+}
+
+func TestResolveAs_StrictModeBot_PreservesExplicitUser(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("user", true)
+	got := f.ResolveAs(context.Background(), cmd, core.AsUser)
+	if got != core.AsUser {
+		t.Errorf("explicit user should be preserved for strict-mode validation, got %s", got)
+	}
+	if err := f.CheckStrictMode(context.Background(), got); err == nil {
+		t.Fatal("expected strict-mode error for explicit user in bot mode")
+	}
+}
+
+func TestResolveAs_StrictModeUser_ExplicitAutoForcesUser(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("auto", true)
+	got := f.ResolveAs(context.Background(), cmd, core.AsAuto)
+	if got != core.AsUser {
+		t.Errorf("--as auto should use strict-mode user identity, got %s", got)
+	}
+}
+
 func TestResolveAs_StrictModeBot_IgnoresDefaultAsUser(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", DefaultAs: "user", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
