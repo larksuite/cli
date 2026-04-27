@@ -29,16 +29,13 @@ func createWikiNode(t *testing.T, parentT *testing.T, ctx context.Context, space
 
 	nodeToken := node.Get("node_token").String()
 	require.NotEmpty(t, nodeToken, "stdout:\n%s", result.Stdout)
+	objToken := node.Get("obj_token").String()
 	objType := node.Get("obj_type").String()
 	parentT.Cleanup(func() {
 		cleanupCtx, cancel := clie2e.CleanupContext()
 		defer cancel()
 
-		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
-			Args:      []string{"api", "delete", "/open-apis/wiki/v2/spaces/" + spaceID + "/nodes/" + nodeToken},
-			DefaultAs: "bot",
-			Params:    map[string]any{"obj_type": objType},
-		})
+		deleteResult, deleteErr := deleteWikiNodeViaDrive(cleanupCtx, objToken, objType)
 		clie2e.ReportCleanupFailure(parentT, "delete wiki node "+nodeToken, deleteResult, deleteErr)
 	})
 
@@ -90,6 +87,19 @@ func listWikiSpaces(t *testing.T, ctx context.Context, pageSize int) gjson.Resul
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, 0)
 	return gjson.Parse(result.Stdout)
+}
+
+// deleteWikiNodeViaDrive removes a wiki node by deleting the underlying
+// drive document. The wiki v2 API does not expose a direct DELETE for
+// space nodes; the supported path is to delete the backing file via
+// /drive/v1/files/{file_token}?type=<obj_type>, which removes both the
+// file and its wiki node in one call.
+func deleteWikiNodeViaDrive(ctx context.Context, objToken, objType string) (*clie2e.Result, error) {
+	return clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"api", "delete", "/open-apis/drive/v1/files/" + objToken},
+		DefaultAs: "bot",
+		Params:    map[string]any{"type": objType},
+	})
 }
 
 func findWikiNodeByToken(t *testing.T, ctx context.Context, spaceID string, nodeToken string) gjson.Result {
