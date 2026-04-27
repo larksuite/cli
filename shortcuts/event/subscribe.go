@@ -26,7 +26,10 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 )
 
-// stderrLogger sends SDK logs to stderr; Debug always suppressed, Info gated by quiet.
+// stderrLogger redirects SDK log output to an io.Writer (stderr),
+// preventing SDK logs from polluting the stdout data stream.
+// Debug logs are always suppressed to avoid noisy event-loop output.
+// When quiet is true, Info logs are also suppressed; Warn and Error always print.
 type stderrLogger struct {
 	w     io.Writer
 	quiet bool
@@ -47,6 +50,7 @@ func (l *stderrLogger) Error(_ context.Context, args ...interface{}) {
 
 var _ larkcore.Logger = (*stderrLogger)(nil)
 
+// commonEventTypes are well-known event types registered in catch-all mode.
 var commonEventTypes = []string{
 	"im.message.receive_v1",
 	"im.message.message_read_v1",
@@ -80,16 +84,24 @@ var EventSubscribe = common.Shortcut{
 	Command:     "+subscribe",
 	Description: "Subscribe to Lark events via WebSocket (NDJSON output)",
 	Risk:        "read",
-	Scopes:      []string{},
+	Scopes:      []string{}, // no direct OAPI; scopes depend on subscribed event types
 	AuthTypes:   []string{"bot"},
-	Hidden:      true, // superseded by `event consume`; still executable for back-compat
+	// Hidden: superseded by `event consume`. Kept executable so existing
+	// scripts keep working, but removed from --help/tab-completion so new
+	// users land on the replacement. Delete once downstream callers have
+	// migrated.
+	Hidden: true,
 	Flags: []common.Flag{
+		// Output destination — where events go
 		{Name: "output-dir", Desc: "write each event as a JSON file in this directory (default: stdout)"},
 		{Name: "route", Type: "string_array", Desc: "regex-based event routing (e.g. --route '^im\\.message=dir:./im/' --route '^contact\\.=dir:./contacts/'); unmatched events fall through to --output-dir or stdout"},
+		// Output format — how events are serialized
 		{Name: "compact", Type: "bool", Desc: "flat key-value output: extract text, strip noise fields"},
 		{Name: "json", Type: "bool", Desc: "pretty-print JSON instead of NDJSON"},
+		// Filtering — which events reach the pipeline
 		{Name: "event-types", Desc: "comma-separated event types to subscribe; only use when you do not need other events (omit for catch-all)"},
 		{Name: "filter", Desc: "regex to further filter events by event_type"},
+		// Behavior
 		{Name: "quiet", Type: "bool", Desc: "suppress stderr status messages"},
 		{Name: "force", Type: "bool", Desc: "bypass single-instance lock (UNSAFE: server randomly splits events across connections, each instance only receives a subset)"},
 	},
@@ -128,6 +140,7 @@ var EventSubscribe = common.Shortcut{
 		routeSpecs := runtime.StrArray("route")
 		forceFlag := runtime.Bool("force")
 
+		// Validate output directory path before any work
 		if outputDir != "" {
 			safePath, err := validate.SafeOutputPath(outputDir)
 			if err != nil {
@@ -145,6 +158,7 @@ var EventSubscribe = common.Shortcut{
 			}
 		}
 
+		// --- Single-instance lock ---
 		if !forceFlag {
 			lock, err := lockfile.ForSubscribe(runtime.Config.AppID)
 			if err != nil {
@@ -161,6 +175,7 @@ var EventSubscribe = common.Shortcut{
 			defer lock.Unlock()
 		}
 
+		// --- Build filter chain ---
 		eventTypeFilter := NewEventTypeFilter(eventTypesStr)
 		regexFilter, err := NewRegexFilter(filterStr)
 		if err != nil {
@@ -175,11 +190,13 @@ var EventSubscribe = common.Shortcut{
 		}
 		filters := NewFilterChain(filterList...)
 
+		// --- Parse route ---
 		router, err := ParseRoutes(routeSpecs)
 		if err != nil {
 			return output.ErrValidation("invalid --route: %v", err)
 		}
 
+		// --- Build pipeline ---
 		mode := TransformRaw
 		if compactFlag {
 			mode = TransformCompact
@@ -196,6 +213,7 @@ var EventSubscribe = common.Shortcut{
 			return err
 		}
 
+		// --- Build SDK event dispatcher ---
 		rawHandler := func(ctx context.Context, event *larkevent.EventReq) error {
 			if event.Body == nil {
 				return nil
@@ -223,6 +241,7 @@ var EventSubscribe = common.Shortcut{
 			}
 		}
 
+		// --- WebSocket ---
 		domain := lark.FeishuBaseUrl
 		if runtime.Config.Brand == core.BrandLark {
 			domain = lark.LarkBaseUrl
@@ -250,6 +269,7 @@ var EventSubscribe = common.Shortcut{
 			larkws.WithLogger(sdkLogger),
 		)
 
+		// --- Graceful shutdown ---
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		defer signal.Stop(sigCh)
