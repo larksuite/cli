@@ -29,6 +29,7 @@ func createWikiNode(t *testing.T, parentT *testing.T, ctx context.Context, space
 
 	nodeToken := node.Get("node_token").String()
 	require.NotEmpty(t, nodeToken, "stdout:\n%s", result.Stdout)
+	objType := node.Get("obj_type").String()
 	parentT.Cleanup(func() {
 		cleanupCtx, cancel := clie2e.CleanupContext()
 		defer cancel()
@@ -36,6 +37,7 @@ func createWikiNode(t *testing.T, parentT *testing.T, ctx context.Context, space
 		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
 			Args:      []string{"api", "delete", "/open-apis/wiki/v2/spaces/" + spaceID + "/nodes/" + nodeToken},
 			DefaultAs: "bot",
+			Params:    map[string]any{"obj_type": objType},
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete wiki node "+nodeToken, deleteResult, deleteErr)
 	})
