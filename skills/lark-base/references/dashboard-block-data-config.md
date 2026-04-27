@@ -22,7 +22,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 
 ## 字段类型与操作符速查（AI 决策用）
 
-> `+field-list` 返回的字段类型以字段操作接口为准：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
+> 先用 `+field-list` / `+field-get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
 
 ```
 text: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
