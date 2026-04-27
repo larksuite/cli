@@ -109,8 +109,9 @@
 
 ### `formula` / `lookup`
 
-- 如果该字段有代理字段，`value` 写法跟代理字段类型一致。
-- 如果没有代理字段，只接受单个字符串或单个数字。
+- 筛选值类型由字段计算结果类型动态决定。
+- 拿不准时，先把 `value` 当作单个字符串填入做一次尝试。
+- 如果报错，再按错误提示把 `value` 改成对应类型。
 
 字符串示例：
 
@@ -167,9 +168,10 @@ lark-cli base +view-set-filter \
 - `user` / `group_chat` / `link` 不要写成单个标量。
 - `empty` / `non_empty` 不要硬塞无意义的 value。
 - 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。
-- `formula` / `lookup` 的 value 形状不固定，取决于输出单元格类型；拿不准时先读当前 filter 或字段定义。
+- `formula` / `lookup` 的 value 形状不固定；拿不准时先读当前 filter 或字段定义，或根据错误提示修正类型。
 
 ## 8. 参考
 
 - [lark-base-view.md](lark-base-view.md)
 - [lark-base-view-get-filter.md](lark-base-view-get-filter.md)
+- [lookup-field-guide.md](lookup-field-guide.md)
