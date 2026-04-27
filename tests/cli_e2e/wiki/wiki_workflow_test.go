@@ -118,7 +118,6 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 
 		copiedNodeToken = gjson.Get(result.Stdout, "data.node.node_token").String()
 		copiedSpaceID = gjson.Get(result.Stdout, "data.node.space_id").String()
-		copiedObjToken := gjson.Get(result.Stdout, "data.node.obj_token").String()
 		copiedObjType := gjson.Get(result.Stdout, "data.node.obj_type").String()
 		require.NotEmpty(t, copiedNodeToken)
 		require.NotEmpty(t, copiedSpaceID)
@@ -126,7 +125,7 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 			cleanupCtx, cancel := clie2e.CleanupContext()
 			defer cancel()
 
-			deleteResult, deleteErr := deleteWikiNodeViaDrive(cleanupCtx, copiedObjToken, copiedObjType)
+			deleteResult, deleteErr := deleteWikiNode(cleanupCtx, copiedSpaceID, copiedNodeToken, copiedObjType)
 			clie2e.ReportCleanupFailure(parentT, "delete copied wiki node "+copiedNodeToken, deleteResult, deleteErr)
 		})
 	})

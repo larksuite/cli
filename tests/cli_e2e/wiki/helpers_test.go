@@ -29,13 +29,12 @@ func createWikiNode(t *testing.T, parentT *testing.T, ctx context.Context, space
 
 	nodeToken := node.Get("node_token").String()
 	require.NotEmpty(t, nodeToken, "stdout:\n%s", result.Stdout)
-	objToken := node.Get("obj_token").String()
 	objType := node.Get("obj_type").String()
 	parentT.Cleanup(func() {
 		cleanupCtx, cancel := clie2e.CleanupContext()
 		defer cancel()
 
-		deleteResult, deleteErr := deleteWikiNodeViaDrive(cleanupCtx, objToken, objType)
+		deleteResult, deleteErr := deleteWikiNode(cleanupCtx, spaceID, nodeToken, objType)
 		clie2e.ReportCleanupFailure(parentT, "delete wiki node "+nodeToken, deleteResult, deleteErr)
 	})
 
@@ -89,16 +88,15 @@ func listWikiSpaces(t *testing.T, ctx context.Context, pageSize int) gjson.Resul
 	return gjson.Parse(result.Stdout)
 }
 
-// deleteWikiNodeViaDrive removes a wiki node by deleting the underlying
-// drive document. The wiki v2 API does not expose a direct DELETE for
-// space nodes; the supported path is to delete the backing file via
-// /drive/v1/files/{file_token}?type=<obj_type>, which removes both the
-// file and its wiki node in one call.
-func deleteWikiNodeViaDrive(ctx context.Context, objToken, objType string) (*clie2e.Result, error) {
+// deleteWikiNode removes a wiki space node. The DELETE endpoint requires
+// obj_type as a body field (validation error 99992402 if omitted), so
+// pass it via --data rather than --params even though DELETE bodies are
+// uncommon.
+func deleteWikiNode(ctx context.Context, spaceID, nodeToken, objType string) (*clie2e.Result, error) {
 	return clie2e.RunCmd(ctx, clie2e.Request{
-		Args:      []string{"api", "delete", "/open-apis/drive/v1/files/" + objToken},
+		Args:      []string{"api", "delete", "/open-apis/wiki/v2/spaces/" + spaceID + "/nodes/" + nodeToken},
 		DefaultAs: "bot",
-		Params:    map[string]any{"type": objType},
+		Data:      map[string]any{"obj_type": objType},
 	})
 }
 
