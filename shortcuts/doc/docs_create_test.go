@@ -182,6 +182,67 @@ func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	}
 }
 
+func TestDocsCreateV2FallbackURLWhenBackendOmitsIt(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			// "url" deliberately omitted to exercise the fallback.
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v2",
+		"--content", "<title>内容</title><p>正文</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if doc == nil {
+		t.Fatalf("missing document in envelope: %#v", data)
+	}
+	if got, want := doc["url"], "https://www.feishu.cn/docx/doxcn_new_doc"; got != want {
+		t.Fatalf("document.url = %#v, want %q (brand-standard fallback)", got, want)
+	}
+}
+
+func TestDocsCreateV2PreservesBackendURL(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://tenant.larkoffice.com/docx/doxcn_new_doc",
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v2",
+		"--content", "<title>内容</title><p>正文</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if got, want := doc["url"], "https://tenant.larkoffice.com/docx/doxcn_new_doc"; got != want {
+		t.Fatalf("document.url = %#v, want backend tenant URL %q (fallback must not overwrite)", got, want)
+	}
+}
+
 // ── V1 (MCP) tests ──
 
 func TestDocsCreateV1BotAutoGrantSuccess(t *testing.T) {
@@ -270,6 +331,60 @@ func TestDocsCreateV1WikiSpaceAutoGrantFailure(t *testing.T) {
 	}
 	if body["perm_type"] != "container" {
 		t.Fatalf("permission request perm_type = %#v, want %q", body["perm_type"], "container")
+	}
+}
+
+func TestDocsCreateV1FallbackURLWhenBackendOmitsIt(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateMCPStub(reg, map[string]interface{}{
+		"doc_id":  "doxcn_new_doc",
+		"message": "文档创建成功",
+		// "doc_url" deliberately omitted to exercise the fallback.
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v1",
+		"--title", "项目计划",
+		"--markdown", "## 目标",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	if got, want := data["doc_url"], "https://www.feishu.cn/docx/doxcn_new_doc"; got != want {
+		t.Fatalf("doc_url = %#v, want %q (brand-standard fallback)", got, want)
+	}
+}
+
+func TestDocsCreateV1PreservesBackendDocURL(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateMCPStub(reg, map[string]interface{}{
+		"doc_id":  "doxcn_new_doc",
+		"doc_url": "https://tenant.feishu.cn/docx/doxcn_new_doc",
+		"message": "文档创建成功",
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v1",
+		"--title", "项目计划",
+		"--markdown", "## 目标",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	if got, want := data["doc_url"], "https://tenant.feishu.cn/docx/doxcn_new_doc"; got != want {
+		t.Fatalf("doc_url = %#v, want backend tenant URL %q (fallback must not overwrite)", got, want)
 	}
 }
 

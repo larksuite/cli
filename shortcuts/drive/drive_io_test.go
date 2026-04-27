@@ -317,6 +317,84 @@ func TestDriveUploadSmallFileToWiki(t *testing.T) {
 	}
 }
 
+func TestDriveUploadFallbackURLForExplorerParent(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-explorer-fallback-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			// upload_all only ever returns file_token; url is never present —
+			// this exercises the fallback path unconditionally for explorer
+			// parents.
+			"data": map[string]interface{}{"file_token": "file_explorer_small"},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error: %v", err)
+	}
+	defer os.Chdir(origDir)
+
+	if err := os.WriteFile("hello.bin", make([]byte, 64), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "hello.bin", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("upload should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/file/file_explorer_small"; got != want {
+		t.Fatalf("data.url = %#v, want %q (brand-standard fallback)", got, want)
+	}
+}
+
+func TestDriveUploadOmitsURLForWikiParent(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-wiki-no-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "file_wiki_small"},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("hello.bin", make([]byte, 64), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "hello.bin",
+		"--wiki-token", "wikcn_parent",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("upload should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if _, ok := data["url"]; ok {
+		t.Fatalf("data.url should be omitted for wiki-hosted files (no standalone URL); got %#v", data["url"])
+	}
+}
+
 func TestDriveUploadSmallFileAPIError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,

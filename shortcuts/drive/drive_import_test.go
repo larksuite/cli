@@ -12,6 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -360,5 +363,208 @@ func TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot(t *testing.T) {
 	}
 	if got, _ := point["mount_key"].(string); got != "fld_test" {
 		t.Fatalf("mount_key = %q, want %q", got, "fld_test")
+	}
+}
+
+// driveImportMockEnv mounts the three stubs needed for a full +import run:
+// media upload_all -> import_tasks (create) -> import_tasks/<ticket> (poll).
+// Returns nothing; caller asserts on stdout via decodeDriveEnvelope.
+func driveImportMockEnv(t *testing.T, reg *httpmock.Registry, ticket string, pollData map[string]interface{}) {
+	t.Helper()
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "file_import_media"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/import_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"ticket": ticket},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/import_tasks/" + ticket,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"result": pollData},
+		},
+	})
+}
+
+// driveImportTestConfig builds a CliConfig for the import fallback tests.
+// The brand defaults to BrandFeishu when omitted; pass core.BrandLark to
+// exercise the larksuite.com branch of BuildResourceURL.
+func driveImportTestConfig(suffix string, brands ...core.LarkBrand) *core.CliConfig {
+	brand := core.BrandFeishu
+	if len(brands) > 0 {
+		brand = brands[0]
+	}
+	return &core.CliConfig{
+		AppID:     "drive-import-fallback-" + suffix,
+		AppSecret: "test-secret",
+		Brand:     brand,
+	}
+}
+
+func TestDriveImportFallbackURLWhenBackendOmitsIt(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("missing-url"))
+	driveImportMockEnv(t, reg, "ticket_fallback", map[string]interface{}{
+		"token":      "doxcn_imported",
+		"type":       "docx",
+		"job_status": float64(0),
+		// "url" deliberately omitted: import API frequently returns the doc
+		// without an absolute URL, leaving the CLI to backfill from token.
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+	if err := os.WriteFile("notes.md", []byte("# Hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := mountAndRunDrive(t, DriveImport, []string{
+		"+import", "--file", "notes.md", "--type", "docx", "--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("import should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/docx/doxcn_imported"; got != want {
+		t.Fatalf("data.url = %#v, want %q (brand-standard fallback)", got, want)
+	}
+}
+
+func TestDriveImportPreservesBackendURL(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("preserve-url"))
+	driveImportMockEnv(t, reg, "ticket_preserve", map[string]interface{}{
+		"token":      "doxcn_imported",
+		"type":       "docx",
+		"job_status": float64(0),
+		"url":        "https://tenant.larkoffice.com/docx/doxcn_imported",
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+	if err := os.WriteFile("notes.md", []byte("# Hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := mountAndRunDrive(t, DriveImport, []string{
+		"+import", "--file", "notes.md", "--type", "docx", "--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("import should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://tenant.larkoffice.com/docx/doxcn_imported"; got != want {
+		t.Fatalf("data.url = %#v, want backend tenant URL %q (fallback must not overwrite)", got, want)
+	}
+}
+
+func TestDriveImportFallbackURLWhenServerURLIsWhitespace(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("whitespace-url"))
+	driveImportMockEnv(t, reg, "ticket_whitespace", map[string]interface{}{
+		"token":      "doxcn_imported",
+		"type":       "docx",
+		"job_status": float64(0),
+		"url":        "   ", // whitespace-only must trigger fallback, not pass through.
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+	if err := os.WriteFile("notes.md", []byte("# Hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := mountAndRunDrive(t, DriveImport, []string{
+		"+import", "--file", "notes.md", "--type", "docx", "--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("import should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/docx/doxcn_imported"; got != want {
+		t.Fatalf("data.url = %#v, want %q (whitespace-only backend URL must yield fallback)", got, want)
+	}
+}
+
+func TestDriveImportFallbackURLForLarkBrand(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("lark-brand", core.BrandLark))
+	driveImportMockEnv(t, reg, "ticket_lark", map[string]interface{}{
+		"token":      "doxcn_imported",
+		"type":       "docx",
+		"job_status": float64(0),
+		// "url" omitted to force the fallback through the lark host branch.
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+	if err := os.WriteFile("notes.md", []byte("# Hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := mountAndRunDrive(t, DriveImport, []string{
+		"+import", "--file", "notes.md", "--type", "docx", "--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("import should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.larksuite.com/docx/doxcn_imported"; got != want {
+		t.Fatalf("data.url = %#v, want %q (lark brand fallback)", got, want)
+	}
+}
+
+func TestDriveImportFallbackURLWhenServerTypeIsAlias(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("alias-type"))
+	driveImportMockEnv(t, reg, "ticket_alias", map[string]interface{}{
+		"token":      "shtcn_imported",
+		"type":       "sheets", // non-canonical alias the server may return
+		"job_status": float64(0),
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := mountAndRunDrive(t, DriveImport, []string{
+		"+import", "--file", "data.csv", "--type", "sheet", "--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("import should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	// Server returned "sheets" (alias) — normalize falls back to the user
+	// --type "sheet", so BuildResourceURL picks the canonical /sheets/ path.
+	if got, want := data["url"], "https://www.feishu.cn/sheets/shtcn_imported"; got != want {
+		t.Fatalf("data.url = %#v, want %q (alias normalized via spec.DocType fallback)", got, want)
 	}
 }
