@@ -331,6 +331,43 @@ func (p *CredentialProvider) ResolveToken(ctx context.Context, req TokenSpec) (*
 	return nil, &TokenUnavailableError{Type: req.Type}
 }
 
+// ActiveExtensionProviderName reports whether an extension provider is managing
+// credentials. It probes p.providers (extension providers only, not defaultAcct)
+// and returns the name of the first engaged provider.
+//
+// "Engaged" means: ResolveAccount returns a non-nil account, OR returns a
+// *extcred.BlockError (provider configured but misconfigured — still counts as
+// external). Any other error is propagated to the caller.
+//
+// Returns ("", nil) when no extension provider is active (built-in keychain path).
+// Safe to call multiple times — probes providers directly without the sync.Once cache.
+func (p *CredentialProvider) ActiveExtensionProviderName(ctx context.Context) (string, error) {
+	for _, prov := range p.providers {
+		acct, err := prov.ResolveAccount(ctx)
+		if err != nil {
+			var blockErr *extcred.BlockError
+			if errors.As(err, &blockErr) {
+				name := blockErr.Provider
+				if name == "" {
+					name = prov.Name()
+				}
+				if name == "" {
+					name = "external"
+				}
+				return name, nil
+			}
+			return "", err
+		}
+		if acct != nil {
+			if name := prov.Name(); name != "" {
+				return name, nil
+			}
+			return "external", nil
+		}
+	}
+	return "", nil
+}
+
 func convertAccount(ext *extcred.Account) *Account {
 	return &Account{
 		AppID:               ext.AppID,

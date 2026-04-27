@@ -71,7 +71,18 @@ func mergePagedResults(w io.Writer, results []interface{}) interface{} {
 		mergedData[k] = v
 	}
 	mergedData[arrayField] = merged
-	mergedData["has_more"] = false
+
+	// Surface the last page's real has_more so callers can detect truncation
+	// when --page-limit stops the loop before the API is exhausted. Page tokens
+	// are intentionally dropped: the merged view is an aggregate, not a resume
+	// cursor — to fetch more, re-run with a larger --page-limit.
+	lastHasMore := false
+	if lastMap, ok := results[len(results)-1].(map[string]interface{}); ok {
+		if lastData, ok := lastMap["data"].(map[string]interface{}); ok {
+			lastHasMore, _ = lastData["has_more"].(bool)
+		}
+	}
+	mergedData["has_more"] = lastHasMore
 	delete(mergedData, "page_token")
 	delete(mergedData, "next_page_token")
 

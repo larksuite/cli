@@ -210,14 +210,15 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 		}
 
 		want := larkcore.QueryParams{
-			"container_id_type":     {"chat"},
-			"container_id":          {"oc_123"},
-			"sort_type":             {"ByCreateTimeAsc"},
-			"page_size":             {"50"},
-			"card_msg_content_type": {"raw_card_content"},
-			"start_time":            {"1772294400"},
-			"end_time":              {"1772467199"},
-			"page_token":            {"next"},
+			"container_id_type":         {"chat"},
+			"container_id":              {"oc_123"},
+			"sort_type":                 {"ByCreateTimeAsc"},
+			"page_size":                 {"50"},
+			"only_thread_root_messages": {"true"},
+			"card_msg_content_type":     {"raw_card_content"},
+			"start_time":                {"1772294400"},
+			"end_time":                  {"1772467199"},
+			"page_token":                {"next"},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("buildChatMessageListRequest() = %#v, want %#v", got, want)
@@ -243,6 +244,13 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 			t.Fatalf("buildChatMessageListRequest() error = %v, want end validation", err)
 		}
 	})
+}
+
+func TestChatMessageListOnlyThreadRootMessagesParams(t *testing.T) {
+	got := buildChatMessageListParams("desc", "20", "oc_123")
+	if vals := got["only_thread_root_messages"]; !reflect.DeepEqual(vals, []string{"true"}) {
+		t.Fatalf("only_thread_root_messages = %#v, want true", vals)
+	}
 }
 
 func TestResolveChatIDForMessagesList(t *testing.T) {
@@ -324,7 +332,7 @@ func TestResolveChatIDForMessagesList(t *testing.T) {
 
 func TestBuildMessagesSearchRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":                   "hello",
 			"chat-id":                 "oc_1,oc_2",
 			"sender":                  "ou_1,ou_2",
@@ -374,7 +382,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("start later than end", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"start": "2026-03-03T00:00:00+08:00",
 			"end":   "2026-03-02T00:00:00+08:00",
 		}, nil)
@@ -385,8 +393,37 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("invalid sender id", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"sender": "bad_sender",
+		}, nil)
+		_, err := buildMessagesSearchRequest(runtime)
+		if err == nil || !strings.Contains(err.Error(), "invalid user ID format") {
+			t.Fatalf("buildMessagesSearchRequest() error = %v", err)
+		}
+	})
+
+	t.Run("at-chatter-ids accepts user ids", func(t *testing.T) {
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
+			"query":          "standup",
+			"at-chatter-ids": "ou_a, ou_b",
+		}, nil)
+
+		got, err := buildMessagesSearchRequest(runtime)
+		if err != nil {
+			t.Fatalf("buildMessagesSearchRequest() error = %v", err)
+		}
+
+		filter, _ := got.body["filter"].(map[string]interface{})
+		ids, _ := filter["at_chatter_ids"].([]string)
+		want := []string{"ou_a", "ou_b"}
+		if !reflect.DeepEqual(ids, want) {
+			t.Fatalf("at_chatter_ids = %#v, want %#v", ids, want)
+		}
+	})
+
+	t.Run("at-chatter-ids rejects bad id", func(t *testing.T) {
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
+			"at-chatter-ids": "ou_a,not_a_user",
 		}, nil)
 		_, err := buildMessagesSearchRequest(runtime)
 		if err == nil || !strings.Contains(err.Error(), "invalid user ID format") {
@@ -600,5 +637,53 @@ func TestMediaBufferReader(t *testing.T) {
 		if !bytes.Equal(got, data) {
 			t.Fatalf("ReadAll() attempt %d = %q, want %q", i+1, got, data)
 		}
+	}
+}
+
+func TestMediaBufferFileName(t *testing.T) {
+	tests := []struct {
+		label string
+		buf   mediaBuffer
+		want  string
+	}{
+		{"original URL filename", mediaBuffer{name: "report.pdf", ext: ".pdf"}, "report.pdf"},
+		{"name with spaces", mediaBuffer{name: "Q1 report.pdf", ext: ".pdf"}, "Q1 report.pdf"},
+		{"download fallback", mediaBuffer{name: "download", ext: ""}, "download"},
+		{"ext not leaked into name", mediaBuffer{name: "x", ext: ".mp4"}, "x"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
+			if got := tt.buf.FileName(); got != tt.want {
+				t.Fatalf("FileName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNewMediaBufferFromBytesURLFilename locks in the URL -> mediaBuffer.name
+// wiring so a future refactor cannot regress back to the "media.<ext>" synthetic
+// filename that was shipped in 91067ec.
+func TestNewMediaBufferFromBytesURLFilename(t *testing.T) {
+	tests := []struct {
+		label string
+		url   string
+		want  string
+	}{
+		{"path filename", "http://example.com/report.pdf", "report.pdf"},
+		{"filename survives query string", "http://example.com/videos/clip.mp4?token=abc", "clip.mp4"},
+		{"percent-encoded spaces decoded", "http://example.com/Q1%20report.pdf", "Q1 report.pdf"},
+		{"no path falls back to download", "http://example.com/", "download"},
+		{"non-http scheme falls back to download", "ftp://example.com/x.pdf", "download"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
+			mb := newMediaBufferFromBytes([]byte("payload"), ".pdf", tt.url)
+			if got := mb.FileName(); got != tt.want {
+				t.Fatalf("FileName() for %q = %q, want %q", tt.url, got, tt.want)
+			}
+			if got := mb.FileName(); strings.HasPrefix(got, "media") && tt.want != "media" {
+				t.Fatalf("regression: FileName() returned synthetic %q for %q", got, tt.url)
+			}
+		})
 	}
 }

@@ -112,6 +112,56 @@ func dryRunRecordHistoryList(_ context.Context, runtime *common.RuntimeContext) 
 		Set("base_token", runtime.Str("base-token"))
 }
 
+func dryRunRecordShareBatch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	recordIDs := deduplicateRecordIDs(runtime)
+	return common.NewDryRunAPI().
+		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/share_links/batch").
+		Body(map[string]interface{}{"record_ids": recordIDs}).
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", baseTableID(runtime))
+}
+
+const maxShareBatchSize = 100
+
+func validateRecordShareBatch(runtime *common.RuntimeContext) error {
+	recordIDs := deduplicateRecordIDs(runtime)
+	if len(recordIDs) == 0 {
+		return common.FlagErrorf("--record-ids is required and must not be empty")
+	}
+	if len(recordIDs) > maxShareBatchSize {
+		return common.FlagErrorf("--record-ids exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
+	}
+	return nil
+}
+
+func deduplicateRecordIDs(runtime *common.RuntimeContext) []string {
+	raw := runtime.StrSlice("record-ids")
+	seen := make(map[string]bool, len(raw))
+	result := make([]string, 0, len(raw))
+	for _, id := range raw {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
+func executeRecordShareBatch(runtime *common.RuntimeContext) error {
+	recordIDs := deduplicateRecordIDs(runtime)
+	body := map[string]interface{}{
+		"record_ids": recordIDs,
+	}
+	data, err := baseV3Call(runtime, "POST",
+		baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "share_links", "batch"),
+		nil, body)
+	if err != nil {
+		return err
+	}
+	runtime.Out(data, nil)
+	return nil
+}
+
 func validateRecordJSON(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
 	_, err := parseJSONObject(pc, runtime.Str("json"), "json")

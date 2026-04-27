@@ -21,16 +21,18 @@ func TestTask_StatusWorkflow(t *testing.T) {
 
 	suffix := clie2e.GenerateSuffix()
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
-		Args: []string{"task", "+create"},
+		Args:      []string{"task", "+create"},
+		DefaultAs: "bot",
 		Data: map[string]any{
 			"summary":     "lark-cli-e2e-summary-" + suffix,
 			"description": "created by tests/cli_e2e/task status workflow",
 		},
 	})
 
-	t.Run("complete", func(t *testing.T) {
+	t.Run("complete as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "+complete", "--task-id", taskGUID},
+			Args:      []string{"task", "+complete", "--task-id", taskGUID},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -38,10 +40,11 @@ func TestTask_StatusWorkflow(t *testing.T) {
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.guid").String())
 	})
 
-	t.Run("get completed task", func(t *testing.T) {
+	t.Run("get completed task as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"task", "tasks", "get"},
-			Params: map[string]any{"task_guid": taskGUID},
+			Args:      []string{"task", "tasks", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"task_guid": taskGUID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -52,9 +55,10 @@ func TestTask_StatusWorkflow(t *testing.T) {
 		assert.NotZero(t, gjson.Get(result.Stdout, "data.task.completed_at").Int(), "stdout:\n%s", result.Stdout)
 	})
 
-	t.Run("reopen", func(t *testing.T) {
+	t.Run("reopen as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "+reopen", "--task-id", taskGUID},
+			Args:      []string{"task", "+reopen", "--task-id", taskGUID},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -62,10 +66,11 @@ func TestTask_StatusWorkflow(t *testing.T) {
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.guid").String())
 	})
 
-	t.Run("get reopened task", func(t *testing.T) {
+	t.Run("get reopened task as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"task", "tasks", "get"},
-			Params: map[string]any{"task_guid": taskGUID},
+			Args:      []string{"task", "tasks", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"task_guid": taskGUID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

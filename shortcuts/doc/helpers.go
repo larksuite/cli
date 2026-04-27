@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 type documentRef struct {
@@ -54,6 +55,14 @@ func extractDocumentToken(raw, marker string) (string, bool) {
 		return "", false
 	}
 	return token, true
+}
+
+// doDocAPI executes an OpenAPI request against the docs_ai endpoints and returns
+// the parsed "data" field from the standard Lark response envelope {code, msg, data}.
+// Uses the log-id-aware variant so the x-tt-logid header is surfaced in both the
+// success payload and error details — doc v2 callers rely on it for support escalations.
+func doDocAPI(runtime *common.RuntimeContext, method, apiPath string, body interface{}) (map[string]interface{}, error) {
+	return runtime.DoAPIJSONWithLogID(method, apiPath, nil, body)
 }
 
 func buildDriveRouteExtra(docID string) (string, error) {

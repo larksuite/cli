@@ -102,6 +102,7 @@ var CalendarFreebusy = common.Shortcut{
 			"user_id":          userId,
 			"need_rsvp_status": true,
 		})
+		err = wrapPredefinedError(err)
 		if err != nil {
 			return err
 		}

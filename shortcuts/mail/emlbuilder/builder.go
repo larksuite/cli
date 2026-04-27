@@ -73,26 +73,28 @@ func readFile(fio fileio.FileIO, path string) ([]byte, error) {
 // All setter methods return a copy of the Builder (immutable/fluent style),
 // so a base builder can be reused across multiple goroutines safely.
 type Builder struct {
-	fio                 fileio.FileIO // injected via WithFileIO; must be set before AddFile* calls
-	from                mail.Address
-	to                  []mail.Address
-	cc                  []mail.Address
-	bcc                 []mail.Address
-	replyTo             []mail.Address
-	subject             string
-	date                time.Time
-	messageID           string
-	inReplyTo           string // raw value, without angle brackets
-	references          string // space-separated list of message IDs, with angle brackets
-	lmsReplyToMessageID string // Lark internal message_id of the original message
-	textBody            []byte
-	htmlBody            []byte
-	calendarBody        []byte
-	attachments         []attachment
-	inlines             []inline
-	extraHeaders        [][2]string // ordered list of [name, value] pairs
-	allowNoRecipients   bool        // when true, Build() skips the recipient check (for drafts)
-	err                 error
+	fio                       fileio.FileIO // injected via WithFileIO; must be set before AddFile* calls
+	from                      mail.Address
+	to                        []mail.Address
+	cc                        []mail.Address
+	bcc                       []mail.Address
+	replyTo                   []mail.Address
+	dispositionNotificationTo []mail.Address
+	subject                   string
+	date                      time.Time
+	messageID                 string
+	inReplyTo                 string // raw value, without angle brackets
+	references                string // space-separated list of message IDs, with angle brackets
+	lmsReplyToMessageID       string // Lark internal message_id of the original message
+	textBody                  []byte
+	htmlBody                  []byte
+	calendarBody              []byte
+	attachments               []attachment
+	inlines                   []inline
+	extraHeaders              [][2]string // ordered list of [name, value] pairs
+	allowNoRecipients         bool        // when true, Build() skips the recipient check (for drafts)
+	isReadReceiptMail         bool        // when true, Build() writes X-Lark-Read-Receipt-Mail: 1
+	err                       error
 }
 
 // WithFileIO returns a copy of b with the given FileIO.
@@ -101,6 +103,9 @@ func (b Builder) WithFileIO(fio fileio.FileIO) Builder {
 	return b
 }
 
+// attachment is a regular (non-inline) MIME attachment — bytes plus MIME
+// metadata — accumulated on the Builder and serialized under the
+// multipart/mixed outer envelope.
 type attachment struct {
 	content     []byte
 	contentType string
@@ -287,6 +292,36 @@ func (b Builder) ReplyTo(name, addr string) Builder {
 	}
 	cp := b.copySlices()
 	cp.replyTo = append(cp.replyTo, mail.Address{Name: name, Address: addr})
+	return cp
+}
+
+// DispositionNotificationTo appends an address to the Disposition-Notification-To header,
+// which requests a Message Disposition Notification (MDN, read receipt) from the recipient's
+// mail user agent (RFC 3798). name may be empty.
+//
+// Recipients' clients are not obliged to honour this header; user agents commonly prompt
+// the recipient, and many silently ignore it.
+func (b Builder) DispositionNotificationTo(name, addr string) Builder {
+	if addr == "" {
+		return b
+	}
+	if b.err != nil {
+		return b
+	}
+	if err := validateDisplayName(name); err != nil {
+		b.err = err
+		return b
+	}
+	// addr ends up inside mail.Address.String() and written unescaped into
+	// the Disposition-Notification-To header; validate it the same way as
+	// other header value inputs to prevent CR/LF header injection and
+	// visual-spoofing via Bidi / zero-width code points.
+	if err := validateHeaderValue(addr); err != nil {
+		b.err = err
+		return b
+	}
+	cp := b.copySlices()
+	cp.dispositionNotificationTo = append(cp.dispositionNotificationTo, mail.Address{Name: name, Address: addr})
 	return cp
 }
 
@@ -567,6 +602,21 @@ func (b Builder) AllowNoRecipients() Builder {
 	return b
 }
 
+// IsReadReceiptMail marks this message as a read-receipt response.
+// When true, Build() writes the private header "X-Lark-Read-Receipt-Mail: 1",
+// which data-access extracts into MailBodyExtra.IsReadReceiptMail on draft
+// creation so the subsequent DraftSend applies the READ_RECEIPT_SENT label.
+//
+// The header is a Lark-internal signal; smtp-out-mail-out is expected to
+// strip X-Lark-* private headers before external delivery.
+func (b Builder) IsReadReceiptMail(v bool) Builder {
+	if b.err != nil {
+		return b
+	}
+	b.isReadReceiptMail = v
+	return b
+}
+
 // Header appends an extra header to the message.
 // Multiple calls with the same name result in multiple header lines.
 // Returns an error builder if name or value contains CR, LF, or (for names) ':'.
@@ -659,6 +709,12 @@ func (b Builder) Build() ([]byte, error) {
 	if len(b.replyTo) > 0 {
 		writeHeader(&buf, "Reply-To", joinAddresses(b.replyTo))
 	}
+	if len(b.dispositionNotificationTo) > 0 {
+		writeHeader(&buf, "Disposition-Notification-To", joinAddresses(b.dispositionNotificationTo))
+	}
+	if b.isReadReceiptMail {
+		writeHeader(&buf, "X-Lark-Read-Receipt-Mail", "1")
+	}
 	if b.inReplyTo != "" {
 		writeHeader(&buf, "In-Reply-To", "<"+b.inReplyTo+">")
 		if b.lmsReplyToMessageID != "" {
@@ -720,6 +776,7 @@ func (b Builder) copySlices() Builder {
 	cp.cc = append([]mail.Address{}, b.cc...)
 	cp.bcc = append([]mail.Address{}, b.bcc...)
 	cp.replyTo = append([]mail.Address{}, b.replyTo...)
+	cp.dispositionNotificationTo = append([]mail.Address{}, b.dispositionNotificationTo...)
 	cp.attachments = append([]attachment{}, b.attachments...)
 	cp.inlines = append([]inline{}, b.inlines...)
 	cp.extraHeaders = append([][2]string{}, b.extraHeaders...)
@@ -879,12 +936,24 @@ func encodeBodyContent(body []byte, cte string) string {
 	return string(body)
 }
 
-// writeFoldedBody writes the encoded part body with fixed-width line wrapping.
-// RFC 2045 recommends 76 characters per encoded line; we apply the same width
-// to all body parts for consistent MIME output.
+// lineWidthForCTE returns the appropriate line width for the given CTE.
+// RFC 2045: base64 and quoted-printable lines MUST NOT exceed 76 characters.
+// RFC 5322: 7bit/8bit lines MUST NOT exceed 998 characters.
+func lineWidthForCTE(cte string) int {
+	switch cte {
+	case "base64", "quoted-printable":
+		return 76
+	default: // 7bit, 8bit
+		return 998
+	}
+}
+
+// writeFoldedBody writes the encoded part body with line wrapping.
+// The width limit depends on the Content-Transfer-Encoding:
+// base64/quoted-printable use 76 chars (RFC 2045), 7bit uses 998 (RFC 5322).
 func writeFoldedBody(buf *bytes.Buffer, encoded string, width int) {
 	if width <= 0 {
-		width = 76
+		width = 998
 	}
 	for _, line := range strings.Split(encoded, "\n") {
 		for len(line) > width {
@@ -910,7 +979,7 @@ func writeBodyPart(buf *bytes.Buffer, boundary, ct string, body []byte) {
 	cte := selectCTE(body)
 	fmt.Fprintf(buf, "Content-Type: %s; charset=UTF-8\n", ct)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
-	writeFoldedBody(buf, encodeBodyContent(body, cte), 76)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
 }
 
 // writeSingleBodyPartHeaders writes the Content-Type / CTE headers and body
@@ -920,7 +989,7 @@ func writeSingleBodyPartHeaders(buf *bytes.Buffer, ct string, body []byte) {
 	cte := selectCTE(body)
 	fmt.Fprintf(buf, "Content-Type: %s; charset=UTF-8\n", ct)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
-	writeFoldedBody(buf, encodeBodyContent(body, cte), 76)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
 }
 
 // writeAttachmentPart writes a MIME attachment part.

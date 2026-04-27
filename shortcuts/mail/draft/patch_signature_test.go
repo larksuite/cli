@@ -119,6 +119,122 @@ Content-Type: text/html; charset=UTF-8
 }
 
 // ---------------------------------------------------------------------------
+// insert_signature — with large attachment card (no quote)
+// ---------------------------------------------------------------------------
+
+func TestInsertSignature_BeforeCard(t *testing.T) {
+	snapshot := mustParseFixtureDraft(t, `Subject: Sig before card
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<p>My reply</p><div id="large-file-area-123" style="..."><div id="large-file-item"><a data-mail-token="tokA">D</a></div></div>`)
+
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
+		Ops: []PatchOp{{
+			Op:                    "insert_signature",
+			SignatureID:           "sig-card",
+			RenderedSignatureHTML: "<div>-- My Sig</div>",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Apply insert_signature: %v", err)
+	}
+
+	html := string(findPart(snapshot.Body, snapshot.PrimaryHTMLPartID).Body)
+	userIdx := strings.Index(html, "My reply")
+	sigIdx := strings.Index(html, "My Sig")
+	cardIdx := strings.Index(html, "large-file-area-123")
+	if userIdx < 0 || sigIdx < 0 || cardIdx < 0 {
+		t.Fatalf("missing part(s) in html: %s", html)
+	}
+	if !(userIdx < sigIdx && sigIdx < cardIdx) {
+		t.Errorf("expected order [user][sig][card], got user@%d sig@%d card@%d: %s",
+			userIdx, sigIdx, cardIdx, html)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// insert_signature — with large attachment card AND quote
+// ---------------------------------------------------------------------------
+
+func TestInsertSignature_BeforeCardAndQuote(t *testing.T) {
+	snapshot := mustParseFixtureDraft(t, `Subject: Sig before card and quote
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<p>My reply</p><div id="large-file-area-123"><div id="large-file-item"><a data-mail-token="tokA">D</a></div></div><div class="history-quote-wrapper"><p>quoted</p></div>`)
+
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
+		Ops: []PatchOp{{
+			Op:                    "insert_signature",
+			SignatureID:           "sig-all",
+			RenderedSignatureHTML: "<div>-- My Sig</div>",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Apply insert_signature: %v", err)
+	}
+
+	html := string(findPart(snapshot.Body, snapshot.PrimaryHTMLPartID).Body)
+	userIdx := strings.Index(html, "My reply")
+	sigIdx := strings.Index(html, "My Sig")
+	cardIdx := strings.Index(html, "large-file-area-123")
+	quoteIdx := strings.Index(html, "quoted")
+	if userIdx < 0 || sigIdx < 0 || cardIdx < 0 || quoteIdx < 0 {
+		t.Fatalf("missing part(s) in html: %s", html)
+	}
+	if !(userIdx < sigIdx && sigIdx < cardIdx && cardIdx < quoteIdx) {
+		t.Errorf("expected order [user][sig][card][quote], got user@%d sig@%d card@%d quote@%d",
+			userIdx, sigIdx, cardIdx, quoteIdx)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// insert_signature — replaces existing signature that sits after card
+// (legacy draft produced by old buggy code); new signature should move
+// back to the correct position before the card.
+// ---------------------------------------------------------------------------
+
+func TestInsertSignature_ReplacesExistingWithCard(t *testing.T) {
+	// Old bad draft: [user][card][sig_old][quote] (legacy layout)
+	snapshot := mustParseFixtureDraft(t, `Subject: Replace sig with card
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<p>My reply</p><div id="large-file-area-123"><div id="large-file-item"><a data-mail-token="tokA">D</a></div></div><div id="old-sig" class="lark-mail-signature" style="padding-top:6px;padding-bottom:6px"><div>-- Old Sig</div></div><div class="history-quote-wrapper"><p>quoted</p></div>`)
+
+	err := Apply(&DraftCtx{FIO: testFIO}, snapshot, Patch{
+		Ops: []PatchOp{{
+			Op:                    "insert_signature",
+			SignatureID:           "new-sig",
+			RenderedSignatureHTML: "<div>-- New Sig</div>",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Apply insert_signature: %v", err)
+	}
+
+	html := string(findPart(snapshot.Body, snapshot.PrimaryHTMLPartID).Body)
+	if strings.Contains(html, "Old Sig") {
+		t.Error("old signature should have been removed")
+	}
+	userIdx := strings.Index(html, "My reply")
+	sigIdx := strings.Index(html, "New Sig")
+	cardIdx := strings.Index(html, "large-file-area-123")
+	quoteIdx := strings.Index(html, "quoted")
+	if !(userIdx < sigIdx && sigIdx < cardIdx && cardIdx < quoteIdx) {
+		t.Errorf("expected new sig to be placed before card: user@%d sig@%d card@%d quote@%d",
+			userIdx, sigIdx, cardIdx, quoteIdx)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // insert_signature — no HTML body
 // ---------------------------------------------------------------------------
 

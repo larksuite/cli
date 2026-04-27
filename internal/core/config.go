@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -173,21 +172,15 @@ func (c *CliConfig) CanBot() bool {
 	return c.SupportedIdentities == 0 || c.SupportedIdentities&identityBotBit != 0
 }
 
-// GetConfigDir returns the config directory path.
-// If the home directory cannot be determined, it falls back to a relative path
-// and prints a warning to stderr.
+// GetConfigDir returns the config directory path for the current workspace.
+// When workspace is local (default), this returns the same path as before
+// (LARKSUITE_CLI_CONFIG_DIR or ~/.lark-cli) — fully backward-compatible.
+// When workspace is openclaw/hermes, returns base/openclaw or base/hermes.
 func GetConfigDir() string {
-	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
-		return dir
-	}
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-	return filepath.Join(home, ".lark-cli")
+	return GetRuntimeDir()
 }
 
-// GetConfigPath returns the config file path.
+// GetConfigPath returns the config file path for the current workspace.
 func GetConfigPath() string {
 	return filepath.Join(GetConfigDir(), "config.json")
 }

@@ -8,9 +8,9 @@
 
 ```bash
 lark-cli base +record-delete \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --record-id rec_xxx \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --record-id <record_id> \
   --yes
 ```
 

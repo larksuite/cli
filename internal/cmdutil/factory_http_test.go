@@ -4,11 +4,12 @@
 package cmdutil
 
 import (
+	"io"
 	"testing"
 )
 
 func TestCachedHttpClientFunc_ReturnsSameInstance(t *testing.T) {
-	fn := cachedHttpClientFunc()
+	fn := cachedHttpClientFunc(&Factory{IOStreams: &IOStreams{ErrOut: io.Discard}})
 
 	c1, err := fn()
 	if err != nil {
@@ -28,7 +29,7 @@ func TestCachedHttpClientFunc_ReturnsSameInstance(t *testing.T) {
 }
 
 func TestCachedHttpClientFunc_HasTimeout(t *testing.T) {
-	fn := cachedHttpClientFunc()
+	fn := cachedHttpClientFunc(&Factory{IOStreams: &IOStreams{ErrOut: io.Discard}})
 	c, _ := fn()
 	if c.Timeout == 0 {
 		t.Error("expected non-zero timeout")
@@ -36,7 +37,7 @@ func TestCachedHttpClientFunc_HasTimeout(t *testing.T) {
 }
 
 func TestCachedHttpClientFunc_HasRedirectPolicy(t *testing.T) {
-	fn := cachedHttpClientFunc()
+	fn := cachedHttpClientFunc(&Factory{IOStreams: &IOStreams{ErrOut: io.Discard}})
 	c, _ := fn()
 	if c.CheckRedirect == nil {
 		t.Error("expected CheckRedirect to be set (safeRedirectPolicy)")

@@ -24,6 +24,16 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "OAuth credentials and authorization management",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Replicate rootCmd's PersistentPreRun behaviour: cobra stops at the first
+			// PersistentPreRun[E] found walking up the chain, so the root-level
+			// SilenceUsage=true would be skipped without this line.
+			cmd.SilenceUsage = true
+			// cmd.Name() returns the subcommand name (e.g. "login"), not "auth".
+			// Pass "auth" as a literal so the error message reads
+			// `"auth" is not supported: ...`
+			return f.RequireBuiltinCredentialProvider(cmd.Context(), "auth")
+		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
 

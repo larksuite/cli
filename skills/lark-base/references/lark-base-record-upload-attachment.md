@@ -8,16 +8,16 @@
 
 ```bash
 lark-cli base +record-upload-attachment \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --record-id rec_xxx \
-  --field-id fld_attach \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --record-id <record_id> \
+  --field-id <field_id> \
   --file ./report.pdf
 
 lark-cli base +record-upload-attachment \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --record-id rec_xxx \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --record-id <record_id> \
   --field-id "附件" \
   --file ./report.pdf \
   --name "Q1-final.pdf"
@@ -48,4 +48,3 @@ lark-cli base +record-upload-attachment \
 ## 参考
 
 - [lark-base-record.md](lark-base-record.md) — record 索引页
-- [lark-base-shortcut-record-value.md](lark-base-shortcut-record-value.md) — 记录值格式详解

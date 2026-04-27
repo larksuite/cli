@@ -200,7 +200,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		errStr := getStr(data, "error")
 
 		if errStr == "" && getStr(data, "access_token") != "" {
-			fmt.Fprintf(errOut, "[lark-cli] device-flow: token obtained successfully\n")
+			fmt.Fprintf(errOut, "[lark-cli] device-flow: token response received\n")
 			refreshToken := getStr(data, "refresh_token")
 			tokenExpiresIn := getInt(data, "expires_in", 7200)
 			refreshExpiresIn := getInt(data, "refresh_token_expires_in", 604800)

@@ -137,6 +137,8 @@ func TestDryRunRecordOps(t *testing.T) {
 		"bitable_file",
 		"PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1",
 		"report-final.pdf",
+		`"mime_type":"\u003cdetected_mime_type\u003e"`,
+		`"size":"\u003cfile_size\u003e"`,
 		"deprecated_set_attachment",
 	)
 }

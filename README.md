@@ -30,7 +30,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
 | 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
 | 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                                                                    |
-| 🖼️ Slides     | Create and manage presentations, read presentation content, and add or remove slides                                             |
+| 🖼️ Slides     | Create and manage presentations, read presentation content, and add or remove slides                                              |
 | ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders                                      |
 | 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
 | 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
@@ -38,6 +38,8 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                                                                        |
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
+| 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments and indicators.                                            |
+| 📋 Project    | Meegle — manage work items, schedules, and data via the standalone [meegle-cli](https://github.com/larksuite/meegle-cli) (install separately) |
 
 ## Installation & Quick Start
 
@@ -200,7 +202,7 @@ Prefixed with `+`, designed to be friendly for both humans and AI, with smart de
 ```bash
 lark-cli calendar +agenda
 lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
-lark-cli docs +create --title "Weekly Report" --markdown "# Progress\n- Completed feature X"
+lark-cli docs +create --api-version v2 --doc-format markdown --content $'<title>Weekly Report</title>\n# Progress\n- Completed feature X'
 ```
 
 Run `lark-cli <service> --help` to see all shortcut commands.

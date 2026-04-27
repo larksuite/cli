@@ -2,7 +2,7 @@
 
 本文档提供基于 `lark-cli base ...` 的完整示例，覆盖 unified Shortcut 与当前 `base/v3` 原生 API 的常见组合方式。
 
-> **返回**: [SKILL.md](../SKILL.md) | **参考**: [shortcut 字段 JSON 规范](lark-base-shortcut-field-properties.md) · [shortcut 记录值规范](lark-base-shortcut-record-value.md)
+> **返回**: [SKILL.md](../SKILL.md) | **参考**: [shortcut 字段 JSON 规范](lark-base-shortcut-field-properties.md) · [CellValue 规范](lark-base-cell-value.md)
 
 ---
 

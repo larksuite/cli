@@ -60,18 +60,20 @@ func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
 
-	// Strict mode: force identity regardless of flags or config.
-	if forced := f.ResolveStrictMode(ctx).ForcedIdentity(); forced != "" {
-		f.ResolvedIdentity = forced
-		return forced
-	}
-
 	if cmd != nil && cmd.Flags().Changed("as") {
-		if flagAs != "auto" {
+		if flagAs != core.AsAuto {
 			f.ResolvedIdentity = flagAs
 			return flagAs
 		}
 		// --as auto: fall through to auto-detect
+	}
+
+	mode := f.ResolveStrictMode(ctx)
+	// Strict mode forces implicit identity choices. Explicit --as user/bot is
+	// preserved above so CheckStrictMode can reject incompatible requests.
+	if forced := mode.ForcedIdentity(); forced != "" {
+		f.ResolvedIdentity = forced
+		return forced
 	}
 
 	hint := f.resolveIdentityHint(ctx)
@@ -198,4 +200,30 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 		ErrOut:     errOut,
 		Credential: f.Credential,
 	}, nil
+}
+
+// RequireBuiltinCredentialProvider returns a structured error (exit 2, code
+// "external_provider") when an extension provider is actively managing credentials.
+// Intended for use as PersistentPreRunE on the auth and config parent commands.
+//
+// Returns nil when:
+//   - f.Credential is nil (test environments without credential setup)
+//   - No extension provider is active (built-in keychain/config path is used)
+func (f *Factory) RequireBuiltinCredentialProvider(ctx context.Context, command string) error {
+	if f.Credential == nil {
+		return nil
+	}
+	provName, err := f.Credential.ActiveExtensionProviderName(ctx)
+	if err != nil {
+		return err
+	}
+	if provName == "" {
+		return nil
+	}
+	return output.ErrWithHint(
+		output.ExitValidation,
+		"external_provider",
+		fmt.Sprintf("%q is not supported: credentials are provided externally and do not support interactive management", command),
+		"If another tool or method for authorization is available in this environment, try that. Otherwise, ask the user to set up credentials through the appropriate channel.",
+	)
 }

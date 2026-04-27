@@ -195,7 +195,7 @@ lark-cli event +subscribe \
       content=$(echo "$line" | jq -r '.content // empty')
       [[ -z "$content" ]] && continue
 
-      lark-cli docs +update --doc "DOC_URL" --mode append --markdown "- $content"
+      lark-cli docs +update --api-version v2 --doc "DOC_URL" --command append --doc-format markdown --content "- $content"
     done
 ```
 

@@ -181,6 +181,22 @@ func (ctx *RuntimeContext) StrArray(name string) []string {
 	return v
 }
 
+// StrSlice returns a string-slice flag value (supports CSV splitting and repeated flags).
+func (ctx *RuntimeContext) StrSlice(name string) []string {
+	v, _ := ctx.Cmd.Flags().GetStringSlice(name)
+	return v
+}
+
+// Changed reports whether the user explicitly set the named flag on the
+// command line, as opposed to the flag carrying its default value.
+func (ctx *RuntimeContext) Changed(name string) bool {
+	f := ctx.Cmd.Flags().Lookup(name)
+	if f == nil {
+		return false
+	}
+	return f.Changed
+}
+
 // ── API helpers ──
 
 //	CallAPI uses an internal HTTP wrapper with limited control over request/response.
@@ -297,6 +313,17 @@ func (ctx *RuntimeContext) DoAPIStream(callCtx context.Context, req *larkcore.Ap
 // DoAPIJSON calls the Lark API via DoAPI, parses the JSON response envelope,
 // and returns the "data" field. Suitable for standard JSON APIs (non-file).
 func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	return ctx.doAPIJSON(method, apiPath, query, body, false)
+}
+
+// DoAPIJSONWithLogID is like DoAPIJSON but merges x-tt-logid from the response
+// header into the returned data and into error details as "log_id". Intended
+// for endpoints where surfacing the log id aids troubleshooting (e.g. doc v2).
+func (ctx *RuntimeContext) DoAPIJSONWithLogID(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	return ctx.doAPIJSON(method, apiPath, query, body, true)
+}
+
+func (ctx *RuntimeContext) doAPIJSON(method, apiPath string, query larkcore.QueryParams, body any, includeLogID bool) (map[string]any, error) {
 	req := &larkcore.ApiReq{
 		HttpMethod:  method,
 		ApiPath:     apiPath,
@@ -309,6 +336,10 @@ func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.Quer
 	if err != nil {
 		return nil, err
 	}
+	var detail map[string]any
+	if includeLogID {
+		detail = logIDFromHeader(resp)
+	}
 	if resp.StatusCode >= 400 {
 		if len(resp.RawBody) > 0 {
 			var errEnv struct {
@@ -316,10 +347,10 @@ func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.Quer
 				Msg  string `json:"msg"`
 			}
 			if json.Unmarshal(resp.RawBody, &errEnv) == nil && errEnv.Msg != "" {
-				return nil, output.ErrAPI(errEnv.Code, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, errEnv.Msg), nil)
+				return nil, output.ErrAPI(errEnv.Code, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, errEnv.Msg), detail)
 			}
 		}
-		return nil, output.ErrAPI(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
+		return nil, output.ErrAPI(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode), detail)
 	}
 	if len(resp.RawBody) == 0 {
 		return nil, fmt.Errorf("empty response body")
@@ -333,9 +364,30 @@ func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.Quer
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 	if envelope.Code != 0 {
-		return nil, output.ErrAPI(envelope.Code, envelope.Msg, nil)
+		return nil, output.ErrAPI(envelope.Code, envelope.Msg, detail)
+	}
+	if detail != nil {
+		if envelope.Data == nil {
+			envelope.Data = make(map[string]any)
+		}
+		for k, v := range detail {
+			envelope.Data[k] = v
+		}
 	}
 	return envelope.Data, nil
+}
+
+// logIDFromHeader extracts x-tt-logid from response headers and returns it as a detail map.
+// Returns nil if the header is absent.
+func logIDFromHeader(resp *larkcore.ApiResp) map[string]any {
+	if resp == nil {
+		return nil
+	}
+	logID := resp.Header.Get("x-tt-logid")
+	if logID == "" {
+		return nil
+	}
+	return map[string]any{"log_id": logID}
 }
 
 // ── IO access ──
@@ -476,12 +528,49 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
+	ctx.emit(data, meta, false)
+}
+
+// OutRaw prints a success JSON envelope to stdout with HTML escaping disabled.
+// Use this instead of Out when the data contains XML/HTML content (e.g. document bodies)
+// that should be preserved as-is in JSON output.
+func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
+	ctx.emit(data, meta, true)
+}
+
+// emit is the shared success-path emitter. raw=true disables JSON HTML escaping so
+// XML/HTML payloads (e.g. DocxXML bodies) are preserved verbatim; otherwise behavior
+// is identical — content-safety scanning and race-safe first-error capture via
+// outputErrOnce apply in both modes.
+func (ctx *RuntimeContext) emit(data interface{}, meta *output.Meta, raw bool) {
+	scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+	if scanResult.Blocked {
+		ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
+		return
+	}
+
 	env := output.Envelope{OK: true, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
+	if scanResult.Alert != nil {
+		env.ContentSafetyAlert = scanResult.Alert
+	}
+
 	if ctx.JqExpr != "" {
-		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
+		filter := output.JqFilter
+		if raw {
+			filter = output.JqFilterRaw
+		}
+		if err := filter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
 			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
 		}
+		return
+	}
+
+	if raw {
+		enc := json.NewEncoder(ctx.IO().Out)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(env)
 		return
 	}
 	b, _ := json.MarshalIndent(env, "", "  ")
@@ -491,23 +580,55 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 // OutFormat prints output based on --format flag.
 // "json" (default) outputs JSON envelope; "pretty" calls prettyFn; others delegate to FormatValue.
 // When JqExpr is set, routes through Out() regardless of format.
+// For json/"" and jq paths, Out() handles content safety scanning.
+// For pretty/table/csv/ndjson, scanning is done here and the alert is written to stderr.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
+	ctx.outFormat(data, meta, prettyFn, false)
+}
+
+// OutFormatRaw is like OutFormat but with HTML escaping disabled in JSON output.
+// Use this when the data contains XML/HTML content that should be preserved as-is.
+func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
+	ctx.outFormat(data, meta, prettyFn, true)
+}
+
+func (ctx *RuntimeContext) outFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer), raw bool) {
+	outFn := ctx.Out
+	if raw {
+		outFn = ctx.OutRaw
+	}
 	if ctx.JqExpr != "" {
-		ctx.Out(data, meta)
+		outFn(data, meta)
 		return
 	}
 	switch ctx.Format {
 	case "pretty":
+		scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+		if scanResult.Blocked {
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
+			return
+		}
+		if scanResult.Alert != nil {
+			output.WriteAlertWarning(ctx.IO().ErrOut, scanResult.Alert)
+		}
 		if prettyFn != nil {
 			prettyFn(ctx.IO().Out)
 		} else {
-			ctx.Out(data, meta)
+			outFn(data, meta)
 		}
 	case "json", "":
-		ctx.Out(data, meta)
+		outFn(data, meta)
 	default:
 		// table, csv, ndjson — pass data directly; FormatValue handles both
 		// plain arrays and maps with array fields (e.g. {"members":[…]})
+		scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+		if scanResult.Blocked {
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
+			return
+		}
+		if scanResult.Alert != nil {
+			output.WriteAlertWarning(ctx.IO().ErrOut, scanResult.Alert)
+		}
 		format, formatOK := output.ParseFormat(ctx.Format)
 		if !formatOK {
 			fmt.Fprintf(ctx.IO().ErrOut, "warning: unknown format %q, falling back to json\n", ctx.Format)
@@ -571,12 +692,16 @@ func enhancePermissionError(err error, requiredScopes []string) error {
 
 // Mount registers the shortcut on a parent command.
 func (s Shortcut) Mount(parent *cobra.Command, f *cmdutil.Factory) {
+	s.MountWithContext(context.Background(), parent, f)
+}
+
+func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	if s.Execute != nil {
-		s.mountDeclarative(parent, f)
+		s.mountDeclarative(ctx, parent, f)
 	}
 }
 
-func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
+func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	shortcut := s
 	if len(shortcut.AuthTypes) == 0 {
 		shortcut.AuthTypes = []string{"user"}
@@ -592,9 +717,12 @@ func (s Shortcut) mountDeclarative(parent *cobra.Command, f *cmdutil.Factory) {
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
-	registerShortcutFlags(cmd, &shortcut)
+	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	parent.AddCommand(cmd)
+	if shortcut.PostMount != nil {
+		shortcut.PostMount(cmd)
+	}
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
@@ -823,7 +951,11 @@ func rejectPositionalArgs() cobra.PositionalArgs {
 	}
 }
 
-func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
+func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
+	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
+}
+
+func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	for _, fl := range s.Flags {
 		desc := fl.Desc
 		if len(fl.Enum) > 0 {
@@ -849,6 +981,8 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 			cmd.Flags().Int(fl.Name, d, desc)
 		case "string_array":
 			cmd.Flags().StringArray(fl.Name, nil, desc)
+		case "string_slice":
+			cmd.Flags().StringSlice(fl.Name, nil, desc)
 		default:
 			cmd.Flags().String(fl.Name, fl.Default, desc)
 		}
@@ -860,7 +994,7 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 		}
 		if len(fl.Enum) > 0 {
 			vals := fl.Enum
-			_ = cmd.RegisterFlagCompletionFunc(fl.Name, func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			cmdutil.RegisterFlagCompletion(cmd, fl.Name, func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 				return vals, cobra.ShellCompDirectiveNoFileComp
 			})
 		}
@@ -874,13 +1008,9 @@ func registerShortcutFlags(cmd *cobra.Command, s *Shortcut) {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
-	cmd.Flags().String("as", s.AuthTypes[0], "identity type: user | bot")
-
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return s.AuthTypes, cobra.ShellCompDirectiveNoFileComp
-	})
+	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
 	if s.HasFormat {
-		_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
 		})
 	}

@@ -17,12 +17,18 @@ import (
 // Note: Chat deletion is not available via lark-cli im command.
 func createChat(t *testing.T, parentT *testing.T, ctx context.Context, name string) string {
 	t.Helper()
+	return createChatAs(t, parentT, ctx, name, "bot")
+}
+
+func createChatAs(t *testing.T, parentT *testing.T, ctx context.Context, name string, defaultAs string) string {
+	t.Helper()
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{"im", "+chat-create",
 			"--name", name,
 			"--type", "private",
 		},
+		DefaultAs: defaultAs,
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -40,7 +46,12 @@ func createChat(t *testing.T, parentT *testing.T, ctx context.Context, name stri
 }
 
 // sendMessage sends a text message to the specified chat and returns the messageID.
-func sendMessage(t *testing.T, parentT *testing.T, ctx context.Context, chatID string, text string) string {
+func sendMessage(t *testing.T, ctx context.Context, chatID string, text string) string {
+	t.Helper()
+	return sendMessageAs(t, ctx, chatID, text, "bot")
+}
+
+func sendMessageAs(t *testing.T, ctx context.Context, chatID string, text string, defaultAs string) string {
 	t.Helper()
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -48,6 +59,7 @@ func sendMessage(t *testing.T, parentT *testing.T, ctx context.Context, chatID s
 			"--chat-id", chatID,
 			"--text", text,
 		},
+		DefaultAs: defaultAs,
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)

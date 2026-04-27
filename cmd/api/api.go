@@ -58,6 +58,10 @@ func normalisePath(raw string) string {
 
 // NewCmdApi creates the api command. If runF is non-nil it is called instead of apiRun (test hook).
 func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command {
+	return NewCmdApiWithContext(context.Background(), f, runF)
+}
+
+func NewCmdApiWithContext(ctx context.Context, f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command {
 	opts := &APIOptions{Factory: f}
 	var asStr string
 
@@ -81,7 +85,7 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 	cmd.Flags().StringVar(&opts.Params, "params", "", "query parameters JSON (supports - for stdin)")
 	cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
 	cmd.Flags().StringVar(&opts.Body, "body", "", "request body JSON alias for --data (supports - for stdin)")
-	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
+	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageSize, "page-size", 0, "page size (0 = use API default)")
@@ -98,10 +102,7 @@ func NewCmdApi(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command 
 		}
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"user", "bot"}, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
@@ -254,12 +255,13 @@ func apiRun(opts *APIOptions) error {
 		return output.MarkRaw(client.WrapDoAPIError(err))
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
-		OutputPath: opts.Output,
-		Format:     format,
-		JqExpr:     opts.JqExpr,
-		Out:        out,
-		ErrOut:     f.IOStreams.ErrOut,
-		FileIO:     f.ResolveFileIO(opts.Ctx),
+		OutputPath:  opts.Output,
+		Format:      format,
+		JqExpr:      opts.JqExpr,
+		Out:         out,
+		ErrOut:      f.IOStreams.ErrOut,
+		FileIO:      f.ResolveFileIO(opts.Ctx),
+		CommandPath: opts.Cmd.CommandPath(),
 	})
 	// MarkRaw tells root error handler to skip enrichPermissionError,
 	// preserving the original API error detail (log_id, troubleshooter, etc.).

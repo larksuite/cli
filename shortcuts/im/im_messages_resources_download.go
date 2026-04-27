@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -31,7 +32,7 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
 		{Name: "file-key", Desc: "resource key (img_xxx or file_xxx)", Required: true},
 		{Name: "type", Desc: "resource type (image or file)", Required: true, Enum: []string{"image", "file"}},
-		{Name: "output", Desc: "local save path (relative only, no .. traversal; defaults to file_key)"},
+		{Name: "output", Desc: "local save path (relative only, no .. traversal); when omitted, uses the server's Content-Disposition filename if available, otherwise file_key; extension is inferred from Content-Disposition or Content-Type if not provided"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		fileKey := runtime.Str("file-key")
@@ -72,7 +73,8 @@ var ImMessagesResourcesDownload = common.Shortcut{
 			return output.ErrValidation("unsafe output path: %s", err)
 		}
 
-		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, relPath)
+		userSpecifiedOutput := runtime.Str("output") != ""
+		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, relPath, userSpecifiedOutput)
 		if err != nil {
 			return err
 		}
@@ -262,10 +264,13 @@ func initialIMResourceDownloadHeaders(fileType string) map[string]string {
 	}
 }
 
-func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, outputPath string) (string, int64, error) {
+func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, outputPath string, userSpecifiedOutput bool) (string, int64, error) {
 	downloadResp, err := doIMResourceDownloadRequest(ctx, runtime, messageID, fileKey, fileType, initialIMResourceDownloadHeaders(fileType))
 	if err != nil {
 		return "", 0, err
+	}
+	if downloadResp == nil {
+		return "", 0, output.ErrNetwork("download failed: empty response")
 	}
 
 	if downloadResp.StatusCode >= 400 {
@@ -273,7 +278,7 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		return "", 0, downloadResponseError(downloadResp)
 	}
 
-	finalPath := resolveIMResourceDownloadPath(outputPath, downloadResp.Header.Get("Content-Type"))
+	finalPath := resolveIMResourceDownloadPath(outputPath, downloadResp.Header.Get("Content-Type"), downloadResp.Header.Get("Content-Disposition"), userSpecifiedOutput)
 
 	var (
 		body      io.ReadCloser
@@ -316,16 +321,61 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 	return savedPath, result.Size(), nil
 }
 
-func resolveIMResourceDownloadPath(safePath, contentType string) string {
+func resolveIMResourceDownloadPath(safePath, contentType, contentDisposition string, userSpecifiedOutput bool) string {
 	if filepath.Ext(safePath) != "" {
 		return safePath
 	}
-	mimeType := strings.Split(contentType, ";")[0]
-	mimeType = strings.TrimSpace(mimeType)
+	if cdFilename := parseContentDispositionFilename(contentDisposition); cdFilename != "" {
+		if !userSpecifiedOutput {
+			// No --output flag: use the original filename from the server.
+			dir := filepath.Dir(safePath)
+			if dir == "." {
+				return cdFilename
+			}
+			return filepath.Join(dir, cdFilename)
+		}
+		// User specified a path without extension: append the extension from the CD filename.
+		if ext := filepath.Ext(cdFilename); ext != "" {
+			return safePath + ext
+		}
+	}
+	mimeType := strings.TrimSpace(strings.Split(contentType, ";")[0])
 	if ext, ok := imMimeToExt[mimeType]; ok {
 		return safePath + ext
 	}
 	return safePath
+}
+
+// parseContentDispositionFilename extracts and sanitizes the filename from a
+// Content-Disposition header. It handles RFC 5987 encoded filenames (filename*)
+// with priority over plain filename via the standard mime package.
+// Returns an empty string if no valid filename can be extracted.
+func parseContentDispositionFilename(header string) string {
+	if header == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(header)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(params["filename"])
+	if name == "" {
+		return ""
+	}
+	// Strip any path component (Unix or Windows style) to prevent path traversal.
+	if i := strings.LastIndexAny(name, "/\\"); i >= 0 {
+		name = name[i+1:]
+	}
+	if name == "" || name == "." || name == ".." {
+		return ""
+	}
+	// Reject control characters (including null bytes).
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
+	return name
 }
 
 func doIMResourceDownloadRequest(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType string, headers map[string]string) (*http.Response, error) {

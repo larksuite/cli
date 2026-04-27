@@ -15,6 +15,9 @@ import (
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 )
 
+// MailDraftEdit is the `+draft-edit` shortcut: update an existing draft
+// without sending it. Performs MIME-safe read/patch/write so unchanged
+// structure, attachments, and headers are preserved where possible.
 var MailDraftEdit = common.Shortcut{
 	Service:     "mail",
 	Command:     "+draft-edit",
@@ -33,7 +36,9 @@ var MailDraftEdit = common.Shortcut{
 		{Name: "set-bcc", Desc: "Replace the entire Bcc recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "patch-file", Desc: "Edit entry point for body edits, incremental recipient changes, header edits, attachment changes, or inline-image changes. All body edits MUST go through --patch-file. Two body ops: set_body (full replacement including quote) and set_reply_body (replaces only user-authored content, auto-preserves quote block). Run --inspect first to check has_quoted_content, then --print-patch-template for the JSON structure. Relative path only."},
 		{Name: "print-patch-template", Type: "bool", Desc: "Print the JSON template and supported operations for the --patch-file flag. Recommended first step before generating a patch file. No draft read or write is performed."},
+		{Name: "set-priority", Desc: "Set email priority: high, normal, low. Setting 'normal' removes any existing priority header."},
 		{Name: "inspect", Type: "bool", Desc: "Inspect the draft without modifying it. Returns the draft projection including subject, recipients, body summary, has_quoted_content (whether the draft contains a reply/forward quote block), attachments_summary (with part_id and cid for each attachment), and inline_summary. Run this BEFORE editing body to check has_quoted_content: if true, use set_reply_body in --patch-file to preserve the quote; if false, use set_body."},
+		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the draft's sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed. Adds the Disposition-Notification-To header; existing value is overwritten."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		if runtime.Bool("print-patch-template") {
@@ -98,6 +103,25 @@ var MailDraftEdit = common.Shortcut{
 		if len(snapshot.From) > 0 {
 			draftFromEmail = snapshot.From[0].Address
 		}
+		if err := requireSenderForRequestReceipt(runtime, draftFromEmail); err != nil {
+			return err
+		}
+		if runtime.Bool("request-receipt") {
+			// draftFromEmail comes from the existing draft's From header,
+			// which could have been authored via a raw-EML path (IMAP APPEND,
+			// OpenAPI drafts raw) and contain CR/LF or dangerous Unicode.
+			// Going straight into PatchOp.Value would bypass emlbuilder's
+			// validateHeaderValue gate, so repeat the check here explicitly.
+			if err := validateHeaderAddress(draftFromEmail); err != nil {
+				return output.ErrValidation(
+					"cannot set --request-receipt: draft From address is unsafe for a header (%v)", err)
+			}
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{
+				Op:    "set_header",
+				Name:  "Disposition-Notification-To",
+				Value: "<" + draftFromEmail + ">",
+			})
+		}
 		for i := range patch.Ops {
 			if patch.Ops[i].Op == "insert_signature" {
 				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, draftFromEmail)
@@ -110,26 +134,41 @@ var MailDraftEdit = common.Shortcut{
 				}
 			}
 		}
+		// Pre-process add_attachment ops for large attachment support:
+		// extract oversized files, upload them, inject HTML into the snapshot body.
+		patch, err = preprocessLargeAttachmentsForDraftEdit(ctx, runtime, snapshot, patch)
+		if err != nil {
+			return err
+		}
 		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
-		if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
-			return output.ErrValidation("apply draft patch failed: %v", err)
+		if len(patch.Ops) > 0 {
+			if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
+				return output.ErrValidation("apply draft patch failed: %v", err)
+			}
 		}
 		serialized, err := draftpkg.Serialize(snapshot)
 		if err != nil {
 			return output.ErrValidation("serialize draft failed: %v", err)
 		}
-		if err := draftpkg.UpdateWithRaw(runtime, mailboxID, draftID, serialized); err != nil {
+		updateResult, err := draftpkg.UpdateWithRaw(runtime, mailboxID, draftID, serialized)
+		if err != nil {
 			return fmt.Errorf("update draft failed: %w", err)
 		}
 		projection := draftpkg.Project(snapshot)
 		out := map[string]interface{}{
-			"draft_id":   draftID,
+			"draft_id":   updateResult.DraftID,
 			"warning":    "This edit flow has no optimistic locking. If the same draft is changed concurrently, the last writer wins.",
 			"projection": projection,
 		}
+		if updateResult.Reference != "" {
+			out["reference"] = updateResult.Reference
+		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft updated.")
-			fmt.Fprintf(w, "draft_id: %s\n", draftID)
+			fmt.Fprintf(w, "draft_id: %s\n", updateResult.DraftID)
+			if reference, _ := out["reference"].(string); reference != "" {
+				fmt.Fprintf(w, "reference: %s\n", reference)
+			}
 			if projection.Subject != "" {
 				fmt.Fprintf(w, "subject: %s\n", sanitizeForTerminal(projection.Subject))
 			}
@@ -157,6 +196,10 @@ var MailDraftEdit = common.Shortcut{
 	},
 }
 
+// executeDraftInspect implements the +draft-edit --inspect path: it fetches
+// the raw EML, parses it into a MIME snapshot, and emits a draft projection
+// (subject, recipients, body summary, attachment / inline summaries) without
+// modifying the draft.
 func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID string) error {
 	rawDraft, err := draftpkg.GetRaw(runtime, mailboxID, draftID)
 	if err != nil {
@@ -199,6 +242,13 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 					att.PartID, att.FileName, att.ContentType, att.CID)
 			}
 		}
+		if len(projection.LargeAttachmentsSummary) > 0 {
+			fmt.Fprintf(w, "large_attachments (%d):\n", len(projection.LargeAttachmentsSummary))
+			for _, att := range projection.LargeAttachmentsSummary {
+				fmt.Fprintf(w, "  - token=%s  filename=%s  size_bytes=%d\n",
+					att.Token, att.FileName, att.SizeBytes)
+			}
+		}
 		if len(projection.InlineSummary) > 0 {
 			fmt.Fprintf(w, "inline_parts (%d):\n", len(projection.InlineSummary))
 			for _, inl := range projection.InlineSummary {
@@ -213,6 +263,8 @@ func executeDraftInspect(runtime *common.RuntimeContext, mailboxID, draftID stri
 	return nil
 }
 
+// prettyDraftAddresses renders a list of draft addresses as a comma-separated
+// string suitable for stderr human output. Returns "" for an empty list.
 func prettyDraftAddresses(addrs []draftpkg.Address) string {
 	if len(addrs) == 0 {
 		return ""
@@ -224,6 +276,11 @@ func prettyDraftAddresses(addrs []draftpkg.Address) string {
 	return strings.Join(parts, ", ")
 }
 
+// buildDraftEditPatch assembles a draftpkg.Patch from the runtime flags:
+// direct flags (--set-subject / --set-to / --set-cc / --set-bcc /
+// --set-priority) become Ops, and --patch-file is loaded and merged.
+// Returns ErrValidation when neither direct flags nor --patch-file produce
+// any operations.
 func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error) {
 	patch := draftpkg.Patch{
 		Options: draftpkg.PatchOptions{
@@ -276,12 +333,35 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 	setRecipients("cc", runtime.Str("set-cc"))
 	setRecipients("bcc", runtime.Str("set-bcc"))
 
-	if len(patch.Ops) == 0 {
+	// --set-priority → inject set_header / remove_header op
+	if setPriority := runtime.Str("set-priority"); setPriority != "" {
+		headerVal, pErr := parsePriority(setPriority)
+		if pErr != nil {
+			return patch, pErr
+		}
+		if headerVal != "" {
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "set_header", Name: "X-Cli-Priority", Value: headerVal})
+		} else {
+			patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "remove_header", Name: "X-Cli-Priority"})
+		}
+	}
+
+	if len(patch.Ops) == 0 && !runtime.Bool("request-receipt") {
 		return patch, output.ErrValidation("at least one edit operation is required; use direct flags such as --set-subject/--set-to, or use --patch-file for body edits and other advanced operations (run --print-patch-template first)")
+	}
+	if len(patch.Ops) == 0 {
+		// --request-receipt only: Validate() would reject empty Ops, so skip it
+		// here. The Disposition-Notification-To op is appended in Execute once
+		// the draft's From address is known.
+		return patch, nil
 	}
 	return patch, patch.Validate()
 }
 
+// loadPatchFile reads and JSON-decodes a patch file from a relative path
+// rooted at the runtime's FileIO. Returns ErrValidation on read or parse
+// errors so the caller can surface a user-friendly message without leaking
+// internal stack traces.
 func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch, error) {
 	var patch draftpkg.Patch
 	f, err := runtime.FileIO().Open(path)
@@ -299,6 +379,9 @@ func loadPatchFile(runtime *common.RuntimeContext, path string) (draftpkg.Patch,
 	return patch, patch.Validate()
 }
 
+// buildDraftEditPatchTemplate returns the JSON template emitted by
+// --print-patch-template. It documents the supported ops and field shapes so
+// callers can author a --patch-file without having to read this file's source.
 func buildDraftEditPatchTemplate() map[string]interface{} {
 	return map[string]interface{}{
 		"description": "Typed patch JSON for `mail +draft-edit --patch-file`. This is not RFC 6902 JSON Patch.",
@@ -323,11 +406,11 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			{"op": "add_recipient", "shape": map[string]interface{}{"field": "to|cc|bcc", "address": "string", "name": "string(optional)"}},
 			{"op": "remove_recipient", "shape": map[string]interface{}{"field": "to|cc|bcc", "address": "string"}},
 			{"op": "set_body", "shape": map[string]interface{}{"value": "string (supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
-			{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
+			{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; quote block, signature, and attachment cards are auto-preserved; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
 			{"op": "set_header", "shape": map[string]interface{}{"name": "string", "value": "string"}},
 			{"op": "remove_header", "shape": map[string]interface{}{"name": "string"}},
 			{"op": "add_attachment", "shape": map[string]interface{}{"path": "string(relative path)"}},
-			{"op": "remove_attachment", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
+			{"op": "remove_attachment", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional, for normal attachment)", "cid": "string(optional, for normal attachment)", "token": "string(optional, for large attachment; from large_attachments_summary in --inspect)"}}},
 			{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
 			{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 			{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
@@ -340,7 +423,7 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 				"ops": []map[string]interface{}{
 					{"op": "set_subject", "shape": map[string]interface{}{"value": "string"}},
 					{"op": "set_body", "shape": map[string]interface{}{"value": "string (supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
-					{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; the quote block is re-appended automatically; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
+					{"op": "set_reply_body", "shape": map[string]interface{}{"value": "string (user-authored content only, WITHOUT the quote block; quote block, signature, and attachment cards are auto-preserved; supports <img src=\"./local/path.png\" /> — local paths auto-resolved to inline MIME parts)"}},
 				},
 			},
 			{
@@ -362,7 +445,7 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 				"group": "attachments_and_inline",
 				"ops": []map[string]interface{}{
 					{"op": "add_attachment", "shape": map[string]interface{}{"path": "string(relative path)"}},
-					{"op": "remove_attachment", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
+					{"op": "remove_attachment", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional, for normal attachment)", "cid": "string(optional, for normal attachment)", "token": "string(optional, for large attachment; from large_attachments_summary in --inspect)"}}},
 					{"op": "add_inline", "shape": map[string]interface{}{"path": "string(relative path)", "cid": "string", "filename": "string(optional)", "content_type": "string(optional)"}, "note": "advanced: prefer <img src=\"./path\"> in set_body/set_reply_body instead"},
 					{"op": "replace_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}, "path": "string(relative path)", "cid": "string(optional)", "filename": "string(optional)", "content_type": "string(optional)"}},
 					{"op": "remove_inline", "shape": map[string]interface{}{"target": map[string]interface{}{"part_id": "string(optional)", "cid": "string(optional)"}}},
@@ -382,9 +465,9 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			"Before editing body, run --inspect to check has_quoted_content; if true, use set_reply_body instead of set_body",
 		},
 		"body_edit_decision_guide": []map[string]interface{}{
-			{"situation": "plain draft or non-reply/forward draft", "recommended_op": "set_body — replaces entire body"},
+			{"situation": "plain draft or non-reply/forward draft", "recommended_op": "set_body — replaces user-authored content; signature/attachments auto-preserved"},
 			{"situation": "draft has both text/plain and text/html", "recommended_op": "set_body — updates HTML body and regenerates plain-text summary; pass HTML input because the original main body is text/html"},
-			{"situation": "draft created by +reply or +forward (has_quoted_content=true)", "recommended_op": "set_reply_body — replaces only the user-authored portion and automatically preserves the quoted original message; if user explicitly wants to remove the quote, use set_body instead"},
+			{"situation": "draft created by +reply or +forward (has_quoted_content=true)", "recommended_op": "set_reply_body — replaces only the user-authored portion; quote block, signature, and attachments are automatically preserved. Use set_body if user explicitly wants to remove or modify the quote"},
 		},
 		"notes": []string{
 			"`set_body`/`set_reply_body` support inline images via local file paths: use <img src=\"./local/file.png\" /> in the HTML value — the local path is automatically resolved into an inline MIME part with a generated CID; removing or replacing an <img> tag automatically cleans up or replaces the corresponding MIME part; do NOT use `add_inline` for this; example: {\"op\":\"set_body\",\"value\":\"<div>Hello<img src=\\\"./logo.png\\\" /></div>\"}",
@@ -392,11 +475,13 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 			"`ops` is executed in order",
 			"all file paths (--patch-file and `path` fields in ops) must be relative — no absolute paths or .. traversal",
 			"all body edits MUST go through --patch-file; there is no --set-body flag",
-			"`set_body` replaces the ENTIRE body including any reply/forward quote block; when the draft has both text/plain and text/html, it updates the HTML body and regenerates the plain-text summary, so the input should be HTML",
-			"`set_reply_body` replaces only the user-authored portion of the body and automatically re-appends the trailing reply/forward quote block (generated by +reply or +forward); the value you pass should contain ONLY the new user-authored content WITHOUT the quote block — the quote block will be re-inserted automatically; if the user wants to modify content INSIDE the quote block, use `set_body` instead for full replacement; if the draft has no quote block, it behaves identically to `set_body`",
+			"`set_body` replaces the user-authored content. It does NOT auto-preserve the old quote block (include one in value if needed, or use `set_reply_body`). Signature, large attachment card, and normal attachment MIME parts are auto-preserved. When the draft has both text/plain and text/html, it updates the HTML body and regenerates the plain-text summary, so the input should be HTML.",
+			"`set_reply_body` replaces only the user-authored portion of the body and automatically re-appends the trailing reply/forward quote block, signature, and large attachment card; the value you pass should contain ONLY the new user-authored content (no quote, no signature, no attachment card). If the user wants to modify content INSIDE the quote block, use `set_body` instead. If the draft has no quote block, it behaves identically to `set_body`.",
 			"`body_kind` only supports text/plain and text/html",
 			"`selector` currently only supports primary",
-			"`remove_attachment` target supports part_id or cid; priority: part_id > cid",
+			"`remove_attachment` target supports part_id (normal attachment), cid (normal attachment), or token (large attachment); priority: part_id > cid > token",
+			"Large attachments are located by token (not part_id/cid). Get tokens from `--inspect`'s `large_attachments_summary`.",
+			"`set_body` and `set_reply_body` automatically preserve signature block and all attachments (normal + large) from the old body. To delete signature/attachments use the dedicated ops: remove_signature, remove_attachment.",
 			"`remove_attachment`/`remove_inline` require part_id or cid; to discover these values, run `+draft-edit --draft-id <id> --inspect` first — the response `projection.attachments_summary` and `projection.inline_summary` list every part with its part_id, cid, and filename",
 			"`add_inline`/`replace_inline`/`remove_inline` are for CID-based inline images",
 			"`replace_inline` keeps the original filename and content_type when those fields are omitted",

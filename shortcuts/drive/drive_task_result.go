@@ -16,11 +16,11 @@ import (
 )
 
 // DriveTaskResult exposes a unified read path for the async task types produced
-// by Drive import, export, folder move/delete, and wiki move flows.
+// by Drive import, export, folder move/delete, wiki move, and wiki delete-space flows.
 var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
 	Command:     "+task_result",
-	Description: "Poll async task result for import, export, drive move/delete, or wiki move operations",
+	Description: "Poll async task result for import, export, drive move/delete, wiki move, or wiki delete-space operations",
 	Risk:        "read",
 	// This shortcut multiplexes multiple backend APIs with different scope
 	// requirements, so scenario-specific prechecks are handled in Validate.
@@ -28,20 +28,21 @@ var DriveTaskResult = common.Shortcut{
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "ticket", Desc: "async task ticket (for import/export tasks)", Required: false},
-		{Name: "task-id", Desc: "async task ID (for drive task_check or wiki_move tasks)", Required: false},
-		{Name: "scenario", Desc: "task scenario: import, export, task_check, or wiki_move", Required: true},
+		{Name: "task-id", Desc: "async task ID (for drive task_check, wiki_move, or wiki_delete_space tasks)", Required: false},
+		{Name: "scenario", Desc: "task scenario: import, export, task_check, wiki_move, or wiki_delete_space", Required: true},
 		{Name: "file-token", Desc: "source document token used for export task status lookup", Required: false},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		scenario := strings.ToLower(runtime.Str("scenario"))
 		validScenarios := map[string]bool{
-			"import":     true,
-			"export":     true,
-			"task_check": true,
-			"wiki_move":  true,
+			"import":            true,
+			"export":            true,
+			"task_check":        true,
+			"wiki_move":         true,
+			"wiki_delete_space": true,
 		}
 		if !validScenarios[scenario] {
-			return output.ErrValidation("unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move", scenario)
+			return output.ErrValidation("unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move, wiki_delete_space", scenario)
 		}
 
 		// Validate required params based on scenario
@@ -53,7 +54,7 @@ var DriveTaskResult = common.Shortcut{
 			if err := validate.ResourceName(runtime.Str("ticket"), "--ticket"); err != nil {
 				return output.ErrValidation("%s", err)
 			}
-		case "task_check", "wiki_move":
+		case "task_check", "wiki_move", "wiki_delete_space":
 			if runtime.Str("task-id") == "" {
 				return output.ErrValidation("--task-id is required for %s scenario", scenario)
 			}
@@ -102,6 +103,11 @@ var DriveTaskResult = common.Shortcut{
 				Desc("[1] Query wiki move task result").
 				Set("task_id", taskID).
 				Params(map[string]interface{}{"task_type": "move"})
+		case "wiki_delete_space":
+			dry.GET("/open-apis/wiki/v2/tasks/:task_id").
+				Desc("[1] Query wiki delete-space task result").
+				Set("task_id", taskID).
+				Params(map[string]interface{}{"task_type": "delete_space"})
 		}
 
 		return dry
@@ -128,6 +134,8 @@ var DriveTaskResult = common.Shortcut{
 			result, err = queryTaskCheck(runtime, taskID)
 		case "wiki_move":
 			result, err = queryWikiMoveTask(runtime, taskID)
+		case "wiki_delete_space":
+			result, err = queryWikiDeleteSpaceTask(runtime, taskID)
 		}
 
 		if err != nil {
@@ -228,7 +236,7 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 	switch scenario {
 	case "import", "export", "task_check":
 		required = []string{"drive:drive.metadata:readonly"}
-	case "wiki_move":
+	case "wiki_move", "wiki_delete_space":
 		required = []string{"wiki:space:read"}
 	}
 
@@ -467,4 +475,68 @@ func appendWikiMoveNodeFields(out, node map[string]interface{}) {
 	out["origin_node_token"] = common.GetString(node, "origin_node_token")
 	out["title"] = common.GetString(node, "title")
 	out["has_child"] = common.GetBool(node, "has_child")
+}
+
+// queryWikiDeleteSpaceTask returns the normalized status of an async wiki
+// delete-space task. The backend reports a single delete_space_result object
+// rather than the per-node array used by wiki move.
+func queryWikiDeleteSpaceTask(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
+	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
+		return nil, output.ErrValidation("%s", err)
+	}
+
+	data, err := runtime.CallAPI(
+		"GET",
+		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
+		map[string]interface{}{"task_type": "delete_space"},
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	task := common.GetMap(data, "task")
+	if task == nil {
+		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
+	}
+
+	resolvedTaskID := common.GetString(task, "task_id")
+	if resolvedTaskID == "" {
+		resolvedTaskID = taskID
+	}
+
+	result := common.GetMap(task, "delete_space_result")
+	var status, statusMsg string
+	if result != nil {
+		status = common.GetString(result, "status")
+		statusMsg = common.GetString(result, "status_msg")
+	}
+
+	lowered := strings.ToLower(strings.TrimSpace(status))
+	ready := lowered == "success"
+	failed := lowered == "failure" || lowered == "failed"
+
+	// Fall back to "processing" when the backend omits delete_space_result.status
+	// so the output "status" field is never an empty string on timeout. This
+	// mirrors the same fallback in wiki_delete.go's StatusCode() (intentionally
+	// duplicated — the two call sites stay in lockstep via the shared literal
+	// "processing" rather than a cross-package import).
+	resolvedStatus := strings.TrimSpace(status)
+	if resolvedStatus == "" {
+		resolvedStatus = "processing"
+	}
+
+	label := strings.TrimSpace(statusMsg)
+	if label == "" {
+		label = resolvedStatus
+	}
+
+	return map[string]interface{}{
+		"scenario":   "wiki_delete_space",
+		"task_id":    resolvedTaskID,
+		"ready":      ready,
+		"failed":     failed,
+		"status":     resolvedStatus,
+		"status_msg": label,
+	}, nil
 }

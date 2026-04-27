@@ -38,6 +38,8 @@
 | 🎥 视频会议 | 搜索会议记录、查询会议纪要与录制                           |
 | 🕐 考勤打卡 | 查询个人考勤打卡记录                                |
 | ✍️ 审批     | 查询审批任务、同意/拒绝/转交审批任务、撤回与抄送审批实例              |
+| 🎯 OKR  | 查询、创建、更新 OKR，管理目标、关键结果、对齐和指标               |
+| 📋 飞书项目 | 管理工作项、排期与数据 — 由独立的 [meegle-cli](https://github.com/larksuite/meegle-cli) 提供（需单独安装） |
 
 ## 安装与快速开始
 
@@ -201,7 +203,7 @@ CLI 提供三种粒度的调用方式，覆盖从快速操作到完全自定义�
 ```bash
 lark-cli calendar +agenda
 lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
-lark-cli docs +create --title "周报" --markdown "# 本周进展\n- 完成了 X 功能"
+lark-cli docs +create --api-version v2 --doc-format markdown --content $'<title>周报</title>\n# 本周进展\n- 完成了 X 功能'
 ```
 
 运行 `lark-cli <service> --help` 查看所有快捷命令。

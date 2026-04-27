@@ -48,12 +48,12 @@ func TestInitMsgEn_AllFieldsNonEmpty(t *testing.T) {
 func assertAllFieldsNonEmpty(t *testing.T, msg *initMsg, label string) {
 	t.Helper()
 	fields := map[string]string{
-		"SelectAction":       msg.SelectAction,
-		"CreateNewApp":       msg.CreateNewApp,
-		"ConfigExistingApp":  msg.ConfigExistingApp,
-		"Platform":           msg.Platform,
-		"SelectPlatform":     msg.SelectPlatform,
-		"Feishu":             msg.Feishu,
+		"SelectAction":         msg.SelectAction,
+		"CreateNewApp":         msg.CreateNewApp,
+		"ConfigExistingApp":    msg.ConfigExistingApp,
+		"Platform":             msg.Platform,
+		"SelectPlatform":       msg.SelectPlatform,
+		"Feishu":               msg.Feishu,
 		"ScanQRCode":           msg.ScanQRCode,
 		"ScanOrOpenLink":       msg.ScanOrOpenLink,
 		"WaitingForScan":       msg.WaitingForScan,

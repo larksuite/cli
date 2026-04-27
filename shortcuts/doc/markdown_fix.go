@@ -6,6 +6,8 @@ package doc
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // fixExportedMarkdown applies post-processing to Lark-exported Markdown to
@@ -15,24 +17,29 @@ import (
 //     and strips redundant ** from ATX headings. Applied only outside fenced
 //     code blocks, and skips inline code spans.
 //
-//  2. fixSetextAmbiguity: inserts a blank line before any "---" that immediately
+//  2. normalizeNestedListIndentation: rewrites space-pair-indented nested list
+//     markers to tab-indented markers. This avoids nested ordered list items
+//     being flattened or interpreted as plain text/code on re-import.
+//
+//  3. fixSetextAmbiguity: inserts a blank line before any "---" that immediately
 //     follows a non-empty line, preventing it from being parsed as a Setext H2.
 //     Applied only outside fenced code blocks.
 //
-//  3. fixBlockquoteHardBreaks: inserts a blank blockquote line (">") between
+//  4. fixBlockquoteHardBreaks: inserts a blank blockquote line (">") between
 //     consecutive blockquote content lines so create-doc preserves line breaks.
 //     Applied only outside fenced code blocks.
 //
-//  4. fixTopLevelSoftbreaks: inserts a blank line between adjacent non-empty
+//  5. fixTopLevelSoftbreaks: inserts a blank line between adjacent non-empty
 //     lines at the top level and inside content containers (callout,
 //     quote-container, lark-td). Code fences are left untouched, and
 //     consecutive list items / continuations are not separated.
 //
-//  5. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
+//  6. fixCalloutEmoji: replaces named emoji aliases (e.g. emoji="warning") with
 //     actual Unicode emoji characters that create-doc understands. Applied only
 //     outside fenced code blocks.
 func fixExportedMarkdown(md string) string {
 	md = applyOutsideCodeFences(md, fixBoldSpacing)
+	md = applyOutsideCodeFences(md, normalizeNestedListIndentation)
 	md = applyOutsideCodeFences(md, fixSetextAmbiguity)
 	md = applyOutsideCodeFences(md, fixBlockquoteHardBreaks)
 	md = fixTopLevelSoftbreaks(md)
@@ -106,20 +113,21 @@ func fixBlockquoteHardBreaks(md string) string {
 	return strings.Join(out, "\n")
 }
 
-// fixBoldSpacing fixes two issues with bold markers exported by Lark:
+// fixBoldSpacing normalizes emphasis markers exported by Lark while preserving
+// inline code spans:
 //
-//  1. Trailing whitespace before closing **: "**text **" → "**text**"
-//     CommonMark requires no space before a closing delimiter; otherwise the
-//     ** is rendered as literal text.
+//  1. Removes leading whitespace after opening ** and * delimiters:
+//     "** text**" → "**text**", "* text*" → "*text*"
 //
-//  2. Redundant bold in ATX headings: "# **text**" → "# text"
-//     Headings are already bold, so the inner ** is visually redundant and
-//     some renderers display the markers literally.
+//  2. Removes trailing whitespace before closing ** and * delimiters:
+//     "**text **" → "**text**", "*text *" → "*text*"
 //
-// Both fixes skip inline code spans to avoid modifying literal code content.
+//  3. Removes redundant bold around an entire ATX heading:
+//     "# **text**" → "# text"
+//
+// The bold and italic spacing fixes only run on non-code segments so literal
+// code content is left unchanged.
 var (
-	boldTrailingSpaceRe   = regexp.MustCompile(`(\*\*\S[^*]*?)\s+(\*\*)`)
-	italicTrailingSpaceRe = regexp.MustCompile(`(\*\S[^*]*?)\s+(\*)`)
 	// headingBoldRe uses [^*]+ (no asterisks) to avoid mismatching headings
 	// that contain multiple disjoint bold spans such as "# **foo** and **bar**".
 	headingBoldRe = regexp.MustCompile(`(?m)^(#{1,6})\s+\*\*([^*]+)\*\*\s*$`)
@@ -182,36 +190,114 @@ func scanInlineCodeSpans(line string) [][2]int {
 // fixBoldSpacingLine applies bold/italic trailing-space fixes to a single line,
 // skipping content inside inline code spans to avoid corrupting literal code.
 // ATX heading lines are also skipped here because headingBoldRe in fixBoldSpacing
-// handles them separately and boldTrailingSpaceRe can misfire on headings with
-// multiple disjoint bold spans (e.g. "# **foo** and **bar**").
+// handles them separately, keeping heading-only normalization isolated from the
+// inline emphasis spacing scanner below.
 func fixBoldSpacingLine(line string) string {
 	if atxHeadingRe.MatchString(line) {
 		return line
 	}
 	spans := scanInlineCodeSpans(line)
 	if len(spans) == 0 {
-		line = boldTrailingSpaceRe.ReplaceAllString(line, "$1$2")
-		line = italicTrailingSpaceRe.ReplaceAllString(line, "$1$2")
-		return line
+		return fixEmphasisSpacingSegment(line)
 	}
 	var sb strings.Builder
 	pos := 0
 	for _, loc := range spans {
 		// Process the non-code segment before this inline code span.
 		seg := line[pos:loc[0]]
-		seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-		seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-		sb.WriteString(seg)
+		sb.WriteString(fixEmphasisSpacingSegment(seg))
 		// Preserve inline code span as-is.
 		sb.WriteString(line[loc[0]:loc[1]])
 		pos = loc[1]
 	}
 	// Remaining non-code segment after the last code span.
-	seg := line[pos:]
-	seg = boldTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-	seg = italicTrailingSpaceRe.ReplaceAllString(seg, "$1$2")
-	sb.WriteString(seg)
+	sb.WriteString(fixEmphasisSpacingSegment(line[pos:]))
 	return sb.String()
+}
+
+// fixEmphasisSpacingSegment trims only the whitespace immediately inside simple
+// *...* and **...** spans. It deliberately ignores runs of 3+ asterisks and
+// any candidate whose payload contains another asterisk so nested emphasis-like
+// text remains untouched. When both inner sides contain whitespace, single-rune
+// payloads are preserved as literal text (for example "* x *" and "** x **").
+func fixEmphasisSpacingSegment(seg string) string {
+	if !strings.Contains(seg, "*") {
+		return seg
+	}
+
+	var sb strings.Builder
+	pos := 0
+	for pos < len(seg) {
+		openStart, openEnd, ok := nextAsteriskRun(seg, pos)
+		if !ok {
+			sb.WriteString(seg[pos:])
+			break
+		}
+
+		sb.WriteString(seg[pos:openStart])
+
+		markerLen := openEnd - openStart
+		if markerLen != 1 && markerLen != 2 {
+			sb.WriteString(seg[openStart:openEnd])
+			pos = openEnd
+			continue
+		}
+
+		closeStart, closeEnd, ok := nextAsteriskRun(seg, openEnd)
+		if !ok || closeEnd-closeStart != markerLen {
+			sb.WriteString(seg[openStart:openEnd])
+			pos = openEnd
+			continue
+		}
+
+		payload := seg[openEnd:closeStart]
+		normalized, shouldNormalize := normalizeEmphasisPayload(payload)
+		if !shouldNormalize {
+			sb.WriteString(seg[openStart:closeEnd])
+			pos = closeEnd
+			continue
+		}
+
+		marker := seg[openStart:openEnd]
+		sb.WriteString(marker)
+		sb.WriteString(normalized)
+		sb.WriteString(marker)
+		pos = closeEnd
+	}
+	return sb.String()
+}
+
+func nextAsteriskRun(s string, start int) (runStart, runEnd int, ok bool) {
+	for i := start; i < len(s); i++ {
+		if s[i] != '*' {
+			continue
+		}
+		j := i
+		for j < len(s) && s[j] == '*' {
+			j++
+		}
+		return i, j, true
+	}
+	return 0, 0, false
+}
+
+func normalizeEmphasisPayload(payload string) (string, bool) {
+	trimmedLeft := strings.TrimLeftFunc(payload, unicode.IsSpace)
+	trimmed := strings.TrimRightFunc(trimmedLeft, unicode.IsSpace)
+	if trimmed == "" {
+		return payload, false
+	}
+
+	hasLeadingSpace := len(trimmedLeft) != len(payload)
+	hasTrailingSpace := len(trimmed) != len(trimmedLeft)
+	if !hasLeadingSpace && !hasTrailingSpace {
+		return payload, true
+	}
+
+	if hasLeadingSpace && hasTrailingSpace && utf8.RuneCountInString(trimmed) == 1 {
+		return payload, false
+	}
+	return trimmed, true
 }
 
 var setextRe = regexp.MustCompile(`(?m)^([^\n]+)\n(-{3,}\s*$)`)
@@ -290,6 +376,44 @@ var contentContainers = [][2]string{
 // listItemRe matches unordered and ordered list item markers, including
 // indented (nested) items.
 var listItemRe = regexp.MustCompile(`^[ \t]*([-*+]|\d+[.)]) `)
+
+// nestedListIndentRe matches nested list item markers indented with pairs of
+// spaces. We rewrite those space pairs to tabs because some downstream
+// round-trip paths treat multi-space indented ordered items as flat items or
+// literal text, while tab indentation remains nested and avoids 4-space code
+// block ambiguity.
+var nestedListIndentRe = regexp.MustCompile(`^( {2,})([-*+]|\d+[.)]) `)
+
+func normalizeNestedListIndentation(md string) string {
+	lines := strings.Split(md, "\n")
+	for i, line := range lines {
+		matches := nestedListIndentRe.FindStringSubmatch(line)
+		if len(matches) != 3 {
+			continue
+		}
+		if !hasPreviousNonBlankListItem(lines, i) {
+			continue
+		}
+		indent := matches[1]
+		if len(indent)%2 != 0 {
+			continue
+		}
+		tabs := strings.Repeat("\t", len(indent)/2)
+		lines[i] = tabs + line[len(indent):]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func hasPreviousNonBlankListItem(lines []string, index int) bool {
+	for i := index - 1; i >= 0; i-- {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			return false
+		}
+		return listItemRe.MatchString(lines[i])
+	}
+	return false
+}
 
 // isListItemOrContinuation returns true for lines that are part of a list:
 // either a list item marker line or an indented continuation of a list item.

@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-给文档添加评论。底层统一走 `/open-apis/drive/v1/files/:file_token/new_comments`（`create_v2`）接口；未指定位置时省略 `anchor` 创建全文评论，指定 `--selection-with-ellipsis` 或 `--block-id` 时传入 `anchor.block_id` 创建局部评论。支持直接传 docx URL/token、旧版 doc URL（仅全文评论），也支持传最终可解析为 doc/docx 的 wiki URL。
+给文档或电子表格添加评论。底层统一走 `/open-apis/drive/v1/files/:file_token/new_comments`（`create_v2`）接口；未指定位置时省略 `anchor` 创建全文评论，指定 `--block-id` 时传入 `anchor.block_id` 创建局部评论。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、sheet URL，也支持传最终可解析为 doc/docx/sheet 的 wiki URL。
 
 ## 命令
 
@@ -24,29 +24,51 @@ lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/wiki/<WIKI_TOKEN>" \
   --content '[{"type":"text","text":"这里需要一段全文评论"}]'
 
-# 给 docx 文档里匹配到的文字添加局部评论
+# 给 docx 文档的指定 block 添加局部评论（block_id 可通过 docs +fetch --api-version v2 --detail with-ids 获取）
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/docx/<DOC_ID>" \
-  --selection-with-ellipsis "流程" \
+  --block-id "<BLOCK_ID>" \
   --content '[{"type":"text","text":"请补充流程说明"}]'
 
 # wiki 链接也支持局部评论，但解析结果必须是 docx
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/wiki/<WIKI_TOKEN>" \
-  --selection-with-ellipsis "流程" \
+  --block-id "<BLOCK_ID>" \
   --content '[{"type":"text","text":"请补充更细的开发步骤"}]'
 
 # 组合文本、@用户、链接元素
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/docx/<DOC_ID>" \
-  --selection-with-ellipsis "流程" \
+  --block-id "<BLOCK_ID>" \
   --content '[{"type":"text","text":"请 "},{"type":"mention_user","text":"ou_xxx"},{"type":"text","text":" 处理，参考 "},{"type":"link","text":"https://example.com"}]'
 
-# 已知 block_id 时可跳过 MCP 直接创建局部评论
+# 给电子表格单元格添加评论（--block-id 格式为 <sheetId>!<cell>）
 lark-cli drive +add-comment \
-  --doc "<DOCX_TOKEN>" \
+  --doc "https://example.larksuite.com/sheets/<SHEET_TOKEN>" \
+  --block-id "<SHEET_ID>!D6" \
+  --content '[{"type":"text","text":"请检查此单元格数据"}]'
+
+# wiki 链接指向的 sheet 也支持
+lark-cli drive +add-comment \
+  --doc "https://example.larksuite.com/wiki/<WIKI_TOKEN>" \
+  --block-id "<SHEET_ID>!A1" \
+  --content '[{"type":"text","text":"请 "},{"type":"mention_user","text":"ou_xxx"},{"type":"text","text":" 确认"}]'
+
+# 传裸 token 时需要 --type 指定文档类型
+lark-cli drive +add-comment \
+  --doc "<SHEET_TOKEN>" --type sheet \
+  --block-id "<SHEET_ID>!D6" \
+  --content '[{"type":"text","text":"请检查"}]'
+
+lark-cli drive +add-comment \
+  --doc "<DOCX_TOKEN>" --type docx \
+  --content '[{"type":"text","text":"全文评论"}]'
+
+# 裸 token + 已知 block_id 的局部评论
+lark-cli drive +add-comment \
+  --doc "<DOCX_TOKEN>" --type docx \
   --block-id "<BLOCK_ID>" \
-  --content '[{"type":"text","text":"评论内容"}]'
+  --content '[{"type":"text","text":"请 "},{"type":"mention_user","text":"ou_xxx"},{"type":"text","text":" 处理，参考 "},{"type":"link","text":"https://example.com"}]'
 
 # 如果需要更底层的原生 API，也可以直接调用 V2 协议
 lark-cli schema drive.file.comments.create_v2
@@ -58,7 +80,7 @@ lark-cli drive file.comments create_v2 \
 # 预览底层调用链
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/docx/<DOC_ID>" \
-  --selection-with-ellipsis "流程" \
+  --block-id "<BLOCK_ID>" \
   --content '[{"type":"text","text":"请补充流程说明"}]' \
   --dry-run
 ```
@@ -67,26 +89,25 @@ lark-cli drive +add-comment \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--doc` | 是 | 文档 URL / token，或可解析到 `doc`/`docx` 的 wiki URL。原始 token 默认按 `docx` 处理；旧版 `doc` 请传 URL 或 wiki 链接 |
+| `--doc` | 是 | 文档 URL / token、sheet URL，或可解析到 `doc`/`docx`/`sheet` 的 wiki URL |
+| `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`sheet`。URL 输入时自动识别，无需传 |
 | `--content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'` |
-| `--full-comment` | 否 | 显式指定创建全文评论；未传 `--selection-with-ellipsis` / `--block-id` 时也会默认走全文评论 |
-| `--selection-with-ellipsis` | 局部评论时二选一 | 目标文本定位表达式，支持纯文本或 `开头...结尾`；与 `--block-id` 互斥 |
-| `--block-id` | 局部评论时二选一 | 已知目标块 ID 时直接使用；与 `--selection-with-ellipsis` 互斥 |
+| `--full-comment` | 否 | 显式指定创建全文评论；未传 `--block-id` 时也会默认走全文评论（不适用于 sheet） |
+| `--block-id` | 局部评论时必填 | 目标块 ID，可通过 `docs +fetch --api-version v2 --detail with-ids` 获取。**Sheet 评论**：格式为 `<sheetId>!<cell>`（如 `a281f9!D6`） |
 
 ## 行为说明
 
-- **无需预先获取文档内容**：使用 `--selection-with-ellipsis` 时，shortcut 内部会自动调用 `locate-doc` 定位目标文本，不需要先调用 `docs +fetch` 获取文档。
-- 未传 `--selection-with-ellipsis` / `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。
-- 全文评论支持 `docx`、旧版 `doc` URL，以及最终可解析为 `doc`/`docx` 的 wiki URL。
-- 传 `--selection-with-ellipsis` 或 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式仅支持 `docx`，以及最终可解析为 `docx` 的 wiki URL。
+- **局部评论需要先获取 block ID**：先调用 `docs +fetch --api-version v2 --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
+- 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL，以及最终可解析为 `doc`/`docx` 的 wiki URL。
+- 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式仅支持 `docx`，以及最终可解析为 `docx` 的 wiki URL。
+- **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。
 - `--content` 接收结构化评论元素数组；`type` 支持 `text`、`mention_user`、`link`。为便于书写，`mention_user` / `link` 元素可以直接把用户 ID 或链接地址放在 `text` 字段中，shortcut 会转换成 OpenAPI 所需字段。
-- 局部评论走 `locate-doc` 时，内部固定使用 `limit=10`。
-- 当 `locate-doc` 命中多处时，shortcut 会中止并提示用户继续收窄 `--selection-with-ellipsis`，不支持手动指定匹配序号。
+- `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
 - 写入评论前会自动生成符合 OpenAPI 定义的请求体：
-- 统一接口：`POST /new_comments`
-- 统一字段：`file_type` + `reply_elements`
-- 全文评论：省略 `anchor`
-- 局部评论：传入 `anchor.block_id`
+  - 统一接口：`POST /new_comments`
+  - 统一字段：`file_type` + `reply_elements`
+  - 全文评论：省略 `anchor`
+  - 局部评论：传入 `anchor.block_id`
 - `--dry-run` 仅预览调用链和请求体，不会实际写入。
 - 如果需要更底层的控制，仍可改用 `lark-cli schema drive.file.comments.create_v2` + `lark-cli drive file.comments create_v2`。
 

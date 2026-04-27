@@ -22,16 +22,18 @@ func TestTask_CommentWorkflow(t *testing.T) {
 	suffix := clie2e.GenerateSuffix()
 	commentContent := "lark-cli-e2e-comment-" + suffix
 	taskGUID := createTask(t, parentT, ctx, clie2e.Request{
-		Args: []string{"task", "+create"},
+		Args:      []string{"task", "+create"},
+		DefaultAs: "bot",
 		Data: map[string]any{
 			"summary":     "lark-cli-e2e-comment-task-" + suffix,
 			"description": "created by tests/cli_e2e/task comment workflow",
 		},
 	})
 
-	t.Run("comment", func(t *testing.T) {
+	t.Run("comment as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "+comment", "--task-id", taskGUID, "--content", commentContent},
+			Args:      []string{"task", "+comment", "--task-id", taskGUID, "--content", commentContent},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

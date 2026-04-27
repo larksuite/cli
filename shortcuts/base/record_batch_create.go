@@ -24,6 +24,7 @@ var BaseRecordBatchCreate = common.Shortcut{
 	Tips: []string{
 		`Example: --json '{"fields":["Title","Status"],"rows":[["Task A","Open"],["Task B","Done"]]}'`,
 		"Agent hint: use the lark-base skill's record-batch-create guide for usage and limits.",
+		"Agent hint: use lark-base-cell-value.md as the source of truth for each CellValue.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordJSON(runtime)

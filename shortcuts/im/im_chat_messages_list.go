@@ -172,11 +172,12 @@ func buildChatMessageListParams(sortFlag, pageSizeStr, chatId string) larkcore.Q
 		pageSize = min(max(n, 1), 50)
 	}
 	return larkcore.QueryParams{
-		"container_id_type":     []string{"chat"},
-		"container_id":          []string{chatId},
-		"sort_type":             []string{sortType},
-		"page_size":             []string{strconv.Itoa(pageSize)},
-		"card_msg_content_type": []string{"raw_card_content"},
+		"container_id_type":         []string{"chat"},
+		"container_id":              []string{chatId},
+		"sort_type":                 []string{sortType},
+		"page_size":                 []string{strconv.Itoa(pageSize)},
+		"card_msg_content_type":     []string{"raw_card_content"},
+		"only_thread_root_messages": []string{"true"},
 	}
 }
 
