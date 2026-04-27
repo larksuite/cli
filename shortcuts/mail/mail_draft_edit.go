@@ -150,14 +150,29 @@ var MailDraftEdit = common.Shortcut{
 				if _, _, err := parseEventTimeRange(patch.Ops[i].EventStart, patch.Ops[i].EventEnd); err != nil {
 					return output.ErrValidation("set_calendar: %v", err)
 				}
+				// Use post-edit recipients if --set-to/--set-cc was also passed,
+				// so the ATTENDEE list reflects the final draft recipients.
+				toAddrs := snapshot.To
+				ccAddrs := snapshot.Cc
+				for _, op := range patch.Ops {
+					if op.Op != "set_recipients" {
+						continue
+					}
+					switch op.Field {
+					case "to":
+						toAddrs = op.Addresses
+					case "cc":
+						ccAddrs = op.Addresses
+					}
+				}
 				calData := buildCalendarBodyFromArgs(
 					patch.Ops[i].EventSummary,
 					patch.Ops[i].EventStart,
 					patch.Ops[i].EventEnd,
 					patch.Ops[i].EventLocation,
 					draftFromEmail,
-					joinAddresses(snapshot.To),
-					joinAddresses(snapshot.Cc),
+					joinAddresses(toAddrs),
+					joinAddresses(ccAddrs),
 				)
 				if calData == nil {
 					return output.ErrValidation("set_calendar: failed to build ICS from event fields")
