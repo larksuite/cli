@@ -284,7 +284,7 @@ var CalendarRoomFind = common.Shortcut{
 		{Name: flagCity, Type: "string", Desc: "meeting room city constraint"},
 		{Name: flagBuilding, Type: "string", Desc: "meeting room building constraint"},
 		{Name: flagFloor, Type: "string", Desc: "meeting room floor constraint (e.g., F2)"},
-		{Name: flagRoomName, Type: "string", Desc: "meeting room name constraint; comma-separated for multiple names (e.g., 木星 or 01,02,03)"},
+		{Name: flagRoomName, Type: "string", Desc: "meeting room name constraint; comma-separated for multiple names (e.g., 01,02,03)"},
 		{Name: flagMinCapacity, Type: "int", Desc: "minimum meeting room capacity"},
 		{Name: flagMaxCapacity, Type: "int", Desc: "maximum meeting room capacity"},
 		{Name: flagAttendees, Type: "string", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_)"},
