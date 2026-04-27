@@ -122,8 +122,7 @@ func FindPartByMediaType(root *Part, mediaType string) *Part {
 }
 
 // findAllPartsByMediaType walks the MIME tree and returns every part with
-// the given media type. Used by setCalendarPart to update all copies of the
-// ICS (e.g. one inside multipart/alternative and one as an inline attachment).
+// the given media type. Used in tests to assert tree contents.
 func findAllPartsByMediaType(root *Part, mediaType string) []*Part {
 	if root == nil {
 		return nil

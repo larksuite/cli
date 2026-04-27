@@ -2523,8 +2523,9 @@ func validateEventFlags(runtime *common.RuntimeContext) error {
 	summary := runtime.Str("event-summary")
 	start := runtime.Str("event-start")
 	end := runtime.Str("event-end")
+	location := runtime.Str("event-location")
 
-	hasAny := summary != "" || start != "" || end != ""
+	hasAny := summary != "" || start != "" || end != "" || location != ""
 	hasAll := summary != "" && start != "" && end != ""
 
 	if hasAny && !hasAll {
