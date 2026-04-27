@@ -996,15 +996,33 @@ func writeSingleBodyPartHeaders(buf *bytes.Buffer, ct string, body []byte) {
 	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
 }
 
-// writeCalendarPart writes the text/calendar MIME part with the RFC 6047
-// method=REQUEST parameter. The part lives inside multipart/alternative
-// as an alternative representation of the message body.
+// writeCalendarPart writes the text/calendar MIME part. The method= parameter
+// is derived from the METHOD property in the ICS body (defaulting to REQUEST
+// when absent) so that passthrough ICS with METHOD:CANCEL or METHOD:REPLY
+// produce a Content-Type that matches the body.
 func writeCalendarPart(buf *bytes.Buffer, body []byte) {
+	method := extractICSMethod(body)
+	if method == "" {
+		method = "REQUEST"
+	}
 	cte := selectCTE(body)
-	fmt.Fprintf(buf, "Content-Type: text/calendar; method=REQUEST; charset=UTF-8\n")
+	fmt.Fprintf(buf, "Content-Type: text/calendar; method=%s; charset=UTF-8\n", method)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
 	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
 	buf.WriteByte('\n')
+}
+
+// extractICSMethod scans the ICS body for the top-level METHOD property and
+// returns its value (e.g. "REQUEST", "CANCEL", "REPLY"). Returns "" when the
+// property is absent so callers can apply their own default.
+func extractICSMethod(body []byte) string {
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(strings.ToUpper(line), "METHOD:") {
+			return strings.TrimSpace(line[7:])
+		}
+	}
+	return ""
 }
 
 // writeAttachmentPart writes a MIME attachment part.

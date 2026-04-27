@@ -1361,3 +1361,35 @@ func TestHeaderValueTabAllowed(t *testing.T) {
 		t.Errorf("Header with tab in value: expected no error, got %v", err)
 	}
 }
+
+func TestWriteCalendarPart_MethodFromBody(t *testing.T) {
+	cases := []struct {
+		name   string
+		ics    string
+		wantCT string
+	}{
+		{"request", "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n", "method=REQUEST"},
+		{"cancel", "BEGIN:VCALENDAR\r\nMETHOD:CANCEL\r\nEND:VCALENDAR\r\n", "method=CANCEL"},
+		{"reply", "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n", "method=REPLY"},
+		{"no method defaults to REQUEST", "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n", "method=REQUEST"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			eml, err := New().
+				From("", "sender@example.com").
+				To("", "recipient@example.com").
+				Subject("Test").
+				Date(fixedDate).
+				MessageID("test-method@x").
+				HTMLBody([]byte("<p>hi</p>")).
+				CalendarBody([]byte(tc.ics)).
+				Build()
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			if !strings.Contains(string(eml), tc.wantCT) {
+				t.Errorf("expected Content-Type to contain %q\n%s", tc.wantCT, eml)
+			}
+		})
+	}
+}
