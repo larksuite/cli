@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.20] - 2026-04-27
+
+### Features
+
+- **drive**: Add `+search` shortcut with flat filter flags (#658)
+- **mail**: Support sharing emails to IM chats via `+share-to-chat` (#637)
+- **calendar**: Add `+update` shortcut (#678)
+- **im**: Add `--at-chatter-ids` filter to `+messages-search` (#612)
+- **pagination**: Preserve pagination state on truncation and natural end (#659)
+- **lark-im**: Add `chat.members.bots` to skill docs (#616)
+
+### Bug Fixes
+
+- **strict-mode**: Reject explicit `--as` instead of silently overriding it (#673)
+- **whiteboard**: Manual disable edge case for svg compatibility (#661)
+
+### Documentation
+
+- **lark-drive**: Add missing import command examples (#669)
+- **readme**: Add Project (Meegle) to Features table (#660)
+
 ## [v1.0.19] - 2026-04-24
 
 ### Features
