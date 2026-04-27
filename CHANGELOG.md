@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **event**: Add `event +bot-receive-diagnose` — a read-only diagnostic for bots that do not receive events (WebSocket / endpoint / credential checks with structured `{summary, checks, next_steps}` output). Closes #33.
+
 ## [v1.0.19] - 2026-04-24
 
 ### Features
