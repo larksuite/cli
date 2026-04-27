@@ -117,6 +117,7 @@ func TestIM_ChatsLinkWorkflow(t *testing.T) {
 			Data: map[string]any{
 				"validity_period": "week",
 			},
+			Yes: true,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

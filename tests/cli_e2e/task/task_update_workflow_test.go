@@ -42,6 +42,7 @@ func TestTask_UpdateWorkflow(t *testing.T) {
 			Args:      []string{"task", "tasks", "delete"},
 			DefaultAs: "user",
 			Params:    map[string]any{"task_guid": taskGUID},
+			Yes:       true,
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete user task "+taskGUID, deleteResult, deleteErr)
 	})
@@ -131,6 +132,7 @@ func TestTask_UpdateWorkflow(t *testing.T) {
 				},
 				"update_fields": []string{"summary", "description"},
 			},
+			Yes: true,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

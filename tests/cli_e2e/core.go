@@ -86,6 +86,10 @@ type Request struct {
 	WorkDir string
 	// Env adds or overrides environment variables for this one child process only.
 	Env map[string]string
+	// Yes confirms high-risk-write commands. When true, the runner appends
+	// --yes so the framework-level confirmation gate passes. Setting it on a
+	// non-high-risk command will fail with "unknown flag: --yes".
+	Yes bool
 }
 
 // Result captures process execution output.
@@ -357,6 +361,9 @@ func BuildArgs(req Request) ([]string, error) {
 	}
 	if req.Format != "" {
 		args = append(args, "--format", req.Format)
+	}
+	if req.Yes {
+		args = append(args, "--yes")
 	}
 	if req.Params != nil {
 		paramsBytes, err := json.Marshal(req.Params)
