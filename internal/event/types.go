@@ -90,7 +90,7 @@ type KeyDefinition struct {
 
 	Scopes []string `json:"scopes,omitempty"`
 
-	// AuthTypes: first element is default; empty slice = no identity required.
+	// AuthTypes: whitelist of identities the EventKey accepts. Empty = no identity required.
 	AuthTypes []string `json:"auth_types,omitempty"`
 
 	RequiredConsoleEvents []string `json:"required_console_events,omitempty"`

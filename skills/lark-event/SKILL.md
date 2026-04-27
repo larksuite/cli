@@ -33,7 +33,7 @@ metadata:
 | `--timeout D` | Exit after duration D (e.g. `30s`, `2m`). Default 0 = no timeout. Whichever of `--max-events` / `--timeout` fires first wins |
 | `--output-dir <dir>` | Write each event as a file (relative paths only; prevents traversal) |
 | `--quiet` | Suppress stderr diagnostics. **AI should not use this** — it silences the ready marker |
-| `--as user\|bot\|auto` | Force identity; default `auto` resolves to `AuthTypes[0]` declared by the EventKey |
+| `--as user\|bot\|auto` | Identity for the session (see lark-shared) |
 
 
 ## Examples
