@@ -608,6 +608,260 @@ func TestCreate_WithAttendees_InvalidParamsWithDetail_RollsBack(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CalendarUpdate tests
+// ---------------------------------------------------------------------------
+
+func TestUpdate_PatchEventOnly(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	stub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update1",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id": "evt_update1",
+					"summary":  "Updated Meeting",
+					"start_time": map[string]interface{}{
+						"timestamp": "1742518800",
+					},
+					"end_time": map[string]interface{}{
+						"timestamp": "1742522400",
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_update1",
+		"--calendar-id", "cal_test123",
+		"--summary", "Updated Meeting",
+		"--description", "Updated description",
+		"--start", "2025-03-21T01:00:00+08:00",
+		"--end", "2025-03-21T02:00:00+08:00",
+		"--notify=false",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured patch body: %v", err)
+	}
+	if body["summary"] != "Updated Meeting" || body["description"] != "Updated description" {
+		t.Fatalf("unexpected patch body: %#v", body)
+	}
+	if body["need_notification"] != false {
+		t.Fatalf("need_notification = %#v, want false", body["need_notification"])
+	}
+	if !strings.Contains(stdout.String(), "evt_update1") {
+		t.Fatalf("stdout should contain event id, got: %s", stdout.String())
+	}
+}
+
+func TestUpdate_AddAttendees(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update2/attendees",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_update2",
+		"--calendar-id", "cal_test123",
+		"--add-attendee-ids", "ou_user1,oc_group1,omm_room1",
+		"--as", "bot",
+	}, f, nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := decodeCalendarCapturedBody(t, stub)
+	attendees, _ := body["attendees"].([]interface{})
+	if !calendarBodyHasAttendee(attendees, "user", "user_id", "ou_user1") ||
+		!calendarBodyHasAttendee(attendees, "chat", "chat_id", "oc_group1") ||
+		!calendarBodyHasAttendee(attendees, "resource", "room_id", "omm_room1") {
+		t.Fatalf("unexpected add attendees body: %#v", body)
+	}
+}
+
+func TestUpdate_RemoveAttendees(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update3/attendees/batch_delete",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_update3",
+		"--calendar-id", "cal_test123",
+		"--remove-attendee-ids", "ou_user1,oc_group1,omm_room1",
+		"--notify=false",
+		"--as", "bot",
+	}, f, nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := decodeCalendarCapturedBody(t, stub)
+	deleteIDs, _ := body["delete_ids"].([]interface{})
+	if body["need_notification"] != false {
+		t.Fatalf("need_notification = %#v, want false", body["need_notification"])
+	}
+	if !calendarBodyHasAttendee(deleteIDs, "user", "user_id", "ou_user1") ||
+		!calendarBodyHasAttendee(deleteIDs, "chat", "chat_id", "oc_group1") ||
+		!calendarBodyHasAttendee(deleteIDs, "resource", "room_id", "omm_room1") {
+		t.Fatalf("unexpected remove attendees body: %#v", body)
+	}
+}
+
+func TestUpdate_CombinedPatchRemoveAdd(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	patchStub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/events/evt_update4",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_update4", "summary": "Combined"}},
+		},
+	}
+	removeStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_update4/attendees/batch_delete",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	}
+	addStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_update4/attendees",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+	}
+	reg.Register(patchStub)
+	reg.Register(removeStub)
+	reg.Register(addStub)
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_update4",
+		"--summary", "Combined",
+		"--remove-attendee-ids", "ou_old",
+		"--add-attendee-ids", "ou_new",
+		"--as", "bot",
+	}, f, nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(patchStub.CapturedBody) == 0 || len(removeStub.CapturedBody) == 0 || len(addStub.CapturedBody) == 0 {
+		t.Fatalf("expected patch, remove, and add requests to be captured")
+	}
+}
+
+func TestUpdate_DryRun_MultiStep(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_dry",
+		"--calendar-id", "cal_test123",
+		"--summary", "Dry",
+		"--remove-attendee-ids", "omm_oldroom",
+		"--add-attendee-ids", "ou_new,omm_newroom",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"PATCH", "batch_delete", "attendees", "omm_oldroom", "omm_newroom"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run should contain %q, got: %s", want, out)
+		}
+	}
+}
+
+func TestUpdate_Validation(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "no fields",
+			args: []string{"+update", "--event-id", "evt_1", "--as", "bot"},
+			want: "nothing to update",
+		},
+		{
+			name: "invalid attendee",
+			args: []string{"+update", "--event-id", "evt_1", "--add-attendee-ids", "bad", "--as", "bot"},
+			want: "invalid attendee id format",
+		},
+		{
+			name: "duplicate add remove",
+			args: []string{"+update", "--event-id", "evt_1", "--add-attendee-ids", "ou_same", "--remove-attendee-ids", "ou_same", "--as", "bot"},
+			want: "appears in both",
+		},
+		{
+			name: "start without end",
+			args: []string{"+update", "--event-id", "evt_1", "--start", "2025-03-21T00:00:00+08:00", "--as", "bot"},
+			want: "must be specified together",
+		},
+		{
+			name: "end before start",
+			args: []string{"+update", "--event-id", "evt_1", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T09:00:00+08:00", "--as", "bot"},
+			want: "end time must be after start time",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+			err := mountAndRun(t, CalendarUpdate, tc.args, f, nil)
+			if err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func decodeCalendarCapturedBody(t *testing.T, stub *httpmock.Stub) map[string]interface{} {
+	t.Helper()
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured body: %v\nraw=%s", err, string(stub.CapturedBody))
+	}
+	return body
+}
+
+func calendarBodyHasAttendee(items []interface{}, typ, key, value string) bool {
+	for _, item := range items {
+		m, _ := item.(map[string]interface{})
+		if m["type"] == typ && m[key] == value {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
 // CalendarAgenda tests
 // ---------------------------------------------------------------------------
 
@@ -626,6 +880,11 @@ func TestCalendarShortcuts_RequireLoginUnlessExplicitBot(t *testing.T) {
 			name:     "create",
 			shortcut: CalendarCreate,
 			args:     []string{"+create", "--summary", "Test Meeting", "--start", "2025-03-21T00:00:00+08:00", "--end", "2025-03-21T01:00:00+08:00"},
+		},
+		{
+			name:     "update",
+			shortcut: CalendarUpdate,
+			args:     []string{"+update", "--event-id", "evt_1", "--summary", "Updated"},
 		},
 		{
 			name:     "freebusy",
@@ -1710,17 +1969,17 @@ func TestResolveStartEnd_ExplicitValues(t *testing.T) {
 // Shortcuts() registration test
 // ---------------------------------------------------------------------------
 
-func TestShortcuts_Returns6(t *testing.T) {
+func TestShortcuts_Returns7(t *testing.T) {
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 6 {
-		t.Fatalf("expected 6 shortcuts, got %d", len(shortcuts))
+	if len(shortcuts) != 7 {
+		t.Fatalf("expected 7 shortcuts, got %d", len(shortcuts))
 	}
 
 	names := map[string]bool{}
 	for _, s := range shortcuts {
 		names[s.Command] = true
 	}
-	for _, want := range []string{"+agenda", "+create", "+freebusy", "+room-find", "+rsvp", "+suggestion"} {
+	for _, want := range []string{"+agenda", "+create", "+update", "+freebusy", "+room-find", "+rsvp", "+suggestion"} {
 		if !names[want] {
 			t.Errorf("missing shortcut %s", want)
 		}
