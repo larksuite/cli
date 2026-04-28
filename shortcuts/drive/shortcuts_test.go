@@ -23,6 +23,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+delete",
 		"+status",
 		"+push",
+		"+pull",
 		"+task_result",
 		"+apply-permission",
 		"+search",
