@@ -103,6 +103,33 @@ var DrivePull = common.Shortcut{
 		}
 		deleteLocal := runtime.Bool("delete-local")
 
+		// Resolve --local-dir to its canonical absolute path before we
+		// touch the filesystem. SafeInputPath fully evaluates symlinks
+		// across the entire path; this matters because filepath.Clean
+		// alone shrinks "link/.." to "." while the kernel resolves it
+		// through the symlink target's parent — meaning a raw walk on
+		// the user-supplied string can land outside cwd. Walking the
+		// canonical root sidesteps that, and using cwd canonical lets
+		// us emit cwd-relative download targets that FileIO.Save's
+		// SafeOutputPath check still accepts. The risk is much higher
+		// here than in +status because --delete-local would otherwise
+		// remove the wrong files outside cwd.
+		safeRoot, err := validate.SafeInputPath(localDir)
+		if err != nil {
+			return output.ErrValidation("--local-dir: %s", err)
+		}
+		cwdCanonical, err := validate.SafeInputPath(".")
+		if err != nil {
+			return output.ErrValidation("could not resolve cwd: %s", err)
+		}
+		// rootRelToCwd is the localDir form FileIO.Save accepts (it
+		// rejects absolute paths). For cwd itself it becomes ".", which
+		// joins cleanly with the rel_paths returned by the lister.
+		rootRelToCwd, err := filepath.Rel(cwdCanonical, safeRoot)
+		if err != nil {
+			return output.ErrValidation("--local-dir resolves outside cwd: %s", err)
+		}
+
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
 		remoteFiles, err := drivePullListRemote(ctx, runtime, folderToken, "")
 		if err != nil {
@@ -121,7 +148,7 @@ var DrivePull = common.Shortcut{
 
 		for _, rel := range remotePaths {
 			token := remoteFiles[rel]
-			target := filepath.Join(localDir, rel)
+			target := filepath.Join(rootRelToCwd, rel)
 
 			if _, statErr := runtime.FileIO().Stat(target); statErr == nil {
 				if ifExists == drivePullIfExistsSkip {
@@ -141,19 +168,30 @@ var DrivePull = common.Shortcut{
 		}
 
 		if deleteLocal {
-			localPaths, err := drivePullWalkLocal(localDir)
+			// Walk the canonical absolute root, build the list of
+			// rel_paths, then delete via the absolute path. Both
+			// values come from the validated safeRoot, so kernel
+			// path resolution cannot redirect the delete to a file
+			// outside the canonical subtree.
+			localAbsPaths, err := drivePullWalkLocal(safeRoot)
 			if err != nil {
 				return err
 			}
-			for _, rel := range localPaths {
+			for _, absPath := range localAbsPaths {
+				rel, relErr := filepath.Rel(safeRoot, absPath)
+				if relErr != nil {
+					items = append(items, drivePullItem{RelPath: absPath, Action: "delete_failed", Error: relErr.Error()})
+					continue
+				}
+				rel = filepath.ToSlash(rel)
 				if _, ok := remoteFiles[rel]; ok {
 					continue
 				}
-				target := filepath.Join(localDir, rel)
-				// FileIO has no Remove(); the path is bounded inside cwd by
-				// SafeInputPath in Validate, so a bare os.Remove is acceptable
-				// here. Same justification as the walker below.
-				if err := os.Remove(target); err != nil { //nolint:forbidigo // see comment above
+				// FileIO has no Remove(); the absolute path comes from
+				// walking safeRoot, which validate.SafeInputPath has
+				// already bounded inside cwd, so a bare os.Remove is
+				// acceptable here.
+				if err := os.Remove(absPath); err != nil { //nolint:forbidigo // see comment above
 					items = append(items, drivePullItem{RelPath: rel, Action: "delete_failed", Error: err.Error()})
 					continue
 				}
@@ -257,22 +295,26 @@ func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, file
 	return nil
 }
 
+// drivePullWalkLocal walks the canonical absolute root and returns the
+// absolute paths of every regular file underneath it. The caller deletes
+// some of these paths, so it is critical that they are produced by
+// walking a canonical root (no symlinks in the path) — otherwise OS path
+// resolution could redirect a delete to a file outside cwd. Same threat
+// model as drive_status.go.
 func drivePullWalkLocal(root string) ([]string, error) {
 	var paths []string
-	// FileIO has no walker today; SafeInputPath has already bounded root in
-	// cwd via the Validate stage. Same justification as drive_status.go.
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error { //nolint:forbidigo // see comment above
+	// FileIO has no walker today; the root passed in is the canonical
+	// absolute path from validate.SafeInputPath, so WalkDir's default
+	// "do not follow child symlinks" policy keeps the traversal inside
+	// the validated subtree.
+	err := filepath.WalkDir(root, func(absPath string, d fs.DirEntry, walkErr error) error { //nolint:forbidigo // see comment above
 		if walkErr != nil {
 			return walkErr
 		}
 		if d.IsDir() || !d.Type().IsRegular() {
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		paths = append(paths, filepath.ToSlash(rel))
+		paths = append(paths, absPath)
 		return nil
 	})
 	if err != nil {

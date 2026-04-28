@@ -244,6 +244,81 @@ func TestDrivePullDeletesLocalOnlyFilesWhenYes(t *testing.T) {
 	}
 }
 
+// TestDrivePullDeleteLocalDoesNotEscapeViaSymlinkParentRef is the
+// regression for the "link/.." escape applied to --delete-local — the
+// most dangerous variant, since the bug would otherwise let the kernel
+// walk through the symlink target's parent and delete files outside
+// cwd.
+//
+// Setup: an "escape" sibling directory contains a sentinel file; cwd
+// has a "link" symlink pointing into that escape directory. Running
+// +pull with --local-dir "link/.." --delete-local --yes against an
+// empty remote folder must NOT delete the sentinel.
+func TestDrivePullDeleteLocalDoesNotEscapeViaSymlinkParentRef(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	// Sentinel sits outside cwd; if the bug existed, --delete-local
+	// would unlink it.
+	escapeDir := t.TempDir()
+	sentinel := filepath.Join(escapeDir, "secret.txt")
+	if err := os.WriteFile(sentinel, []byte("S3CRET"), 0o644); err != nil {
+		t.Fatalf("WriteFile sentinel: %v", err)
+	}
+
+	cwdDir := t.TempDir()
+	withDriveWorkingDir(t, cwdDir)
+	if err := os.Symlink(escapeDir, filepath.Join(cwdDir, "link")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	// One file inside cwd to confirm the walk did run.
+	cwdLocal := filepath.Join(cwdDir, "ok.txt")
+	if err := os.WriteFile(cwdLocal, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile cwd: %v", err)
+	}
+
+	// Remote is empty — so under --delete-local --yes the only files
+	// the walk identifies as "local-only" are inside the canonical
+	// walk root.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "link/..",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	// Must-haves:
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("sentinel %q must still exist after +pull --delete-local; stat err=%v", sentinel, err)
+	}
+	// And the cwd-local file should have been deleted (it is local-only
+	// and remote is empty), proving the walk DID run, just not into
+	// the escape directory.
+	if _, err := os.Stat(cwdLocal); !os.IsNotExist(err) {
+		t.Fatalf("ok.txt should have been deleted (local-only with empty remote); stat err=%v", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "S3CRET") || strings.Contains(out, escapeDir) {
+		t.Fatalf("escape directory leaked into output:\n%s", out)
+	}
+}
+
 // TestDrivePullRejectsAbsoluteLocalDir confirms SafeLocalFlagPath surfaces
 // the proper flag name in the error message.
 func TestDrivePullRejectsAbsoluteLocalDir(t *testing.T) {
