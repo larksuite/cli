@@ -18,5 +18,8 @@ func Shortcuts() []common.Shortcut {
 		ImMessagesSearch,
 		ImMessagesSend,
 		ImThreadsMessagesList,
+		ImFlagCreate,
+		ImFlagCancel,
+		ImFlagList,
 	}
 }

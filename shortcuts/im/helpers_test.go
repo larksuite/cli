@@ -868,6 +868,9 @@ func TestShortcuts(t *testing.T) {
 		"+messages-search",
 		"+messages-send",
 		"+threads-messages-list",
+		"+flag-create",
+		"+flag-cancel",
+		"+flag-list",
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("Shortcuts() commands = %#v, want %#v", commands, want)

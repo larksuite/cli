@@ -18,6 +18,11 @@ metadata:
 - **Chat**: A group chat or P2P conversation, identified by `chat_id` (oc_xxx).
 - **Thread**: A reply thread under a message, identified by `thread_id` (om_xxx or omt_xxx).
 - **Reaction**: An emoji reaction on a message.
+- **Flag**: A bookmark (标记) on a message or thread. Supports two types:
+  - **Message-layer flag**: `(ItemTypeDefault, FlagTypeMessage)` — regular message bookmark
+  - **Feed-layer flag**: `(ItemTypeThread/ItemTypeMsgThread, FlagTypeFeed)` — thread as feed-layer bookmark
+  - **ItemTypeThread** (4) = thread in a topic-style chat (话题群)
+  - **ItemTypeMsgThread** (11) = thread in a regular chat (普通群)
 
 ## Resource Relationships
 
@@ -66,6 +71,9 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | [`+messages-search`](references/lark-im-messages-search.md) | Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, supports auto-pagination via `--page-all` / `--page-limit`, enriches results via batched mget and chats batch_query |
 | [`+messages-send`](references/lark-im-messages-send.md) | Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key |
 | [`+threads-messages-list`](references/lark-im-threads-messages-list.md) | List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports sort/pagination |
+| [`+flag-create`](references/lark-im-flag-create.md) | Create a bookmark (标记) on a message or thread; user-only; defaults to message-layer flag; feed-layer flag requires explicit --item-type + --flag-type |
+| [`+flag-cancel`](references/lark-im-flag-cancel.md) | Cancel (remove) a bookmark; user-only; auto-detects chat_mode and double-cancels both message and feed layers when applicable |
+| [`+flag-list`](references/lark-im-flag-list.md) | List bookmarks; user-only; auto-enriches feed-type thread entries with message content; supports `--page-all` auto-pagination |
 
 ## API Resources
 
@@ -115,6 +123,12 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `delete` — 移除 Pin 消息。Identity: supports `user` and `bot`.
   - `list` — 获取群内 Pin 消息。Identity: supports `user` and `bot`.
 
+### flags
+
+  - `create` — 创建标记。Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-flag-create.md)
+  - `cancel` — 取消标记。Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-flag-cancel.md)
+  - `list` — 列出标记。Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-flag-list.md)
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -140,3 +154,6 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `pins.create` | `im:message.pins:write_only` |
 | `pins.delete` | `im:message.pins:write_only` |
 | `pins.list` | `im:message.pins:read` |
+| `flags.create` | `im:feed.flag:write` |
+| `flags.cancel` | `im:feed.flag:write` |
+| `flags.list` | `im:feed.flag:read`, `im:message:readonly` |

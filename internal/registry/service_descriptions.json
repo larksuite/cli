@@ -27,6 +27,10 @@
     "en": { "title": "Event", "description": "Event subscription management" },
     "zh": { "title": "事件订阅", "description": "WebSocket 实时推送" }
   },
+  "flag": {
+    "en": { "title": "Flag", "description": "Bookmark (标记) on messages and threads" },
+    "zh": { "title": "标记", "description": "消息与 thread 标记的创建、取消、列表" }
+  },
   "im": {
     "en": { "title": "Messenger", "description": "Message and group chat management" },
     "zh": { "title": "消息与群组", "description": "消息发送、群聊管理" }
