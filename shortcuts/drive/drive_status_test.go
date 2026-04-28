@@ -189,3 +189,55 @@ func TestDriveStatusRejectsAbsoluteLocalDir(t *testing.T) {
 		t.Fatal("expected validation error for absolute --local-dir, got nil")
 	}
 }
+
+// TestDriveStatusRejectsEmptyFolderToken covers the Validate-stage required
+// check that runs before ResourceName: an empty --folder-token must surface
+// a structured FlagError referencing the flag name.
+func TestDriveStatusRejectsEmptyFolderToken(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveStatus, []string{
+		"+status",
+		"--local-dir", "local",
+		"--folder-token", "",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for empty --folder-token, got nil")
+	}
+	if !strings.Contains(err.Error(), "--folder-token") {
+		t.Fatalf("error must reference --folder-token, got: %v", err)
+	}
+}
+
+// TestDriveStatusRejectsMalformedFolderToken covers the ResourceName format
+// guard: a token with control characters (newline) must be rejected before
+// any API call is made.
+func TestDriveStatusRejectsMalformedFolderToken(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveStatus, []string{
+		"+status",
+		"--local-dir", "local",
+		"--folder-token", "tok\nwithnewline",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for malformed --folder-token, got nil")
+	}
+	if !strings.Contains(err.Error(), "--folder-token") {
+		t.Fatalf("error must reference --folder-token, got: %v", err)
+	}
+}
