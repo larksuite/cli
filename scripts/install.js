@@ -163,19 +163,26 @@ function install() {
   // below, not a raw module-load stack trace.
   const mirrorUrls = getMirrorUrls(process.env);
 
+  // When the user explicitly sets LARK_CLI_DOWNLOAD_HOST, skip the GitHub
+  // attempt entirely. The user has named the only host they want hit;
+  // probing github.com first can trigger DLP / firewall alerts and violates
+  // the explicit-override semantics documented above.
+  const hasExplicitHost = !!(process.env.LARK_CLI_DOWNLOAD_HOST || "").trim();
+  const downloadUrls = hasExplicitHost ? mirrorUrls : [GITHUB_URL, ...mirrorUrls];
+
   fs.mkdirSync(binDir, { recursive: true });
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-"));
   const archivePath = path.join(tmpDir, archiveName);
 
   try {
-    // Try GitHub first, then walk the mirror chain in order. Stop at the
-    // first success. This preserves the "GitHub → npmmirror" safety net
-    // even when an unrelated npm_config_registry was set globally and its
-    // /-/binary/ path doesn't actually serve our archive.
+    // Walk the chain in order; stop at the first success. The default chain
+    // is GitHub → derived(npm_config_registry)? → npmmirror, preserving the
+    // pre-PR safety net when a corporate proxy doesn't actually host
+    // /-/binary/<pkg>/...
     let lastErr;
     let downloaded = false;
-    for (const url of [GITHUB_URL, ...mirrorUrls]) {
+    for (const url of downloadUrls) {
       try {
         download(url, archivePath);
         downloaded = true;
