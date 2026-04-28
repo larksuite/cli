@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -31,6 +33,18 @@ import (
 var mentionFixRe = regexp.MustCompile(`<at\s+(id|open_id|user_id)=("?)([^"\s/>]+)"?\s*/?>`)
 var threadIDRe = regexp.MustCompile(`^omt_`)
 var messageIDRe = regexp.MustCompile(`^om_`)
+
+func flagMessageID(rt *common.RuntimeContext) (string, error) {
+	id := strings.TrimSpace(rt.Str("message-id"))
+	if id == "" {
+		return "", output.ErrValidation("--message-id is required")
+	}
+	if strings.HasPrefix(id, "omt_") {
+		return "", output.ErrValidation(
+			"invalid message ID %q: omt_ prefix is a thread ID, not a message ID; flag operations require om_ message IDs", id)
+	}
+	return validateMessageID(id)
+}
 
 func normalizeAtMentions(content string) string {
 	return mentionFixRe.ReplaceAllString(content, `<at user_id="$3">`)
@@ -1431,4 +1445,223 @@ func uploadFileFromReader(ctx context.Context, runtime *common.RuntimeContext, r
 		return "", fmt.Errorf("file_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
 	}
 	return fileKey, nil
+}
+
+// FlagType enumerates the kind of bookmark.
+// Aligned with server-side constants: Unknown=0, Feed=1, Message=2.
+type FlagType int
+
+const (
+	FlagTypeUnknown FlagType = 0
+	FlagTypeFeed    FlagType = 1
+	FlagTypeMessage FlagType = 2
+)
+
+// ItemType enumerates the kind of thing being bookmarked.
+// Server-side constants (only the types used by IM flags):
+//
+//	default=0, thread=4, msg_thread=11.
+//
+// Note on the two thread-shaped item types:
+//   - ItemTypeThread (4)     — thread inside a topic-style chat
+//   - ItemTypeMsgThread (11) — thread inside a regular chat
+type ItemType int
+
+const (
+	ItemTypeDefault   ItemType = 0
+	ItemTypeThread    ItemType = 4  // thread in a topic-style chat
+	ItemTypeMsgThread ItemType = 11 // thread in a regular chat
+)
+
+const (
+	flagWriteScope = "im:feed.flag:write"
+	flagReadScope  = "im:feed.flag:read"
+)
+
+var (
+	flagWriteLookupScopes = append([]string{flagWriteScope}, flagLookupScopes...)
+	flagMessageReadScopes = []string{
+		"im:message.group_msg:get_as_user",
+		"im:message.p2p_msg:get_as_user",
+	}
+	flagLookupScopes = []string{
+		"im:message.group_msg:get_as_user",
+		"im:message.p2p_msg:get_as_user",
+		"im:chat:read",
+	}
+)
+
+func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, required []string) error {
+	if len(required) == 0 {
+		return nil
+	}
+	result, err := rt.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(rt.As(), rt.Config.AppID))
+	if err != nil {
+		return output.ErrWithHint(output.ExitAuth, "auth",
+			fmt.Sprintf("cannot verify required scope(s): %v", err),
+			flagScopeLoginHint(required))
+	}
+	if result == nil || result.Scopes == "" {
+		fmt.Fprintf(rt.IO().ErrOut,
+			"warning: cannot verify required scope(s) because token scope metadata is unavailable; API may fail if missing: %s\n",
+			strings.Join(required, " "))
+		return nil
+	}
+	if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
+		return output.ErrWithHint(output.ExitAuth, "missing_scope",
+			fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
+			flagScopeLoginHint(missing))
+	}
+	return nil
+}
+
+func flagScopeLoginHint(scopes []string) string {
+	return fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(scopes, " "))
+}
+
+// flagItem is one entry in the flags API body. The server expects numeric
+// enums serialized as strings.
+type flagItem struct {
+	ItemID   string `json:"item_id"`
+	ItemType string `json:"item_type"`
+	FlagType string `json:"flag_type"`
+}
+
+// parseItemID inspects an om_ prefix and returns a best-guess
+// (itemType, flagType) pair. Used when the user omits the explicit enums.
+//   - om_xxx  → (default, message)
+func parseItemID(id string) (ItemType, FlagType, error) {
+	id = strings.TrimSpace(id)
+	switch {
+	case strings.HasPrefix(id, "om_"):
+		return ItemTypeDefault, FlagTypeMessage, nil
+	case id == "":
+		return 0, 0, output.ErrValidation("--message-id cannot be empty")
+	default:
+		return 0, 0, output.ErrValidation(
+			"cannot infer item type from id %q: expected om_ (message) prefix; "+
+				"pass --item-type and --flag-type explicitly if you are using a different id format", id)
+	}
+}
+
+// parseItemType converts a user-facing string to the server enum.
+func parseItemType(s string) (ItemType, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "default":
+		return ItemTypeDefault, nil
+	case "thread":
+		return ItemTypeThread, nil
+	case "msg_thread":
+		return ItemTypeMsgThread, nil
+	}
+	return 0, output.ErrValidation("invalid --item-type %q: expected one of default|thread|msg_thread", s)
+}
+
+// parseFlagType converts a user-facing string to the server enum.
+func parseFlagType(s string) (FlagType, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "message":
+		return FlagTypeMessage, nil
+	case "feed":
+		return FlagTypeFeed, nil
+	}
+	return 0, output.ErrValidation("invalid --flag-type %q: expected one of message|feed", s)
+}
+
+// isValidCombo checks if the (ItemType, FlagType) pair is accepted by the server.
+// Note: (ItemType, FlagType) is shorthand for (item_type, flag_type) — the two
+// enum fields that determine which layer the flag operates on.
+//
+// Valid combinations are:
+//   - (default, message)  — regular chat message (message-layer flag)
+//   - (thread, feed)      — thread as feed-layer flag (topic-style chat)
+//   - (msg_thread, feed)  — message-thread as feed-layer flag (regular chat)
+func isValidCombo(it ItemType, ft FlagType) bool {
+	return (it == ItemTypeDefault && ft == FlagTypeMessage) ||
+		(it == ItemTypeThread && ft == FlagTypeFeed) ||
+		(it == ItemTypeMsgThread && ft == FlagTypeFeed)
+}
+
+// parseItemTypeFromRaw parses a stringified numeric item_type back to ItemType.
+// Used when re-parsing the serialized enum for combo-validity checks.
+// Note: Unknown values return ItemTypeDefault (0). This is safe because:
+//  1. This function only parses values we serialized ourselves via newFlagItem
+//  2. Unknown server values would fail combo validation or be rejected by the server
+func parseItemTypeFromRaw(s string) ItemType {
+	switch s {
+	case "0":
+		return ItemTypeDefault
+	case "4":
+		return ItemTypeThread
+	case "11":
+		return ItemTypeMsgThread
+	}
+	return ItemTypeDefault
+}
+
+// parseFlagTypeFromRaw parses a stringified numeric flag_type back to FlagType.
+// Used when re-parsing the serialized enum for combo-validity checks.
+func parseFlagTypeFromRaw(s string) FlagType {
+	switch s {
+	case "1":
+		return FlagTypeFeed
+	case "2":
+		return FlagTypeMessage
+	}
+	return FlagTypeUnknown
+}
+
+// newFlagItem builds a payload entry with numeric-stringified enums.
+func newFlagItem(itemID string, it ItemType, ft FlagType) flagItem {
+	return flagItem{
+		ItemID:   itemID,
+		ItemType: fmt.Sprintf("%d", int(it)),
+		FlagType: fmt.Sprintf("%d", int(ft)),
+	}
+}
+
+// getMessageChatID queries the message API to get the chat_id.
+// Used by flag-create to determine the chat type for feed-layer flags.
+func getMessageChatID(rt *common.RuntimeContext, messageID string) (string, error) {
+	data, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/messages/"+validate.EncodePathSegment(messageID), nil, nil)
+	if err != nil {
+		return "", err
+	}
+
+	items, ok := data["items"].([]any)
+	if !ok || len(items) == 0 {
+		return "", output.ErrValidation("message not found or unexpected API response format")
+	}
+
+	msg, ok := items[0].(map[string]any)
+	if !ok {
+		return "", output.ErrValidation("unexpected message format in API response")
+	}
+
+	chatID, ok := msg["chat_id"].(string)
+	if !ok {
+		return "", output.ErrValidation("message response missing chat_id field")
+	}
+	return chatID, nil
+}
+
+// resolveThreadFeedItemType determines the correct feed-layer ItemType for a thread
+// by querying the chat API for chat_mode.
+//   - topic-style chat → ItemTypeThread
+//   - regular chat    → ItemTypeMsgThread
+//
+// Returns an error if the chat query fails, since guessing the wrong item_type
+// can cause silent failures in flag operations.
+func resolveThreadFeedItemType(rt *common.RuntimeContext, chatID string) (ItemType, error) {
+	data, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/chats/"+validate.EncodePathSegment(chatID), nil, nil)
+	if err != nil {
+		return ItemTypeDefault, fmt.Errorf("failed to query chat_mode for chat %s: %w", chatID, err)
+	}
+
+	// DoAPIJSON returns envelope.Data, so chat_mode is at the top level
+	chatMode, _ := data["chat_mode"].(string)
+	if chatMode == "topic" {
+		return ItemTypeThread, nil
+	}
+	return ItemTypeMsgThread, nil
 }

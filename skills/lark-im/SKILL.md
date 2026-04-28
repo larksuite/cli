@@ -1,7 +1,7 @@
 ---
 name: lark-im
 version: 1.0.0
-description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件（支持大文件分片下载）、管理表情回复。当用户需要发消息、查看或搜索聊天记录、下载聊天中的文件、查看群成员时使用。"
+description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件（支持大文件分片下载）、管理表情回复。当用户需要发消息、查看或搜索聊天记录、下载聊天中的文件、查看群成员、管理标记数据时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -18,6 +18,7 @@ metadata:
 - **Chat**: A group chat or P2P conversation, identified by `chat_id` (oc_xxx).
 - **Thread**: A reply thread under a message, identified by `thread_id` (om_xxx or omt_xxx).
 - **Reaction**: An emoji reaction on a message.
+- **Flag**: A bookmark on a message or thread.
 
 ## Resource Relationships
 
@@ -50,6 +51,17 @@ When using bot identity (`--as bot`) to fetch messages (e.g. `+chat-messages-lis
 
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
 
+### Flag Types
+
+Flags support two layers:
+
+- **Message-layer flag**: `(ItemTypeDefault, FlagTypeMessage)` — regular message bookmark
+- **Feed-layer flag**: `(ItemTypeThread/ItemTypeMsgThread, FlagTypeFeed)` — thread as feed-layer bookmark
+
+Item types for feed-layer flags:
+- **ItemTypeThread** (4) = thread in a topic-style chat
+- **ItemTypeMsgThread** (11) = thread in a regular chat
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。有 Shortcut 的操作优先使用。
@@ -66,6 +78,9 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | [`+messages-search`](references/lark-im-messages-search.md) | Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, supports auto-pagination via `--page-all` / `--page-limit`, enriches results via batched mget and chats batch_query |
 | [`+messages-send`](references/lark-im-messages-send.md) | Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key |
 | [`+threads-messages-list`](references/lark-im-threads-messages-list.md) | List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports sort/pagination |
+| [`+flag-create`](references/lark-im-flag-create.md) | Create a bookmark on a message or thread; user-only; defaults to message-layer flag; feed-layer flag requires explicit --item-type + --flag-type |
+| [`+flag-cancel`](references/lark-im-flag-cancel.md) | Cancel (remove) a bookmark. When no --flag-type is given, checks if the message is a thread root message; if so, cancels both message and feed layers |
+| [`+flag-list`](references/lark-im-flag-list.md) | List bookmarks; user-only; auto-enriches feed-type thread entries with message content; supports `--page-all` auto-pagination |
 
 ## API Resources
 
@@ -86,7 +101,7 @@ lark-cli im <resource> <method> [flags] # 调用 API
 
 ### chat.members
 
-  - `bots` — 获取群内机器人列表。 Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
+  - `bots` — 获取群内机器人列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
   - `create` — 将用户或机器人拉入群聊。Identity: supports `user` and `bot`; the caller must be in the target chat; for `bot` calls, added users must be within the app's availability; for internal chats the operator must belong to the same tenant; if only owners/admins can add members, the caller must be an owner/admin, or a chat-creator bot with `im:chat:operate_as_owner`.
   - `delete` — 将用户或机器人移出群聊。Identity: supports `user` and `bot`; only group owner, admin, or creator bot can remove others; max 50 users or 5 bots per request.
   - `get` — 获取群成员列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
@@ -140,3 +155,4 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `pins.create` | `im:message.pins:write_only` |
 | `pins.delete` | `im:message.pins:write_only` |
 | `pins.list` | `im:message.pins:read` |
+

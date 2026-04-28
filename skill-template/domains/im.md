@@ -4,6 +4,7 @@
 - **Chat**: A group chat or P2P conversation, identified by `chat_id` (oc_xxx).
 - **Thread**: A reply thread under a message, identified by `thread_id` (om_xxx or omt_xxx).
 - **Reaction**: An emoji reaction on a message.
+- **Flag**: A bookmark on a message or thread.
 
 ## Resource Relationships
 
@@ -35,3 +36,14 @@ When using bot identity (`--as bot`) to fetch messages (e.g. `+chat-messages-lis
 ### Card Messages (Interactive)
 
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
+
+### Flag Types
+
+Flags support two layers:
+
+- **Message-layer flag**: `(ItemTypeDefault, FlagTypeMessage)` — regular message bookmark
+- **Feed-layer flag**: `(ItemTypeThread/ItemTypeMsgThread, FlagTypeFeed)` — thread as feed-layer bookmark
+
+Item types for feed-layer flags:
+- **ItemTypeThread** (4) = thread in a topic-style chat
+- **ItemTypeMsgThread** (11) = thread in a regular chat
