@@ -229,6 +229,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+create-folder`](references/lark-drive-create-folder.md) | Create a Drive folder, optionally under a parent folder, with bot auto-grant support |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
 | [`+status`](references/lark-drive-status.md) | Compare a local directory with a Drive folder by SHA-256 content hash; reports `new_local` / `new_remote` / `modified` / `unchanged` (read-only diff primitive for sync workflows). `--local-dir` 必须是 cwd 内的相对路径，越界路径 CLI 会直接拒绝；目标在 cwd 外时引导用户切换 agent 工作目录，不要私自 `cd` 绕过。 |
+| [`+pull`](references/lark-drive-pull.md) | Mirror a Drive folder onto a local directory (Drive → local). Supports `--if-exists` (overwrite/skip) and `--delete-local` for one-way mirror sync; the destructive `--delete-local` requires `--yes`. `--local-dir` is bounded to cwd by CLI path validation; tell the user to switch the agent's working directory if the target is outside cwd. |
 | [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder |
 | [`+add-comment`](references/lark-drive-add-comment.md) | Add a comment to doc/docx/sheet/slides, also supports wiki URL resolving to doc/docx/sheet/slides |
 | [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable to a local file with limited polling |
