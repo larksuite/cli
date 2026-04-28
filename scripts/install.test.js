@@ -9,7 +9,7 @@ const os = require("os");
 
 const crypto = require("crypto");
 
-const { getExpectedChecksum, verifyChecksum, assertAllowedHost } = require("./install.js");
+const { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrl } = require("./install.js");
 
 describe("getExpectedChecksum", () => {
   function makeTmpChecksums(content) {
@@ -161,6 +161,167 @@ describe("assertAllowedHost", () => {
     assert.throws(
       () => assertAllowedHost("not-a-url"),
       TypeError
+    );
+  });
+});
+
+describe("resolveMirrorUrl", () => {
+  const ARCHIVE = "lark-cli-1.0.0-linux-amd64.tar.gz";
+  const VERSION = "1.0.0";
+
+  it("falls back to npmmirror when no env vars are set", () => {
+    const url = resolveMirrorUrl({}, ARCHIVE, VERSION);
+    assert.equal(
+      url,
+      "https://registry.npmmirror.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
+    );
+  });
+
+  it("does not derive from the default npmjs registry", () => {
+    // The public npmjs registry doesn't host /-/binary/<pkg>/..., so we must
+    // not point downloads at it.
+    const url = resolveMirrorUrl(
+      { npm_config_registry: "https://registry.npmjs.org/" },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(
+      url,
+      "https://registry.npmmirror.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
+    );
+  });
+
+  it("derives the binary URL from a non-default npm_config_registry", () => {
+    const url = resolveMirrorUrl(
+      { npm_config_registry: "https://corp.example.com/repository/npm-public/" },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(
+      url,
+      "https://corp.example.com/repository/npm-public/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
+    );
+  });
+
+  it("strips trailing slashes from the registry URL", () => {
+    const url = resolveMirrorUrl(
+      { npm_config_registry: "https://corp.example.com///" },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(
+      url,
+      "https://corp.example.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
+    );
+  });
+
+  it("LARK_CLI_DOWNLOAD_HOST takes precedence over npm_config_registry", () => {
+    const url = resolveMirrorUrl(
+      {
+        LARK_CLI_DOWNLOAD_HOST: "https://override.example.com",
+        npm_config_registry: "https://corp.example.com/",
+      },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(
+      url,
+      "https://override.example.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
+    );
+  });
+
+  it("ignores empty/whitespace env values", () => {
+    const url = resolveMirrorUrl(
+      { LARK_CLI_DOWNLOAD_HOST: "  ", npm_config_registry: "" },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(
+      url,
+      "https://registry.npmmirror.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
+    );
+  });
+
+  it("rejects file:// in LARK_CLI_DOWNLOAD_HOST", () => {
+    assert.throws(
+      () => resolveMirrorUrl(
+        { LARK_CLI_DOWNLOAD_HOST: "file:///tmp" },
+        ARCHIVE,
+        VERSION
+      ),
+      { message: /LARK_CLI_DOWNLOAD_HOST must be an https:\/\/ URL/ }
+    );
+  });
+
+  it("rejects ftp:// in LARK_CLI_DOWNLOAD_HOST", () => {
+    assert.throws(
+      () => resolveMirrorUrl(
+        { LARK_CLI_DOWNLOAD_HOST: "ftp://example.com" },
+        ARCHIVE,
+        VERSION
+      ),
+      { message: /LARK_CLI_DOWNLOAD_HOST must be an https:\/\/ URL/ }
+    );
+  });
+
+  it("rejects http:// in LARK_CLI_DOWNLOAD_HOST", () => {
+    assert.throws(
+      () => resolveMirrorUrl(
+        { LARK_CLI_DOWNLOAD_HOST: "http://example.com" },
+        ARCHIVE,
+        VERSION
+      ),
+      { message: /LARK_CLI_DOWNLOAD_HOST must be an https:\/\/ URL/ }
+    );
+  });
+
+  it("rejects https:// with no hostname in LARK_CLI_DOWNLOAD_HOST", () => {
+    // `https://` without a host is rejected by the URL parser; surface a
+    // meaningful error instead of a raw TypeError.
+    assert.throws(
+      () => resolveMirrorUrl(
+        { LARK_CLI_DOWNLOAD_HOST: "https://" },
+        ARCHIVE,
+        VERSION
+      ),
+      { message: /LARK_CLI_DOWNLOAD_HOST is not a valid URL/ }
+    );
+  });
+
+  it("rejects garbage in LARK_CLI_DOWNLOAD_HOST", () => {
+    assert.throws(
+      () => resolveMirrorUrl(
+        { LARK_CLI_DOWNLOAD_HOST: "not-a-url" },
+        ARCHIVE,
+        VERSION
+      ),
+      { message: /LARK_CLI_DOWNLOAD_HOST is not a valid URL/ }
+    );
+  });
+
+  it("silently falls back when npm_config_registry is non-https", () => {
+    // Implicit feature: don't break installs whose npm registry is plain http.
+    // The user didn't opt into binary-mirror behavior, so just use the default.
+    const url = resolveMirrorUrl(
+      { npm_config_registry: "http://internal.example.com/" },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(
+      url,
+      "https://registry.npmmirror.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
+    );
+  });
+
+  it("silently falls back when npm_config_registry is file://", () => {
+    const url = resolveMirrorUrl(
+      { npm_config_registry: "file:///tmp" },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(
+      url,
+      "https://registry.npmmirror.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"
     );
   });
 });
