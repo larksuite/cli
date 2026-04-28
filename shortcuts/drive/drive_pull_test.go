@@ -319,6 +319,175 @@ func TestDrivePullDeleteLocalDoesNotEscapeViaSymlinkParentRef(t *testing.T) {
 	}
 }
 
+// TestDrivePullSkipsSymlinkInsideRoot pins WalkDir's default symlink
+// behavior in the +pull --delete-local path. A child symlink under the
+// validated root pointing into an out-of-tree directory must NOT be
+// followed: WalkDir surfaces it as a non-regular entry, our callback
+// skips it, and the sentinel inside the target survives the delete pass.
+func TestDrivePullSkipsSymlinkInsideRoot(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	escapeDir := t.TempDir()
+	sentinel := filepath.Join(escapeDir, "secret.txt")
+	if err := os.WriteFile(sentinel, []byte("S3CRET"), 0o644); err != nil {
+		t.Fatalf("WriteFile secret: %v", err)
+	}
+
+	cwdDir := t.TempDir()
+	withDriveWorkingDir(t, cwdDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "ok.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile ok: %v", err)
+	}
+	if err := os.Symlink(escapeDir, filepath.Join("local", "sub", "escape")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	// Empty remote so --delete-local would target every regular file
+	// the walker can reach.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("sentinel %q must survive (walker followed child symlink): %v", sentinel, err)
+	}
+	if _, err := os.Stat(filepath.Join("local", "ok.txt")); !os.IsNotExist(err) {
+		t.Fatalf("local/ok.txt should have been deleted (proves walk ran), got: %v", err)
+	}
+}
+
+// TestDrivePullSurvivesCircularSymlinkInsideRoot ensures the walker
+// terminates even when the validated root contains a child symlink
+// pointing back at one of its ancestors.
+func TestDrivePullSurvivesCircularSymlinkInsideRoot(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	cwdDir := t.TempDir()
+	withDriveWorkingDir(t, cwdDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "sub", "real.txt"), []byte("real"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	loopTarget, err := filepath.Abs(filepath.Join("local"))
+	if err != nil {
+		t.Fatalf("Abs: %v", err)
+	}
+	if err := os.Symlink(loopTarget, filepath.Join("local", "sub", "loop")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+
+	err = mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join("local", "sub", "real.txt")); !os.IsNotExist(err) {
+		t.Fatalf("real.txt should be deleted (proves walk completed)")
+	}
+}
+
+// TestDrivePullDownloadDoesNotEscapeViaSymlinkParentRef pins the second
+// half of the canonical-root fix: with --local-dir "link/..", which
+// SafeInputPath happily accepts (filepath.Clean shrinks "link/.." to
+// "."), download targets must land inside the canonical cwd, never
+// inside the symlink target's parent. Without the fix the download
+// would write into a sibling directory.
+func TestDrivePullDownloadDoesNotEscapeViaSymlinkParentRef(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	// escapeDir is a sibling temp dir; nothing should ever land here.
+	escapeDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(escapeDir, "preexisting.txt"), []byte("DO-NOT-TOUCH"), 0o644); err != nil {
+		t.Fatalf("WriteFile preexisting: %v", err)
+	}
+
+	cwdDir := t.TempDir()
+	withDriveWorkingDir(t, cwdDir)
+	if err := os.Symlink(escapeDir, filepath.Join(cwdDir, "link")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_x", "name": "downloaded.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_x/download",
+		Status:  200,
+		Body:    []byte("REMOTE-BODY"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "link/..",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	mustReadFile(t, filepath.Join(cwdDir, "downloaded.txt"), "REMOTE-BODY")
+	if _, err := os.Stat(filepath.Join(escapeDir, "downloaded.txt")); !os.IsNotExist(err) {
+		t.Fatalf("downloaded.txt must NOT land in escape dir; stat err=%v", err)
+	}
+	mustReadFile(t, filepath.Join(escapeDir, "preexisting.txt"), "DO-NOT-TOUCH")
+}
+
 // TestDrivePullRejectsAbsoluteLocalDir confirms SafeLocalFlagPath surfaces
 // the proper flag name in the error message.
 func TestDrivePullRejectsAbsoluteLocalDir(t *testing.T) {
