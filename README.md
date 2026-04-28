@@ -12,8 +12,8 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 
 ## Why lark-cli?
 
-- **Agent-Native Design** — 22 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
-- **Wide Coverage** — 15 business domains, 200+ curated commands, 23 AI Agent [Skills](./skills/)
+- **Agent-Native Design** — 23 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
+- **Wide Coverage** — 16 business domains, 200+ curated commands, 23 AI Agent [Skills](./skills/)
 - **AI-Friendly & Optimized** — Every command is tested with real Agents, featuring concise parameters, smart defaults, and structured output to maximize Agent call success rates
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
