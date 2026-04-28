@@ -13,10 +13,12 @@ from typing import Any
 
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
+ASSETS_DIR = SKILL_ROOT / "assets"
 REFERENCES_DIR = SKILL_ROOT / "references"
-TEMPLATES_DIR = REFERENCES_DIR / "templates"
+TEMPLATES_DIR = ASSETS_DIR / "templates"
 CATALOG_PATH = REFERENCES_DIR / "template-catalog.md"
 DEFAULT_INDEX_PATH = REFERENCES_DIR / "template-index.json"
+LIGHTWEIGHT_INDEX_SCHEMA_VERSION = "1.1.0"
 
 
 class TemplateToolError(Exception):
@@ -404,8 +406,10 @@ def extract_title_hint(slide_xml: str) -> dict[str, str] | None:
 
 def summarize_slide(slide_xml: str, slide_number: int, presentation_info: dict[str, Any] | None = None) -> dict[str, Any]:
     presentation_info = presentation_info or {}
-    slide_width = int(float(presentation_info.get("width", 0))) or None
-    slide_height = int(float(presentation_info.get("height", 0))) or None
+    raw_width = presentation_info.get("width")
+    raw_height = presentation_info.get("height")
+    slide_width = int(float(raw_width)) if raw_width else None
+    slide_height = int(float(raw_height)) if raw_height else None
     regions = extract_slide_regions(slide_xml)
     return {
         "slide_number": slide_number,
@@ -619,7 +623,6 @@ def build_search_text(entry: dict[str, Any]) -> str:
         entry.get("page_types"),
         *(entry.get("layout_tags") or []),
         entry.get("use_cases"),
-        *[f'{region["kind"]} {region["role"]}' for region in entry.get("editable_regions") or []],
         *[f'{entry_range["label"]} {entry_range["range"]}' for entry_range in entry.get("ranges", [])],
     ]
     return " ".join(str(value) for value in values if value).lower()
@@ -632,7 +635,6 @@ def build_index_data() -> dict[str, Any]:
         template_path = TEMPLATES_DIR / entry["filename"]
         xml_info = parse_template_xml(template_path)
         layout_tags = sorted({tag for slide in xml_info["slide_summaries"] for tag in slide.get("layout_tags", [])})
-        editable_regions = [region for slide in xml_info["slide_summaries"] for region in slide.get("editable_regions", [])]
         templates.append(
             {
                 "template_id": entry["template_id"],
@@ -649,24 +651,12 @@ def build_index_data() -> dict[str, Any]:
                 "page_types": entry["page_types"],
                 "layout_tags": layout_tags,
                 "use_cases": entry["use_cases"],
-                "theme_summary": xml_info["theme_summary"],
-                "editable_regions": slice_array(editable_regions, 12),
-                "bbox_summary": {
-                    "slide_count": len(xml_info["slide_summaries"]),
-                    "slides": slice_array(
-                        [
-                            {"slide_number": slide["slide_number"], "bbox_summary": slide["bbox_summary"]}
-                            for slide in xml_info["slide_summaries"]
-                        ],
-                        6,
-                    ),
-                },
                 "ranges": [{"label": entry_range["label"], "range": entry_range["range"]} for entry_range in entry["ranges"]],
             }
         )
 
     return {
-        "schema_version": "1.0.0",
+        "schema_version": LIGHTWEIGHT_INDEX_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "template_count": len(templates),
         "templates": templates,
@@ -678,7 +668,7 @@ def load_index(index_path: str | Path = DEFAULT_INDEX_PATH) -> dict[str, Any]:
     if index_path.exists():
         existing = json.loads(read_file(index_path))
         first_template = existing.get("templates", [None])[0] if existing.get("templates") else None
-        if first_template and first_template.get("layout_tags") and first_template.get("bbox_summary"):
+        if first_template and first_template.get("layout_tags") and "bbox_summary" not in first_template:
             return existing
     return build_index_data()
 
@@ -797,16 +787,16 @@ def summarize_selection(index_data: dict[str, Any], template_selector: str, opti
             "scene": entry["scene"],
             "tone": entry["tone"],
             "formality": entry["formality"],
-            "slide_count": entry["slide_count"],
-            "presentation_title": entry["presentation_title"],
+            "slide_count": len(xml_info["slides"]),
+            "presentation_title": xml_info["title_text"],
             "palette": entry["palette"],
             "structure": entry["structure"],
             "page_types": entry["page_types"],
-            "layout_tags": entry.get("layout_tags"),
+            "layout_tags": sorted({tag for slide in xml_info["slide_summaries"] for tag in slide.get("layout_tags", [])}),
             "use_cases": entry["use_cases"],
         },
         "selection": selection,
-        "theme_summary": entry["theme_summary"],
+        "theme_summary": xml_info["theme_summary"],
         "summary": aggregate_slides(slide_summaries),
         "slides": slide_summaries,
     }
@@ -920,10 +910,10 @@ def parse_cli_args(argv: list[str]) -> tuple[str | None, dict[str, Any]]:
 def print_usage() -> None:
     usage = [
         "Usage:",
-        "  python3 template-tool.py build-index [--out <path>]",
-        "  python3 template-tool.py search --query <text> [--tone light|dark|colorful] [--formality formal|casual|creative] [--layout-tag <tag>] [--limit 3]",
-        "  python3 template-tool.py summarize --template <template-id|path> (--range 1-2,5 | --label 封面)",
-        "  python3 template-tool.py extract --template <template-id|path> (--range 1-2,5 | --label 封面) [--with-summary] [--out <path>]",
+        "  python3 template_tool.py build-index [--out <path>]",
+        "  python3 template_tool.py search --query <text> [--tone light|dark|colorful] [--formality formal|casual|creative] [--layout-tag <tag>] [--limit 3]",
+        "  python3 template_tool.py summarize --template <template-id|path> (--range 1-2,5 | --label 封面)",
+        "  python3 template_tool.py extract --template <template-id|path> (--range 1-2,5 | --label 封面) [--with-summary] [--out <path>]",
     ]
     print("\n".join(usage), file=sys.stderr)
 

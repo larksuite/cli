@@ -1,41 +1,42 @@
 # Slides 模板目录
 
-> **创建 PPT 前必读。** 先根据用户需求匹配 1-2 个最佳模板，再根据每个模板下方的“页型索引”按需读取对应 slide 范围。**默认不要阅读全文模板 XML**，尤其不要默认读取 `light_general.xml` / `dark_general.xml` 这类 54/56 页通用变体库全文。
+> **创建 PPT 前必读。** 先根据用户需求匹配 1-2 个最佳模板，再根据每个模板下方的“页型索引”确定需要的页面类型。模板 XML 位于 `assets/templates/*.xml`，属于机器资源；默认通过脚本摘要或裁切，**不要阅读全文模板 XML**，尤其不要默认读取 `light_general.xml` / `dark_general.xml` 这类 54/56 页通用变体库全文。
 
-> **机器优先路径。** 优先先读 [`template-index.json`](template-index.json) 做低成本路由；需要按页型抽摘要或裁切 XML 时，优先运行 [`../scripts/template-tool.py`](../scripts/template-tool.py) 的 `search` / `summarize` / `extract`。只有当你已经锁定了具体页型，才继续读取模板 XML 片段。
+> **机器优先路径。** 优先运行 [`../scripts/template_tool.py`](../scripts/template_tool.py) 的 `search` 做低成本路由；锁定模板后运行 `summarize` 获取主题和布局摘要；只有需要具体布局骨架时才运行 `extract` 裁切目标页型 XML。`template-index.json` 是脚本缓存/轻量路由索引，不是默认阅读入口。
 
-> **降级路径。** 如果 `template-tool.py` 不可用，退回这条纯文档路径：`template-index.json` 初筛 → 本文按场景确定模板 → 按页型索引读取目标 XML 范围。不要因为脚本不可用就直接阅读全文模板 XML。
+> **降级路径。** 如果 `template_tool.py` 不可用，使用本文按场景确定候选模板和页型，但不要因为脚本不可用就直接阅读全文模板 XML。
 
 > **对话输出规则。** 当处于需求澄清阶段时，应该把匹配结果整理成 **2-3 个用户可选模板候选**，不要默认把整份目录贴给用户。每个候选至少包含：模板名、适用场景、风格/色调、简短推荐理由。优先展示场景强相关模板；`light_general.xml` / `dark_general.xml` 这类通用模板只作为兜底或补充选项。
 
 ## 使用方法
 
-1. 先读 [`template-index.json`](template-index.json)，或运行 `python3 skills/lark-slides/scripts/template-tool.py search --query "<主题>" --limit 3`，根据用户描述的 **场景、风格、色调** 做初筛
+1. 先运行 `python3 skills/lark-slides/scripts/template_tool.py search --query "<主题>" --limit 3`，根据用户描述的 **场景、风格、色调** 做初筛
 2. 整理出 **2-3 个**最匹配的用户可选模板候选；优先选场景强相关模板，没有明显场景模板时再用标 ⭐ 的通用模板兜底
 3. 用户选定后，再锁定 **1-2 个**最匹配的模板作为实际参考
 4. 先看模板下方的 **页型索引**，锁定你真正需要的页型：封面 / 目录 / 分节 / 内容 / 结尾
-5. 优先运行 `template-tool.py summarize` 查看 `<theme>` / 页型摘要；只有需要具体布局骨架时，再运行 `template-tool.py extract` 或按需读取对应模板 XML 的相关 slide 范围
+5. 优先运行 `template_tool.py summarize` 查看 `<theme>` / 页型摘要；只有需要具体布局骨架时，再运行 `template_tool.py extract`
 6. 从模板中提取并复用：`<theme>` 配色、页面流、shape 排列布局、装饰元素风格
 7. 将用户的实际内容填充到模板的结构框架中，**不要照搬模板的占位文字**
+8. 创建前运行 `layout_lint.py --input <file>`；它检查 XML well-formed 和布局风险，不等价于完整 XSD schema 校验
 
 ### 脚本快捷命令
 
 ```bash
 # 先找候选模板
-python3 skills/lark-slides/scripts/template-tool.py search --query "工作汇报" --tone light --limit 3
+python3 skills/lark-slides/scripts/template_tool.py search --query "工作汇报" --tone light --limit 3
 
 # 看指定页型的紧凑摘要
-python3 skills/lark-slides/scripts/template-tool.py summarize --template office--work_report --label 内容
+python3 skills/lark-slides/scripts/template_tool.py summarize --template office--work_report --label 内容
 
 # 只裁切目标页型，避免把整份 XML 拉进上下文
-python3 skills/lark-slides/scripts/template-tool.py extract --template office--work_report --label 封面 --out /tmp/work-report-cover.xml
+python3 skills/lark-slides/scripts/template_tool.py extract --template office--work_report --label 封面 --out /tmp/work-report-cover.xml
 ```
 
 如果脚本路径不可用，按这个顺序手动降级：
 
-1. 先读 `template-index.json` 按 query / tone / formality 选 2-3 个候选
-2. 再回到本文对应分类，确认页数、色调、适用场景
-3. 只读取目标模板的目标页型范围，不要整份展开
+1. 回到本文对应分类，确认页数、色调、适用场景，选 2-3 个候选
+2. 根据“页型索引”确定需要的目标页型
+3. 等脚本可用后再用 `summarize` / `extract` 获取详细布局数据；不要整份展开 `assets/templates/*.xml`
 
 ## 匹配维度
 

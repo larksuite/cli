@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -67,6 +68,50 @@ def strip_xml(value: str) -> str:
     stripped = stripped.replace("&quot;", '"')
     stripped = stripped.replace("&#39;", "'")
     return re.sub(r"\s+", " ", stripped).strip()
+
+
+def xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if tag.startswith("{") else tag
+
+
+def extract_error_context(xml: str, line: int | None, column: int | None, radius: int = 40) -> str | None:
+    if line is None or column is None:
+        return None
+    lines = xml.splitlines()
+    if line < 1 or line > len(lines):
+        return None
+    source_line = lines[line - 1]
+    start = max(column - radius, 0)
+    end = min(column + radius, len(source_line))
+    return source_line[start:end].strip()
+
+
+def build_xml_error_issue(error: ET.ParseError, xml: str) -> dict[str, Any]:
+    line, column = getattr(error, "position", (None, None))
+    return {
+        "level": "error",
+        "code": "xml_not_well_formed",
+        "message": f"XML is not well-formed: {error}",
+        "line": line,
+        "column": column,
+        "context": extract_error_context(xml, line, column),
+        "hint": (
+            "Escape raw user text before placing it in XML. In text nodes and attribute values, bare & must be "
+            "written as &amp;. In text nodes, write < as &lt; and > as &gt;. For attribute URLs, use a=1&amp;b=2."
+        ),
+    }
+
+
+def validate_xml_well_formed(xml: str) -> dict[str, Any] | None:
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as error:
+        return build_xml_error_issue(error, xml)
+
+    root_name = xml_local_name(root.tag)
+    if root_name not in {"presentation", "slide"}:
+        fail("input must contain a <presentation> or <slide> root")
+    return None
 
 
 def parse_presentation(xml: str) -> dict[str, Any]:
@@ -252,6 +297,16 @@ def lint_slide(slide_xml: str, slide_number: int, width: int, height: int) -> di
 
 
 def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
+    xml_error = validate_xml_well_formed(xml)
+    if xml_error:
+        return {
+            "file": source_path,
+            "slide_size": {"width": 960, "height": 540},
+            "summary": {"slide_count": 0, "error_count": 1, "warning_count": 0},
+            "issues": [xml_error],
+            "slides": [],
+        }
+
     presentation = parse_presentation(xml)
     slides = [
         lint_slide(slide_xml, index + 1, presentation["width"], presentation["height"])
@@ -268,7 +323,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
 
 
 def print_usage() -> None:
-    print("Usage:\n  python3 layout-lint.py --input <presentation.xml>", file=sys.stderr)
+    print("Usage:\n  python3 layout_lint.py --input <presentation.xml>", file=sys.stderr)
 
 
 def run_cli(argv: list[str] | None = None) -> None:
