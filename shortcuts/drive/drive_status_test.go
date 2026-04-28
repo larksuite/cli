@@ -281,6 +281,117 @@ func TestDriveStatusDoesNotEscapeViaSymlinkParentRef(t *testing.T) {
 	}
 }
 
+// TestDriveStatusSkipsSymlinkInsideRoot pins down WalkDir's default policy
+// for symlinks discovered as child entries: they are reported with a
+// non-regular file mode and the callback skips them, so a symlink inside
+// the validated root pointing into an out-of-tree directory cannot leak
+// the target's contents.
+func TestDriveStatusSkipsSymlinkInsideRoot(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	// Sentinel sits outside cwd; a child symlink inside the walked root
+	// points there. If the walker followed child symlinks (it must not),
+	// the sentinel's name would surface in new_local.
+	escapeDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(escapeDir, "secret.txt"), []byte("S3CRET"), 0o644); err != nil {
+		t.Fatalf("WriteFile secret: %v", err)
+	}
+
+	cwdDir := t.TempDir()
+	withDriveWorkingDir(t, cwdDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "ok.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile ok: %v", err)
+	}
+	// Child-of-root symlink that resolves out of the validated subtree.
+	if err := os.Symlink(escapeDir, filepath.Join("local", "sub", "escape")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveStatus, []string{
+		"+status",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "secret.txt") || strings.Contains(out, "S3CRET") {
+		t.Fatalf("walk followed child symlink and leaked sentinel:\n%s", out)
+	}
+	if !strings.Contains(out, `"rel_path": "ok.txt"`) {
+		t.Fatalf("expected ok.txt in new_local; got:\n%s", out)
+	}
+}
+
+// TestDriveStatusSurvivesCircularSymlinkInsideRoot makes sure WalkDir
+// terminates even when a child symlink points back at one of its
+// ancestors. WalkDir's default policy already declines to follow child
+// symlinks; this test pins that contract for our caller.
+func TestDriveStatusSurvivesCircularSymlinkInsideRoot(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	cwdDir := t.TempDir()
+	withDriveWorkingDir(t, cwdDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "sub", "real.txt"), []byte("real"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	// loop symlink: cwd/local/sub/loop -> cwd/local (an ancestor).
+	loopTarget, err := filepath.Abs(filepath.Join("local"))
+	if err != nil {
+		t.Fatalf("Abs: %v", err)
+	}
+	if err := os.Symlink(loopTarget, filepath.Join("local", "sub", "loop")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+
+	// If WalkDir followed the loop, this test would never finish; the
+	// test runner's per-test timeout would surface that as a failure.
+	err = mountAndRunDrive(t, DriveStatus, []string{
+		"+status",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"rel_path": "sub/real.txt"`) {
+		t.Fatalf("expected sub/real.txt in new_local; got:\n%s", stdout.String())
+	}
+}
+
 // TestDriveStatusRejectsMalformedFolderToken covers the ResourceName format
 // guard: a token with control characters (newline) must be rejected before
 // any API call is made.
