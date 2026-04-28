@@ -6,8 +6,6 @@ package drive
 import (
 	"context"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +15,7 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -131,7 +130,7 @@ var DrivePull = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
-		remoteFiles, err := drivePullListRemote(ctx, runtime, folderToken, "")
+		remoteFiles, remotePaths, err := drivePullListRemote(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
 		}
@@ -140,13 +139,13 @@ var DrivePull = common.Shortcut{
 		items := make([]drivePullItem, 0)
 
 		// Deterministic iteration order for output stability.
-		remotePaths := make([]string, 0, len(remoteFiles))
+		downloadablePaths := make([]string, 0, len(remoteFiles))
 		for p := range remoteFiles {
-			remotePaths = append(remotePaths, p)
+			downloadablePaths = append(downloadablePaths, p)
 		}
-		sort.Strings(remotePaths)
+		sort.Strings(downloadablePaths)
 
-		for _, rel := range remotePaths {
+		for _, rel := range downloadablePaths {
 			token := remoteFiles[rel]
 			target := filepath.Join(rootRelToCwd, rel)
 
@@ -184,14 +183,16 @@ var DrivePull = common.Shortcut{
 					continue
 				}
 				rel = filepath.ToSlash(rel)
-				if _, ok := remoteFiles[rel]; ok {
+				// Consult remotePaths (every Drive entry, regardless of
+				// type) rather than remoteFiles (downloadable subset
+				// only). Otherwise an online doc / shortcut at e.g.
+				// "notes.docx" would leave a same-named local file
+				// looking orphaned and get unlinked even though Drive
+				// still knows about that path.
+				if _, ok := remotePaths[rel]; ok {
 					continue
 				}
-				// FileIO has no Remove(); the absolute path comes from
-				// walking safeRoot, which validate.SafeInputPath has
-				// already bounded inside cwd, so a bare os.Remove is
-				// acceptable here.
-				if err := os.Remove(absPath); err != nil { //nolint:forbidigo // see comment above
+				if err := vfs.Remove(absPath); err != nil {
 					items = append(items, drivePullItem{RelPath: rel, Action: "delete_failed", Error: err.Error()})
 					continue
 				}
@@ -213,15 +214,25 @@ var DrivePull = common.Shortcut{
 	},
 }
 
-// drivePullListRemote recursively lists a Drive folder and returns a map of
-// rel_path → file_token for entries with type=file. Subfolders recurse;
-// online docs and shortcuts are skipped (no equivalent local binary).
+// drivePullListRemote recursively lists a Drive folder.
+//
+// It returns two views:
+//   - files:    rel_path → file_token, for entries with type=file. This is
+//     the "downloadable" subset and drives the download/skip loop.
+//   - allPaths: every entry's rel_path regardless of type (file, online doc,
+//     shortcut, …). --delete-local consults this set so that a local file
+//     sitting at the same rel_path as e.g. an online doc is NOT treated as
+//     orphaned and deleted.
+//
+// Subfolders recurse; online docs and shortcuts are not added to files
+// (no equivalent local binary) but are recorded in allPaths.
 //
 // TODO(post-#692): when drive +status merges, lift this and the matching
 // helper in drive_status.go into a shared listRemoteFolderFiles in the
 // drive package.
-func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, folderToken, relBase string) (map[string]string, error) {
+func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, folderToken, relBase string) (map[string]string, map[string]struct{}, error) {
 	files := make(map[string]string)
+	allPaths := make(map[string]struct{})
 	pageToken := ""
 	for {
 		params := map[string]interface{}{
@@ -233,7 +244,7 @@ func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, fo
 		}
 		result, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files", params, nil)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		rawFiles, _ := result["files"].([]interface{})
 		for _, item := range rawFiles {
@@ -247,17 +258,28 @@ func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, fo
 			if fName == "" || fToken == "" {
 				continue
 			}
+			rel := drivePullJoinRel(relBase, fName)
 			switch fType {
 			case drivePullFileType:
-				files[drivePullJoinRel(relBase, fName)] = fToken
+				files[rel] = fToken
+				allPaths[rel] = struct{}{}
 			case drivePullFolderType:
-				subFiles, err := drivePullListRemote(ctx, runtime, fToken, drivePullJoinRel(relBase, fName))
+				subFiles, subPaths, err := drivePullListRemote(ctx, runtime, fToken, rel)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				for k, v := range subFiles {
 					files[k] = v
 				}
+				for k := range subPaths {
+					allPaths[k] = struct{}{}
+				}
+			default:
+				// docx, sheet, bitable, mindnote, slides, shortcut, …
+				// — not downloadable, but Drive still owns this rel_path
+				// so --delete-local must not treat a local same-named
+				// file as orphaned.
+				allPaths[rel] = struct{}{}
 			}
 		}
 		hasMore, _ := result["has_more"].(bool)
@@ -267,7 +289,7 @@ func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, fo
 		}
 		pageToken = nextToken
 	}
-	return files, nil
+	return files, allPaths, nil
 }
 
 func drivePullJoinRel(base, name string) string {
@@ -301,24 +323,37 @@ func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, file
 // walking a canonical root (no symlinks in the path) — otherwise OS path
 // resolution could redirect a delete to a file outside cwd. Same threat
 // model as drive_status.go.
+//
+// The walk goes through vfs.ReadDir so tests (and the rest of the
+// codebase) can swap in a mock filesystem; symlinks are detected via
+// DirEntry.Type() and not followed, matching filepath.WalkDir's default.
 func drivePullWalkLocal(root string) ([]string, error) {
 	var paths []string
-	// FileIO has no walker today; the root passed in is the canonical
-	// absolute path from validate.SafeInputPath, so WalkDir's default
-	// "do not follow child symlinks" policy keeps the traversal inside
-	// the validated subtree.
-	err := filepath.WalkDir(root, func(absPath string, d fs.DirEntry, walkErr error) error { //nolint:forbidigo // see comment above
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || !d.Type().IsRegular() {
-			return nil
-		}
-		paths = append(paths, absPath)
-		return nil
-	})
-	if err != nil {
+	if err := drivePullWalkLocalDir(root, &paths); err != nil {
 		return nil, output.Errorf(output.ExitInternal, "io", "walk %s: %s", root, err)
 	}
 	return paths, nil
+}
+
+func drivePullWalkLocalDir(dir string, paths *[]string) error {
+	entries, err := vfs.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		full := filepath.Join(dir, e.Name())
+		if e.IsDir() {
+			if err := drivePullWalkLocalDir(full, paths); err != nil {
+				return err
+			}
+			continue
+		}
+		// Skip symlinks, devices, sockets, etc. Only regular files are
+		// candidates for --delete-local.
+		if !e.Type().IsRegular() {
+			continue
+		}
+		*paths = append(*paths, full)
+	}
+	return nil
 }

@@ -244,6 +244,71 @@ func TestDrivePullDeletesLocalOnlyFilesWhenYes(t *testing.T) {
 	}
 }
 
+// TestDrivePullDeleteLocalPreservesLocalFileShadowedByOnlineDoc is the
+// regression for the case where Drive holds an online doc (docx, sheet,
+// shortcut, …) at the same rel_path as a local file. The online doc is
+// NOT in the downloadable set (type≠file) but Drive still owns that path,
+// so --delete-local must not treat the local file as orphaned. Before the
+// fix, the delete pass consulted only the type=file map and would unlink
+// the local file every time it shared a name with an online doc.
+func TestDrivePullDeleteLocalPreservesLocalFileShadowedByOnlineDoc(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// User keeps a local copy at the same path Drive serves an online
+	// doc — should survive --delete-local.
+	if err := os.WriteFile(filepath.Join("local", "notes.docx"), []byte("LOCAL-DOCX"), 0o644); err != nil {
+		t.Fatalf("WriteFile shadow: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file"},
+					// Same name as the local file — must be tracked by
+					// the lister even though it is not downloadable.
+					map[string]interface{}{"token": "tok_doc", "name": "notes.docx", "type": "docx"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_keep/download",
+		Status:  200,
+		Body:    []byte("KEEP"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"deleted_local": 0`) {
+		t.Errorf("expected deleted_local=0 (online doc shadows local file), got: %s", out)
+	}
+	mustReadFile(t, filepath.Join("local", "notes.docx"), "LOCAL-DOCX")
+	mustReadFile(t, filepath.Join("local", "keep.txt"), "KEEP")
+}
+
 // TestDrivePullDeleteLocalDoesNotEscapeViaSymlinkParentRef is the
 // regression for the "link/.." escape applied to --delete-local — the
 // most dangerous variant, since the bug would otherwise let the kernel
