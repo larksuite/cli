@@ -39,14 +39,6 @@ const isWindows = process.platform === "win32";
 const ext = isWindows ? ".zip" : ".tar.gz";
 const archiveName = `${NAME}-${VERSION}-${platform}-${arch}${ext}`;
 const GITHUB_URL = `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
-const MIRROR_URL = resolveMirrorUrl(process.env, archiveName, VERSION);
-// Derived mirror host (from npm_config_registry / LARK_CLI_DOWNLOAD_HOST) is
-// allowed at runtime — checksum verification still protects content integrity.
-try {
-  ALLOWED_HOSTS.add(new URL(MIRROR_URL).hostname);
-} catch (_) {
-  // resolveMirrorUrl always returns a valid URL; guard is defensive.
-}
 
 const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
@@ -128,6 +120,16 @@ function assertAllowedHost(url) {
   }
 }
 
+// Resolve the mirror URL and admit its host. Called from install() so that
+// resolution errors (e.g. invalid LARK_CLI_DOWNLOAD_HOST) propagate into the
+// guarded try/catch and surface the recovery guidance instead of a raw
+// module-load stack trace.
+function getMirrorUrl(env) {
+  const mirrorUrl = resolveMirrorUrl(env, archiveName, VERSION);
+  ALLOWED_HOSTS.add(new URL(mirrorUrl).hostname);
+  return mirrorUrl;
+}
+
 function download(url, destPath) {
   assertAllowedHost(url);
   const args = [
@@ -144,6 +146,11 @@ function download(url, destPath) {
 }
 
 function install() {
+  // Resolve the mirror URL up front so a bad LARK_CLI_DOWNLOAD_HOST throws
+  // here (inside the guarded path) and gets the friendly error help below,
+  // not a raw module-load stack trace.
+  const mirrorUrl = getMirrorUrl(process.env);
+
   fs.mkdirSync(binDir, { recursive: true });
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-"));
@@ -153,7 +160,7 @@ function install() {
     try {
       download(GITHUB_URL, archivePath);
     } catch (err) {
-      download(MIRROR_URL, archivePath);
+      download(mirrorUrl, archivePath);
     }
 
     const expectedHash = getExpectedChecksum(archiveName);
