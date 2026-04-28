@@ -158,7 +158,7 @@ func isCompletionCommand(args []string) bool {
 // configureFlagCompletions enables cmdutil.RegisterFlagCompletion only when
 // the invocation will actually serve a __complete request.
 func configureFlagCompletions(args []string) {
-	cmdutil.SetFlagCompletionsDisabled(!isCompletionCommand(args))
+	cmdutil.SetFlagCompletionsEnabled(isCompletionCommand(args))
 }
 
 // handleRootError dispatches a command error to the appropriate handler

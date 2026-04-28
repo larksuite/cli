@@ -16,8 +16,8 @@ import (
 // the per-flag enum completion (runner.go:879) and the auto-injected --format
 // completion (runner.go:895).
 func TestShortcutMount_FlagCompletionsRegistered(t *testing.T) {
-	t.Cleanup(func() { cmdutil.SetFlagCompletionsDisabled(false) })
-	cmdutil.SetFlagCompletionsDisabled(false)
+	t.Cleanup(func() { cmdutil.SetFlagCompletionsEnabled(false) })
+	cmdutil.SetFlagCompletionsEnabled(true)
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	parent := &cobra.Command{Use: "root"}
@@ -68,8 +68,8 @@ func TestShortcutMount_FlagCompletionsRegistered(t *testing.T) {
 // TestShortcutMount_FlagCompletionsDisabled verifies the switch actually
 // prevents the two registrations from landing in cobra's global map.
 func TestShortcutMount_FlagCompletionsDisabled(t *testing.T) {
-	t.Cleanup(func() { cmdutil.SetFlagCompletionsDisabled(false) })
-	cmdutil.SetFlagCompletionsDisabled(true)
+	t.Cleanup(func() { cmdutil.SetFlagCompletionsEnabled(false) })
+	cmdutil.SetFlagCompletionsEnabled(false)
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	parent := &cobra.Command{Use: "root"}

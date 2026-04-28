@@ -12,18 +12,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestSetFlagCompletionsDisabled_RoundTrip(t *testing.T) {
-	t.Cleanup(func() { SetFlagCompletionsDisabled(false) })
+func TestSetFlagCompletionsEnabled_RoundTrip(t *testing.T) {
+	t.Cleanup(func() { SetFlagCompletionsEnabled(false) })
 
-	if FlagCompletionsDisabled() {
-		t.Fatal("expected default false")
+	if FlagCompletionsEnabled() {
+		t.Fatal("expected default false (completions disabled by default)")
 	}
-	SetFlagCompletionsDisabled(true)
-	if !FlagCompletionsDisabled() {
+	SetFlagCompletionsEnabled(true)
+	if !FlagCompletionsEnabled() {
 		t.Fatal("expected true after Set(true)")
 	}
-	SetFlagCompletionsDisabled(false)
-	if FlagCompletionsDisabled() {
+	SetFlagCompletionsEnabled(false)
+	if FlagCompletionsEnabled() {
 		t.Fatal("expected false after Set(false)")
 	}
 }
@@ -31,8 +31,8 @@ func TestSetFlagCompletionsDisabled_RoundTrip(t *testing.T) {
 // When disabled, a *cobra.Command must be collectable after the caller drops
 // its reference — i.e. the wrapper did not touch cobra's global map.
 func TestRegisterFlagCompletion_Disabled_DoesNotRetainCommand(t *testing.T) {
-	SetFlagCompletionsDisabled(true)
-	t.Cleanup(func() { SetFlagCompletionsDisabled(false) })
+	SetFlagCompletionsEnabled(false)
+	t.Cleanup(func() { SetFlagCompletionsEnabled(false) })
 
 	const N = 5
 	var collected atomic.Int32
@@ -58,7 +58,8 @@ func TestRegisterFlagCompletion_Disabled_DoesNotRetainCommand(t *testing.T) {
 
 // When enabled, the registered completion must be reachable via cobra.
 func TestRegisterFlagCompletion_Enabled_DoesRegister(t *testing.T) {
-	SetFlagCompletionsDisabled(false)
+	SetFlagCompletionsEnabled(true)
+	t.Cleanup(func() { SetFlagCompletionsEnabled(false) })
 
 	cmd := &cobra.Command{Use: "x"}
 	cmd.Flags().String("foo", "", "")
