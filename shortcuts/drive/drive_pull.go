@@ -6,6 +6,8 @@ package drive
 import (
 	"context"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,7 +17,6 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -193,7 +194,12 @@ var DrivePull = common.Shortcut{
 				if _, ok := remotePaths[rel]; ok {
 					continue
 				}
-				if err := vfs.Remove(absPath); err != nil {
+				// FileIO has no Remove(); the absolute path comes from
+				// walking safeRoot, which validate.SafeInputPath has
+				// already bounded inside cwd, so a bare os.Remove is
+				// acceptable here. Shortcuts cannot import internal/vfs
+				// directly (depguard rule shortcuts-no-vfs).
+				if err := os.Remove(absPath); err != nil { //nolint:forbidigo // see comment above
 					items = append(items, drivePullItem{RelPath: rel, Action: "delete_failed", Error: err.Error()})
 					failed++
 					continue
@@ -325,37 +331,25 @@ func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, file
 // walking a canonical root (no symlinks in the path) — otherwise OS path
 // resolution could redirect a delete to a file outside cwd. Same threat
 // model as drive_status.go.
-//
-// The walk goes through vfs.ReadDir so tests (and the rest of the
-// codebase) can swap in a mock filesystem; symlinks are detected via
-// DirEntry.Type() and not followed, matching filepath.WalkDir's default.
 func drivePullWalkLocal(root string) ([]string, error) {
 	var paths []string
-	if err := drivePullWalkLocalDir(root, &paths); err != nil {
+	// FileIO has no walker today; shortcuts cannot import internal/vfs
+	// (depguard rule shortcuts-no-vfs). The root passed in is the
+	// canonical absolute path returned by validate.SafeInputPath, so
+	// WalkDir's default "do not follow child symlinks" policy keeps the
+	// traversal inside the validated subtree.
+	err := filepath.WalkDir(root, func(absPath string, d fs.DirEntry, walkErr error) error { //nolint:forbidigo // see comment above
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+		paths = append(paths, absPath)
+		return nil
+	})
+	if err != nil {
 		return nil, output.Errorf(output.ExitInternal, "io", "walk %s: %s", root, err)
 	}
 	return paths, nil
-}
-
-func drivePullWalkLocalDir(dir string, paths *[]string) error {
-	entries, err := vfs.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		full := filepath.Join(dir, e.Name())
-		if e.IsDir() {
-			if err := drivePullWalkLocalDir(full, paths); err != nil {
-				return err
-			}
-			continue
-		}
-		// Skip symlinks, devices, sockets, etc. Only regular files are
-		// candidates for --delete-local.
-		if !e.Type().IsRegular() {
-			continue
-		}
-		*paths = append(*paths, full)
-	}
-	return nil
 }
