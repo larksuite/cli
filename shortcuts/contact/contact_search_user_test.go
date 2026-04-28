@@ -283,24 +283,39 @@ func TestValidateSearchUser_FilterOnly_OK(t *testing.T) {
 
 func TestValidateSearchUser_QueryTooLong_Errors(t *testing.T) {
 	cmd := newSearchUserTestCommand()
-	_ = cmd.Flags().Set("query", strings.Repeat("a", 65))
+	_ = cmd.Flags().Set("query", strings.Repeat("a", 51))
 	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
 	err := validateSearchUser(rt)
-	if err == nil || !strings.Contains(err.Error(), "64") {
-		t.Fatalf("expected length error mentioning 64, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "50") {
+		t.Fatalf("expected length error mentioning 50, got %v", err)
 	}
 }
 
-func TestValidateSearchUser_Query64Runes_OK(t *testing.T) {
+func TestValidateSearchUser_Query50Chars_OK(t *testing.T) {
 	cmd := newSearchUserTestCommand()
-	q := strings.Repeat("中", 32) + strings.Repeat("a", 32) // 64 rune, >64 bytes
-	if utf8.RuneCountInString(q) != 64 {
-		t.Fatalf("test string is %d runes, expected 64", utf8.RuneCountInString(q))
+	q := strings.Repeat("中", 25) + strings.Repeat("a", 25) // 50 runes, >50 bytes
+	if utf8.RuneCountInString(q) != 50 {
+		t.Fatalf("test string is %d runes, expected 50", utf8.RuneCountInString(q))
 	}
 	_ = cmd.Flags().Set("query", q)
 	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
 	if err := validateSearchUser(rt); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// Regression: prior versions accepted "--user-ids ',,,'" because SplitCSV
+// drops empty segments and validation only capped the upper bound, sending
+// an empty body to the API.
+func TestValidateSearchUser_UserIDsAllSeparators_Errors(t *testing.T) {
+	for _, raw := range []string{",,,", " , , ", ","} {
+		cmd := newSearchUserTestCommand()
+		_ = cmd.Flags().Set("user-ids", raw)
+		rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+		err := validateSearchUser(rt)
+		if err == nil || !strings.Contains(err.Error(), "--user-ids") {
+			t.Fatalf("raw=%q: expected --user-ids error, got %v", raw, err)
+		}
 	}
 }
 

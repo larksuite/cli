@@ -24,7 +24,7 @@ import (
 const (
 	searchUserURL = "/open-apis/contact/v3/users/search"
 
-	maxSearchUserQueryRunes = 64
+	maxSearchUserQueryChars = 50
 	maxSearchUserUserIDs    = 100
 	maxSearchUserPageSize   = 30
 )
@@ -142,7 +142,7 @@ var ContactSearchUser = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "search keyword (≤ 64 runes)"},
+		{Name: "query", Desc: "search keyword (≤ 50 characters)"},
 		{Name: "user-ids", Desc: "open_ids to look up or restrict --query against (CSV; me = caller; ≤ 100)"},
 		{Name: "has-chatted", Type: "bool", Desc: "restrict to users you've chatted with (omit to disable; =false rejected)"},
 		{Name: "has-enterprise-email", Type: "bool", Desc: "restrict to users with enterprise email (omit to disable; =false rejected)"},
@@ -352,8 +352,8 @@ func validateSearchUser(runtime *common.RuntimeContext) error {
 	}
 
 	if q := strings.TrimSpace(runtime.Str("query")); q != "" {
-		if utf8.RuneCountInString(q) > maxSearchUserQueryRunes {
-			return common.FlagErrorf("--query: length must be between 1 and %d runes", maxSearchUserQueryRunes)
+		if utf8.RuneCountInString(q) > maxSearchUserQueryChars {
+			return common.FlagErrorf("--query: length must be between 1 and %d characters", maxSearchUserQueryChars)
 		}
 	}
 
@@ -361,6 +361,9 @@ func validateSearchUser(runtime *common.RuntimeContext) error {
 		ids, err := common.ResolveOpenIDs("--user-ids", common.SplitCSV(raw), runtime)
 		if err != nil {
 			return err
+		}
+		if len(ids) == 0 {
+			return common.FlagErrorf("--user-ids: no valid open_id parsed from %q (separate entries with ',')", raw)
 		}
 		if len(ids) > maxSearchUserUserIDs {
 			return common.FlagErrorf("--user-ids: must be at most %d entries", maxSearchUserUserIDs)
