@@ -95,8 +95,30 @@ var DriveStatus = common.Shortcut{
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
 		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
 
+		// Resolve --local-dir to its canonical absolute path before walking.
+		// SafeInputPath fully evaluates symlinks across the entire path,
+		// which closes the kernel-level escape route that filepath.Clean
+		// alone misses: e.g. "link/.." string-cleans to "." but the kernel
+		// resolves through link's target's parent, so a raw walk on the
+		// user-supplied string can land outside cwd. Walking the canonical
+		// root sidesteps that — and the matching cwd canonical lets each
+		// absolute walk hit be converted to a cwd-relative path that
+		// FileIO.Open's SafeInputPath check still accepts.
+		//
+		// Validate already ran SafeLocalFlagPath (with the proper flag
+		// name in the error message), so a failure here is unexpected and
+		// only possible under a Validate↔Execute race.
+		safeRoot, err := validate.SafeInputPath(localDir)
+		if err != nil {
+			return output.ErrValidation("--local-dir: %s", err)
+		}
+		cwdCanonical, err := validate.SafeInputPath(".")
+		if err != nil {
+			return output.ErrValidation("could not resolve cwd: %s", err)
+		}
+
 		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
-		localHashes, err := walkLocalForStatus(runtime, localDir)
+		localHashes, err := walkLocalForStatus(runtime, safeRoot, cwdCanonical)
 		if err != nil {
 			return err
 		}
@@ -142,23 +164,37 @@ var DriveStatus = common.Shortcut{
 	},
 }
 
-func walkLocalForStatus(runtime *common.RuntimeContext, root string) (map[string]string, error) {
+// walkLocalForStatus walks the canonical absolute root produced by
+// SafeInputPath. Using the canonical root keeps the kernel from
+// following any symlink hidden inside the user-supplied --local-dir
+// (e.g. "link/..", which filepath.Clean shrinks to "." but which OS
+// path resolution would resolve through the symlink target). For each
+// hit, we report rel_path relative to root for the JSON output, and
+// convert the absolute path to a cwd-relative form so FileIO.Open's
+// SafeInputPath check (which rejects absolute paths) still applies.
+func walkLocalForStatus(runtime *common.RuntimeContext, root, cwdCanonical string) (map[string]string, error) {
 	files := make(map[string]string)
-	// FileIO has no walker today and shortcuts can't import internal/vfs;
-	// SafeInputPath (via runtime.FileIO().Stat above) has already bounded
-	// root inside cwd, so a vanilla filepath.WalkDir is acceptable here.
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error { //nolint:forbidigo // see comment above
+	// FileIO has no walker today and shortcuts can't import internal/vfs.
+	// The walk root is the canonical absolute path returned by
+	// validate.SafeInputPath, so it is no longer a symlink itself, and
+	// WalkDir's default policy (do not follow child symlinks) keeps the
+	// traversal inside that canonical subtree.
+	err := filepath.WalkDir(root, func(absPath string, d fs.DirEntry, walkErr error) error { //nolint:forbidigo // see comment above
 		if walkErr != nil {
 			return walkErr
 		}
 		if d.IsDir() || !d.Type().IsRegular() {
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
+		rel, err := filepath.Rel(root, absPath)
 		if err != nil {
 			return err
 		}
-		sum, err := hashLocalForStatus(runtime, path)
+		relToCwd, err := filepath.Rel(cwdCanonical, absPath)
+		if err != nil {
+			return err
+		}
+		sum, err := hashLocalForStatus(runtime, relToCwd)
 		if err != nil {
 			return err
 		}

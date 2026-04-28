@@ -6,6 +6,7 @@ package drive
 import (
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -213,6 +214,70 @@ func TestDriveStatusRejectsEmptyFolderToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--folder-token") {
 		t.Fatalf("error must reference --folder-token, got: %v", err)
+	}
+}
+
+// TestDriveStatusDoesNotEscapeViaSymlinkParentRef is the regression for the
+// "link/.." escape: filepath.Clean string-shrinks "link/.." to ".", so a
+// raw walk on the user-supplied input can land on the kernel-resolved
+// path through link's target's parent — outside cwd. The fix is to walk
+// SafeInputPath's canonical absolute root instead of the raw input.
+//
+// Setup: an "escape" sibling directory contains a sentinel file; cwd
+// contains a "link" symlink pointing into that escape directory.
+// Calling +status with --local-dir "link/.." must not surface the
+// sentinel — the walk must stay inside cwd.
+func TestDriveStatusDoesNotEscapeViaSymlinkParentRef(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	// Sentinel lives outside cwd; the agent must never see it.
+	escapeDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(escapeDir, "secret.txt"), []byte("S3CRET"), 0o644); err != nil {
+		t.Fatalf("WriteFile secret: %v", err)
+	}
+
+	// cwd has a symlink that points into the sentinel's parent.
+	cwdDir := t.TempDir()
+	withDriveWorkingDir(t, cwdDir)
+	if err := os.Symlink(escapeDir, filepath.Join(cwdDir, "link")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	// A normal file inside cwd just to make the walk non-trivial.
+	if err := os.WriteFile(filepath.Join(cwdDir, "ok.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile ok: %v", err)
+	}
+
+	// Empty remote folder so any path that surfaces in the output
+	// must have come from the local walk.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveStatus, []string{
+		"+status",
+		"--local-dir", "link/..",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if strings.Contains(out, "secret.txt") || strings.Contains(out, "S3CRET") {
+		t.Fatalf("walk escaped via link/..: secret.txt leaked into output\noutput:\n%s", out)
+	}
+	// ok.txt is in cwd and must classify as new_local (no remote stub for it).
+	if !strings.Contains(out, `"rel_path": "ok.txt"`) {
+		t.Fatalf("expected ok.txt in new_local, got:\n%s", out)
 	}
 }
 
