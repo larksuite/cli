@@ -180,6 +180,7 @@ var DrivePull = common.Shortcut{
 				rel, relErr := filepath.Rel(safeRoot, absPath)
 				if relErr != nil {
 					items = append(items, drivePullItem{RelPath: absPath, Action: "delete_failed", Error: relErr.Error()})
+					failed++
 					continue
 				}
 				rel = filepath.ToSlash(rel)
@@ -194,6 +195,7 @@ var DrivePull = common.Shortcut{
 				}
 				if err := vfs.Remove(absPath); err != nil {
 					items = append(items, drivePullItem{RelPath: rel, Action: "delete_failed", Error: err.Error()})
+					failed++
 					continue
 				}
 				items = append(items, drivePullItem{RelPath: rel, Action: "deleted_local"})

@@ -309,6 +309,69 @@ func TestDrivePullDeleteLocalPreservesLocalFileShadowedByOnlineDoc(t *testing.T)
 	mustReadFile(t, filepath.Join("local", "keep.txt"), "KEEP")
 }
 
+// TestDrivePullDeleteLocalCountsFailureInSummary pins the contract that
+// a failed delete shows up in summary.failed, not just in items[]. Before
+// the fix, the delete_failed branches appended an item but left `failed`
+// at zero, so the JSON summary could report "failed": 0 even when the
+// mirror was incomplete. Setup forces vfs.Remove to fail by making the
+// file's containing directory read-only (chmod 0o555) right before the
+// run; cleanup restores 0o755 so t.TempDir teardown succeeds.
+func TestDrivePullDeleteLocalCountsFailureInSummary(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	stale := filepath.Join("local", "stale.txt")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatalf("WriteFile stale: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+
+	// Lock the parent directory so the delete fails. Restore in a
+	// cleanup so t.TempDir's RemoveAll can succeed.
+	if err := os.Chmod("local", 0o555); err != nil {
+		t.Fatalf("Chmod 555: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod("local", 0o755) })
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"failed": 1`) {
+		t.Errorf("expected failed=1 (delete_failed must increment summary.failed), got: %s", out)
+	}
+	if !strings.Contains(out, `"deleted_local": 0`) {
+		t.Errorf("expected deleted_local=0, got: %s", out)
+	}
+	if !strings.Contains(out, `"action": "delete_failed"`) {
+		t.Errorf("expected delete_failed item in items[], got: %s", out)
+	}
+}
+
 // TestDrivePullDeleteLocalDoesNotEscapeViaSymlinkParentRef is the
 // regression for the "link/.." escape applied to --delete-local — the
 // most dangerous variant, since the bug would otherwise let the kernel
