@@ -25,6 +25,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/ics"
 )
 
 // hintIdentityFirst prints a one-line tip to stderr for read-only mail shortcuts
@@ -184,6 +185,15 @@ func printMessageOutputSchema(runtime *common.RuntimeContext) {
 			"attachments[].attachment_type":          "Attachment type. Values: 1 = normal, 2 = large attachment",
 			"attachments[].is_inline":                "true = inline image, false = regular attachment",
 			"attachments[].cid":                      "Content-ID for inline images (maps to <img src='cid:...'>)",
+			"calendar_event":                         "Parsed calendar invitation; present when the email contains a text/calendar part",
+			"calendar_event.method":                  "iTIP method, e.g. REQUEST, CANCEL, REPLY",
+			"calendar_event.uid":                     "Globally unique event identifier (UID property)",
+			"calendar_event.summary":                 "Event title (SUMMARY property)",
+			"calendar_event.start":                   "Event start time in RFC 3339 / ISO 8601 format (UTC)",
+			"calendar_event.end":                     "Event end time in RFC 3339 / ISO 8601 format (UTC)",
+			"calendar_event.location":                "Event location string; omitted when not set",
+			"calendar_event.organizer":               "Organizer email address",
+			"calendar_event.attendees":               "List of attendee email addresses",
 		},
 		"thread_extra_fields": map[string]string{
 			"thread_id":     "Thread ID",
@@ -1199,9 +1209,21 @@ type normalizedMessageForCompose struct {
 	BodyPlainText        string                   `json:"body_plain_text"`
 	BodyPreview          string                   `json:"body_preview"`
 	BodyHTML             string                   `json:"body_html,omitempty"`
+	CalendarEvent        *calendarEventOutput     `json:"calendar_event,omitempty"`
 	Attachments          []mailAttachmentOutput   `json:"attachments"`
 	Images               []mailImageOutput        `json:"images"`
 	Warnings             []warningEntry           `json:"warnings,omitempty"`
+}
+
+type calendarEventOutput struct {
+	Method    string   `json:"method,omitempty"`
+	UID       string   `json:"uid,omitempty"`
+	Summary   string   `json:"summary,omitempty"`
+	Start     string   `json:"start,omitempty"`
+	End       string   `json:"end,omitempty"`
+	Location  string   `json:"location,omitempty"`
+	Organizer string   `json:"organizer,omitempty"`
+	Attendees []string `json:"attendees,omitempty"`
 }
 
 // fetchAttachmentURLs fetches download URLs for the given attachment IDs in batches of 20.
@@ -1349,6 +1371,9 @@ func buildMessageOutput(msg map[string]interface{}, html bool) map[string]interf
 	if html && normalized.BodyHTML != "" {
 		out["body_html"] = normalized.BodyHTML
 	}
+	if normalized.CalendarEvent != nil {
+		out["calendar_event"] = normalized.CalendarEvent
+	}
 	out["attachments"] = buildPublicAttachments(msg)
 
 	return out
@@ -1456,6 +1481,29 @@ func buildMessageForCompose(msg map[string]interface{}, urlMap map[string]string
 	out.BodyPreview = preview
 	if html {
 		out.BodyHTML = decodeBase64URL(strVal(msg["body_html"]))
+	}
+
+	// Calendar event
+	if bodyCalendar := strVal(msg["body_calendar"]); bodyCalendar != "" {
+		if decoded := decodeBase64URL(bodyCalendar); decoded != "" {
+			if parsed := ics.ParseEvent(decoded); parsed != nil {
+				ce := &calendarEventOutput{
+					Method:    parsed.Method,
+					UID:       parsed.UID,
+					Summary:   parsed.Summary,
+					Location:  parsed.Location,
+					Organizer: parsed.Organizer,
+					Attendees: parsed.Attendees,
+				}
+				if !parsed.Start.IsZero() {
+					ce.Start = parsed.Start.UTC().Format(time.RFC3339)
+				}
+				if !parsed.End.IsZero() {
+					ce.End = parsed.End.UTC().Format(time.RFC3339)
+				}
+				out.CalendarEvent = ce
+			}
+		}
 	}
 
 	// Attachments
@@ -1568,6 +1616,7 @@ type composeSourceMessage struct {
 	ForwardAttachments  []forwardSourceAttachment
 	InlineImages        []inlineSourcePart
 	FailedAttachmentIDs map[string]bool
+	OriginalCalendarICS []byte // raw ICS bytes from body_calendar (for forward passthrough)
 }
 
 // fetchComposeSourceMessage loads a message via the +message pipeline and converts it
@@ -1576,6 +1625,12 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 	msg, err := fetchFullMessage(runtime, mailboxID, messageID, true)
 	if err != nil {
 		return composeSourceMessage{}, err
+	}
+	var originalCalICS []byte
+	if bodyCalendar := strVal(msg["body_calendar"]); bodyCalendar != "" {
+		if decoded := decodeBase64URL(bodyCalendar); decoded != "" {
+			originalCalICS = []byte(decoded)
+		}
 	}
 	attIDs := extractAttachmentIDs(msg)
 	urlMap, warnings := fetchAttachmentURLs(runtime, mailboxID, messageID, attIDs)
@@ -1592,6 +1647,7 @@ func fetchComposeSourceMessage(runtime *common.RuntimeContext, mailboxID, messag
 		ForwardAttachments:  toForwardSourceAttachments(out),
 		InlineImages:        toInlineSourceParts(out),
 		FailedAttachmentIDs: failedIDs,
+		OriginalCalendarICS: originalCalICS,
 	}, nil
 }
 
@@ -2252,6 +2308,21 @@ func inlineSpecFilePaths(specs []InlineSpec) []string {
 	return paths
 }
 
+// validateEventSendTimeExclusion checks that --send-time and --event-* are not
+// used together. This is enforced here (in Validate, before Execute) because the
+// Shortcut framework does not expose a cobra-level hook for MarkFlagsMutuallyExclusive.
+func validateEventSendTimeExclusion(runtime *common.RuntimeContext) error {
+	if runtime.Str("send-time") == "" {
+		return nil
+	}
+	for _, f := range []string{"event-summary", "event-start", "event-end", "event-location"} {
+		if runtime.Str(f) != "" {
+			return common.FlagErrorf("--send-time and --event-* are mutually exclusive: a calendar invitation must be sent immediately so recipients can respond before the event")
+		}
+	}
+	return nil
+}
+
 // validateSendTime checks that --send-time, if provided, requires --confirm-send,
 // is a valid Unix timestamp in seconds, and is at least 5 minutes in the future.
 func validateSendTime(runtime *common.RuntimeContext) error {
@@ -2390,4 +2461,144 @@ func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFl
 		return err
 	}
 	return nil
+}
+
+// buildCalendarBodyFromArgs builds ICS from explicit string arguments (for draft-edit).
+// Callers are expected to have pre-validated startStr/endStr via parseEventTimeRange;
+// parse errors are silently ignored here and produce a zero-time DTSTART/DTEND.
+func buildCalendarBodyFromArgs(summary, startStr, endStr, location, senderEmail, toAddrs, ccAddrs string) []byte {
+	if summary == "" {
+		return nil
+	}
+	start, _ := parseISO8601(startStr)
+	end, _ := parseISO8601(endStr)
+
+	var attendees []ics.Address
+	for _, addr := range parseNetAddrs(toAddrs) {
+		if addr.Address != "" {
+			attendees = append(attendees, ics.Address{Name: addr.Name, Email: addr.Address})
+		}
+	}
+	for _, addr := range parseNetAddrs(ccAddrs) {
+		if addr.Address != "" {
+			attendees = append(attendees, ics.Address{Name: addr.Name, Email: addr.Address})
+		}
+	}
+
+	return ics.Build(ics.Event{
+		Summary:   summary,
+		Location:  location,
+		Start:     start,
+		End:       end,
+		Organizer: ics.Address{Email: senderEmail},
+		Attendees: attendees,
+	})
+}
+
+// joinAddresses joins draft Address list into comma-separated string.
+func joinAddresses(addrs []draftpkg.Address) string {
+	if len(addrs) == 0 {
+		return ""
+	}
+	parts := make([]string, len(addrs))
+	for i, a := range addrs {
+		parts[i] = a.Address
+	}
+	return strings.Join(parts, ",")
+}
+
+// Calendar event flag definitions, shared by all compose shortcuts.
+// Declared as individual vars (like priorityFlag and signatureFlag) so
+// callers can list them explicitly in their Flags slice without relying
+// on slice-index access.
+var (
+	eventSummaryFlag  = common.Flag{Name: "event-summary", Desc: "Calendar event title. Setting this enables calendar invitation mode."}
+	eventStartFlag    = common.Flag{Name: "event-start", Desc: "Event start time (ISO 8601, e.g. 2026-04-20T14:00+08:00). Required when --event-summary is set."}
+	eventEndFlag      = common.Flag{Name: "event-end", Desc: "Event end time (ISO 8601). Required when --event-summary is set."}
+	eventLocationFlag = common.Flag{Name: "event-location", Desc: "Event location (optional)."}
+)
+
+// validateEventFlags checks that --event-summary, --event-start, --event-end are either all set or all empty.
+func validateEventFlags(runtime *common.RuntimeContext) error {
+	summary := runtime.Str("event-summary")
+	start := runtime.Str("event-start")
+	end := runtime.Str("event-end")
+	location := runtime.Str("event-location")
+
+	hasAny := summary != "" || start != "" || end != "" || location != ""
+	hasAll := summary != "" && start != "" && end != ""
+
+	if hasAny && !hasAll {
+		return fmt.Errorf("--event-summary, --event-start, and --event-end must all be provided together")
+	}
+	if summary == "" {
+		return nil
+	}
+	if _, _, err := parseEventTimeRange(start, end); err != nil {
+		return prefixEventRangeError("--event-", err)
+	}
+	return nil
+}
+
+// parseEventTimeRange parses start/end ISO 8601 strings and verifies that
+// end is strictly after start. Shared by validateEventFlags (compose path)
+// and buildDraftEditPatch (draft-edit path) so the rules stay in one place.
+func parseEventTimeRange(start, end string) (time.Time, time.Time, error) {
+	startT, err := parseISO8601(start)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("start: invalid ISO 8601 time %q", start)
+	}
+	endT, err := parseISO8601(end)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("end: invalid ISO 8601 time %q", end)
+	}
+	if !endT.After(startT) {
+		return time.Time{}, time.Time{}, fmt.Errorf("end time must be after start time")
+	}
+	return startT, endT, nil
+}
+
+// prefixEventRangeError rewrites parseEventTimeRange's "start:" / "end:"
+// error with the caller's flag-name prefix so users see the exact flag
+// that caused the failure.
+func prefixEventRangeError(flagPrefix string, err error) error {
+	msg := err.Error()
+	switch {
+	case strings.HasPrefix(msg, "start: "):
+		return fmt.Errorf("%sstart: %s", flagPrefix, strings.TrimPrefix(msg, "start: "))
+	case strings.HasPrefix(msg, "end: "):
+		return fmt.Errorf("%send: %s", flagPrefix, strings.TrimPrefix(msg, "end: "))
+	default:
+		return err
+	}
+}
+
+// parseISO8601 parses common ISO 8601 time formats.
+func parseISO8601(s string) (time.Time, error) {
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04Z07:00",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as ISO 8601", s)
+}
+
+// buildCalendarBody generates an ICS VCALENDAR from compose flags and returns the bytes.
+// Returns nil if --event-summary is not set.
+func buildCalendarBody(runtime *common.RuntimeContext, senderEmail string, toAddrs, ccAddrs string) []byte {
+	return buildCalendarBodyFromArgs(
+		runtime.Str("event-summary"),
+		runtime.Str("event-start"),
+		runtime.Str("event-end"),
+		runtime.Str("event-location"),
+		senderEmail, toAddrs, ccAddrs,
+	)
 }

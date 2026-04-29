@@ -285,9 +285,9 @@
 
 **⚠️ field_perms 重要规则**:
 1. 写入前必须先查看字段的 `type`
-2. Formula / Lookup / AutoNumber 类型字段**必须强制**降级为 `read` 或 `no_perm`，**严禁**设为 `edit`
+2. `formula` / `lookup` / `auto_number` 类型字段**必须强制**降级为 `read` 或 `no_perm`，**严禁**设为 `edit`
 3. 必须输出除 4 个系统字段外的所有字段
-4. `allow_edit_and_modify_option_fields`：仅当用户明确要求"允许增删改选项"时才配置，否则必须为空数组 `[]`。仅支持 SingleSelect / MultiSelect 类型，**严禁包含 Stage（流程）类型字段**
+4. `allow_edit_and_modify_option_fields`：仅当用户明确要求"允许增删改选项"时才配置，否则必须为空数组 `[]`。仅支持 `select` 类型字段
 5. `allow_edit_and_download_file_fields`：用户没有要求时不要设置，且仅 `field_perm_mode` 为 `specify` 时才能设置
 
 ---
@@ -346,7 +346,6 @@
         {
           "field_name": "部门",
           "operator": "is",
-          "field_type": "SingleSelect",
           "filter_values": ["财务部"]
         }
       ]
@@ -373,11 +372,11 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `field_name` | string | 是 | 字段名。仅限 `can_filter` 为 `true` 的字段。`field_type` 为 `CreatedUser` 时必须为空 |
+| `field_name` | string | 是 | 字段名。仅限 `can_filter` 为 `true` 的字段。若服务端要求当前用户类条件，可按 API 返回结构处理 |
 | `operator` | string | 是 | 操作符，见下表 |
-| `field_type` | string | 是 | 字段类型。仅支持：SingleSelect / MultiSelect / User / CreatedUser / Stage / Number 类字段（含进度条、评分、货币）及部分 Formula / LookUp 字段（以 `can_filter = true` 为准） |
+| `field_type` | string | 否 | 通常由服务端 filterFiller 补全；Agent 判断字段类型时以 `+field-list` / 字段操作接口的 `type` 为准，常见可筛选类型包括 `select`、`user`、`created_by`、`number` 及部分 `formula` / `lookup` |
 | `reference_type` | string | 条件 | 引用类型。`field_type` 为公式或引用字段时必须赋值，其他情况不能赋值 |
-| `filter_values` | []string | 条件 | 筛选值。`operator` 为 `isEmpty` / `isNotEmpty` 时不设置，`field_type` 为 `User` 时也无需设置，其他情况必须设置。值为选项的 `name` |
+| `filter_values` | []string | 条件 | 筛选值。`operator` 为 `isEmpty` / `isNotEmpty` 时不设置，字段类型为 `user` 时也无需设置，其他情况必须设置。值为选项的 `name` |
 | `field_ui_type` | string | 条件 | 该字段有值时一定要填 |
 | `is_invalid` | bool | 否 | 判断筛选条件是否有效 |
 
@@ -461,7 +460,7 @@
 | 步骤 | 操作 | 说明 |
 |------|------|------|
 | 1. 基准设定 | `perm = edit` → 全部字段预设 `"edit"`；`perm = read_only` → 全部预设 `"read"` | 基于 `base_table_info` 中的全量字段 |
-| 2. 物理降级 | Formula / Lookup / AutoNumber 及系统字段 → 强制降级为 `"read"` | 不可变字段严禁设为 `edit` |
+| 2. 物理降级 | `formula` / `lookup` / `auto_number` 及系统字段 → 强制降级为 `"read"` | 不可变字段严禁设为 `edit` |
 | 3. 用户覆盖 | 仅对用户**显式指定**了特定权限的字段应用 `no_perm` / `read` / `create` | 未显式指定的保持基准值 |
 | 4. 反筛选误判 | 用于 `filter_rules` 的字段，若基准为 `"edit"` 且用户未要求降级 → **保持 `"edit"`** | 筛选条件不影响字段可编辑性 |
 | 5. 筛选依赖兜底 | 出现在 `filter_rules` 中的字段**不允许**遗漏，权限至少为 `"read"` | 最终校验步骤 |
@@ -501,20 +500,20 @@
 
 ### 字段类型与筛选算子的强约束关系
 
-当字段被用于记录筛选条件时，其字段类型（FieldType）与可用算子（Operator）存在固定绑定关系：
+当字段被用于记录筛选条件时，字段操作接口返回的 `type` 与可用算子存在固定绑定关系：
 
-**User / CreatedUser 类型字段：**
+**`user` / `created_by` 类型字段：**
 - 仅允许使用 `contains` 算子
 - 不允许使用 `is`、`isNot` 等精确匹配算子
 - 筛选条件中无需填写具体值（由系统自动匹配当前成员）
 
-**SingleSelect、Stage 类型字段：**
+**`select` (`multiple=false`) 类型字段：**
 - `is` 与 `isNot` 算子仅允许用于匹配**单一选项**，不得用于多个值
 - 当用户表达"字段值等于/不等于某一个具体选项"（如"出勤状态不等于出勤"）时，Agent 必须使用 `is` / `isNot`，且 filter_values 仅包含单一值。
 - 当用户表达"字段值等于/不等于多个选项集合"（如"学历不是专科和其他"）时，Agent 必须使用 `contains` / `doesNotContain`，并将多个选项填入 filter_values。
 - `contains` / `doesNotContain`中的filter_values可包含多个值，表示或关系
 
-**MultiSelect 类型字段：**
+**`select` (`multiple=true`) 类型字段：**
 - `is` / `isNot`：filter_values 允许填写多个选项
   - 当 operator = is 且勾选 A、B 时，语义为该字段**同时包含** A 和 B（A&B），不是"等于 A 或等于 B"
   - 当用户表达"包含任一选项"时，除了可以使用 contains 实现外，也可以使用 is 并且配套通过 filter_rules.conjunction = or 实现

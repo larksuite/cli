@@ -18,9 +18,11 @@ func newDraftEditRuntime(flags map[string]string) *common.RuntimeContext {
 	for _, name := range []string{
 		"set-subject", "set-to", "set-cc", "set-bcc",
 		"set-priority", "patch-file",
+		"set-event-summary", "set-event-start", "set-event-end", "set-event-location",
 	} {
 		cmd.Flags().String(name, "", "")
 	}
+	cmd.Flags().Bool("remove-event", false, "")
 	for name, val := range flags {
 		_ = cmd.Flags().Set(name, val)
 	}
@@ -113,5 +115,117 @@ func TestPrettyDraftAddresses(t *testing.T) {
 				t.Errorf("prettyDraftAddresses() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBuildDraftEditPatch_SetEventEmitsSetCalendarOp(t *testing.T) {
+	rt := newDraftEditRuntime(map[string]string{
+		"set-event-summary":  "Team Sync",
+		"set-event-start":    "2026-05-10T10:00:00+08:00",
+		"set-event-end":      "2026-05-10T11:00:00+08:00",
+		"set-event-location": "Room 301",
+	})
+	patch, err := buildDraftEditPatch(rt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(patch.Ops) != 1 {
+		t.Fatalf("expected 1 op, got %d: %+v", len(patch.Ops), patch.Ops)
+	}
+	op := patch.Ops[0]
+	if op.Op != "set_calendar" {
+		t.Errorf("Op = %q, want set_calendar", op.Op)
+	}
+	if op.EventSummary != "Team Sync" {
+		t.Errorf("EventSummary = %q, want Team Sync", op.EventSummary)
+	}
+	if op.EventLocation != "Room 301" {
+		t.Errorf("EventLocation = %q, want Room 301", op.EventLocation)
+	}
+}
+
+func TestBuildDraftEditPatch_RemoveEventEmitsRemoveCalendarOp(t *testing.T) {
+	rt := newDraftEditRuntime(map[string]string{
+		"remove-event": "true",
+	})
+	patch, err := buildDraftEditPatch(rt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(patch.Ops) != 1 || patch.Ops[0].Op != "remove_calendar" {
+		t.Fatalf("expected single remove_calendar op, got %+v", patch.Ops)
+	}
+}
+
+func TestBuildDraftEditPatch_SetAndRemoveEventMutuallyExclusive(t *testing.T) {
+	rt := newDraftEditRuntime(map[string]string{
+		"set-event-summary": "Meeting",
+		"remove-event":      "true",
+	})
+	_, err := buildDraftEditPatch(rt)
+	if err == nil {
+		t.Fatal("expected error for --set-event-summary + --remove-event, got nil")
+	}
+}
+
+func TestBuildDraftEditPatch_SetEventMissingStartEnd(t *testing.T) {
+	rt := newDraftEditRuntime(map[string]string{
+		"set-event-summary": "Meeting",
+	})
+	_, err := buildDraftEditPatch(rt)
+	if err == nil {
+		t.Fatal("expected error when --set-event-summary set without start/end, got nil")
+	}
+}
+
+func TestEffectiveRecipients_SetReplaces(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		To: []draftpkg.Address{{Address: "old@example.com"}},
+		Cc: []draftpkg.Address{{Address: "cc@example.com"}},
+	}
+	ops := []draftpkg.PatchOp{
+		{Op: "set_recipients", Field: "to", Addresses: []draftpkg.Address{{Address: "new@example.com"}}},
+	}
+	to, cc := effectiveRecipients(snapshot, ops)
+	if len(to) != 1 || to[0].Address != "new@example.com" {
+		t.Errorf("expected to=[new@example.com], got %v", to)
+	}
+	if len(cc) != 1 || cc[0].Address != "cc@example.com" {
+		t.Errorf("expected cc unchanged, got %v", cc)
+	}
+}
+
+func TestEffectiveRecipients_AddAndRemove(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		To: []draftpkg.Address{{Address: "alice@example.com"}, {Address: "bob@example.com"}},
+	}
+	ops := []draftpkg.PatchOp{
+		{Op: "add_recipient", Field: "to", Address: "carol@example.com"},
+		{Op: "remove_recipient", Field: "to", Address: "bob@example.com"},
+	}
+	to, _ := effectiveRecipients(snapshot, ops)
+	if len(to) != 2 {
+		t.Fatalf("expected 2 recipients, got %v", to)
+	}
+	addrs := map[string]bool{}
+	for _, a := range to {
+		addrs[a.Address] = true
+	}
+	if !addrs["alice@example.com"] || !addrs["carol@example.com"] || addrs["bob@example.com"] {
+		t.Errorf("unexpected recipient set: %v", to)
+	}
+}
+
+func TestEffectiveRecipients_NoOpsReturnsCopy(t *testing.T) {
+	snapshot := &draftpkg.DraftSnapshot{
+		To: []draftpkg.Address{{Address: "alice@example.com"}},
+		Cc: []draftpkg.Address{{Address: "bob@example.com"}},
+	}
+	to, cc := effectiveRecipients(snapshot, nil)
+	if len(to) != 1 || to[0].Address != "alice@example.com" {
+		t.Errorf("unexpected to: %v", to)
+	}
+	if len(cc) != 1 || cc[0].Address != "bob@example.com" {
+		t.Errorf("unexpected cc: %v", cc)
 	}
 }

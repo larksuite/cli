@@ -158,7 +158,7 @@ POST /open-apis/base/v3/bases/:base_token/workflows
 - ⚠️ **新建后默认禁用**：`status` 固定返回 `disabled`，需要额外调用 `+workflow-enable` 才能让工作流生效；不要误报"创建成功即启用"
 - ⚠️ **steps 中 id 字段必须唯一**：每个步骤的 `id` 由调用方指定，且在工作流内必须唯一；`next` 和 `children.links[].to` 引用的 ID 必须在同一 steps 数组中存在，否则服务端返回 `[2200] Internal Error`
 - ⚠️ **字段类型校验**：设置字段值时，`value_type` 必须与字段实际类型匹配：
-   - **select 类型字段**（单选/多选/流程）：必须用 `option`，不能用 `text`
+   - **`select` 类型字段**（`multiple=false/true`）：必须用 `option`，不能用 `text`
      ```json
      // ✅ 正确
      { "field_name": "大区", "value": [{"value_type": "option", "value": {"name": "华东"}}] }

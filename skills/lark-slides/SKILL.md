@@ -14,6 +14,13 @@ metadata:
 
 **CRITICAL — 生成任何 XML 之前，MUST 先用 Read 工具读取 [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md)，禁止凭记忆猜测 XML 结构。**
 
+**CRITICAL — 如果用户提到“模板”“套用模板”“参考某种主题/风格/版式”，或用户需求明显落在已有场景模板内（如工作汇报、产品介绍、商业计划书、培训、晋升汇报等），MUST 先用 [`scripts/template_tool.py`](scripts/template_tool.py) 的 `search` 做模板检索；默认给出 2-3 个最匹配模板候选供用户选择。锁定模板后用 `summarize` 获取主题和布局摘要；只有需要布局骨架时才用 `extract` 裁切目标页型 XML。不要直接读取完整模板 XML。**
+
+> [!NOTE]
+> `scripts/template_tool.py` 需要 Python 3。`references/template-index.json` 是脚本缓存/轻量路由索引，不是默认给 agent 阅读的文档；`assets/templates/*.xml` 是机器资源，只应通过脚本摘要或裁切，不要全文读取。
+
+**CRITICAL — 使用模板生成或改写页面时，MUST 先 `summarize` 目标页型；只有需要具体布局骨架时才 `extract`。生成本地 XML 后，如可运行 Python，MUST 先用 [`scripts/layout_lint.py`](scripts/layout_lint.py) 检查 XML well-formed、重叠/越界/文本高度风险，再创建或追加页面。它不是完整 XSD schema 校验。**
+
 **编辑已有幻灯片页面**：优先用 [`+replace-slide`](references/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；选择 action 和完整读-改-写流程见 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
 
 ## 身份选择
@@ -46,6 +53,12 @@ lark-cli slides +create --title "演示文稿标题" --slides '[
 
 也可以分两步（先创建空白 PPT，再逐页添加），详见 [+create 参考文档](references/lark-slides-create.md)。
 
+> [!WARNING]
+> `--slides '[...]'` 适合简单页面批量创建，但并不等同于“10 页以内都安全”。如果 slide XML 含中文、大段文本、复杂布局、嵌套引号或较多特殊字符，shell 传参时可能出现转义或截断问题，导致内容丢失、页面空白或布局异常。遇到复杂页面时，优先改用“两步创建法”。
+
+> [!IMPORTANT]
+> `slides +create --slides` 底层是“先创建空白 PPT，再逐页调用 `xml_presentation.slide.create`”。这不是原子操作；中途某一页失败时，前面已创建成功的页面会保留。skill 必须把这种“部分成功”风险提前告诉用户，并在失败后先记录 `xml_presentation_id`，回读确认当前状态，再决定是否在现有 PPT 上继续修复或追加。
+
 > 以上是最小可用示例。更丰富的页面效果（渐变背景、卡片、图表、表格等），参考下方 Workflow 和 XML 模板。
 
 ## 执行前必做
@@ -63,6 +76,10 @@ lark-cli slides +create --title "演示文稿标题" --slides '[
 | 场景 | 文档 |
 |------|------|
 | 需要了解详细 XML 结构 | [xml-format-guide.md](references/xml-format-guide.md) |
+| 需要快速筛模板、做低成本路由 | [`scripts/template_tool.py search`](scripts/template_tool.py) |
+| 需要匹配 PPT 模板/主题风格 | [template-catalog.md](references/template-catalog.md) |
+| 需要按页型抽摘要或裁切 XML 片段 | [`scripts/template_tool.py`](scripts/template_tool.py) |
+| 需要做本地布局风险检查 | [`scripts/layout_lint.py`](scripts/layout_lint.py) |
 | 需要 CLI 调用示例 | [examples.md](references/examples.md) |
 | 需要参考真实 PPT 的 XML | [slides_demo.xml](references/slides_demo.xml) |
 | 需要用 table/chart 等复杂元素 | [slides_xml_schema_definition.xml](references/slides_xml_schema_definition.xml)（完整 Schema） |
@@ -73,19 +90,67 @@ lark-cli slides +create --title "演示文稿标题" --slides '[
 
 > **这是演示文稿，不是文档。** 每页 slide 是独立的视觉画面，信息密度要低，排版要留白。
 
+### 创建方式选择
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 简单 XML（1-3 页、结构简单、几乎无复杂中文和特殊字符） | `slides +create --slides '[...]'` 一步创建 |
+| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide create` 逐页添加 |
+| 已有 PPT 继续追加或插入页面 | 使用 `xml_presentation.slide create`，必要时配合 `before_slide_id` |
+
+> [!WARNING]
+> `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议使用两步创建法。
+
+### 模板与脚本优先流程
+
+```bash
+# 1. 搜索候选：把用户原始需求整句放进 --query，不要只放手动提炼的短词
+python3 skills/lark-slides/scripts/template_tool.py search --query "<用户需求原文>" --limit 3
+
+# 2. 锁定模板后先看页型摘要
+python3 skills/lark-slides/scripts/template_tool.py summarize --template <template-id> --label <封面|目录|分节|内容|结尾>
+
+# 3. 只有需要复用布局骨架时才裁切 XML
+python3 skills/lark-slides/scripts/template_tool.py extract --template <template-id> --label <页型> --out /tmp/template-slice.xml
+
+# 4. 生成待创建 XML 后先做布局风险检查
+python3 skills/lark-slides/scripts/layout_lint.py --input /tmp/presentation.xml
+```
+
+执行规则：
+
+1. `search --query` 使用用户原始描述；如用户明确风格，再额外加 `--tone light|dark|colorful` 或 `--formality formal|casual|creative`。
+2. 候选展示只给 2-3 个，包含模板名、适用场景、风格/色调、推荐理由；不要把完整目录贴给用户。
+3. 锁定模板后，复用 `<theme>`、配色、页面流、布局骨架；所有占位文案都必须改写为用户真实内容。
+4. `layout_lint.py` 有 error 时先修 XML，不要提交创建；只有 warning 时，检查是否是可接受的装饰/背景误报。
+
 ```text
 Step 1: 需求澄清 & 读取知识
   - 澄清用户需求：主题、受众、页数、风格偏好
+  - 如果需求明显落在已有模板场景内，主动提示用户“可以直接基于现成模板生成”，并给出 2-3 个最匹配模板候选（模板名 + 适用场景 + 风格/色调 + 简短推荐理由）
+  - 默认不要把完整模板目录直接贴给用户；除非用户明确要求看更多，否则只展示 2-3 个候选
+  - 候选优先选场景强相关模板；只有没有明显场景模板时，才用 `light_general.xml` / `dark_general.xml` 这类通用模板兜底
   - 如果用户没有明确风格，根据主题推荐（见下方风格判断表）
+  - 如果用户要求“模板/主题/风格参考”，或主题属于常见模板场景：
+    · 优先运行 `python3 skills/lark-slides/scripts/template_tool.py search --query "<用户需求原文>" --limit 3` 做低成本模板匹配
+    · 需要人类可读说明时，再读 template-catalog.md 组织候选文案
+    · 锁定模板后，优先运行 `template_tool.py summarize` 看 `<theme>` / 页型摘要；需要具体布局时，再用 `template_tool.py extract`
+    · 复用模板的 theme、配色、页面流、布局骨架，不要照搬占位文案
+    · `references/template-index.json` 只是脚本缓存/轻量路由索引，`assets/templates/*.xml` 是机器资源；除非用户明确要求审计原始模板，否则不要直接读取
   - 读取 XML Schema 参考：
     · xml-schema-quick-ref.md — 元素和属性速查
     · xml-format-guide.md — 详细结构与示例
     · slides_demo.xml — 真实 XML 示例
 
 Step 2: 生成大纲 → 用户确认 → 创建
+  - 生成大纲前，先确认用户是否采用推荐模板；轻量任务且候选中有明显最佳匹配时，可在大纲里声明“默认基于 <template-id> 改写”并继续，但正式创建前必须给用户改选机会
   - 生成结构化大纲（每页标题 + 要点 + 布局描述），交给用户确认
-  - 10 页以内：用 slides +create --slides '[...]' 一步创建 PPT 并添加所有页面
-  - 超过 10 页：先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
+  - 如果已选模板，大纲和页面布局要明确标注“基于哪个模板/哪些模板改写”
+  - 如果用户明确不要模板，直接按自定义风格继续，不要重复推动模板选择
+  - 先判断创建方式：
+    · 简单 XML：可用 `slides +create --slides '[...]'` 一步创建
+    · 复杂 XML：优先先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
+    · 超过 10 页：默认使用两步创建，避免单次输入过长
   - 含本地图片：
     · 新建带图 PPT —— 在 slide XML 里写 <img src="@./pic.png" .../>，
       +create 会自动上传并替换为 file_token（详见 lark-slides-create.md）
@@ -98,14 +163,93 @@ Step 2: 生成大纲 → 用户确认 → 创建
       绝对路径会被 CLI 拒绝，先 cd 到素材所在目录再执行
   - 每页 slide 需要完整的 XML：背景、文本、图形、配色
   - 复杂元素（table、chart）需参考 XSD 原文
+  - 创建前必须做 XML 自检：
+    · 检查特殊字符是否按 XML 规则转义：文本节点和属性值里的裸 `& -> &amp;`；文本里的 `< -> &lt;`、`> -> &gt;`。例如 `Q&A -> Q&amp;A`，URL 属性 `a=1&b=2 -> a=1&amp;b=2`
+    · 属性值里的双引号必须转义或改为外层安全包装，避免 shell 和 JSON 双重截断
+    · 确认所有标签闭合，且 `<slide>` 直接子元素只包含 `<style>`、`<data>`、`<note>`
+    · 如果内容里同时出现中文、大段文本、复杂布局、较多特殊字符，默认不要走 `--slides '[...]'`，直接改用两步创建法
+    · 如果 XML 已落到本地文件且可运行 Python，先执行 `layout_lint.py --input <file>`；它会先检查 XML well-formed 再检查布局风险，但不等价于完整 XSD schema 校验；有 error 先修复再创建
+  - 如果使用模板生成页面，先复用模板骨架再填内容，不要直接复制模板中的长段占位文本
 
 Step 3: 审查 & 交付
-  - 创建完成后，用 xml_presentations.get 读取全文 XML，确认：
-    · 页数是否正确？每页内容是否完整？
+  - 创建完成后，必须用 xml_presentations.get 读取全文 XML 做创建后验证，确认：
+    · 页数是否正确？
+    · 每页 `<data>` 是否包含预期的 `<shape>` / `<img>` / 其他元素？
+    · 文本内容是否完整，是否有被截断、丢失、空白区域？
+    · 关键布局坐标和尺寸是否合理，是否出现明显重叠？
     · 配色是否统一？字号层级是否合理？
+  - 如果本地有 Python 3，运行
+    `python3 skills/lark-slides/scripts/layout_lint.py --input presentation.xml`
+    做重叠、越界、页脚碰撞、文本高度风险检查；有 error 先修复再交付
+  - 如果创建过程中失败：
+    · 先保留并记录 `xml_presentation_id`，不要假设失败代表什么都没创建
+    · 先判断是否已有部分页面写入，再决定是否在现有 PPT 上修复后继续追加
+    · 优先排查当前失败页：先看该页 XML，再检查是否存在未转义 `&`、错误引号、标签未闭合、shell 传参截断
   - 局部问题 → 用 `+replace-slide` 块级修正；整页结构要改 → `slide.delete` 旧页 + `slide.create` 新页
   - 没问题 → 交付：告知用户演示文稿 ID 和访问方式
 ```
+
+### 创建后验证
+
+创建成功不等于内容正确。创建完 PPT 后，**必须**读取全文 XML 校验结果：
+
+```bash
+lark-cli slides xml_presentations get --as user \
+  --params '{"xml_presentation_id":"YOUR_ID"}'
+```
+
+重点检查：
+
+- [ ] 页数是否与预期一致
+- [ ] 每页 `<data>` 中是否包含所有预期元素
+- [ ] 文本内容是否完整，没有被 shell 截断或转义损坏
+- [ ] 白底内容区、卡片区、图文区等关键布局是否实际生成
+- [ ] 坐标、宽高是否合理，是否出现堆叠或越界
+
+发现问题时：
+
+1. 不要假设“创建成功就代表渲染正确”
+2. 先读取问题页的 XML，确认是生成问题还是传参损坏
+3. 删除问题页后重新添加；复杂页面优先改用两步创建法
+
+### 最小验收清单
+
+创建完成后，默认按下面顺序验收，不要省略：
+
+1. 记录 `xml_presentation_id`
+2. 确认返回的 `slides_added` 或实际页数是否符合预期
+3. 立即执行 `xml_presentations get`
+4. 检查标题、关键页面、关键文本是否存在
+5. 检查是否有明显空白页、内容缺失、页序错误
+6. 再决定是否向用户交付 URL 和后续编辑建议
+
+推荐最小闭环：
+
+```bash
+# 创建
+lark-cli slides +create --as user --title "Demo" --slides '[...]'
+
+# 立即回读
+lark-cli slides xml_presentations get --as user \
+  --params '{"xml_presentation_id":"YOUR_ID"}'
+```
+
+## XML 自检与排障
+
+在真正创建前，至少做下面 4 项检查：
+
+- [ ] 特殊字符已转义：正文和标题里的 `&`、`<`、`>` 不能裸写；属性值里的裸 `&` 也必须写成 `&amp;`
+- [ ] 属性引号安全：XML 属性、shell 引号、JSON 字符串包装之间没有互相打断
+- [ ] 结构合法：`<slide>` 下只放 `<style>`、`<data>`、`<note>`，文本都在 `<content>` 内
+- [ ] 路径正确：`<img src="@...">` 只在 `+create --slides` 的支持链路中使用
+
+高频失败信号和处理顺序：
+
+1. `invalid param` / 某一页创建失败
+2. 先检查失败页是否含未转义 `&` / `<` / `>`：`Q&A -> Q&amp;A`，属性 URL `a=1&b=2 -> a=1&amp;b=2`
+3. 再检查标签闭合、属性引号、`<content>` 结构
+4. 如果是 `--slides '[...]'`，怀疑 shell 截断时直接切两步创建法
+5. 创建后无论成功失败，都优先记录 `xml_presentation_id` 并回读确认是否已有部分页面写入
 
 ### jq 命令模板（编辑已有 PPT 时使用）
 
@@ -162,6 +306,8 @@ lark-cli slides xml_presentation.slide create \
 
 ```text
 [PPT 标题] — [定位描述]，面向 [目标受众]
+
+模板：[未使用模板 / <category>/<template>.xml（推荐原因）]
 
 页面结构（N 页）：
 1. 封面页：[标题文案]
@@ -279,8 +425,8 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 
 ## 核心规则
 
-1. **先出大纲再动手**：创建 PPT 前先生成大纲交给用户确认，避免返工
-2. **创建流程**：10 页以内推荐 `slides +create --slides '[...]'` 一步创建；超过 10 页先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
+1. **先定模板/风格并出大纲再动手**：如果需求可匹配模板，先给用户 2-3 个模板候选；模板或自定义风格确定后，再生成大纲交给用户确认，避免返工
+2. **创建流程**：简单短 XML（1-3 页、结构简单、特殊字符少）可用 `slides +create --slides '[...]'` 一步创建；复杂内容、含图片/中文大段文本/嵌套引号/较多特殊字符，或超过 10 页时，默认先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
 3. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`**：文本和图形必须放在 `<data>` 内
 4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内
 5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
@@ -307,13 +453,14 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 |--------|------|----------|
 | 400 | XML 格式错误 | 检查 XML 语法，确保标签闭合 |
 | 400 | 请求包装错误 | 检查 `--data` 是否按 schema 传入 `xml_presentation.content` 或 `slide.content` |
+| 创建成功但页面空白/内容缺失/布局错乱 | 常见于 `--slides '[...]'` 的 shell 转义或长参数传递问题 | 改用两步创建：先 `slides +create`，再用 `jq -n` 包装 `xml_presentation.slide.create` 逐页添加，并在创建后立即读取 XML 验证 |
 | 404 | 演示文稿不存在 | 检查 `xml_presentation_id` 是否正确 |
 | 404 | 幻灯片不存在 | 检查 `slide_id` 是否正确 |
 | 403 | 权限不足 | 检查是否拥有对应的 scope |
 | 400 | 无法删除唯一幻灯片 | 演示文稿至少保留一页幻灯片 |
 | 1061002 | params error（媒体上传时） | 用 `slides +media-upload`，不要手拼原生 `medias/upload_all`；slides 唯一可用 `parent_type` 是 `slide_file` |
 | 1061004 | forbidden：当前身份对演示文稿无编辑权限 | 确认 user/bot 对目标 PPT 有编辑权限；bot 常见于 PPT 非该 bot 创建，需先授权或用 `+create --as bot` 新建 |
-| 3350001 | `xml_presentation.slide.replace` 失败（catch-all） | 检查 `block_replace` 替换根是否带 `id=<block_id>`；`<shape>` 是否含 `<content/>`；坐标是否在 960×540 内。详见 [lark-slides-replace-slide.md](references/lark-slides-replace-slide.md) |
+| 3350001 | XML 非 well-formed、XML 结构不符合服务端要求，或 `xml_presentation.slide.replace` 失败（catch-all） | 优先检查未转义 `&` / `<` / `>`：`Q&A -> Q&amp;A`，属性 URL `a=1&b=2 -> a=1&amp;b=2`；运行 `layout_lint.py --input <file>` 定位行列和上下文；再检查 replace 场景的 `block_id` / `<content/>` / 坐标 |
 | 3350002 | `revision_id` 大于当前版本 | 用 `-1` 取当前版本，或重新读 `xml_presentations.get` 取最新 `revision_id` |
 | validation: unsafe file path | `--file` 给了绝对路径或上层路径 | `--file` 必须是 CWD 内相对路径；先 `cd` 到素材目录再执行 |
 
@@ -359,6 +506,10 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 | [lark-slides-media-upload.md](references/lark-slides-media-upload.md) | **+media-upload Shortcut：上传本地图片，返回 `file_token`** |
 | [lark-slides-replace-slide.md](references/lark-slides-replace-slide.md) | **+replace-slide Shortcut：块级替换/插入，含合法根元素速查与 3350001 排错** |
 | [lark-slides-edit-workflows.md](references/lark-slides-edit-workflows.md) | 编辑已有页面的读-改-写流程与 action 决策树 |
+| [template-index.json](references/template-index.json) | **脚本缓存/轻量路由索引：由 `template_tool.py search` 使用，不是默认阅读入口** |
+| [template-catalog.md](references/template-catalog.md) | **按场景/色调匹配现成 PPT 模板，并定位到页型范围** |
+| [`scripts/template_tool.py`](scripts/template_tool.py) | **可选 Python 辅助脚本：`search` / `summarize` / `extract`，支持 `--layout-tag` 与 `extract --with-summary`** |
+| [`scripts/layout_lint.py`](scripts/layout_lint.py) | **本地预检脚本：先检查 XML well-formed，再检测重叠、越界、页脚碰撞、文本高度风险；不是完整 XSD schema 校验** |
 | [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) | **XML Schema 精简速查（必读）** |
 | [slide-templates.md](references/slide-templates.md) | 可复制的 Slide XML 模板 |
 | [xml-format-guide.md](references/xml-format-guide.md) | XML 详细结构与示例 |

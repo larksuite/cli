@@ -1,0 +1,687 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>产品推广方案-裂图重新上传</title>
+  <theme>
+    <textStyles>
+      <title fontColor="#000000FF" fontSize="64"/>
+      <headline fontColor="#000000FF"/>
+      <sub-headline fontColor="#000000FF"/>
+      <body fontColor="#000000FF" fontSize="14"/>
+      <caption fontColor="#808080FF" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style/>
+    <data>
+      <img src="KQ11bto5XoGHbCxBHmMchsYOn9e" width="251" height="425" topLeftX="578" topLeftY="65">
+        <crop type="rect" leftOffset="6" rightOffset="169" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="39" height="425" topLeftX="578" topLeftY="65" type="rect">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="536" height="180" topLeftX="84" topLeftY="85" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="80" color="rgba(43, 47, 54, 1)" bold="true" lineSpacing="multiple:1">
+          <p lineSpacing="multiple:1">
+            <span fontSize="80">DIGITAL</span>
+          </p>
+          <p lineSpacing="multiple:1">
+            <span fontSize="80">MARKETING</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="325" height="68" topLeftX="84" topLeftY="257" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" fontFamily="undefined" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>产品推广计划</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="250" height="77" topLeftX="56" topLeftY="85" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" bold="true">
+          <p>CONTENTS</p>
+        </content>
+      </shape>
+      <shape width="250" height="68" topLeftX="56" topLeftY="142" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" fontFamily="undefined" color="rgba(43, 47, 54, 1)" bold="false" textAlign="left">
+          <p>
+            <span bold="false">目录</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="66" height="66" topLeftX="390" topLeftY="102" type="ellipse">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" fontFamily="Noto Sans" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18" fontFamily="Noto Sans">01</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="118" height="43" topLeftX="463" topLeftY="113" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(0, 0, 0, 1)" bold="true" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="18">关于我们</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="330" height="41" topLeftX="581" topLeftY="114" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="66" height="66" topLeftX="390" topLeftY="189" type="ellipse">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" fontFamily="Noto Sans" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18" fontFamily="Noto Sans">02</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="118" height="43" topLeftX="463" topLeftY="200" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(0, 0, 0, 1)" bold="true" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="18">愿景&amp;目标</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="330" height="41" topLeftX="581" topLeftY="201" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="66" height="66" topLeftX="390" topLeftY="275" type="ellipse">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" fontFamily="Noto Sans" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18" fontFamily="Noto Sans">03</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="118" height="43" topLeftX="463" topLeftY="287" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(0, 0, 0, 1)" bold="true" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="18">品牌策略</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="330" height="41" topLeftX="581" topLeftY="288" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="66" height="66" topLeftX="390" topLeftY="372" type="ellipse">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" fontFamily="Noto Sans" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18" fontFamily="Noto Sans">04</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="118" height="43" topLeftX="463" topLeftY="384" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(0, 0, 0, 1)" bold="true" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">核心产品</p>
+        </content>
+      </shape>
+      <shape width="330" height="41" topLeftX="581" topLeftY="385" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" textAlign="left">
+          <p>输入相关的描述信息以解释你的标题。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 47, 54, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="118" height="118" topLeftX="182" topLeftY="193" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" fontFamily="Noto Sans" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" fontSize="36" fontFamily="Noto Sans">01</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="118" height="51" topLeftX="316" topLeftY="227" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="24">关于我们</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="330" height="47" topLeftX="450" topLeftY="229" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" textAlign="left">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="18">输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="KFOtbv5TUoKxm8x9dDfcfb6snEd" width="202" height="128" topLeftX="257" topLeftY="75" exposure="5" contrast="-12" saturation="-24" temperature="-65">
+        <crop type="rect" leftOffset="126" rightOffset="29" topOffset="212" bottomOffset="18" presetHandlers="0"/>
+      </img>
+      <img src="KFOtbv5TUoKxm8x9dDfcfb6snEd" width="202" height="128" topLeftX="38" topLeftY="75" flipY="true" exposure="5" contrast="-12" saturation="-24" temperature="-73">
+        <crop type="rect" leftOffset="0" rightOffset="202" topOffset="101" bottomOffset="175" presetHandlers="0"/>
+      </img>
+      <shape width="250" height="140" topLeftX="28" topLeftY="323" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="80" bold="true">
+          <p>
+            <span fontSize="80">Hello</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="250" height="68" topLeftX="32" topLeftY="293" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" fontFamily="undefined" color="rgba(43, 47, 54, 1)" bold="false" textAlign="left">
+          <p>
+            <span bold="false">你好</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="318" height="56" topLeftX="34" topLeftY="215" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="395" height="74" topLeftX="507" topLeftY="99" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="395" height="230" topLeftX="507" topLeftY="229" type="rect">
+        <fill>
+          <fillColor/>
+        </fill>
+      </shape>
+      <img src="TE9RblFGdowyVexgIYIc2GEonJd" width="395" height="230" topLeftX="507" topLeftY="229" saturation="-43" temperature="-100">
+        <crop type="rect" leftOffset="20" rightOffset="17" topOffset="88" bottomOffset="113" presetHandlers="0"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="372" height="116" topLeftX="28" topLeftY="130" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="64" bold="true">
+          <p>About us</p>
+        </content>
+      </shape>
+      <shape width="250" height="56" topLeftX="32" topLeftY="103" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="false" textAlign="left">
+          <p>
+            <span fontSize="24" bold="false">关于我们</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="318" height="74" topLeftX="32" topLeftY="235" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+      <img src="TDYmbbCrPoAAz0xgXVwcbblrn4f" width="395" height="415" topLeftX="507" topLeftY="44" saturation="-100" temperature="-100">
+        <crop type="rect" leftOffset="26" rightOffset="68" topOffset="30" bottomOffset="45" presetHandlers="0"/>
+      </img>
+      <shape width="39" height="415" topLeftX="863" topLeftY="44" type="rect">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 47, 54, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="118" height="118" topLeftX="182" topLeftY="193" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" fontFamily="Noto Sans" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" fontSize="36" fontFamily="Noto Sans">02</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="141" height="51" topLeftX="316" topLeftY="227" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">
+            <span color="rgba(255, 255, 255, 1)">愿景&amp;目标</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="330" height="47" topLeftX="460" topLeftY="229" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" textAlign="left">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="18">输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="250" height="92" topLeftX="65" topLeftY="100" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="48" bold="true">
+          <p>
+            <span fontSize="48">Vision</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="318" height="56" topLeftX="65" topLeftY="168" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="318" height="92" topLeftX="482" topLeftY="100" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="48" bold="true">
+          <p>
+            <span fontSize="48">Mission</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="250" height="56" topLeftX="65" topLeftY="72" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="false" textAlign="left">
+          <p>
+            <span fontSize="24" bold="false">愿景</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="250" height="56" topLeftX="482" topLeftY="72" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="false" textAlign="left">
+          <p>
+            <span fontSize="24" bold="false">目标</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="318" height="56" topLeftX="482" topLeftY="168" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="395" height="189" topLeftX="74" topLeftY="240" type="rect">
+        <fill>
+          <fillColor/>
+        </fill>
+      </shape>
+      <img src="EnkQbyTJKouv4bx15ezccGjinXc" width="395" height="189" topLeftX="74" topLeftY="240">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="206" presetHandlers="0"/>
+      </img>
+      <img src="ProZbJDy5omwBlxreCgcPqA9nOc" width="395" height="189" topLeftX="491" topLeftY="240" exposure="5" contrast="-23" saturation="-30" temperature="-42">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="118" bottomOffset="88" presetHandlers="0"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 47, 54, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="118" height="118" topLeftX="182" topLeftY="193" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" fontFamily="Noto Sans" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" fontSize="36" fontFamily="Noto Sans">03</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="141" height="51" topLeftX="316" topLeftY="227" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="true" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">
+            <span color="rgba(255, 255, 255, 1)">品牌策略</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="330" height="47" topLeftX="450" topLeftY="229" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" textAlign="left">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="18">输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="372" height="116" topLeftX="28" topLeftY="130" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="64" bold="true">
+          <p>Strategy</p>
+        </content>
+      </shape>
+      <shape width="250" height="56" topLeftX="32" topLeftY="103" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="false" textAlign="left">
+          <p>
+            <span fontSize="24" bold="false">推广策略</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="318" height="74" topLeftX="32" topLeftY="245" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+      <undefined type="fallback"/>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(43, 47, 54, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="118" height="118" topLeftX="182" topLeftY="193" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" fontFamily="Noto Sans" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" fontSize="36" fontFamily="Noto Sans">04</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="141" height="51" topLeftX="316" topLeftY="227" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 1)" bold="false" lineSpacing="multiple:1.3" textAlign="left">
+          <p lineSpacing="multiple:1.3">
+            <span color="rgba(255, 255, 255, 1)" bold="false">核心项目</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="330" height="47" topLeftX="450" topLeftY="229" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" bold="false" textAlign="left">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="18" bold="false">输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="196" height="50" topLeftX="95" topLeftY="77" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" bold="true">
+          <p>
+            <strong>
+              <span fontSize="20">Project 01 - XXX</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="49" topLeftX="81" topLeftY="393" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(43, 47, 54, 0.502)" lineSpacing="multiple:1.2" textAlign="center">
+          <p lineSpacing="multiple:1.2">描述相关的信息以解释你的标题。现在就开始打字吧。</p>
+        </content>
+      </shape>
+      <shape width="231" height="42" topLeftX="81" topLeftY="348" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p lineSpacing="multiple:1.2">
+            <strong>
+              <span fontSize="18">关键点 #1</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="196" height="164" topLeftX="98" topLeftY="172" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="231" height="49" topLeftX="365" topLeftY="393" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(43, 47, 54, 0.502)" lineSpacing="multiple:1.2" textAlign="center">
+          <p lineSpacing="multiple:1.2">描述相关的信息以解释你的标题。现在就开始打字吧。</p>
+        </content>
+      </shape>
+      <shape width="231" height="42" topLeftX="365" topLeftY="348" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p lineSpacing="multiple:1.2">
+            <strong>
+              <span fontSize="18">关键点 #2</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="196" height="164" topLeftX="382" topLeftY="172" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="231" height="49" topLeftX="648" topLeftY="393" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(43, 47, 54, 0.502)" lineSpacing="multiple:1.2" textAlign="center">
+          <p lineSpacing="multiple:1.2">描述相关的信息以解释你的标题。现在就开始打字吧。</p>
+        </content>
+      </shape>
+      <shape width="231" height="42" topLeftX="648" topLeftY="348" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" bold="true" lineSpacing="multiple:1.2" textAlign="center">
+          <p lineSpacing="multiple:1.2">
+            <strong>
+              <span fontSize="18">关键点 #3</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="196" height="164" topLeftX="666" topLeftY="172" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <icon width="66" height="66" topLeftX="163" topLeftY="221" iconType="iconpark/Base/bookmark.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="66" height="66" topLeftX="447" topLeftY="221" iconType="iconpark/Base/camera.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <icon width="66" height="66" topLeftX="731" topLeftY="221" iconType="iconpark/Office/list-view.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="554" height="56" topLeftX="291" topLeftY="77" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 255, 255, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="318" height="74" topLeftX="32" topLeftY="271" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="202" height="465" topLeftX="379" topLeftY="37" type="rect">
+        <fill>
+          <fillColor/>
+        </fill>
+      </shape>
+      <shape width="196" height="50" topLeftX="32" topLeftY="221" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" bold="true">
+          <p>
+            <strong>
+              <span fontSize="20">Project 02 - XXX</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="318" height="74" topLeftX="610" topLeftY="93" alpha="0.7" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" textAlign="left">
+          <p>
+            <span fontSize="12">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="202" height="226" topLeftX="610" topLeftY="276" type="rect">
+        <fill>
+          <fillColor/>
+        </fill>
+      </shape>
+      <img src="GGuFbd8azoDXASxtmdRcCjG0nrf" width="202" height="465" topLeftX="379" topLeftY="37" saturation="-73" temperature="-57">
+        <crop type="rect" leftOffset="132" rightOffset="132" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="LYMEbK4ZroZq9pxhlNfcdHignHe" width="201" height="226" topLeftX="610" topLeftY="276" exposure="-4" contrast="-19" saturation="-23" temperature="-32">
+        <crop type="rect" leftOffset="200" rightOffset="0" topOffset="64" bottomOffset="111" presetHandlers="0"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="KQ11bto5XoGHbCxBHmMchsYOn9e" width="251" height="425" topLeftX="578" topLeftY="65">
+        <crop type="rect" leftOffset="6" rightOffset="169" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="39" height="425" topLeftX="578" topLeftY="65" type="rect">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="536" height="180" topLeftX="84" topLeftY="85" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="80" color="rgba(43, 47, 54, 1)" bold="true" lineSpacing="multiple:1">
+          <p lineSpacing="multiple:1">
+            <span fontSize="80">THANK</span>
+          </p>
+          <p lineSpacing="multiple:1">
+            <span fontSize="80">YOU</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="325" height="68" topLeftX="84" topLeftY="257" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" fontFamily="undefined" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>感谢观看</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>

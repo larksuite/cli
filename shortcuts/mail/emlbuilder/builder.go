@@ -420,8 +420,9 @@ func (b Builder) HTMLBody(body []byte) Builder {
 }
 
 // CalendarBody sets the text/calendar body (e.g. for meeting invitations).
-// May be combined with TextBody and/or HTMLBody; the resulting parts are wrapped
-// in multipart/alternative.
+// When combined with TextBody or HTMLBody, the calendar part is placed inside
+// multipart/alternative alongside the body parts, matching the Feishu client
+// convention for calendar invitation emails.
 func (b Builder) CalendarBody(body []byte) Builder {
 	b.calendarBody = body
 	return b
@@ -731,6 +732,9 @@ func (b Builder) Build() ([]byte, error) {
 	// ── Body ───────────────────────────────────────────────────────────────────
 	// Full MIME hierarchy (outer layers only present when needed):
 	//   multipart/mixed → multipart/related → multipart/alternative → body parts
+	//
+	// text/calendar lives inside multipart/alternative as an alternative
+	// representation of the message body, matching the Feishu client behavior.
 	if len(b.attachments) > 0 {
 		outerB := newBoundary()
 		writeHeader(&buf, "Content-Type", "multipart/mixed; boundary="+outerB)
@@ -809,27 +813,27 @@ func writePrimaryBody(buf *bytes.Buffer, b Builder) {
 	}
 }
 
-// writeAlternativeOrSingleBody writes the text body block.
-// If multiple body types (text/plain, text/html, text/calendar) are present,
-// they are wrapped in multipart/alternative. Otherwise a single part is written.
+// writeAlternativeOrSingleBody writes the body block. When multiple content
+// types coexist (text/plain, text/html, text/calendar), they are wrapped in
+// multipart/alternative. text/calendar lives inside alternative as an
+// alternative representation, matching the Feishu client behavior.
 func writeAlternativeOrSingleBody(buf *bytes.Buffer, b Builder) {
 	hasText := len(b.textBody) > 0
 	hasHTML := len(b.htmlBody) > 0
 	hasCal := len(b.calendarBody) > 0
 
-	bodyCount := 0
+	partCount := 0
 	if hasText {
-		bodyCount++
+		partCount++
 	}
 	if hasHTML {
-		bodyCount++
+		partCount++
 	}
 	if hasCal {
-		bodyCount++
+		partCount++
 	}
 
-	switch {
-	case bodyCount > 1:
+	if partCount > 1 {
 		boundary := newBoundary()
 		writeHeader(buf, "Content-Type", "multipart/alternative; boundary="+boundary)
 		buf.WriteByte('\n')
@@ -840,15 +844,15 @@ func writeAlternativeOrSingleBody(buf *bytes.Buffer, b Builder) {
 			writeBodyPart(buf, boundary, "text/html", b.htmlBody)
 		}
 		if hasCal {
-			writeBodyPart(buf, boundary, "text/calendar", b.calendarBody)
+			fmt.Fprintf(buf, "--%s\n", boundary)
+			writeCalendarPart(buf, b.calendarBody)
 		}
 		fmt.Fprintf(buf, "--%s--\n", boundary)
-	case hasHTML:
+	} else if hasHTML {
 		writeSingleBodyPartHeaders(buf, "text/html", b.htmlBody)
-	case hasCal:
-		writeSingleBodyPartHeaders(buf, "text/calendar", b.calendarBody)
-	default:
-		// text/plain (also handles empty body)
+	} else if hasCal {
+		writeCalendarPart(buf, b.calendarBody)
+	} else {
 		writeSingleBodyPartHeaders(buf, "text/plain", b.textBody)
 	}
 }
@@ -990,6 +994,35 @@ func writeSingleBodyPartHeaders(buf *bytes.Buffer, ct string, body []byte) {
 	fmt.Fprintf(buf, "Content-Type: %s; charset=UTF-8\n", ct)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
 	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
+}
+
+// writeCalendarPart writes the text/calendar MIME part. The method= parameter
+// is derived from the METHOD property in the ICS body (defaulting to REQUEST
+// when absent) so that passthrough ICS with METHOD:CANCEL or METHOD:REPLY
+// produce a Content-Type that matches the body.
+func writeCalendarPart(buf *bytes.Buffer, body []byte) {
+	method := extractICSMethod(body)
+	if method == "" {
+		method = "REQUEST"
+	}
+	cte := selectCTE(body)
+	fmt.Fprintf(buf, "Content-Type: text/calendar; method=%s; charset=UTF-8\n", method)
+	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
+	buf.WriteByte('\n')
+}
+
+// extractICSMethod scans the ICS body for the top-level METHOD property and
+// returns its value (e.g. "REQUEST", "CANCEL", "REPLY"). Returns "" when the
+// property is absent so callers can apply their own default.
+func extractICSMethod(body []byte) string {
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(strings.ToUpper(line), "METHOD:") {
+			return strings.TrimSpace(line[7:])
+		}
+	}
+	return ""
 }
 
 // writeAttachmentPart writes a MIME attachment part.

@@ -2,69 +2,112 @@
 
 > 适用命令：`lark-cli base +field-create`、`lark-cli base +field-update`
 
-本文件定义 **shortcut 写字段** 时 `--json` 的推荐格式，避免 AI 混用旧版 `type=数字 + field_name + property` 结构。
+本文件定义 **shortcut 写字段** 时 `--json` 的推荐格式，是字段类型与字段 JSON 结构的 source of truth。目标不是复刻完整 schema，而是让 agent 稳定产出正确 payload。
 
 ## 1. 顶层规则（必须遵守）
 
 - `--json` 必须是 JSON 对象。
 - 顶层统一使用：`type` + `name` + 类型特有字段。
-- 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接。
+- 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
-- `+field-update` 是 `PUT` 语义，建议先 `+field-get` 再全量提交目标字段配置。
-- `type=formula` 或 `type=lookup` 创建时，必须先读对应 guide。
+- `+field-update` 使用同样的字段 JSON 结构，但语义是 `PUT`；建议先 `+field-get` 再按目标状态全量提交。
+- `type=formula` 或 `type=lookup` 创建/更新前，必须先读对应 guide。
+
+推荐示例：
 
 ```json
 {
   "type": "text",
   "name": "需求背景",
-  "description": "记录需求背景与已知约束；填写口径可参考[说明模板](https://example.com/spec)"
+  "description": "记录需求背景与已知约束"
 }
 ```
 
-## 2. 各类型格式与示例
+## 2. 字段速查
 
-### 2.1 text
+| 类型 | 最小必填字段 | 常见补充字段 |
+|------|--------------|-------------|
+| `text` | `type` `name` | `style.type` |
+| `number` | `type` `name` | `style` |
+| `select` | `type` `name` | `multiple` + `options`，或 `multiple` + `dynamic_options_source` |
+| `datetime` | `type` `name` | `style.format` |
+| `created_at` / `updated_at` | `type` `name` | `style.format` |
+| `user` / `group_chat` | `type` `name` | `multiple` |
+| `created_by` / `updated_by` | `type` `name` | 无 |
+| `link` | `type` `name` `link_table` | `bidirectional` `bidirectional_link_field_name` |
+| `formula` | `type` `name` `expression` | 无 |
+| `lookup` | `type` `name` `from` `select` `where` | `aggregate` |
+| `auto_number` | `type` `name` | `style.rules` |
+| `attachment` / `location` / `checkbox` | `type` `name` | 无 |
 
-**要求**：`name` 必填；可选传 `description`；`style.type` 可选，默认 `plain`。
+所有类型都可额外传 `description`；上表的“常见补充字段”只列类型特有配置。
+
+## 3. 各类型写法
+
+### 3.1 text
+
+文本字段；电话、超链接、邮箱、条码也都属于 `text`，通过 `style.type` 区分。
+
+最小写法（默认 `style.type` 为 `plain`）：
+
+```json
+{
+  "type": "text",
+  "name": "标题"
+}
+```
+
+常用写法：
 
 ```json
 {
   "type": "text",
   "name": "标题",
-  "style": { "type": "plain" }
+  "description": "主标题字段"
 }
 ```
-
-`style.type` 常用值：`plain`、`phone`、`url`、`email`、`barcode`。
-
-**Schema**
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "text", "description": "Text field type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "style": {
-      "type": "object",
-      "properties": { "type": { "type": "string", "enum": ["plain", "phone", "url", "email", "barcode"], "description": "Text style type" } },
-      "required": ["type"],
-      "additionalProperties": false,
-      "description": "Text style",
-      "default": { "type": "plain" }
-    }
-  },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Text field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "type": "text",
+  "name": "联系电话",
+  "style": { "type": "phone" }
 }
 ```
 
-### 2.2 number
+```json
+{
+  "type": "text",
+  "name": "官网",
+  "style": { "type": "url" }
+}
+```
 
-**要求**：`name` 必填；`style.type` 常用 `plain/currency/progress/rating`。
+常用 `style.type`：`plain`（默认）、`phone`、`url`、`email`、`barcode`。
+
+### 3.2 number
+
+数字字段；货币、进度、评分都属于 `number`，通过 `style.type` 区分。
+
+最小写法（默认 `style.type` 为 `plain`）：
+
+```json
+{
+  "type": "number",
+  "name": "工时"
+}
+```
+
+`style` 是按 `type` 区分的对象；不同 `style.type` 的内部字段不一样，不要混传。
+
+#### `plain`
+
+支持字段：`precision`、`percentage`、`thousands_separator`
+
+默认值 / 约束：
+- `precision` 取值 `0..4`，默认 `2`
+- `percentage` 默认 `false`
+- `thousands_separator` 默认 `false`
 
 ```json
 {
@@ -79,6 +122,14 @@
 }
 ```
 
+#### `currency`
+
+支持字段：`precision`、`currency_code`
+
+默认值 / 约束：
+- `precision` 取值 `0..4`，默认 `2`
+- `currency_code` 必填，如 `CNY`、`USD`、`EUR`
+
 ```json
 {
   "type": "number",
@@ -86,6 +137,15 @@
   "style": { "type": "currency", "precision": 2, "currency_code": "CNY" }
 }
 ```
+
+#### `progress`
+
+支持字段：`percentage`、`color`
+
+默认值 / 约束：
+- `percentage` 默认 `true`
+- `color` 必填
+- `color` 可用：`Blue`、`Purple`、`DarkGreen`、`Green`、`Cyan`、`Orange`、`Red`、`Gray`、`WhiteToBlueGradient`、`WhiteToPurpleGradient`、`WhiteToOrangeGradient`、`GreenToRedGradient`、`RedToGreenGradient`、`BlueToPinkGradient`、`PinkToBlueGradient`、`SpectralGradient`
 
 ```json
 {
@@ -95,6 +155,16 @@
 }
 ```
 
+#### `rating`
+
+支持字段：`icon`、`min`、`max`
+
+默认值 / 约束：
+- `icon` 默认 `star`
+- `icon` 可用：`star`、`heart`、`thumbsup`、`fire`、`smile`、`lightning`、`flower`、`number`
+- `min` 取值 `0..1`，默认 `1`
+- `max` 取值 `1..10`，默认 `5`
+
 ```json
 {
   "type": "number",
@@ -103,87 +173,22 @@
 }
 ```
 
-**Schema**
+### 3.3 select
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "number", "description": "Number field type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "style": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": { "type": "string", "const": "plain", "description": "Plain style type" },
-            "precision": { "type": "number", "minimum": 0, "maximum": 4, "default": 2, "description": "Decimal precision" },
-            "percentage": { "type": "boolean", "default": false, "description": "Use percentage" },
-            "thousands_separator": { "$ref": "#/properties/style/anyOf/0/properties/percentage", "default": false, "description": "Use thousand separator" }
-          },
-          "required": ["type"],
-          "additionalProperties": false,
-          "description": "Plain number style"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": { "type": "string", "const": "currency", "description": "Currency style type" },
-            "precision": { "type": "number", "minimum": 0, "maximum": 4, "default": 2, "description": "Decimal precision" },
-            "currency_code": {
-              "type": "string",
-              "enum": ["CNY", "USD", "EUR", "GBP", "AED", "AUD", "BRL", "CAD", "CHF", "HKD", "INR", "IDR", "JPY", "KRW", "MOP", "MXN", "MYR", "PHP", "PLN", "RUB", "SGD", "THB", "TRY", "TWD", "VND"],
-              "default": "CNY",
-              "description": "Currency code"
-            }
-          },
-          "required": ["type"],
-          "additionalProperties": false,
-          "description": "Currency style"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": { "type": "string", "const": "progress", "description": "Progress style type" },
-            "percentage": { "$ref": "#/properties/style/anyOf/0/properties/percentage", "default": true, "description": "Use percentage" },
-            "color": {
-              "type": "string",
-              "enum": ["Blue", "Purple", "DarkGreen", "Green", "Cyan", "Orange", "Red", "Gray", "WhiteToBlueGradient", "WhiteToPurpleGradient", "WhiteToOrangeGradient", "GreedToRedGradient", "RedToGreenGradient", "BlueToPinkGradient", "PinkToBlueGradient", "SpectralGradient"],
-              "description": "Progress color"
-            }
-          },
-          "required": ["type", "color"],
-          "additionalProperties": false,
-          "description": "Progress style"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": { "type": "string", "const": "rating", "description": "Rating style type" },
-            "icon": { "type": "string", "enum": ["star", "heart", "thumbsup", "fire", "smile", "lightning", "flower", "number"], "default": "star", "description": "Rating icon" },
-            "min": { "type": "integer", "minimum": 0, "maximum": 1, "default": 1, "description": "Minimum rating" },
-            "max": { "type": "integer", "minimum": 1, "maximum": 10, "default": 5, "description": "Maximum rating" }
-          },
-          "required": ["type"],
-          "additionalProperties": false,
-          "description": "Rating style"
-        }
-      ],
-      "default": { "type": "plain" },
-      "description": "Number style"
-    }
-  },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Number field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
+单选和多选都使用 `select`；用 `multiple` 区分。`multiple` 默认 `false`。静态选项用 `options`，动态选项用 `dynamic_options_source`；两者不要同时传。
 
-### 2.3 select（单选/多选）
+#### 静态选项
 
-**要求**：`name` 必填；`multiple` 控制单/多选；`options` 为对象数组。
+支持字段：`multiple`、`options`
+
+默认值 / 约束：
+- `multiple` 默认 `false`
+- `options` 最多 `10000` 项
+- `options[]` 结构是 `{name, hue?, lightness?}`
+- `options[].name` 必填
+- `options[].hue` 可用：`Red`、`Orange`、`Yellow`、`Lime`、`Green`、`Turquoise`、`Wathet`、`Blue`、`Carmine`、`Purple`、`Gray` 缺省值为 `Blue`
+- `options[].lightness` 可用：`Lighter`、`Light`、`Standard`、`Dark`、`Darker` 缺省值为 `Lighter`
+- 选项里没有 `id`，只有 `name`。
 
 ```json
 {
@@ -197,46 +202,48 @@
 }
 ```
 
-- `options[].name` 必填。
-- `options` 不要传 `id`（创建场景由后端生成）。
+#### 动态选项
 
-**Schema**
+支持字段：`multiple`、`dynamic_options_source`
+
+默认值 / 约束：
+- `multiple` 默认 `false`
+- `dynamic_options_source` 结构是 `{table_id, field_id}`
+- `dynamic_options_source.table_id` 填来源表 id 或表名
+- `dynamic_options_source.field_id` 填来源字段 id 或字段名
+- `dynamic_options_source` 仅创建支持；更新已有字段时不要传
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "select", "description": "Select field type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "multiple": { "type": "boolean", "default": false, "description": "Allow multiple" },
-    "options": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string", "description": "Option name" },
-          "hue": { "type": "string", "enum": ["Red", "Orange", "Yellow", "Lime", "Green", "Turquoise", "Wathet", "Blue", "Carmine", "Purple", "Gray"], "description": "Option hue", "default": "Blue" },
-          "lightness": { "type": "string", "enum": ["Lighter", "Light", "Standard", "Dark", "Darker"], "description": "Option lightness", "default": "Lighter" }
-        },
-        "required": ["name"],
-        "additionalProperties": false,
-        "description": "Select option"
-      },
-      "maxItems": 10000,
-      "description": "Static options"
-    }
-  },
-  "required": ["type", "name", "options"],
-  "additionalProperties": false,
-  "description": "Select field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "type": "select",
+  "name": "动态状态",
+  "multiple": false,
+  "dynamic_options_source": {
+    "table_id": "选项表",
+    "field_id": "候选状态"
+  }
 }
 ```
 
-### 2.4 datetime / created_at / updated_at
+### 3.4 datetime
 
-**要求**：`name` 必填；`style.format` 可选。
+手动填写的日期/时间字段。系统时间用 `created_at` / `updated_at`。
+
+最小写法：
+
+```json
+{
+  "type": "datetime",
+  "name": "截止时间"
+}
+```
+
+支持字段：`style.format`
+
+默认值 / 约束：
+- `style.format` 默认 `yyyy/MM/dd` 可用格式：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`yyyy/MM/dd HH:mm Z`、`yyyy-MM-dd`、`yyyy-MM-dd HH:mm`、`yyyy-MM-dd HH:mm Z`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy`
+
+常用写法：
 
 ```json
 {
@@ -246,91 +253,42 @@
 }
 ```
 
+### 3.5 created_at / updated_at
+
+系统创建时间 / 系统更新时间字段；可配显示格式，但记录写入时应视为只读。
+
+支持字段：`style.format`
+
+默认值 / 约束：
+- `style.format` 默认 `yyyy/MM/dd`
+- 可用格式：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`yyyy/MM/dd HH:mm Z`、`yyyy-MM-dd`、`yyyy-MM-dd HH:mm`、`yyyy-MM-dd HH:mm Z`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy`
+
 ```json
-{ "type": "created_at", "name": "创建时间", "style": { "format": "yyyy/MM/dd" } }
+{ "type": "created_at", "name": "创建时间" }
 ```
 
 ```json
 { "type": "updated_at", "name": "更新时间", "style": { "format": "yyyy/MM/dd HH:mm" } }
 ```
 
-**Schema - datetime**
+### 3.6 user / group_chat
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "datetime", "description": "Date time type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "style": {
-      "type": "object",
-      "properties": { "format": { "type": "string", "enum": ["yyyy/MM/dd", "yyyy/MM/dd HH:mm", "yyyy/MM/dd HH:mm Z", "yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm Z", "MM-dd", "MM/dd/yyyy", "dd/MM/yyyy"], "default": "yyyy/MM/dd", "description": "Date format" } },
-      "additionalProperties": false,
-      "default": { "format": "yyyy/MM/dd" },
-      "description": "Date time style"
-    }
-  },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Date time field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
+人员字段和群字段都支持 `multiple`。
 
-**Schema - created_at**
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "created_at", "description": "Created time type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "style": {
-      "type": "object",
-      "properties": { "format": { "type": "string", "enum": ["yyyy/MM/dd", "yyyy/MM/dd HH:mm", "yyyy/MM/dd HH:mm Z", "yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm Z", "MM-dd", "MM/dd/yyyy", "dd/MM/yyyy"], "default": "yyyy/MM/dd", "description": "Date format" } },
-      "additionalProperties": false,
-      "default": { "format": "yyyy/MM/dd" },
-      "description": "Created time style"
-    }
-  },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Created time field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
-
-**Schema - updated_at**
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "updated_at", "description": "Modified time type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "style": {
-      "type": "object",
-      "properties": { "format": { "type": "string", "enum": ["yyyy/MM/dd", "yyyy/MM/dd HH:mm", "yyyy/MM/dd HH:mm Z", "yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm Z", "MM-dd", "MM/dd/yyyy", "dd/MM/yyyy"], "default": "yyyy/MM/dd", "description": "Date format" } },
-      "additionalProperties": false,
-      "default": { "format": "yyyy/MM/dd" },
-      "description": "Modified time style"
-    }
-  },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Modified time field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
-
-### 2.5 user / created_by / updated_by
+默认值 / 约束：
+- `multiple` 默认 `true`
 
 ```json
 { "type": "user", "name": "负责人", "multiple": true }
 ```
+
+```json
+{ "type": "group_chat", "name": "负责群", "multiple": true }
+```
+
+### 3.7 created_by / updated_by
+
+系统创建人 / 系统修改人字段；记录写入时应视为只读。
 
 ```json
 { "type": "created_by", "name": "创建人" }
@@ -340,48 +298,28 @@
 { "type": "updated_by", "name": "更新人" }
 ```
 
-**Schema - user**
+### 3.8 link
+
+关联字段；`link_table` 必填。
+
+支持字段：`link_table`、`bidirectional`、`bidirectional_link_field_name`
+
+默认值 / 约束：
+- `link_table` 必填
+- `link` 字段的单元格表示“当前记录关联到的对侧表记录集合”
+- `bidirectional` 默认 `false`
+- `bidirectional=true` 时，会在被关联表自动创建一个反向关联字段。任一侧记录的关联关系发生变更时，另一侧对应记录会自动同步更新
+- `bidirectional_link_field_name` 仅在 `bidirectional=true` 时使用
 
 ```json
 {
-  "type": "object",
-  "properties": { "type": { "type": "string", "const": "user", "description": "User field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" }, "multiple": { "type": "boolean", "default": true, "description": "Allow multiple" } },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "User field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "type": "link",
+  "name": "关联任务",
+  "link_table": "任务表"
 }
 ```
 
-**Schema - created_by**
-
-```json
-{
-  "type": "object",
-  "properties": { "type": { "type": "string", "const": "created_by", "description": "Created by type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Created by field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
-
-**Schema - updated_by**
-
-```json
-{
-  "type": "object",
-  "properties": { "type": { "type": "string", "const": "updated_by", "description": "Modified by type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Modified by field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
-
-### 2.6 link
-
-**要求**：`link_table` 必填；`bidirectional` 默认 `false`。
+双向关联：
 
 ```json
 {
@@ -393,29 +331,13 @@
 }
 ```
 
-**Schema**
+更新时注意：
+- `link` 不允许转换为其他类型，其他类型也不能转换为 `link`。
+- 现有 `link` 字段的 `bidirectional` 不能改。
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "link", "description": "Link field type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "link_table": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Linked table" },
-    "bidirectional": { "type": "boolean", "default": false, "description": "Bidirectional link" },
-    "bidirectional_link_field_name": { "$ref": "#/properties/name", "description": "Bidirectional link field name" }
-  },
-  "required": ["type", "name", "link_table"],
-  "additionalProperties": false,
-  "description": "Link field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
+### 3.9 formula
 
-### 2.7 formula
-
-**要求**：`expression` 必填。
+公式字段；`expression` 必填。创建/更新前先读 [formula-field-guide.md](formula-field-guide.md) 学习公式语法。
 
 ```json
 {
@@ -425,22 +347,19 @@
 }
 ```
 
-**Schema**
+### 3.10 lookup
 
-```json
-{
-  "type": "object",
-  "properties": { "type": { "type": "string", "const": "formula", "description": "Formula field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" }, "expression": { "type": "string", "description": "Formula expression" } },
-  "required": ["type", "name", "expression"],
-  "additionalProperties": false,
-  "description": "Formula field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
+查找引用字段；`from`、`select`、`where` 必填，`aggregate` 可选。创建/更新前先读 [lookup-field-guide.md](lookup-field-guide.md)。
 
-### 2.8 lookup
+支持字段：`from`、`select`、`where`、`aggregate`
 
-**要求**：`from`、`select`、`where` 必填；`aggregate` 可选。`where.logic` 仅支持 `and/or`，`conditions` 每项必须是三元组 `[field, op, value]`。
+默认值 / 约束：
+- `from`、`select`、`where` 必填
+- `aggregate` 默认 `raw_value` 代表不进行聚合，直接返回 select 回的原始值
+- `aggregate` 可用：`raw_value`、`sum`、`average`、`counta`、`unique_counta`、`max`、`min`、`unique`
+- `where.logic` 默认 `and`，仅支持 `and` / `or`
+- `where.conditions` 至少 1 条
+- `conditions` 每项是三元组 `[field, op, value?]`
 
 ```json
 {
@@ -459,87 +378,67 @@
 }
 ```
 
-**Schema**
+### 3.11 auto_number
+
+自动编号字段；不写 `style.rules` 时使用默认规则：`NO.001`。
+
+最小写法：
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "lookup", "description": "Lookup field type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "from": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Source data table" },
-    "select": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Field to aggregate from source table" },
-    "where": {
-      "type": "object",
-      "properties": {
-        "logic": { "type": "string", "enum": ["and", "or"], "default": "and", "description": "Filter Condition Logic" },
-        "conditions": {
-          "type": "array",
-          "items": {
-            "type": "array",
-            "minItems": 3,
-            "maxItems": 3,
-            "items": [
-              { "type": "string", "minLength": 1, "maxLength": 100, "description": "Field from source table to filter on" },
-              { "type": "string", "enum": ["==", "!=", ">", ">=", "<", "<=", "intersects", "disjoint", "empty", "non_empty"], "description": "Condition operator" },
-              {
-                "anyOf": [
-                  {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": { "type": "string", "const": "constant" },
-                          "value": {
-                            "anyOf": [
-                              { "type": "string", "description": "text & formula & location field support string as filter value" },
-                              { "type": "number", "description": "number & auto_number(the underfly incremental_number) field support number as filter value" },
-                              { "type": "array", "items": { "type": "string", "description": "option name" }, "description": "select field support one option: [\"option1\"] or multiple options: `[\"option1\", \"option2\"]` as filter value." },
-                              { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string", "description": "record id" } }, "required": ["id"], "additionalProperties": false }, "description": "link field support record id list as filter value" },
-                              { "type": "string", "description": "\ndatetime & create_at & updated_at field support relative and absolute filter value.\nabsolute:\n- \"ExactDate(yyyy-MM-dd)\"\nrelative:\n- Today\n- Tomorrow\n- Yesterday\n" },
-                              { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string", "description": "user id" } }, "required": ["id"], "additionalProperties": false }, "description": "user field support user id list as filter value" },
-                              { "type": "boolean", "description": "checkbox field support boolean as filter value" }
-                            ]
-                          }
-                        },
-                        "required": ["type", "value"],
-                        "additionalProperties": false,
-                        "description": "Constant filter value"
-                      },
-                      {
-                        "type": "object",
-                        "properties": { "type": { "type": "string", "const": "field_ref" }, "field": { "type": "string", "minLength": 1, "maxLength": 100, "description": "Field id or name" } },
-                        "required": ["type", "field"],
-                        "additionalProperties": false,
-                        "description": "Dynamic field reference from current table"
-                      }
-                    ]
-                  },
-                  { "type": "null" }
-                ],
-                "description": "Condition value (null for isEmpty/isNotEmpty)"
-              }
-            ],
-            "description": "Lookup condition tuple: [fieldRef, operator, value?]"
-          },
-          "minItems": 1,
-          "description": "Filter conditions"
-        }
-      },
-      "required": ["conditions"],
-      "additionalProperties": false
-    },
-    "aggregate": { "type": "string", "enum": ["raw_value", "sum", "average", "counta", "unique_counta", "max", "min", "unique"], "default": "raw_value", "description": "Aggregation function" }
-  },
-  "required": ["type", "name", "from", "select", "where"],
-  "additionalProperties": false,
-  "description": "Lookup field. You MUST Read xxx document first!",
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "type": "auto_number",
+  "name": "编号"
 }
 ```
 
-### 2.9 auto_number
+支持字段：`style.rules`
+
+默认值 / 约束：
+- `style.rules` 是规则数组，数量 `1..9`
+- 默认规则：
+
+```json
+{
+  "style": {
+    "rules": [
+      { "type": "text", "text": "NO." },
+      { "type": "incremental_number", "length": 3 }
+    ]
+  }
+}
+```
+
+#### `text`
+
+支持字段：`text`
+
+```json
+{ "type": "text", "text": "TASK-" }
+```
+
+#### `incremental_number`
+
+支持字段：`length`
+
+默认值 / 约束：
+- `length` 取值 `1..9`
+
+```json
+{ "type": "incremental_number", "length": 4 }
+```
+
+#### `created_time`
+
+支持字段：`date_format`
+
+默认值 / 约束：
+- `date_format` 可用：`yyyyMMdd`、`yyyyMM`、`yyMM`、`MMdd`、`yyyy`、`MM`、`dd`
+
+```json
+{ "type": "created_time", "date_format": "yyyyMMdd" }
+```
+
+自定义规则：
 
 ```json
 {
@@ -548,78 +447,14 @@
   "style": {
     "rules": [
       { "type": "text", "text": "TASK-" },
+      { "type": "created_time", "date_format": "yyyyMMdd" },
       { "type": "incremental_number", "length": 4 }
     ]
   }
 }
 ```
 
-**Schema**
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "type": { "type": "string", "const": "auto_number", "description": "Auto number type" },
-    "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" },
-    "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" },
-    "style": {
-      "type": "object",
-      "properties": {
-        "rules": {
-          "type": "array",
-          "items": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": { "type": { "type": "string", "const": "text", "description": "Text rule type" }, "text": { "type": "string", "description": "Prefix text" } },
-                "required": ["type", "text"],
-                "additionalProperties": false,
-                "description": "Auto number text rule"
-              },
-              {
-                "type": "object",
-                "properties": { "type": { "type": "string", "const": "incremental_number", "description": "Increment rule type" }, "length": { "type": "integer", "minimum": 1, "maximum": 9, "description": "Serial length" } },
-                "required": ["type", "length"],
-                "additionalProperties": false,
-                "description": "Auto number increment rule"
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": { "type": "string", "const": "created_time", "description": "Date rule type(auto fill record created date)" },
-                  "date_format": { "type": "string", "enum": ["yyyyMMdd", "yyyyMM", "yyMM", "MMdd", "yyyy", "MM", "dd"], "description": "Date format" }
-                },
-                "required": ["type", "date_format"],
-                "additionalProperties": false,
-                "description": "Auto number date rule"
-              }
-            ]
-          },
-          "minItems": 1,
-          "maxItems": 9,
-          "description": "Numbering rules"
-        }
-      },
-      "required": ["rules"],
-      "additionalProperties": false,
-      "default": {
-        "rules": [
-          { "type": "text", "text": "NO." },
-          { "type": "incremental_number", "length": 3 }
-        ]
-      },
-      "description": "Auto number style"
-    }
-  },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Auto number field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
-
-### 2.10 attachment / location / checkbox
+### 3.12 attachment / location / checkbox
 
 ```json
 { "type": "attachment", "name": "附件" }
@@ -633,47 +468,14 @@
 { "type": "checkbox", "name": "完成" }
 ```
 
-**Schema - attachment**
+## 4. 创建与更新
 
-```json
-{
-  "type": "object",
-  "properties": { "type": { "type": "string", "const": "attachment", "description": "Attachment field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Attachment field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
+- `+field-create`：按目标字段配置直接构造 `--json`。
+- `+field-update`：使用同样的 JSON 结构，但语义是 `PUT`；建议先 `+field-get`，再按目标完整状态提交。
 
-**Schema - location**
+## 5. 易错点
 
-```json
-{
-  "type": "object",
-  "properties": { "type": { "type": "string", "const": "location", "description": "Location field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Location field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
-
-**Schema - checkbox**
-
-```json
-{
-  "type": "object",
-  "properties": { "type": { "type": "string", "const": "checkbox", "description": "Checkbox field type" }, "name": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Field name" }, "description": { "type": "string", "description": "Field description; supports plain text or Markdown links" } },
-  "required": ["type", "name"],
-  "additionalProperties": false,
-  "description": "Checkbox field",
-  "$schema": "http://json-schema.org/draft-07/schema#"
-}
-```
-
-## 3. 推荐工作流
-
-1. `+field-list` / `+field-get` 先拿当前字段结构。
-2. 按本规范构造 `--json`。
-3. `type=formula/lookup` 时先读对应 guide，再创建。
+- `select` 只有一个类型；不要写 `single_select` / `multi_select`，用 `multiple` 控制是否多选。
+- `number` 的精度、货币、进度、评分配置都放在 `style` 下，不要写顶层 `precision`。
+- `datetime` 是手动日期字段；系统时间请改用 `created_at` / `updated_at`。
+- `formula` / `lookup` 没读 guide 前不要直接写。

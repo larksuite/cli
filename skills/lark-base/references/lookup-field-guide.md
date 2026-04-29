@@ -151,21 +151,22 @@ The `value` inside `{ "type": "constant", "value": ... }` varies by field type:
 
 | Field type | Constant value format | Example |
 |-----------|----------------------|---------|
-| Text / Phone / Email / Url | String | `"已完成"` |
-| Number / Currency / Progress / Rating | Number | `100`, `0.8` |
-| DateTime / CreatedTime / ModifiedTime | Duration tuple | `["ExactDate", "2025-01-01"]`, `["Today"]`, `["Yesterday"]`, `["Tomorrow"]` |
-| SingleSelect / MultiSelect | Option ID or ID array | `"opt_xxx"`, `["opt_xxx", "opt_yyy"]` |
-| Link (SingleLink / DuplexLink) | Record ID or ID array | `"rec_xxx"`, `["rec_xxx", "rec_yyy"]` |
-| User | User ID or ID array | `"123"`, `["123", "456"]` |
-| Checkbox | Boolean | `true`, `false` |
-| Attachment / Location | Only `empty` / `non_empty` | value must be `null` or omitted |
-| AutoNumber | Not supported for constant comparison | Use dynamic field\_ref instead |
-| Formula / Lookup (exact type) | Follow the underlying type rules | — |
-| Formula / Lookup (fuzzy type) | String | `"some text"` |
+| `text` | String | `"已完成"` |
+| `number` | Number | `100`, `0.8` |
+| `datetime` / `created_at` / `updated_at` | String | `"ExactDate(2025-01-01)"`, `"ExactDate(2025-01-01 09:30)"`, `"Today"`, `"Yesterday"`, `"Tomorrow"` |
+| `select` (`multiple=false/true`) | Option name array | `["Todo"]`, `["Todo", "Done"]` |
+| `link` | Record reference array | `[{ "id": "rec_xxx" }]`, `[{ "id": "rec_xxx" }, { "id": "rec_yyy" }]` |
+| `user` / `created_by` / `updated_by` | User reference array | `[{ "id": "ou_xxx" }]`, `[{ "id": "ou_xxx" }, { "id": "ou_yyy" }]` |
+| `checkbox` | Boolean | `true`, `false` |
+| `attachment` / `location` | Only `empty` / `non_empty` | value must be `null` or omitted |
+| `auto_number` | Not supported for constant comparison | Use dynamic field\_ref instead |
+| `formula` / `lookup` (exact type) | Follow the underlying type rules | — |
+| `formula` / `lookup` (fuzzy type) | String | `"some text"` |
 
-**DateTime notes**:
-- Only `ExactDate`, `Today`, `Yesterday`, `Tomorrow` are supported as duration formats
-- `["ExactDate", "2025-01-01"]` means the exact moment `2025-01-01 00:00:00`, NOT the entire day
+**`datetime` notes**:
+- Supported datetime constant values are `ExactDate(...)`, `Today`, `Yesterday`, `Tomorrow`
+- Date-only fields use `ExactDate(YYYY-MM-DD)`
+- Fields that include time use `ExactDate(YYYY-MM-DD HH:mm)`
 - For complex or relative date filtering, consider using a Formula field instead
 
 ### Dynamic field reference — set comparison semantics
@@ -179,12 +180,12 @@ When using `{ "type": "field_ref", "field": "..." }`, values from both sides are
 
 | Field type | Converted to |
 |-----------|-------------|
-| Text / Phone / Email / Url | Single-element string set |
-| Number / Currency / AutoNumber / DateTime | Single-element number set |
-| SingleSelect / MultiSelect | Set of option name strings |
-| User | Set of user name strings |
-| Link (SingleLink / DuplexLink) | Set of linked records' primary field string representations |
-| Formula / Lookup | The computed value set |
+| `text` | Single-element string set |
+| `number` / `auto_number` / `datetime` | Single-element number set |
+| `select` (`multiple=false/true`) | Set of option name strings |
+| `user` / `created_by` / `updated_by` | Set of user name strings |
+| `link` | Set of linked records' primary field string representations |
+| `formula` / `lookup` | The computed value set |
 
 **Examples**:
 - User field `["name1", "name2"]` **intersects** text `"name1"` → true; **==** text `"name1"` → false (sets not equal)
@@ -193,14 +194,14 @@ When using `{ "type": "field_ref", "field": "..." }`, values from both sides are
 
 ### Supported operators
 
-| Operator | Meaning | Applicable types |
+| Operator | Meaning | Applicable field types |
 |----------|---------|-----------------|
 | `==` | Equal (exact match) | All types |
 | `!=` | Not equal | All types |
-| `>` | Greater than | Number, DateTime |
-| `>=` | Greater than or equal | Number, DateTime |
-| `<` | Less than | Number, DateTime |
-| `<=` | Less than or equal | Number, DateTime |
+| `>` | Greater than | `number`, `datetime` |
+| `>=` | Greater than or equal | `number`, `datetime` |
+| `<` | Less than | `number`, `datetime` |
+| `<=` | Less than or equal | `number`, `datetime` |
 | `intersects` | Has intersection (non-empty overlap) | All types (most commonly used for dynamic field\_ref) |
 | `disjoint` | No intersection | All types |
 | `empty` | Field is empty | All types (value must be null or omitted) |
@@ -217,10 +218,10 @@ When using `{ "type": "field_ref", "field": "..." }`, values from both sides are
 
 | Aggregate | Common user phrasing | Select field should be | Result type |
 |-----------|---------------------|----------------------|-------------|
-| `sum` | "total" / "sum" / "cumulative amount" | Numeric field (e.g., amount) | Number |
-| `average` | "average" / "mean" | Numeric field | Number |
-| `max` | "maximum" / "latest" / "most recent" | Numeric / DateTime field | Same as source |
-| `min` | "minimum" / "earliest" | Numeric / DateTime field | Same as source |
+| `sum` | "total" / "sum" / "cumulative amount" | `number` field (e.g., amount) | Number |
+| `average` | "average" / "mean" | `number` field | Number |
+| `max` | "maximum" / "latest" / "most recent" | `number` / `datetime` field | Same as source |
+| `min` | "minimum" / "earliest" | `number` / `datetime` field | Same as source |
 | `counta` | "count" / "how many" / "total number" | Any field | Number |
 | `unique_counta` | "count distinct" / "how many different" | Field to deduplicate | Number |
 | `unique` | "list distinct" / "which ones" / "show different" | Field to display | List |
@@ -287,8 +288,8 @@ How to handle multiple matching records?
 When the source table has a Link pointing to the current table:
 
 ```
-Exhibition table: ExhibitionName (primaryField)           ← current table
-Artwork table:    ArtworkName (primaryField),             ← source table (Link is here)
+Exhibition table: ExhibitionName (primaryField) ← current table
+Artwork table: ArtworkName (primaryField), ← source table (Link is here)
                   Exhibition (Link → Exhibition table)
 ```
 
@@ -315,8 +316,8 @@ Artwork table:    ArtworkName (primaryField),             ← source table (Link
 When the current table has a Link pointing to the source table:
 
 ```
-Supplier table:  SupplierName (primaryField), Contact (Text)       ← source table
-Inventory table: ProductName (primaryField),                        ← current table (Link is here)
+Supplier table: SupplierName (primaryField), Contact (Text) ← source table
+Inventory table: ProductName (primaryField), ← current table (Link is here)
                  Supplier (Link → Supplier table)
 ```
 
@@ -340,8 +341,8 @@ Inventory table: ProductName (primaryField),                        ← current 
 **Scenario**: "Sum order amounts per project" (tables share a "ProjectName" field but no Link)
 
 ```
-Project table: ProjectName (primaryField)                          ← current table
-Order table:   OrderID (primaryField), ProjectName (Text),         ← source table
+Project table: ProjectName (primaryField) ← current table
+Order table: OrderID (primaryField), ProjectName (Text), ← source table
                Amount (Number)
 ```
 
@@ -399,7 +400,7 @@ Combine row-level matching with fixed-value filtering using `logic: "and"`:
     "logic": "and",
     "conditions": [
       ["ProjectName", "==", { "type": "field_ref", "field": "ProjectName" }],
-      ["CreatedDate", ">=", { "type": "constant", "value": ["ExactDate", "2025-01-01"] }]
+      ["CreatedDate", ">=", { "type": "constant", "value": "ExactDate(2025-01-01)" }]
     ]
   }
 }
@@ -504,5 +505,6 @@ The user says "aggregate order amounts" — use Lookup, not Link. Link establish
 - Aggregate values are snake_case lowercase: `sum`, `counta`, `unique_counta` (NOT `count`)
 - Operators: `==`, `!=`, `>`, `>=`, `<`, `<=`, `intersects`, `disjoint`, `empty`, `non_empty`
 - Table and field names must exactly match `+table-get` output
-- DateTime constant values use duration tuple format: `["ExactDate", "2025-01-01"]`, `["Today"]`, `["Yesterday"]`, `["Tomorrow"]`
-- Select/Link/User constant values use IDs, not display names
+- `datetime` constant values use string format: `ExactDate(YYYY-MM-DD)` / `ExactDate(YYYY-MM-DD HH:mm)` / `Today` / `Yesterday` / `Tomorrow`
+- `select` constant values use option names;
+- `link` / `user` constant values use `{id}` object arrays

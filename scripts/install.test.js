@@ -9,7 +9,7 @@ const os = require("os");
 
 const crypto = require("crypto");
 
-const { getExpectedChecksum, verifyChecksum, assertAllowedHost } = require("./install.js");
+const { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls } = require("./install.js");
 
 describe("getExpectedChecksum", () => {
   function makeTmpChecksums(content) {
@@ -161,6 +161,120 @@ describe("assertAllowedHost", () => {
     assert.throws(
       () => assertAllowedHost("not-a-url"),
       TypeError
+    );
+  });
+});
+
+describe("resolveMirrorUrls", () => {
+  const ARCHIVE = "lark-cli-1.0.0-linux-amd64.tar.gz";
+  const VERSION = "1.0.0";
+  const DEFAULT = "https://registry.npmmirror.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz";
+
+  it("returns only the default mirror when no env vars are set", () => {
+    assert.deepEqual(resolveMirrorUrls({}, ARCHIVE, VERSION), [DEFAULT]);
+  });
+
+  it("does not derive from the default npmjs registry", () => {
+    // The public npmjs registry doesn't host /-/binary/<pkg>/..., so we must
+    // not point downloads at it.
+    assert.deepEqual(
+      resolveMirrorUrls(
+        { npm_config_registry: "https://registry.npmjs.org/" },
+        ARCHIVE,
+        VERSION
+      ),
+      [DEFAULT]
+    );
+  });
+
+  it("derives from non-default npm_config_registry AND keeps default as fallback", () => {
+    // Critical: a corporate npm proxy (Verdaccio/Artifactory/Nexus) often
+    // doesn't actually serve /-/binary/<pkg>/..., so we must keep the
+    // public npmmirror as a final fallback or installs regress vs. the
+    // pre-PR "GitHub → npmmirror" behavior.
+    assert.deepEqual(
+      resolveMirrorUrls(
+        { npm_config_registry: "https://corp.example.com/repository/npm-public/" },
+        ARCHIVE,
+        VERSION
+      ),
+      [
+        "https://corp.example.com/repository/npm-public/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
+        DEFAULT,
+      ]
+    );
+  });
+
+  it("derived URL appears before the default in the chain", () => {
+    const urls = resolveMirrorUrls(
+      { npm_config_registry: "https://corp.example.com/" },
+      ARCHIVE,
+      VERSION
+    );
+    assert.equal(urls.length, 2);
+    assert.match(urls[0], /^https:\/\/corp\.example\.com\//);
+    assert.equal(urls[1], DEFAULT);
+  });
+
+  it("does not duplicate the default if the registry already points at it", () => {
+    // If npm_config_registry happens to be the public npmmirror, we still
+    // want a single entry, not two identical ones.
+    assert.deepEqual(
+      resolveMirrorUrls(
+        { npm_config_registry: "https://registry.npmmirror.com/" },
+        ARCHIVE,
+        VERSION
+      ),
+      [DEFAULT]
+    );
+  });
+
+  it("strips trailing slashes from the registry URL", () => {
+    assert.deepEqual(
+      resolveMirrorUrls(
+        { npm_config_registry: "https://corp.example.com///" },
+        ARCHIVE,
+        VERSION
+      ),
+      [
+        "https://corp.example.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
+        DEFAULT,
+      ]
+    );
+  });
+
+  it("ignores empty/whitespace npm_config_registry", () => {
+    assert.deepEqual(
+      resolveMirrorUrls(
+        { npm_config_registry: "" },
+        ARCHIVE,
+        VERSION
+      ),
+      [DEFAULT]
+    );
+  });
+
+  it("silently falls back when npm_config_registry is non-https", () => {
+    // Implicit feature: don't break installs whose npm registry is plain http.
+    // The user didn't opt into binary-mirror behavior, so just use the default.
+    assert.deepEqual(
+      resolveMirrorUrls(
+        { npm_config_registry: "http://internal.example.com/" },
+        ARCHIVE,
+        VERSION
+      ),
+      [DEFAULT]
+    );
+  });
+
+  it("silently falls back when npm_config_registry is file://", () => {
+    assert.deepEqual(
+      resolveMirrorUrls(
+        { npm_config_registry: "file:///tmp" },
+        ARCHIVE,
+        VERSION
+      ),
+      [DEFAULT]
     );
   });
 });

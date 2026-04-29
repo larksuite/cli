@@ -42,7 +42,8 @@ var MailReplyAll = common.Shortcut{
 		{Name: "subject", Desc: "Optional. Override the auto-generated Re: subject. When set, the shortcut uses this value verbatim instead of prefixing the original subject."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are appended to the reply-derived values (no de-duplication; see warning in Execute output)."},
 		signatureFlag,
-		priorityFlag},
+		priorityFlag,
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		confirmSend := runtime.Bool("confirm-send")
@@ -76,10 +77,16 @@ var MailReplyAll = common.Shortcut{
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
 		}
+		if err := validateEventSendTimeExclusion(runtime); err != nil {
+			return err
+		}
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+			return err
+		}
+		if err := validateEventFlags(runtime); err != nil {
 			return err
 		}
 		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), ""); err != nil {
@@ -296,6 +303,9 @@ var MailReplyAll = common.Shortcut{
 			return err
 		}
 		bld = applyPriority(bld, priority)
+		if calData := buildCalendarBody(runtime, senderEmail, toList, ccList); calData != nil {
+			bld = bld.CalendarBody(calData)
+		}
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
 		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, srcInlineBytes) + templateSmallBytes
