@@ -243,86 +243,14 @@ describe("resolveMirrorUrls", () => {
     );
   });
 
-  it("LARK_CLI_DOWNLOAD_HOST is the SOLE entry — no fallback", () => {
-    // Explicit user choice: do not silently leak to npmmirror.
+  it("ignores empty/whitespace npm_config_registry", () => {
     assert.deepEqual(
       resolveMirrorUrls(
-        {
-          LARK_CLI_DOWNLOAD_HOST: "https://override.example.com",
-          npm_config_registry: "https://corp.example.com/",
-        },
-        ARCHIVE,
-        VERSION
-      ),
-      ["https://override.example.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz"]
-    );
-  });
-
-  it("ignores empty/whitespace env values", () => {
-    assert.deepEqual(
-      resolveMirrorUrls(
-        { LARK_CLI_DOWNLOAD_HOST: "  ", npm_config_registry: "" },
+        { npm_config_registry: "" },
         ARCHIVE,
         VERSION
       ),
       [DEFAULT]
-    );
-  });
-
-  it("rejects file:// in LARK_CLI_DOWNLOAD_HOST", () => {
-    assert.throws(
-      () => resolveMirrorUrls(
-        { LARK_CLI_DOWNLOAD_HOST: "file:///tmp" },
-        ARCHIVE,
-        VERSION
-      ),
-      { message: /LARK_CLI_DOWNLOAD_HOST must be an https:\/\/ URL/ }
-    );
-  });
-
-  it("rejects ftp:// in LARK_CLI_DOWNLOAD_HOST", () => {
-    assert.throws(
-      () => resolveMirrorUrls(
-        { LARK_CLI_DOWNLOAD_HOST: "ftp://example.com" },
-        ARCHIVE,
-        VERSION
-      ),
-      { message: /LARK_CLI_DOWNLOAD_HOST must be an https:\/\/ URL/ }
-    );
-  });
-
-  it("rejects http:// in LARK_CLI_DOWNLOAD_HOST", () => {
-    assert.throws(
-      () => resolveMirrorUrls(
-        { LARK_CLI_DOWNLOAD_HOST: "http://example.com" },
-        ARCHIVE,
-        VERSION
-      ),
-      { message: /LARK_CLI_DOWNLOAD_HOST must be an https:\/\/ URL/ }
-    );
-  });
-
-  it("rejects https:// with no hostname in LARK_CLI_DOWNLOAD_HOST", () => {
-    // `https://` without a host is rejected by the URL parser; surface a
-    // meaningful error instead of a raw TypeError.
-    assert.throws(
-      () => resolveMirrorUrls(
-        { LARK_CLI_DOWNLOAD_HOST: "https://" },
-        ARCHIVE,
-        VERSION
-      ),
-      { message: /LARK_CLI_DOWNLOAD_HOST is not a valid URL/ }
-    );
-  });
-
-  it("rejects garbage in LARK_CLI_DOWNLOAD_HOST", () => {
-    assert.throws(
-      () => resolveMirrorUrls(
-        { LARK_CLI_DOWNLOAD_HOST: "not-a-url" },
-        ARCHIVE,
-        VERSION
-      ),
-      { message: /LARK_CLI_DOWNLOAD_HOST is not a valid URL/ }
     );
   });
 

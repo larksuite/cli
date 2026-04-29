@@ -44,10 +44,7 @@ const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
 // Build the ordered list of binary mirror URLs to try. Resolution rules:
-//   1. LARK_CLI_DOWNLOAD_HOST  — explicit override; returned as the SOLE
-//                                URL so we never silently fall through to
-//                                a host the user did not authorize.
-//   2. npm_config_registry     — when the user has set a non-default
+//   1. npm_config_registry     — when the user has set a non-default
 //                                registry (npmmirror clone, corp Verdaccio,
 //                                Artifactory, …), include the derived path
 //                                first. Many of these proxies don't actually
@@ -56,27 +53,15 @@ const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 //                                fallback so the install does not regress
 //                                from the previous behavior of "GitHub →
 //                                npmmirror".
-//   3. registry.npmmirror.com  — public China mirror, always tried last
-//                                unless an explicit override was set.
-// The default public npmjs registry is skipped in step 2 because it does not
+//   2. registry.npmmirror.com  — public China mirror, always tried last.
+// The default public npmjs registry is skipped in step 1 because it does not
 // host binaries under /-/binary/...
 //
-// LARK_CLI_DOWNLOAD_HOST is constrained to HTTPS URLs with a real hostname.
-// This prevents `file://` (would let curl read local paths and pass the empty
-// hostname through assertAllowedHost), `ftp://`, or `http://` — which would
-// silently downgrade transport security for the binary download.
+// Non-https / malformed npm_config_registry is silently ignored so npm users
+// with http-only internal registries don't have their installs broken.
 function resolveMirrorUrls(env, archive, version) {
   const binaryPath = `/-/binary/lark-cli/v${version}/${archive}`;
   const defaultUrl = joinUrl(DEFAULT_MIRROR_HOST, binaryPath);
-
-  const override = (env.LARK_CLI_DOWNLOAD_HOST || "").trim();
-  if (override) {
-    // User explicitly opted in — fail loudly on bad input rather than fall
-    // through to a different host than they asked for. No additional fallback
-    // either; the user picked this host on purpose.
-    const base = parseDownloadBase(override, "LARK_CLI_DOWNLOAD_HOST");
-    return [joinUrl(base.origin + base.pathname, binaryPath)];
-  }
 
   const urls = [];
   const registry = (env.npm_config_registry || "").trim();
@@ -90,21 +75,6 @@ function resolveMirrorUrls(env, archive, version) {
 
 function joinUrl(base, suffix) {
   return base.replace(/\/+$/, "") + suffix;
-}
-
-function parseDownloadBase(raw, source) {
-  let parsed;
-  try {
-    parsed = new URL(raw);
-  } catch (_) {
-    throw new Error(`${source} is not a valid URL: ${raw}`);
-  }
-  if (parsed.protocol !== "https:" || !parsed.hostname) {
-    throw new Error(
-      `${source} must be an https:// URL with a hostname (got ${raw})`
-    );
-  }
-  return parsed;
 }
 
 function isValidDownloadBase(raw) {
@@ -133,9 +103,7 @@ function assertAllowedHost(url) {
 }
 
 // Resolve the mirror URL chain and admit each host. Called from install() so
-// resolution errors (e.g. invalid LARK_CLI_DOWNLOAD_HOST) propagate into the
-// guarded try/catch and surface the recovery guidance instead of a raw
-// module-load stack trace.
+// derived hosts only become trusted when actually needed.
 function getMirrorUrls(env) {
   const urls = resolveMirrorUrls(env, archiveName, VERSION);
   for (const u of urls) ALLOWED_HOSTS.add(new URL(u).hostname);
@@ -158,17 +126,8 @@ function download(url, destPath) {
 }
 
 function install() {
-  // Resolve the mirror URL chain up front so a bad LARK_CLI_DOWNLOAD_HOST
-  // throws here (inside the guarded path) and gets the friendly error help
-  // below, not a raw module-load stack trace.
   const mirrorUrls = getMirrorUrls(process.env);
-
-  // When the user explicitly sets LARK_CLI_DOWNLOAD_HOST, skip the GitHub
-  // attempt entirely. The user has named the only host they want hit;
-  // probing github.com first can trigger DLP / firewall alerts and violates
-  // the explicit-override semantics documented above.
-  const hasExplicitHost = !!(process.env.LARK_CLI_DOWNLOAD_HOST || "").trim();
-  const downloadUrls = hasExplicitHost ? mirrorUrls : [GITHUB_URL, ...mirrorUrls];
+  const downloadUrls = [GITHUB_URL, ...mirrorUrls];
 
   fs.mkdirSync(binDir, { recursive: true });
 
@@ -176,10 +135,10 @@ function install() {
   const archivePath = path.join(tmpDir, archiveName);
 
   try {
-    // Walk the chain in order; stop at the first success. The default chain
-    // is GitHub → derived(npm_config_registry)? → npmmirror, preserving the
-    // pre-PR safety net when a corporate proxy doesn't actually host
-    // /-/binary/<pkg>/...
+    // Walk the chain in order; stop at the first success. Default chain:
+    // GitHub → derived(npm_config_registry)? → npmmirror. The npmmirror
+    // tail preserves the pre-PR safety net when a corporate proxy doesn't
+    // actually host /-/binary/<pkg>/...
     let lastErr;
     let downloaded = false;
     for (const url of downloadUrls) {
@@ -296,9 +255,7 @@ if (require.main === module) {
       `  export https_proxy=http://your-proxy:port\n` +
       `  npm install -g @larksuite/cli\n\n` +
       `  # 2. Point to a corporate npm mirror that proxies /-/binary/lark-cli/...:\n` +
-      `  npm install -g @larksuite/cli --registry=https://your-corp-mirror/\n\n` +
-      `  # 3. Override the binary download host directly:\n` +
-      `  LARK_CLI_DOWNLOAD_HOST=https://your-host npm install -g @larksuite/cli`
+      `  npm install -g @larksuite/cli --registry=https://your-corp-mirror/`
     );
     process.exit(1);
   }
