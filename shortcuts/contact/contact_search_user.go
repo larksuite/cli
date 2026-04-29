@@ -123,7 +123,7 @@ type searchUser struct {
 	P2PChatID       string   `json:"p2p_chat_id"`
 	HasChatted      bool     `json:"has_chatted"`
 	Department      string   `json:"department"`
-	Signature       string   `json:"signature"`
+	Signature       string   `json:"signature,omitempty"`
 	ChatRecencyHint string   `json:"chat_recency_hint"`
 	MatchSegments   []string `json:"match_segments"`
 }
@@ -150,18 +150,38 @@ var ContactSearchUser = common.Shortcut{
 		{Name: "left-organization", Type: "bool", Desc: "restrict to users who have left the organization (omit to disable; =false rejected)"},
 		{Name: "lang", Desc: "override locale for localized_name (e.g. zh_cn, en_us)"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
+		{Name: "queries", Desc: "comma-separated keywords searched in parallel; output is a flat users[] with matched_query plus a queries[] sidecar"},
 	},
 	Tips: []string{
-		"Keyword search: lark-cli contact +search-user --query 'alice' --format json",
-		"Look up by ID (or 'me' for self): lark-cli contact +search-user --user-ids 'ou_xxx,me' --format json",
-		"Filter-only enumeration — users you've chatted with: lark-cli contact +search-user --has-chatted --format json",
+		"Keyword search: lark-cli contact +search-user --query 'alice'",
+		"Look up by ID (or 'me' for self): lark-cli contact +search-user --user-ids 'ou_xxx,me'",
+		"Filter-only enumeration — users you've chatted with: lark-cli contact +search-user --has-chatted",
 		"Refine same-name hits: lark-cli contact +search-user --query '张三' --has-chatted --exclude-external-users",
+		"Multi-name fanout: lark-cli contact +search-user --queries 'alice,bob,张三'",
 		"open_id is the stable identifier for follow-up commands; on has_more=true add filters or tighten --query — there is no auto-pagination.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateSearchUser(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		if raw := strings.TrimSpace(runtime.Str("queries")); raw != "" {
+			queries := parseAndDedupQueries(raw)
+			filter, err := buildFanoutFilter(runtime)
+			if err != nil {
+				return common.NewDryRunAPI().Set("error", err.Error())
+			}
+			api := common.NewDryRunAPI()
+			for _, q := range queries {
+				body := &searchUserAPIRequest{Query: q}
+				if filter != nil {
+					body.Filter = filter
+				}
+				api.POST(searchUserURL).
+					Params(map[string]interface{}{"page_size": runtime.Int("page-size")}).
+					Body(body)
+			}
+			return api
+		}
 		body, err := buildSearchUserBody(runtime)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
@@ -175,6 +195,13 @@ var ContactSearchUser = common.Shortcut{
 }
 
 func executeSearchUser(ctx context.Context, runtime *common.RuntimeContext) error {
+	if strings.TrimSpace(runtime.Str("queries")) != "" {
+		return executeSearchUserFanout(ctx, runtime)
+	}
+	return executeSearchUserSingle(ctx, runtime)
+}
+
+func executeSearchUserSingle(ctx context.Context, runtime *common.RuntimeContext) error {
 	body, err := buildSearchUserBody(runtime)
 	if err != nil {
 		return err
@@ -347,8 +374,30 @@ func rowFromItem(item *searchUserAPIItem, lang string, brand core.LarkBrand) sea
 func validateSearchUser(runtime *common.RuntimeContext) error {
 	if !hasAnySearchInput(runtime) {
 		return common.FlagErrorf(
-			"specify at least one of --query, --user-ids, --has-chatted, --has-enterprise-email, --exclude-external-users, --left-organization",
+			"specify at least one of --query, --queries, --user-ids, --has-chatted, --has-enterprise-email, --exclude-external-users, --left-organization",
 		)
+	}
+
+	queriesRaw := strings.TrimSpace(runtime.Str("queries"))
+	if queriesRaw != "" {
+		if strings.TrimSpace(runtime.Str("query")) != "" {
+			return common.FlagErrorf("--query and --queries are mutually exclusive")
+		}
+		if strings.TrimSpace(runtime.Str("user-ids")) != "" {
+			return common.FlagErrorf("--user-ids and --queries are mutually exclusive")
+		}
+		queries := parseAndDedupQueries(queriesRaw)
+		if len(queries) == 0 {
+			return common.FlagErrorf("--queries: no valid query parsed from %q (separate entries with ',')", queriesRaw)
+		}
+		if len(queries) > maxFanoutQueries {
+			return common.FlagErrorf("--queries: must be at most %d entries (got %d)", maxFanoutQueries, len(queries))
+		}
+		for _, q := range queries {
+			if utf8.RuneCountInString(q) > maxSearchUserQueryChars {
+				return common.FlagErrorf("--queries: entry %q exceeds %d characters", q, maxSearchUserQueryChars)
+			}
+		}
 	}
 
 	if q := strings.TrimSpace(runtime.Str("query")); q != "" {
@@ -397,6 +446,9 @@ func validateSearchUser(runtime *common.RuntimeContext) error {
 // need Changed() detection.
 func hasAnySearchInput(runtime *common.RuntimeContext) bool {
 	if strings.TrimSpace(runtime.Str("query")) != "" {
+		return true
+	}
+	if strings.TrimSpace(runtime.Str("queries")) != "" {
 		return true
 	}
 	if strings.TrimSpace(runtime.Str("user-ids")) != "" {

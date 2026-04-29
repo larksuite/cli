@@ -5,10 +5,14 @@ package contact
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -620,6 +624,46 @@ func TestSearchUser_Integration_JSONStructuredFields(t *testing.T) {
 	}
 }
 
+// Most users have no signature; the field is omitempty so an empty value
+// must not appear at all in the JSON, not as "" — agents shouldn't have to
+// distinguish "absent" from "empty string".
+func TestSearchUser_Integration_EmptySignatureOmitted(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/contact/v3/users/search",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"id": "ou_a",
+						"meta_data": map[string]interface{}{
+							"i18n_names":   map[string]interface{}{"zh_cn": "无签名用户"},
+							"mail_address": "x@example.com",
+							"description":  "",
+						},
+					},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRun(t, ContactSearchUser, []string{"+search-user", "--query", "x", "--format", "json", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v\nstdout=%s", err, stdout.String())
+	}
+	users := got["data"].(map[string]interface{})["users"].([]interface{})
+	u := users[0].(map[string]interface{})
+	if _, present := u["signature"]; present {
+		t.Errorf(`signature must be absent (not "") when empty; got %v`, u["signature"])
+	}
+}
+
 func TestSearchUser_Integration_NDJSONHasNoRefineHint(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(&httpmock.Stub{
@@ -808,6 +852,345 @@ func TestSearchUser_Integration_PageSizeFlowsToQuery(t *testing.T) {
 	reg.Verify(t)
 }
 
+func newSearchUserTestCommandWithQueries() *cobra.Command {
+	cmd := newSearchUserTestCommand()
+	cmd.Flags().String("queries", "", "")
+	return cmd
+}
+
+func TestValidateQueries_QueryAndQueriesMutex(t *testing.T) {
+	cmd := newSearchUserTestCommandWithQueries()
+	_ = cmd.Flags().Set("query", "alice")
+	_ = cmd.Flags().Set("queries", "bob,carol")
+	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+	err := validateSearchUser(rt)
+	if err == nil || !strings.Contains(err.Error(), "--query and --queries are mutually exclusive") {
+		t.Fatalf("expected mutex error, got %v", err)
+	}
+}
+
+func TestValidateQueries_UserIDsAndQueriesMutex(t *testing.T) {
+	cmd := newSearchUserTestCommandWithQueries()
+	_ = cmd.Flags().Set("user-ids", "ou_a")
+	_ = cmd.Flags().Set("queries", "bob")
+	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+	err := validateSearchUser(rt)
+	if err == nil || !strings.Contains(err.Error(), "--user-ids and --queries are mutually exclusive") {
+		t.Fatalf("expected mutex error, got %v", err)
+	}
+}
+
+func TestValidateQueries_AllSeparators_Errors(t *testing.T) {
+	for _, raw := range []string{",,,", " , , ", ","} {
+		cmd := newSearchUserTestCommandWithQueries()
+		_ = cmd.Flags().Set("queries", raw)
+		rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+		err := validateSearchUser(rt)
+		if err == nil || !strings.Contains(err.Error(), "no valid query parsed") {
+			t.Fatalf("raw=%q: expected 'no valid query parsed' error, got %v", raw, err)
+		}
+	}
+}
+
+func TestValidateQueries_OverLength_Errors(t *testing.T) {
+	cmd := newSearchUserTestCommandWithQueries()
+	long := strings.Repeat("a", 51)
+	_ = cmd.Flags().Set("queries", "short,"+long)
+	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+	err := validateSearchUser(rt)
+	if err == nil || !strings.Contains(err.Error(), "exceeds 50 characters") {
+		t.Fatalf("expected length error mentioning 50, got %v", err)
+	}
+}
+
+func TestValidateQueries_Over20_Errors(t *testing.T) {
+	cmd := newSearchUserTestCommandWithQueries()
+	parts := make([]string, 21)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("q%02d", i)
+	}
+	_ = cmd.Flags().Set("queries", strings.Join(parts, ","))
+	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
+	err := validateSearchUser(rt)
+	if err == nil || !strings.Contains(err.Error(), "must be at most 20 entries") {
+		t.Fatalf("expected 20-cap error, got %v", err)
+	}
+}
+
+func TestParseQueries_TrimAndSkipEmpty(t *testing.T) {
+	got := parseAndDedupQueries("a, ,b ,")
+	want := []string{"a", "b"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("parseAndDedupQueries: got %v, want %v", got, want)
+	}
+}
+
+func TestParseQueries_DedupCaseSensitive(t *testing.T) {
+	got := parseAndDedupQueries("alice,Alice,alice")
+	want := []string{"alice", "Alice"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("got %v, want %v (case-sensitive dedup keeps first-occurrence order)", got, want)
+	}
+}
+
+func TestExecuteSingleQuery_OutputUnchanged(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(searchUserStub())
+
+	err := mountAndRun(t, ContactSearchUser, []string{"+search-user", "--query", "张三", "--format", "json", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	data, _ := got["data"].(map[string]interface{})
+	if _, hasQueries := data["queries"]; hasQueries {
+		t.Errorf("single-query mode must NOT emit data.queries; got=%v", data)
+	}
+	users, _ := data["users"].([]interface{})
+	if len(users) != 1 {
+		t.Fatalf("users len = %d, want 1", len(users))
+	}
+	u, _ := users[0].(map[string]interface{})
+	if _, hasMatched := u["matched_query"]; hasMatched {
+		t.Errorf("single-query mode users[] must NOT carry matched_query; got=%v", u)
+	}
+	if _, hasTopHasMore := data["has_more"]; !hasTopHasMore {
+		t.Errorf("single-query mode must keep top-level data.has_more; data=%v", data)
+	}
+}
+
+// runOneQueryRuntime wires a Factory-backed RuntimeContext bound to the test
+// command's flag set, so runOneQuery can be exercised directly without going
+// through the cobra dispatcher. Mirrors what mountAndRun would build, minus
+// the parent-command plumbing the worker doesn't need.
+func runOneQueryRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry) {
+	t.Helper()
+	f, _, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	cmd := newSearchUserTestCommand()
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), cmd, searchUserDefaultConfig(), f, core.AsUser)
+	return rt, reg
+}
+
+func TestRunOneQuery_Success(t *testing.T) {
+	rt, reg := runOneQueryRuntime(t)
+	reg.Register(searchUserStub())
+
+	got := runOneQuery(context.Background(), rt, 0, "张三", nil)
+	if got.ErrMsg != "" {
+		t.Fatalf("unexpected ErrMsg: %q", got.ErrMsg)
+	}
+	if got.Index != 0 || got.Query != "张三" {
+		t.Errorf("Index/Query mismatch: %+v", got)
+	}
+	if len(got.Users) != 1 || got.Users[0].OpenID != "ou_a" {
+		t.Errorf("Users mismatch: %+v", got.Users)
+	}
+	if got.HasMore {
+		t.Errorf("HasMore should be false")
+	}
+}
+
+func TestRunOneQuery_APINonZeroCode(t *testing.T) {
+	rt, reg := runOneQueryRuntime(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    searchUserURL,
+		Body:   map[string]interface{}{"code": 99991663, "msg": "rate limited"},
+	})
+
+	got := runOneQuery(context.Background(), rt, 3, "alice", nil)
+	if got.Index != 3 || got.Query != "alice" {
+		t.Errorf("Index/Query mismatch: %+v", got)
+	}
+	if got.ErrMsg != "API 99991663: rate limited" {
+		t.Errorf("ErrMsg = %q, want 'API 99991663: rate limited'", got.ErrMsg)
+	}
+	if got.Users != nil || got.HasMore {
+		t.Errorf("on error, Users/HasMore must be zero values; got %+v", got)
+	}
+}
+
+func TestRunOneQuery_HTTPNon200(t *testing.T) {
+	rt, reg := runOneQueryRuntime(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    searchUserURL,
+		Status: 503,
+		Body:   map[string]interface{}{"reason": "upstream_unavailable"},
+	})
+
+	got := runOneQuery(context.Background(), rt, 1, "bob", nil)
+	if !strings.HasPrefix(got.ErrMsg, "HTTP 503 Service Unavailable: ") {
+		t.Errorf("ErrMsg should start with status line; got %q", got.ErrMsg)
+	}
+	if !strings.Contains(got.ErrMsg, "upstream_unavailable") {
+		t.Errorf("ErrMsg should include response body for diagnosis; got %q", got.ErrMsg)
+	}
+	if got.ErrCode != 503 {
+		t.Errorf("ErrCode = %d, want 503", got.ErrCode)
+	}
+}
+
+func TestRunOneQuery_HTTPNon200_BodyTruncated(t *testing.T) {
+	rt, reg := runOneQueryRuntime(t)
+	long := strings.Repeat("x", 1000)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    searchUserURL,
+		Status: 500,
+		Body:   map[string]interface{}{"detail": long},
+	})
+
+	got := runOneQuery(context.Background(), rt, 0, "alice", nil)
+	if !strings.HasSuffix(got.ErrMsg, "...") {
+		t.Errorf("oversized body should be truncated with '...' suffix; got %q", got.ErrMsg)
+	}
+	if len(got.ErrMsg) > 300 {
+		t.Errorf("ErrMsg %d chars exceeds reasonable budget; got %q", len(got.ErrMsg), got.ErrMsg)
+	}
+}
+
+// SDK-level transport / envelope-unmarshal failures arrive as Go errors from
+// runtime.DoAPI; the worker converts them by calling err.Error() rather than
+// adding its own prefix, so the assertion here is "ErrMsg is non-empty and
+// preserves the underlying message" — the exact text comes from the SDK.
+func TestRunOneQuery_TransportError(t *testing.T) {
+	rt, reg := runOneQueryRuntime(t)
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     searchUserURL,
+		RawBody: []byte("{not-json"),
+	})
+
+	got := runOneQuery(context.Background(), rt, 2, "carol", nil)
+	if got.ErrMsg == "" {
+		t.Fatalf("expected non-empty ErrMsg for malformed body")
+	}
+	if got.Index != 2 || got.Query != "carol" {
+		t.Errorf("Index/Query mismatch: %+v", got)
+	}
+	if got.Users != nil || got.HasMore {
+		t.Errorf("on error, Users/HasMore must be zero values; got %+v", got)
+	}
+}
+
+func TestFanoutAssemble_OrderAndShape(t *testing.T) {
+	results := []fanoutResult{
+		{Index: 1, Query: "bob", Users: []searchUser{{OpenID: "ou_b"}}, HasMore: true},
+		{Index: 0, Query: "alice", Users: []searchUser{{OpenID: "ou_a1"}, {OpenID: "ou_a2"}}, HasMore: false},
+		{Index: 2, Query: "carol", ErrMsg: "API 1: nope"},
+	}
+	resp, err := buildFanoutResponse([]string{"alice", "bob", "carol"}, results)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Users) != 3 {
+		t.Fatalf("Users length: got %d, want 3 (carol failed → 0 users)", len(resp.Users))
+	}
+	if resp.Users[0].OpenID != "ou_a1" || resp.Users[0].MatchedQuery != "alice" {
+		t.Errorf("Users[0]: got %+v", resp.Users[0])
+	}
+	if resp.Users[1].OpenID != "ou_a2" || resp.Users[1].MatchedQuery != "alice" {
+		t.Errorf("Users[1]: got %+v", resp.Users[1])
+	}
+	if resp.Users[2].OpenID != "ou_b" || resp.Users[2].MatchedQuery != "bob" {
+		t.Errorf("Users[2]: got %+v", resp.Users[2])
+	}
+	if len(resp.Queries) != 3 {
+		t.Fatalf("Queries length: got %d, want 3 (full enumeration)", len(resp.Queries))
+	}
+	want := []querySummary{
+		{Query: "alice", Error: "", HasMore: false},
+		{Query: "bob", Error: "", HasMore: true},
+		{Query: "carol", Error: "API 1: nope", HasMore: false},
+	}
+	for i, w := range want {
+		if resp.Queries[i] != w {
+			t.Errorf("Queries[%d]: got %+v, want %+v", i, resp.Queries[i], w)
+		}
+	}
+}
+
+func TestFanoutAssemble_AllFailed_ReturnsError(t *testing.T) {
+	results := []fanoutResult{
+		{Index: 0, Query: "alice", ErrMsg: "API 99991663: rate limit"},
+		{Index: 1, Query: "bob", ErrMsg: "HTTP 500 Internal Server Error"},
+	}
+	_, err := buildFanoutResponse([]string{"alice", "bob"}, results)
+	if err == nil {
+		t.Fatalf("expected error when all queries failed")
+	}
+	if !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("expected first error (rate limit) to be returned; got %v", err)
+	}
+	// Document the count is part of the message — agents grep for it.
+	if !strings.Contains(err.Error(), "all 2 queries failed") {
+		t.Errorf("expected 'all 2 queries failed' substring; got %v", err)
+	}
+}
+
+// Codes from the first failure must propagate through output.ErrAPI so the
+// CLI's exit-code classifier sees the real signal (e.g., 99991663 rate limit)
+// instead of 0, which would mean "success" in the Lark protocol.
+func TestFanoutAssemble_AllFailed_PropagatesFirstCode(t *testing.T) {
+	results := []fanoutResult{
+		{Index: 0, Query: "alice", ErrMsg: "API 99991663: rate limit", ErrCode: 99991663},
+		{Index: 1, Query: "bob", ErrMsg: "HTTP 500", ErrCode: 500},
+	}
+	_, err := buildFanoutResponse([]string{"alice", "bob"}, results)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("error should contain first ErrMsg; got %v", err)
+	}
+}
+
+func TestFanoutAssemble_PartialFailureOK(t *testing.T) {
+	results := []fanoutResult{
+		{Index: 0, Query: "alice", Users: []searchUser{{OpenID: "ou_a"}}},
+		{Index: 1, Query: "bob", ErrMsg: "API 5: not found"},
+	}
+	resp, err := buildFanoutResponse([]string{"alice", "bob"}, results)
+	if err != nil {
+		t.Fatalf("partial failure must NOT be a hard error; got %v", err)
+	}
+	if len(resp.Users) != 1 {
+		t.Errorf("Users: got %d, want 1", len(resp.Users))
+	}
+	if resp.Queries[1].Error != "API 5: not found" {
+		t.Errorf("Queries[1].Error: got %q", resp.Queries[1].Error)
+	}
+}
+
+func TestFanoutAssemble_NoTopLevelHasMore(t *testing.T) {
+	results := []fanoutResult{
+		{Index: 0, Query: "alice", HasMore: true},
+	}
+	resp, err := buildFanoutResponse([]string{"alice"}, results)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	raw, _ := json.Marshal(resp)
+	var asMap map[string]interface{}
+	if err := json.Unmarshal(raw, &asMap); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := asMap["has_more"]; ok {
+		t.Errorf("fanoutResponse must not have top-level has_more; got %v", asMap)
+	}
+	if _, ok := asMap["users"]; !ok {
+		t.Errorf("fanoutResponse missing users")
+	}
+	if _, ok := asMap["queries"]; !ok {
+		t.Errorf("fanoutResponse missing queries")
+	}
+}
+
 // Verifies that with the auto-pagination flags removed, --page-all / --page-limit
 // are no longer accepted. cobra must reject the unknown flag at parse time —
 // no stub is registered because the command should never reach the API.
@@ -825,5 +1208,343 @@ func TestSearchUser_Integration_NoAutoPaginationFlags(t *testing.T) {
 				t.Errorf("%s should be rejected (unknown flag), but command succeeded", removed)
 			}
 		})
+	}
+}
+
+func TestFanout_FilterAppliedToEachQuery(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	stub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/contact/v3/users/search",
+		Reusable: true,
+		Body: map[string]interface{}{"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false}},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "alice,bob", "--has-chatted",
+		"--format", "json", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if len(stub.CapturedBodies) < 2 {
+		t.Fatalf("expected ≥2 captured request bodies, got %d", len(stub.CapturedBodies))
+	}
+	bodyByQuery := map[string]map[string]interface{}{}
+	for i, raw := range stub.CapturedBodies {
+		var body map[string]interface{}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatalf("unmarshal req %d: %v", i, err)
+		}
+		bodyByQuery[body["query"].(string)] = body
+		filter, _ := body["filter"].(map[string]interface{})
+		if filter == nil || filter["has_contact"] != true {
+			t.Errorf("req %d (query=%v): expected filter.has_contact=true; got body=%v", i, body["query"], body)
+		}
+	}
+	if _, ok := bodyByQuery["alice"]; !ok {
+		t.Errorf("missing request for query=alice; captured=%v", bodyByQuery)
+	}
+	if _, ok := bodyByQuery["bob"]; !ok {
+		t.Errorf("missing request for query=bob; captured=%v", bodyByQuery)
+	}
+}
+
+func TestFanout_PartialFailure_ExitZero(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/contact/v3/users/search",
+		BodyFilter: func(b []byte) bool { return strings.Contains(string(b), `"alice"`) },
+		Body: map[string]interface{}{"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "ou_a"}},
+				"has_more": false,
+			}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/contact/v3/users/search",
+		BodyFilter: func(b []byte) bool { return strings.Contains(string(b), `"bob"`) },
+		Status:     500,
+		Body:       map[string]interface{}{},
+	})
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "alice,bob", "--format", "json", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("partial failure should NOT propagate as error; got %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v\nstdout=%s", err, stdout.String())
+	}
+	data := got["data"].(map[string]interface{})
+	users := data["users"].([]interface{})
+	if len(users) != 1 {
+		t.Errorf("users: expected 1 (alice), got %d; stdout=%s", len(users), stdout.String())
+	}
+	queries := data["queries"].([]interface{})
+	if len(queries) != 2 {
+		t.Fatalf("queries: expected 2, got %d", len(queries))
+	}
+	q1 := queries[1].(map[string]interface{})
+	if !strings.HasPrefix(q1["error"].(string), "HTTP 500") {
+		t.Errorf("queries[1].error: got %q", q1["error"])
+	}
+}
+
+func TestFanout_AllFailed_ExitNonZero(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/contact/v3/users/search",
+		Reusable: true,
+		Status:   500, Body: map[string]interface{}{"reason": "boom"},
+	})
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "alice,bob", "--format", "json", "--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected error when all queries failed")
+	}
+	// First failure's HTTP code (500) and a digestible reason must propagate
+	// so agents can classify (vs. a generic ExitInternal masking the upstream).
+	msg := err.Error()
+	if !strings.Contains(msg, "500") {
+		t.Errorf("error must propagate first failure's HTTP 500 code; got %q", msg)
+	}
+	if !strings.Contains(msg, "all 2 queries failed") {
+		t.Errorf("error must indicate the all-failed mode; got %q", msg)
+	}
+}
+
+func TestFanout_ConcurrencyLimitFive(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+
+	var inFlight, peak int32
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/contact/v3/users/search",
+		Reusable: true,
+		OnMatch: func(req *http.Request) {
+			cur := atomic.AddInt32(&inFlight, 1)
+			defer atomic.AddInt32(&inFlight, -1)
+			for {
+				p := atomic.LoadInt32(&peak)
+				if cur <= p || atomic.CompareAndSwapInt32(&peak, p, cur) {
+					break
+				}
+			}
+			time.Sleep(50 * time.Millisecond)
+		},
+		Body: map[string]interface{}{"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false}},
+	})
+
+	queries := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", strings.Join(queries, ","),
+		"--format", "json", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if peak > 5 {
+		t.Errorf("concurrency peak = %d, want ≤ 5", peak)
+	}
+	if peak < 2 {
+		t.Errorf("concurrency peak = %d, want ≥ 2 (test should observe parallelism)", peak)
+	}
+}
+
+func TestFanout_PanicRecovery(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/contact/v3/users/search",
+		BodyFilter: func(b []byte) bool { return strings.Contains(string(b), `"boom"`) },
+		OnMatch: func(req *http.Request) {
+			panic("synthetic test panic")
+		},
+		Body: map[string]interface{}{},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/contact/v3/users/search",
+		Reusable: true,
+		Body: map[string]interface{}{"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false}},
+	})
+
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "ok,boom,fine", "--format", "json", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("partial panic must not bubble; got %v", err)
+	}
+	var got map[string]interface{}
+	_ = json.Unmarshal(stdout.Bytes(), &got)
+	queries := got["data"].(map[string]interface{})["queries"].([]interface{})
+	q1 := queries[1].(map[string]interface{})
+	if !strings.HasPrefix(q1["error"].(string), "internal error:") {
+		t.Errorf("queries[1].error: expected 'internal error:' prefix, got %q", q1["error"])
+	}
+	for _, marker := range []string{"goroutine ", ".go:", "runtime."} {
+		if strings.Contains(stderr.String(), marker) {
+			t.Errorf("stderr leaked stack-trace marker %q; got=%s", marker, stderr.String())
+		}
+	}
+}
+
+func TestFanout_MatchedQueryFidelity(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/contact/v3/users/search",
+		Reusable: true,
+		Body: map[string]interface{}{"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "ou_x"}},
+				"has_more": false,
+			}},
+	})
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "张三,Alice 王", "--format", "json", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var got map[string]interface{}
+	_ = json.Unmarshal(stdout.Bytes(), &got)
+	users := got["data"].(map[string]interface{})["users"].([]interface{})
+	if len(users) != 2 {
+		t.Fatalf("users: got %d, want 2", len(users))
+	}
+	want := []string{"张三", "Alice 王"}
+	for i, w := range want {
+		mq := users[i].(map[string]interface{})["matched_query"]
+		if mq != w {
+			t.Errorf("users[%d].matched_query: got %v, want %q (must be original input verbatim)", i, mq, w)
+		}
+	}
+}
+
+func TestFanout_NDJSONStdoutClean(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/contact/v3/users/search",
+		Reusable: true,
+		Body: map[string]interface{}{"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "ou_a"}},
+				"has_more": false,
+			}},
+	})
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "a,a,b", "--format", "ndjson", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, marker := range []string{"queries,", "total users", "with has_more"} {
+		if strings.Contains(stdout.String(), marker) {
+			t.Errorf("ndjson stdout must not contain %q; got=%q", marker, stdout.String())
+		}
+	}
+	_ = stderr
+}
+
+func TestFanout_CSVHasMatchedQueryColumn(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/contact/v3/users/search",
+		Reusable: true,
+		Body: map[string]interface{}{"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "ou_a"}},
+				"has_more": false,
+			}},
+	})
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "alice,bob", "--format", "csv", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "matched_query") {
+		t.Errorf("csv stdout must include matched_query column; got=%q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "queries") || !strings.Contains(stderr.String(), "total users") {
+		t.Errorf("csv summary should land on stderr; got=%q", stderr.String())
+	}
+}
+
+func TestFanout_DryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, searchUserDefaultConfig())
+
+	err := mountAndRun(t, ContactSearchUser, []string{
+		"+search-user", "--queries", "alice,bob", "--has-chatted", "--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"alice", "bob", "POST", "/contact/v3/users/search", "has_contact"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run output missing %q; got=%q", want, out)
+		}
+	}
+	// One DryRunAPI description per query.
+	if strings.Count(out, "/contact/v3/users/search") < 2 {
+		t.Errorf("dry-run should describe ≥2 API calls (one per query); got=%q", out)
+	}
+}
+
+// Spec §7 promises single-query --query mode is "零变化". The fanout summary
+// hint was broadened to csv (good — stderr can carry it without corrupting
+// the csv stream on stdout); the single-query refine hint must NOT inherit
+// that broadening, since pre-fanout it only fired on pretty/table.
+func TestSearchUser_Integration_CSVSingleQueryNoRefineHint(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/contact/v3/users/search",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "ou_a"}},
+				"has_more":   true,
+				"page_token": "tok_next",
+			},
+		},
+	})
+	err := mountAndRun(t, ContactSearchUser, []string{"+search-user", "--query", "x", "--format", "csv", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(stderr.String(), "refine") {
+		t.Errorf("single-query --format csv must NOT emit the refine hint; got stderr=%q", stderr.String())
+	}
+}
+
+// A pre-canceled ctx must be observed by runOneQuery before it dispatches the
+// HTTP call. The error string is exactly "context canceled" because that's
+// what context.Context.Err().Error() returns — agents may grep for it.
+func TestRunOneQuery_CtxCanceledEarly(t *testing.T) {
+	rt, _ := runOneQueryRuntime(t)
+	// Deliberately register no stub: runOneQuery must short-circuit before
+	// touching the transport, so the absence of a stub is the assertion.
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	got := runOneQuery(ctx, rt, 0, "alice", nil)
+	if got.ErrMsg != "context canceled" {
+		t.Errorf("ErrMsg: got %q, want %q", got.ErrMsg, "context canceled")
+	}
+	if got.Index != 0 || got.Query != "alice" {
+		t.Errorf("Index/Query mismatch: %+v", got)
 	}
 }

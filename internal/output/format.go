@@ -15,6 +15,7 @@ import (
 var knownArrayFields = []string{
 	"items", "files", "events", "rooms", "records", "nodes",
 	"members", "departments", "calendar_list", "acl_list", "freebusy_list",
+	"users",
 }
 
 // FindArrayField finds the primary array field in a response's data object.
