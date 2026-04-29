@@ -236,6 +236,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+import`](references/lark-drive-import.md) | Import a local file to Drive as a cloud document (docx, sheet, bitable) |
 | [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive |
 | [`+delete`](references/lark-drive-delete.md) | Delete a Drive file or folder with limited polling for folder deletes |
+| [`+push`](references/lark-drive-push.md) | Mirror a local directory onto a Drive folder (local → Drive). Supports `--if-exists` (overwrite/skip) and `--delete-remote` for one-way mirror sync; the destructive `--delete-remote` requires `--yes`. `--local-dir` is bounded to cwd by CLI path validation; tell the user to switch the agent's working directory if the source is outside cwd. |
 | [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
 | [`+apply-permission`](references/lark-drive-apply-permission.md) | Apply to the document owner for view/edit access (user-only; 5/day per document) |
 
