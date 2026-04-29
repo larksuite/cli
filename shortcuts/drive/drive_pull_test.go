@@ -309,6 +309,85 @@ func TestDrivePullDeleteLocalPreservesLocalFileShadowedByOnlineDoc(t *testing.T)
 	mustReadFile(t, filepath.Join("local", "keep.txt"), "KEEP")
 }
 
+// TestDrivePullDeleteLocalPreservesLocalFileShadowedByRemoteFolder pins
+// the same allPaths contract for the folder branch: a remote folder
+// occupies its own rel_path (not just the rel_paths of its children),
+// so a local regular file at the same name must NOT be treated as
+// orphaned. Before the folder-branch fix, listRemote only added the
+// folder's children to allPaths, leaving the folder name itself
+// missing.
+func TestDrivePullDeleteLocalPreservesLocalFileShadowedByRemoteFolder(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Local has a regular file named "shadow"; Drive has a folder of
+	// the same name. The local file must survive --delete-local.
+	if err := os.WriteFile(filepath.Join("local", "shadow"), []byte("LOCAL-FILE"), 0o644); err != nil {
+		t.Fatalf("WriteFile shadow: %v", err)
+	}
+
+	// Root folder list: one folder named "shadow", and an unrelated
+	// downloadable file so we can assert the download path still
+	// works alongside the protected name.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_shadow_dir", "name": "shadow", "type": "folder"},
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	// Subfolder is empty — keeps the folder branch active without
+	// adding extra files to the assertions.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=tok_shadow_dir",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files":    []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_keep/download",
+		Status:  200,
+		Body:    []byte("KEEP"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"deleted_local": 0`) {
+		t.Errorf("expected deleted_local=0 (remote folder shadows local file), got: %s", out)
+	}
+	mustReadFile(t, filepath.Join("local", "shadow"), "LOCAL-FILE")
+	mustReadFile(t, filepath.Join("local", "keep.txt"), "KEEP")
+}
+
 // TestDrivePullDeleteLocalCountsFailureInSummary pins the contract that
 // a failed delete shows up in summary.failed, not just in items[]. Before
 // the fix, the delete_failed branches appended an item but left `failed`

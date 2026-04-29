@@ -272,6 +272,12 @@ func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, fo
 				files[rel] = fToken
 				allPaths[rel] = struct{}{}
 			case drivePullFolderType:
+				// Record the folder's own rel_path before recursing,
+				// otherwise a local regular file shadowed by a remote
+				// folder of the same name would still look orphaned to
+				// --delete-local. The "allPaths = every remote rel_path"
+				// contract has to cover folders too.
+				allPaths[rel] = struct{}{}
 				subFiles, subPaths, err := drivePullListRemote(ctx, runtime, fToken, rel)
 				if err != nil {
 					return nil, nil, err
