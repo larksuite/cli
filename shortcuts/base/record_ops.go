@@ -114,98 +114,6 @@ func normalizeRecordIDs(values interface{}) ([]string, error) {
 	return recordIDs, nil
 }
 
-func shouldUseBatchRecordRoute(selection recordSelection) bool {
-	return selection.fromJSON || len(selection.recordIDs) > 1 || len(selection.selectFields) > 0
-}
-
-func shouldUseBatchRecordGet(_ recordSelection) bool {
-	return true
-}
-
-func isHTTPNotFoundError(err error) bool {
-	return err != nil && strings.HasPrefix(err.Error(), "HTTP 404")
-}
-
-func fallbackBatchGetRecords(runtime *common.RuntimeContext, recordIDs []string, selectFields []string) error {
-	records := make([]interface{}, 0, len(recordIDs))
-	params := recordGetQueryParams(selectFields)
-	for _, recordID := range recordIDs {
-		data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", recordID), params, nil)
-		if err != nil {
-			return err
-		}
-		if record, ok := data["record"]; ok {
-			records = append(records, record)
-			continue
-		}
-		records = append(records, data)
-	}
-	if len(recordIDs) == 1 && len(selectFields) > 0 && len(records) == 1 {
-		if record, ok := records[0].(map[string]interface{}); ok {
-			runtime.Out(map[string]interface{}{"record": record}, nil)
-			return nil
-		}
-	}
-	runtime.Out(map[string]interface{}{
-		"record_id_list": recordIDs,
-		"records":        records,
-	}, nil)
-	return nil
-}
-
-func coerceBatchGetSingleRecordData(data map[string]interface{}) (map[string]interface{}, bool) {
-	fields, ok := data["fields"].([]interface{})
-	if !ok || len(fields) == 0 {
-		return nil, false
-	}
-	rows, ok := data["data"].([]interface{})
-	if !ok || len(rows) != 1 {
-		return nil, false
-	}
-	rowValues, ok := rows[0].([]interface{})
-	if !ok || len(rowValues) != len(fields) {
-		return nil, false
-	}
-	record := make(map[string]interface{}, len(fields))
-	for index, field := range fields {
-		fieldName, ok := field.(string)
-		if !ok || fieldName == "" {
-			return nil, false
-		}
-		record[fieldName] = rowValues[index]
-	}
-	result := map[string]interface{}{"record": record}
-	if _, exists := data["record_id_list"]; exists {
-		recordID, ok := singleRecordIDFromBatchData(data)
-		if !ok {
-			return nil, false
-		}
-		result["record_id"] = recordID
-	}
-	if ignored, ok := data["ignored_fields"]; ok {
-		result["ignored_fields"] = ignored
-	}
-	return result, true
-}
-
-func singleRecordIDFromBatchData(data map[string]interface{}) (string, bool) {
-	switch recordIDs := data["record_id_list"].(type) {
-	case []interface{}:
-		if len(recordIDs) != 1 {
-			return "", false
-		}
-		recordID, ok := recordIDs[0].(string)
-		return recordID, ok && recordID != ""
-	case []string:
-		if len(recordIDs) != 1 {
-			return "", false
-		}
-		return recordIDs[0], recordIDs[0] != ""
-	default:
-		return "", false
-	}
-}
-
 func resolveRecordGetSelectFields(flagFields []string, body map[string]interface{}) ([]string, error) {
 	fromFlags, err := normalizeRecordGetSelectFields(flagFields)
 	if err != nil {
@@ -276,13 +184,6 @@ func normalizeRecordGetSelectFields(values interface{}) ([]string, error) {
 	return fields, nil
 }
 
-func recordGetQueryParams(selectFields []string) map[string]interface{} {
-	if len(selectFields) == 0 {
-		return nil
-	}
-	return map[string]interface{}{"field_id": selectFields}
-}
-
 func recordGetBatchBody(selection recordSelection) map[string]interface{} {
 	body := map[string]interface{}{
 		"record_id_list": selection.recordIDs,
@@ -291,19 +192,6 @@ func recordGetBatchBody(selection recordSelection) map[string]interface{} {
 		body["select_fields"] = selection.selectFields
 	}
 	return body
-}
-
-func fallbackBatchDeleteRecords(runtime *common.RuntimeContext, recordIDs []string) error {
-	for _, recordID := range recordIDs {
-		_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", recordID), nil, nil)
-		if err != nil {
-			return err
-		}
-	}
-	runtime.Out(map[string]interface{}{
-		"record_id_list": recordIDs,
-	}, nil)
-	return nil
 }
 
 func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -333,26 +221,11 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 	if err != nil {
 		return common.NewDryRunAPI()
 	}
-	if shouldUseBatchRecordGet(selection) {
-		return common.NewDryRunAPI().
-			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_get").
-			Body(recordGetBatchBody(selection)).
-			Set("base_token", runtime.Str("base-token")).
-			Set("table_id", baseTableID(runtime))
-	}
-	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id"
-	if len(selection.selectFields) > 0 {
-		params := url.Values{}
-		for _, field := range selection.selectFields {
-			params.Add("field_id", field)
-		}
-		path += "?" + params.Encode()
-	}
 	return common.NewDryRunAPI().
-		GET(path).
+		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_get").
+		Body(recordGetBatchBody(selection)).
 		Set("base_token", runtime.Str("base-token")).
-		Set("table_id", baseTableID(runtime)).
-		Set("record_id", selection.recordIDs[0])
+		Set("table_id", baseTableID(runtime))
 }
 
 func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -408,18 +281,11 @@ func dryRunRecordDelete(_ context.Context, runtime *common.RuntimeContext) *comm
 	if err != nil {
 		return common.NewDryRunAPI()
 	}
-	if shouldUseBatchRecordRoute(selection) {
-		return common.NewDryRunAPI().
-			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_delete").
-			Body(map[string]interface{}{"record_id_list": selection.recordIDs}).
-			Set("base_token", runtime.Str("base-token")).
-			Set("table_id", baseTableID(runtime))
-	}
 	return common.NewDryRunAPI().
-		DELETE("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
+		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_delete").
+		Body(map[string]interface{}{"record_id_list": selection.recordIDs}).
 		Set("base_token", runtime.Str("base-token")).
-		Set("table_id", baseTableID(runtime)).
-		Set("record_id", selection.recordIDs[0])
+		Set("table_id", baseTableID(runtime))
 }
 
 func dryRunRecordHistoryList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -524,33 +390,8 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	if shouldUseBatchRecordGet(selection) {
-		result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_get"), nil, recordGetBatchBody(selection))
-		if isHTTPNotFoundError(err) {
-			if len(selection.recordIDs) == 1 && !selection.fromJSON {
-				data, callErr := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", selection.recordIDs[0]), recordGetQueryParams(selection.selectFields), nil)
-				if callErr != nil {
-					return callErr
-				}
-				runtime.Out(data, nil)
-				return nil
-			}
-			return fallbackBatchGetRecords(runtime, selection.recordIDs, selection.selectFields)
-		}
-		data, err := handleBaseAPIResult(result, err, "batch get records")
-		if err != nil {
-			return err
-		}
-		if len(selection.recordIDs) == 1 && !selection.fromJSON {
-			if single, ok := coerceBatchGetSingleRecordData(data); ok {
-				runtime.Out(single, nil)
-				return nil
-			}
-		}
-		runtime.Out(data, nil)
-		return nil
-	}
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", selection.recordIDs[0]), recordGetQueryParams(selection.selectFields), nil)
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_get"), nil, recordGetBatchBody(selection))
+	data, err := handleBaseAPIResult(result, err, "batch get records")
 	if err != nil {
 		return err
 	}
@@ -631,24 +472,13 @@ func executeRecordDelete(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	if shouldUseBatchRecordRoute(selection) {
-		result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_delete"), nil, map[string]interface{}{
-			"record_id_list": selection.recordIDs,
-		})
-		if isHTTPNotFoundError(err) {
-			return fallbackBatchDeleteRecords(runtime, selection.recordIDs)
-		}
-		data, err := handleBaseAPIResult(result, err, "batch delete records")
-		if err != nil {
-			return err
-		}
-		runtime.Out(data, nil)
-		return nil
-	}
-	_, err = baseV3Call(runtime, "DELETE", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", selection.recordIDs[0]), nil, nil)
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_delete"), nil, map[string]interface{}{
+		"record_id_list": selection.recordIDs,
+	})
+	data, err := handleBaseAPIResult(result, err, "batch delete records")
 	if err != nil {
 		return err
 	}
-	runtime.Out(map[string]interface{}{"deleted": true, "record_id": selection.recordIDs[0]}, nil)
+	runtime.Out(data, nil)
 	return nil
 }

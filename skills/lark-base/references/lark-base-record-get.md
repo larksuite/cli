@@ -38,17 +38,15 @@ lark-cli base +record-get \
 **HTTP 方法和路径：**
 
 ```http
-GET /open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id
 POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_get
 ```
 
 ## 返回重点
 
-- CLI 内部统一通过 `batch_get` 读取记录；单个 `--record-id` 仍会整理成单记录输出形态。
-- 多个 `--record-id`，或使用 `--json` 时，返回批量读取结果。
+- CLI 内部统一通过 `batch_get` 读取记录；单个和多个 `--record-id` 使用相同的批量读取输出形态。
+- 成功时直接返回接口 `data` 字段内容，通常包含 `record_id_list`、`fields`、`data` 等字段。
 - `--field-id` 会映射为 `batch_get` body 的 `select_fields`，确保真正只返回所选字段。
 - 建议只传需要的字段，减少响应体体积和 AI 上下文消耗。
-- 成功时直接返回接口 `data` 字段内容。
 
 ## 参考
 

@@ -249,35 +249,6 @@ func TestRecordSelectionHelpers(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 
-	single, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
-		"record_id_list": []interface{}{"rec_1"},
-		"fields":         []interface{}{"Name"},
-		"data":           []interface{}{[]interface{}{"Alice"}},
-		"ignored_fields": []interface{}{"Attachment"},
-	})
-	if !ok || single["record_id"] != "rec_1" || single["ignored_fields"] == nil {
-		t.Fatalf("single=%v ok=%v", single, ok)
-	}
-	if _, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
-		"record_id_list": []string{"rec_1"},
-		"fields":         []interface{}{"Name"},
-		"data":           []interface{}{[]interface{}{"Alice"}},
-	}); !ok {
-		t.Fatalf("string record id list should be accepted")
-	}
-	if _, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
-		"record_id_list": []string{"rec_1", "rec_2"},
-		"fields":         []interface{}{"Name"},
-		"data":           []interface{}{[]interface{}{"Alice"}},
-	}); ok {
-		t.Fatalf("coerce should reject ambiguous record id list")
-	}
-	if _, ok := coerceBatchGetSingleRecordData(map[string]interface{}{
-		"fields": []interface{}{"Name"},
-		"data":   []interface{}{[]interface{}{"Alice", "extra"}},
-	}); ok {
-		t.Fatalf("coerce should reject mismatched row width")
-	}
 }
 
 func TestResolveHelpers(t *testing.T) {

@@ -37,14 +37,13 @@ lark-cli base +record-delete \
 **HTTP 方法和路径：**
 
 ```http
-DELETE /open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id
 POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_delete
 ```
 
 ## 返回重点
 
-- 单个 `--record-id` 时，沿用单记录删除接口并返回 `deleted: true` 与 `record_id`。
-- 多个 `--record-id`，或使用 `--json` 时，自动切换到批量删除接口并返回接口原始 `data`。
+- CLI 内部统一通过 `batch_delete` 删除记录；单个和多个 `--record-id` 使用相同的批量删除输出形态。
+- 成功时直接返回接口 `data` 字段内容，通常包含 `record_id_list`。
 
 ## 工作流
 

@@ -1002,10 +1002,10 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record":`) || !strings.Contains(got, `"Name": "Alice"`) || !strings.Contains(got, `"Age": 18`) || strings.Contains(got, `"raw"`) {
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"fields"`) || !strings.Contains(got, `"Alice"`) || !strings.Contains(got, `"Age"`) || strings.Contains(got, `"record":`) || strings.Contains(got, `"raw"`) {
 			t.Fatalf("stdout=%s", got)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id": "rec_1"`) {
+		if got := stdout.String(); !strings.Contains(got, `"rec_1"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 		body := string(batchStub.CapturedBody)
@@ -1032,7 +1032,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--field-id", "Name", "--field-id", "Age"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"Name": "Alice"`) || !strings.Contains(got, `"Age": 18`) {
+		if got := stdout.String(); !strings.Contains(got, `"fields"`) || !strings.Contains(got, `"Name"`) || !strings.Contains(got, `"Age"`) || !strings.Contains(got, `"Alice"`) || strings.Contains(got, `"record":`) {
 			t.Fatalf("stdout=%s", got)
 		}
 		body := string(batchStub.CapturedBody)
@@ -1095,7 +1095,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("get single falls back to single route when batch_get is unavailable", func(t *testing.T) {
+	t.Run("get single returns batch_get error when batch_get is unavailable", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		batchStub := &httpmock.Stub{
 			Method: "POST",
@@ -1103,31 +1103,20 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Status: 404,
 			Body:   map[string]interface{}{"code": 404, "msg": "not found"},
 		}
-		getStub := &httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_1",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"record": map[string]interface{}{"Name": "Alice"}},
-			},
-		}
 		reg.Register(batchStub)
-		reg.Register(getStub)
-		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		if got := stdout.String(); !strings.Contains(got, `"record":`) || !strings.Contains(got, `"Name": "Alice"`) || strings.Contains(got, `"record_id_list"`) {
-			t.Fatalf("stdout=%s", got)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1"}, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected batch_get error")
 		}
 		if !strings.Contains(string(batchStub.CapturedBody), `"record_id_list":["rec_1"]`) {
 			t.Fatalf("request body=%s", string(batchStub.CapturedBody))
 		}
-		if getStub.CapturedHeaders == nil {
-			t.Fatalf("single GET fallback was not called")
+		if stdout.Len() != 0 {
+			t.Fatalf("stdout=%s", stdout.String())
 		}
 	})
 
-	t.Run("get batch falls back to per-record routes when batch_get is unavailable", func(t *testing.T) {
+	t.Run("get batch returns batch_get error when batch_get is unavailable", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		batchStub := &httpmock.Stub{
 			Method: "POST",
@@ -1135,33 +1124,17 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Status: 404,
 			Body:   map[string]interface{}{"code": 404, "msg": "not found"},
 		}
-		getFirstStub := &httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_2",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"record": map[string]interface{}{"Name": "Bob"}},
-			},
-		}
-		getSecondStub := &httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_1",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"record": map[string]interface{}{"Name": "Alice"}},
-			},
-		}
 		reg.Register(batchStub)
-		reg.Register(getFirstStub)
-		reg.Register(getSecondStub)
-		if err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--field-id", "Name"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
+		err := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--field-id", "Name"}, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected batch_get error")
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_2"`) || !strings.Contains(got, `"Bob"`) || !strings.Contains(got, `"Alice"`) {
-			t.Fatalf("stdout=%s", got)
+		body := string(batchStub.CapturedBody)
+		if !strings.Contains(body, `"record_id_list":["rec_2","rec_1"]`) || !strings.Contains(body, `"select_fields":["Name"]`) {
+			t.Fatalf("request body=%s", body)
 		}
-		if getFirstStub.CapturedHeaders == nil || getSecondStub.CapturedHeaders == nil {
-			t.Fatalf("per-record GET fallback was not called")
+		if stdout.Len() != 0 {
+			t.Fatalf("stdout=%s", stdout.String())
 		}
 	})
 
@@ -1329,16 +1302,46 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "DELETE",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_1",
-			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
-		})
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_delete",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_1"},
+				},
+			},
+		}
+		reg.Register(batchStub)
 		if err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--yes"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"deleted": true`) || !strings.Contains(got, `"record_id": "rec_1"`) {
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) || strings.Contains(got, `"deleted": true`) {
 			t.Fatalf("stdout=%s", got)
+		}
+		if !strings.Contains(string(batchStub.CapturedBody), `"record_id_list":["rec_1"]`) {
+			t.Fatalf("request body=%s", string(batchStub.CapturedBody))
+		}
+	})
+
+	t.Run("delete returns batch_delete error when unavailable", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_delete",
+			Status: 404,
+			Body:   map[string]interface{}{"code": 404, "msg": "not found"},
+		}
+		reg.Register(batchStub)
+		err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--yes"}, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected batch_delete error")
+		}
+		if !strings.Contains(string(batchStub.CapturedBody), `"record_id_list":["rec_1"]`) {
+			t.Fatalf("request body=%s", string(batchStub.CapturedBody))
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("stdout=%s", stdout.String())
 		}
 	})
 
@@ -1389,64 +1392,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		body := string(batchStub.CapturedBody)
 		if !strings.Contains(body, `"record_id_list":["rec_3"]`) {
 			t.Fatalf("request body=%s", body)
-		}
-	})
-
-	t.Run("delete batch falls back to per-record routes when batch_delete is unavailable", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		batchStub := &httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_delete",
-			Status: 404,
-			Body:   map[string]interface{}{"code": 404, "msg": "not found"},
-		}
-		deleteFirstStub := &httpmock.Stub{
-			Method: "DELETE",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_2",
-			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
-		}
-		deleteSecondStub := &httpmock.Stub{
-			Method: "DELETE",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_1",
-			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
-		}
-		reg.Register(batchStub)
-		reg.Register(deleteFirstStub)
-		reg.Register(deleteSecondStub)
-		if err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_2", "--record-id", "rec_1", "--yes"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_2"`) || !strings.Contains(got, `"rec_1"`) {
-			t.Fatalf("stdout=%s", got)
-		}
-		if deleteFirstStub.CapturedHeaders == nil || deleteSecondStub.CapturedHeaders == nil {
-			t.Fatalf("per-record DELETE fallback was not called")
-		}
-	})
-
-	t.Run("delete json single falls back to per-record route when batch_delete is unavailable", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		batchStub := &httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_delete",
-			Status: 404,
-			Body:   map[string]interface{}{"code": 404, "msg": "not found"},
-		}
-		deleteStub := &httpmock.Stub{
-			Method: "DELETE",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_3",
-			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
-		}
-		reg.Register(batchStub)
-		reg.Register(deleteStub)
-		if err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_3"]}`, "--yes"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_3"`) {
-			t.Fatalf("stdout=%s", got)
-		}
-		if deleteStub.CapturedHeaders == nil {
-			t.Fatalf("single DELETE fallback was not called")
 		}
 	})
 

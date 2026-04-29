@@ -122,7 +122,7 @@ func TestDryRunRecordOps(t *testing.T) {
 		nil,
 	)
 	assertDryRunContains(t, dryRunRecordGet(ctx, getSingleRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_get", `"record_id_list":["rec_1"]`)
-	assertDryRunContains(t, dryRunRecordDelete(ctx, getSingleRT), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1")
+	assertDryRunContains(t, dryRunRecordDelete(ctx, getSingleRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_delete", `"record_id_list":["rec_1"]`)
 
 	getSingleFieldsRT := newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
