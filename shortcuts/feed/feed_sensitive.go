@@ -6,6 +6,7 @@ package feed
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -63,6 +64,56 @@ var FeedSensitive = common.Shortcut{
 		return nil
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return nil // TODO: implement in Task 3
+		feedCardID := runtime.Str("feed-card-id")
+		userIDs := runtime.StrSlice("user-ids")
+		userIDType := runtime.Str("user-id-type")
+		timeSensitive := runtime.Changed("enable")
+
+		resp, err := runtime.CallAPI("PATCH",
+			fmt.Sprintf("/open-apis/im/v2/feed_cards/%s", validate.EncodePathSegment(feedCardID)),
+			map[string]any{"user_id_type": userIDType},
+			map[string]any{"time_sensitive": timeSensitive, "user_ids": userIDs},
+		)
+		if err != nil {
+			return err
+		}
+
+		failedReasons := make([]map[string]any, 0)
+		if raw, ok := resp["failed_user_reasons"]; ok && raw != nil {
+			if slice, ok := raw.([]any); ok {
+				for _, item := range slice {
+					if m, ok := item.(map[string]any); ok {
+						failedReasons = append(failedReasons, m)
+					}
+				}
+			}
+		}
+
+		outData := map[string]any{
+			"feed_card_id":        feedCardID,
+			"time_sensitive":      timeSensitive,
+			"failed_user_reasons": failedReasons,
+		}
+
+		runtime.OutFormat(outData, nil, func(w io.Writer) {
+			successCount := len(userIDs) - len(failedReasons)
+			if successCount > 0 {
+				fmt.Fprintf(w, "Time-sensitive updated for %d user(s) (feed_card_id: %s)\n", successCount, feedCardID)
+			}
+			if len(failedReasons) > 0 {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: %d user(s) failed:\n", len(failedReasons))
+				for _, r := range failedReasons {
+					fmt.Fprintf(runtime.IO().ErrOut, "  %v: %v\n", r["user_id"], r["error_message"])
+				}
+			}
+		})
+
+		if len(failedReasons) > 0 {
+			if len(failedReasons) == len(userIDs) {
+				return output.Errorf(output.ExitAPI, "partial_failure", "all %d user(s) failed to update time-sensitive status", len(userIDs))
+			}
+			return output.Errorf(output.ExitAPI, "partial_failure", "%d user(s) failed to update time-sensitive status", len(failedReasons))
+		}
+		return nil
 	},
 }
