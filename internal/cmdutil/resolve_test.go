@@ -168,7 +168,7 @@ func TestResolveInput_AtFile_PathValidation(t *testing.T) {
 func TestResolveInput_AtFile_EmptyPath(t *testing.T) {
 	fio := &localfileio.LocalFileIO{}
 	_, err := ResolveInput("@", nil, fio)
-	if err == nil || !strings.Contains(err.Error(), "file path cannot be empty") {
+	if err == nil || !strings.Contains(err.Error(), "file path cannot be empty after @") {
 		t.Errorf("expected empty-path error, got: %v", err)
 	}
 }

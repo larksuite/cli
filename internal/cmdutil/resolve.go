@@ -56,20 +56,9 @@ func ResolveInput(raw string, stdin io.Reader, fileIO fileio.FileIO) (string, er
 		if path == "" {
 			return "", fmt.Errorf("file path cannot be empty after @")
 		}
-		if fileIO == nil {
-			return "", fmt.Errorf("file input (@path) is not available in this context")
-		}
-		f, err := fileIO.Open(path)
+		data, err := ReadInputFile(fileIO, path)
 		if err != nil {
-			if errors.Is(err, fileio.ErrPathValidation) {
-				return "", fmt.Errorf("invalid file path %q: %w", path, err)
-			}
-			return "", fmt.Errorf("cannot read file %q: %w", path, err)
-		}
-		defer f.Close()
-		data, err := io.ReadAll(f)
-		if err != nil {
-			return "", fmt.Errorf("cannot read file %q: %w", path, err)
+			return "", err
 		}
 		s := strings.TrimSpace(string(data))
 		if s == "" {
@@ -84,4 +73,29 @@ func ResolveInput(raw string, stdin io.Reader, fileIO fileio.FileIO) (string, er
 	}
 
 	return raw, nil
+}
+
+// ReadInputFile reads path through fileIO. Open/read failures are wrapped with
+// path context; fileio.ErrPathValidation remains matchable with errors.Is.
+func ReadInputFile(fileIO fileio.FileIO, path string) ([]byte, error) {
+	if fileIO == nil {
+		return nil, fmt.Errorf("file input is not available in this context")
+	}
+	f, err := fileIO.Open(path)
+	if err != nil {
+		return nil, wrapInputFileError(path, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, wrapInputFileError(path, err)
+	}
+	return data, nil
+}
+
+func wrapInputFileError(path string, err error) error {
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return fmt.Errorf("invalid file path %q: %w", path, err)
+	}
+	return fmt.Errorf("cannot read file %q: %w", path, err)
 }

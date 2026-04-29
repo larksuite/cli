@@ -882,17 +882,9 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if path == "" {
 				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
 			}
-			f, err := rctx.FileIO().Open(path)
+			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				if errors.Is(err, fileio.ErrPathValidation) {
-					return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
-				}
-				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
-			}
-			data, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
-				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
+				return FlagErrorf("--%s: %v", fl.Name, err)
 			}
 			rctx.Cmd.Flags().Set(fl.Name, string(data))
 			continue
