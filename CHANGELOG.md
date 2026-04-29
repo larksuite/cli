@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.22] - 2026-04-29
+
+### Features
+
+- **task**: Add resource agent & `agent_task_step_info` (#693)
+- **task**: Support app task members by id (#712)
+- **contact**: Add `--queries` multi-name fanout to `+search-user` (#707)
+- **slides**: Add slide templates with template-first skill guidance (#684)
+- **mail**: Support calendar events in emails (#646)
+- **install**: Honor `npm_config_registry` for binary URL resolution with npmmirror fallback (#690)
+
+### Bug Fixes
+
+- **install**: Make Windows zip extraction resilient (#713)
+- **config/init**: Respect `--brand` flag in `--new` mode (#711)
+
+### Documentation
+
+- **base**: Clarify base search routing (#708)
+- **base**: Align base skills and view config contracts (#653)
+
 ## [v1.0.21] - 2026-04-28
 
 ### Features
@@ -539,6 +560,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.22]: https://github.com/larksuite/cli/releases/tag/v1.0.22
 [v1.0.21]: https://github.com/larksuite/cli/releases/tag/v1.0.21
 [v1.0.20]: https://github.com/larksuite/cli/releases/tag/v1.0.20
 [v1.0.19]: https://github.com/larksuite/cli/releases/tag/v1.0.19
