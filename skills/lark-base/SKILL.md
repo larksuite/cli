@@ -42,7 +42,7 @@ metadata:
 3. 定位到命令后，先读该命令对应的 reference，再执行命令。
 4. 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 5. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
-6. 如果用户只给 Base 名称、关键词、报表名，或说“帮我找一个多维表格”，先通过 `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` 搜索 `BITABLE` 资源；拿到 URL/token 后再使用本 skill 的 `base +...` 命令。复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md)。不要猜测或发明 `base +search`、`lark-doc +search`、`drive +search` 这类命令。
+6. 如果用户只给 Base 名称、关键词，或说“帮我找一个多维表格”，先通过 `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` 搜索 `BITABLE` 资源；拿到 URL/token 后再使用本 skill 的 `base +...` 命令。复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md)：标题精确匹配、限定创建者/群/文件夹/时间范围、只搜标题/评论、分页/全量搜索、结果不唯一后的缩小范围。
 
 ## 2. 模块与命令导航
 
@@ -53,7 +53,6 @@ metadata:
 | 大模块 | 处理什么问题 | 包含的小模块 / 能力 |
 |------|-------------|-------------------|
 | Base 模块 | 管理 Base 本体，或从链接进入 Base 场景 | `base-create / base-get / base-copy`，Base / Wiki 链接解析 |
-| 资源发现 | 按名称、关键词、报表名查找 Base / 多维表格 | 先用 `docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` 搜索，复杂搜索再读 [`lark-doc-search.md`](../lark-doc/references/lark-doc-search.md) |
 | 表与数据模块 | 管理 Base 内部结构与日常数据操作 | `table / field / record / view` |
 | 公式 / Lookup 模块 | 处理派生字段、条件判断、跨表计算、固定查找引用 | `formula / lookup` 字段创建与更新 |
 | 数据分析模块 | 做一次性筛选、分组、聚合分析 | `data-query` |
@@ -69,7 +68,7 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` | 按名称、关键词、报表名查找 Base / 多维表格 / bitable | 复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md) | 先定位资源，再回到 `base +...` 操作表内数据；不要猜测或发明 `base +search`、`lark-doc +search`、`drive +search` |
+| `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` | 按名称、关键词查找 Base / 多维表格 / bitable | 复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md) | 先定位资源，再回到 `base +...` 操作表内数据 |
 | `+base-create` | 创建新的 Base | [`lark-base-base-create.md`](references/lark-base-base-create.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；`--folder-token`、`--time-zone` 都是可选项 |
 | `+base-get` | 获取 Base 信息 | [`lark-base-base-get.md`](references/lark-base-base-get.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 适合确认 Base 本体信息，不替代表/字段结构读取 |
 | `+base-copy` | 复制已有 Base | [`lark-base-base-copy.md`](references/lark-base-base-copy.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；复制成功后应主动返回新 Base 标识信息 |
@@ -222,7 +221,6 @@ metadata:
 | 一次性分析 / 临时统计 | `+data-query` | 不要用 `+record-list` / `+record-search` 拉全量后手算 |
 | 要把结果长期显示在表里 | `formula` 字段 | 不要只给一次性手工分析结果 |
 | 用户明确要求 lookup，或天然是固定查找配置 | `lookup` 字段 | 不要默认先上 lookup；先判断 formula 是否更合适 |
-| 按名称 / 关键词 / 报表名查找 Base | `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` | 不要发明 `base +search`；复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md) |
 | 读取原始记录明细 / 关键词检索 / 导出 | `+record-search / +record-list / +record-get` | 不要拿 `+data-query` 当取数命令 |
 | 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | 下载记录里的附件文件 | `lark-cli docs +media-download --token <file_token> --output <path>` | `file_token` 从 `+record-get` 返回的附件字段里取；用法见 [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) |
