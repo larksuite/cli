@@ -16,9 +16,8 @@ import (
 )
 
 // sandboxUserOpenID is the sandbox evaluation account's open_id in the bot's tenant.
-// The user may not be a member of the dynamically-created group chat, so the API may
-// return a failed_user_reasons entry. Tests accept that partial-failure outcome and
-// verify the structural response (feed_card_id, time_sensitive fields present).
+// This user is added to the group chat before feed +sensitive tests, ensuring the
+// happy path succeeds with zero failed_user_reasons.
 const sandboxUserOpenID = "ou_34efadf32063b955134c1fbea3f08bad"
 
 // TestFeedSensitive_EnableWorkflow proves the happy path for --enable:
@@ -36,6 +35,7 @@ func TestFeedSensitive_EnableWorkflow(t *testing.T) {
 	// Dynamically create a group chat to obtain a real oc_ chat_id.
 	// The chat_id serves as the feed_card_id for this test.
 	chatID := createChatForFeed(t, parentT, ctx, chatName)
+	addUserToChat(t, ctx, chatID, sandboxUserOpenID)
 
 	t.Run("enable time-sensitive as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -48,14 +48,11 @@ func TestFeedSensitive_EnableWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		// Exit 0 on full success, 1 on partial failure (user not in chat) — both acceptable.
-		assert.LessOrEqual(t, result.ExitCode, 1,
-			"exit code should be 0 or 1, got: %d, stderr:\n%s", result.ExitCode, result.Stderr)
+		result.AssertExitCode(t, 0)
 
 		stdout := strings.TrimSpace(result.Stdout)
 		require.NotEmpty(t, stdout, "stdout should not be empty, stderr:\n%s", result.Stderr)
 
-		// Spec output envelope: {"feed_card_id": "...", "time_sensitive": true, "failed_user_reasons": [...]}
 		feedCardID := gjson.Get(stdout, "data.feed_card_id").String()
 		assert.Equal(t, chatID, feedCardID,
 			"feed_card_id in response must match the requested chat, stdout:\n%s", stdout)
@@ -67,9 +64,8 @@ func TestFeedSensitive_EnableWorkflow(t *testing.T) {
 			"time_sensitive must be true for --enable, stdout:\n%s", stdout)
 
 		failedReasons := gjson.Get(stdout, "data.failed_user_reasons")
-		if failedReasons.Exists() && len(failedReasons.Array()) > 0 {
-			t.Logf("INFO: partial failure (user not in chat, expected): %s", failedReasons.Raw)
-		}
+		assert.Equal(t, 0, len(failedReasons.Array()),
+			"failed_user_reasons must be empty when user is in chat, stdout:\n%s", stdout)
 	})
 }
 
@@ -85,6 +81,7 @@ func TestFeedSensitive_DisableWorkflow(t *testing.T) {
 	chatName := "lark-cli-e2e-feed-disable-" + suffix
 
 	chatID := createChatForFeed(t, parentT, ctx, chatName)
+	addUserToChat(t, ctx, chatID, sandboxUserOpenID)
 
 	t.Run("disable time-sensitive as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -97,9 +94,7 @@ func TestFeedSensitive_DisableWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		// Exit 0 on full success, 1 on partial failure (user not in chat) — both acceptable.
-		assert.LessOrEqual(t, result.ExitCode, 1,
-			"exit code should be 0 or 1, got: %d, stderr:\n%s", result.ExitCode, result.Stderr)
+		result.AssertExitCode(t, 0)
 
 		stdout := strings.TrimSpace(result.Stdout)
 		require.NotEmpty(t, stdout, "stdout should not be empty, stderr:\n%s", result.Stderr)
@@ -113,6 +108,10 @@ func TestFeedSensitive_DisableWorkflow(t *testing.T) {
 			"time_sensitive field must be present in response, stdout:\n%s", stdout)
 		assert.False(t, timeSensitive.Bool(),
 			"time_sensitive must be false for --disable, stdout:\n%s", stdout)
+
+		failedReasons := gjson.Get(stdout, "data.failed_user_reasons")
+		assert.Equal(t, 0, len(failedReasons.Array()),
+			"failed_user_reasons must be empty when user is in chat, stdout:\n%s", stdout)
 	})
 }
 
@@ -217,6 +216,22 @@ func TestFeedSensitive_ValidationErrors(t *testing.T) {
 		assert.Contains(t, combined, "oc_",
 			"error message must mention the oc_ prefix requirement, combined:\n%s", combined)
 	})
+}
+
+// addUserToChat adds a user to a group chat via im chat.members create (bot identity).
+// Required before feed +sensitive tests so the user is a valid chat member.
+func addUserToChat(t *testing.T, ctx context.Context, chatID, userOpenID string) {
+	t.Helper()
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"im", "chat.members", "create",
+			"--params", `{"chat_id":"` + chatID + `"}`,
+			"--data", `{"id_list":["` + userOpenID + `"]}`,
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
 }
 
 // createChatForFeed creates a private group chat via im +chat-create and
