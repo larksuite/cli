@@ -167,10 +167,10 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON (supports - for stdin)")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON (supports - for stdin, @file for file input)")
 	switch httpMethod {
 	case "POST", "PUT", "PATCH", "DELETE":
-		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
+		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin, @file for file input)")
 	}
 	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")

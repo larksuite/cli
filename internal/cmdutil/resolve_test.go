@@ -5,6 +5,8 @@ package cmdutil
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -108,14 +110,69 @@ func TestResolveInput_PlainValue(t *testing.T) {
 	}
 }
 
-func TestResolveInput_AtPrefixPassedThrough(t *testing.T) {
-	// Without @file support, @-prefixed values are passed as-is
-	got, err := ResolveInput("@something", nil)
+func TestResolveInput_AtFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "params.json")
+	if err := os.WriteFile(path, []byte(`{"folder_token":"abc123"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveInput("@"+path, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != "@something" {
-		t.Errorf("got %q, want %q", got, "@something")
+	if got != `{"folder_token":"abc123"}` {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestResolveInput_AtFile_TrimsWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.json")
+	if err := os.WriteFile(path, []byte("\n  {\"k\":\"v\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveInput("@"+path, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != `{"k":"v"}` {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestResolveInput_AtFile_NotFound(t *testing.T) {
+	_, err := ResolveInput("@/no/such/file.json", nil)
+	if err == nil || !strings.Contains(err.Error(), "cannot read file") {
+		t.Errorf("expected read error, got: %v", err)
+	}
+}
+
+func TestResolveInput_AtFile_EmptyPath(t *testing.T) {
+	_, err := ResolveInput("@", nil)
+	if err == nil || !strings.Contains(err.Error(), "file path cannot be empty") {
+		t.Errorf("expected empty-path error, got: %v", err)
+	}
+}
+
+func TestResolveInput_AtFile_EmptyContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.json")
+	if err := os.WriteFile(path, []byte("   \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ResolveInput("@"+path, nil)
+	if err == nil || !strings.Contains(err.Error(), "is empty") {
+		t.Errorf("expected empty-file error, got: %v", err)
+	}
+}
+
+func TestResolveInput_DoubleAtEscape(t *testing.T) {
+	got, err := ResolveInput("@@literal", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "@literal" {
+		t.Errorf("got %q, want %q", got, "@literal")
 	}
 }
 
@@ -128,6 +185,44 @@ func TestParseJSONMap_WithStdin(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Errorf("got %d keys, want 2", len(got))
+	}
+}
+
+// Integration: @file flows through ParseJSONMap correctly.
+func TestParseJSONMap_WithAtFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "params.json")
+	if err := os.WriteFile(path, []byte(`{"folder_token":"abc123","type":"folder"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ParseJSONMap("@"+path, "--params", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("got %d keys, want 2", len(got))
+	}
+	if got["folder_token"] != "abc123" {
+		t.Errorf("got %v, want folder_token=abc123", got)
+	}
+}
+
+func TestParseOptionalBody_WithAtFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.json")
+	if err := os.WriteFile(path, []byte(`{"text":"hello"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ParseOptionalBody("POST", "@"+path, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m, ok := got.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected map, got %T", got)
+	}
+	if m["text"] != "hello" {
+		t.Errorf("got %v, want text=hello", m)
 	}
 }
 
