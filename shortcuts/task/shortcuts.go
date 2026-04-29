@@ -163,8 +163,8 @@ var CreateTask = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "summary", Desc: "task title"},
 		{Name: "description", Desc: "task description"},
-		{Name: "assignee", Desc: "task member id added during create"},
-		{Name: "follower", Desc: "task follower id added during create"},
+		{Name: "assignee", Desc: "task assignee id added during create; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
+		{Name: "follower", Desc: "task follower id added during create; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
 		{Name: "due", Desc: "due date (ISO 8601 / date:YYYY-MM-DD / relative:+2d / ms timestamp)"},
 		{Name: "tasklist-id", Desc: "tasklist id or applink URL"},
 		{Name: "idempotency-key", Desc: "client token for idempotency"},

@@ -28,8 +28,8 @@ var AssignTask = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "task-id", Desc: "task id", Required: true},
-		{Name: "add", Desc: "comma-separated member IDs to add as assignees"},
-		{Name: "remove", Desc: "comma-separated member IDs to remove from assignees"},
+		{Name: "add", Desc: "comma-separated assignee IDs to add; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
+		{Name: "remove", Desc: "comma-separated assignee IDs to remove; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
 		{Name: "idempotency-key", Desc: "client token for idempotency (used for add_members)"},
 	},
 
@@ -124,14 +124,14 @@ var AssignTask = common.Shortcut{
 		}
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "✅ Task members updated successfully!\n")
+			fmt.Fprintf(w, "✅ Task assignes updated successfully!\n")
 			fmt.Fprintf(w, "Task ID: %s\n", taskId)
 			if urlVal != "" {
 				fmt.Fprintf(w, "Task URL: %s\n", urlVal)
 			}
 
 			if members, ok := task["members"].([]interface{}); ok {
-				fmt.Fprintf(w, "Current Members: %d\n", len(members))
+				fmt.Fprintf(w, "Current Assignes: %d\n", len(members))
 			}
 		})
 		return nil
