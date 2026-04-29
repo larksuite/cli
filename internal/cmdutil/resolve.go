@@ -4,22 +4,27 @@
 package cmdutil
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
+
+	"github.com/larksuite/cli/extension/fileio"
 )
 
 // ResolveInput resolves special input conventions for a raw flag value:
 //   - "-"       → read all bytes from stdin
-//   - "@<path>" → read all bytes from the file at <path>
+//   - "@<path>" → read all bytes from the file at <path> via fileIO
 //   - "@@..."   → strip leading @ (escape for a literal @-prefixed value)
 //   - "'...'"   → strip surrounding single quotes (Windows cmd.exe compatibility)
 //   - other     → return as-is
 //
+// fileIO is required for "@<path>" inputs and goes through path validation
+// (SafeInputPath); pass nil only when callers know "@" inputs are not possible.
+//
 // Allows callers to bypass shell quoting issues (especially Windows PowerShell 5)
 // by reading JSON from a file (@path) or piping via stdin (-).
-func ResolveInput(raw string, stdin io.Reader) (string, error) {
+func ResolveInput(raw string, stdin io.Reader, fileIO fileio.FileIO) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
@@ -51,7 +56,18 @@ func ResolveInput(raw string, stdin io.Reader) (string, error) {
 		if path == "" {
 			return "", fmt.Errorf("file path cannot be empty after @")
 		}
-		data, err := os.ReadFile(path)
+		if fileIO == nil {
+			return "", fmt.Errorf("file input (@path) is not available in this context")
+		}
+		f, err := fileIO.Open(path)
+		if err != nil {
+			if errors.Is(err, fileio.ErrPathValidation) {
+				return "", fmt.Errorf("invalid file path %q: %w", path, err)
+			}
+			return "", fmt.Errorf("cannot read file %q: %w", path, err)
+		}
+		defer f.Close()
+		data, err := io.ReadAll(f)
 		if err != nil {
 			return "", fmt.Errorf("cannot read file %q: %w", path, err)
 		}

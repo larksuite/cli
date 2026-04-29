@@ -23,7 +23,7 @@ func TestParseOptionalBody(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseOptionalBody(tt.method, tt.data, nil)
+			got, err := ParseOptionalBody(tt.method, tt.data, nil, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseOptionalBody() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -53,7 +53,7 @@ func TestParseJSONMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseJSONMap(tt.input, tt.label, nil)
+			got, err := ParseJSONMap(tt.input, tt.label, nil, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseJSONMap() error = %v, wantErr %v", err, tt.wantErr)
 				return

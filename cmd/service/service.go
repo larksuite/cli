@@ -354,6 +354,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	// stdin is an io.Reader consumed at most once. Only one of --params/--data
 	// may use "-" (stdin); the conflict check below prevents silent data loss.
 	stdin := opts.Factory.IOStreams.In
+	fileIO := opts.Factory.ResolveFileIO(opts.Ctx)
 
 	// Validate --file mutual exclusions.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
@@ -362,7 +363,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	if opts.Params == "-" && opts.Data == "-" {
 		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
-	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
 	if err != nil {
 		return client.RawApiRequest{}, nil, err
 	}
@@ -431,7 +432,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		// Parse --data as form fields.
 		var dataFields any
 		if opts.Data != "" {
-			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
 			if err != nil {
 				return client.RawApiRequest{}, nil, err
 			}
@@ -447,7 +448,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 
 		fd, err := cmdutil.BuildFormdata(
-			opts.Factory.ResolveFileIO(opts.Ctx),
+			fileIO,
 			fieldName, filePath, isStdin, stdin, dataFields,
 		)
 		if err != nil {
@@ -456,7 +457,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		request.Data = fd
 		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
 	} else {
-		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
 		if err != nil {
 			return client.RawApiRequest{}, nil, err
 		}

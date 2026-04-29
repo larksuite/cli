@@ -6,13 +6,14 @@ package cmdutil
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 func TestResolveInput_Stdin(t *testing.T) {
-	got, err := ResolveInput("-", strings.NewReader(`{"key":"value"}`))
+	got, err := ResolveInput("-", strings.NewReader(`{"key":"value"}`), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -22,7 +23,7 @@ func TestResolveInput_Stdin(t *testing.T) {
 }
 
 func TestResolveInput_Stdin_TrimNewline(t *testing.T) {
-	got, err := ResolveInput("-", strings.NewReader("{\"k\":\"v\"}\n"))
+	got, err := ResolveInput("-", strings.NewReader("{\"k\":\"v\"}\n"), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,7 +33,7 @@ func TestResolveInput_Stdin_TrimNewline(t *testing.T) {
 }
 
 func TestResolveInput_Stdin_Empty(t *testing.T) {
-	_, err := ResolveInput("-", strings.NewReader(""))
+	_, err := ResolveInput("-", strings.NewReader(""), nil)
 	if err == nil {
 		t.Error("expected error for empty stdin")
 	}
@@ -46,21 +47,21 @@ type errorReader struct{}
 func (errorReader) Read([]byte) (int, error) { return 0, fmt.Errorf("disk failure") }
 
 func TestResolveInput_Stdin_ReadError(t *testing.T) {
-	_, err := ResolveInput("-", errorReader{})
+	_, err := ResolveInput("-", errorReader{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "failed to read stdin") {
 		t.Errorf("expected read error, got: %v", err)
 	}
 }
 
 func TestResolveInput_Stdin_WhitespaceOnly(t *testing.T) {
-	_, err := ResolveInput("-", strings.NewReader("  \n\t\n  "))
+	_, err := ResolveInput("-", strings.NewReader("  \n\t\n  "), nil)
 	if err == nil {
 		t.Error("expected error for whitespace-only stdin")
 	}
 }
 
 func TestResolveInput_Stdin_Nil(t *testing.T) {
-	_, err := ResolveInput("-", nil)
+	_, err := ResolveInput("-", nil, nil)
 	if err == nil {
 		t.Error("expected error for nil stdin")
 	}
@@ -79,7 +80,7 @@ func TestResolveInput_StripSingleQuotes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ResolveInput(tt.in, nil)
+			got, err := ResolveInput(tt.in, nil, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -91,7 +92,7 @@ func TestResolveInput_StripSingleQuotes(t *testing.T) {
 }
 
 func TestResolveInput_Empty(t *testing.T) {
-	got, err := ResolveInput("", nil)
+	got, err := ResolveInput("", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestResolveInput_Empty(t *testing.T) {
 }
 
 func TestResolveInput_PlainValue(t *testing.T) {
-	got, err := ResolveInput(`{"already":"valid"}`, nil)
+	got, err := ResolveInput(`{"already":"valid"}`, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -111,12 +112,13 @@ func TestResolveInput_PlainValue(t *testing.T) {
 }
 
 func TestResolveInput_AtFile(t *testing.T) {
+	fio := &localfileio.LocalFileIO{}
 	dir := t.TempDir()
-	path := filepath.Join(dir, "params.json")
-	if err := os.WriteFile(path, []byte(`{"folder_token":"abc123"}`), 0o600); err != nil {
+	TestChdir(t, dir)
+	if err := os.WriteFile("params.json", []byte(`{"folder_token":"abc123"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolveInput("@"+path, nil)
+	got, err := ResolveInput("@params.json", nil, fio)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,12 +128,13 @@ func TestResolveInput_AtFile(t *testing.T) {
 }
 
 func TestResolveInput_AtFile_TrimsWhitespace(t *testing.T) {
+	fio := &localfileio.LocalFileIO{}
 	dir := t.TempDir()
-	path := filepath.Join(dir, "p.json")
-	if err := os.WriteFile(path, []byte("\n  {\"k\":\"v\"}\n"), 0o600); err != nil {
+	TestChdir(t, dir)
+	if err := os.WriteFile("p.json", []byte("\n  {\"k\":\"v\"}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolveInput("@"+path, nil)
+	got, err := ResolveInput("@p.json", nil, fio)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,33 +144,58 @@ func TestResolveInput_AtFile_TrimsWhitespace(t *testing.T) {
 }
 
 func TestResolveInput_AtFile_NotFound(t *testing.T) {
-	_, err := ResolveInput("@/no/such/file.json", nil)
+	fio := &localfileio.LocalFileIO{}
+	dir := t.TempDir()
+	TestChdir(t, dir)
+	_, err := ResolveInput("@missing.json", nil, fio)
 	if err == nil || !strings.Contains(err.Error(), "cannot read file") {
 		t.Errorf("expected read error, got: %v", err)
 	}
 }
 
+func TestResolveInput_AtFile_PathValidation(t *testing.T) {
+	fio := &localfileio.LocalFileIO{}
+	dir := t.TempDir()
+	TestChdir(t, dir)
+	// Absolute paths are rejected by SafeInputPath; the error must surface
+	// as an invalid-path message, not a generic read failure.
+	_, err := ResolveInput("@/etc/passwd", nil, fio)
+	if err == nil || !strings.Contains(err.Error(), "invalid file path") {
+		t.Errorf("expected path-validation error, got: %v", err)
+	}
+}
+
 func TestResolveInput_AtFile_EmptyPath(t *testing.T) {
-	_, err := ResolveInput("@", nil)
+	fio := &localfileio.LocalFileIO{}
+	_, err := ResolveInput("@", nil, fio)
 	if err == nil || !strings.Contains(err.Error(), "file path cannot be empty") {
 		t.Errorf("expected empty-path error, got: %v", err)
 	}
 }
 
 func TestResolveInput_AtFile_EmptyContent(t *testing.T) {
+	fio := &localfileio.LocalFileIO{}
 	dir := t.TempDir()
-	path := filepath.Join(dir, "empty.json")
-	if err := os.WriteFile(path, []byte("   \n"), 0o600); err != nil {
+	TestChdir(t, dir)
+	if err := os.WriteFile("empty.json", []byte("   \n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := ResolveInput("@"+path, nil)
+	_, err := ResolveInput("@empty.json", nil, fio)
 	if err == nil || !strings.Contains(err.Error(), "is empty") {
 		t.Errorf("expected empty-file error, got: %v", err)
 	}
 }
 
+func TestResolveInput_AtFile_NoFileIO(t *testing.T) {
+	// When fileIO is nil, @path must error rather than silently fall back.
+	_, err := ResolveInput("@params.json", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "not available") {
+		t.Errorf("expected unavailable error, got: %v", err)
+	}
+}
+
 func TestResolveInput_DoubleAtEscape(t *testing.T) {
-	got, err := ResolveInput("@@literal", nil)
+	got, err := ResolveInput("@@literal", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -179,7 +207,7 @@ func TestResolveInput_DoubleAtEscape(t *testing.T) {
 // Integration: ResolveInput flows through ParseJSONMap correctly.
 func TestParseJSONMap_WithStdin(t *testing.T) {
 	stdin := strings.NewReader(`{"message_id":"om_xxx","user_id_type":"open_id"}`)
-	got, err := ParseJSONMap("-", "--params", stdin)
+	got, err := ParseJSONMap("-", "--params", stdin, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,12 +218,13 @@ func TestParseJSONMap_WithStdin(t *testing.T) {
 
 // Integration: @file flows through ParseJSONMap correctly.
 func TestParseJSONMap_WithAtFile(t *testing.T) {
+	fio := &localfileio.LocalFileIO{}
 	dir := t.TempDir()
-	path := filepath.Join(dir, "params.json")
-	if err := os.WriteFile(path, []byte(`{"folder_token":"abc123","type":"folder"}`), 0o600); err != nil {
+	TestChdir(t, dir)
+	if err := os.WriteFile("params.json", []byte(`{"folder_token":"abc123","type":"folder"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ParseJSONMap("@"+path, "--params", nil)
+	got, err := ParseJSONMap("@params.json", "--params", nil, fio)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -208,12 +237,13 @@ func TestParseJSONMap_WithAtFile(t *testing.T) {
 }
 
 func TestParseOptionalBody_WithAtFile(t *testing.T) {
+	fio := &localfileio.LocalFileIO{}
 	dir := t.TempDir()
-	path := filepath.Join(dir, "data.json")
-	if err := os.WriteFile(path, []byte(`{"text":"hello"}`), 0o600); err != nil {
+	TestChdir(t, dir)
+	if err := os.WriteFile("data.json", []byte(`{"text":"hello"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ParseOptionalBody("POST", "@"+path, nil)
+	got, err := ParseOptionalBody("POST", "@data.json", nil, fio)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -227,7 +257,7 @@ func TestParseOptionalBody_WithAtFile(t *testing.T) {
 }
 
 func TestParseJSONMap_StripSingleQuotes_CmdExe(t *testing.T) {
-	got, err := ParseJSONMap(`'{"key":"value"}'`, "--params", nil)
+	got, err := ParseJSONMap(`'{"key":"value"}'`, "--params", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -238,7 +268,7 @@ func TestParseJSONMap_StripSingleQuotes_CmdExe(t *testing.T) {
 
 func TestParseOptionalBody_WithStdin(t *testing.T) {
 	stdin := strings.NewReader(`{"text":"hello"}`)
-	got, err := ParseOptionalBody("POST", "-", stdin)
+	got, err := ParseOptionalBody("POST", "-", stdin, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -271,7 +301,7 @@ func TestParseJSONMap_WindowsShellScenarios(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseJSONMap(tt.input, "--params", nil)
+			got, err := ParseJSONMap(tt.input, "--params", nil, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
 				return
