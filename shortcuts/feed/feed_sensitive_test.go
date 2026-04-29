@@ -102,10 +102,10 @@ func TestFeedSensitive_Execute_AllSuccess(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/im/v2/feed_cards/oc_abc123",
-		Body: map[string]interface{}{
+		Body: map[string]any{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"failed_user_reasons": []interface{}{},
+			"data": map[string]any{
+				"failed_user_reasons": []any{},
 			},
 		},
 	})
@@ -132,11 +132,11 @@ func TestFeedSensitive_Execute_PartialFailure(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/im/v2/feed_cards/oc_abc123",
-		Body: map[string]interface{}{
+		Body: map[string]any{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"failed_user_reasons": []interface{}{
-					map[string]interface{}{
+			"data": map[string]any{
+				"failed_user_reasons": []any{
+					map[string]any{
 						"error_code":    0,
 						"error_message": "The user is not in the chat",
 						"user_id":       "ou_user2",
@@ -171,11 +171,11 @@ func TestFeedSensitive_Execute_AllFailed(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/im/v2/feed_cards/oc_abc123",
-		Body: map[string]interface{}{
+		Body: map[string]any{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"failed_user_reasons": []interface{}{
-					map[string]interface{}{
+			"data": map[string]any{
+				"failed_user_reasons": []any{
+					map[string]any{
 						"error_code":    0,
 						"error_message": "The user is not in the chat",
 						"user_id":       "ou_user1",
