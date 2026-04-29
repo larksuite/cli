@@ -6,12 +6,10 @@ package feed
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 var FeedSensitive = common.Shortcut{
@@ -36,8 +34,8 @@ var FeedSensitive = common.Shortcut{
 		timeSensitive := runtime.Changed("enable")
 		return common.NewDryRunAPI().
 			PATCH(fmt.Sprintf("/open-apis/im/v2/feed_cards/%s", validate.EncodePathSegment(feedCardID))).
-			Params(map[string]interface{}{"user_id_type": userIDType}).
-			Body(map[string]interface{}{
+			Params(map[string]any{"user_id_type": userIDType}).
+			Body(map[string]any{
 				"time_sensitive": timeSensitive,
 				"user_ids":       userIDs,
 			})
@@ -65,8 +63,6 @@ var FeedSensitive = common.Shortcut{
 		return nil
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		_ = larkcore.QueryParams{}
-		_ = http.MethodPatch
 		return nil // TODO: implement in Task 3
 	},
 }

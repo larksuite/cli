@@ -5,7 +5,6 @@ package feed
 
 import (
 	"bytes"
-	"context"
 	"strings"
 	"testing"
 
@@ -92,7 +91,7 @@ func TestFeedSensitive_Validate_EmptyUserIDs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for missing --user-ids, got nil")
 	}
+	if !strings.Contains(err.Error(), "user-ids") {
+		t.Errorf("error should mention user-ids, got: %v", err)
+	}
 }
-
-// Ensure the package compiles with context import used
-var _ = context.Background
