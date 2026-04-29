@@ -43,6 +43,7 @@ var DocsCreate = common.Shortcut{
 	Risk:        "write",
 	AuthTypes:   []string{"user", "bot"},
 	Scopes:      []string{"docx:document:create"},
+	Tips:        docsVersionSelectionTips,
 	Flags: concatFlags(
 		[]common.Flag{
 			{Name: "api-version", Desc: "API version", Default: "v1", Enum: []string{"v1", "v2"}},

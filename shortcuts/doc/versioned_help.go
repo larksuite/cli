@@ -30,13 +30,6 @@ func installVersionedHelp(cmd *cobra.Command, defaultVersion string, flagVersion
 			}
 		})
 		origHelp(cmd, args)
-		if ver == "v1" {
-			fmt.Fprintf(cmd.OutOrStdout(),
-				"\n[NOTE] v1 API is deprecated and will be removed in a future release.\n"+
-					"  Use --api-version v2 for the latest API:\n"+
-					"    %s %s --api-version v2 --help\n",
-				cmd.Parent().Name(), cmd.Name())
-		}
 	})
 }
 

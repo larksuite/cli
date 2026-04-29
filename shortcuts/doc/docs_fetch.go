@@ -49,6 +49,7 @@ var DocsFetch = common.Shortcut{
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
+	Tips:        docsVersionSelectionTips,
 	Flags: concatFlags(
 		[]common.Flag{
 			{Name: "api-version", Desc: "API version", Default: "v1", Enum: []string{"v1", "v2"}},

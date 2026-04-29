@@ -64,6 +64,7 @@ var DocsUpdate = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
+	Tips:        docsVersionSelectionTips,
 	Flags: concatFlags(
 		[]common.Flag{
 			{Name: "api-version", Desc: "API version", Default: "v1", Enum: []string{"v1", "v2"}},
