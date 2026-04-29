@@ -96,7 +96,9 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 ## 范围限制
 
-`--local-dir` 只接受 cwd 内的相对路径。如果用户想 pull 到 cwd 之外的目录，**不要 agent 自己 `cd` 绕过**；告诉用户切换 agent 工作目录到合适的祖先后重试，或者把目标软链接到 cwd 内。CLI 会在路径越界时直接报 `unsafe file path`。
+`--local-dir` 只接受 cwd 内的相对路径。CLI 会先 `EvalSymlinks` 整条路径，再判断它是否仍落在 cwd 内 —— **指向 cwd 外的符号链接也会被拒**，"在 cwd 内放一条软链指向外面" 这条捷径走不通，会直接撞上 `unsafe file path`。
+
+如果用户想 pull 到 cwd 之外的目录，**不要 agent 自己 `cd` 绕过**。可以选：让用户在外部把 agent 工作目录切换到目标的祖先后重启会话；或者把目标整体物理移动 / 拷贝到 cwd 内（不是软链）；或者直接放弃这次同步，改用别的方式。
 
 ## 参考
 

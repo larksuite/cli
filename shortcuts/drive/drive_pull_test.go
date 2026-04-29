@@ -148,6 +148,147 @@ func TestDrivePullSkipsExistingWhenSkipPolicy(t *testing.T) {
 	mustReadFile(t, filepath.Join("local", "keep.txt"), "local-original")
 }
 
+// TestDrivePullSurfacesDirectoryFileMirrorConflict pins the contract
+// for the case where Drive ships a regular file at a rel_path that is
+// already a directory locally. SafeOutputPath would refuse to overwrite
+// the directory at write time, but if --if-exists=skip silently swallows
+// the collision the caller sees "skipped" and assumes the mirror is
+// in sync. The fix surfaces it as a structured failure under both
+// skip and overwrite policies so callers can react.
+func TestDrivePullSurfacesDirectoryFileMirrorConflict(t *testing.T) {
+	for _, policy := range []string{"overwrite", "skip"} {
+		t.Run(policy, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+			tmpDir := t.TempDir()
+			withDriveWorkingDir(t, tmpDir)
+			// Local has a directory at "shadow" — Drive says it's a
+			// regular file at the same rel_path. This is the conflict.
+			if err := os.MkdirAll(filepath.Join("local", "shadow"), 0o755); err != nil {
+				t.Fatalf("MkdirAll: %v", err)
+			}
+
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "folder_token=folder_root",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "ok",
+					"data": map[string]interface{}{
+						"files": []interface{}{
+							map[string]interface{}{"token": "tok_shadow", "name": "shadow", "type": "file"},
+						},
+						"has_more": false,
+					},
+				},
+			})
+
+			err := mountAndRunDrive(t, DrivePull, []string{
+				"+pull",
+				"--local-dir", "local",
+				"--folder-token", "folder_root",
+				"--if-exists", policy,
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+			}
+
+			out := stdout.String()
+			if !strings.Contains(out, `"failed": 1`) {
+				t.Errorf("[%s] expected failed=1 (dir/file mirror conflict), got: %s", policy, out)
+			}
+			if strings.Contains(out, `"skipped": 1`) {
+				t.Errorf("[%s] mirror conflict must NOT be swallowed as skipped, got: %s", policy, out)
+			}
+			if !strings.Contains(out, `"action": "failed"`) {
+				t.Errorf("[%s] expected items entry with action=failed, got: %s", policy, out)
+			}
+			if !strings.Contains(out, "is a directory") {
+				t.Errorf("[%s] error message should mention the directory conflict, got: %s", policy, out)
+			}
+		})
+	}
+}
+
+// TestDrivePullPaginationHandlesPageTokenField pins the cross-API
+// pagination contract: Drive list paginates by page_token / next_page_token,
+// and the shared common.PaginationMeta helper accepts both. If +pull
+// only honored next_page_token it would silently stop after the first
+// page when the backend returns the (newer) page_token field, so any
+// remote files past page one would never be downloaded and would be
+// invisible to --delete-local.
+func TestDrivePullPaginationHandlesPageTokenField(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	// First page: returns has_more + page_token (NOT next_page_token).
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_a", "name": "a.txt", "type": "file"},
+				},
+				"has_more":   true,
+				"page_token": "page2",
+			},
+		},
+	})
+	// Second page: terminator.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "page_token=page2",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_b", "name": "b.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_a/download",
+		Status:  200,
+		Body:    []byte("AAA"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_b/download",
+		Status:  200,
+		Body:    []byte("BBB"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"downloaded": 2`) {
+		t.Errorf("expected both pages to be fetched (downloaded=2), got: %s", out)
+	}
+	mustReadFile(t, filepath.Join("local", "a.txt"), "AAA")
+	mustReadFile(t, filepath.Join("local", "b.txt"), "BBB")
+	reg.Verify(t)
+}
+
 // TestDrivePullDeleteLocalRequiresYes verifies the upfront safety guard:
 // --delete-local without --yes must be rejected before any API call.
 func TestDrivePullDeleteLocalRequiresYes(t *testing.T) {

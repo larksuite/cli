@@ -150,7 +150,24 @@ var DrivePull = common.Shortcut{
 			token := remoteFiles[rel]
 			target := filepath.Join(rootRelToCwd, rel)
 
-			if _, statErr := runtime.FileIO().Stat(target); statErr == nil {
+			if info, statErr := runtime.FileIO().Stat(target); statErr == nil {
+				// Mirror conflict: remote is a regular file but local
+				// has a directory at the same rel_path. Neither
+				// "skipped" nor "downloaded" describes reality —
+				// SafeOutputPath would refuse to write a file over a
+				// directory, and pretending the directory is a
+				// pre-existing file under --if-exists=skip silently
+				// hides the conflict. Surface as a failure.
+				if info.IsDir() {
+					items = append(items, drivePullItem{
+						RelPath:   rel,
+						FileToken: token,
+						Action:    "failed",
+						Error:     fmt.Sprintf("local path is a directory, remote is a regular file: %s", target),
+					})
+					failed++
+					continue
+				}
 				if ifExists == drivePullIfExistsSkip {
 					items = append(items, drivePullItem{RelPath: rel, FileToken: token, Action: "skipped"})
 					skipped++
@@ -296,8 +313,7 @@ func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, fo
 				allPaths[rel] = struct{}{}
 			}
 		}
-		hasMore, _ := result["has_more"].(bool)
-		nextToken := common.GetString(result, "next_page_token")
+		hasMore, nextToken := common.PaginationMeta(result)
 		if !hasMore || nextToken == "" {
 			break
 		}
