@@ -35,6 +35,10 @@
     "en": { "title": "Mail", "description": "Email, draft, folder, and contacts management" },
     "zh": { "title": "邮箱", "description": "查看和管理用户邮箱数据，包括邮件、草稿、文件夹和联系人" }
   },
+  "markdown": {
+    "en": { "title": "Markdown", "description": "Drive-native Markdown file create, fetch, and overwrite" },
+    "zh": { "title": "Markdown", "description": "Drive 原生 Markdown 文件的创建、读取和覆盖更新" }
+  },
   "minutes": {
     "en": { "title": "Minutes", "description": "Minutes content and metadata retrieval" },
     "zh": { "title": "妙记", "description": "妙记信息获取、内容查询" }
