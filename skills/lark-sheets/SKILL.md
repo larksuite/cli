@@ -1,7 +1,7 @@
 ---
 name: lark-sheets
-version: 1.1.0
-description: "飞书电子表格：创建和操作电子表格。创建表格并写入表头和数据、读取和写入单元格、追加行数据、在已知电子表格中查找单元格内容、导出表格文件。当用户需要创建电子表格、批量读写数据、在已知表格中查找内容、导出或下载表格时使用。若用户是想按名称或关键词搜索云空间里的表格文件，请改用 lark-doc 的 docs +search 先定位资源。"
+version: 1.2.0
+description: "飞书电子表格：创建和操作电子表格。支持创建表格、创建/复制/删除/更新工作表、读写单元格、追加行数据、查找内容、导出文件。当用户需要创建电子表格、管理工作表、批量读写数据、在已知表格中查找内容、导出或下载表格时使用。若用户是想按名称或关键词搜索云空间里的表格文件，请改用 lark-doc 的 docs +search 先定位资源。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -190,6 +190,10 @@ Shortcut 是对常用操作的高级封装（`lark-cli sheets +<verb> [flags]`�
 | [`+append`](references/lark-sheets-append.md) | Append rows to a spreadsheet |
 | [`+find`](references/lark-sheets-find.md) | Find cells in a spreadsheet |
 | [`+create`](references/lark-sheets-create.md) | Create a spreadsheet (optional header row and initial data) |
+| [`+create-sheet`](references/lark-sheets-create-sheet.md) | Create a sheet in an existing spreadsheet |
+| [`+copy-sheet`](references/lark-sheets-copy-sheet.md) | Copy a sheet within a spreadsheet |
+| [`+delete-sheet`](references/lark-sheets-delete-sheet.md) | Delete a sheet from a spreadsheet |
+| [`+update-sheet`](references/lark-sheets-update-sheet.md) | Update sheet title, position, visibility, freeze, or protection |
 | [`+export`](references/lark-sheets-export.md) | Export a spreadsheet (async task polling + optional download) |
 | [`+merge-cells`](references/lark-sheets-merge-cells.md) | Merge cells in a spreadsheet |
 | [`+unmerge-cells`](references/lark-sheets-unmerge-cells.md) | Unmerge (split) cells in a spreadsheet |
@@ -285,4 +289,3 @@ lark-cli sheets <resource> <method> [flags] # 调用 API
 | `spreadsheet.sheet.float_images.get` | `sheets:spreadsheet:read` |
 | `spreadsheet.sheet.float_images.query` | `sheets:spreadsheet:read` |
 | `spreadsheet.sheet.float_images.delete` | `sheets:spreadsheet:write_only` |
-

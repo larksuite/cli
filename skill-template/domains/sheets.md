@@ -163,3 +163,14 @@ lark-cli sheets +write --url "URL" --sheet-id "sheetId" --range "C6" \
 - 公式支持 IMPORTRANGE 跨表引用（最多 5 层嵌套、每个工作表最多 100 个引用）
 - @人仅支持同租户用户，单次最多 50 人
 - 下拉列表需**先通过 `+set-dropdown` 配置下拉选项**，否则 `multipleValue` 写入会变成纯文本。值中的字符串不能包含逗号
+
+## 工作表管理
+
+当需求是“在现有电子表格里管理工作表本身”，优先用这些 shortcut，而不是手写原始 JSON：
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+create-sheet`](references/lark-sheets-create-sheet.md) | Create a sheet in an existing spreadsheet |
+| [`+copy-sheet`](references/lark-sheets-copy-sheet.md) | Copy a sheet within a spreadsheet |
+| [`+delete-sheet`](references/lark-sheets-delete-sheet.md) | Delete a sheet from a spreadsheet |
+| [`+update-sheet`](references/lark-sheets-update-sheet.md) | Update sheet title, position, visibility, freeze, or protection |
