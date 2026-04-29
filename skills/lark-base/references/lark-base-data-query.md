@@ -191,7 +191,6 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
 | `is` / `isNot` / `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual` | `["数字字符串"]` | 仅 1 个 | `["23.4"]`、`["-100"]` |
-| `contains` / `doesNotContain` | `["数字字符串"]` | 仅 1 个 | `["23.4"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
 > value 必须为合法数字的字符串形式。
