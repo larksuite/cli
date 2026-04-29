@@ -262,11 +262,15 @@ func installTipsHelpFunc(root *cobra.Command) {
 			}
 		}
 		defaultHelp(cmd, args)
+		out := cmd.OutOrStdout()
+		if level, ok := cmdutil.GetRisk(cmd); ok {
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "Risk:", level)
+		}
 		tips := cmdutil.GetTips(cmd)
 		if len(tips) == 0 {
 			return
 		}
-		out := cmd.OutOrStdout()
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Tips:")
 		for _, tip := range tips {

@@ -148,6 +148,51 @@ func TestCreate_CreateEventOnly(t *testing.T) {
 	}
 }
 
+func TestCreate_CreateEventOnly_PrettyFormat(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id": "evt_001",
+					"summary":  "Test Meeting",
+					"start_time": map[string]interface{}{
+						"timestamp": "1742515200",
+					},
+					"end_time": map[string]interface{}{
+						"timestamp": "1742518800",
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Test Meeting",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+		"--format", "pretty",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "evt_001") {
+		t.Errorf("stdout should contain event_id, got: %s", out)
+	}
+	if !strings.Contains(out, "Event created successfully") {
+		t.Errorf("stdout should contain success message, got: %s", out)
+	}
+}
+
 func TestBuildEventData_DefaultVChat(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("summary", "", "")

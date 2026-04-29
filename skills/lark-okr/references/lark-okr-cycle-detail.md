@@ -16,11 +16,11 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
 
 ## 参数
 
-| 参数                      | 必填 | 默认值    | 说明                                      |
-|-------------------------|----|--------|-----------------------------------------|
-| `--cycle-id &lt;id&gt;` | 是  | —      | OKR 周期 ID（int64 类型）。从 `+cycle-list` 获取。 |
-| `--dry-run`             | 否  | —      | 预览 API 调用而不实际执行。                        |
-| `--format <fmt>`        | 否  | `json` | 输出格式。                                   |
+| 参数           | 必填 | 默认值    | 说明                                      |
+|--------------|----|--------|-----------------------------------------|
+| `--cycle-id` | 是  | —      | OKR 周期 ID（int64 类型）。从 `+cycle-list` 获取。 |
+| `--dry-run`  | 否  | —      | 预览 API 调用而不实际执行。                        |
+| `--format`   | 否  | `json` | 输出格式。                                   |
 
 ## 工作流程
 
@@ -74,8 +74,9 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
   "total": 1
 }
 ```
-其中，content 和 notes 字段是 JSON 字符串，为 OKR ContentBlock 富文本格式。请参考 [lark-okr-contentblock.md](lark-okr-contentblock.md) 了解详细信息。
 
+其中，content 和 notes 字段是 JSON 字符串，为 OKR ContentBlock
+富文本格式。请参考 [lark-okr-contentblock.md](lark-okr-contentblock.md) 了解详细信息。
 
 ## 参考
 

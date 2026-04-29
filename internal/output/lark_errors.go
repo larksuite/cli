@@ -49,6 +49,9 @@ const (
 	// caller already holds the requested permission, or the target type does
 	// not accept apply operations).
 	LarkErrDrivePermApplyNotApplicable = 1063007
+
+	// IM resource ownership mismatch.
+	LarkErrOwnershipMismatch = 231205
 )
 
 // ClassifyLarkError maps a Lark API error code + message to (exitCode, errType, hint).
@@ -98,6 +101,9 @@ func ClassifyLarkError(code int, msg string) (int, string, string) {
 	case LarkErrDrivePermApplyNotApplicable:
 		return ExitAPI, "invalid_params",
 			"this document does not accept a permission-apply request (common causes: the document is configured to disallow access requests, the caller already holds the permission, or the target type does not support apply); contact the owner directly"
+
+	case LarkErrOwnershipMismatch:
+		return ExitAPI, "ownership_mismatch", buildOwnershipRecoveryHint()
 	}
 
 	return ExitAPI, "api_error", ""

@@ -1524,11 +1524,17 @@ func shouldExposeRawMessageField(key string) bool {
 	return !blocked
 }
 
+// attachmentTypeSmall is the API value for a regular attachment: embedded in
+// the EML at send time (base64, counted against the 25 MB single-message limit).
 // attachmentTypeLarge is the API value for a large attachment that is already
 // embedded as a download link inside the message body. These must not be
 // downloaded and re-attached during forward: the link in the body is sufficient
 // and downloading could cause OOM for very large files.
-const attachmentTypeLarge = 2
+// Both values align with the IDL i32 enum on Attachment.attachment_type.
+const (
+	attachmentTypeSmall = 1
+	attachmentTypeLarge = 2
+)
 
 // forwardSourceAttachment is the compose-side view of an attachment on the
 // original message being forwarded. AttachmentType 1 means a normal

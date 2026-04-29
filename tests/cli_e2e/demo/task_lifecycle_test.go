@@ -50,6 +50,7 @@ func TestDemo_TaskLifecycle(t *testing.T) {
 				Args:      []string{"task", "tasks", "delete"},
 				DefaultAs: "bot",
 				Params:    map[string]any{"task_guid": taskGUID},
+				Yes:       true,
 			})
 			clie2e.ReportCleanupFailure(parentT, "delete task "+taskGUID, deleteResult, deleteErr)
 		})

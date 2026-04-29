@@ -54,6 +54,12 @@ linters:
       - path: internal/vfs/
         linters:
           - forbidigo
+      # The shortcuts-no-raw-http forbidigo rule below is shortcuts-only;
+      # internal/ legitimately wraps raw HTTP for the client / credential layer.
+      - path-except: shortcuts/
+        text: shortcuts-no-raw-http
+        linters:
+          - forbidigo
 
   settings:
     depguard:
@@ -70,16 +76,18 @@ linters:
               desc: >-
                 shortcuts must not import internal/vfs/localfileio directly.
                 Use runtime.FileIO() for file operations or runtime.ValidatePath() for path validation.
-        shortcuts-no-raw-http:
-          files:
-            - "**/shortcuts/**"
-          deny:
-            - pkg: "net/http"
-              desc: >-
-                use RuntimeContext.DoAPI/CallAPI/DoAPIJSON instead of raw net/http.
-                The client layer handles auth, headers, and error normalization.
     forbidigo:
       forbid:
+        # ── http: shortcuts must not construct raw HTTP requests ──
+        # Bans request / client construction; constants (http.MethodPost,
+        # http.StatusOK) and pure helpers (http.StatusText, http.Header) are
+        # intentionally allowed since they don't bypass the runtime layer.
+        - pattern: http\.(Client|NewRequest|NewRequestWithContext|Get|Post|PostForm|Head|DefaultClient|DefaultTransport|RoundTripper|Do|Serve|ListenAndServe)\b
+          msg: >-
+            [shortcuts-no-raw-http] use RuntimeContext.DoAPI/CallAPI/DoAPIJSON
+            instead of constructing raw HTTP. The runtime handles auth, headers,
+            and error normalization. (Constants and helpers like http.MethodPost,
+            http.StatusOK, http.StatusText remain allowed.)
         # ── os: already wrapped in internal/vfs ──
         - pattern: os\.(Stat|Lstat|Open|OpenFile|Rename|ReadFile|WriteFile|Getwd|UserHomeDir|ReadDir)\b
           msg: "use the corresponding vfs.Xxx() from internal/vfs"

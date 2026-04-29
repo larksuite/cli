@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.21] - 2026-04-28
+
+### Features
+
+- **contact**: Add search filters and richer profile fields to `+search-user` (#648)
+- **common**: Backfill resource URL when create APIs omit it (#680)
+- **risk**: Add risk tiering for command sensitivity classification (#633)
+- **okr**: Add progress records support (#574)
+- **calendar**: Enhance event search and meeting room finding (#679)
+- **event**: Add event subscription & consume system (#654)
+- **drive**: Extend `+add-comment` to support slides targets (#674)
+- **slides**: Add font management for slides (#681)
+
+### Bug Fixes
+
+- **cmdutil**: Default flag completions to disabled (#688)
+- **e2e/wiki**: Pass `obj_type` when deleting wiki nodes in cleanup (#687)
+- **readme**: Fix readme statistics (#691)
+
 ## [v1.0.20] - 2026-04-27
 
 ### Features
@@ -520,6 +539,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.21]: https://github.com/larksuite/cli/releases/tag/v1.0.21
+[v1.0.20]: https://github.com/larksuite/cli/releases/tag/v1.0.20
 [v1.0.19]: https://github.com/larksuite/cli/releases/tag/v1.0.19
 [v1.0.18]: https://github.com/larksuite/cli/releases/tag/v1.0.18
 [v1.0.17]: https://github.com/larksuite/cli/releases/tag/v1.0.17

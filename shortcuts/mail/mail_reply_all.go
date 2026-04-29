@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -25,7 +26,7 @@ var MailReplyAll = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "Required. Message ID to reply to all recipients", Required: true},
-		{Name: "body", Desc: "Required. Reply body. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the reply body and the original message. Use --plain-text to force plain-text mode.", Required: true},
+		{Name: "body", Desc: "Reply body. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the reply body and the original message. Use --plain-text to force plain-text mode. Required unless --template-id supplies a non-empty body."},
 		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
 		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "to", Desc: "Additional To address(es), comma-separated (appended to original recipients)"},
@@ -38,6 +39,8 @@ var MailReplyAll = common.Shortcut{
 		{Name: "confirm-send", Type: "bool", Desc: "Send the reply immediately instead of saving as draft. Only use after the user has explicitly confirmed recipients and content."},
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
+		{Name: "subject", Desc: "Optional. Override the auto-generated Re: subject. When set, the shortcut uses this value verbatim instead of prefixing the original subject."},
+		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are appended to the reply-derived values (no de-duplication; see warning in Execute output)."},
 		signatureFlag,
 		priorityFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -48,9 +51,12 @@ var MailReplyAll = common.Shortcut{
 		if confirmSend {
 			desc = "Reply-all (--confirm-send): fetch original message (with recipients) → resolve sender address → create draft → send draft"
 		}
-		api := common.NewDryRunAPI().
-			Desc(desc).
-			GET(mailboxPath(mailboxID, "messages", messageId)).
+		api := common.NewDryRunAPI().Desc(desc)
+		if tid := runtime.Str("template-id"); tid != "" {
+			api = api.GET(templateMailboxPath(mailboxID, tid)).
+				Desc("Fetch template to merge with reply-all-derived recipients / body.")
+		}
+		api = api.GET(mailboxPath(mailboxID, "messages", messageId)).
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{"raw": "<base64url-EML>"})
@@ -60,6 +66,13 @@ var MailReplyAll = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateTemplateID(runtime.Str("template-id")); err != nil {
+			return err
+		}
+		hasTemplate := runtime.Str("template-id") != ""
+		if !hasTemplate && strings.TrimSpace(runtime.Str("body")) == "" {
+			return output.ErrValidation("--body is required; pass the reply body (or use --template-id)")
+		}
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
 		}
@@ -142,6 +155,50 @@ var MailReplyAll = common.Shortcut{
 		toList = mergeAddrLists(toList, toFlag)
 		ccList = mergeAddrLists(ccList, ccFlag)
 
+		// --template-id merge (§5.5 Q1-Q5).
+		var templateLargeAttachmentIDs []string
+		var templateInlineAttachments []templateInlineRef
+		var templateSmallAttachments []templateAttachmentRef
+		templateID := runtime.Str("template-id")
+		if tid := templateID; tid != "" {
+			tpl, tErr := fetchTemplate(runtime, mailboxID, tid)
+			if tErr != nil {
+				return tErr
+			}
+			merged := applyTemplate(
+				templateShortcutReplyAll, tpl,
+				toList, ccList, bccFlag,
+				buildReplySubject(orig.subject), body,
+				"", "", "", runtime.Str("subject"), "",
+			)
+			toList = merged.To
+			ccList = merged.Cc
+			bccFlag = merged.Bcc
+			body = merged.Body
+			if !plainText && merged.IsPlainTextMode {
+				plainText = true
+			}
+			templateLargeAttachmentIDs = merged.LargeAttachmentIDs
+			templateInlineAttachments = merged.InlineAttachments
+			templateSmallAttachments = merged.SmallAttachments
+			for _, w := range merged.Warnings {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
+			}
+			inlineCount, largeCount := countAttachmentsByType(tpl.Attachments)
+			logTemplateInfo(runtime, "apply.reply_all", map[string]interface{}{
+				"mailbox_id":         mailboxID,
+				"template_id":        tid,
+				"is_plain_text_mode": plainText,
+				"attachments_total":  len(tpl.Attachments),
+				"inline_count":       inlineCount,
+				"large_count":        largeCount,
+				"tos_count":          countAddresses(toList),
+				"ccs_count":          countAddresses(ccList),
+				"bccs_count":         countAddresses(bccFlag),
+			})
+		}
+		subjectOverride := strings.TrimSpace(runtime.Str("subject"))
+
 		if err := validateRecipientCount(toList, ccList, bccFlag); err != nil {
 			return err
 		}
@@ -157,8 +214,12 @@ var MailReplyAll = common.Shortcut{
 			bodyStr = body
 		}
 		quoted := quoteForReply(&orig, useHTML)
+		subjectLine := buildReplySubject(orig.subject)
+		if subjectOverride != "" {
+			subjectLine = subjectOverride
+		}
 		bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
-			Subject(buildReplySubject(orig.subject)).
+			Subject(subjectLine).
 			ToAddrs(parseNetAddrs(toList))
 		if senderEmail != "" {
 			bld = bld.From("", senderEmail)
@@ -215,6 +276,12 @@ var MailReplyAll = common.Shortcut{
 				bld = bld.AddFileInline(spec.FilePath, spec.CID)
 				userCIDs = append(userCIDs, spec.CID)
 			}
+			var tplInlineCIDs []string
+			bld, tplInlineCIDs, err = embedTemplateInlineAttachments(ctx, runtime, bld, bodyWithSig, mailboxID, templateID, templateInlineAttachments)
+			if err != nil {
+				return err
+			}
+			userCIDs = append(userCIDs, tplInlineCIDs...)
 			if err := validateInlineCIDs(bodyWithSig, append(userCIDs, signatureCIDs(sigResult)...), srcCIDs); err != nil {
 				return err
 			}
@@ -222,13 +289,22 @@ var MailReplyAll = common.Shortcut{
 			composedTextBody = bodyStr + quoted
 			bld = bld.TextBody([]byte(composedTextBody))
 		}
+		// Embed template SMALL non-inline attachments regardless of body mode.
+		var templateSmallBytes int64
+		bld, templateSmallBytes, err = embedTemplateSmallAttachments(ctx, runtime, bld, mailboxID, templateID, templateSmallAttachments)
+		if err != nil {
+			return err
+		}
 		bld = applyPriority(bld, priority)
 		allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
 		composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
-		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, srcInlineBytes)
+		emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, srcInlineBytes) + templateSmallBytes
 		bld, err = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(attachFlag), emlBase, 0)
 		if err != nil {
 			return err
+		}
+		if hdr, hdrErr := encodeTemplateLargeAttachmentHeader(templateLargeAttachmentIDs); hdrErr == nil && hdr != "" {
+			bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, hdr)
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {

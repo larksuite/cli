@@ -120,7 +120,7 @@ lark-cli calendar <resource> <method> [flags] # 调用 API
   - `get` — 获取日程
   - `instance_view` — 查询日程视图
   - `patch` — 更新日程
-  - `search` — 搜索日程
+  - `search_event` — 搜索日程（注：目前只会返回日程id、日程主题、日程时间的信息，需要更多的日程详情，需要走 `events get` 命令）
   - `share_info` — 获取日程分享链接
 
 ### freebusys
@@ -146,7 +146,7 @@ lark-cli calendar <resource> <method> [flags] # 调用 API
 | `events.get` | `calendar:calendar.event:read` |
 | `events.instance_view` | `calendar:calendar.event:read` |
 | `events.patch` | `calendar:calendar.event:update` |
-| `events.search` | `calendar:calendar.event:read` |
+| `events.search_event` | `calendar:calendar.event:read` |
 | `events.share_info` | `calendar:calendar.event:read` |
 | `freebusys.list` | `calendar:calendar.free_busy:read` |
 

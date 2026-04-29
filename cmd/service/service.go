@@ -140,6 +140,7 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spec, method map[string]interface{}, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
 	desc := registry.GetStrFromMap(method, "description")
 	httpMethod := registry.GetStrFromMap(method, "httpMethod")
+	risk := registry.GetStrFromMap(method, "risk")
 	specName := registry.GetStrFromMap(spec, "name")
 	schemaPath := fmt.Sprintf("%s.%s.%s", specName, resName, name)
 
@@ -179,6 +180,9 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	if risk == "high-risk-write" {
+		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
+	}
 
 	// Conditionally register --file for methods with file-type fields.
 	fileFields := detectFileFields(method)
@@ -194,6 +198,7 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 	})
 
 	cmdutil.SetTips(cmd, registry.GetStrSliceFromMap(method, "tips"))
+	cmdutil.SetRisk(cmd, risk)
 	if tokens, ok := method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
 		cmdutil.SetSupportedIdentities(cmd, cmdutil.AccessTokensToIdentities(tokens))
 	}
@@ -247,6 +252,12 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
 		}
 		return serviceDryRun(f, request, config, opts.Format)
+	}
+
+	if registry.GetStrFromMap(opts.Method, "risk") == "high-risk-write" {
+		if yes, _ := opts.Cmd.Flags().GetBool("yes"); !yes {
+			return cmdutil.RequireConfirmation(opts.SchemaPath)
+		}
 	}
 
 	ac, err := f.NewAPIClientWithConfig(config)

@@ -99,3 +99,56 @@ type RespOwner struct {
 	OwnerType string  `json:"owner_type"`
 	UserID    *string `json:"user_id,omitempty"`
 }
+
+// ProgressStatus 进展状态
+type ProgressStatus int32
+
+const (
+	ProgressStatusNormal  ProgressStatus = 0 // 正常
+	ProgressStatusOverdue ProgressStatus = 1 // 逾期
+	ProgressStatusDone    ProgressStatus = 2 // 已完成
+)
+
+// ParseProgressStatus parses a progress status string into ProgressStatus.
+// Accepts "normal", "overdue", "done" or their numeric values "0", "1", "2".
+func ParseProgressStatus(s string) (ProgressStatus, bool) {
+	switch s {
+	case "normal", "0":
+		return ProgressStatusNormal, true
+	case "overdue", "1":
+		return ProgressStatusOverdue, true
+	case "done", "2":
+		return ProgressStatusDone, true
+	default:
+		return 0, false
+	}
+}
+
+// String returns a human-readable name for ProgressStatus.
+func (s ProgressStatus) String() string {
+	switch s {
+	case ProgressStatusNormal:
+		return "normal"
+	case ProgressStatusOverdue:
+		return "overdue"
+	case ProgressStatusDone:
+		return "done"
+	default:
+		return ""
+	}
+}
+
+// RespProgressRate 进度率（面向用户的响应格式，Status 为可读字符串）
+type RespProgressRate struct {
+	Percent *float64 `json:"percent,omitempty"`
+	Status  *string  `json:"status,omitempty"`
+}
+
+// RespProgress 进展记录
+type RespProgress struct {
+	ID           string            `json:"progress_id"`
+	ModifyTime   string            `json:"modify_time"`
+	CreateTime   *string           `json:"create_time,omitempty"`
+	Content      *string           `json:"content,omitempty"`
+	ProgressRate *RespProgressRate `json:"progress_rate,omitempty"`
+}

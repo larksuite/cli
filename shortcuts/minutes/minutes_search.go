@@ -75,30 +75,6 @@ func toRFC3339(input string, hint ...string) (string, error) {
 	return time.Unix(sec, 0).Format(time.RFC3339), nil
 }
 
-// resolveUserIDs expands special user identifiers and removes duplicates.
-func resolveUserIDs(flagName string, ids []string, runtime *common.RuntimeContext) ([]string, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	currentUserID := runtime.UserOpenId()
-	seen := make(map[string]struct{}, len(ids))
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if strings.EqualFold(id, "me") {
-			if currentUserID == "" {
-				return nil, output.ErrValidation("%s: \"me\" requires a logged-in user with a resolvable open_id", flagName)
-			}
-			id = currentUserID
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out, nil
-}
-
 // buildTimeFilter builds the create_time filter block for the API request.
 func buildTimeFilter(startTime, endTime string) map[string]interface{} {
 	if startTime == "" && endTime == "" {
@@ -118,7 +94,7 @@ func buildTimeFilter(startTime, endTime string) map[string]interface{} {
 func buildMinutesSearchFilter(runtime *common.RuntimeContext, startTime, endTime string) (map[string]interface{}, error) {
 	filter := map[string]interface{}{}
 
-	ownerIDs, err := resolveUserIDs("--owner-ids", common.SplitCSV(runtime.Str("owner-ids")), runtime)
+	ownerIDs, err := common.ResolveOpenIDs("--owner-ids", common.SplitCSV(runtime.Str("owner-ids")), runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +102,7 @@ func buildMinutesSearchFilter(runtime *common.RuntimeContext, startTime, endTime
 		filter["owner_ids"] = ownerIDs
 	}
 
-	participantIDs, err := resolveUserIDs("--participant-ids", common.SplitCSV(runtime.Str("participant-ids")), runtime)
+	participantIDs, err := common.ResolveOpenIDs("--participant-ids", common.SplitCSV(runtime.Str("participant-ids")), runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +236,7 @@ var MinutesSearch = common.Shortcut{
 		if _, err := common.ValidatePageSize(runtime, "page-size", defaultMinutesSearchPageSize, 1, maxMinutesSearchPageSize); err != nil {
 			return err
 		}
-		ownerIDs, err := resolveUserIDs("--owner-ids", common.SplitCSV(runtime.Str("owner-ids")), runtime)
+		ownerIDs, err := common.ResolveOpenIDs("--owner-ids", common.SplitCSV(runtime.Str("owner-ids")), runtime)
 		if err != nil {
 			return err
 		}
@@ -269,7 +245,7 @@ var MinutesSearch = common.Shortcut{
 				return err
 			}
 		}
-		participantIDs, err := resolveUserIDs("--participant-ids", common.SplitCSV(runtime.Str("participant-ids")), runtime)
+		participantIDs, err := common.ResolveOpenIDs("--participant-ids", common.SplitCSV(runtime.Str("participant-ids")), runtime)
 		if err != nil {
 			return err
 		}
