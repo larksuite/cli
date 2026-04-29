@@ -56,17 +56,17 @@ func TestFeedSensitive_EnableWorkflow(t *testing.T) {
 		require.NotEmpty(t, stdout, "stdout should not be empty, stderr:\n%s", result.Stderr)
 
 		// Spec output envelope: {"feed_card_id": "...", "time_sensitive": true, "failed_user_reasons": [...]}
-		feedCardID := gjson.Get(stdout, "feed_card_id").String()
+		feedCardID := gjson.Get(stdout, "data.feed_card_id").String()
 		assert.Equal(t, chatID, feedCardID,
 			"feed_card_id in response must match the requested chat, stdout:\n%s", stdout)
 
-		timeSensitive := gjson.Get(stdout, "time_sensitive")
+		timeSensitive := gjson.Get(stdout, "data.time_sensitive")
 		require.True(t, timeSensitive.Exists(),
 			"time_sensitive field must be present in response, stdout:\n%s", stdout)
 		assert.True(t, timeSensitive.Bool(),
 			"time_sensitive must be true for --enable, stdout:\n%s", stdout)
 
-		failedReasons := gjson.Get(stdout, "failed_user_reasons")
+		failedReasons := gjson.Get(stdout, "data.failed_user_reasons")
 		if failedReasons.Exists() && len(failedReasons.Array()) > 0 {
 			t.Logf("INFO: partial failure (user not in chat, expected): %s", failedReasons.Raw)
 		}
@@ -104,11 +104,11 @@ func TestFeedSensitive_DisableWorkflow(t *testing.T) {
 		stdout := strings.TrimSpace(result.Stdout)
 		require.NotEmpty(t, stdout, "stdout should not be empty, stderr:\n%s", result.Stderr)
 
-		feedCardID := gjson.Get(stdout, "feed_card_id").String()
+		feedCardID := gjson.Get(stdout, "data.feed_card_id").String()
 		assert.Equal(t, chatID, feedCardID,
 			"feed_card_id in response must match the requested chat, stdout:\n%s", stdout)
 
-		timeSensitive := gjson.Get(stdout, "time_sensitive")
+		timeSensitive := gjson.Get(stdout, "data.time_sensitive")
 		require.True(t, timeSensitive.Exists(),
 			"time_sensitive field must be present in response, stdout:\n%s", stdout)
 		assert.False(t, timeSensitive.Bool(),
