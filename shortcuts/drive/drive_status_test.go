@@ -134,6 +134,85 @@ func TestDriveStatusCategorizesByHash(t *testing.T) {
 	reg.Verify(t)
 }
 
+// TestDriveStatusPaginatesRemoteListing pins multi-page handling end-to-end
+// AND the dual-field tolerance of common.PaginationMeta. Page 1 surfaces
+// `next_page_token` (Drive's historical name); page 2 surfaces `page_token`
+// (what the shared helper also accepts). If the shortcut had hard-coded
+// either field name, one of the two pages' files would be silently dropped
+// from the comparison and would land in the wrong bucket. Stub order is
+// significant: httpmock matches in registration order, and both stubs key on
+// the GET .../files URL — they pop in turn, so page 1's response (with the
+// continuation token) must be registered before page 2's terminator.
+func TestDriveStatusPaginatesRemoteListing(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	// Page 1: returns one file plus a continuation token via
+	// next_page_token (the field Drive currently emits).
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_p1", "name": "page1.txt", "type": "file"},
+				},
+				"has_more":        true,
+				"next_page_token": "cursor-page-2",
+			},
+		},
+	})
+
+	// Page 2: returns the second file with has_more=false. This stub uses
+	// page_token (the alternate spelling) to lock in that the shared
+	// PaginationMeta helper accepts BOTH field names.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_p2", "name": "page2.txt", "type": "file"},
+				},
+				"has_more":   false,
+				"page_token": "",
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveStatus, []string{
+		"+status",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	// Both pages contributed to new_remote (local is empty).
+	for _, want := range []string{
+		`"rel_path": "page1.txt"`,
+		`"file_token": "tok_p1"`,
+		`"rel_path": "page2.txt"`,
+		`"file_token": "tok_p2"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q (a page must have been silently dropped)\noutput: %s", want, out)
+		}
+	}
+
+	reg.Verify(t)
+}
+
 func TestDriveStatusRejectsMissingLocalDir(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 

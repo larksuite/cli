@@ -57,7 +57,7 @@ lark-cli drive +status \
 
 ## 范围限制
 
-`+status` 的本地侧只接受 cwd 下的相对路径。如果用户想比对的目录在 cwd 之外，**不要 agent 自己 `cd` 绕过**；告诉用户切换 agent 工作目录到合适的祖先后重试，或者把目标软链接到 cwd 内。CLI 会在路径越界时直接报错（`unsafe file path`），无需在 skill 这一层提前手动校验。
+`+status` 的本地侧只接受 cwd 下的相对路径。如果用户想比对的目录在 cwd 之外，**不要 agent 自己 `cd` 绕过**；让用户在合适的祖先目录重新启动 agent 后再跑。注意：把目标软链接到 cwd 内**也不行**——路径校验会先 `EvalSymlinks` 再判定是否越界，链接最终指向的真实目录如果在 cwd 之外，仍然会被 `unsafe file path` 拒掉。CLI 会在路径越界时直接报错，无需在 skill 这一层提前手动校验。
 
 ## 典型用法
 

@@ -260,8 +260,11 @@ func listRemoteForStatus(ctx context.Context, runtime *common.RuntimeContext, fo
 				}
 			}
 		}
-		hasMore, _ := result["has_more"].(bool)
-		nextToken := common.GetString(result, "next_page_token")
+		// Drive's list endpoint has historically returned next_page_token,
+		// but routing through the shared helper accepts both page_token
+		// and next_page_token — keeps us aligned with okr/im, and
+		// future-proofs against a backend rename.
+		hasMore, nextToken := common.PaginationMeta(result)
 		if !hasMore || nextToken == "" {
 			break
 		}
