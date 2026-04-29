@@ -42,7 +42,7 @@ metadata:
 3. 定位到命令后，先读该命令对应的 reference，再执行命令。
 4. 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 5. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
-6. 如果用户只给 Base 名称、关键词，或说“帮我找一个多维表格”，先通过 `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` 搜索 `BITABLE` 资源；拿到 token 后再使用本 skill 的 `base +...` 命令。复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md)：标题精确匹配、限定创建者/群/文件夹/时间范围、只搜标题、分页/全量搜索。
+6. 如果用户只给 Base 名称、关键词，或说“帮我找一个多维表格”，先通过 `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` 搜索 `BITABLE` 资源；拿到 Base URL 后再使用本 skill 的 `base +...` 命令。复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md)：标题精确匹配、限定创建者/群/文件夹/时间范围、只搜标题/评论、分页/全量搜索。
 
 ## 2. 模块与命令导航
 
