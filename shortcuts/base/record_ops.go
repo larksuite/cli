@@ -21,6 +21,17 @@ type recordSelection struct {
 	fromJSON     bool
 }
 
+type stringListNormalizeOptions struct {
+	typeError     string
+	emptyError    string
+	itemName      string
+	duplicateName string
+	limitName     string
+	max           int
+	allowNil      bool
+	allowEmpty    bool
+}
+
 func validateRecordSelection(runtime *common.RuntimeContext) error {
 	_, err := resolveRecordSelection(runtime)
 	return err
@@ -76,42 +87,14 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 }
 
 func normalizeRecordIDs(values interface{}) ([]string, error) {
-	var rawItems []interface{}
-	switch typed := values.(type) {
-	case []interface{}:
-		rawItems = typed
-	case []string:
-		rawItems = make([]interface{}, 0, len(typed))
-		for _, item := range typed {
-			rawItems = append(rawItems, item)
-		}
-	default:
-		return nil, common.FlagErrorf("record selection must be a string array")
-	}
-	if len(rawItems) == 0 {
-		return nil, common.FlagErrorf(`provide at least one --record-id, or use --json with "record_id_list"`)
-	}
-	if len(rawItems) > maxRecordSelectionCount {
-		return nil, common.FlagErrorf("record selection exceeds maximum limit of %d (got %d)", maxRecordSelectionCount, len(rawItems))
-	}
-	seen := make(map[string]int, len(rawItems))
-	recordIDs := make([]string, 0, len(rawItems))
-	for index, value := range rawItems {
-		recordID, ok := value.(string)
-		if !ok {
-			return nil, common.FlagErrorf("record selection item %d must be a string", index+1)
-		}
-		recordID = strings.TrimSpace(recordID)
-		if recordID == "" {
-			return nil, common.FlagErrorf("record selection item %d must not be empty", index+1)
-		}
-		if first, exists := seen[recordID]; exists {
-			return nil, common.FlagErrorf("duplicate record id %q at positions %d and %d", recordID, first, index+1)
-		}
-		seen[recordID] = index + 1
-		recordIDs = append(recordIDs, recordID)
-	}
-	return recordIDs, nil
+	return normalizeStringList(values, stringListNormalizeOptions{
+		typeError:     "record selection must be a string array",
+		emptyError:    `provide at least one --record-id, or use --json with "record_id_list"`,
+		itemName:      "record selection item",
+		duplicateName: "record id",
+		limitName:     "record selection",
+		max:           maxRecordSelectionCount,
+	})
 }
 
 func resolveRecordGetSelectFields(flagFields []string, body map[string]interface{}) ([]string, error) {
@@ -144,10 +127,25 @@ func resolveRecordGetSelectFields(flagFields []string, body map[string]interface
 }
 
 func normalizeRecordGetSelectFields(values interface{}) ([]string, error) {
+	return normalizeStringList(values, stringListNormalizeOptions{
+		typeError:     "field selection must be a string array",
+		itemName:      "field selection item",
+		duplicateName: "field id",
+		limitName:     "field selection",
+		max:           maxBatchGetSelectFieldCount,
+		allowNil:      true,
+		allowEmpty:    true,
+	})
+}
+
+func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([]string, error) {
 	var rawItems []interface{}
 	switch typed := values.(type) {
 	case nil:
-		return nil, nil
+		if opts.allowNil {
+			return nil, nil
+		}
+		return nil, common.FlagErrorf(opts.typeError)
 	case []interface{}:
 		rawItems = typed
 	case []string:
@@ -156,32 +154,35 @@ func normalizeRecordGetSelectFields(values interface{}) ([]string, error) {
 			rawItems = append(rawItems, item)
 		}
 	default:
-		return nil, common.FlagErrorf("field selection must be a string array")
+		return nil, common.FlagErrorf(opts.typeError)
 	}
 	if len(rawItems) == 0 {
-		return nil, nil
+		if opts.allowEmpty {
+			return nil, nil
+		}
+		return nil, common.FlagErrorf(opts.emptyError)
 	}
-	if len(rawItems) > maxBatchGetSelectFieldCount {
-		return nil, common.FlagErrorf("field selection exceeds maximum limit of %d (got %d)", maxBatchGetSelectFieldCount, len(rawItems))
+	if opts.max > 0 && len(rawItems) > opts.max {
+		return nil, common.FlagErrorf("%s exceeds maximum limit of %d (got %d)", opts.limitName, opts.max, len(rawItems))
 	}
 	seen := make(map[string]int, len(rawItems))
-	fields := make([]string, 0, len(rawItems))
+	result := make([]string, 0, len(rawItems))
 	for index, value := range rawItems {
-		fieldRef, ok := value.(string)
+		item, ok := value.(string)
 		if !ok {
-			return nil, common.FlagErrorf("field selection item %d must be a string", index+1)
+			return nil, common.FlagErrorf("%s %d must be a string", opts.itemName, index+1)
 		}
-		fieldRef = strings.TrimSpace(fieldRef)
-		if fieldRef == "" {
-			return nil, common.FlagErrorf("field selection item %d must not be empty", index+1)
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return nil, common.FlagErrorf("%s %d must not be empty", opts.itemName, index+1)
 		}
-		if first, exists := seen[fieldRef]; exists {
-			return nil, common.FlagErrorf("duplicate field id %q at positions %d and %d", fieldRef, first, index+1)
+		if first, exists := seen[item]; exists {
+			return nil, common.FlagErrorf("duplicate %s %q at positions %d and %d", opts.duplicateName, item, first, index+1)
 		}
-		seen[fieldRef] = index + 1
-		fields = append(fields, fieldRef)
+		seen[item] = index + 1
+		result = append(result, item)
 	}
-	return fields, nil
+	return result, nil
 }
 
 func recordGetBatchBody(selection recordSelection) map[string]interface{} {
