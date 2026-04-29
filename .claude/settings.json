@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lark-cli *)",
+      "Bash(./lark-cli *)",
+      "Bash(go test *)",
+      "Bash(go build *)",
+      "Bash(go build ./...)"
+    ]
+  }
+}
