@@ -6,6 +6,7 @@ package shortcuts
 import (
 	"context"
 
+	"github.com/larksuite/cli/shortcuts/feed"
 	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
 
@@ -49,6 +50,7 @@ func init() {
 	allShortcuts = append(allShortcuts, whiteboard.Shortcuts()...)
 	allShortcuts = append(allShortcuts, wiki.Shortcuts()...)
 	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
+	allShortcuts = append(allShortcuts, feed.Shortcuts()...)
 }
 
 // AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).
