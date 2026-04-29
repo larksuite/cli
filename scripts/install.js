@@ -125,6 +125,37 @@ function download(url, destPath) {
   execFileSync("curl", args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
+function extractZipWindows(archivePath, destDir) {
+  const psOpts = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"];
+  const psStdio = ["ignore", "inherit", "inherit"];
+  const psEnv = {
+    ...process.env,
+    LARK_CLI_ARCHIVE: archivePath,
+    LARK_CLI_DEST: destDir,
+  };
+
+  try {
+    const dotnet =
+      "$ErrorActionPreference='Stop';" +
+      "Add-Type -AssemblyName System.IO.Compression.FileSystem;" +
+      "[System.IO.Compression.ZipFile]::ExtractToDirectory($env:LARK_CLI_ARCHIVE,$env:LARK_CLI_DEST)";
+    execFileSync("powershell.exe", [...psOpts, dotnet], { stdio: psStdio, env: psEnv });
+  } catch (primaryErr) {
+    try {
+      const cmdlet =
+        "$ErrorActionPreference='Stop';" +
+        "Expand-Archive -LiteralPath $env:LARK_CLI_ARCHIVE -DestinationPath $env:LARK_CLI_DEST -Force";
+      execFileSync("powershell.exe", [...psOpts, cmdlet], { stdio: psStdio, env: psEnv });
+    } catch (fallbackErr) {
+      throw new Error(
+        `Failed to extract ${archivePath}. ` +
+        `.NET ZipFile attempt: ${primaryErr.message}. ` +
+        `Expand-Archive fallback: ${fallbackErr.message}`
+      );
+    }
+  }
+}
+
 function install() {
   const mirrorUrls = getMirrorUrls(process.env);
   const downloadUrls = [GITHUB_URL, ...mirrorUrls];
@@ -156,10 +187,7 @@ function install() {
     verifyChecksum(archivePath, expectedHash);
 
     if (isWindows) {
-      execFileSync("powershell", [
-        "-Command",
-        `Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'`,
-      ], { stdio: "ignore" });
+      extractZipWindows(archivePath, tmpDir);
     } else {
       execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], {
         stdio: "ignore",
