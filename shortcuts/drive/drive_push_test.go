@@ -531,13 +531,18 @@ func TestDrivePushOverwriteWithoutVersionFails(t *testing.T) {
 			},
 		},
 	})
-	// upload_all returns file_token but no version.
+	// upload_all returns a NEW file_token but no version. Using a distinct
+	// value (tok_keep_new vs the entry's tok_keep) is what makes the test
+	// able to distinguish "items[].file_token comes from the upload_all
+	// response" from "fall back to entry.FileToken" — if the assertion
+	// stubbed the same token as the entry, a regression to the fallback
+	// branch would silently still pass.
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/files/upload_all",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{"file_token": "tok_keep"},
+			"data": map[string]interface{}{"file_token": "tok_keep_new"},
 		},
 	})
 
@@ -575,6 +580,85 @@ func TestDrivePushOverwriteWithoutVersionFails(t *testing.T) {
 	}
 	if !strings.Contains(out, "no version") {
 		t.Errorf("expected error about missing version in items[].error, got: %s", out)
+	}
+	// Pin the token-stability contract: the failed item must surface the
+	// token returned by upload_all (tok_keep_new), NOT the fallback
+	// entry.FileToken (tok_keep). Without this, a regression that always
+	// uses entry.FileToken on failure would slip through.
+	if !strings.Contains(out, `"file_token": "tok_keep_new"`) {
+		t.Errorf("expected failed item to surface upload_all's returned file_token (tok_keep_new), got: %s", out)
+	}
+}
+
+// TestDrivePushOverwritePartialSuccessSurfacesReturnedToken pins the
+// partial-success contract for upload_all: when the backend returns a
+// non-zero `code` AND a non-empty `data.file_token`, the bytes have
+// already landed under that returned token. The shortcut must surface
+// THAT token in items[].file_token (not silently fall back to
+// entry.FileToken via the empty-string sentinel), so callers always
+// have a usable handle to whatever state Drive ended up in.
+func TestDrivePushOverwritePartialSuccessSurfacesReturnedToken(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "keep.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep_old", "name": "keep.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	// upload_all returns a partial-success: non-zero code + a brand-new
+	// file_token. The shortcut must not drop that token.
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 1234, "msg": "partial-success simulated",
+			"data": map[string]interface{}{"file_token": "tok_keep_partial"},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected non-zero exit on item-level failure, got nil\nstdout: %s", stdout.String())
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI from output.ExitError, got %T %v", err, err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"failed": 1`) {
+		t.Errorf("expected failed=1, got: %s", out)
+	}
+	// The freshly returned token must be the one in items[].file_token,
+	// not the stale entry.FileToken (tok_keep_old).
+	if !strings.Contains(out, `"file_token": "tok_keep_partial"`) {
+		t.Errorf("expected items[].file_token to surface upload_all's returned token (tok_keep_partial), got: %s", out)
+	}
+	if strings.Contains(out, `"file_token": "tok_keep_old"`) {
+		t.Errorf("must NOT fall back to entry.FileToken when upload_all returned a token; got: %s", out)
 	}
 }
 

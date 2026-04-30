@@ -631,12 +631,18 @@ func drivePushUploadAll(_ context.Context, runtime *common.RuntimeContext, file 
 	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
 		return "", "", output.Errorf(output.ExitAPI, "api_error", "upload failed: invalid response JSON: %v", err)
 	}
-	if larkCode := int(common.GetFloat(result, "code")); larkCode != 0 {
-		msg, _ := result["msg"].(string)
-		return "", "", output.ErrAPI(larkCode, fmt.Sprintf("upload failed: [%d] %s", larkCode, msg), result["error"])
-	}
+	// Extract the token before the larkCode check: the backend can produce
+	// a partial-success response (code != 0 alongside a non-empty
+	// data.file_token) where bytes have already landed under that token.
+	// Returning "" here would force the caller to fall back to
+	// entry.FileToken and silently lose the token Drive actually used,
+	// defeating the overwrite-error token-stability handling in Execute.
 	data, _ := result["data"].(map[string]interface{})
 	token := common.GetString(data, "file_token")
+	if larkCode := int(common.GetFloat(result, "code")); larkCode != 0 {
+		msg, _ := result["msg"].(string)
+		return token, "", output.ErrAPI(larkCode, fmt.Sprintf("upload failed: [%d] %s", larkCode, msg), result["error"])
+	}
 	if token == "" {
 		return "", "", output.Errorf(output.ExitAPI, "api_error", "upload failed: no file_token returned")
 	}

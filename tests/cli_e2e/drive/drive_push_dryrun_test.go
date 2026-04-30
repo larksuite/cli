@@ -93,8 +93,11 @@ func TestDrive_PushDryRunRejectsAbsoluteLocalDir(t *testing.T) {
 		DefaultAs: "user",
 	})
 	require.NoError(t, err)
-	if result.ExitCode == 0 {
-		t.Fatalf("absolute --local-dir must be rejected, got exit=0\nstdout:\n%s", result.Stdout)
+	// Validate-stage rejection emits ExitValidation (2). A regression
+	// that reclassified this as a generic api_error (1) or success (0)
+	// would slip through a loose `!= 0` check, so assert the exact code.
+	if result.ExitCode != 2 {
+		t.Fatalf("absolute --local-dir must be rejected with exit=2 (Validate), got exit=%d\nstdout:\n%s\nstderr:\n%s", result.ExitCode, result.Stdout, result.Stderr)
 	}
 	combined := result.Stdout + "\n" + result.Stderr
 	if !strings.Contains(combined, "--local-dir") {
@@ -132,8 +135,10 @@ func TestDrive_PushDryRunRejectsDeleteRemoteWithoutYes(t *testing.T) {
 		DefaultAs: "user",
 	})
 	require.NoError(t, err)
-	if result.ExitCode == 0 {
-		t.Fatalf("--delete-remote without --yes must be rejected, got exit=0\nstdout:\n%s", result.Stdout)
+	// Same exact-code reasoning as the absolute-path test: this is a
+	// Validate-stage rejection so it must surface as ExitValidation (2).
+	if result.ExitCode != 2 {
+		t.Fatalf("--delete-remote without --yes must be rejected with exit=2 (Validate), got exit=%d\nstdout:\n%s\nstderr:\n%s", result.ExitCode, result.Stdout, result.Stderr)
 	}
 	combined := result.Stdout + "\n" + result.Stderr
 	if !strings.Contains(combined, "--yes") {
@@ -221,8 +226,15 @@ func TestDrive_PushDryRunRejectsMissingFolderToken(t *testing.T) {
 		DefaultAs: "user",
 	})
 	require.NoError(t, err)
-	if result.ExitCode == 0 {
-		t.Fatalf("missing --folder-token must be rejected, got exit=0\nstdout:\n%s", result.Stdout)
+	// This is a cobra-level required-flag check that fires BEFORE our
+	// Validate callback, so the exit code is cobra's generic flag-error
+	// (1) — distinct from ExitValidation (2). Asserting the exact code
+	// pins which layer rejected the run, which matters because a
+	// regression that pushed required-flag validation into our own
+	// Validate (changing the exit class to 2) would silently slip
+	// through a loose `!= 0` check.
+	if result.ExitCode != 1 {
+		t.Fatalf("missing --folder-token must be rejected with exit=1 (cobra required-flag), got exit=%d\nstdout:\n%s\nstderr:\n%s", result.ExitCode, result.Stdout, result.Stderr)
 	}
 	combined := result.Stdout + "\n" + result.Stderr
 	if !strings.Contains(combined, "folder-token") {
