@@ -141,6 +141,60 @@ func TestDrive_PushDryRunRejectsDeleteRemoteWithoutYes(t *testing.T) {
 	}
 }
 
+// TestDrive_PushDryRunAcceptsDeleteRemoteWithYes is the symmetric guard
+// to TestDrive_PushDryRunRejectsDeleteRemoteWithoutYes: when --yes is
+// passed alongside --delete-remote, Validate must accept the run and
+// hand off to the dry-run renderer.
+//
+// Specifically pins the conditional scope pre-check added to Validate:
+// when the resolver has no token / no scope metadata (the e2e setup
+// uses fake credentials with no real auth state), runtime.EnsureScopes
+// is a silent no-op so dry-run still emits its envelope. A regression
+// where the pre-check incorrectly fired against an empty scope list
+// would surface here as a non-zero exit and a missing_scope error.
+func TestDrive_PushDryRunAcceptsDeleteRemoteWithYes(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, "local"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+push",
+			"--local-dir", "local",
+			"--folder-token", "fldcnE2E001",
+			"--delete-remote",
+			"--yes",
+			"--dry-run",
+		},
+		WorkDir:   workDir,
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+		t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+		t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
+	}
+	// No structured error envelope on stdout/stderr — the conditional
+	// EnsureScopes call must not trip a missing_scope here.
+	if strings.Contains(out, `"type": "missing_scope"`) || strings.Contains(result.Stderr, "missing_scope") {
+		t.Fatalf("conditional scope pre-check fired in a no-credential env\nstdout:\n%s\nstderr:\n%s", out, result.Stderr)
+	}
+}
+
 // TestDrive_PushDryRunRejectsMissingFolderToken confirms cobra's
 // required-flag enforcement runs before our custom Validate.
 func TestDrive_PushDryRunRejectsMissingFolderToken(t *testing.T) {

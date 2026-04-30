@@ -50,11 +50,14 @@ type drivePushRemoteEntry struct {
 	Type      string
 }
 
-// DrivePush mirrors a local directory onto a Drive folder: walks --local-dir,
-// recursively lists --folder-token, and for each rel_path uploads (or
-// overwrites) the corresponding Drive file. With --delete-remote --yes, any
-// type=file entry on Drive that has no local counterpart is removed; online
-// docs (docx/sheet/bitable/...), shortcuts and folders are never deleted.
+// DrivePush is a one-way, file-level mirror from a local directory onto a
+// Drive folder: walks --local-dir, recursively lists --folder-token, and for
+// each rel_path uploads (or overwrites) the corresponding Drive file. With
+// --delete-remote --yes, any type=file entry on Drive that has no local
+// counterpart is removed; online docs (docx/sheet/bitable/...), shortcuts
+// and folders are never deleted, so this is "file-level" mirror — the
+// command does not attempt to remove remote-only directories or close gaps
+// in directory structure that exists on Drive but not locally.
 //
 // Only Drive entries with type=file participate in upload/overwrite/delete;
 // online documents have no equivalent local binary. Sub-folders are created
@@ -64,13 +67,13 @@ type drivePushRemoteEntry struct {
 // The overwrite path passes the existing file_token as a form field on
 // /open-apis/drive/v1/files/upload_all, mirroring the markdown +overwrite
 // contract in shortcuts/markdown. The Drive backend exposing that field is
-// being rolled out; if the deployed backend rejects it, --if-exists=overwrite
-// will surface a structured api_error and the caller can re-run with
-// --if-exists=skip until the backend catches up.
+// being rolled out; until rollout completes, --if-exists defaults to "skip"
+// so the safe path (do not touch existing remote files) is the default and
+// callers must opt into "overwrite" explicitly.
 var DrivePush = common.Shortcut{
 	Service:     "drive",
 	Command:     "+push",
-	Description: "Mirror a local directory onto a Drive folder (local → Drive)",
+	Description: "File-level mirror of a local directory onto a Drive folder (local → Drive; remote-only directories are not removed)",
 	Risk:        "write",
 	// Narrowed scopes follow the precedent set by drive +status / +pull:
 	// drive:drive is policy-disabled in some tenants, so this shortcut sticks
@@ -86,25 +89,32 @@ var DrivePush = common.Shortcut{
 	// though --delete-remote needs it. The framework pre-check (runner.go
 	// checkShortcutScopes) runs unconditionally before Validate / dry-run,
 	// so declaring it here would make every plain push (and every
-	// --dry-run) fail for callers that only granted upload scopes. The
-	// tradeoff: --delete-remote --yes will still get caught at the actual
-	// DELETE call with whatever the backend returns, instead of upfront.
-	// The skill doc lists the scope so users granting --delete-remote can
-	// add it before they hit a half-finished mirror.
+	// --dry-run) fail for callers that only granted upload scopes.
+	//
+	// Instead, Validate runs a *conditional* pre-flight via
+	// runtime.EnsureScopes when both --delete-remote and --yes are on, so
+	// the missing grant fails the run upfront — before any upload —
+	// rather than landing files first and tripping on missing_scope when
+	// the cleanup pass tries to delete. That avoids the half-synced state
+	// (files uploaded, orphans never cleaned up) that the unconditional
+	// pre-check would otherwise prevent only by also blocking plain
+	// pushes.
 	Scopes:    []string{"drive:drive.metadata:readonly", "drive:file:upload", "space:folder:create"},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "local-dir", Desc: "local root directory (relative to cwd)", Required: true},
 		{Name: "folder-token", Desc: "target Drive folder token", Required: true},
-		{Name: "if-exists", Desc: "policy when a Drive file already exists at the same rel_path", Default: drivePushIfExistsOverwrite, Enum: []string{drivePushIfExistsOverwrite, drivePushIfExistsSkip}},
-		{Name: "delete-remote", Type: "bool", Desc: "delete Drive files absent locally (mirror semantics); requires --yes"},
+		{Name: "if-exists", Desc: "policy when a Drive file already exists at the same rel_path (default: skip — safe; opt into overwrite explicitly while the backend version field is rolling out)", Default: drivePushIfExistsSkip, Enum: []string{drivePushIfExistsOverwrite, drivePushIfExistsSkip}},
+		{Name: "delete-remote", Type: "bool", Desc: "delete Drive files absent locally (file-level mirror; remote-only directories are not removed); requires --yes"},
 		{Name: "yes", Type: "bool", Desc: "confirm --delete-remote before deleting Drive files"},
 	},
 	Tips: []string{
-		"Only Drive entries with type=file participate; online docs (docx, sheet, bitable, mindnote, slides) and shortcuts are never overwritten or deleted.",
+		"This is a file-level mirror: only type=file entries are uploaded, overwritten or deleted. Online docs (docx, sheet, bitable, mindnote, slides), shortcuts, and remote-only directories are never touched.",
 		"Local directory structure (including empty directories) is mirrored to Drive via create_folder; existing remote folders are reused.",
+		"Default --if-exists=skip is the safe choice while the upload_all overwrite-version field is rolling out. Pass --if-exists=overwrite to replace remote bytes; on tenants without the field it surfaces a structured api_error and the run exits non-zero.",
 		"--delete-remote requires --yes; without --yes the command is rejected upfront so a stray flag never deletes anything.",
-		"--delete-remote also requires the space:document:delete scope; it is not declared up front so plain pushes work without the delete grant.",
+		"--delete-remote --yes also requires the space:document:delete scope. Validate runs a dynamic pre-flight check when the flag is on, so a missing grant fails the run before any upload — preventing a half-synced state where files were uploaded but the cleanup pass cannot delete.",
+		"Item-level failures (upload, overwrite, folder, delete) bump summary.failed and the run exits non-zero. If any upload or folder step fails, the --delete-remote phase is skipped entirely so a partial upload never triggers remote deletion.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
@@ -131,6 +141,23 @@ var DrivePush = common.Shortcut{
 		if runtime.Bool("delete-remote") && !runtime.Bool("yes") {
 			return output.ErrValidation("--delete-remote requires --yes (high-risk: deletes Drive files absent locally)")
 		}
+		// Conditional scope pre-check: when --delete-remote --yes is set, the
+		// run will issue DELETE /open-apis/drive/v1/files/<token> after the
+		// upload phase. The default Scopes list intentionally omits
+		// space:document:delete so plain pushes don't get blocked on a grant
+		// they don't need (see the Scopes block above), but at this point we
+		// know the run will need it — pre-flight here so a missing grant
+		// fails before any upload, instead of after, which would otherwise
+		// leave the tenant in a half-synced state (files uploaded, remote
+		// orphans never cleaned up). EnsureScopes is a silent no-op when no
+		// token / scope metadata is available, so test envs and tenants
+		// where the resolver doesn't expose scopes still proceed and rely on
+		// the API-level missing_scope error.
+		if runtime.Bool("delete-remote") && runtime.Bool("yes") {
+			if err := runtime.EnsureScopes([]string{"space:document:delete"}); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -144,7 +171,11 @@ var DrivePush = common.Shortcut{
 		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
 		ifExists := strings.TrimSpace(runtime.Str("if-exists"))
 		if ifExists == "" {
-			ifExists = drivePushIfExistsOverwrite
+			// Default to the safe "skip" policy: do not touch already-present
+			// remote files. Callers must pass --if-exists=overwrite to opt
+			// into the overwrite-with-version path that depends on the
+			// rolling-out upload_all `file_token`/`version` protocol field.
+			ifExists = drivePushIfExistsSkip
 		}
 		deleteRemote := runtime.Bool("delete-remote")
 
@@ -179,6 +210,13 @@ var DrivePush = common.Shortcut{
 
 		var uploaded, skipped, failed, deletedRemote int
 		items := make([]drivePushItem, 0)
+		// uploadFailed tracks whether any folder-creation, upload or
+		// overwrite step failed. The --delete-remote phase only runs when
+		// this stays false: a partial upload that then proceeds to delete
+		// remote orphans would leave the tenant half-synced (files missing
+		// locally and now on Drive too), which is the worst-of-both-worlds
+		// outcome the review flagged.
+		uploadFailed := false
 
 		// folderCache holds rel_path → folder_token. Seeded from the remote
 		// listing (so we don't recreate folders that already exist) and
@@ -202,6 +240,7 @@ var DrivePush = common.Shortcut{
 			if _, ensureErr := drivePushEnsureFolder(ctx, runtime, folderToken, relDir, folderCache); ensureErr != nil {
 				items = append(items, drivePushItem{RelPath: relDir, Action: "failed", Error: ensureErr.Error()})
 				failed++
+				uploadFailed = true
 				continue
 			}
 			items = append(items, drivePushItem{RelPath: relDir, FileToken: folderCache[relDir], Action: "folder_created"})
@@ -247,6 +286,7 @@ var DrivePush = common.Shortcut{
 					}
 					items = append(items, drivePushItem{RelPath: rel, FileToken: failedToken, Action: "failed", SizeBytes: localFile.Size, Error: upErr.Error()})
 					failed++
+					uploadFailed = true
 					continue
 				}
 				items = append(items, drivePushItem{RelPath: rel, FileToken: token, Action: "overwritten", Version: version, SizeBytes: localFile.Size})
@@ -259,19 +299,33 @@ var DrivePush = common.Shortcut{
 			if ensureErr != nil {
 				items = append(items, drivePushItem{RelPath: rel, Action: "failed", SizeBytes: localFile.Size, Error: ensureErr.Error()})
 				failed++
+				uploadFailed = true
 				continue
 			}
 			token, _, upErr := drivePushUploadFile(ctx, runtime, localFile, "", parentToken)
 			if upErr != nil {
 				items = append(items, drivePushItem{RelPath: rel, Action: "failed", SizeBytes: localFile.Size, Error: upErr.Error()})
 				failed++
+				uploadFailed = true
 				continue
 			}
 			items = append(items, drivePushItem{RelPath: rel, FileToken: token, Action: "uploaded", SizeBytes: localFile.Size})
 			uploaded++
 		}
 
-		if deleteRemote {
+		// Skip the delete phase entirely on any upstream failure. The orphan
+		// loop deletes by remote token and is unrecoverable; running it
+		// after a failed upload risks deleting a file the partial upload
+		// would have replaced on a successful re-run, leaving the tenant
+		// in a worse state than where we started. Surface the skipped
+		// delete as a hint in stderr so operators know the cleanup pass
+		// is pending and can re-run after fixing the upload.
+		if deleteRemote && uploadFailed {
+			fmt.Fprintf(runtime.IO().ErrOut,
+				"Skipping --delete-remote: %d earlier failure(s) — re-run after resolving them.\n",
+				failed)
+		}
+		if deleteRemote && !uploadFailed {
 			// Stable iteration order so failures (and tests) are deterministic.
 			remoteRelPaths := make([]string, 0, len(remoteFiles))
 			for p := range remoteFiles {
@@ -303,6 +357,14 @@ var DrivePush = common.Shortcut{
 			},
 			"items": items,
 		}, nil)
+		// Bump the exit code on any item-level failure (upload, overwrite,
+		// folder, or delete) so callers / scripts / agents can react. The
+		// summary + items[] envelope was just written to stdout via Out(),
+		// so ErrBare here only affects the exit code — the structured
+		// per-item context is still in the stdout JSON.
+		if failed > 0 {
+			return output.ErrBare(output.ExitAPI)
+		}
 		return nil
 	},
 }

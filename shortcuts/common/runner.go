@@ -155,6 +155,19 @@ func (ctx *RuntimeContext) LarkSDK() *lark.Client {
 	return ctx.larkSDK
 }
 
+// EnsureScopes runs the same pre-flight scope check used by the framework
+// before Validate, but on a caller-supplied set of scopes. Use it from a
+// shortcut's Validate to enforce conditional scope requirements that depend
+// on flag values (e.g. --delete-remote needing space:document:delete) so a
+// destructive operation never starts on a token that can't finish it.
+//
+// Behavior matches checkShortcutScopes: when no token is available or the
+// resolver doesn't expose scope metadata, this is a silent no-op — the
+// downstream API call still surfaces missing_scope at runtime.
+func (ctx *RuntimeContext) EnsureScopes(scopes []string) error {
+	return checkShortcutScopes(ctx.Factory, ctx.ctx, ctx.As(), ctx.Config, scopes)
+}
+
 // ── Flag accessors ──
 
 // Str returns a string flag value.

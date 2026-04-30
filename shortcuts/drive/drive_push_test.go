@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -178,6 +180,9 @@ func TestDrivePushOverwritesWhenIfExistsOverwrite(t *testing.T) {
 		"+push",
 		"--local-dir", "local",
 		"--folder-token", "folder_root",
+		// Default --if-exists is now "skip"; opt into overwrite explicitly
+		// to exercise the file_token-on-upload_all path this test pins.
+		"--if-exists", "overwrite",
 		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
@@ -205,6 +210,64 @@ func TestDrivePushOverwritesWhenIfExistsOverwrite(t *testing.T) {
 	}
 	if got := body.Fields["file_name"]; got != "keep.txt" {
 		t.Fatalf("upload_all form file_name = %q, want keep.txt", got)
+	}
+}
+
+// TestDrivePushDefaultsToSkipForExistingRemote pins the new default. Until
+// the upload_all overwrite/version protocol field is fully rolled out, the
+// default --if-exists is "skip" so a first-time push against a non-empty
+// folder never trips on the missing-version branch by surprise. A test
+// that registers no upload_all stub would fail with "unmatched stub" if
+// the default were still "overwrite".
+func TestDrivePushDefaultsToSkipForExistingRemote(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "keep.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	// Intentionally NO upload_all stub: with the new default, the file
+	// is silently skipped — any upload_all call would trip the registry's
+	// strict no-stub-or-die contract.
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected default behavior to skip existing remote files, got: %s", out)
+	}
+	if !strings.Contains(out, `"uploaded": 0`) {
+		t.Errorf("expected uploaded=0 under default --if-exists=skip, got: %s", out)
+	}
+	if !strings.Contains(out, `"failed": 0`) {
+		t.Errorf("expected failed=0, got: %s", out)
 	}
 }
 
@@ -352,6 +415,9 @@ func TestDrivePushDeleteRemoteSkipsOnlineDocs(t *testing.T) {
 		"+push",
 		"--local-dir", "local",
 		"--folder-token", "folder_root",
+		// This test exercises the overwrite path against kept.txt; opt
+		// into overwrite explicitly now that the default is "skip".
+		"--if-exists", "overwrite",
 		"--delete-remote",
 		"--yes",
 		"--as", "bot",
@@ -479,10 +545,26 @@ func TestDrivePushOverwriteWithoutVersionFails(t *testing.T) {
 		"+push",
 		"--local-dir", "local",
 		"--folder-token", "folder_root",
+		// Default is "skip" now; this test specifically exercises the
+		// overwrite-failure branch, so opt into overwrite explicitly.
+		"--if-exists", "overwrite",
 		"--as", "bot",
 	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	// Item-level failures bump the exit code via output.ErrBare(ExitAPI),
+	// preserving the structured items[] envelope on stdout. Older behavior
+	// was to silently return nil; the assertion below pins the new contract.
+	if err == nil {
+		t.Fatalf("expected non-zero exit on item-level failure, got nil\nstdout: %s", stdout.String())
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Errorf("expected ExitAPI (%d), got code=%d", output.ExitAPI, exitErr.Code)
+	}
+	if exitErr.Detail != nil {
+		t.Errorf("ErrBare should carry no Detail (the items[] envelope already covered the per-item error), got: %#v", exitErr.Detail)
 	}
 
 	out := stdout.String()
@@ -493,6 +575,136 @@ func TestDrivePushOverwriteWithoutVersionFails(t *testing.T) {
 	}
 	if !strings.Contains(out, "no version") {
 		t.Errorf("expected error about missing version in items[].error, got: %s", out)
+	}
+}
+
+// TestDrivePushSkipsDeleteAfterUploadFailure pins the half-sync safety
+// guard: when any upload / overwrite / folder step fails, the
+// --delete-remote phase must be skipped entirely. Otherwise a partial
+// upload would proceed to delete remote orphans, leaving the tenant in
+// a worse state than where it started (files missing locally and now
+// also gone from Drive).
+//
+// Test setup mirrors the missing-version overwrite failure: one local
+// file with a same-name remote that overwrites with no version field,
+// plus one orphan remote file that --delete-remote --yes would
+// otherwise delete. With the fix in place the orphan must NOT be
+// reached.
+func TestDrivePushSkipsDeleteAfterUploadFailure(t *testing.T) {
+	f, stdout, stderrBuf, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "keep.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file"},
+					map[string]interface{}{"token": "tok_orphan", "name": "orphan.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	// Overwrite returns no version → fails.
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "tok_keep"},
+		},
+	})
+	// Crucially: do NOT register a DELETE stub for tok_orphan. If the
+	// delete phase were still triggered after the upload failure, the
+	// registry's no-stub-or-die contract would surface an unmatched
+	// request and the test would catch the regression.
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--delete-remote",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected non-zero exit on overwrite failure, got nil\nstdout: %s", stdout.String())
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI ExitError, got %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"failed": 1`) {
+		t.Errorf("expected failed=1 (overwrite missing-version), got: %s", out)
+	}
+	if !strings.Contains(out, `"deleted_remote": 0`) {
+		t.Errorf("expected deleted_remote=0 (delete phase must skip after upload failure), got: %s", out)
+	}
+	if strings.Contains(out, "tok_orphan") {
+		t.Errorf("orphan file token must not appear in items (delete phase skipped), got: %s", out)
+	}
+	// Operator-facing hint that cleanup was skipped lives on stderr.
+	if !strings.Contains(stderrBuf.String(), "Skipping --delete-remote") {
+		t.Errorf("expected stderr hint about skipped delete phase, got: %s", stderrBuf.String())
+	}
+}
+
+// TestDrivePushExitsZeroOnCleanRun pins the inverse: a successful run
+// with no failures must NOT bump the exit code. Without this the
+// ErrBare-on-failure path could regress to "always non-zero" silently.
+func TestDrivePushExitsZeroOnCleanRun(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "a.txt"), []byte("AAA"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "tok_a"},
+		},
+	})
+
+	if err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout); err != nil {
+		t.Fatalf("expected nil error on clean run, got: %v\nstdout: %s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"failed": 0`) {
+		t.Errorf("expected failed=0, got: %s", stdout.String())
 	}
 }
 
