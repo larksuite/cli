@@ -41,7 +41,7 @@ lark-cli base +form-update \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--base-token <token>` | 是 | 多维表格 App token（base_token） |
+| `--base-token <token>` | 是 | Base Token（base_token） |
 | `--table-id <id>` | 是 | 数据表 ID |
 | `--form-id <id>` | 是 | 表单 ID |
 | `--name <name>` | 否 | 新的表单名称 |

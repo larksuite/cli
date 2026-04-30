@@ -56,7 +56,7 @@ lark-cli base +form-questions-create \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--base-token <token>` | 是 | 多维表格 App token（base_token） |
+| `--base-token <token>` | 是 | Base Token（base_token） |
 | `--table-id <id>` | 是 | 数据表 ID |
 | `--form-id <id>` | 是 | 表单 ID |
 | `--questions <json>` | 是 | 问题 JSON 数组，最多 10 个（见下方格式） |

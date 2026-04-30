@@ -297,7 +297,7 @@ lark-cli auth login --domain base
 7. 聚合分析与取数分流；统计走 `+data-query`，关键词检索走 `+record-search`，明细走 `+record-list / +record-get`。
 8. 筛选查询按视图能力执行；先用 `+view-set-filter` 配置筛选，再结合 `+record-list` 读取。
 9. Base 场景不要改走裸 API，不要切去 `lark-cli api /open-apis/bitable/v1/...`。
-10. 统一使用 `--base-token`，不使用旧 `--app-token`。
+10. 统一使用 `--base-token`。
 11. workflow 场景先读 schema，不要凭自然语言猜 `type`。
 12. dashboard 场景先读 guide；提到图表、看板、block 就先进入 dashboard 模块。
 13. formula / lookup 场景先读 guide；没读 guide 前不要直接创建或更新。
