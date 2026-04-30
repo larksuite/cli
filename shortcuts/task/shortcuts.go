@@ -92,6 +92,14 @@ func extractTasklistGuid(input string) string {
 	return input
 }
 
+// extractTaskGuid extracts a task GUID from either a raw GUID or a Feishu task
+// applink URL (e.g. ".../client/todo/task?guid=..."). The URL query parameter
+// is always named "guid" for both tasks and tasklists, so we delegate to the
+// shared parsing logic.
+func extractTaskGuid(input string) string {
+	return extractTasklistGuid(input)
+}
+
 func buildTaskCreateBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	body := make(map[string]interface{})
 
@@ -251,6 +259,7 @@ func Shortcuts() []common.Shortcut {
 		GetRelatedTasks,
 		SearchTask,
 		SubscribeTaskEvent,
+		UploadAttachmentTask,
 		CreateTasklist,
 		SearchTasklist,
 		AddTaskToTasklist,

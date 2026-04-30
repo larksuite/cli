@@ -1,7 +1,7 @@
 ---
 name: lark-task
 version: 1.0.0
-description: "飞书任务：管理任务、清单和任务智能体。创建待办任务、查看和更新任务状态、拆分子任务、组织任务清单、分配协作成员、注册或注销任务智能体、更新任务智能体的主页数据、写入智能体任务记录。当用户需要创建待办事项、查看任务列表、跟踪任务进度、管理项目清单或给他人分配任务、注册注销任务智能体、更新智能体主页数据、写入任务记录时使用。"
+description: "飞书任务：管理任务、清单和任务智能体。创建待办任务、查看和更新任务状态、拆分子任务、组织任务清单、分配协作成员、上传任务附件、注册或注销任务智能体、更新任务智能体的主页数据、写入智能体任务记录。当用户需要创建待办事项、查看任务列表、跟踪任务进度、管理项目清单或给他人分配任务、为任务上传附件文件、注册注销任务智能体、更新智能体主页数据、写入任务记录时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -52,6 +52,7 @@ metadata:
 - [`+tasklist-search`](./references/lark-task-tasklist-search.md) — Search tasklists
 - [`+tasklist-task-add`](./references/lark-task-tasklist-task-add.md) — Add existing tasks to a tasklist
 - [`+tasklist-members`](./references/lark-task-tasklist-members.md) — Manage tasklist members
+- [`+upload-attachment`](./references/lark-task-upload-attachment.md) — Upload a file as a task attachment
 
 ## API Resources
 
@@ -161,3 +162,4 @@ lark-cli task <resource> <method> [flags] # 调用 API
 | `agent.update_agent_profile` | `task:task:write` |
 | `agent.register_agent` | `task:task:write` |
 | `agent_task_step_info.append_task_steps` | `task:task:write` |
+| `+upload-attachment` | `task:attachment:write` |
