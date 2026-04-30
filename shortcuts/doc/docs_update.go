@@ -64,6 +64,7 @@ var DocsUpdate = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
+	Tips:        docsVersionSelectionTips,
 	Flags: concatFlags(
 		[]common.Flag{
 			{Name: "api-version", Desc: "API version", Default: "v1", Enum: []string{"v1", "v2"}},
@@ -157,6 +158,12 @@ func executeUpdateV1(_ context.Context, runtime *common.RuntimeContext) error {
 	// execution — the update still proceeds.
 	for _, w := range docsUpdateWarnings(runtime.Str("mode"), runtime.Str("markdown")) {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
+	}
+
+	// Surface callout type= hint so users know to switch to background-color/
+	// border-color when they want a colored callout. Non-blocking, advisory.
+	if md := runtime.Str("markdown"); md != "" {
+		WarnCalloutType(md, runtime.IO().ErrOut)
 	}
 
 	args := buildUpdateArgsV1(runtime)

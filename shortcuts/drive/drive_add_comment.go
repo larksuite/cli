@@ -18,6 +18,35 @@ import (
 
 const defaultLocateDocLimit = 10
 
+// maxCommentTotalRunes is the cap on the combined character (rune) count
+// across all `reply_elements[].text` fields in a single
+// `drive +add-comment` request.
+//
+// The open-platform `/open-apis/drive/v1/files/{token}/new_comments`
+// endpoint returns an opaque `[1069302] Invalid or missing parameters`
+// when this is exceeded — no indication that length is the cause or
+// which element is at fault.
+//
+// Empirically (probing the live API):
+//
+//   - 10000 runes in a single text element: OK (10000 ASCII / 30000
+//     bytes for Chinese / 40000 bytes if all '<' — server counts the
+//     raw rune count, not byte width and not the post-escape form)
+//   - 10001 runes in a single text element: [1069302]
+//   - 5000 + 5000 across two elements (total 10000): OK
+//   - 5000 + 5001 across two elements (total 10001): [1069302]
+//
+// So the cap is applied to the *total* across all reply_elements, not
+// per element. Splitting an over-the-cap message into multiple text
+// elements does NOT help — the server enforces the same limit on the
+// sum.
+//
+// The schema doc currently advertises a 1-1000 character limit, but
+// the live API accepts up to 10000 runes; the schema is out of date.
+// If this constant ever needs to track a server-side change, re-probe
+// with `drive file.comments create_v2` against a fresh docx.
+const maxCommentTotalRunes = 10000
+
 type commentDocRef struct {
 	Kind  string
 	Token string
@@ -64,7 +93,7 @@ const (
 var DriveAddComment = common.Shortcut{
 	Service:     "drive",
 	Command:     "+add-comment",
-	Description: "Add a full-document or local comment to doc/docx/sheet, also supports wiki URL resolving to doc/docx/sheet",
+	Description: "Add a comment to doc/docx/sheet/slides, also supports wiki URL resolving to doc/docx/sheet/slides",
 	Risk:        "write",
 	Scopes: []string{
 		"docx:document:readonly",
@@ -73,12 +102,12 @@ var DriveAddComment = common.Shortcut{
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "doc", Desc: "document URL/token, sheet URL, or wiki URL that resolves to doc/docx/sheet", Required: true},
-		{Name: "type", Desc: "document type: doc, docx, sheet (required when --doc is a bare token; auto-detected for URLs)", Enum: []string{"doc", "docx", "sheet"}},
+		{Name: "doc", Desc: "document URL/token, sheet/slides URL, or wiki URL that resolves to doc/docx/sheet/slides", Required: true},
+		{Name: "type", Desc: "document type: doc, docx, sheet, slides (required when --doc is a bare token; auto-detected for URLs)", Enum: []string{"doc", "docx", "sheet", "slides"}},
 		{Name: "content", Desc: "reply_elements JSON string", Required: true},
 		{Name: "full-comment", Type: "bool", Desc: "create a full-document comment; also the default when no location is provided"},
 		{Name: "selection-with-ellipsis", Desc: "target content locator (plain text or 'start...end')"},
-		{Name: "block-id", Desc: "for docx: anchor block ID; for sheet: <sheetId>!<cell> (e.g. a281f9!D6)"},
+		{Name: "block-id", Desc: "for docx: anchor block ID; for sheet: <sheetId>!<cell> (e.g. a281f9!D6); for slides: <slide-block-type>!<xml-id> (e.g. shape!bPq)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		docRef, err := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
@@ -104,6 +133,18 @@ var DriveAddComment = common.Shortcut{
 			}
 			return nil
 		}
+		if docRef.Kind == "slides" {
+			if _, _, err := parseSlidesBlockRef(runtime.Str("block-id")); err != nil {
+				return err
+			}
+			if runtime.Bool("full-comment") {
+				return output.ErrValidation("--full-comment is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
+			}
+			if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
+				return output.ErrValidation("--selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
+			}
+			return nil
+		}
 
 		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
@@ -116,7 +157,7 @@ var DriveAddComment = common.Shortcut{
 
 		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
 		if mode == commentModeLocal && docRef.Kind == "doc" {
-			return output.ErrValidation("local comments only support docx and sheet; old doc format only supports full comments")
+			return output.ErrValidation("local comments only support docx, sheet, and slides; old doc format only supports full comments")
 		}
 
 		return nil
@@ -124,7 +165,9 @@ var DriveAddComment = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		docRef, _ := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
 		replyElements, _ := parseCommentReplyElements(runtime.Str("content"))
+		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
+		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
 
 		// For wiki URLs, resolve the actual target type via API so dry-run
 		// matches real execution behavior instead of guessing from --block-id.
@@ -133,11 +176,12 @@ var DriveAddComment = common.Shortcut{
 		isWiki := false
 		if docRef.Kind == "wiki" {
 			isWiki = true
-			target, err := resolveCommentTarget(ctx, runtime, runtime.Str("doc"), commentModeFull)
-			if err == nil {
-				resolvedKind = target.FileType
-				resolvedToken = target.FileToken
+			target, err := resolveCommentTarget(ctx, runtime, runtime.Str("doc"), mode)
+			if err != nil {
+				return common.NewDryRunAPI().Set("error", err.Error())
 			}
+			resolvedKind = target.FileType
+			resolvedToken = target.FileToken
 		}
 
 		// Sheet comment dry-run.
@@ -146,7 +190,7 @@ var DriveAddComment = common.Shortcut{
 			if anchor == nil {
 				anchor = &sheetAnchor{SheetID: "<sheetId>", Col: 0, Row: 0}
 			}
-			commentBody := buildCommentCreateV2Request("sheet", "", replyElements, anchor)
+			commentBody := buildCommentCreateV2Request("sheet", "", "", replyElements, anchor)
 			desc := "1-step request: create sheet comment"
 			if isWiki {
 				desc = "2-step orchestration: resolve wiki -> create sheet comment"
@@ -157,15 +201,28 @@ var DriveAddComment = common.Shortcut{
 				Body(commentBody).
 				Set("file_token", resolvedToken)
 		}
+		if resolvedKind == "slides" {
+			slideAnchorBlockID, slideBlockType, err := parseSlidesBlockRef(blockID)
+			if err != nil {
+				return common.NewDryRunAPI().Set("error", err.Error())
+			}
+			commentBody := buildCommentCreateV2Request("slides", slideAnchorBlockID, slideBlockType, replyElements, nil)
+			desc := "1-step request: create slide block comment"
+			if isWiki {
+				desc = "2-step orchestration: resolve wiki -> create slide block comment"
+			}
+			return common.NewDryRunAPI().
+				Desc(desc).
+				POST("/open-apis/drive/v1/files/:file_token/new_comments").
+				Body(commentBody).
+				Set("file_token", resolvedToken)
+		}
 
 		// Doc/docx comment dry-run.
-		selection := runtime.Str("selection-with-ellipsis")
-		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
-
 		createPath := "/open-apis/drive/v1/files/:file_token/new_comments"
-		commentBody := buildCommentCreateV2Request(resolvedKind, "", replyElements, nil)
+		commentBody := buildCommentCreateV2Request(resolvedKind, "", "", replyElements, nil)
 		if mode == commentModeLocal {
-			commentBody = buildCommentCreateV2Request(resolvedKind, anchorBlockIDForDryRun(blockID), replyElements, nil)
+			commentBody = buildCommentCreateV2Request(resolvedKind, anchorBlockIDForDryRun(blockID), "", replyElements, nil)
 		}
 
 		mcpEndpoint := common.MCPEndpoint(runtime.Config.Brand)
@@ -240,6 +297,9 @@ var DriveAddComment = common.Shortcut{
 		if docRef.Kind == "sheet" {
 			return executeSheetComment(runtime, docRef)
 		}
+		if docRef.Kind == "slides" {
+			return executeSlidesComment(runtime, docRef)
+		}
 
 		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
@@ -253,6 +313,9 @@ var DriveAddComment = common.Shortcut{
 		// Wiki resolved to sheet: redirect to sheet comment path.
 		if target.FileType == "sheet" {
 			return executeSheetComment(runtime, commentDocRef{Kind: "sheet", Token: target.FileToken})
+		}
+		if target.FileType == "slides" {
+			return executeSlidesComment(runtime, commentDocRef{Kind: "slides", Token: target.FileToken})
 		}
 
 		replyElements, err := parseCommentReplyElements(runtime.Str("content"))
@@ -283,9 +346,9 @@ var DriveAddComment = common.Shortcut{
 		}
 
 		requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
-		requestBody := buildCommentCreateV2Request(target.FileType, "", replyElements, nil)
+		requestBody := buildCommentCreateV2Request(target.FileType, "", "", replyElements, nil)
 		if mode == commentModeLocal {
-			requestBody = buildCommentCreateV2Request(target.FileType, blockID, replyElements, nil)
+			requestBody = buildCommentCreateV2Request(target.FileType, blockID, "", replyElements, nil)
 		}
 
 		if mode == commentModeLocal {
@@ -358,6 +421,9 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 	if token, ok := extractURLToken(raw, "/sheets/"); ok {
 		return commentDocRef{Kind: "sheet", Token: token}, nil
 	}
+	if token, ok := extractURLToken(raw, "/slides/"); ok {
+		return commentDocRef{Kind: "slides", Token: token}, nil
+	}
 	if token, ok := extractURLToken(raw, "/docx/"); ok {
 		return commentDocRef{Kind: "docx", Token: token}, nil
 	}
@@ -365,7 +431,7 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 		return commentDocRef{Kind: "doc", Token: token}, nil
 	}
 	if strings.Contains(raw, "://") {
-		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a doc/docx/sheet URL, a token with --type, or a wiki URL that resolves to doc/docx/sheet", raw)
+		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a doc/docx/sheet/slides URL, a token with --type, or a wiki URL that resolves to doc/docx/sheet/slides", raw)
 	}
 	if strings.ContainsAny(raw, "/?#") {
 		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a token with --type, or a wiki URL", raw)
@@ -374,7 +440,7 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 	// Bare token: --type is required.
 	docType = strings.TrimSpace(docType)
 	if docType == "" {
-		return commentDocRef{}, output.ErrValidation("--type is required when --doc is a bare token (allowed values: doc, docx, sheet)")
+		return commentDocRef{}, output.ErrValidation("--type is required when --doc is a bare token (allowed values: doc, docx, sheet, slides)")
 	}
 	return commentDocRef{Kind: docType, Token: raw}, nil
 }
@@ -385,9 +451,9 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		return resolvedCommentTarget{}, err
 	}
 
-	if docRef.Kind == "docx" || docRef.Kind == "doc" || docRef.Kind == "sheet" {
-		if mode == commentModeLocal && docRef.Kind != "docx" && docRef.Kind != "sheet" {
-			return resolvedCommentTarget{}, output.ErrValidation("local comments only support docx and sheet; old doc format only supports full comments")
+	if docRef.Kind == "docx" || docRef.Kind == "doc" || docRef.Kind == "sheet" || docRef.Kind == "slides" {
+		if mode == commentModeLocal && docRef.Kind != "docx" && docRef.Kind != "sheet" && docRef.Kind != "slides" {
+			return resolvedCommentTarget{}, output.ErrValidation("local comments only support docx, sheet, and slides; old doc format only supports full comments")
 		}
 		return resolvedCommentTarget{
 			DocID:      docRef.Token,
@@ -414,6 +480,12 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	if objType == "" || objToken == "" {
 		return resolvedCommentTarget{}, output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data")
 	}
+	if objType == "slides" && mode == commentModeFull {
+		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but slide comments require --block-id <slide-block-type>!<xml-id>; --full-comment is not applicable", objType)
+	}
+	if objType == "slides" && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
+		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but --selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>", objType)
+	}
 	if objType == "sheet" {
 		// Sheet comments are handled via the sheet fast path in Execute.
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
@@ -425,11 +497,21 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 			WikiToken:  docRef.Token,
 		}, nil
 	}
+	if objType == "slides" {
+		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
+		return resolvedCommentTarget{
+			DocID:      objToken,
+			FileToken:  objToken,
+			FileType:   "slides",
+			ResolvedBy: "wiki",
+			WikiToken:  docRef.Token,
+		}, nil
+	}
 	if mode == commentModeLocal && objType != "docx" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but local comments only support docx and sheet; for sheet use --block-id <sheetId>!<cell>", objType)
+		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but local comments only support docx, sheet, and slides; for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>", objType)
 	}
 	if mode == commentModeFull && objType != "docx" && objType != "doc" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but comments only support doc/docx/sheet", objType)
+		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but comments only support doc/docx/sheet/slides", objType)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
@@ -551,6 +633,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 	}
 
 	replyElements := make([]map[string]interface{}, 0, len(inputs))
+	totalRunes := 0
 	for i, input := range inputs {
 		index := i + 1
 		elementType := strings.TrimSpace(input.Type)
@@ -559,9 +642,27 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 			if strings.TrimSpace(input.Text) == "" {
 				return nil, output.ErrValidation("--content element #%d type=text requires non-empty text", index)
 			}
-			if utf8.RuneCountInString(input.Text) > 1000 {
-				return nil, output.ErrValidation("--content element #%d text exceeds 1000 characters", index)
+			// Measure the raw rune count of the user input — that is what
+			// the server actually counts. byte width and post-escape form
+			// don't matter (10000 '<' chars succeed even though they
+			// expand to 40000 bytes when escaped, and 10000 Chinese chars
+			// succeed even though they encode as 30000 UTF-8 bytes).
+			runes := utf8.RuneCountInString(input.Text)
+			totalRunes += runes
+			if totalRunes > maxCommentTotalRunes {
+				return nil, output.ErrWithHint(
+					output.ExitValidation,
+					"text_too_long",
+					fmt.Sprintf("--content reply_elements text totals %d characters at element #%d (this element: %d); the server caps the combined length at %d characters across ALL reply_elements",
+						totalRunes, index, runes, maxCommentTotalRunes),
+					fmt.Sprintf("shorten the comment so the combined text across all reply_elements fits within %d characters. The server enforces this cap on the TOTAL — splitting one long element into multiple smaller text elements does NOT help (they all add up against the same %d-rune budget). Server returns an opaque [1069302] on overflow, so this check is pre-flight; no escape transform changes the count (server reads raw runes).", maxCommentTotalRunes, maxCommentTotalRunes),
+				)
 			}
+			// Escape '<' and '>' so the rendered comment displays them as
+			// literal characters instead of being interpreted as markup
+			// by Lark's comment renderer. This is independent of the
+			// length check — the server sees the escaped form, but
+			// counts characters by the raw input length above.
 			replyElements = append(replyElements, map[string]interface{}{
 				"type": "text",
 				"text": escapeCommentText(input.Text),
@@ -606,7 +707,7 @@ type sheetAnchor struct {
 	Row     int
 }
 
-func buildCommentCreateV2Request(fileType, blockID string, replyElements []map[string]interface{}, sheet *sheetAnchor) map[string]interface{} {
+func buildCommentCreateV2Request(fileType, blockID, slideBlockType string, replyElements []map[string]interface{}, sheet *sheetAnchor) map[string]interface{} {
 	body := map[string]interface{}{
 		"file_type":      fileType,
 		"reply_elements": replyElements,
@@ -621,6 +722,9 @@ func buildCommentCreateV2Request(fileType, blockID string, replyElements []map[s
 		body["anchor"] = map[string]interface{}{
 			"block_id": blockID,
 		}
+		if strings.TrimSpace(slideBlockType) != "" {
+			body["anchor"].(map[string]interface{})["slide_block_type"] = strings.TrimSpace(slideBlockType)
+		}
 	}
 	return body
 }
@@ -630,6 +734,24 @@ func anchorBlockIDForDryRun(blockID string) string {
 		return strings.TrimSpace(blockID)
 	}
 	return "<anchor_block_id>"
+}
+
+func parseSlidesBlockRef(blockID string) (string, string, error) {
+	blockID = strings.TrimSpace(blockID)
+	if blockID == "" {
+		return "", "", output.ErrValidation("slide comments require --block-id in <slide-block-type>!<xml-id> format")
+	}
+
+	parts := strings.SplitN(blockID, "!", 2)
+	if len(parts) != 2 {
+		return "", "", output.ErrValidation("slide --block-id must be <slide-block-type>!<xml-id> (e.g. shape!bPq), got %q", blockID)
+	}
+	parsedType := strings.TrimSpace(parts[0])
+	parsedID := strings.TrimSpace(parts[1])
+	if parsedType == "" || parsedID == "" {
+		return "", "", output.ErrValidation("slide --block-id must be <slide-block-type>!<xml-id> (e.g. shape!bPq), got %q", blockID)
+	}
+	return parsedID, parsedType, nil
 }
 
 func firstNonEmptyString(values ...string) string {
@@ -703,7 +825,7 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 	}
 
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(docRef.Token))
-	requestBody := buildCommentCreateV2Request("sheet", "", replyElements, anchor)
+	requestBody := buildCommentCreateV2Request("sheet", "", "", replyElements, anchor)
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Creating sheet comment in %s (sheet=%s, col=%d, row=%d)\n",
 		common.MaskToken(docRef.Token), anchor.SheetID, anchor.Col, anchor.Row)
@@ -719,6 +841,43 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 		"file_type":    "sheet",
 		"comment_mode": "sheet",
 		"block_id":     blockID,
+	}
+	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
+		out["created_at"] = createdAt
+	}
+	runtime.Out(out, nil)
+	return nil
+}
+
+func executeSlidesComment(runtime *common.RuntimeContext, docRef commentDocRef) error {
+	replyElements, err := parseCommentReplyElements(runtime.Str("content"))
+	if err != nil {
+		return err
+	}
+
+	blockID, slideBlockType, err := parseSlidesBlockRef(runtime.Str("block-id"))
+	if err != nil {
+		return err
+	}
+
+	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(docRef.Token))
+	requestBody := buildCommentCreateV2Request("slides", blockID, slideBlockType, replyElements, nil)
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Creating slide block comment in %s (block_id=%s, slide_block_type=%s)\n",
+		common.MaskToken(docRef.Token), blockID, slideBlockType)
+
+	data, err := runtime.CallAPI("POST", requestPath, nil, requestBody)
+	if err != nil {
+		return err
+	}
+
+	out := map[string]interface{}{
+		"comment_id":       data["comment_id"],
+		"file_token":       docRef.Token,
+		"file_type":        "slides",
+		"comment_mode":     "slide_block",
+		"anchor_block_id":  blockID,
+		"slide_block_type": slideBlockType,
 	}
 	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
 		out["created_at"] = createdAt

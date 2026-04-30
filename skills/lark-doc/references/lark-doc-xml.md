@@ -85,7 +85,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 - 合并单元格仅起始格输出 `colspan` / `rowspan`，被合并的格不出现
 
 # 六、美化系统
-- 颜色优先使用命名色，也可写 `rgb(r,g,b)` / `rgba(r,g,b,a)`。**基础色（6 色）**：gray, red, orange, yellow, green, blue
+- 颜色优先使用命名色，也可写 `rgb(r,g,b)` / `rgba(r,g,b,a)`。**基础色（7 色）**：red, orange, yellow, green, blue, purple, gray
   | 属性 | 支持的命名色 |                                                                                                                                                                                                        
   |-|-|
   | 文字颜色 `<span text-color>` | 基础色 |

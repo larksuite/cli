@@ -35,6 +35,7 @@ func createTask(t *testing.T, parentT *testing.T, ctx context.Context, req clie2
 			Args:      []string{"task", "tasks", "delete"},
 			DefaultAs: "bot",
 			Params:    map[string]any{"task_guid": taskGUID},
+			Yes:       true,
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete task "+taskGUID, deleteResult, deleteErr)
 	})
@@ -65,6 +66,7 @@ func createTasklist(t *testing.T, parentT *testing.T, ctx context.Context, req c
 			Args:      []string{"task", "tasklists", "delete"},
 			DefaultAs: "bot",
 			Params:    map[string]any{"tasklist_guid": tasklistGUID},
+			Yes:       true,
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete tasklist "+tasklistGUID, deleteResult, deleteErr)
 	})

@@ -13,16 +13,6 @@ import (
 	"github.com/larksuite/cli/internal/util"
 )
 
-// RequireConfirmation blocks high-risk-write operations unless --yes is passed.
-func RequireConfirmation(risk string, yes bool, action string) error {
-	if risk != "high-risk-write" || yes {
-		return nil
-	}
-	return output.ErrWithHint(output.ExitValidation, "unsafe_operation_blocked",
-		fmt.Sprintf("high-risk operation requires confirmation: %s", action),
-		"add --yes to confirm")
-}
-
 func FormatSize(bytes int64) string {
 	if bytes < 1024 {
 		return fmt.Sprintf("%d B", bytes)

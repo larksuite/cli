@@ -39,6 +39,14 @@ lark-cli drive +export \
   --file-extension xlsx \
   --output-dir ./exports
 
+# 指定本地文件名（会按导出格式自动补扩展名）
+lark-cli drive +export \
+  --token "<DOCX_TOKEN>" \
+  --doc-type docx \
+  --file-extension pdf \
+  --file-name "weekly-report.pdf" \
+  --output-dir ./exports
+
 # 导出电子表格或多维表格为 csv 时，必须传 sub_id
 lark-cli drive +export \
   --token "<SHEET_OR_BITABLE_TOKEN>" \
@@ -70,6 +78,7 @@ lark-cli drive +export \
 | `--doc-type` | 是 | 源文档类型：`doc` / `docx` / `sheet` / `bitable` |
 | `--file-extension` | 是 | 导出格式：`docx` / `pdf` / `xlsx` / `csv` / `markdown` / `base` |
 | `--sub-id` | 条件必填 | 当 `sheet` / `bitable` 导出为 `csv` 时必填 |
+| `--file-name` | 否 | 覆盖默认本地文件名；如未带扩展名，会按 `--file-extension` 自动补齐 |
 | `--output-dir` | 否 | 本地输出目录，默认当前目录 |
 | `--overwrite` | 否 | 覆盖已存在文件 |
 
@@ -88,7 +97,8 @@ lark-cli drive +export \
 lark-cli drive +export \
   --token "<DOCX_TOKEN>" \
   --doc-type docx \
-  --file-extension pdf
+  --file-extension pdf \
+  --file-name "weekly-report.pdf"
 
 # 如果返回 ready=false / timed_out=true，再继续查
 lark-cli drive +task_result \
@@ -99,6 +109,7 @@ lark-cli drive +task_result \
 # 查到 file_token 后下载
 lark-cli drive +export-download \
   --file-token "<EXPORTED_FILE_TOKEN>" \
+  --file-name "weekly-report.pdf" \
   --output-dir ./exports
 ```
 

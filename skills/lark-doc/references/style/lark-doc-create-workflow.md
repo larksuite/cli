@@ -20,7 +20,9 @@
 
 1. 分析用户需求：受众、目的、范围
 2. 设计大纲——每个 h1/h2 章节至少规划 1 个非文本 block
-3. `docs +create --api-version v2` 创建文档：标题 + 开头 `<callout>` + 骨架（各级标题 + 简短占位摘要）
+3. `docs +create --api-version v2` **只建骨架**：标题 + 开头 `<callout>` + 各级标题 + 每节一句占位摘要
+   - ⚠️ **不要**一次性把完整章节内容塞进 `--content`。超长 `--content` 容易触发字符/参数限制。
+   - 完整内容留到第二波，由各 Agent 用 `docs +update --command append` 或 `block_insert_after` 分段写入。
 
 ### 第二波 — 内容撰写（并行 Agent）
 
@@ -46,5 +48,3 @@
 ## Agent 子任务要求
 
 Spawn Agent 时必须提供：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 和 `lark-doc-style.md` 路径、具体的 `docs +update` command 和 `--block-id`。
-
-章节较多时，先 `docs +create` 建骨架，再分段 `append` 追加，比一次性超长 `--content` 更可靠。

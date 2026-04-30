@@ -29,7 +29,17 @@ type ErrDetail struct {
 	Message    string      `json:"message"`
 	Hint       string      `json:"hint,omitempty"`
 	ConsoleURL string      `json:"console_url,omitempty"`
+	Risk       *RiskDetail `json:"risk,omitempty"`
 	Detail     interface{} `json:"detail,omitempty"`
+}
+
+// RiskDetail carries agent-protocol risk information alongside
+// confirmation_required errors. Level is one of "read" | "write" |
+// "high-risk-write". Action identifies the command for the agent (e.g.
+// "mail +send", "drive.files.delete").
+type RiskDetail struct {
+	Level  string `json:"level"`
+	Action string `json:"action"`
 }
 
 // Meta carries optional metadata in envelope responses.

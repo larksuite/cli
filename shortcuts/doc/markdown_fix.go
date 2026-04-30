@@ -4,6 +4,8 @@
 package doc
 
 import (
+	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"unicode"
@@ -304,6 +306,113 @@ var setextRe = regexp.MustCompile(`(?m)^([^\n]+)\n(-{3,}\s*$)`)
 
 func fixSetextAmbiguity(md string) string {
 	return setextRe.ReplaceAllString(md, "$1\n\n$2")
+}
+
+// calloutTypeColors maps the semantic type= shorthand to a recommended
+// [background-color, border-color] pair for Feishu callout blocks.
+// Used only for hint messages — the Markdown itself is never rewritten.
+var calloutTypeColors = map[string][2]string{
+	"warning":   {"light-yellow", "yellow"},
+	"caution":   {"light-orange", "orange"},
+	"note":      {"light-blue", "blue"},
+	"info":      {"light-blue", "blue"},
+	"tip":       {"light-green", "green"},
+	"success":   {"light-green", "green"},
+	"check":     {"light-green", "green"},
+	"error":     {"light-red", "red"},
+	"danger":    {"light-red", "red"},
+	"important": {"light-purple", "purple"},
+}
+
+// calloutOpenTagRe matches a <callout …> opening tag.
+var calloutOpenTagRe = regexp.MustCompile(`<callout(\s[^>]*)?>`)
+
+// calloutTypeAttrRe extracts the value of a type= attribute (single or
+// double quoted) from a callout opening tag's attribute string. The
+// (?:^|\s) anchor instead of \b is intentional: \b sits at any
+// word/non-word boundary, and `-` is a non-word character, so
+// `\btype=` would also match the suffix of `data-type=` and yield a
+// bogus type lookup. Anchoring on start-of-string-or-whitespace
+// requires a real attribute separator before the name.
+var calloutTypeAttrRe = regexp.MustCompile(`(?:^|\s)type=(?:"([^"]*)"|'([^']*)')`)
+
+// calloutBackgroundColorAttrRe matches a background-color= attribute
+// name with optional whitespace around the equals sign, so forms like
+// `background-color="..."` and `background-color = "..."` are both
+// accepted. Same (?:^|\s) anchor as calloutTypeAttrRe, for the same
+// reason: `data-background-color="..."` must not look like a present
+// background-color and silently suppress the hint.
+var calloutBackgroundColorAttrRe = regexp.MustCompile(`(?:^|\s)background-color\s*=`)
+
+// WarnCalloutType scans md for callout tags that carry a type= attribute but
+// no background-color= attribute, then writes a hint line to w for each one
+// suggesting the explicit Feishu color attributes to use instead.
+//
+// Callout tags inside fenced code blocks (``` or ~~~) are skipped — they
+// are documentation samples, not real callouts the user wants Feishu to
+// render. Fence detection uses the shared codeFenceOpenMarker /
+// isCodeFenceClose helpers so both backtick and tilde fences are handled
+// (matching CommonMark §4.5).
+//
+// The Markdown is not modified — the caller is responsible for acting on
+// the hints or ignoring them. This keeps the create/update path
+// transparent: user input reaches create-doc exactly as written.
+func WarnCalloutType(md string, w io.Writer) {
+	fenceMarker := ""
+	for _, line := range strings.Split(md, "\n") {
+		if fenceMarker != "" {
+			// Inside a fenced block — skip everything until the matching
+			// closer. Code samples that show literal <callout type=...>
+			// must not produce a phantom hint.
+			if isCodeFenceClose(line, fenceMarker) {
+				fenceMarker = ""
+			}
+			continue
+		}
+		if marker := codeFenceOpenMarker(line); marker != "" {
+			fenceMarker = marker
+			continue
+		}
+		scanCalloutTagsForWarning(line, w)
+	}
+}
+
+// scanCalloutTagsForWarning emits a hint to w for every <callout type="...">
+// tag in s that lacks an explicit background-color= attribute. Pulled out
+// of WarnCalloutType so the line walker only handles fence state and the
+// per-tag scan is its own readable unit.
+//
+// The previous implementation routed the tag iteration through
+// calloutOpenTagRe.ReplaceAllStringFunc with a callback that always
+// returned the original tag and threw the rebuilt string away — using a
+// rewrite primitive purely for its iteration side-effect, plus a second
+// regex execution to recover the capture groups inside the callback.
+// FindAllStringSubmatch hands us both the iteration and the groups in one
+// pass, no allocation thrown away.
+func scanCalloutTagsForWarning(s string, w io.Writer) {
+	for _, m := range calloutOpenTagRe.FindAllStringSubmatch(s, -1) {
+		attrs := m[1]
+		// Skip tags that already carry an explicit background-color.
+		if calloutBackgroundColorAttrRe.MatchString(attrs) {
+			continue
+		}
+		parts := calloutTypeAttrRe.FindStringSubmatch(attrs)
+		if len(parts) < 3 {
+			continue // no type= attribute
+		}
+		// parts[1] is the double-quoted capture, parts[2] is single-quoted.
+		typeName := parts[1]
+		if typeName == "" {
+			typeName = parts[2]
+		}
+		colors, ok := calloutTypeColors[typeName]
+		if !ok {
+			continue // unknown type — no hint to give
+		}
+		fmt.Fprintf(w,
+			"hint: callout type=%q has no background-color; consider: background-color=%q border-color=%q\n",
+			typeName, colors[0], colors[1])
+	}
 }
 
 // calloutEmojiAliases maps named emoji strings that fetch-doc emits to actual

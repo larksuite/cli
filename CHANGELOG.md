@@ -2,6 +2,86 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.23] - 2026-04-30
+
+### Features
+
+- **drive**: Add `+pull` shortcut for one-way Drive → local mirror (#696)
+- **drive**: Add `+push` shortcut for one-way local → Drive mirror (#709)
+- **drive**: Add `+status` shortcut for content-hash diff (#692)
+- **drive**: Support `--file-name` for drive export (#685)
+- **base**: Add markdown output for record reads (#726)
+- **minutes**: Add media upload shortcut (#725)
+- **doc**: Warn when callout uses `type=` without `background-color` (#467)
+- **cmdutil**: Support `@file` for params and data (#724)
+- Add markdown shortcuts and skill docs (#704)
+
+### Documentation
+
+- **doc**: Guide lark-doc v2 usage (#710)
+- **minutes**: Clarify minutes file-to-notes routing (#732)
+
+## [v1.0.22] - 2026-04-29
+
+### Features
+
+- **task**: Add resource agent & `agent_task_step_info` (#693)
+- **task**: Support app task members by id (#712)
+- **contact**: Add `--queries` multi-name fanout to `+search-user` (#707)
+- **slides**: Add slide templates with template-first skill guidance (#684)
+- **mail**: Support calendar events in emails (#646)
+- **install**: Honor `npm_config_registry` for binary URL resolution with npmmirror fallback (#690)
+
+### Bug Fixes
+
+- **install**: Make Windows zip extraction resilient (#713)
+- **config/init**: Respect `--brand` flag in `--new` mode (#711)
+
+### Documentation
+
+- **base**: Clarify base search routing (#708)
+- **base**: Align base skills and view config contracts (#653)
+
+## [v1.0.21] - 2026-04-28
+
+### Features
+
+- **contact**: Add search filters and richer profile fields to `+search-user` (#648)
+- **common**: Backfill resource URL when create APIs omit it (#680)
+- **risk**: Add risk tiering for command sensitivity classification (#633)
+- **okr**: Add progress records support (#574)
+- **calendar**: Enhance event search and meeting room finding (#679)
+- **event**: Add event subscription & consume system (#654)
+- **drive**: Extend `+add-comment` to support slides targets (#674)
+- **slides**: Add font management for slides (#681)
+
+### Bug Fixes
+
+- **cmdutil**: Default flag completions to disabled (#688)
+- **e2e/wiki**: Pass `obj_type` when deleting wiki nodes in cleanup (#687)
+- **readme**: Fix readme statistics (#691)
+
+## [v1.0.20] - 2026-04-27
+
+### Features
+
+- **drive**: Add `+search` shortcut with flat filter flags (#658)
+- **mail**: Support sharing emails to IM chats via `+share-to-chat` (#637)
+- **calendar**: Add `+update` shortcut (#678)
+- **im**: Add `--at-chatter-ids` filter to `+messages-search` (#612)
+- **pagination**: Preserve pagination state on truncation and natural end (#659)
+- **lark-im**: Add `chat.members.bots` to skill docs (#616)
+
+### Bug Fixes
+
+- **strict-mode**: Reject explicit `--as` instead of silently overriding it (#673)
+- **whiteboard**: Manual disable edge case for svg compatibility (#661)
+
+### Documentation
+
+- **lark-drive**: Add missing import command examples (#669)
+- **readme**: Add Project (Meegle) to Features table (#660)
+
 ## [v1.0.19] - 2026-04-24
 
 ### Features
@@ -499,6 +579,10 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.23]: https://github.com/larksuite/cli/releases/tag/v1.0.23
+[v1.0.22]: https://github.com/larksuite/cli/releases/tag/v1.0.22
+[v1.0.21]: https://github.com/larksuite/cli/releases/tag/v1.0.21
+[v1.0.20]: https://github.com/larksuite/cli/releases/tag/v1.0.20
 [v1.0.19]: https://github.com/larksuite/cli/releases/tag/v1.0.19
 [v1.0.18]: https://github.com/larksuite/cli/releases/tag/v1.0.18
 [v1.0.17]: https://github.com/larksuite/cli/releases/tag/v1.0.17

@@ -119,8 +119,12 @@ var DriveImport = common.Shortcut{
 		if status.Token != "" {
 			out["token"] = status.Token
 		}
-		if status.URL != "" {
-			out["url"] = status.URL
+		if statusURL := strings.TrimSpace(status.URL); statusURL != "" {
+			out["url"] = statusURL
+		} else if status.Token != "" {
+			if u := common.BuildResourceURL(runtime.Config.Brand, normalizeDriveImportKindForURL(resultType, spec.DocType), status.Token); u != "" {
+				out["url"] = u
+			}
 		}
 		if status.JobErrorMsg != "" {
 			out["job_error_msg"] = status.JobErrorMsg
@@ -203,6 +207,20 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 			"extra":       extra,
 			"file":        "@" + spec.FilePath,
 		})
+}
+
+// normalizeDriveImportKindForURL maps the server's import "type" field to a
+// canonical kind BuildResourceURL recognizes. status.DocType comes straight
+// from the API and isn't normalized; if it ever returns aliases like "sheets"
+// or "sheet_v2" the URL construction would silently fall through. Fall back
+// to the user-supplied --type, which is already validated to docx/sheet/
+// bitable, so out.url stays populated whenever status.Token is set.
+func normalizeDriveImportKindForURL(serverType, fallback string) string {
+	switch strings.ToLower(strings.TrimSpace(serverType)) {
+	case "docx", "sheet", "bitable":
+		return strings.ToLower(strings.TrimSpace(serverType))
+	}
+	return fallback
 }
 
 // importTargetFileName returns the explicit import name when present, otherwise

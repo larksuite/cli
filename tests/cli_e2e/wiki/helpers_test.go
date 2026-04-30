@@ -29,14 +29,12 @@ func createWikiNode(t *testing.T, parentT *testing.T, ctx context.Context, space
 
 	nodeToken := node.Get("node_token").String()
 	require.NotEmpty(t, nodeToken, "stdout:\n%s", result.Stdout)
+	objType := node.Get("obj_type").String()
 	parentT.Cleanup(func() {
 		cleanupCtx, cancel := clie2e.CleanupContext()
 		defer cancel()
 
-		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
-			Args:      []string{"api", "delete", "/open-apis/wiki/v2/spaces/" + spaceID + "/nodes/" + nodeToken},
-			DefaultAs: "bot",
-		})
+		deleteResult, deleteErr := deleteWikiNode(cleanupCtx, spaceID, nodeToken, objType)
 		clie2e.ReportCleanupFailure(parentT, "delete wiki node "+nodeToken, deleteResult, deleteErr)
 	})
 
@@ -88,6 +86,18 @@ func listWikiSpaces(t *testing.T, ctx context.Context, pageSize int) gjson.Resul
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, 0)
 	return gjson.Parse(result.Stdout)
+}
+
+// deleteWikiNode removes a wiki space node. The DELETE endpoint requires
+// obj_type as a body field (validation error 99992402 if omitted), so
+// pass it via --data rather than --params even though DELETE bodies are
+// uncommon.
+func deleteWikiNode(ctx context.Context, spaceID, nodeToken, objType string) (*clie2e.Result, error) {
+	return clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"api", "delete", "/open-apis/wiki/v2/spaces/" + spaceID + "/nodes/" + nodeToken},
+		DefaultAs: "bot",
+		Data:      map[string]any{"obj_type": objType},
+	})
 }
 
 func findWikiNodeByToken(t *testing.T, ctx context.Context, spaceID string, nodeToken string) gjson.Result {

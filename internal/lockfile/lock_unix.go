@@ -14,7 +14,7 @@ import (
 func tryLockFile(f *os.File) error {
 	err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
-		return fmt.Errorf("lock already held by another process (lock: %s): %w", f.Name(), err)
+		return fmt.Errorf("%w (lock: %s, syscall: %v)", ErrHeld, f.Name(), err)
 	}
 	return nil
 }

@@ -5,6 +5,8 @@ package mail
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -13,6 +15,30 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
+
+// newRuntimeWithEventFlags creates a RuntimeContext with --from and calendar event flags.
+func newRuntimeWithEventFlags(from, summary, start, end, location string) *common.RuntimeContext {
+	cmd := &cobra.Command{Use: "test"}
+	for _, name := range []string{"from", "mailbox", "event-summary", "event-start", "event-end", "event-location"} {
+		cmd.Flags().String(name, "", "")
+	}
+	if from != "" {
+		_ = cmd.Flags().Set("from", from)
+	}
+	if summary != "" {
+		_ = cmd.Flags().Set("event-summary", summary)
+	}
+	if start != "" {
+		_ = cmd.Flags().Set("event-start", start)
+	}
+	if end != "" {
+		_ = cmd.Flags().Set("event-end", end)
+	}
+	if location != "" {
+		_ = cmd.Flags().Set("event-location", location)
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
 
 // newRuntimeWithFrom creates a minimal RuntimeContext with --from flag set.
 func newRuntimeWithFrom(from string) *common.RuntimeContext {
@@ -36,7 +62,7 @@ func TestBuildRawEMLForDraftCreate_ResolvesLocalImages(t *testing.T) {
 		Body:    `<p>Hello</p><p><img src="./test_image.png" /></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -62,7 +88,7 @@ func TestBuildRawEMLForDraftCreate_NoLocalImages(t *testing.T) {
 		Body:    `<p>Hello <b>world</b></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -98,7 +124,7 @@ func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 		Attach:  "./big.txt",
 	}
 
-	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected size limit error when auto-resolved image + attachment exceed 25MB")
 	}
@@ -119,7 +145,7 @@ func TestBuildRawEMLForDraftCreate_OrphanedInlineSpecError(t *testing.T) {
 		Inline:  `[{"cid":"orphan","file_path":"./unused.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for orphaned --inline CID not referenced in body")
 	}
@@ -140,7 +166,7 @@ func TestBuildRawEMLForDraftCreate_MissingCIDRefError(t *testing.T) {
 		Inline:  `[{"cid":"present","file_path":"./present.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for missing CID reference")
 	}
@@ -157,7 +183,7 @@ func TestBuildRawEMLForDraftCreate_WithPriority(t *testing.T) {
 		Body:    `<p>Hello</p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "1")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "1", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -175,7 +201,7 @@ func TestBuildRawEMLForDraftCreate_NoPriority(t *testing.T) {
 		Body:    `<p>Hello</p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -211,7 +237,7 @@ func TestBuildRawEMLForDraftCreate_RequestReceiptAddsHeader(t *testing.T) {
 	}
 
 	rawEML, err := buildRawEMLForDraftCreate(context.Background(),
-		newRuntimeWithFromAndRequestReceipt("sender@example.com", true), input, nil, "")
+		newRuntimeWithFromAndRequestReceipt("sender@example.com", true), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -234,7 +260,7 @@ func TestBuildRawEMLForDraftCreate_RequestReceiptOmittedByDefault(t *testing.T) 
 	}
 
 	rawEML, err := buildRawEMLForDraftCreate(context.Background(),
-		newRuntimeWithFromAndRequestReceipt("sender@example.com", false), input, nil, "")
+		newRuntimeWithFromAndRequestReceipt("sender@example.com", false), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -257,7 +283,7 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 		PlainText: true,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "")
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -266,6 +292,31 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 
 	if strings.Contains(eml, "cid:") {
 		t.Fatal("plain-text mode should not resolve local images")
+	}
+}
+
+func TestBuildRawEMLForDraftCreate_WithCalendarEvent(t *testing.T) {
+	rt := newRuntimeWithEventFlags("sender@example.com", "Team Sync", "2026-05-10T10:00+08:00", "2026-05-10T11:00+08:00", "Room 301")
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		To:      "alice@example.com",
+		Subject: "Team Sync",
+		Body:    "<p>Please join us</p>",
+	}
+
+	rawEML, err := buildRawEMLForDraftCreate(context.Background(), rt, input, nil, "", nil, "", "", nil, nil)
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+	if !strings.Contains(eml, "text/calendar") {
+		t.Errorf("expected text/calendar part in EML:\n%s", eml)
+	}
+	if !strings.Contains(eml, "method=REQUEST") {
+		t.Errorf("expected method=REQUEST in Content-Type:\n%s", eml)
+	}
+	if !strings.Contains(eml, "multipart/alternative") {
+		t.Errorf("expected calendar inside multipart/alternative:\n%s", eml)
 	}
 }
 
@@ -314,5 +365,58 @@ func TestMailDraftCreatePrettyOutputsReference(t *testing.T) {
 	}
 	if !strings.Contains(out, "reference: https://www.feishu.cn/mail?draftId=draft_001") {
 		t.Fatalf("expected reference in pretty output, got: %s", out)
+	}
+}
+
+func TestMailDraftCreate_WithCalendarEventFlags(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+
+	draftsStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "draft_cal_001"},
+		},
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/profile",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"primary_email_address": "me@example.com"},
+		},
+	})
+	reg.Register(draftsStub)
+
+	err := runMountedMailShortcut(t, MailDraftCreate, []string{
+		"+draft-create",
+		"--to", "alice@example.com",
+		"--subject", "Team Sync",
+		"--body", "<p>Please join us</p>",
+		"--event-summary", "Team Sync",
+		"--event-start", "2026-05-10T10:00+08:00",
+		"--event-end", "2026-05-10T11:00+08:00",
+		"--event-location", "Room 301",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("draft create with calendar failed: %v", err)
+	}
+
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(draftsStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal captured request body: %v", err)
+	}
+	raw, _ := reqBody["raw"].(string)
+	decoded, decErr := base64.URLEncoding.DecodeString(raw)
+	if decErr != nil {
+		t.Fatalf("base64url decode raw: %v", decErr)
+	}
+	eml := string(decoded)
+	if !strings.Contains(eml, "text/calendar") {
+		t.Errorf("expected text/calendar in EML:\n%s", eml)
+	}
+	if !strings.Contains(eml, "Team Sync") {
+		t.Errorf("expected event summary in ICS:\n%s", eml)
 	}
 }

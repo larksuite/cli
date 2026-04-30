@@ -1,0 +1,1853 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-04-28T07:58:48.848Z",
+  "template_count": 42,
+  "templates": [
+    {
+      "template_id": "office--light_general",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "浅色通用变体库",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": true,
+      "slide_count": 54,
+      "presentation_title": "白底通用模板",
+      "palette": "白底 #f4f5f6，蓝色点缀 #4e6efd，深灰文字 #1f2329",
+      "structure": null,
+      "page_types": "封面×2, 目录×4, 分节页, 内容×30, 数据卡片×2, 结尾",
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "任何需要浅色风格的场景，从中挑选合适的页面布局",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1-2"
+        },
+        {
+          "label": "目录",
+          "range": "3-6"
+        },
+        {
+          "label": "分节/过渡",
+          "range": "7-8"
+        },
+        {
+          "label": "内容/图文/时间线/数据",
+          "range": "9-53"
+        },
+        {
+          "label": "结尾",
+          "range": "54"
+        }
+      ]
+    },
+    {
+      "template_id": "office--dark_general",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "深色通用变体库",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": true,
+      "slide_count": 56,
+      "presentation_title": "黑底通用模板",
+      "palette": "深灰底 #1f2329，蓝色点缀 #4e6efd，白色文字",
+      "structure": null,
+      "page_types": "封面×2, 目录×4, 分节页, 内容×31, 数据卡片×2, 结尾",
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "任何需要深色风格的场景，渐变填充（蓝-青）、透明度叠加",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1-2"
+        },
+        {
+          "label": "目录",
+          "range": "3-6"
+        },
+        {
+          "label": "分节/过渡",
+          "range": "7-8"
+        },
+        {
+          "label": "内容/图文/时间线/数据",
+          "range": "9-54"
+        },
+        {
+          "label": "结尾",
+          "range": "55-56"
+        }
+      ]
+    },
+    {
+      "template_id": "office--work_report",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "工作汇报",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 13,
+      "presentation_title": "工作汇报",
+      "palette": "图片底图 + 半透明白色卡片（alpha=0.51），紫色 #7f3bf5/蓝色 #3370ff 点缀",
+      "structure": "封面 → 目录(4 Part) → 数据页 → 内容×9 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "image-backed",
+        "section-divider",
+        "two-column-text"
+      ],
+      "use_cases": "工作汇报、月报、项目进展。中英双语标题，4 宫格布局，圆角卡片",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "4-12"
+        },
+        {
+          "label": "结尾",
+          "range": "13"
+        }
+      ]
+    },
+    {
+      "template_id": "office--work_summary_report",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "工作总结报告",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "工作总结报告",
+      "palette": "深灰底 #2b2f36，深蓝 #3a6cea/靛蓝 #0e5efd 点缀",
+      "structure": "封面 → 目录 → [分节页 → 内容]×4 → 结尾（4 个清晰分节）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "hero-image-left-text-right",
+        "hero-text-left-image-right",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "年度/季度工作总结，分节清晰的正式汇报",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 6, 9, 12"
+        },
+        {
+          "label": "内容",
+          "range": "4-5, 7-8, 10-11, 13-15"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "office--work_summary",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "工作总结",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 20,
+      "presentation_title": "工作总结",
+      "palette": "暖黄 #fff6dc + 浅蓝 #ddeff7 交替，天蓝 #1393cf 点缀，金色 #f7c15f 强调",
+      "structure": "封面 → 目录 → 内容×7 → 数据×2 → 内容×8 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "text-focused"
+      ],
+      "use_cases": "轻松温暖风格的工作总结。shape 类型最丰富（饼图、三角、弧形等）",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-9, 12-19"
+        },
+        {
+          "label": "结尾",
+          "range": "20"
+        }
+      ]
+    },
+    {
+      "template_id": "office--quarterly_review",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "季度复盘",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 17,
+      "presentation_title": "季度复盘",
+      "palette": "海军蓝图片底图，钢蓝 #435671 文字，半透明白色叠加（alpha=0.6）",
+      "structure": "封面 → 目录 → 内容×2 → 数据×2 → 内容×10 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "image-backed",
+        "section-divider",
+        "two-column-text"
+      ],
+      "use_cases": "季度复盘、OKR 回顾，数据驱动型汇报",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-4, 7-16"
+        },
+        {
+          "label": "结尾",
+          "range": "17"
+        }
+      ]
+    },
+    {
+      "template_id": "office--dept_annual_report",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "部门年度汇报",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 17,
+      "presentation_title": "部门年度工作汇报",
+      "palette": "黑色底图 + 极光渐变（紫/青/蓝），青色 #64e8d6 → 蓝色 #73bbff 渐变点缀",
+      "structure": "封面 → 目录 → 内容×4 → 数据 → 内容×9 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "image-backed",
+        "two-column-text"
+      ],
+      "use_cases": "年度部门汇报，视觉冲击力强，多彩渐变风",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-6, 8-16"
+        },
+        {
+          "label": "结尾",
+          "range": "17"
+        }
+      ]
+    },
+    {
+      "template_id": "office--project_kickoff",
+      "category": "office",
+      "category_label": "办公通用",
+      "scene": "项目启动宣讲",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 18,
+      "presentation_title": "项目启动宣讲",
+      "palette": "蓝色渐变底 linear-gradient(#4b5cf5, #233afb)，紫色 #ad82f7 强调",
+      "structure": "封面 → 目录 → 内容×15 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "hero-image-left-text-right",
+        "hero-text-left-image-right",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "项目启动、产品发布、技术宣讲。大胆蓝紫渐变，卡片式布局",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-17"
+        },
+        {
+          "label": "结尾",
+          "range": "18"
+        }
+      ]
+    },
+    {
+      "template_id": "product--product_analysis",
+      "category": "product",
+      "category_label": "产品",
+      "scene": "产品分析报告",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 17,
+      "presentation_title": "产品分析报告",
+      "palette": "柔蓝渐变底图 #deebff → #ffffff，蓝色 #2e4ef6 → #2182f4 点缀，浅蓝卡片 #e2eaf9",
+      "structure": "封面 → 目录 → 内容 → 数据 → 内容×4 → 数据 → 内容×5 → SWOT → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "section-divider",
+        "two-column-text"
+      ],
+      "use_cases": "产品分析、竞品分析。包含 SWOT 分析页，数据图表页",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3, 5-8, 10-16"
+        },
+        {
+          "label": "结尾",
+          "range": "17"
+        }
+      ]
+    },
+    {
+      "template_id": "product--product_intro",
+      "category": "product",
+      "category_label": "产品",
+      "scene": "产品介绍",
+      "tone": "colorful",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 18,
+      "presentation_title": "产品介绍",
+      "palette": "多彩渐变（每个分节不同色系：青蓝、橙红、紫、蓝靛）",
+      "structure": "封面 → 目录 → [分节页 → 内容]×4 → 结尾（含对比页、时间线页）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "image-backed",
+        "two-column-text"
+      ],
+      "use_cases": "产品发布、产品介绍。视觉最丰富，每节独立配色",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 7, 11, 15"
+        },
+        {
+          "label": "内容",
+          "range": "4-6, 8-10, 12-14, 16-17"
+        },
+        {
+          "label": "结尾",
+          "range": "18"
+        }
+      ]
+    },
+    {
+      "template_id": "product--market_analysis",
+      "category": "product",
+      "category_label": "产品",
+      "scene": "市场分析报告",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 11,
+      "presentation_title": "市场分析报告",
+      "palette": "黑底，蓝紫渐变 #0d47db → #7d00fa 点缀",
+      "structure": "封面 → 目录 → 分节 → 数据 → 内容×2 → 分节 → 内容×3 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "市场分析、行业报告。精简紧凑（11 页），蓝紫科技感",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 7"
+        },
+        {
+          "label": "内容",
+          "range": "5-6, 8-10"
+        },
+        {
+          "label": "结尾",
+          "range": "11"
+        }
+      ]
+    },
+    {
+      "template_id": "product--business_case_analysis",
+      "category": "product",
+      "category_label": "产品",
+      "scene": "商业案例分析",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 18,
+      "presentation_title": "商业案例分析",
+      "palette": "深灰图片底图，金属银渐变 #9c9c9e → #c0c5d3 点缀",
+      "structure": "封面 → 内容 → [分节页 → 内容]×4 → 结尾（4 个清晰分节）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "section-divider",
+        "two-column-text"
+      ],
+      "use_cases": "商业案例、行业案例拆解。金属质感，分节明确",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": ""
+        },
+        {
+          "label": "分节",
+          "range": "3, 7, 11, 15"
+        },
+        {
+          "label": "内容",
+          "range": "2, 4-6, 8-10, 12-14, 16-17"
+        },
+        {
+          "label": "结尾",
+          "range": "18"
+        }
+      ]
+    },
+    {
+      "template_id": "product--product_promotion",
+      "category": "product",
+      "category_label": "产品",
+      "scene": "产品推广方案",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 13,
+      "presentation_title": "产品推广方案-裂图重新上传",
+      "palette": "深灰 #2b2f36 + 白色交替，极简黑白",
+      "structure": "封面 → 目录 → 内容×6 → 分节 → 内容×3 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "推广方案、营销策略。极简风，黑白对比",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "9"
+        },
+        {
+          "label": "内容",
+          "range": "3-8, 10-12"
+        },
+        {
+          "label": "结尾",
+          "range": "13"
+        }
+      ]
+    },
+    {
+      "template_id": "product--product_promotion_2",
+      "category": "product",
+      "category_label": "产品",
+      "scene": "产品推广方案二",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 13,
+      "presentation_title": "产品推广方案-裂图重新上传",
+      "palette": "白底，深灰 #2b2f36 强调，图片裁切与几何色块组合",
+      "structure": "封面 → 目录 → 内容×6 → 分节 → 内容×3 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "产品推广、数字营销方案。比 product_promotion.xml 更偏浅色商务和图文展示",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "9"
+        },
+        {
+          "label": "内容",
+          "range": "3-8, 10-12"
+        },
+        {
+          "label": "结尾",
+          "range": "13"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--business_plan",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "商业计划书",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 18,
+      "presentation_title": "商业计划书",
+      "palette": "白底，蓝青渐变封面 #0b3be5 → #25d8ff，鲜蓝 #194cff 点缀，含甜甜圈图表",
+      "structure": "封面 → 目录 → 内容×12 → 时间线 → 内容×2 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "商业计划书、创业路演。含时间线页、图表页",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-14, 16-17"
+        },
+        {
+          "label": "结尾",
+          "range": "18"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--roadshow_business_plan",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "企业路演商业计划书",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 20,
+      "presentation_title": "企业路演商业计划书",
+      "palette": "白底，绿色 #20b14e 点缀（增长/商业感）",
+      "structure": "封面 → 目录 → [分节页 → 内容]×5 → 结尾（含时间线、流程图）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "融资路演、企业路演。绿色增长主题，含 chevron 流程图形",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 6, 9, 12, 15"
+        },
+        {
+          "label": "内容",
+          "range": "4-5, 7-8, 10-11, 13-14, 16-19"
+        },
+        {
+          "label": "结尾",
+          "range": "20"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--brand_communication",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "品牌传播方案",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 17,
+      "presentation_title": "品牌传播方案",
+      "palette": "黑色图片底图，青绿渐变 #59c2ff → #a1ffc8 点缀，半透明白色卡片",
+      "structure": "封面 → 目录 → 内容×8 → 数据 → 内容×5 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "品牌传播、公关方案。青绿科技感 + 暗色背景",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-10, 12-16"
+        },
+        {
+          "label": "结尾",
+          "range": "17"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--marketing_strategy",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "市场营销策略",
+      "tone": "dark",
+      "formality": "creative",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "市场营销策略",
+      "palette": "纯黑底 #0b0b0b，红橙霓虹渐变 #ff0000 → #fa6627，紫蓝 #bc50ff → #2f2bfd",
+      "structure": "封面 → 目录 → 内容×13 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "image-backed",
+        "section-divider",
+        "two-column-text"
+      ],
+      "use_cases": "营销策略、品牌推广。最具视觉冲击力，霓虹风格",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-15"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--marketing_plan",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "营销策划方案",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 15,
+      "presentation_title": "营销策划方案-裂图重新上传",
+      "palette": "近黑底 #18181a，亮黄 #ffdb1d 强调，灰色 #93969c 文字",
+      "structure": "封面 → 目录 → 内容×10 → 数据 → 内容 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "营销策划、推广计划。黄+黑高对比，醒目",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-12, 14"
+        },
+        {
+          "label": "结尾",
+          "range": "15"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--product_whitepaper",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "产品白皮书",
+      "tone": "colorful",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 21,
+      "presentation_title": "产品白皮书",
+      "palette": "图片底图，暖橙粉渐变 #ffaeac → #ffe6c8，珊瑚 #ff7d34 → #ff3ebd",
+      "structure": "封面 → 目录 → 内容×18 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "hero-text-left-image-right",
+        "image-backed",
+        "section-divider",
+        "two-column-text"
+      ],
+      "use_cases": "产品白皮书、技术白皮书、深度报告。页数最多（21 页），暖色调",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-20"
+        },
+        {
+          "label": "结尾",
+          "range": "21"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--brand_operations_plan",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "品牌运营计划",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 18,
+      "presentation_title": "品牌运营计划-裂图重新上传",
+      "palette": "浅灰底 #eff2f6，中蓝 #3c6fe5 点缀",
+      "structure": "封面 → 目录 → [分节页 → 内容]×5 → 结尾（5 个分节，结构最清晰）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "品牌运营、年度运营计划。蓝灰企业风，分节最规范",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 6, 9, 12, 15"
+        },
+        {
+          "label": "内容",
+          "range": "4-5, 7-8, 10-11, 13-14, 16-17"
+        },
+        {
+          "label": "结尾",
+          "range": "18"
+        }
+      ]
+    },
+    {
+      "template_id": "marketing--brand_logo_design",
+      "category": "marketing",
+      "category_label": "市场营销",
+      "scene": "品牌标志设计",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "品牌标志设计",
+      "palette": "近白底 #fbfbfb，亮蓝 #1c66f6 点缀，浅蓝卡片 #c6e7ff",
+      "structure": "封面 → 目录 → 内容×7 → 数据 → 内容×4 → 数据 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "full-bleed-image-caption",
+        "image-backed",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "品牌设计、VI 设计提案。清爽蓝白，专业设计感",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-9, 11-14"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "operations--marketing_plan",
+      "category": "operations",
+      "category_label": "运营",
+      "scene": "营销策划方案",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 15,
+      "presentation_title": "营销策划方案-裂图重新上传",
+      "palette": "近黑底 #18181a，亮黄 #ffdb1d 强调，灰色 #93969c 文字",
+      "structure": "封面 → 目录 → 内容×10 → 数据 → 内容 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "运营策划、营销活动方案。黄+黑高对比，醒目",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-12, 14"
+        },
+        {
+          "label": "结尾",
+          "range": "15"
+        }
+      ]
+    },
+    {
+      "template_id": "operations--product_promotion",
+      "category": "operations",
+      "category_label": "运营",
+      "scene": "产品推广方案",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 13,
+      "presentation_title": "产品推广方案-裂图重新上传",
+      "palette": "白底，深灰 #2b2f36 强调，图片裁切与几何色块组合",
+      "structure": "封面 → 目录 → 内容×6 → 分节 → 内容×3 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "产品推广、运营增长方案。适合图文展示和分阶段推广计划",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "9"
+        },
+        {
+          "label": "内容",
+          "range": "3-8, 10-12"
+        },
+        {
+          "label": "结尾",
+          "range": "13"
+        }
+      ]
+    },
+    {
+      "template_id": "operations--brand_operations_plan",
+      "category": "operations",
+      "category_label": "运营",
+      "scene": "品牌运营计划",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 18,
+      "presentation_title": "品牌运营计划-裂图重新上传",
+      "palette": "浅灰底 #eff2f6，中蓝 #3c6fe5 点缀",
+      "structure": "封面 → 目录 → [分节页 → 内容]×5 → 结尾（5 个分节，结构最清晰）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "品牌运营、年度运营计划。蓝灰企业风，分节规范",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 6, 9, 12, 15"
+        },
+        {
+          "label": "内容",
+          "range": "4-5, 7-8, 10-11, 13-14, 16-17"
+        },
+        {
+          "label": "结尾",
+          "range": "18"
+        }
+      ]
+    },
+    {
+      "template_id": "operations--brand_logo_design",
+      "category": "operations",
+      "category_label": "运营",
+      "scene": "品牌标志设计",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "品牌标志设计",
+      "palette": "近白底 #fbfbfb，亮蓝 #1c66f6 点缀，浅蓝卡片 #c6e7ff",
+      "structure": "封面 → 目录 → 内容×7 → 数据 → 内容×4 → 数据 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "full-bleed-image-caption",
+        "image-backed",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "品牌设计、运营视觉提案。清爽蓝白，专业设计感",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-9, 11-14"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "hr--employee_training",
+      "category": "hr",
+      "category_label": "人力资源",
+      "scene": "员工培训",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 14,
+      "presentation_title": "员工培训",
+      "palette": "近黑底 rgba(13,20,32)，图片分节页交替，单色简洁",
+      "structure": "封面 → 目录 → [分节页(01-05) → 内容]×5 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "员工培训、规章制度宣讲。暗色严肃风，5 个章节分节页",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 5, 7, 9, 11"
+        },
+        {
+          "label": "内容",
+          "range": "4, 6, 8, 10, 12-13"
+        },
+        {
+          "label": "结尾",
+          "range": "14"
+        }
+      ]
+    },
+    {
+      "template_id": "hr--employee_training_workshop",
+      "category": "hr",
+      "category_label": "人力资源",
+      "scene": "员工培训训练",
+      "tone": "colorful",
+      "formality": "casual",
+      "is_general_template": false,
+      "slide_count": 19,
+      "presentation_title": "员工培训训练",
+      "palette": "暖米底 rgba(247,245,240) + 深灰 rgba(60,60,60) 交替，5 种彩色点缀（钢蓝、青绿、橄榄金、鲑鱼粉）",
+      "structure": "封面 → 目录 → [深色标题卡 → 浅色内容]×7 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "two-column-text"
+      ],
+      "use_cases": "培训工作坊、技能培训。温暖多彩，轻松氛围",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 5, 7, 9, 11, 13, 15"
+        },
+        {
+          "label": "内容",
+          "range": "4, 6, 8, 10, 12, 14, 16-18"
+        },
+        {
+          "label": "结尾",
+          "range": "19"
+        }
+      ]
+    },
+    {
+      "template_id": "hr--onboarding",
+      "category": "hr",
+      "category_label": "人力资源",
+      "scene": "新人入职培训",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 15,
+      "presentation_title": "新人入职培训",
+      "palette": "深炭灰底 rgba(43,47,54)，亮紫 rgba(75,63,221) 点缀，浅灰卡片 rgba(243,244,246)",
+      "structure": "封面 → 目录 → [分节页(01-05) → 内容]×5 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "新人入职、公司介绍。紫色 CTA 按钮，包含公司概况/愿景/价值观/流程/制度等章节",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 5, 7, 9, 11"
+        },
+        {
+          "label": "内容",
+          "range": "4, 6, 8, 10, 12-14"
+        },
+        {
+          "label": "结尾",
+          "range": "15"
+        }
+      ]
+    },
+    {
+      "template_id": "administration--all_hands_meeting",
+      "category": "administration",
+      "category_label": "行政",
+      "scene": "全员大会",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 18,
+      "presentation_title": "全员大会",
+      "palette": "蓝紫渐变图片底图，毛玻璃白色卡片（alpha=0.7），薰衣草 rgba(155,177,255) 点缀",
+      "structure": "封面 → 目录 → [分节页 → 内容]×4 → 结尾（含图表页）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "image-backed",
+        "two-column-text"
+      ],
+      "use_cases": "全员大会、季度会议、公司大会。毛玻璃风格，蓝紫渐变，含 chart 图表",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 7, 11, 15"
+        },
+        {
+          "label": "内容",
+          "range": "4-6, 8-10, 12-14, 16-17"
+        },
+        {
+          "label": "结尾",
+          "range": "18"
+        }
+      ]
+    },
+    {
+      "template_id": "administration--company_intro",
+      "category": "administration",
+      "category_label": "行政",
+      "scene": "企业介绍",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "企业介绍",
+      "palette": "白底极简，金黄 rgba(255,196,25) 点缀，深灰 rgba(31,35,41) 文字",
+      "structure": "封面 → 目录 → 内容×12 → 数据(chart) → 结尾（含图表页）",
+      "page_types": null,
+      "layout_tags": [
+        "full-bleed-image-caption",
+        "image-backed",
+        "text-focused"
+      ],
+      "use_cases": "企业介绍、公司宣传。极简白底，中英双语，含行业前景图表",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-14"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "administration--corporate_culture",
+      "category": "administration",
+      "category_label": "行政",
+      "scene": "企业文化宣传",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 17,
+      "presentation_title": "企业文化宣传",
+      "palette": "深炭灰底 rgba(31,35,41)，橙红 rgba(255,104,68) 强调，浅灰 rgba(246,246,246) 内容区",
+      "structure": "封面 → 前言 → 目录 → [分节页 → 内容]×4 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "企业文化、公司愿景宣传。含前言页、组织架构页，橙红活力色",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "3"
+        },
+        {
+          "label": "分节",
+          "range": "4, 7, 10, 13"
+        },
+        {
+          "label": "内容",
+          "range": "2, 5-6, 8-9, 11-12, 14-16"
+        },
+        {
+          "label": "结尾",
+          "range": "17"
+        }
+      ]
+    },
+    {
+      "template_id": "administration--annual_gala",
+      "category": "administration",
+      "category_label": "行政",
+      "scene": "年度盛典",
+      "tone": "dark",
+      "formality": "creative",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "企业年会",
+      "palette": "近黑底 rgba(16,15,21)，紫蓝青多色渐变 rgba(210,132,232) → rgba(69,96,245) 霓虹风",
+      "structure": "封面 → 目录 → [分节页 → 内容]×6 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "年会、庆典、颁奖典礼。多彩霓虹渐变，节日庆典感，含 LOGO 占位",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 5, 7, 9, 11, 13"
+        },
+        {
+          "label": "内容",
+          "range": "4, 6, 8, 10, 12, 14-15"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "personal--experience_sharing",
+      "category": "personal",
+      "category_label": "个人",
+      "scene": "经验分享",
+      "tone": "light",
+      "formality": "casual",
+      "is_general_template": false,
+      "slide_count": 20,
+      "presentation_title": "经验分享",
+      "palette": "图片底图，亮蓝 rgba(52,113,252) 点缀，毛玻璃白色卡片（alpha=0.7）",
+      "structure": "封面 → 目录 → 内容×17 → 结尾（含 table 表格页、前后对比布局）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "image-backed",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "经验分享、项目复盘分享。含步骤流程页、数据指标展示、表格",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-19"
+        },
+        {
+          "label": "结尾",
+          "range": "20"
+        }
+      ]
+    },
+    {
+      "template_id": "personal--teaching_sharing",
+      "category": "personal",
+      "category_label": "个人",
+      "scene": "分享教学",
+      "tone": "colorful",
+      "formality": "casual",
+      "is_general_template": false,
+      "slide_count": 20,
+      "presentation_title": "分享教学",
+      "palette": "插画风图片底图，蓝紫 rgba(128,145,239) + 暖橙 rgba(242,170,104) 双色调",
+      "structure": "封面 → 目录 → 内容×17 → 结尾（含 Demo 案例、痛点分析、推荐书单）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "hero-text-left-image-right",
+        "image-backed",
+        "two-column-text"
+      ],
+      "use_cases": "教学分享、技术分享、读书会。温暖蓝橙配色，含 chevron 流程图",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-19"
+        },
+        {
+          "label": "结尾",
+          "range": "20"
+        }
+      ]
+    },
+    {
+      "template_id": "personal--personal_resume",
+      "category": "personal",
+      "category_label": "个人",
+      "scene": "个人简历",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "个人简历",
+      "palette": "深炭灰图片底图，暖橙 rgba(253,151,51) + 霓虹绿 rgba(76,241,29) 渐变点缀",
+      "structure": "封面(含联系方式) → 目录 → [分节页 → 内容]×4 → 结尾",
+      "page_types": null,
+      "layout_tags": [
+        "full-bleed-image-caption",
+        "image-backed"
+      ],
+      "use_cases": "个人简历、求职展示。橙绿双色点缀，含个人信息字段",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": "3, 6, 9, 12"
+        },
+        {
+          "label": "内容",
+          "range": "4-5, 7-8, 10-11, 13-15"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "personal--promotion_report",
+      "category": "personal",
+      "category_label": "个人",
+      "scene": "职位晋升汇报",
+      "tone": "dark",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 15,
+      "presentation_title": "职位晋升汇报",
+      "palette": "纯黑底 rgba(3,3,1)，薰衣草渐变 rgba(216,216,255) → rgba(171,194,255) 点缀，白色文字",
+      "structure": "封面 → 目录 → 内容×12 → 结尾（中英双语标题）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "hero-image-left-text-right",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "晋升汇报、述职报告。暗色稳重 + 薰衣草柔和点缀",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-14"
+        },
+        {
+          "label": "结尾",
+          "range": "15"
+        }
+      ]
+    },
+    {
+      "template_id": "personal--promotion_defense",
+      "category": "personal",
+      "category_label": "个人",
+      "scene": "晋级答辩",
+      "tone": "light",
+      "formality": "formal",
+      "is_general_template": false,
+      "slide_count": 11,
+      "presentation_title": "晋级答辩",
+      "palette": "白底，亮紫 rgba(74,58,255) 点缀",
+      "structure": "封面 → 目录 → 内容×8 → 结尾（紧凑无分节页）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "晋级答辩、技术答辩。最精简（11 页），紫色点缀，中英双语",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-10"
+        },
+        {
+          "label": "结尾",
+          "range": "11"
+        }
+      ]
+    },
+    {
+      "template_id": "personal--self_intro",
+      "category": "personal",
+      "category_label": "个人",
+      "scene": "个人介绍",
+      "tone": "colorful",
+      "formality": "casual",
+      "is_general_template": false,
+      "slide_count": 11,
+      "presentation_title": "个人介绍-裂图重新上传",
+      "palette": "暖白底 rgba(248,247,246)，5 种彩色（红 #d83931、青 #17b69c、橙 #ec914e、黄 #fad355、蓝 #3347ff）",
+      "structure": "封面 → 内容×9 → 结尾（含表格、甜甜圈图表、饼图）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "hero-text-left-image-right",
+        "section-divider",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "个人介绍、设计师作品集。shape 类型最丰富，图表元素多",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": ""
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "2-10"
+        },
+        {
+          "label": "结尾",
+          "range": "11"
+        }
+      ]
+    },
+    {
+      "template_id": "misc--book_sharing",
+      "category": "misc",
+      "category_label": "其他",
+      "scene": "读书分享",
+      "tone": "light",
+      "formality": "casual",
+      "is_general_template": false,
+      "slide_count": 16,
+      "presentation_title": "读书分享",
+      "palette": "白底 + 深橄榄绿侧边栏 rgba(43,54,44)，棕褐 rgba(128,66,8) 点缀",
+      "structure": "封面 → 内容×14 → 结尾（中文传统编号：壹贰叁肆）",
+      "page_types": null,
+      "layout_tags": [
+        "full-bleed-image-caption",
+        "hero-image-left-text-right",
+        "text-focused"
+      ],
+      "use_cases": "读书分享、文学赏析。文艺复古风，装饰性诗句分隔，中国传统美学",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": ""
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "2-15"
+        },
+        {
+          "label": "结尾",
+          "range": "16"
+        }
+      ]
+    },
+    {
+      "template_id": "misc--club_event_plan",
+      "category": "misc",
+      "category_label": "其他",
+      "scene": "社团活动策划",
+      "tone": "dark",
+      "formality": "casual",
+      "is_general_template": false,
+      "slide_count": 15,
+      "presentation_title": "社团活动策划方案",
+      "palette": "纯黑底，红色 rgba(216,57,49) + 金色 rgba(219,168,0) 双色强调",
+      "structure": "封面 → 目录 → 内容×12 → 结尾（含预算页、应急方案页）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "hero-text-left-image-right",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "活动策划、社团方案。黑红金配色，含预算/应急等实用页面",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-14"
+        },
+        {
+          "label": "结尾",
+          "range": "15"
+        }
+      ]
+    },
+    {
+      "template_id": "misc--student_career_plan",
+      "category": "misc",
+      "category_label": "其他",
+      "scene": "学生职业规划",
+      "tone": "colorful",
+      "formality": "casual",
+      "is_general_template": false,
+      "slide_count": 15,
+      "presentation_title": "学生职业生涯规划",
+      "palette": "深靛蓝底 rgba(21,20,87)，霓虹多彩（品红、青、黄、粉、热粉）",
+      "structure": "封面 → 目录 → 内容×12 → 结尾（含 SWOT 分析、短/中/长期目标时间线）",
+      "page_types": null,
+      "layout_tags": [
+        "2x2-metric-cards",
+        "full-bleed-image-caption",
+        "hero-text-left-image-right",
+        "text-focused",
+        "two-column-text"
+      ],
+      "use_cases": "职业规划、学生汇报。最鲜艳多彩，霓虹风格，含 SWOT 和时间线",
+      "ranges": [
+        {
+          "label": "封面",
+          "range": "1"
+        },
+        {
+          "label": "目录",
+          "range": "2"
+        },
+        {
+          "label": "分节",
+          "range": ""
+        },
+        {
+          "label": "内容",
+          "range": "3-14"
+        },
+        {
+          "label": "结尾",
+          "range": "15"
+        }
+      ]
+    }
+  ]
+}

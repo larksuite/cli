@@ -146,6 +146,14 @@ var DriveUpload = common.Shortcut{
 			"file_name":  fileName,
 			"size":       fileSize,
 		}
+		// wiki-hosted files have no standalone /file/<token> URL — only the
+		// wiki node URL, which the upload response doesn't carry. Skip the
+		// fallback for parent_type=wiki rather than emit a link that 404s.
+		if target.ParentType == driveUploadParentTypeExplorer {
+			if u := common.BuildResourceURL(runtime.Config.Brand, "file", fileToken); u != "" {
+				out["url"] = u
+			}
+		}
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, fileToken, "file"); grant != nil {
 			out["permission_grant"] = grant
 		}

@@ -5,7 +5,6 @@ package common
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -60,13 +59,12 @@ func TestResolveInputFlags_Stdin(t *testing.T) {
 
 func TestResolveInputFlags_File(t *testing.T) {
 	dir := t.TempDir()
-	orig, _ := os.Getwd()
-	os.Chdir(dir)
-	t.Cleanup(func() { os.Chdir(orig) })
+	cmdutil.TestChdir(t, dir)
 
 	content := "## Hello\n\nThis is **markdown** from a file.\n"
-	fpath := filepath.Join(dir, "test.md")
-	os.WriteFile(fpath, []byte(content), 0644)
+	if err := os.WriteFile("test.md", []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	rctx := newTestRuntimeWithStdin(map[string]string{"markdown": "@test.md"}, "")
 	flags := []Flag{{Name: "markdown", Input: []string{File, Stdin}}}
@@ -76,6 +74,25 @@ func TestResolveInputFlags_File(t *testing.T) {
 	}
 	if got := rctx.Str("markdown"); got != content {
 		t.Errorf("expected %q, got %q", content, got)
+	}
+}
+
+func TestResolveInputFlags_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
+	if err := os.WriteFile("empty.md", nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	rctx := newTestRuntimeWithStdin(map[string]string{"markdown": "@empty.md"}, "")
+	flags := []Flag{{Name: "markdown", Input: []string{File, Stdin}}}
+
+	if err := resolveInputFlags(rctx, flags); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := rctx.Str("markdown"); got != "" {
+		t.Errorf("expected empty string, got %q", got)
 	}
 }
 
@@ -132,9 +149,7 @@ func TestResolveInputFlags_FileNotSupported(t *testing.T) {
 
 func TestResolveInputFlags_FileNotFound(t *testing.T) {
 	dir := t.TempDir()
-	orig, _ := os.Getwd()
-	os.Chdir(dir)
-	t.Cleanup(func() { os.Chdir(orig) })
+	cmdutil.TestChdir(t, dir)
 
 	rctx := newTestRuntimeWithStdin(map[string]string{"markdown": "@nonexistent.md"}, "")
 	flags := []Flag{{Name: "markdown", Input: []string{File, Stdin}}}
@@ -156,7 +171,7 @@ func TestResolveInputFlags_EmptyFilePath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty file path")
 	}
-	if !strings.Contains(err.Error(), "file path cannot be empty") {
+	if !strings.Contains(err.Error(), "file path cannot be empty after @") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

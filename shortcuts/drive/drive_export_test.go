@@ -130,6 +130,155 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 	}
 }
 
+func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docs/v1/content",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"content": "# custom\n",
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "markdown",
+		"--file-name", "custom-notes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "custom-notes.md"))
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "# custom\n" {
+		t.Fatalf("markdown content = %q", string(data))
+	}
+	if !strings.Contains(stdout.String(), `"file_name": "custom-notes.md"`) {
+		t.Fatalf("stdout missing provided file name: %s", stdout.String())
+	}
+}
+
+func TestDriveExportDryRunIncludesLocalFileNameMetadata(t *testing.T) {
+	tests := []struct {
+		name         string
+		wantURL      string
+		wantFileName string
+		args         []string
+	}{
+		{
+			name:         "markdown",
+			wantURL:      "/open-apis/docs/v1/content",
+			wantFileName: `"file_name": "notes.md"`,
+			args: []string{
+				"+export",
+				"--token", "docx123",
+				"--doc-type", "docx",
+				"--file-extension", "markdown",
+				"--file-name", "notes",
+				"--output-dir", "./exports",
+				"--dry-run",
+				"--as", "bot",
+			},
+		},
+		{
+			name:         "async export",
+			wantURL:      "/open-apis/drive/v1/export_tasks",
+			wantFileName: `"file_name": "report.pdf"`,
+			args: []string{
+				"+export",
+				"--token", "docx123",
+				"--doc-type", "docx",
+				"--file-extension", "pdf",
+				"--file-name", "report",
+				"--output-dir", "./exports",
+				"--dry-run",
+				"--as", "bot",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+			err := mountAndRunDrive(t, DriveExport, tt.args, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			out := stdout.String()
+			if !strings.Contains(out, tt.wantURL) {
+				t.Fatalf("stdout missing URL %q: %s", tt.wantURL, out)
+			}
+			if !strings.Contains(out, tt.wantFileName) {
+				t.Fatalf("stdout missing file_name metadata %q: %s", tt.wantFileName, out)
+			}
+			if !strings.Contains(out, `"output_dir": "./exports"`) {
+				t.Fatalf("stdout missing output_dir metadata: %s", out)
+			}
+		})
+	}
+}
+
+func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docs/v1/content",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"content": "# fallback\n",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Status: 500,
+		Body: map[string]interface{}{
+			"code": 999,
+			"msg":  "metadata unavailable",
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "markdown",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "docx123.md"))
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "# fallback\n" {
+		t.Fatalf("markdown content = %q", string(data))
+	}
+	if !strings.Contains(stdout.String(), `"file_name": "docx123.md"`) {
+		t.Fatalf("stdout missing fallback file name: %s", stdout.String())
+	}
+}
+
 func TestDriveExportAsyncSuccess(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -197,6 +346,77 @@ func TestDriveExportAsyncSuccess(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"ticket": "tk_123"`) {
 		t.Fatalf("stdout missing ticket: %s", stdout.String())
+	}
+}
+
+func TestDriveExportAsyncUsesProvidedFileName(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_custom"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_custom",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"job_status":     0,
+					"file_token":     "box_custom",
+					"file_name":      "server-name",
+					"file_extension": "pdf",
+					"type":           "docx",
+					"file_size":      3,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_custom/download",
+		Status:  200,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="server-name.pdf"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--file-name", "custom-report",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "custom-report.pdf"))
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "pdf" {
+		t.Fatalf("downloaded content = %q", string(data))
+	}
+	if !strings.Contains(stdout.String(), `"file_name": "custom-report.pdf"`) {
+		t.Fatalf("stdout missing provided file name: %s", stdout.String())
 	}
 }
 
@@ -422,6 +642,51 @@ func TestDriveExportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(tmpDir, "report.pdf")); !os.IsNotExist(err) {
 		t.Fatalf("unexpected downloaded file, err=%v", err)
+	}
+}
+
+func TestDriveExportTimeoutPreservesProvidedFileName(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_name"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_name",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"job_status": 2,
+				},
+			},
+		},
+	})
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--file-name", "quarterly-report",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"file_name": "quarterly-report.pdf"`) {
+		t.Fatalf("stdout missing preserved file name: %s", stdout.String())
 	}
 }
 

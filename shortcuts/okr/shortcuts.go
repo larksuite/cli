@@ -12,5 +12,11 @@ func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		OKRListCycles,
 		OKRCycleDetail,
+		OKRListProgress,
+		OKRGetProgressRecord,
+		OKRCreateProgressRecord,
+		OKRUpdateProgressRecord,
+		OKRDeleteProgressRecord,
+		OKRUploadImage,
 	}
 }

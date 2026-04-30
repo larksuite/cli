@@ -4,6 +4,9 @@
 package mail
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/httpmock"
@@ -211,5 +214,57 @@ func TestMailSendSaveDraftOutputsReference(t *testing.T) {
 	}
 	if data["reference"] != "https://www.feishu.cn/mail?draftId=draft_001" {
 		t.Fatalf("reference = %v", data["reference"])
+	}
+}
+
+func TestMailSend_WithCalendarEventEmbedded(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+
+	draftsStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "draft_cal_001"},
+		},
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/profile",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"primary_email_address": "me@example.com"},
+		},
+	})
+	reg.Register(draftsStub)
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--to", "alice@example.com",
+		"--subject", "Team Sync",
+		"--body", "<p>Please join us</p>",
+		"--event-summary", "Team Sync",
+		"--event-start", "2026-05-10T10:00+08:00",
+		"--event-end", "2026-05-10T11:00+08:00",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("mail send with calendar failed: %v", err)
+	}
+
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(draftsStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+	raw, _ := reqBody["raw"].(string)
+	decoded, decErr := base64.URLEncoding.DecodeString(raw)
+	if decErr != nil {
+		t.Fatalf("base64url decode: %v", decErr)
+	}
+	eml := string(decoded)
+	if !strings.Contains(eml, "text/calendar") {
+		t.Errorf("expected text/calendar in EML:\n%s", eml)
+	}
+	if !strings.Contains(eml, "method=REQUEST") {
+		t.Errorf("expected method=REQUEST in Content-Type:\n%s", eml)
 	}
 }

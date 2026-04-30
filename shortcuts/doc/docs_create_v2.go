@@ -51,6 +51,7 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	}
 
 	augmentDocsCreatePermission(runtime, data)
+	fallbackDocsCreateURLV2(runtime, data)
 	runtime.OutRaw(data, nil)
 	return nil
 }
@@ -82,5 +83,25 @@ func augmentDocsCreatePermission(runtime *common.RuntimeContext, data map[string
 	}
 	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, docID, "docx"); grant != nil {
 		data["permission_grant"] = grant
+	}
+}
+
+// fallbackDocsCreateURLV2 fills data.document.url with a brand-standard URL
+// when the OpenAPI response did not include one. Backfills only when missing,
+// so any tenant-specific URL the backend returned is preserved.
+func fallbackDocsCreateURLV2(runtime *common.RuntimeContext, data map[string]interface{}) {
+	doc, _ := data["document"].(map[string]interface{})
+	if doc == nil {
+		return
+	}
+	if strings.TrimSpace(common.GetString(doc, "url")) != "" {
+		return
+	}
+	docID := strings.TrimSpace(common.GetString(doc, "document_id"))
+	if docID == "" {
+		return
+	}
+	if u := common.BuildResourceURL(runtime.Config.Brand, "docx", docID); u != "" {
+		doc["url"] = u
 	}
 }

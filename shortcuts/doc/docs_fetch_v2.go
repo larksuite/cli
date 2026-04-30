@@ -22,7 +22,7 @@ func v2FetchFlags() []common.Flag {
 		{Name: "scope", Desc: "partial read scope: outline | range | keyword | section (omit to read whole doc)", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
 		{Name: "start-block-id", Desc: "range/section mode: start (anchor) block id"},
 		{Name: "end-block-id", Desc: "range mode: end block id; \"-1\" = to end of document"},
-		{Name: "keyword", Desc: "keyword mode: search string (case-insensitive); use '|' to match multiple keywords, e.g. 'foo|bar|baz'"},
+		{Name: "keyword", Desc: "keyword mode: substring + regex match (case-insensitive); use '|' for OR branches, e.g. 'foo|bar' or 'bug|缺陷'"},
 		{Name: "context-before", Desc: "range/keyword/section mode: sibling blocks before match", Type: "int", Default: "0"},
 		{Name: "context-after", Desc: "range/keyword/section mode: sibling blocks after match", Type: "int", Default: "0"},
 		{Name: "max-depth", Desc: "outline: heading level cap; range/keyword/section: block subtree depth (-1 = unlimited)", Type: "int", Default: "-1"},

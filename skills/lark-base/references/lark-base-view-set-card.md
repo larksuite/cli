@@ -2,19 +2,28 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-更新卡片配置。
+更新卡片封面配置。
 
-## 推荐命令
+## 1. 顶层规则
+
+- `--json` 必须是 JSON 对象。
+- 仅 `gallery` / `kanban` 视图支持。
+- `cover_field` 必填；可传 `attachment` 类型的字段 id、字段名，或 `null`。
+
+## 2. 推荐命令
+
+设置封面：
 
 ```bash
 lark-cli base +view-set-card \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --view-id viw_xxx \
-  --json {"cover_field":"fld_cover"}
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --view-id <view_id> \
+  --json '{"cover_field":"fld_cover"}'
 ```
 
-## JSON 结构
+
+## 3. JSON 写法
 
 ```json
 {
@@ -28,54 +37,19 @@ lark-cli base +view-set-card \
 }
 ```
 
-## 参数
+## 4. 使用建议
 
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `--base-token <token>` | 是 | Base Token |
-| `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
-| `--view-id <id_or_name>` | 是 | 视图 ID 或视图名 |
-| `--json <body>` | 是 | JSON 对象 |
+- 建议先用 [lark-base-view-get-card.md](lark-base-view-get-card.md) 读取现状，再改。
+- 优先传字段 id，不要依赖字段名。
+- 普通文本、数字、选择字段不能作为封面字段。
 
-## API 入参详情
+## 5. 易错点
 
-**HTTP 方法和路径：**
+- 不要传空字符串；清空时传 `null`。
+- 不要在 `grid` / `calendar` / `gantt` 视图上调用。
+- 不要假设任意字段都能做封面；稳定做法是先找 `attachment` 字段。
 
-```
-PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/views/:view_id/card
-```
+## 6. 参考
 
-## 返回重点
-
-- 返回更新后的卡片配置。
-
-## 结构规则
-
-- `cover_field`：必填，字段 id 或字段名，长度 `1..100`；也可以显式传 `null`
-- 非 `null` 时，字段必须是封面支持字段，实际就是 `attachment` 字段
-- 传 `null` 表示清空封面配置
-
-
-## JSON Schema（原文）
-
-```json
-{"type":"object","properties":{"cover_field":{"anyOf":[{"type":"string","minLength":1,"maxLength":100,"description":"Field id or name"},{"type":"null"}],"description":"cover field id or name. must be a attachment field"}},"required":["cover_field"],"additionalProperties":false,"$schema":"http://json-schema.org/draft-07/schema#"}
-
-```
-
-## 工作流
-
-
-1. 建议先用 `+view-get-card` 拉现状，再修改。
-
-## 坑点
-
-- ⚠️ 这是写入操作，执行前必须确认。
-- ⚠️ 只支持 `gallery` / `kanban`。
-- ⚠️ `cover_field` 不是任何字段都能填，普通文本/数字字段会直接报错。
-- ⚠️ 清空封面必须传 `null`，不要传空字符串。
-
-## 参考
-
-- [lark-base-view.md](lark-base-view.md) — view 索引页
-- [lark-base-view-get-card.md](lark-base-view-get-card.md) — 读取卡片
+- [lark-base-view.md](lark-base-view.md)
+- [lark-base-view-get-card.md](lark-base-view-get-card.md)

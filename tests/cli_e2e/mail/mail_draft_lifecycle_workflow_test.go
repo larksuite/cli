@@ -46,6 +46,7 @@ func TestMail_DraftLifecycleWorkflowAsUser(t *testing.T) {
 				"user_mailbox_id": mailboxID,
 				"draft_id":        draftID,
 			},
+			Yes: true,
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete draft "+draftID, result, err)
 	})
@@ -187,6 +188,7 @@ func TestMail_DraftLifecycleWorkflowAsUser(t *testing.T) {
 				"user_mailbox_id": mailboxID,
 				"draft_id":        draftID,
 			},
+			Yes: true,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
