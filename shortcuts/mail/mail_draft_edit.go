@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
+	"github.com/larksuite/cli/shortcuts/mail/htmllint"
 	"github.com/larksuite/cli/shortcuts/mail/ics"
 )
 
@@ -174,6 +175,19 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		var lintReport htmllint.Result
+		for i := range patch.Ops {
+			if (patch.Ops[i].Op == "set_body" || patch.Ops[i].Op == "set_reply_body" || patch.Ops[i].Op == "replace_body" || patch.Ops[i].Op == "append_body") &&
+				(patch.Ops[i].BodyKind == "" || strings.EqualFold(patch.Ops[i].BodyKind, "html") || bodyIsHTML(patch.Ops[i].Value)) {
+				cleaned, report, lintErr := lintHTMLBeforeWrite(patch.Ops[i].Value)
+				if lintErr != nil {
+					return lintErr
+				}
+				patch.Ops[i].Value = cleaned
+				lintReport.Warnings = append(lintReport.Warnings, report.Warnings...)
+				lintReport.Errors = append(lintReport.Errors, report.Errors...)
+			}
+		}
 		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
 		if len(patch.Ops) > 0 {
 			if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
@@ -194,6 +208,7 @@ var MailDraftEdit = common.Shortcut{
 			"warning":    "This edit flow has no optimistic locking. If the same draft is changed concurrently, the last writer wins.",
 			"projection": projection,
 		}
+		out = addLintReport(out, lintReport)
 		if updateResult.Reference != "" {
 			out["reference"] = updateResult.Reference
 		}

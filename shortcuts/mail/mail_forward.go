@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/htmllint"
 )
 
 // MailForward is the `+forward` shortcut: forward an existing message to
@@ -242,6 +243,7 @@ var MailForward = common.Shortcut{
 		var composedHTMLBody string
 		var composedTextBody string
 		var srcInlineBytes int64
+		var lintReport htmllint.Result
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("forward blocked: %w", err)
@@ -266,6 +268,10 @@ var MailForward = common.Shortcut{
 			bodyWithSig := resolved
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
+			}
+			bodyWithSig, lintReport, err = lintHTMLBeforeWrite(bodyWithSig)
+			if err != nil {
+				return err
 			}
 			composedHTMLBody = bodyWithSig + origLargeAttCard + forwardQuote
 			bld = bld.HTMLBody([]byte(composedHTMLBody))
@@ -480,7 +486,7 @@ var MailForward = common.Shortcut{
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
-			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			runtime.Out(addLintReport(buildDraftSavedOutput(draftResult, mailboxID), lintReport), nil)
 			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
@@ -488,7 +494,7 @@ var MailForward = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send forward (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
+		runtime.Out(addLintReport(buildDraftSendOutput(resData, mailboxID), lintReport), nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

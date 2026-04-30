@@ -12,6 +12,7 @@ import (
 	"net/http"
 	netmail "net/mail"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -25,6 +26,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/htmllint"
 	"github.com/larksuite/cli/shortcuts/mail/ics"
 )
 
@@ -2200,6 +2202,35 @@ func buildDraftSavedOutput(draftResult draftpkg.DraftResult, mailboxID string) m
 	if draftResult.Reference != "" {
 		out["reference"] = draftResult.Reference
 	}
+	return out
+}
+
+func lintHTMLBeforeWrite(raw string) (string, htmllint.Result, error) {
+	result, err := htmllint.Lint(raw, true)
+	if err != nil {
+		return raw, result, err
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("LARK_CLI_MAIL_LINT_MODE")), "warn-only") {
+		return raw, result, nil
+	}
+	if result.CleanedHTML != "" || result.HasFindings() {
+		return result.CleanedHTML, result, nil
+	}
+	return raw, result, nil
+}
+
+func addLintReport(out map[string]interface{}, report htmllint.Result) map[string]interface{} {
+	if out == nil {
+		out = map[string]interface{}{}
+	}
+	if report.Warnings == nil {
+		report.Warnings = []htmllint.Finding{}
+	}
+	if report.Errors == nil {
+		report.Errors = []htmllint.Finding{}
+	}
+	out["lint_applied"] = report.Warnings
+	out["original_blocked"] = report.Errors
 	return out
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/htmllint"
 )
 
 // MailReplyAll is the `+reply-all` shortcut: reply to the sender plus all
@@ -253,6 +254,7 @@ var MailReplyAll = common.Shortcut{
 		var composedHTMLBody string
 		var composedTextBody string
 		var srcInlineBytes int64
+		var lintReport htmllint.Result
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply-all blocked: %w", err)
@@ -269,6 +271,10 @@ var MailReplyAll = common.Shortcut{
 			bodyWithSig := resolved
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
+			}
+			bodyWithSig, lintReport, err = lintHTMLBeforeWrite(bodyWithSig)
+			if err != nil {
+				return err
 			}
 			composedHTMLBody = bodyWithSig + quoted
 			bld = bld.HTMLBody([]byte(composedHTMLBody))
@@ -326,7 +332,7 @@ var MailReplyAll = common.Shortcut{
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
 		if !confirmSend {
-			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			runtime.Out(addLintReport(buildDraftSavedOutput(draftResult, mailboxID), lintReport), nil)
 			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
@@ -334,7 +340,7 @@ var MailReplyAll = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send reply-all (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
+		runtime.Out(addLintReport(buildDraftSendOutput(resData, mailboxID), lintReport), nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

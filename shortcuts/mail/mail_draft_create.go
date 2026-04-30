@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/htmllint"
 )
 
 // draftCreateInput bundles all +draft-create user flags into a single
@@ -163,6 +164,13 @@ var MailDraftCreate = common.Shortcut{
 		if strings.TrimSpace(input.Body) == "" {
 			return output.ErrValidation("effective body is empty after applying template; pass --body explicitly")
 		}
+		var lintReport htmllint.Result
+		if !input.PlainText && bodyIsHTML(input.Body) {
+			input.Body, lintReport, err = lintHTMLBeforeWrite(input.Body)
+			if err != nil {
+				return err
+			}
+		}
 		sigResult, err := resolveSignature(ctx, runtime, mailboxID, runtime.Str("signature-id"), runtime.Str("from"))
 		if err != nil {
 			return err
@@ -176,7 +184,7 @@ var MailDraftCreate = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("create draft failed: %w", err)
 		}
-		out := map[string]interface{}{"draft_id": draftResult.DraftID}
+		out := addLintReport(map[string]interface{}{"draft_id": draftResult.DraftID}, lintReport)
 		if draftResult.Reference != "" {
 			out["reference"] = draftResult.Reference
 		}
