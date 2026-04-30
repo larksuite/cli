@@ -5,6 +5,9 @@
 
 上传本地文件到飞书云空间。目标位置可以是 Drive 文件夹，也可以是 wiki 节点。
 
+## 快速决策
+- 用户要在 Drive 里上传、创建、读取、覆盖更新**原生 `.md` 文件**（不是导入成 docx），切到 [`lark-markdown`](../../lark-markdown/SKILL.md)。
+
 ## 命令
 
 ```bash

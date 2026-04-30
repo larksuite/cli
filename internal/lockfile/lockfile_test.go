@@ -4,6 +4,7 @@
 package lockfile
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,9 +40,13 @@ func TestTryLock_Conflict(t *testing.T) {
 	defer l1.Unlock()
 
 	l2 := New(path)
-	if err := l2.TryLock(); err == nil {
+	err := l2.TryLock()
+	if err == nil {
 		l2.Unlock()
 		t.Fatal("second TryLock should fail when lock is held by another instance")
+	}
+	if !errors.Is(err, ErrHeld) {
+		t.Errorf("expected error to wrap ErrHeld, got: %v", err)
 	}
 }
 
@@ -57,8 +62,8 @@ func TestTryLock_AlreadyHeld(t *testing.T) {
 	if err == nil {
 		t.Fatal("double TryLock on same instance should fail")
 	}
-	if !strings.Contains(err.Error(), "lock already held") {
-		t.Errorf("error should mention 'lock already held', got: %v", err)
+	if !errors.Is(err, ErrHeld) {
+		t.Errorf("expected error to wrap ErrHeld, got: %v", err)
 	}
 }
 
@@ -113,12 +118,10 @@ func TestUnlock_KeepsFileOnDisk(t *testing.T) {
 func TestUnlock_Idempotent(t *testing.T) {
 	l := newTestLock(t)
 
-	// Unlock without prior lock
 	if err := l.Unlock(); err != nil {
 		t.Fatalf("Unlock without lock should not error: %v", err)
 	}
 
-	// Lock then double unlock
 	if err := l.TryLock(); err != nil {
 		t.Fatalf("TryLock failed: %v", err)
 	}
@@ -180,7 +183,6 @@ func TestForSubscribe_SanitizesAppID(t *testing.T) {
 			if gotBase != tt.wantBase {
 				t.Errorf("Base(Path()) = %q, want %q", gotBase, tt.wantBase)
 			}
-			// Lock file must always be under the locks directory
 			locksDir := filepath.Join(dir, "locks")
 			if !strings.HasPrefix(l.Path(), locksDir) {
 				t.Errorf("path %q escapes locks dir %q", l.Path(), locksDir)
@@ -194,4 +196,18 @@ func TestForSubscribe_RejectsEmptyAppID(t *testing.T) {
 	if err == nil {
 		t.Fatal("ForSubscribe should reject empty app ID")
 	}
+}
+
+func TestErrHeld_RelockAfterUnlock(t *testing.T) {
+	l := newTestLock(t)
+	if err := l.TryLock(); err != nil {
+		t.Fatalf("first TryLock failed: %v", err)
+	}
+	if err := l.Unlock(); err != nil {
+		t.Fatalf("Unlock failed: %v", err)
+	}
+	if err := l.TryLock(); err != nil {
+		t.Errorf("TryLock after Unlock should succeed; got: %v", err)
+	}
+	l.Unlock()
 }

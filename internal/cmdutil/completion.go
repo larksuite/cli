@@ -11,26 +11,27 @@ import (
 
 // Cobra keeps completion callbacks in a package-global map keyed by
 // *pflag.Flag with no removal path, so registrations made for a *cobra.Command
-// outlive the command itself. Skip registration when the current invocation
-// will not serve a completion request.
-var flagCompletionsDisabled atomic.Bool
+// outlive the command itself. Default to disabled (zero value = false) and let
+// callers that actually serve a completion request opt in via
+// SetFlagCompletionsEnabled(true).
+var flagCompletionsEnabled atomic.Bool
 
-// SetFlagCompletionsDisabled switches RegisterFlagCompletion between
-// registering and no-op. Typically set once at process start.
-func SetFlagCompletionsDisabled(disabled bool) {
-	flagCompletionsDisabled.Store(disabled)
+// SetFlagCompletionsEnabled toggles whether RegisterFlagCompletion actually
+// registers callbacks with cobra. Typically set once at process start.
+func SetFlagCompletionsEnabled(enabled bool) {
+	flagCompletionsEnabled.Store(enabled)
 }
 
-// FlagCompletionsDisabled reports the current switch state.
-func FlagCompletionsDisabled() bool {
-	return flagCompletionsDisabled.Load()
+// FlagCompletionsEnabled reports the current switch state.
+func FlagCompletionsEnabled() bool {
+	return flagCompletionsEnabled.Load()
 }
 
 // RegisterFlagCompletion wraps (*cobra.Command).RegisterFlagCompletionFunc
 // and honors the package switch. The underlying error is swallowed to match
 // the `_ = cmd.RegisterFlagCompletionFunc(...)` style already used here.
 func RegisterFlagCompletion(cmd *cobra.Command, flagName string, fn cobra.CompletionFunc) {
-	if flagCompletionsDisabled.Load() {
+	if !flagCompletionsEnabled.Load() {
 		return
 	}
 	_ = cmd.RegisterFlagCompletionFunc(flagName, fn)

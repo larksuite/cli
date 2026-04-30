@@ -16,18 +16,18 @@
 
 ```bash
 lark-cli base +field-create \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
-  --json '{"name":"预算","type":"number","precision":2}' 
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --json '{"name":"预算","type":"number","style":{"type":"plain","precision":2}}'
 
 lark-cli base +field-create \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
+  --base-token <base_token> \
+  --table-id <table_id> \
   --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Done","hue":"Green","lightness":"Light"}]}'
 
 lark-cli base +field-create \
-  --base-token app_xxx \
-  --table-id tbl_xxx \
+  --base-token <base_token> \
+  --table-id <table_id> \
   --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人；协作约定可参考[团队字段约定](https://example.com/field-spec)"}'
 ```
 
@@ -50,9 +50,9 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义，不要再套一层。
 - 顶层最少包含：`name`、`type`。
-- 如需字段说明，直接传 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
+- 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
 - `type` 不同，必填子字段不同：
-  - `select`：用 `multiple` + `options`（`options` 里只传 `name/hue/lightness`，不要传 `id`）。
+  - `select`：`multiple` 控制是否多选，`options` 定义静态选项，`dynamic_options_source` 定义动态选项来源。静态与动态选项配置二选一，不能同时传。
   - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。
   - `formula`：必须有 `expression`；先读 formula guide，再创建。
   - `lookup`：必须有 `from`、`select`、`where`；先读 lookup guide，再创建。

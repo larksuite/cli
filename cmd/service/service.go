@@ -140,6 +140,7 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spec, method map[string]interface{}, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
 	desc := registry.GetStrFromMap(method, "description")
 	httpMethod := registry.GetStrFromMap(method, "httpMethod")
+	risk := registry.GetStrFromMap(method, "risk")
 	specName := registry.GetStrFromMap(spec, "name")
 	schemaPath := fmt.Sprintf("%s.%s.%s", specName, resName, name)
 
@@ -166,10 +167,10 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON (supports - for stdin)")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON (supports - for stdin, @file for file input)")
 	switch httpMethod {
 	case "POST", "PUT", "PATCH", "DELETE":
-		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
+		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin, @file for file input)")
 	}
 	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
@@ -179,6 +180,9 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	if risk == "high-risk-write" {
+		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
+	}
 
 	// Conditionally register --file for methods with file-type fields.
 	fileFields := detectFileFields(method)
@@ -194,6 +198,7 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 	})
 
 	cmdutil.SetTips(cmd, registry.GetStrSliceFromMap(method, "tips"))
+	cmdutil.SetRisk(cmd, risk)
 	if tokens, ok := method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
 		cmdutil.SetSupportedIdentities(cmd, cmdutil.AccessTokensToIdentities(tokens))
 	}
@@ -247,6 +252,12 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
 		}
 		return serviceDryRun(f, request, config, opts.Format)
+	}
+
+	if registry.GetStrFromMap(opts.Method, "risk") == "high-risk-write" {
+		if yes, _ := opts.Cmd.Flags().GetBool("yes"); !yes {
+			return cmdutil.RequireConfirmation(opts.SchemaPath)
+		}
 	}
 
 	ac, err := f.NewAPIClientWithConfig(config)
@@ -343,6 +354,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	// stdin is an io.Reader consumed at most once. Only one of --params/--data
 	// may use "-" (stdin); the conflict check below prevents silent data loss.
 	stdin := opts.Factory.IOStreams.In
+	fileIO := opts.Factory.ResolveFileIO(opts.Ctx)
 
 	// Validate --file mutual exclusions.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
@@ -351,7 +363,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	if opts.Params == "-" && opts.Data == "-" {
 		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
-	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
 	if err != nil {
 		return client.RawApiRequest{}, nil, err
 	}
@@ -420,7 +432,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		// Parse --data as form fields.
 		var dataFields any
 		if opts.Data != "" {
-			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
 			if err != nil {
 				return client.RawApiRequest{}, nil, err
 			}
@@ -436,7 +448,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 
 		fd, err := cmdutil.BuildFormdata(
-			opts.Factory.ResolveFileIO(opts.Ctx),
+			fileIO,
 			fieldName, filePath, isStdin, stdin, dataFields,
 		)
 		if err != nil {
@@ -445,7 +457,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		request.Data = fd
 		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
 	} else {
-		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
 		if err != nil {
 			return client.RawApiRequest{}, nil, err
 		}

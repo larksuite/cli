@@ -17,6 +17,21 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+func inferTaskMemberType(id string) string {
+	if strings.HasPrefix(strings.TrimSpace(id), "cli_") {
+		return "app"
+	}
+	return "user"
+}
+
+func buildTaskMember(id, role string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":   id,
+		"role": role,
+		"type": inferTaskMemberType(id),
+	}
+}
+
 // parseTaskTime converts a flexible time string into the Task API due/start object format.
 func parseTaskTime(timeStr string) (map[string]interface{}, error) {
 	var msTs string
@@ -96,14 +111,15 @@ func buildTaskCreateBody(runtime *common.RuntimeContext) (map[string]interface{}
 		body["description"] = desc
 	}
 
+	var members []map[string]interface{}
 	if assignee := runtime.Str("assignee"); assignee != "" {
-		body["members"] = []map[string]interface{}{
-			{
-				"id":   assignee,
-				"role": "assignee",
-				"type": "user",
-			},
-		}
+		members = append(members, buildTaskMember(assignee, "assignee"))
+	}
+	if follower := runtime.Str("follower"); follower != "" {
+		members = append(members, buildTaskMember(follower, "follower"))
+	}
+	if len(members) > 0 {
+		body["members"] = members
 	}
 
 	if tasklistId := runtime.Str("tasklist-id"); tasklistId != "" {
@@ -147,7 +163,8 @@ var CreateTask = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "summary", Desc: "task title"},
 		{Name: "description", Desc: "task description"},
-		{Name: "assignee", Desc: "assignee open_id"},
+		{Name: "assignee", Desc: "task assignee id added during create; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
+		{Name: "follower", Desc: "task follower id added during create; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
 		{Name: "due", Desc: "due date (ISO 8601 / date:YYYY-MM-DD / relative:+2d / ms timestamp)"},
 		{Name: "tasklist-id", Desc: "tasklist id or applink URL"},
 		{Name: "idempotency-key", Desc: "client token for idempotency"},

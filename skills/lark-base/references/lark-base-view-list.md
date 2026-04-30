@@ -33,7 +33,7 @@ GET /open-apis/base/v3/bases/:base_token/tables/:table_id/views
 
 ## 返回重点
 
-- 返回视图列表及 `offset / limit / count / total`。
+- 返回 `views` 和 `total`。
 
 ## 坑点
 

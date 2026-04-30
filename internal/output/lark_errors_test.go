@@ -61,6 +61,13 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			wantType:     "invalid_params",
 			wantHint:     "does not accept a permission-apply request",
 		},
+		{
+			name:         "ownership mismatch",
+			code:         LarkErrOwnershipMismatch,
+			wantExitCode: ExitAPI,
+			wantType:     "ownership_mismatch",
+			wantHint:     "messages-resources-download",
+		},
 	}
 
 	for _, tt := range tests {

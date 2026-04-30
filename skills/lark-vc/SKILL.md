@@ -49,6 +49,7 @@ lark-cli docs +media-download --type whiteboard --token <whiteboard_token> --out
 > - `verbatim_doc_token` → **逐字稿**（完整的逐句文字记录，含说话人和时间戳）— 用户说"逐字稿""完整记录""谁说了什么"时用这个
 > - 用户说"纪要""总结""纪要内容"时，应同时返回 `note_doc_token` 和 `meeting_notes`（如有）
 > - 用户意图不明确时，应展示所有文档链接让用户选择，而不是替用户决定
+> - 如果用户提供的是**本地音视频文件**并说"转纪要""转逐字稿"，不要直接从 `vc +notes` 开始；应先用 [minutes +upload](../lark-minutes/references/lark-minutes-upload.md) 生成 `minute_url`，再提取 `minute_token` 调用 `vc +notes --minute-tokens`
 
 ### 3. 纪要文档与逐字稿链接
 1. 纪要文档、逐字稿文档与关联的共享文档默认使用文档 Token 返回。
@@ -89,6 +90,8 @@ Meeting (视频会议)
 > **路由规则**：如果用户在问“开过的会”“今天开了哪些会”“最近参加过什么会”“已结束的会议”“历史会议记录”，优先使用 `vc +search`。只有在查询未来日程、待开的会、agenda 时才优先使用 [lark-calendar](../lark-calendar/SKILL.md)。
 >
 > **妙记边界**：`+notes` 负责纪要内容、逐字稿和 AI 产物；妙记基础信息请优先看 [`+recording`](references/lark-vc-recording.md) 与 [lark-minutes](../lark-minutes/SKILL.md)。
+>
+> **文件转纪要边界**：如果用户给的是本地音视频文件，并希望得到纪要、逐字稿、总结、待办或章节，入口应先走 [lark-minutes](../lark-minutes/SKILL.md) 的上传流程生成 `minute_url` / `minute_token`，再回到 `vc +notes --minute-tokens` 获取内容产物。
 >
 > **特殊情况**: 当用户查询“今天有哪些会议”时，通过 `vc +search` 查询今天开过的会议记录，同时使用 lark-calendar 技能查询今天还未开始的会议，统一整理后展示给用户。
 

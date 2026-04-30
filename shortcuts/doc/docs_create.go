@@ -43,6 +43,7 @@ var DocsCreate = common.Shortcut{
 	Risk:        "write",
 	AuthTypes:   []string{"user", "bot"},
 	Scopes:      []string{"docx:document:create"},
+	Tips:        docsVersionSelectionTips,
 	Flags: concatFlags(
 		[]common.Flag{
 			{Name: "api-version", Desc: "API version", Default: "v1", Enum: []string{"v1", "v2"}},
@@ -149,6 +150,24 @@ func augmentCreateResultV1(runtime *common.RuntimeContext, result map[string]int
 	target := selectPermissionTarget(result)
 	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, target.Token, target.Type); grant != nil {
 		result["permission_grant"] = grant
+	}
+	fallbackDocURLV1(runtime, result)
+}
+
+// fallbackDocURLV1 fills result.doc_url with a brand-standard URL when the MCP
+// response did not include one but did include a doc_id. This protects against
+// degraded MCP responses (multi-content, non-JSON text) where ExtractMCPResult
+// drops structured fields.
+func fallbackDocURLV1(runtime *common.RuntimeContext, result map[string]interface{}) {
+	if strings.TrimSpace(common.GetString(result, "doc_url")) != "" {
+		return
+	}
+	docID := strings.TrimSpace(common.GetString(result, "doc_id"))
+	if docID == "" {
+		return
+	}
+	if u := common.BuildResourceURL(runtime.Config.Brand, "docx", docID); u != "" {
+		result["doc_url"] = u
 	}
 }
 

@@ -29,7 +29,7 @@ lark-cli base +form-list \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--base-token <token>` | 是 | 多维表格 App token（base_token） |
+| `--base-token <token>` | 是 | Base Token（base_token） |
 | `--table-id <id>` | 是 | 数据表 ID |
 | `--page-size <n>` | 否 | 每次请求的分页大小，默认 100，最大 100 |
 | `--format` | 否 | 输出格式：json（默认）\| pretty \| table \| ndjson \| csv |
@@ -64,7 +64,7 @@ JSON 输出示例（`--format json`，默认）：
 ## 提示
 
 - `base_token` 在多维表格 URL 中可找到（形如 `bascnXXXX`）
-- `table_id` 可通过 `lark-cli base app.tables list --app-token <token> --params '{"app_token":"<token>"}'` 获取
+- `table_id` 可通过 `lark-cli base +table-list --base-token <base_token>` 获取
 - 如无表单，输出 `forms: []`
 
 ## 参考

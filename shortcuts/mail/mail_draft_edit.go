@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
+	"github.com/larksuite/cli/shortcuts/mail/ics"
 )
 
 // MailDraftEdit is the `+draft-edit` shortcut: update an existing draft
@@ -37,6 +38,11 @@ var MailDraftEdit = common.Shortcut{
 		{Name: "patch-file", Desc: "Edit entry point for body edits, incremental recipient changes, header edits, attachment changes, or inline-image changes. All body edits MUST go through --patch-file. Two body ops: set_body (full replacement including quote) and set_reply_body (replaces only user-authored content, auto-preserves quote block). Run --inspect first to check has_quoted_content, then --print-patch-template for the JSON structure. Relative path only."},
 		{Name: "print-patch-template", Type: "bool", Desc: "Print the JSON template and supported operations for the --patch-file flag. Recommended first step before generating a patch file. No draft read or write is performed."},
 		{Name: "set-priority", Desc: "Set email priority: high, normal, low. Setting 'normal' removes any existing priority header."},
+		{Name: "set-event-summary", Desc: "Set calendar event title. Must be used together with --set-event-start and --set-event-end."},
+		{Name: "set-event-start", Desc: "Set calendar event start time (ISO 8601)."},
+		{Name: "set-event-end", Desc: "Set calendar event end time (ISO 8601)."},
+		{Name: "set-event-location", Desc: "Set calendar event location."},
+		{Name: "remove-event", Type: "bool", Desc: "Remove the calendar event from the draft."},
 		{Name: "inspect", Type: "bool", Desc: "Inspect the draft without modifying it. Returns the draft projection including subject, recipients, body summary, has_quoted_content (whether the draft contains a reply/forward quote block), attachments_summary (with part_id and cid for each attachment), and inline_summary. Run this BEFORE editing body to check has_quoted_content: if true, use set_reply_body in --patch-file to preserve the quote; if false, use set_body."},
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the draft's sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed. Adds the Disposition-Notification-To header; existing value is overwritten."},
 	},
@@ -97,8 +103,9 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return output.ErrValidation("parse draft raw EML failed: %v", err)
 		}
-		// Pre-process insert_signature ops: resolve signature using the draft's
-		// From address so alias/shared-mailbox senders get correct template vars.
+		// Pre-process ops that need snapshot context: resolve signature using
+		// the draft's From address, and build ICS for set_calendar using the
+		// draft's From/To/Cc so organizer and attendee addresses are correct.
 		var draftFromEmail string
 		if len(snapshot.From) > 0 {
 			draftFromEmail = snapshot.From[0].Address
@@ -123,7 +130,8 @@ var MailDraftEdit = common.Shortcut{
 			})
 		}
 		for i := range patch.Ops {
-			if patch.Ops[i].Op == "insert_signature" {
+			switch patch.Ops[i].Op {
+			case "insert_signature":
 				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, draftFromEmail)
 				if sigErr != nil {
 					return sigErr
@@ -132,6 +140,32 @@ var MailDraftEdit = common.Shortcut{
 					patch.Ops[i].RenderedSignatureHTML = sigResult.RenderedContent
 					patch.Ops[i].SignatureImages = sigResult.Images
 				}
+			case "set_calendar":
+				if calPart := draftpkg.FindPartByMediaType(snapshot.Body, "text/calendar"); calPart != nil {
+					parsed := ics.ParseEvent(string(calPart.Body))
+					if parsed == nil || !parsed.IsLarkDraft {
+						return output.ErrValidation("set_calendar: calendar event has already been created and is read-only; use --remove-event to remove it, then --set-event-* to create a new one")
+					}
+				}
+				if _, _, err := parseEventTimeRange(patch.Ops[i].EventStart, patch.Ops[i].EventEnd); err != nil {
+					return output.ErrValidation("set_calendar: %v", err)
+				}
+				// Derive effective To/Cc by replaying all pending recipient ops so
+				// the ICS ATTENDEE list matches the final post-edit recipients.
+				toAddrs, ccAddrs := effectiveRecipients(snapshot, patch.Ops)
+				calData := buildCalendarBodyFromArgs(
+					patch.Ops[i].EventSummary,
+					patch.Ops[i].EventStart,
+					patch.Ops[i].EventEnd,
+					patch.Ops[i].EventLocation,
+					draftFromEmail,
+					joinAddresses(toAddrs),
+					joinAddresses(ccAddrs),
+				)
+				if calData == nil {
+					return output.ErrValidation("set_calendar: failed to build ICS from event fields")
+				}
+				patch.Ops[i].CalendarICS = calData
 			}
 		}
 		// Pre-process add_attachment ops for large attachment support:
@@ -346,6 +380,39 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 		}
 	}
 
+	// --set-event-* / --remove-event → set_calendar / remove_calendar op.
+	// The ICS blob itself is pre-built at Execute time once the snapshot's
+	// organizer/attendee addresses are available; here we only record the
+	// user-supplied fields and validate the flag combination.
+	hasEventSet := runtime.Str("set-event-summary") != ""
+	hasEventRemove := runtime.Bool("remove-event")
+	if !hasEventSet && (runtime.Str("set-event-start") != "" || runtime.Str("set-event-end") != "" || runtime.Str("set-event-location") != "") {
+		return patch, output.ErrValidation("--set-event-start, --set-event-end, and --set-event-location require --set-event-summary")
+	}
+	if hasEventSet && hasEventRemove {
+		return patch, output.ErrValidation("--set-event-summary and --remove-event are mutually exclusive")
+	}
+	if hasEventSet {
+		summary := runtime.Str("set-event-summary")
+		start := runtime.Str("set-event-start")
+		end := runtime.Str("set-event-end")
+		if summary == "" || start == "" || end == "" {
+			return patch, output.ErrValidation("--set-event-summary, --set-event-start, and --set-event-end must all be provided together")
+		}
+		if _, _, err := parseEventTimeRange(start, end); err != nil {
+			return patch, output.ErrValidation("%s", prefixEventRangeError("--set-event-", err).Error())
+		}
+		patch.Ops = append(patch.Ops, draftpkg.PatchOp{
+			Op:            "set_calendar",
+			EventSummary:  summary,
+			EventStart:    start,
+			EventEnd:      end,
+			EventLocation: runtime.Str("set-event-location"),
+		})
+	} else if hasEventRemove {
+		patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "remove_calendar"})
+	}
+
 	if len(patch.Ops) == 0 && !runtime.Bool("request-receipt") {
 		return patch, output.ErrValidation("at least one edit operation is required; use direct flags such as --set-subject/--set-to, or use --patch-file for body edits and other advanced operations (run --print-patch-template first)")
 	}
@@ -490,4 +557,46 @@ func buildDraftEditPatchTemplate() map[string]interface{} {
 		"command_example":    "lark-cli mail +draft-edit --print-patch-template",
 		"patch_file_example": "lark-cli mail +draft-edit --draft-id d_xxx --patch-file ./patch.json",
 	}
+}
+
+// effectiveRecipients returns the To and Cc address slices that will result
+// after all pending set_recipients / add_recipient / remove_recipient ops in
+// ops have been applied. Used by the set_calendar pre-processor to build ICS
+// with the correct post-edit ATTENDEE list before Apply() runs.
+func effectiveRecipients(snapshot *draftpkg.DraftSnapshot, ops []draftpkg.PatchOp) (to, cc []draftpkg.Address) {
+	to = append([]draftpkg.Address{}, snapshot.To...)
+	cc = append([]draftpkg.Address{}, snapshot.Cc...)
+
+	apply := func(addrs []draftpkg.Address, op draftpkg.PatchOp) []draftpkg.Address {
+		switch op.Op {
+		case "set_recipients":
+			return append([]draftpkg.Address{}, op.Addresses...)
+		case "add_recipient":
+			for _, a := range addrs {
+				if strings.EqualFold(a.Address, op.Address) {
+					return addrs
+				}
+			}
+			return append(addrs, draftpkg.Address{Name: op.Name, Address: op.Address})
+		case "remove_recipient":
+			next := addrs[:0:0]
+			for _, a := range addrs {
+				if !strings.EqualFold(a.Address, op.Address) {
+					next = append(next, a)
+				}
+			}
+			return next
+		}
+		return addrs
+	}
+
+	for _, op := range ops {
+		switch op.Field {
+		case "to":
+			to = apply(to, op)
+		case "cc":
+			cc = apply(cc, op)
+		}
+	}
+	return to, cc
 }

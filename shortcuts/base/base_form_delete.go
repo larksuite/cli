@@ -18,7 +18,7 @@ var BaseFormDelete = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "base-token", Desc: "Base app token (base_token)", Required: true},
+		baseTokenFlag(true),
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
 	},

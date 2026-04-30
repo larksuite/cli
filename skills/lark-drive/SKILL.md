@@ -19,6 +19,7 @@ metadata:
 - 用户要**搜文档 / Wiki / 电子表格 / 多维表格 / 云空间对象**，优先使用 `lark-cli drive +search`。自然语言里"最近我编辑过的"、"我创建的"、"最近一周我打开过的 xxx"、"某人创建的 docx" 等直接映射到扁平 flag，避免手写嵌套 JSON。老的 `docs +search` 进入维护期、后续会下线，不要新增对它的依赖。
 - 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
+- 用户要在 Drive 里上传、创建、读取、覆盖更新**原生 `.md` 文件**（不是导入成 docx），切到 [`lark-markdown`](../lark-markdown/SKILL.md)。
 - 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
 - 用户要在云空间里新建文件夹，优先使用 `lark-cli drive +create-folder`。
 - 用户要把本地文件上传到知识库 / 文档库里的某个 wiki 节点下时，仍然使用 `lark-cli drive +upload --wiki-token <wiki_token>`；不要误切到 `wiki` 域命令。
@@ -117,7 +118,7 @@ Drive Folder (云空间文件夹)
 | 操作 | 需要的 Token | 说明 |
 |------|-------------|------|
 | 读取文档内容 | `file_token` / 通过 `docs +fetch --api-version v2` 自动处理 | `docs +fetch` 支持直接传入 URL |
-| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL |
+| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`slides` 仅支持 block_id，且都支持最终解析到对应类型的 wiki URL |
 | 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL |
 | 下载文件 | `file_token` | 从文件 URL 中直接提取 |
 | 上传文件 | `folder_token` / `wiki_node_token` | 目标位置的 token |
@@ -129,9 +130,11 @@ Drive Folder (云空间文件夹)
 - 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
 - 局部评论：传 `--block-id` 时启用；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL。block ID 可通过 `docs +fetch --api-version v2 --detail with-ids` 获取。
 - `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
+- `slides` 评论要求显式传 `--block-id <slide-block-type>!<xml-id>`；CLI 会将其拆分后写入 `anchor.block_id` 和 `anchor.slide_block_type`。其中 `<xml-id>` 是 PPT XML 协议中的元素 `id`；不支持 `--selection-with-ellipsis` 和 `--full-comment`。
+
 - 评论写入内容（添加评论、回复评论、编辑回复）里的文本不能直接出现 `<`、`>`；提交前必须先转义：`<` -> `&lt;`，`>` -> `&gt;`。
 - 使用 `drive +add-comment` 时，shortcut 会对 `type=text` 的文本元素自动做上述转义兜底；如果直接调用 `drive file.comments create_v2`、`drive file.comment.replys create`、`drive file.comment.replys update`，则需要在请求里自行传入已转义的内容。
-- 如果 wiki 解析后不是 `doc`/`docx`，不要用 `+add-comment`。
+- 如果 wiki 解析后不是 `doc`/`docx`/`sheet`/`slides`，不要用 `+add-comment`。
 - 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`，局部评论传 `anchor.block_id`。
 
 ### 评论查询与统计口径（关键！）
@@ -195,7 +198,7 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 |----------|------|----------|
 | `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
-| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet） |
+| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides） |
 
 ### 授权当前应用访问文档
 
@@ -214,7 +217,7 @@ lark-cli drive permission.members create \
 
 > **注意**：此方式仅适用于需要授权给**当前应用**的场景。授权给其他用户时，直接使用对方的 open_id 即可，无需调用 bot info 接口。
 
-`<resource_type>` 可选值：`doc`、`docx`、`sheet`、`bitable`、`file`、`folder`、`wiki`。
+`<resource_type>` 可选值：`doc`、`docx`、`sheet`、`bitable`、`file`、`folder`、`wiki`、`slides`。
 
 ## Shortcuts（推荐优先使用）
 
@@ -226,13 +229,16 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+upload`](references/lark-drive-upload.md) | Upload a local file to a Drive folder or wiki node |
 | [`+create-folder`](references/lark-drive-create-folder.md) | Create a Drive folder, optionally under a parent folder, with bot auto-grant support |
 | [`+download`](references/lark-drive-download.md) | Download a file from Drive to local |
+| [`+status`](references/lark-drive-status.md) | Compare a local directory with a Drive folder by SHA-256 content hash; reports `new_local` / `new_remote` / `modified` / `unchanged` (read-only diff primitive for sync workflows). `--local-dir` 必须是 cwd 内的相对路径，越界路径 CLI 会直接拒绝；目标在 cwd 外时引导用户切换 agent 工作目录，不要私自 `cd` 绕过。 |
+| [`+pull`](references/lark-drive-pull.md) | One-way **file-level** mirror of a Drive folder onto a local directory (Drive → local). Supports `--if-exists` (overwrite/skip) and `--delete-local` for orphan cleanup; the destructive `--delete-local` requires `--yes` and only unlinks regular files — empty local directories left behind by remote folder deletes are NOT pruned. Item-level failures exit non-zero (`error.type=partial_failure`) and skip the `--delete-local` pass to avoid half-synced state. `--local-dir` is bounded to cwd by CLI path validation; tell the user to switch the agent's working directory if the target is outside cwd. |
 | [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder |
-| [`+add-comment`](references/lark-drive-add-comment.md) | Add a full-document comment, or a local comment to selected docx text (also supports wiki URL resolving to doc/docx) |
+| [`+add-comment`](references/lark-drive-add-comment.md) | Add a comment to doc/docx/sheet/slides, also supports wiki URL resolving to doc/docx/sheet/slides |
 | [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable to a local file with limited polling; supports `--file-name` for local naming |
 | [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token |
 | [`+import`](references/lark-drive-import.md) | Import a local file to Drive as a cloud document (docx, sheet, bitable) |
 | [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive |
 | [`+delete`](references/lark-drive-delete.md) | Delete a Drive file or folder with limited polling for folder deletes |
+| [`+push`](references/lark-drive-push.md) | Mirror a local directory onto a Drive folder (local → Drive). Supports `--if-exists` (overwrite/skip) and `--delete-remote` for one-way mirror sync; the destructive `--delete-remote` requires `--yes`. `--local-dir` is bounded to cwd by CLI path validation; tell the user to switch the agent's working directory if the source is outside cwd. |
 | [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
 | [`+apply-permission`](references/lark-drive-apply-permission.md) | Apply to the document owner for view/edit access (user-only; 5/day per document) |
 

@@ -192,6 +192,35 @@ lark-cli mail user_mailbox.message.attachments download_url \
 
 普通附件和内嵌图片使用同一个 `user_mailbox.message.attachments download_url` 原生 API（无 shortcut 封装），传入 `attachments[].id` 即可。
 
+## 日程邀请邮件
+
+当邮件包含日程邀请（`text/calendar`）时，输出中会包含 `calendar_event` 对象：
+
+```json
+{
+  "calendar_event": {
+    "method": "REQUEST",
+    "uid": "abc123",
+    "summary": "产品评审",
+    "start": "2026-04-20T14:00:00+08:00",
+    "end": "2026-04-20T15:00:00+08:00",
+    "location": "5F-大会议室",
+    "organizer": "sender@example.com",
+    "attendees": ["alice@example.com", "bob@example.com"]
+  }
+}
+```
+
+字段说明：
+
+- `method`：ICS `METHOD`，通常为 `REQUEST` / `REPLY` / `CANCEL`。
+- `uid`：日程 UID。
+- `summary`：日程标题。
+- `start` / `end`：开始 / 结束时间（RFC 3339 UTC）。
+- `location`：地点（可能为空）。
+- `organizer`：组织者邮箱。
+- `attendees`：参会人邮箱列表。
+
 ## 相关命令
 
 - `lark-cli mail +thread` — 读取会话中所有邮件

@@ -1,7 +1,7 @@
 ---
 name: lark-task
 version: 1.0.0
-description: "飞书任务：管理任务和清单。创建待办任务、查看和更新任务状态、拆分子任务、组织任务清单、分配协作成员。当用户需要创建待办事项、查看任务列表、跟踪任务进度、管理项目清单或给他人分配任务时使用。"
+description: "飞书任务：管理任务、清单和任务智能体。创建待办任务、查看和更新任务状态、拆分子任务、组织任务清单、分配协作成员、注册或注销任务智能体、更新任务智能体的主页数据、写入智能体任务记录。当用户需要创建待办事项、查看任务列表、跟踪任务进度、管理项目清单或给他人分配任务、注册注销任务智能体、更新智能体主页数据、写入任务记录时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -114,6 +114,15 @@ lark-cli task <resource> <method> [flags] # 调用 API
   - `create` — 创建自定义字段选项
   - `patch` — 更新自定义字段选项
 
+### agent
+
+  - `update_agent_profile` — 更新任务代理的主页内容数据。
+  - `register_agent` — 注册AI 智能体
+
+### agent_task_step_info
+
+  - `append_task_steps` — 写入任务记录。
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -149,3 +158,6 @@ lark-cli task <resource> <method> [flags] # 调用 API
 | `custom_fields.remove` | `task:custom_field:write` |
 | `custom_field_options.create` | `task:custom_field:write` |
 | `custom_field_options.patch` | `task:custom_field:write` |
+| `agent.update_agent_profile` | `task:task:write` |
+| `agent.register_agent` | `task:task:write` |
+| `agent_task_step_info.append_task_steps` | `task:task:write` |

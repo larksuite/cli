@@ -81,8 +81,8 @@ func NewCmdApiWithContext(ctx context.Context, f *cmdutil.Factory, runF func(*AP
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "query parameters JSON (supports - for stdin)")
-	cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "query parameters JSON (supports - for stdin, @file for file input)")
+	cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin, @file for file input)")
 	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
@@ -112,6 +112,7 @@ func NewCmdApiWithContext(ctx context.Context, f *cmdutil.Factory, runF func(*AP
 // FileUploadMeta is returned instead so the caller can render dry-run output.
 func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
 	stdin := opts.Factory.IOStreams.In
+	fileIO := opts.Factory.ResolveFileIO(opts.Ctx)
 
 	// Validate --file mutual exclusions first.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
@@ -123,7 +124,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
 	}
 
-	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
 	if err != nil {
 		return client.RawApiRequest{}, nil, err
 	}
@@ -145,7 +146,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 		// Parse --data as JSON map for form fields (not as body).
 		var dataFields any
 		if opts.Data != "" {
-			dataFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+			dataFields, err = cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin, fileIO)
 			if err != nil {
 				return client.RawApiRequest{}, nil, err
 			}
@@ -161,7 +162,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 		}
 
 		fd, err := cmdutil.BuildFormdata(
-			opts.Factory.ResolveFileIO(opts.Ctx),
+			fileIO,
 			fieldName, filePath, isStdin, stdin, dataFields,
 		)
 		if err != nil {
@@ -171,7 +172,7 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
 	} else {
 		// Normal path: JSON body.
-		data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin)
+		data, err := cmdutil.ParseOptionalBody(opts.Method, opts.Data, stdin, fileIO)
 		if err != nil {
 			return client.RawApiRequest{}, nil, err
 		}

@@ -1,0 +1,1469 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>营销策划方案-裂图重新上传</title>
+  <theme>
+    <textStyles>
+      <title fontColor="#000000FF"/>
+      <headline fontColor="#000000FF"/>
+      <sub-headline fontColor="#000000FF"/>
+      <body fontColor="#000000FF"/>
+      <caption fontColor="#808080FF" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="XfIfbc1tYoFJ1sx5FWxcsCoBn0f" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="191" height="202" topLeftX="587" topLeftY="184" presetHandlers="8" alpha="0.9" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="545" height="101" topLeftX="207" topLeftY="204" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="54" bold="true" textAlign="center">
+          <p>营销策划模板</p>
+        </content>
+      </shape>
+      <line startX="142" startY="47" endX="910" endY="47" alpha="0.29">
+        <border color="rgba(147, 150, 156, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">1</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="640" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="right">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12"> European Market Q1 Planning</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="615" height="44" topLeftX="172" topLeftY="290" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(147, 150, 156, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="16">MARKETING PLANNING </span>
+            </strong>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="16">TEMPLATE</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="92" height="116" topLeftX="295" topLeftY="26" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="161" height="77" topLeftX="319" topLeftY="71" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" bold="true" textAlign="center">
+          <p>目录</p>
+        </content>
+      </shape>
+      <line startX="907" startY="119" endX="907" endY="515">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="908" startY="0" endX="908" endY="142">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="904" topLeftY="144" rotation="0" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">2</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="785" topLeftY="367" rotation="270" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12"> European Market Q1 Planning</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="136" height="43" topLeftX="369" topLeftY="207" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="15" bold="true">
+          <p>
+            <strong>
+              <span fontSize="15">活动总体思路</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="136" height="38" topLeftX="369" topLeftY="229" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 219, 29, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="12">General Idea</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="203" height="56" topLeftX="369" topLeftY="254" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(66, 66, 66, 1)">
+          <p>
+            <span color="rgba(66, 66, 66, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="136" height="43" topLeftX="614" topLeftY="207" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="15" bold="true">
+          <p>
+            <strong>
+              <span fontSize="15">活动执行方案</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="161" height="38" topLeftX="614" topLeftY="229" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 219, 29, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="12">Program of Activities</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="203" height="56" topLeftX="614" topLeftY="254" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(66, 66, 66, 1)">
+          <p>
+            <span color="rgba(66, 66, 66, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <img src="NUtabqkWpohkfCxb523ckUYfnIf" width="254" height="489" topLeftX="26" topLeftY="26" exposure="16" contrast="-46" saturation="-93" temperature="-14">
+        <crop type="rect" leftOffset="80" rightOffset="34" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <shape width="136" height="43" topLeftX="369" topLeftY="327" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="15" bold="true">
+          <p>
+            <strong>
+              <span fontSize="15">活动经费预算</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="136" height="38" topLeftX="369" topLeftY="349" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 219, 29, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="12">Budget</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="203" height="56" topLeftX="369" topLeftY="374" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(66, 66, 66, 1)">
+          <p>
+            <span color="rgba(66, 66, 66, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="136" height="43" topLeftX="614" topLeftY="327" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="15" bold="true">
+          <p>
+            <strong>
+              <span fontSize="15">活动预期效果</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="161" height="38" topLeftX="614" topLeftY="349" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 219, 29, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="12">Expected Results</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="203" height="56" topLeftX="614" topLeftY="374" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(66, 66, 66, 1)">
+          <p>
+            <span color="rgba(66, 66, 66, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 219, 29, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="Ha3Cbaf8PobZMvxI6VZcV7uznZc" width="480" height="540" topLeftX="480" topLeftY="0" exposure="14" contrast="-55" saturation="-92" temperature="31">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="261" height="74" topLeftX="27" topLeftY="434" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" color="rgba(24, 24, 26, 1)" bold="true" textAlign="left">
+          <p>
+            <span color="rgba(24, 24, 26, 1)" fontSize="36">活动总体思路</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="47" topLeftX="31" topLeftY="407" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18">General Idea</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="142" startY="47" endX="676" endY="47">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="12">3</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="481" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="12"> European Market Q1 Planning</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <line startX="142" startY="47" endX="910" endY="47">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">4</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="640" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="right">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12"> European Market Q1 Planning</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="101" height="90" topLeftX="41" topLeftY="88" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="407" height="62" topLeftX="77" topLeftY="118" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" bold="true" textAlign="left">
+          <p>
+            <span fontSize="28">活动总体思路</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="56" topLeftX="41" topLeftY="232" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="41" topLeftX="41" topLeftY="204" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="56" topLeftX="41" topLeftY="326" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="41" topLeftX="41" topLeftY="298" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="56" topLeftX="41" topLeftY="420" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="41" topLeftX="41" topLeftY="392" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <img src="Yb3sbX2Vooj3HyxQfB3cH9ErnOb" width="240" height="403" topLeftX="331" topLeftY="88" exposure="4" contrast="-51" saturation="-91" temperature="20">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <img src="MhGabCLEBoKmRox0Q7dc6txbnhg" width="152" height="403" topLeftX="589" topLeftY="88" exposure="22" contrast="-35" saturation="-92" temperature="26">
+        <crop type="rect" leftOffset="411" rightOffset="155" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <img src="H8q1bdnT8o7bXAxIKIHc9IGLnUh" width="152" height="403" topLeftX="758" topLeftY="88" exposure="26" contrast="-35" saturation="-91" temperature="31">
+        <crop type="rect" leftOffset="4" rightOffset="4" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="49" height="56" topLeftX="38" topLeftY="74" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <line startX="142" startY="47" endX="910" endY="47">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">5</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="640" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="right">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12"> European Market Q1 Planning</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="195" height="74" topLeftX="38" topLeftY="194" alpha="0.88" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(31, 35, 41, 1)">
+          <p>
+            <span color="rgba(31, 35, 41, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="195" height="38" topLeftX="38" topLeftY="388" presetHandlers="45" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span fontSize="14">第一阶段</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="407" height="56" topLeftX="47" topLeftY="82" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="true" textAlign="left">
+          <p>
+            <span fontSize="24">活动时间轴</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="250" startY="194" endX="250" endY="426" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="195" height="74" topLeftX="267" topLeftY="194" alpha="0.88" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(31, 35, 41, 1)">
+          <p>
+            <span color="rgba(31, 35, 41, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="195" height="38" topLeftX="267" topLeftY="388" presetHandlers="45" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span fontSize="14">第二阶段</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="479" startY="194" endX="479" endY="426" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="195" height="74" topLeftX="498" topLeftY="194" alpha="0.88" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(31, 35, 41, 1)">
+          <p>
+            <span color="rgba(31, 35, 41, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="195" height="38" topLeftX="498" topLeftY="388" presetHandlers="45" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span fontSize="14">第三阶段</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="710" startY="194" endX="710" endY="426" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="195" height="74" topLeftX="727" topLeftY="194" alpha="0.88" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(31, 35, 41, 1)">
+          <p>
+            <span color="rgba(31, 35, 41, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="195" height="38" topLeftX="727" topLeftY="388" presetHandlers="45" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span fontSize="14">第四阶段</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 219, 29, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="JezPbVNsHopdNuxR7ZecFO7Xnhf" width="480" height="540" topLeftX="480" topLeftY="0" exposure="14" contrast="-55" saturation="-92" temperature="31">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="261" height="74" topLeftX="27" topLeftY="434" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" color="rgba(24, 24, 26, 1)" bold="true" textAlign="left">
+          <p>
+            <span color="rgba(24, 24, 26, 1)" fontSize="36">活动执行方案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="47" topLeftX="31" topLeftY="407" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18">Program of Activities</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="142" startY="47" endX="676" endY="47">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="12">6</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="481" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <line startX="282" startY="250" endX="90" endY="250" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="907" startY="119" endX="907" endY="515">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="908" startY="0" endX="908" endY="142">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="904" topLeftY="144" rotation="0" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">7</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="785" topLeftY="367" rotation="270" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12"> European Market Q3 Planning</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="261" height="68" topLeftX="30" topLeftY="64" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="32" color="rgba(24, 24, 26, 1)" bold="true" textAlign="left">
+          <p>
+            <span color="rgba(24, 24, 26, 1)" fontSize="32">活动执行方案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="44" topLeftX="34" topLeftY="41" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 219, 29, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="16">Program of Activities</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="34" height="34" topLeftX="46" topLeftY="233" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <icon width="20" height="20" topLeftX="53" topLeftY="240" iconType="iconpark/Base/all-application.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="34" height="34" topLeftX="294" topLeftY="233" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <icon width="20" height="20" topLeftX="301" topLeftY="240" iconType="iconpark/Office/transform.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="34" height="34" topLeftX="542" topLeftY="233" type="ellipse">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <icon width="20" height="20" topLeftX="549" topLeftY="240" iconType="iconpark/Travel/airplane.svg">
+        <border color="rgba(255, 255, 255, 1)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <line startX="530" startY="250" endX="337" endY="250" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="240" height="41" topLeftX="42" topLeftY="277" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="192" height="56" topLeftX="62" topLeftY="314" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="12" height="2" topLeftX="53" topLeftY="332" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="192" height="38" topLeftX="62" topLeftY="360" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="12" height="2" topLeftX="53" topLeftY="378" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="240" height="41" topLeftX="294" topLeftY="277" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="192" height="56" topLeftX="313" topLeftY="314" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="12" height="2" topLeftX="305" topLeftY="332" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="192" height="38" topLeftX="313" topLeftY="360" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="12" height="2" topLeftX="305" topLeftY="378" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="192" height="74" topLeftX="313" topLeftY="391" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="12" height="2" topLeftX="305" topLeftY="408" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="240" height="41" topLeftX="542" topLeftY="277" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="192" height="56" topLeftX="561" topLeftY="314" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文此处添加正文</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="12" height="2" topLeftX="553" topLeftY="332" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <line startX="907" startY="119" endX="907" endY="515">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="908" startY="0" endX="908" endY="142">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="904" topLeftY="144" rotation="0" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">8</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="785" topLeftY="367" rotation="270" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12"> European Market Q1 Planning</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <img src="W2oebPLuVoS3XzxoJc7cz2xtnxf" width="243" height="466" topLeftX="35" topLeftY="37" exposure="16" contrast="-46" saturation="-93" temperature="-14">
+        <crop type="rect" leftOffset="8" rightOffset="8" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <shape width="60" height="64" topLeftX="341" topLeftY="163" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="177" height="59" topLeftX="361" topLeftY="179" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" bold="true" textAlign="left">
+          <p>
+            <span fontSize="26">活动执行方案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="38" topLeftX="363" topLeftY="221" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 219, 29, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="12">Program of Activities</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="188" height="254" topLeftX="363" topLeftY="252" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文，此处添加正文。</span>
+          </p>
+          <p/>
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文，此处添加正文。此处添加正文此处添加正文，此处添加正文。此处添加正文此处添加正文，此处添加正文。</span>
+          </p>
+          <p/>
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="240" height="41" topLeftX="616" topLeftY="163" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题或更多内容</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="77" topLeftX="616" topLeftY="183" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" color="rgba(255, 219, 29, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="38">1,891+</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="817" startY="252" endX="624" endY="252" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="240" height="41" topLeftX="616" topLeftY="286" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题或更多内容</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="77" topLeftX="616" topLeftY="307" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" color="rgba(255, 219, 29, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="38">60+</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="817" startY="375" endX="624" endY="375" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="240" height="41" topLeftX="616" topLeftY="411" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题或更多内容</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="77" topLeftX="616" topLeftY="432" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" color="rgba(255, 219, 29, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(255, 219, 29, 1)" fontSize="38">13,762+</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="816" startY="500" endX="624" endY="500" alpha="0.7">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 219, 29, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="KSLDbAtVTowNhQxnPfUcK4s2nzc" width="480" height="540" topLeftX="0" topLeftY="0" exposure="14" contrast="-55" saturation="-92" temperature="31">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="261" height="74" topLeftX="672" topLeftY="434" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" color="rgba(24, 24, 26, 1)" bold="true" textAlign="right">
+          <p>
+            <span color="rgba(24, 24, 26, 1)" fontSize="36">活动经费预算</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="47" topLeftX="699" topLeftY="407" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18">Budget</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="142" startY="47" endX="676" endY="47">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="12">9</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="481" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="49" height="56" topLeftX="58" topLeftY="84" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <line startX="142" startY="47" endX="910" endY="47">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">10</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="640" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="right">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+      <shape width="407" height="56" topLeftX="67" topLeftY="92" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="true" textAlign="left">
+          <p>
+            <span fontSize="24">活动经费预算</span>
+          </p>
+        </content>
+      </shape>
+      <img src="IrLPbZFuSok7kHxnOvFciHi9nPA" width="145" height="145" topLeftX="58" topLeftY="198" exposure="12" saturation="-91" temperature="23">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <img src="GO5pblEDSo03uExEIlEc9xXdnyd" width="145" height="145" topLeftX="267" topLeftY="198" exposure="12" saturation="-91" temperature="23">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <img src="EzCabT0y8o65r8xgM2Jcf25zncb" width="145" height="145" topLeftX="476" topLeftY="198" exposure="12" saturation="-91" temperature="23">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <img src="CULmb2XWmouit4xzxbKc3U7ynxg" width="145" height="145" topLeftX="685" topLeftY="198" exposure="12" saturation="-91" temperature="23">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="8"/>
+      </img>
+      <shape width="24" height="2" topLeftX="66" topLeftY="360" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="2" topLeftX="275" topLeftY="360" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="2" topLeftX="484" topLeftY="360" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="24" height="2" topLeftX="693" topLeftY="360" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="144" height="41" topLeftX="58" topLeftY="357" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="144" height="41" topLeftX="267" topLeftY="357" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="144" height="41" topLeftX="476" topLeftY="357" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="144" height="41" topLeftX="685" topLeftY="357" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(66, 66, 66, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(66, 66, 66, 1)" fontSize="14">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="145" height="74" topLeftX="58" topLeftY="386" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="145" height="74" topLeftX="266" topLeftY="386" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="145" height="74" topLeftX="476" topLeftY="386" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="145" height="74" topLeftX="685" topLeftY="386" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="W9OibVJ7cooFpyxooUpcU5Jfnfd" width="527" height="361" topLeftX="433" topLeftY="96" exposure="62" contrast="12" saturation="-92" temperature="1">
+        <crop type="rect" leftOffset="59" rightOffset="59" topOffset="0" bottomOffset="0" presetHandlers="4"/>
+      </img>
+      <line startX="142" startY="47" endX="910" endY="47">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">11</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="640" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="right">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+      <img src="IcRMb9tt6ony53x6QO6cUxAknne" width="587" height="407" topLeftX="373" topLeftY="91" saturation="-100">
+        <crop type="rect" leftOffset="0" rightOffset="88" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="63" height="64" topLeftX="32" topLeftY="91" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="177" height="59" topLeftX="52" topLeftY="107" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" bold="true" textAlign="left">
+          <p>
+            <span fontSize="26">活动经费预算</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="34" height="34" topLeftX="63" topLeftY="201" alpha="0.6" type="ellipse">
+        <fill>
+          <fillColor color="rgba(66, 66, 66, 1)"/>
+        </fill>
+        <border color="rgba(147, 150, 156, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <icon width="20" height="20" topLeftX="70" topLeftY="208" alpha="0.6" iconType="iconpark/Money/paper-money-two.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="34" height="34" topLeftX="63" topLeftY="302" alpha="0.6" type="ellipse">
+        <fill>
+          <fillColor color="rgba(66, 66, 66, 1)"/>
+        </fill>
+      </shape>
+      <icon width="20" height="20" topLeftX="70" topLeftY="309" alpha="0.6" iconType="iconpark/Money/financing-one.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="144" height="44" topLeftX="101" topLeftY="195" alpha="0.7" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="144" height="44" topLeftX="101" topLeftY="297" alpha="0.7" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">此处添加小标题</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="232" height="56" topLeftX="101" topLeftY="228" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文，此处添加正文。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="232" height="56" topLeftX="101" topLeftY="329" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">此处添加正文此处添加正文，此处添加正文此处添加正文，此处添加正文。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 219, 29, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="UnojbYZiZoljtNxOh8AcvjpGnck" width="480" height="540" topLeftX="0" topLeftY="0" exposure="14" contrast="-55" saturation="-92" temperature="31">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="261" height="74" topLeftX="672" topLeftY="434" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="36" color="rgba(24, 24, 26, 1)" bold="true" textAlign="right">
+          <p>
+            <span color="rgba(24, 24, 26, 1)" fontSize="36">活动预期效果</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="231" height="47" topLeftX="699" topLeftY="407" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="18" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="18">Expected Results</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="142" startY="47" endX="676" endY="47">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="12">12</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="481" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="FtzebenNwoDtQoxtmggceadnn1d" width="961" height="539" topLeftX="0" topLeftY="0" exposure="16" saturation="-91" temperature="12">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="674" height="476" topLeftX="217" topLeftY="22" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="300" fontFamily="Trebuchet MS" color="rgba(255, 219, 29, 1)" bold="true" textAlign="center">
+          <p>
+            <span color="rgba(255, 219, 29, 1)" fontSize="300" fontFamily="Trebuchet MS">40%</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="165" height="122" topLeftX="100" topLeftY="97" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="35" height="157" topLeftX="165" topLeftY="213" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <img src="HJQ4bD96zoxB41xEmHncaqUVnrc" width="771" height="202" topLeftX="73" topLeftY="318" exposure="16" saturation="-91" temperature="12">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="20" presetHandlers="0"/>
+      </img>
+      <line startX="142" startY="47" endX="910" endY="47" alpha="0.29">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="12">13</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="640" topLeftY="16" alpha="0.7" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="49" height="56" topLeftX="58" topLeftY="84" presetHandlers="8" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 219, 29, 1)"/>
+        </fill>
+      </shape>
+      <line startX="142" startY="47" endX="910" endY="47">
+        <border color="rgba(222, 224, 227, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 219, 29, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(147, 150, 156, 1)" fontSize="12">14</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="640" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)" bold="true" textAlign="right">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+      <shape width="407" height="56" topLeftX="67" topLeftY="92" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" bold="true" textAlign="left">
+          <p>
+            <span fontSize="24">活动预期效果</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="213" height="74" topLeftX="707" topLeftY="382" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="41" topLeftX="707" topLeftY="338" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" bold="true">
+          <p>
+            <span fontSize="14">预期效果 #6</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="47" height="47" topLeftX="656" topLeftY="338" alpha="0.8" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <icon width="26" height="26" topLeftX="666" topLeftY="348" iconType="iconpark/Base/tag-one.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="213" height="74" topLeftX="707" topLeftY="244" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="41" topLeftX="707" topLeftY="200" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" bold="true">
+          <p>
+            <span fontSize="14">预期效果 #3</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="47" height="47" topLeftX="656" topLeftY="199" alpha="0.8" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <icon width="30" height="30" topLeftX="664" topLeftY="206" iconType="iconpark/Base/hourglass-null.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="213" height="74" topLeftX="408" topLeftY="382" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="41" topLeftX="408" topLeftY="338" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" bold="true">
+          <p>
+            <span fontSize="14">预期效果 #5</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="47" height="47" topLeftX="357" topLeftY="338" alpha="0.8" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <icon width="26" height="26" topLeftX="367" topLeftY="348" iconType="iconpark/Base/lightning.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="213" height="74" topLeftX="408" topLeftY="244" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="41" topLeftX="408" topLeftY="200" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" bold="true">
+          <p>
+            <span fontSize="14">预期效果 #2</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="47" height="47" topLeftX="357" topLeftY="199" alpha="0.8" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <icon width="30" height="30" topLeftX="365" topLeftY="206" iconType="iconpark/Base/aiming.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="213" height="74" topLeftX="108" topLeftY="382" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="41" topLeftX="108" topLeftY="338" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" bold="true">
+          <p>
+            <span fontSize="14">预期效果 #4</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="47" height="47" topLeftX="58" topLeftY="338" alpha="0.8" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <icon width="26" height="26" topLeftX="68" topLeftY="348" iconType="iconpark/Abstract/game-emoji.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="213" height="74" topLeftX="108" topLeftY="244" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(147, 150, 156, 1)">
+          <p>
+            <span color="rgba(147, 150, 156, 1)" fontSize="12">输入相关的描述信息以解释你的标题。输入相关的描述信息以解释你的标题。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="218" height="41" topLeftX="108" topLeftY="200" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" bold="true">
+          <p>
+            <span fontSize="14">预期效果 #1</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="47" height="47" topLeftX="58" topLeftY="199" alpha="0.8" type="ellipse">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <icon width="30" height="30" topLeftX="66" topLeftY="206" iconType="iconpark/Travel/mountain.svg">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineJoin="miter" miterLimit="10"/>
+      </icon>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(255, 219, 29, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="337" height="78" topLeftX="600" topLeftY="417" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="48" bold="true" lineSpacing="multiple:1.2" textAlign="right">
+          <p lineSpacing="multiple:1.2">
+            <span fontSize="48">谢谢观看</span>
+          </p>
+        </content>
+      </shape>
+      <img src="C7EfbhI7PoHav4xydHsc789rnsf" width="534" height="540" topLeftX="0" topLeftY="0" exposure="14" contrast="-55" saturation="-92" temperature="31">
+        <crop type="rect" leftOffset="0" rightOffset="6" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <line startX="142" startY="47" endX="726" endY="47">
+        <border color="rgba(255, 255, 255, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="0" startY="46" endX="142" endY="46">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="49" height="38" topLeftX="158" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="12">15</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="276" height="38" topLeftX="534" topLeftY="16" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p> European Market Q1 Planning</p>
+        </content>
+      </shape>
+      <shape width="231" height="50" topLeftX="699" topLeftY="385" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="20">Thank you</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>

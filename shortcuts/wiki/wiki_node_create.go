@@ -479,5 +479,8 @@ func augmentWikiNodeCreateOutput(runtime *common.RuntimeContext, execution *wiki
 	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, execution.Node.NodeToken, "wiki"); grant != nil {
 		out["permission_grant"] = grant
 	}
+	if u := common.BuildResourceURL(runtime.Config.Brand, "wiki", execution.Node.NodeToken); u != "" {
+		out["url"] = u
+	}
 	return out
 }

@@ -44,7 +44,7 @@ lark-cli base +form-create \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--base-token <token>` | 是 | 多维表格 App token（base_token） |
+| `--base-token <token>` | 是 | Base Token（base_token） |
 | `--table-id <id>` | 是 | 数据表 ID |
 | `--name <name>` | 是 | 表单名称 |
 | `--description <string>` | 否 | 表单描述（纯文本或 Markdown 链接，如 `[文本](https://example.com)`） |
@@ -76,7 +76,7 @@ lark-cli base +form-create \
 > [!CAUTION]
 > 这是**写入操作** — 执行前必须向用户确认。
 
-1. 确认目标 `app_token` 和 `table_id`
+1. 确认目标 `base_token` 和 `table_id`
 2. 确认表单名称和描述
 3. 执行命令
 4. 报告返回的 `form_id`，后续可用于添加问题（`+form-questions-create`）

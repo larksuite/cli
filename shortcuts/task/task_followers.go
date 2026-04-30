@@ -28,8 +28,8 @@ var FollowersTask = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "task-id", Desc: "task id", Required: true},
-		{Name: "add", Desc: "comma-separated open_ids to add as followers"},
-		{Name: "remove", Desc: "comma-separated open_ids to remove from followers"},
+		{Name: "add", Desc: "comma-separated follower IDs to add; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
+		{Name: "remove", Desc: "comma-separated follower IDs to remove; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
 		{Name: "idempotency-key", Desc: "client token for idempotency (used for add_members)"},
 	},
 
@@ -144,11 +144,7 @@ func buildFollowersBody(idsStr string, clientToken string) map[string]interface{
 		if id == "" {
 			continue
 		}
-		members = append(members, map[string]interface{}{
-			"id":   id,
-			"role": "follower",
-			"type": "user",
-		})
+		members = append(members, buildTaskMember(id, "follower"))
 	}
 
 	body := map[string]interface{}{

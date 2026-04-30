@@ -22,16 +22,16 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 
 ## 字段类型与操作符速查（AI 决策用）
 
-> `+field-list` 返回的 `type` 字段映射：number（数字）、text（文本）、select（单选）、multi_select（多选）、datetime（日期时间）、checkbox（复选框）、user（人员）
+> 先用 `+field-list` / `+field-get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
 
 ```
-文本/电话/URL/邮箱:  is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
-数字/货币/进度:      is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
-单选:               is, isNot, isEmpty, isNotEmpty
-多选:               is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
-日期/时间:          is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
-复选框:             is (value: true/false)
-人员/创建人/修改人:  is, isNot, isEmpty, isNotEmpty
+text: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
+number: is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
+select（multiple=false）: is, isNot, isEmpty, isNotEmpty
+select（multiple=true）: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
+datetime: is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
+checkbox: is (value: true/false)
+user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 ```
 
 ## data_config 通用结构
@@ -148,13 +148,13 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 
 | 字段类型 | value 类型 | 适用操作符 | 示例 |
 |----------|-----------|-----------|------|
-| 文本 / 电话 / URL | string | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | `{"field_name":"姓名","operator":"contains","value":"张"}` |
-| 数字 | number | is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"金额","operator":"isGreater","value":0}` |
-| 单选 | string（选项名） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"状态","operator":"is","value":"已完成"}` |
-| 多选 | string[]（选多个）/ string（选单个） | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | 多选传数组如 `["标签1","标签2"]`；单选传单个字符串 |
-| 日期时间 / 创建时间 / 修改时间 | number（Unix 毫秒时间戳，13位） | is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"创建日期","operator":"isGreater","value":1704038400000}` |
-| 复选框 | boolean | is | `{"field_name":"已审核","operator":"is","value":true}` |
-| 人员 / 创建人 / 修改人 | string 或 string[]（用户 ID，格式 `ou_xxx`） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"负责人","operator":"is","value":"ou_xxxxxxxxxxxxxxxx"}` |
+| `text` | string | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | `{"field_name":"姓名","operator":"contains","value":"张"}` |
+| `number` | number | is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"金额","operator":"isGreater","value":0}` |
+| `select` (`multiple=false`) | string（选项名） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"状态","operator":"is","value":"已完成"}` |
+| `select` (`multiple=true`) | string[]（选多个）/ string（选单个） | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | 多选传数组如 `["标签1","标签2"]`；单选传单个字符串 |
+| `datetime` / `created_at` / `updated_at` | number（Unix 毫秒时间戳，13位） | is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"创建日期","operator":"isGreater","value":1704038400000}` |
+| `checkbox` | boolean | is | `{"field_name":"已审核","operator":"is","value":true}` |
+| `user` / `created_by` / `updated_by` | string 或 string[]（用户 ID，格式 `ou_xxx`） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"负责人","operator":"is","value":"ou_xxxxxxxxxxxxxxxx"}` |
 | 所有类型（为空/不为空） | 不需要 value | isEmpty, isNotEmpty | `{"field_name":"备注","operator":"isEmpty"}` |
 
 > `value` 类型为 `string | number | boolean | string[]`，需根据字段类型匹配正确格式
@@ -268,7 +268,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 {
   "table_name": "表名",
   "series": [{ "field_name": "数值字段", "rollup": "SUM" }],
-  "group_by": [{ "field_name": "阶段字段", "mode": "integrated" }]
+  "group_by": [{ "field_name": "状态字段", "mode": "integrated" }]
 }
 ```
 

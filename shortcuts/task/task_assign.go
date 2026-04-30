@@ -28,8 +28,8 @@ var AssignTask = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "task-id", Desc: "task id", Required: true},
-		{Name: "add", Desc: "comma-separated open_ids to add as assignees"},
-		{Name: "remove", Desc: "comma-separated open_ids to remove from assignees"},
+		{Name: "add", Desc: "comma-separated assignee IDs to add; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
+		{Name: "remove", Desc: "comma-separated assignee IDs to remove; use open_id (ou_xxx) when assignee is user, use app id (cli_xxx) when assignee is app"},
 		{Name: "idempotency-key", Desc: "client token for idempotency (used for add_members)"},
 	},
 
@@ -43,16 +43,15 @@ var AssignTask = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		d := common.NewDryRunAPI()
 		taskId := url.PathEscape(runtime.Str("task-id"))
-
 		if addStr := runtime.Str("add"); addStr != "" {
-			body := buildMembersBody(addStr, runtime.Str("idempotency-key"))
+			body := buildMembersBody(addStr, "assignee", runtime.Str("idempotency-key"))
 			d.POST("/open-apis/task/v2/tasks/" + taskId + "/add_members").
 				Params(map[string]interface{}{"user_id_type": "open_id"}).
 				Body(body)
 		}
 
 		if removeStr := runtime.Str("remove"); removeStr != "" {
-			body := buildMembersBody(removeStr, "")
+			body := buildMembersBody(removeStr, "assignee", "")
 			d.POST("/open-apis/task/v2/tasks/" + taskId + "/remove_members").
 				Params(map[string]interface{}{"user_id_type": "open_id"}).
 				Body(body)
@@ -69,7 +68,7 @@ var AssignTask = common.Shortcut{
 		var lastData map[string]interface{}
 
 		if addStr := runtime.Str("add"); addStr != "" {
-			body := buildMembersBody(addStr, runtime.Str("idempotency-key"))
+			body := buildMembersBody(addStr, "assignee", runtime.Str("idempotency-key"))
 			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 				HttpMethod:  http.MethodPost,
 				ApiPath:     "/open-apis/task/v2/tasks/" + taskId + "/add_members",
@@ -92,7 +91,7 @@ var AssignTask = common.Shortcut{
 		}
 
 		if removeStr := runtime.Str("remove"); removeStr != "" {
-			body := buildMembersBody(removeStr, "")
+			body := buildMembersBody(removeStr, "assignee", "")
 			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 				HttpMethod:  http.MethodPost,
 				ApiPath:     "/open-apis/task/v2/tasks/" + taskId + "/remove_members",
@@ -125,21 +124,21 @@ var AssignTask = common.Shortcut{
 		}
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "✅ Task assignees updated successfully!\n")
+			fmt.Fprintf(w, "✅ Task assignes updated successfully!\n")
 			fmt.Fprintf(w, "Task ID: %s\n", taskId)
 			if urlVal != "" {
 				fmt.Fprintf(w, "Task URL: %s\n", urlVal)
 			}
 
 			if members, ok := task["members"].([]interface{}); ok {
-				fmt.Fprintf(w, "Current Assignees: %d\n", len(members))
+				fmt.Fprintf(w, "Current Assignes: %d\n", len(members))
 			}
 		})
 		return nil
 	},
 }
 
-func buildMembersBody(idsStr string, clientToken string) map[string]interface{} {
+func buildMembersBody(idsStr, role, clientToken string) map[string]interface{} {
 	ids := strings.Split(idsStr, ",")
 	var members []map[string]interface{}
 
@@ -148,11 +147,7 @@ func buildMembersBody(idsStr string, clientToken string) map[string]interface{} 
 		if id == "" {
 			continue
 		}
-		members = append(members, map[string]interface{}{
-			"id":   id,
-			"role": "assignee",
-			"type": "user",
-		})
+		members = append(members, buildTaskMember(id, role))
 	}
 
 	body := map[string]interface{}{

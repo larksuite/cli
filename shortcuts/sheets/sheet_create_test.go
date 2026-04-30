@@ -110,6 +110,142 @@ func TestSheetCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
 	}
 }
 
+func TestSheetCreateFallbackURLWhenBackendOmitsIt(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetCreateTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"spreadsheet": map[string]interface{}{
+					"spreadsheet_token": "shtcn_new_sheet",
+					// "url" deliberately omitted to exercise the fallback.
+				},
+			},
+		},
+	})
+
+	err := runSheetCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "项目排期",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSheetCreateEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/sheets/shtcn_new_sheet"; got != want {
+		t.Fatalf("url = %#v, want %q (brand-standard fallback)", got, want)
+	}
+}
+
+func TestSheetCreatePreservesBackendURL(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetCreateTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"spreadsheet": map[string]interface{}{
+					"spreadsheet_token": "shtcn_new_sheet",
+					"url":               "https://tenant.larkoffice.com/sheets/shtcn_new_sheet",
+				},
+			},
+		},
+	})
+
+	err := runSheetCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "项目排期",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSheetCreateEnvelope(t, stdout)
+	if got, want := data["url"], "https://tenant.larkoffice.com/sheets/shtcn_new_sheet"; got != want {
+		t.Fatalf("url = %#v, want backend tenant URL %q (fallback must not overwrite)", got, want)
+	}
+}
+
+func TestSheetCreateFallbackURLWhenBackendURLIsWhitespace(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetCreateTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"spreadsheet": map[string]interface{}{
+					"spreadsheet_token": "shtcn_new_sheet",
+					"url":               "   ", // whitespace-only must trigger fallback, not pass through.
+				},
+			},
+		},
+	})
+
+	err := runSheetCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "项目排期",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSheetCreateEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/sheets/shtcn_new_sheet"; got != want {
+		t.Fatalf("url = %#v, want %q (whitespace-only backend URL must yield fallback)", got, want)
+	}
+}
+
+func TestSheetCreateTrimsPaddedBackendURL(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetCreateTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"spreadsheet": map[string]interface{}{
+					"spreadsheet_token": "shtcn_new_sheet",
+					"url":               "  https://tenant.larkoffice.com/sheets/shtcn_new_sheet  ",
+				},
+			},
+		},
+	})
+
+	err := runSheetCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "项目排期",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSheetCreateEnvelope(t, stdout)
+	if got, want := data["url"], "https://tenant.larkoffice.com/sheets/shtcn_new_sheet"; got != want {
+		t.Fatalf("url = %#v, want trimmed backend URL %q (whitespace must not leak into output)", got, want)
+	}
+}
+
 func sheetCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {
 	t.Helper()
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -108,7 +109,12 @@ var SheetCreate = common.Shortcut{
 		out := map[string]interface{}{
 			"spreadsheet_token": token,
 			"title":             title,
-			"url":               spreadsheet["url"],
+		}
+		url, _ := spreadsheet["url"].(string)
+		if url = strings.TrimSpace(url); url != "" {
+			out["url"] = url
+		} else if u := common.BuildResourceURL(runtime.Config.Brand, "sheet", token); u != "" {
+			out["url"] = u
 		}
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, token, "sheet"); grant != nil {
 			out["permission_grant"] = grant

@@ -155,6 +155,19 @@ func (ctx *RuntimeContext) LarkSDK() *lark.Client {
 	return ctx.larkSDK
 }
 
+// EnsureScopes runs the same pre-flight scope check used by the framework
+// before Validate, but on a caller-supplied set of scopes. Use it from a
+// shortcut's Validate to enforce conditional scope requirements that depend
+// on flag values (e.g. --delete-remote needing space:document:delete) so a
+// destructive operation never starts on a token that can't finish it.
+//
+// Behavior matches checkShortcutScopes: when no token is available or the
+// resolver doesn't expose scope metadata, this is a silent no-op — the
+// downstream API call still surfaces missing_scope at runtime.
+func (ctx *RuntimeContext) EnsureScopes(scopes []string) error {
+	return checkShortcutScopes(ctx.Factory, ctx.ctx, ctx.As(), ctx.Config, scopes)
+}
+
 // ── Flag accessors ──
 
 // Str returns a string flag value.
@@ -709,9 +722,10 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	botOnly := len(shortcut.AuthTypes) == 1 && shortcut.AuthTypes[0] == "bot"
 
 	cmd := &cobra.Command{
-		Use:   shortcut.Command,
-		Short: shortcut.Description,
-		Args:  rejectPositionalArgs(),
+		Use:    shortcut.Command,
+		Short:  shortcut.Description,
+		Hidden: shortcut.Hidden,
+		Args:   rejectPositionalArgs(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
@@ -719,6 +733,7 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
+	cmdutil.SetRisk(cmd, shortcut.Risk)
 	parent.AddCommand(cmd)
 	if shortcut.PostMount != nil {
 		shortcut.PostMount(cmd)
@@ -768,10 +783,8 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		return handleShortcutDryRun(f, rctx, s)
 	}
 
-	if s.Risk == "high-risk-write" {
-		if err := RequireConfirmation(s.Risk, rctx.Bool("yes"), s.Description); err != nil {
-			return err
-		}
+	if s.Risk == "high-risk-write" && !rctx.Bool("yes") {
+		return cmdutil.RequireConfirmation(s.Service + " " + s.Command)
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
@@ -882,17 +895,9 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if path == "" {
 				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
 			}
-			f, err := rctx.FileIO().Open(path)
+			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				if errors.Is(err, fileio.ErrPathValidation) {
-					return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
-				}
-				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
-			}
-			data, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
-				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
+				return FlagErrorf("--%s: %v", fl.Name, err)
 			}
 			rctx.Cmd.Flags().Set(fl.Name, string(data))
 			continue
