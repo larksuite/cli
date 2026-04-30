@@ -3,7 +3,9 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-把飞书云空间的某个文件夹**单向**镜像到本地目录（Drive → 本地）。命令递归列出 `--folder-token` 下所有 `type=file` 的文件，逐一下载到 `--local-dir` 对应的相对路径，子文件夹自动复刻为本地目录。
+把飞书云空间的某个文件夹**单向、文件级**镜像到本地目录（Drive → 本地）。命令递归列出 `--folder-token` 下所有 `type=file` 的文件，逐一下载到 `--local-dir` 对应的相对路径，子文件夹自动复刻为本地目录。
+
+> ⚠️ **不是 directory-level mirror**：`--delete-local` 只删除本地"多余"的常规文件，不删除空目录。如果云端把整个子文件夹删了，对应的本地子目录会留空（里面的文件被清掉，目录本身保留）；想精确同步目录结构请自己 `rmdir` 处理空壳。
 
 输出按"动作"分类：
 
@@ -15,6 +17,8 @@
 | `summary.deleted_local` | 启用 `--delete-local --yes` 时删除的本地文件数 |
 | `items[]` | 每个文件的明细（`rel_path` / `file_token` / `action` / 失败时的 `error`） |
 
+`summary.failed > 0` 时命令以 **非零状态码**（`exit=1`，`error.type=partial_failure`）退出，且同一份 `summary + items` 会在 `error.detail` 里返回；脚本/agent 直接通过 exit code 判断成败即可，不需要再去解 `summary.failed`。
+
 ## 命令
 
 ```bash
@@ -25,7 +29,7 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx
 lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
   --if-exists skip
 
-# 镜像同步：下载新文件 + 删除云端没有的本地文件
+# 文件级镜像：下载新文件 + 删除云端没有的本地文件（不删空目录）
 # （--delete-local 必须搭配 --yes，否则会被 Validate 直接拒绝）
 lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
   --delete-local --yes
@@ -38,7 +42,7 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 | `--local-dir` | 是 | path | 本地根目录（**必须是 cwd 的相对路径**；绝对路径或逃出 cwd 的相对路径会被 CLI 直接拒绝） |
 | `--folder-token` | 是 | string | 源 Drive 文件夹 token |
 | `--if-exists` | 否 | enum | 本地文件已存在时的策略：`overwrite`（默认）/ `skip` |
-| `--delete-local` | 否 | bool | 删除本地云端不存在的文件，实现镜像同步语义；**必须配合 `--yes`** |
+| `--delete-local` | 否 | bool | 删除本地"云端没有的常规文件"（**不删空目录**，因此是 file-level mirror）；**必须配合 `--yes`** |
 | `--yes` | 否 | bool | 确认 `--delete-local`；不传时该破坏性操作在 Validate 阶段被拒绝 |
 
 ## 比较与下载范围
@@ -49,10 +53,11 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 ## --delete-local 的安全行为
 
-`--delete-local` 是命令里**唯一的破坏性 flag**，会按"本地有但云端没有"清理本地副本。设计上把它跟 `--yes` 强绑定：
+`--delete-local` 是命令里**唯一的破坏性 flag**，会按"本地有但云端没有"清理本地常规文件。设计上把它跟 `--yes` 强绑定，且与下载阶段的失败联动：
 
 - `--delete-local`（无 `--yes`）→ Validate 直接报错：`--delete-local requires --yes`，没有任何下载、列表请求或删除发生。
-- `--delete-local --yes` → 正常执行：先把云端文件下载到本地，再扫一遍 `--local-dir` 下所有常规文件，把不在云端清单里的逐个 `os.Remove`。
+- `--delete-local --yes`，**且下载阶段全部成功** → 扫一遍 `--local-dir` 下所有常规文件，把不在云端清单里的逐个 `os.Remove`。**只删常规文件，不删目录**：远端文件夹被删除后，对应本地目录会保留空壳。
+- `--delete-local --yes`，**但下载阶段有任何条目失败** → **跳过整个删除阶段**，命令以 `partial_failure` 非零退出。设计意图：避免出现"前面下载失败、后面继续删本地文件"的半同步状态；操作者修好下载错误后再重跑即可。
 - 不传 `--delete-local` → `summary.deleted_local` 永远是 0；命令对本地"多余"文件视而不见。
 
 第 6 章里把 `+pull --delete-local` 标了 `high-risk-write`，CLI 这边的实现等价于"未传 `--yes` 时拒绝执行"，符合该约束的精神。

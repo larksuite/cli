@@ -4,6 +4,8 @@
 package drive
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 )
 
 // TestDrivePullDownloadsAndCreatesParents verifies the happy path: a remote
@@ -153,8 +156,9 @@ func TestDrivePullSkipsExistingWhenSkipPolicy(t *testing.T) {
 // already a directory locally. SafeOutputPath would refuse to overwrite
 // the directory at write time, but if --if-exists=skip silently swallows
 // the collision the caller sees "skipped" and assumes the mirror is
-// in sync. The fix surfaces it as a structured failure under both
-// skip and overwrite policies so callers can react.
+// in sync. The fix surfaces it as a structured `partial_failure`
+// ExitError (non-zero exit + items[] in error.detail) under both skip
+// and overwrite policies so callers can react via exit code.
 func TestDrivePullSurfacesDirectoryFileMirrorConflict(t *testing.T) {
 	for _, policy := range []string{"overwrite", "skip"} {
 		t.Run(policy, func(t *testing.T) {
@@ -189,22 +193,22 @@ func TestDrivePullSurfacesDirectoryFileMirrorConflict(t *testing.T) {
 				"--if-exists", policy,
 				"--as", "bot",
 			}, f, stdout)
-			if err != nil {
-				t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+			detail := assertDrivePullPartialFailure(t, err)
+			summary, items := splitDrivePullDetail(t, detail)
+			if got := summary["failed"]; got != float64(1) {
+				t.Errorf("[%s] summary.failed = %v, want 1", policy, got)
 			}
-
-			out := stdout.String()
-			if !strings.Contains(out, `"failed": 1`) {
-				t.Errorf("[%s] expected failed=1 (dir/file mirror conflict), got: %s", policy, out)
+			if got := summary["skipped"]; got != float64(0) {
+				t.Errorf("[%s] mirror conflict must NOT be swallowed as skipped (skipped=%v)", policy, got)
 			}
-			if strings.Contains(out, `"skipped": 1`) {
-				t.Errorf("[%s] mirror conflict must NOT be swallowed as skipped, got: %s", policy, out)
+			if len(items) != 1 || items[0]["action"] != "failed" {
+				t.Errorf("[%s] expected one items[] entry with action=failed, got: %#v", policy, items)
 			}
-			if !strings.Contains(out, `"action": "failed"`) {
-				t.Errorf("[%s] expected items entry with action=failed, got: %s", policy, out)
+			if msg, _ := items[0]["error"].(string); !strings.Contains(msg, "is a directory") {
+				t.Errorf("[%s] error message should mention the directory conflict, got: %q", policy, msg)
 			}
-			if !strings.Contains(out, "is a directory") {
-				t.Errorf("[%s] error message should mention the directory conflict, got: %s", policy, out)
+			if stdout.Len() != 0 {
+				t.Errorf("[%s] stdout should be empty on partial_failure, got: %s", policy, stdout.String())
 			}
 		})
 	}
@@ -530,12 +534,14 @@ func TestDrivePullDeleteLocalPreservesLocalFileShadowedByRemoteFolder(t *testing
 }
 
 // TestDrivePullDeleteLocalCountsFailureInSummary pins the contract that
-// a failed delete shows up in summary.failed, not just in items[]. Before
-// the fix, the delete_failed branches appended an item but left `failed`
-// at zero, so the JSON summary could report "failed": 0 even when the
-// mirror was incomplete. Setup forces vfs.Remove to fail by making the
-// file's containing directory read-only (chmod 0o555) right before the
-// run; cleanup restores 0o755 so t.TempDir teardown succeeds.
+// a failed delete shows up in summary.failed (not just in items[]) AND
+// surfaces as a partial_failure ExitError so callers can detect the
+// half-synced state via exit code. Before the fix, the delete_failed
+// branches appended an item but left `failed` at zero AND returned nil,
+// so the JSON envelope reported `ok=true`+`exit=0` even when the mirror
+// was incomplete. Setup forces os.Remove to fail by making the file's
+// containing directory read-only (chmod 0o555) right before the run;
+// cleanup restores 0o755 so t.TempDir teardown succeeds.
 func TestDrivePullDeleteLocalCountsFailureInSummary(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -576,19 +582,97 @@ func TestDrivePullDeleteLocalCountsFailureInSummary(t *testing.T) {
 		"--yes",
 		"--as", "bot",
 	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	detail := assertDrivePullPartialFailure(t, err)
+	summary, items := splitDrivePullDetail(t, detail)
+	if got := summary["failed"]; got != float64(1) {
+		t.Errorf("summary.failed = %v, want 1 (delete_failed must increment failed)", got)
+	}
+	if got := summary["deleted_local"]; got != float64(0) {
+		t.Errorf("summary.deleted_local = %v, want 0", got)
+	}
+	if len(items) != 1 || items[0]["action"] != "delete_failed" {
+		t.Errorf("expected one items[] entry with action=delete_failed, got: %#v", items)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout should be empty on partial_failure, got: %s", stdout.String())
+	}
+}
+
+// TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero pins the
+// gating contract for --delete-local: when the download pass produced
+// any failure, the delete walk MUST be skipped entirely and the command
+// MUST exit non-zero with type=partial_failure. The half-synced state
+// where some Drive files are missing locally AND some local-only files
+// have been removed is never observable.
+func TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// stale.txt only exists locally — without the gate, --delete-local
+	// would unlink it. The gate must prevent that when downloads fail.
+	stale := filepath.Join("local", "stale.txt")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatalf("WriteFile stale: %v", err)
 	}
 
-	out := stdout.String()
-	if !strings.Contains(out, `"failed": 1`) {
-		t.Errorf("expected failed=1 (delete_failed must increment summary.failed), got: %s", out)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_broken", "name": "broken.bin", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	// Download stub returns 500 so the download fails.
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_broken/download",
+		Status:  500,
+		Body:    []byte(`{"code":99999,"msg":"backend boom"}`),
+		Headers: http.Header{"Content-Type": []string{"application/json"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	exitErr := assertDrivePullPartialFailure(t, err)
+	if !strings.Contains(exitErr.Detail.Message, "--delete-local was skipped") {
+		t.Errorf("expected message to mention --delete-local skip, got: %q", exitErr.Detail.Message)
 	}
-	if !strings.Contains(out, `"deleted_local": 0`) {
-		t.Errorf("expected deleted_local=0, got: %s", out)
+
+	summary, items := splitDrivePullDetail(t, exitErr)
+	if got := summary["failed"]; got != float64(1) {
+		t.Errorf("summary.failed = %v, want 1", got)
 	}
-	if !strings.Contains(out, `"action": "delete_failed"`) {
-		t.Errorf("expected delete_failed item in items[], got: %s", out)
+	if got := summary["deleted_local"]; got != float64(0) {
+		t.Errorf("summary.deleted_local = %v, want 0 (delete pass must be skipped on download failure)", got)
+	}
+	// The download failure is the only items[] entry — no delete_local /
+	// delete_failed entries because the delete pass was skipped entirely.
+	if len(items) != 1 || items[0]["action"] != "failed" {
+		t.Errorf("expected one items[] entry with action=failed, got: %#v", items)
+	}
+
+	// stale.txt MUST still exist on disk.
+	if _, statErr := os.Stat(stale); statErr != nil {
+		t.Fatalf("stale.txt must survive when --delete-local is skipped after a download failure; stat err=%v", statErr)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout should be empty on partial_failure, got: %s", stdout.String())
 	}
 }
 
@@ -892,4 +976,51 @@ func mustReadFile(t *testing.T, path, want string) {
 	if string(data) != want {
 		t.Fatalf("file %s content = %q, want %q", path, string(data), want)
 	}
+}
+
+// assertDrivePullPartialFailure asserts that err is the structured
+// partial_failure ExitError +pull returns when any item-level failure
+// happens, and returns the unwrapped *ExitError so the caller can drill
+// into Detail.Detail without re-doing the type assertion.
+func assertDrivePullPartialFailure(t *testing.T, err error) *output.ExitError {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected partial_failure ExitError, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Errorf("exit code = %d, want %d (ExitAPI)", exitErr.Code, output.ExitAPI)
+	}
+	if exitErr.Detail == nil {
+		t.Fatalf("ExitError.Detail must be set on partial_failure")
+	}
+	if exitErr.Detail.Type != "partial_failure" {
+		t.Errorf("error.type = %q, want partial_failure", exitErr.Detail.Type)
+	}
+	return exitErr
+}
+
+// splitDrivePullDetail extracts the {summary, items[]} payload from the
+// ExitError detail. We round-trip through JSON so test assertions don't
+// depend on the concrete map types the production code happens to use.
+func splitDrivePullDetail(t *testing.T, exitErr *output.ExitError) (map[string]interface{}, []map[string]interface{}) {
+	t.Helper()
+	raw, err := json.Marshal(exitErr.Detail.Detail)
+	if err != nil {
+		t.Fatalf("marshal detail: %v", err)
+	}
+	var got struct {
+		Summary map[string]interface{}   `json:"summary"`
+		Items   []map[string]interface{} `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal detail: %v\nraw=%s", err, string(raw))
+	}
+	if got.Summary == nil {
+		t.Fatalf("error.detail missing summary; raw=%s", string(raw))
+	}
+	return got.Summary, got.Items
 }

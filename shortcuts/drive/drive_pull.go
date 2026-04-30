@@ -35,17 +35,21 @@ type drivePullItem struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// DrivePull mirrors a Drive folder onto a local directory: recursively lists
-// --folder-token, downloads each type=file entry under --local-dir, and
-// optionally deletes local files absent from Drive (--delete-local --yes).
+// DrivePull performs a one-way file-level mirror from a Drive folder onto
+// a local directory: recursively lists --folder-token, downloads each
+// type=file entry under --local-dir, and optionally deletes local files
+// absent from Drive (--delete-local --yes).
 //
 // Only Drive entries with type=file participate; online docs (docx, sheet,
 // bitable, mindnote, slides) and shortcuts are skipped because there is no
-// equivalent local binary to write back.
+// equivalent local binary to write back. Directories are reproduced when
+// remote folders contain downloadable files, but local directories that
+// become orphaned after a remote folder is removed are NOT pruned —
+// --delete-local only unlinks regular files.
 var DrivePull = common.Shortcut{
 	Service:     "drive",
 	Command:     "+pull",
-	Description: "Mirror a Drive folder onto a local directory (Drive → local)",
+	Description: "One-way file-level mirror of a Drive folder onto a local directory (Drive → local)",
 	Risk:        "write",
 	Scopes:      []string{"drive:drive.metadata:readonly", "drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
@@ -53,7 +57,7 @@ var DrivePull = common.Shortcut{
 		{Name: "local-dir", Desc: "local root directory (relative to cwd)", Required: true},
 		{Name: "folder-token", Desc: "source Drive folder token", Required: true},
 		{Name: "if-exists", Desc: "policy when a local file already exists", Default: drivePullIfExistsOverwrite, Enum: []string{drivePullIfExistsOverwrite, drivePullIfExistsSkip}},
-		{Name: "delete-local", Type: "bool", Desc: "delete local files absent from Drive (mirror semantics); requires --yes"},
+		{Name: "delete-local", Type: "bool", Desc: "delete local regular files absent from Drive (file-level mirror; empty directories are NOT pruned); requires --yes"},
 		{Name: "yes", Type: "bool", Desc: "confirm --delete-local before deleting local files"},
 	},
 	Tips: []string{
@@ -137,6 +141,7 @@ var DrivePull = common.Shortcut{
 		}
 
 		var downloaded, skipped, failed, deletedLocal int
+		downloadFailed := 0
 		items := make([]drivePullItem, 0)
 
 		// Deterministic iteration order for output stability.
@@ -166,6 +171,7 @@ var DrivePull = common.Shortcut{
 						Error:     fmt.Sprintf("local path is a directory, remote is a regular file: %s", target),
 					})
 					failed++
+					downloadFailed++
 					continue
 				}
 				if ifExists == drivePullIfExistsSkip {
@@ -178,13 +184,20 @@ var DrivePull = common.Shortcut{
 			if err := drivePullDownload(ctx, runtime, token, target); err != nil {
 				items = append(items, drivePullItem{RelPath: rel, FileToken: token, Action: "failed", Error: err.Error()})
 				failed++
+				downloadFailed++
 				continue
 			}
 			items = append(items, drivePullItem{RelPath: rel, FileToken: token, Action: "downloaded"})
 			downloaded++
 		}
 
-		if deleteLocal {
+		// Gate --delete-local on a clean download pass. With download
+		// failures still in items[], proceeding to the delete walk would
+		// leave the mirror in a half-synced state where some files Drive
+		// owns are missing locally AND some local-only files have been
+		// removed. Surface the failure first; the operator can re-run
+		// after fixing whatever caused the download error.
+		if deleteLocal && downloadFailed == 0 {
 			// Walk the canonical absolute root, build the list of
 			// rel_paths, then delete via the absolute path. Both
 			// values come from the validated safeRoot, so kernel
@@ -226,7 +239,7 @@ var DrivePull = common.Shortcut{
 			}
 		}
 
-		runtime.Out(map[string]interface{}{
+		payload := map[string]interface{}{
 			"summary": map[string]interface{}{
 				"downloaded":    downloaded,
 				"skipped":       skipped,
@@ -234,7 +247,32 @@ var DrivePull = common.Shortcut{
 				"deleted_local": deletedLocal,
 			},
 			"items": items,
-		}, nil)
+		}
+
+		// Item-level failures (download error, dir/file conflict, delete
+		// error) must surface as a non-zero exit so AI / script callers
+		// don't have to reach into summary.failed to detect a partial
+		// sync. The same structured payload rides along in error.detail
+		// so forensics aren't lost. When --delete-local was skipped
+		// because of an earlier download failure, callers see
+		// deleted_local=0 plus the download failure that aborted it,
+		// which is what makes the partial state self-explanatory.
+		if failed > 0 {
+			msg := fmt.Sprintf("%d item(s) failed during +pull; partial sync — re-run after resolving the failures", failed)
+			if deleteLocal && downloadFailed > 0 {
+				msg += " (--delete-local was skipped because the download pass had failures)"
+			}
+			return &output.ExitError{
+				Code: output.ExitAPI,
+				Detail: &output.ErrDetail{
+					Type:    "partial_failure",
+					Message: msg,
+					Detail:  payload,
+				},
+			}
+		}
+
+		runtime.Out(payload, nil)
 		return nil
 	},
 }
