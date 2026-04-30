@@ -260,13 +260,14 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseRecordGet,
 			wantHelp: []string{
 				"record ID (repeatable)",
-				"field ID or field name to include (repeatable)",
+				"field ID or name to project; repeat to keep only needed columns",
 				"output format: markdown (default) | json",
 			},
 			wantTips: []string{
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id <record_id>",
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id rec_001 --record-id rec_002 --field-id Name --field-id Status",
 				"Default output is markdown",
+				"projection boundary",
 				"record_id is already known",
 				"lark-base record read SOP",
 			},
