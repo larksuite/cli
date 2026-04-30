@@ -35,6 +35,10 @@
     "en": { "title": "Mail", "description": "Email, draft, folder, and contacts management" },
     "zh": { "title": "邮箱", "description": "查看和管理用户邮箱数据，包括邮件、草稿、文件夹和联系人" }
   },
+  "markdown": {
+    "en": { "title": "Markdown", "description": "Drive-native Markdown file create, fetch, and overwrite" },
+    "zh": { "title": "Markdown", "description": "Drive 原生 Markdown 文件的创建、读取和覆盖更新" }
+  },
   "minutes": {
     "en": { "title": "Minutes", "description": "Minutes content and metadata retrieval" },
     "zh": { "title": "妙记", "description": "妙记信息获取、内容查询" }
@@ -65,7 +69,7 @@
     "zh": { "title": "知识库", "description": "知识空间、节点管理" }
   },
   "okr": {
-    "en": { "title": "OKR", "description": "Lark OKR objectives, key results, alignments, indicators" },
-    "zh": { "title": "OKR", "description": "飞书 OKR 目标、关键结果、对齐、量化指标" }
+    "en": { "title": "OKR", "description": "Lark OKR objectives, key results, alignments, indicators, progresses" },
+    "zh": { "title": "OKR", "description": "飞书 OKR 目标、关键结果、对齐、量化指标、进展记录" }
   }
 }

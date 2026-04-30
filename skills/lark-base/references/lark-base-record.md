@@ -8,9 +8,7 @@ record 相关命令索引。
 
 | 文档 | 命令 | 说明 |
 |------|------|------|
-| [lark-base-record-search.md](lark-base-record-search.md) | `+record-search` | 按关键词和字段范围检索记录 |
-| [lark-base-record-list.md](lark-base-record-list.md) | `+record-list` | 分页列记录 |
-| [lark-base-record-get.md](lark-base-record-get.md) | `+record-get` | 获取一条或多条记录 |
+| [lark-base-record-read-sop.md](lark-base-record-read-sop.md) | `+record-get` / `+record-search` / `+record-list` | 记录读取统一选路、筛选排序投影 SOP |
 | [lark-base-record-upsert.md](lark-base-record-upsert.md) | `+record-upsert` | 创建或更新记录 |
 | [lark-base-record-batch-create.md](lark-base-record-batch-create.md) | `+record-batch-create` | 按 `fields/rows` 批量创建记录 |
 | [lark-base-record-batch-update.md](lark-base-record-batch-update.md) | `+record-batch-update` | 批量更新记录 |
@@ -21,10 +19,11 @@ record 相关命令索引。
 
 ## 说明
 
-- 聚合页只保留目录职责；每个命令的详细说明请进入对应单命令文档。
+- 读取记录前优先阅读 [lark-base-record-read-sop.md](lark-base-record-read-sop.md)，它合并了 `+record-get` / `+record-search` / `+record-list` 的选路和 SOP。
+- 聚合页只保留目录职责；写入、删除、历史等命令的详细说明请进入对应单命令文档。
 - 所有 `+xxx-list` 调用都必须串行执行；若要批量跑多个 list 请求，只能串行执行。
 - `+record-list` 支持重复传参 `--field-id` 做字段筛选。
-- `+record-get` 支持重复传参 `--field-id` 裁剪返回字段；批量读取时优先显式选字段，避免返回全字段。
+- `+record-get` 支持重复 `--record-id` 或 `--json '{"record_id_list":[...]}'` 批量读取；也支持重复传参 `--field-id` 裁剪返回字段，避免返回全字段。
 - 写记录 JSON 前优先阅读 [lark-base-cell-value.md](lark-base-cell-value.md)。
 - 本地文件写入附件字段时，必须使用 `+record-upload-attachment`。
 - 从附件字段下载文件时，用 `lark-cli docs +media-download --token <file_token> --output <path>`，用法见 [`../../lark-doc/references/lark-doc-media-download.md`](../../lark-doc/references/lark-doc-media-download.md)。

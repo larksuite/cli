@@ -109,7 +109,7 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 |------|---------|
 | 妙记 URL | 从 URL 末尾提取，如 `https://sample.feishu.cn/minutes/obcnxxxxxxxxxxxxxxxxxxxx` → `obcnxxxxxxxxxxxxxxxxxxxx` |
 | 妙记元信息查询 | `lark-cli minutes minutes get --params '{"minute_token": "obcn..."}'` |
-| 会议纪要查询 | `lark-cli vc +notes --meeting-ids <id>` 返回结果中关联的妙记 token |
+| 会议录制查询 | `lark-cli vc +recording --meeting-ids <id>` 或 `lark-cli vc +recording --calendar-event-ids <event_id>` |
 
 ## 常见错误与排查
 

@@ -6,13 +6,16 @@ package config
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -338,5 +341,70 @@ func TestUpdateExistingProfileWithoutSecret_RejectsAppIDChange(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "App Secret") {
 		t.Fatalf("error = %v, want mention of App Secret", err)
+	}
+}
+
+// stubConfigExtProvider simulates env/sidecar credential mode for config guard tests.
+type stubConfigExtProvider struct{ name string }
+
+func (s *stubConfigExtProvider) Name() string { return s.name }
+func (s *stubConfigExtProvider) ResolveAccount(_ context.Context) (*extcred.Account, error) {
+	return &extcred.Account{AppID: "test-app"}, nil
+}
+func (s *stubConfigExtProvider) ResolveToken(_ context.Context, _ extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+
+func newConfigFactoryWithExternalProvider(t *testing.T) *cmdutil.Factory {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	stub := &stubConfigExtProvider{name: "env"}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Credential = cred
+	return f
+}
+
+func TestConfigBlockedByExternalProvider(t *testing.T) {
+	f := newConfigFactoryWithExternalProvider(t)
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"init", []string{"init", "--app-id", "x", "--app-secret-stdin"}},
+		{"remove", []string{"remove"}},
+		{"show", []string{"show"}},
+		{"default-as", []string{"default-as", "user"}},
+		{"strict-mode", []string{"strict-mode", "off"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := NewCmdConfig(f)
+			cmd.SilenceErrors = true
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs(tt.args)
+
+			// Locate the subcommand before execution (PersistentPreRunE receives it as cmd).
+			matched, _, _ := cmd.Find(tt.args)
+
+			err := cmd.Execute()
+
+			// PersistentPreRunE sets SilenceUsage on the matched subcommand, not the parent.
+			if matched != nil && matched != cmd && !matched.SilenceUsage {
+				t.Error("expected PersistentPreRunE to set SilenceUsage on matched subcommand")
+			}
+			var exitErr *output.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+			}
+			if exitErr.Code != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+			}
+			if exitErr.Detail == nil || exitErr.Detail.Type != "external_provider" {
+				t.Errorf("error type = %v, want %q", exitErr.Detail, "external_provider")
+			}
+		})
 	}
 }

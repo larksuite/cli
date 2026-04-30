@@ -7,19 +7,20 @@ import (
 	"encoding/json"
 	"io"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 )
 
 // ParseOptionalBody parses --data JSON for methods that accept a request body.
-// Supports stdin (-) and single-quote stripping via ResolveInput.
+// Supports stdin (-), @file, @@-escape, and single-quote stripping via ResolveInput.
 // Returns (nil, nil) if the method has no body or data is empty.
-func ParseOptionalBody(httpMethod, data string, stdin io.Reader) (interface{}, error) {
+func ParseOptionalBody(httpMethod, data string, stdin io.Reader, fileIO fileio.FileIO) (interface{}, error) {
 	switch httpMethod {
 	case "POST", "PUT", "PATCH", "DELETE":
 	default:
 		return nil, nil
 	}
-	resolved, err := ResolveInput(data, stdin)
+	resolved, err := ResolveInput(data, stdin, fileIO)
 	if err != nil {
 		return nil, output.ErrValidation("--data: %s", err)
 	}
@@ -34,9 +35,9 @@ func ParseOptionalBody(httpMethod, data string, stdin io.Reader) (interface{}, e
 }
 
 // ParseJSONMap parses a JSON string into a map. Returns an empty map if input is empty.
-// Supports stdin (-) and single-quote stripping via ResolveInput.
-func ParseJSONMap(input, label string, stdin io.Reader) (map[string]any, error) {
-	resolved, err := ResolveInput(input, stdin)
+// Supports stdin (-), @file, @@-escape, and single-quote stripping via ResolveInput.
+func ParseJSONMap(input, label string, stdin io.Reader, fileIO fileio.FileIO) (map[string]any, error) {
+	resolved, err := ResolveInput(input, stdin, fileIO)
 	if err != nil {
 		return nil, output.ErrValidation("%s: %s", label, err)
 	}

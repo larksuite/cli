@@ -62,14 +62,9 @@ func TestBase_BasicWorkflow(t *testing.T) {
 	})
 
 	t.Run("list tables and find created table as bot", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+table-list", "--base-token", baseToken},
-			DefaultAs: "bot",
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-		assert.True(t, gjson.Get(result.Stdout, `data.tables.#(id=="`+tableID+`")`).Exists(), "stdout:\n%s", result.Stdout)
+		table := findBaseTableByID(t, ctx, baseToken, tableID)
+		assert.Equal(t, tableID, table.Get("id").String())
+		assert.Equal(t, tableName, table.Get("name").String())
 	})
 
 	require.NotEmpty(t, primaryFieldID)

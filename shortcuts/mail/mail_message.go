@@ -10,6 +10,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// MailMessage is the `+message` shortcut: fetch full content of a single
+// email by message ID (normalized body + attachments / inline metadata).
 var MailMessage = common.Shortcut{
 	Service:     "mail",
 	Command:     "+message",
@@ -48,6 +50,7 @@ var MailMessage = common.Shortcut{
 
 		out := buildMessageOutput(msg, html)
 		runtime.Out(out, nil)
+		maybeHintReadReceiptRequest(runtime, mailboxID, messageID, msg)
 		return nil
 	},
 }

@@ -149,20 +149,6 @@ func resetBuffers(stdout *bytes.Buffer, stderr *bytes.Buffer) {
 	stderr.Reset()
 }
 
-func parseDryRunJSON(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
-	t.Helper()
-	out := stdout.String()
-	const prefix = "=== Dry Run ===\n"
-	if !strings.HasPrefix(out, prefix) {
-		t.Fatalf("expected dry-run prefix, got:\n%s", out)
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(out, prefix)), &payload); err != nil {
-		t.Fatalf("failed to parse dry-run payload: %v\nstdout: %s", err, out)
-	}
-	return payload
-}
-
 // --- api command ---
 
 func TestIntegration_Api_BusinessError_OutputsEnvelope(t *testing.T) {
@@ -402,7 +388,25 @@ func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *
 	}
 }
 
-func TestIntegration_StrictModeBot_ProfileOverride_ServiceDryRunForcesBotIdentity(t *testing.T) {
+func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEnvelope(t *testing.T) {
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
+	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+
+	code := executeRootIntegration(t, f, rootCmd, []string{
+		"im", "+chat-create", "--name", "probe", "--as", "bot", "--dry-run",
+	})
+
+	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
+		OK:       false,
+		Identity: "bot",
+		Error: &output.ErrDetail{
+			Type:    "strict_mode",
+			Message: `strict mode is "user", only user identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+		},
+	})
+}
+
+func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
@@ -410,16 +414,14 @@ func TestIntegration_StrictModeBot_ProfileOverride_ServiceDryRunForcesBotIdentit
 		"im", "chats", "get", "--params", `{"chat_id":"oc_test"}`, "--as", "user", "--dry-run",
 	})
 
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected empty stderr, got: %s", stderr.String())
-	}
-	payload := parseDryRunJSON(t, stdout)
-	if got := payload["as"]; got != "bot" {
-		t.Fatalf("dry-run as = %v, want bot", got)
-	}
+	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
+		OK:       false,
+		Identity: "user",
+		Error: &output.ErrDetail{
+			Type:    "strict_mode",
+			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+		},
+	})
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsEnvelope(t *testing.T) {
@@ -439,7 +441,7 @@ func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsE
 	})
 }
 
-func TestIntegration_StrictModeBot_ProfileOverride_APIDryRunForcesBotIdentity(t *testing.T) {
+func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
@@ -447,16 +449,14 @@ func TestIntegration_StrictModeBot_ProfileOverride_APIDryRunForcesBotIdentity(t 
 		"api", "--as", "user", "GET", "/open-apis/im/v1/chats/oc_test", "--dry-run",
 	})
 
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected empty stderr, got: %s", stderr.String())
-	}
-	payload := parseDryRunJSON(t, stdout)
-	if got := payload["as"]; got != "bot" {
-		t.Fatalf("dry-run as = %v, want bot", got)
-	}
+	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
+		OK:       false,
+		Identity: "user",
+		Error: &output.ErrDetail{
+			Type:    "strict_mode",
+			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+		},
+	})
 }
 
 // --- shortcut command ---

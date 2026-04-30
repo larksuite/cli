@@ -9,7 +9,9 @@ Cycle (用户周期)
   └── Objective (目标)
         ├── KeyResult (关键结果)
         │     └── Indicator (指标)
+        │     └── list<Progress> (进展记录列表)
         └── Indicator (指标)
+        └── list<Progress> (进展记录列表)
 
 Alignment (对齐关系): Objective ↔ Objective
 Category (分类): Objective 的分组标签
@@ -46,7 +48,8 @@ Category (分类): Objective 的分组标签
 
 ### 常用术语
 
-- **当前周期**: 指周期的 start_time/end_time 所在的时间段与当前时间重叠的周期。如果有多个符合这一标准的周期，通常可以选择周期状态为default/normal的周期，其中较新的一个。当用户提及“上一个周期”，“下一个周期”一类的表述时，通常是以当前周期为准计算。
+- **当前周期**: 指周期的 start_time/end_time
+  指周期的 start_time / end_time 所在的时间段与当前时间重叠的周期（即： start_time <= 当前时间 且 end_time >= 当前时间）。 注意：时间重叠是判断当前周期的首要且必须的硬性条件，绝对不能仅仅根据 cycle_status == 1 去判断。 如果有多个符合时间重叠标准的周期，再在这些包含当前时间的周期中过滤，保留周期状态为 default (0) 或 normal (1) 的周期。如果仍然有多个，则选择其中较新的一个。当用户提及“上一个周期”，“下一个周期”一类的表述时，通常是以当前周期为准计算。
 - **所有者**: 绝大多数所有者都是用户，少部分租户启用了“团队OKR”功能，所有者可能是部门。用户身份下，只能编辑所有者为当前用户的
   OKR。
 
@@ -124,6 +127,53 @@ Category (分类): Objective 的分组标签
 
 ---
 
+## Progress (进展记录)
+
+进展记录挂载在目标（Objective）或关键结果（Key Result）上，用于记录阶段性进展内容与进度百分比。每条进展记录包含富文本内容和可选的进度率。
+
+| 字段              | 类型             | 必填 | 说明                                                      |
+|-----------------|----------------|----|---------------------------------------------------------|
+| `progress_id`   | `string`       | 是  | 进展记录 ID（int64，正整数）                                      |
+| `modify_time`   | `string`       | 是  | 最后修改时间，毫秒时间戳，shortcut 会将其解析为日期时间                        |
+| `content`       | `ContentBlock` | 否  | 进展内容（富文本），见 [ContentBlock 定义](lark-okr-contentblock.md) |
+| `progress_rate` | `ProgressRate` | 否  | 进度率，包含百分比和状态                                            |
+
+### ProgressRate (进度率)
+
+| 字段        | 类型       | 必填 | 说明                                                                                                                           |
+|-----------|----------|----|------------------------------------------------------------------------------------------------------------------------------|
+| `percent` | `number` | 否  | 进度百分比，范围 [-99999999999, 99999999999]。百分比的取值通常在 0-100，但允许超过此范围，以表示超额完成或负增长等情况。挂载的目标或关键结果的量化指标不使用百分比单位时，以这个字段更新当前值。系统内最多保留两位小数 |
+| `status`  | `string` | 否  | 进度状态，shortcut 返回可读字符串，见下表                                                                                                    |
+
+### 进度状态 (progress_rate.status)
+
+| 值         | 常量名 | 说明    |
+|-----------|-----|-------|
+| `normal`  | 正常  | 进展正常  |
+| `overdue` | 逾期  | 进展逾期  |
+| `done`    | 已完成 | 进展已完成 |
+
+### 创建进展记录时的参数
+
+创建进展记录时，除了 `content` 外，还需要指定这条进展记录挂载的对应目标或关键结果：
+
+| 字段              | 类型             | 必填 | 说明                                                      |
+|-----------------|----------------|----|---------------------------------------------------------|
+| `content`       | `ContentBlock` | 是  | 进展内容（富文本），见 [ContentBlock 定义](lark-okr-contentblock.md) |
+| `target_id`     | `string`       | 是  | 目标 ID 或关键结果 ID                                          |
+| `target_type`   | `integer`      | 是  | 目标类型：`2`=目标（Objective），`3`=关键结果（KeyResult）              |
+| `progress_rate` | `ProgressRate` | 否  | 进度率，可设置 `percent` 和 `status`                            |
+| `source_title`  | `string`       | 否  | 来源标题，用于在 OKR 界面中显示进展来源                                  |
+| `source_url`    | `string`       | 否  | 来源 URL，用于在 OKR 界面中显示进展来源链接                              |
+
+> **SHORTCUT：**
+> - `okr +progress-get` [lark-okr-progress-get.md](lark-okr-progress-get.md) 获取单条进展记录
+> - `okr +progress-create` [lark-okr-progress-create.md](lark-okr-progress-create.md) 为目标或关键结果创建进展记录
+> - `okr +progress-update` [lark-okr-progress-update.md](lark-okr-progress-update.md) 更新进展记录内容
+> - `okr +progress-delete` [lark-okr-progress-delete.md](lark-okr-progress-delete.md) 删除进展记录
+> - `okr +progress-list` [lark-okr-progress-list.md](lark-okr-progress-list.md) 获取目标/关键结果下的进展记录
+---
+
 ## Indicator (指标)
 
 指标是目标和关键结果的量化度量，可独立挂载在 Objective 或 KeyResult 上。
@@ -148,7 +198,8 @@ Category (分类): Objective 的分组标签
 
 - **进度值**: 一般指 `current_value`，单位未提及时通常用百分制计算。
 - 当用户要求量化的更新 OKR 进度时，一般指的就是修改对应 OKR 的 Indicator。
-- OKR 在未设置量化指标时，Indicator 的内容为空。如果用户未做特别说明，更新进度时可以默认将进度以百分制设置（初始值0，目标值100，unit 参见下文设置为 0/PERCENT）
+- OKR 在未设置量化指标时，Indicator 的内容为空。如果用户未做特别说明，更新进度时可以默认将进度以百分制设置（初始值0，目标值100，unit
+  参见下文设置为 0/PERCENT）
 
 ### 指标状态 (indicator_status)
 
@@ -254,12 +305,16 @@ Category (分类): Objective 的分组标签
 
 ## 权限 Scope 说明
 
-| Scope                       | 权限类型 | 说明           |
-|-----------------------------|------|--------------|
-| `okr:okr.content:readonly`  | 读    | 读取 OKR 内容    |
-| `okr:okr.content:writeonly` | 写    | 写入/删除 OKR 内容 |
-| `okr:okr.period:readonly`   | 读    | 读取 OKR 周期    |
-| `okr:okr.setting:read`      | 读    | 读取 OKR 设置    |
+| Scope                          | 权限类型 | 说明           |
+|--------------------------------|------|--------------|
+| `okr:okr.content:readonly`     | 读    | 读取 OKR 内容    |
+| `okr:okr.content:writeonly`    | 写    | 写入/删除 OKR 内容 |
+| `okr:okr.period:readonly`      | 读    | 读取 OKR 周期    |
+| `okr:okr.progress:readonly`    | 读    | 读取进展记录       |
+| `okr:okr.progress:writeonly`   | 写    | 创建/更新进展记录    |
+| `okr:okr.progress:delete`      | 写    | 删除进展记录       |
+| `okr:okr.progress.file:upload` | 写    | 上传进展记录图片附件   |
+| `okr:okr.setting:read`         | 读    | 读取 OKR 设置    |
 
 所有 OKR API 均支持 `user` 和 `tenant`（应用）两种 access token 类型。
 
@@ -268,3 +323,7 @@ Category (分类): Objective 的分组标签
 - [OKR ContentBlock 富文本格式](lark-okr-contentblock.md) — content/notes 字段的富文本结构定义
 - [okr +cycle-list](lark-okr-cycle-list.md) — 列出用户 OKR 周期
 - [okr +cycle-detail](lark-okr-cycle-detail.md) — 获取周期下的目标与关键结果
+- [okr +progress-get](lark-okr-progress-get.md) — 获取进展记录
+- [okr +progress-create](lark-okr-progress-create.md) — 创建进展记录
+- [okr +progress-update](lark-okr-progress-update.md) — 更新进展记录
+- [okr +progress-delete](lark-okr-progress-delete.md) — 删除进展记录

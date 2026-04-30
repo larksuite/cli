@@ -24,10 +24,8 @@ const (
 )
 
 func tryLockFile(f *os.File) error {
-	// OVERLAPPED structure (zeroed)
 	var ol syscall.Overlapped
 	handle := syscall.Handle(f.Fd())
-	// LockFileEx(handle, flags, reserved, nNumberOfBytesToLockLow, nNumberOfBytesToLockHigh, *overlapped)
 	r1, _, err := procLockFileEx.Call(
 		uintptr(handle),
 		uintptr(lockfileExclusiveLock|lockfileFailImmediately),
@@ -36,7 +34,7 @@ func tryLockFile(f *os.File) error {
 		uintptr(unsafe.Pointer(&ol)),
 	)
 	if r1 == 0 {
-		return fmt.Errorf("lock already held by another process (lock: %s): %v", f.Name(), err)
+		return fmt.Errorf("%w (lock: %s, syscall: %v)", ErrHeld, f.Name(), err)
 	}
 	return nil
 }

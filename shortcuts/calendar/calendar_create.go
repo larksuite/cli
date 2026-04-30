@@ -6,6 +6,7 @@ package calendar
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,7 @@ var CalendarCreate = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"calendar:calendar.event:create", "calendar:calendar.event:update"},
 	AuthTypes:   []string{"user", "bot"},
+	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "summary", Desc: "event title"},
 		{Name: "start", Desc: "start time (ISO 8601)", Required: true},
@@ -279,12 +281,19 @@ var CalendarCreate = common.Shortcut{
 			}
 		}
 
-		runtime.Out(map[string]interface{}{
+		resultData := map[string]interface{}{
 			"event_id": eventId,
 			"summary":  event["summary"],
 			"start":    startStr,
 			"end":      endStr,
-		}, nil)
+		}
+
+		runtime.OutFormat(resultData, nil, func(w io.Writer) {
+			var rows []map[string]interface{}
+			rows = append(rows, resultData)
+			output.PrintTable(w, rows)
+			fmt.Fprintln(w, "\nEvent created successfully")
+		})
 		return nil
 	},
 }

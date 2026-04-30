@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/mail"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
 )
@@ -215,11 +216,24 @@ type PatchOp struct {
 	Target      AttachmentTarget `json:"target,omitempty"`
 	SignatureID string           `json:"signature_id,omitempty"`
 
+	// Calendar event fields, used by set_calendar. The raw ISO 8601 strings
+	// are shown in dry-run output; the shortcut layer pre-builds the ICS
+	// blob into CalendarICS below before Apply runs.
+	EventSummary  string `json:"event_summary,omitempty"`
+	EventStart    string `json:"event_start,omitempty"`
+	EventEnd      string `json:"event_end,omitempty"`
+	EventLocation string `json:"event_location,omitempty"`
+
 	// RenderedSignatureHTML is set by the shortcut layer (not from JSON) after
 	// fetching and interpolating the signature. The patch layer uses this
 	// pre-rendered content for insert_signature ops.
 	RenderedSignatureHTML string           `json:"-"`
 	SignatureImages       []SignatureImage `json:"-"`
+
+	// CalendarICS holds the pre-built RFC 5545 ICS blob for a set_calendar
+	// op. Populated by the shortcut layer after the snapshot is parsed and
+	// organizer/attendee addresses can be resolved. Not serialised.
+	CalendarICS []byte `json:"-"`
 }
 
 // SignatureImage holds pre-downloaded image data for signature inline images.
@@ -327,6 +341,26 @@ func (op PatchOp) Validate() error {
 		}
 	case "remove_signature":
 		// No required fields.
+	case "set_calendar":
+		if strings.TrimSpace(op.EventSummary) == "" {
+			return fmt.Errorf("set_calendar requires event_summary")
+		}
+		if strings.TrimSpace(op.EventStart) == "" || strings.TrimSpace(op.EventEnd) == "" {
+			return fmt.Errorf("set_calendar requires event_start and event_end")
+		}
+		start, err := parseISO8601(op.EventStart)
+		if err != nil {
+			return fmt.Errorf("set_calendar: event_start must be a valid ISO 8601 timestamp")
+		}
+		end, err := parseISO8601(op.EventEnd)
+		if err != nil {
+			return fmt.Errorf("set_calendar: event_end must be a valid ISO 8601 timestamp")
+		}
+		if !end.After(start) {
+			return fmt.Errorf("set_calendar: event_end must be after event_start")
+		}
+	case "remove_calendar":
+		// No required fields.
 	default:
 		return fmt.Errorf("unsupported op %q", op.Op)
 	}
@@ -399,4 +433,20 @@ func MustJSON(v interface{}) string {
 		panic(fmt.Sprintf("MustJSON: %v", err))
 	}
 	return string(data)
+}
+
+// parseISO8601 tries common ISO 8601 timestamp layouts, accepting both
+// with-seconds (RFC 3339) and without-seconds variants.
+func parseISO8601(s string) (time.Time, error) {
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04Z07:00",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as ISO 8601", s)
 }

@@ -73,9 +73,15 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--set-cc <emails>` | 否 | 用此处提供的地址替换整个 Cc 抄送列表 |
 | `--set-bcc <emails>` | 否 | 用此处提供的地址替换整个 Bcc 密送列表 |
 | `--set-priority <level>` | 否 | 设置邮件优先级：`high`、`normal`、`low`。设为 `normal` 会清除已有优先级 |
+| `--set-event-summary <text>` | 否 | 设置日程标题。需同时设置 `--set-event-start` 和 `--set-event-end` |
+| `--set-event-start <time>` | 条件必填 | 设置日程开始时间（ISO 8601） |
+| `--set-event-end <time>` | 条件必填 | 设置日程结束时间（ISO 8601） |
+| `--set-event-location <text>` | 否 | 设置日程地点 |
+| `--remove-event` | 否 | 移除草稿中的日程邀请。与 `--set-event-*` 互斥 |
 | `--patch-file <path>` | 否 | 所有正文编辑、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `--print-patch-template` 查看 JSON 结构 |
 | `--print-patch-template` | 否 | 打印 `--patch-file` 的 JSON 模板和支持的操作。建议在生成补丁文件前先运行此命令。不会读取或写入草稿 |
 | `--inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（普通附件，含 `part_id`/`cid`/`filename`）、`large_attachments_summary`（超大附件，含 `token`/`filename`/`size_bytes`）和 `inline_summary` 的草稿投影 |
+| `--request-receipt` | 否 | 在草稿上追加 `Disposition-Notification-To: <草稿的 From 地址>` 头，请求已读回执（RFC 3798）。本质上是在 patch 中注入一个 `set_header` op；已有的 DNT 值会被覆盖。可以与其他 `--set-*` / `--patch-file` 编辑组合，也可以单独使用 |
 | `--format <mode>` | 否 | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
 

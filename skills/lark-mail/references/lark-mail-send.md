@@ -77,9 +77,22 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
 | `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
+| `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请（text/calendar）。需同时设置 `--event-start` 和 `--event-end` |
+| `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601，如 `2026-04-20T14:00+08:00`） |
+| `--event-end <time>` | 条件必填 | 日程结束时间（ISO 8601） |
+| `--event-location <text>` | 否 | 日程地点 |
 | `--confirm-send` | 否 | 确认发送邮件（默认只保存草稿）。仅在用户明确确认收件人和内容后使用 |
 | `--send-time <timestamp>` | 否 | 定时发送时间，Unix 时间戳（秒）。需至少为当前时间 + 5 分钟。配合 `--confirm-send` 使用可定时发送邮件 |
+| `--request-receipt` | 否 | 请求已读回执（RFC 3798 Message Disposition Notification）。在出站 EML 里写 `Disposition-Notification-To: <sender>` 头。收件人的邮件客户端**可能**弹出提示询问是否回执、可能自动发送、也可能忽略——送达不保证 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
+
+### 日程邀请约束
+
+使用 `--event-*` 时需满足以下条件：
+
+- `--event-summary`、`--event-start`、`--event-end` 必须同时出现或同时不出现
+- 与 `--send-time` 互斥，不可同时使用（日程邀请必须立即发送，否则收件人可能在日程开始后才收到）
+- 不可与 `--bcc` 同时使用：日程参会人（ATTENDEE）仅来自 To 和 Cc，Bcc 收件人不在参会人列表中、无法 RSVP，且该组合将导致邮件发送失败。需要邀请某人参加日程请用 `--to` 或 `--cc`；如只想告知而不邀请，请单独发一封无日程的邮件
 
 ## 返回值
 

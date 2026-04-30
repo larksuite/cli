@@ -3,7 +3,11 @@
 
 package common
 
-import "context"
+import (
+	"context"
+
+	"github.com/spf13/cobra"
+)
 
 // Flag.Input source constants.
 const (
@@ -38,11 +42,18 @@ type Shortcut struct {
 	Flags     []Flag   // flag definitions; --dry-run is auto-injected
 	HasFormat bool     // auto-inject --format flag (json|pretty|table|ndjson|csv)
 	Tips      []string // optional tips shown in --help output
+	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
 	// Business logic hooks.
 	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
 	Validate func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
 	Execute  func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+
+	// PostMount is an optional hook called after the cobra.Command is fully
+	// configured (flags registered, tips set) and after parent.AddCommand(cmd)
+	// has attached it to the parent. Use it to install custom help functions or
+	// tweak the command; cmd.Parent() is available at this point.
+	PostMount func(cmd *cobra.Command)
 }
 
 // ScopesForIdentity returns the scopes applicable for the given identity.

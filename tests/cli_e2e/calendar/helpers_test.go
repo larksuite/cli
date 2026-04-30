@@ -62,6 +62,47 @@ func getCurrentUserOpenIDForCalendar(t *testing.T, ctx context.Context) string {
 	return openID
 }
 
+func findCalendarByID(t *testing.T, ctx context.Context, calendarID string) gjson.Result {
+	t.Helper()
+
+	require.NotEmpty(t, calendarID, "calendar ID is required")
+
+	pageToken := ""
+	seenPageTokens := map[string]struct{}{}
+	for {
+		params := map[string]any{
+			"page_size": 50,
+		}
+		if pageToken != "" {
+			if _, seen := seenPageTokens[pageToken]; seen {
+				t.Fatalf("calendar list pagination loop detected for calendar %q, repeated page_token %q", calendarID, pageToken)
+			}
+			seenPageTokens[pageToken] = struct{}{}
+			params["page_token"] = pageToken
+		}
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"calendar", "calendars", "list"},
+			DefaultAs: "bot",
+			Params:    params,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, 0)
+
+		calendar := gjson.Get(result.Stdout, `data.calendar_list.#(calendar_id=="`+calendarID+`")`)
+		if calendar.Exists() {
+			return calendar
+		}
+
+		hasMore := gjson.Get(result.Stdout, "data.has_more").Bool()
+		pageToken = gjson.Get(result.Stdout, "data.page_token").String()
+		if !hasMore || pageToken == "" {
+			t.Fatalf("calendar %q not found in listed pages, last stdout:\n%s", calendarID, result.Stdout)
+		}
+	}
+}
+
 func unixSecondsRFC3339(t time.Time) string {
 	return strconv.FormatInt(t.Unix(), 10)
 }

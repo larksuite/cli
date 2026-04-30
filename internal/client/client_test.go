@@ -208,7 +208,7 @@ func TestPaginateAll_PageLimitStopsPagination(t *testing.T) {
 
 	ac, errBuf := newTestAPIClient(t, rt)
 
-	_, err := ac.PaginateAll(context.Background(), RawApiRequest{
+	result, err := ac.PaginateAll(context.Background(), RawApiRequest{
 		Method: "GET",
 		URL:    "/open-apis/test",
 		As:     "bot",
@@ -222,6 +222,57 @@ func TestPaginateAll_PageLimitStopsPagination(t *testing.T) {
 	}
 	if !strings.Contains(errBuf.String(), "reached page limit (2), stopping. Use --page-all --page-limit 0 to fetch all pages.") {
 		t.Errorf("expected page limit log, got: %s", errBuf.String())
+	}
+
+	// Truncation must surface in the merged output: has_more stays true so
+	// callers can detect loss. page_token is intentionally dropped from the
+	// aggregate view — to fetch more, re-run with a larger --page-limit.
+	resultMap, _ := result.(map[string]interface{})
+	data, _ := resultMap["data"].(map[string]interface{})
+	if hasMore, _ := data["has_more"].(bool); !hasMore {
+		t.Errorf("expected has_more=true when page limit truncates, got false")
+	}
+	if _, exists := data["page_token"]; exists {
+		t.Errorf("expected page_token to be dropped from merged output, got %v", data["page_token"])
+	}
+}
+
+func TestPaginateAll_NaturalEndClearsPageToken(t *testing.T) {
+	apiCalls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		hasMore := apiCalls < 2
+		body := map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": apiCalls}},
+				"has_more": hasMore,
+			},
+		}
+		if hasMore {
+			body["data"].(map[string]interface{})["page_token"] = "next"
+		}
+		return jsonResponse(body), nil
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+
+	result, err := ac.PaginateAll(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/test",
+		As:     "bot",
+	}, PaginationOptions{PageLimit: 10, PageDelay: 0})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resultMap, _ := result.(map[string]interface{})
+	data, _ := resultMap["data"].(map[string]interface{})
+	if hasMore, _ := data["has_more"].(bool); hasMore {
+		t.Errorf("expected has_more=false at natural end, got true")
+	}
+	if _, exists := data["page_token"]; exists {
+		t.Errorf("expected page_token absent at natural end, got %v", data["page_token"])
 	}
 }
 

@@ -93,3 +93,42 @@ lark-cli 命令执行后，如果检测到新版本，JSON 输出中会包含 `_
 - **禁止输出密钥**（appSecret、accessToken）到终端明文。
 - **写入/删除操作前必须确认用户意图**。
 - 用 `--dry-run` 预览危险请求。
+
+## 高风险操作的审批协议（exit 10）
+
+lark-cli 对高风险写操作（`risk: "high-risk-write"`）有强制确认门禁。当你不带 `--yes` 调用这类命令时，CLI 会退出码 `10`、并在 stderr 返回如下结构化 envelope：
+
+```json
+{
+  "ok": false,
+  "error": {
+    "type": "confirmation_required",
+    "message": "drive +delete requires confirmation",
+    "hint": "add --yes to confirm",
+    "risk": {
+      "level": "high-risk-write",
+      "action": "drive +delete"
+    }
+  }
+}
+```
+
+**遇到这种情况，不要当普通错误放弃。** 按以下流程处理：
+
+1. **识别**：看到子进程 exit code = `10` 且 stderr JSON 里 `error.type == "confirmation_required"`
+2. **向用户确认**：把 `error.risk.action` 和关键参数展示给用户，明确告知"这是高风险操作"，等待用户显式同意
+3. **用户同意** → 在你**原始 argv 的末尾追加 `--yes`** 后重试
+4. **用户拒绝** → 终止流程，不要擅自改写参数或跳过门禁
+
+**绝对不允许**：
+- 看到 exit 10 就默认加 `--yes` 静默重试（这等于禁用门禁）
+- 把 `confirmation_required` 当网络错误/权限错误处理
+- 在用户没明确同意的前提下追加 `--yes` 重试
+- 用 `sh -c` 等 shell 方式拼接命令重试——用 `exec.Command(argv...)` 参数数组形式，避免 shell 解析把用户参数当作语法
+
+提前预判：想先让用户 review 危险操作的具体请求，调用时加 `--dry-run`——它不触发门禁，会打印完整请求详情（URL / body / params），你可以把这个预览给用户看过再去真正执行。
+
+### 如何识别一条命令是高风险
+
+- shortcut：`lark-cli <service> +<cmd> --help` 顶部会显示 `Risk: high-risk-write`
+- service 命令：`lark-cli schema <service>.<resource>.<method> --format json` 的返回值里 `"risk": "high-risk-write"`

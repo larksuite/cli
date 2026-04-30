@@ -35,6 +35,7 @@ func createTask(t *testing.T, parentT *testing.T, ctx context.Context, req clie2
 			Args:      []string{"task", "tasks", "delete"},
 			DefaultAs: "bot",
 			Params:    map[string]any{"task_guid": taskGUID},
+			Yes:       true,
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete task "+taskGUID, deleteResult, deleteErr)
 	})
@@ -65,9 +66,53 @@ func createTasklist(t *testing.T, parentT *testing.T, ctx context.Context, req c
 			Args:      []string{"task", "tasklists", "delete"},
 			DefaultAs: "bot",
 			Params:    map[string]any{"tasklist_guid": tasklistGUID},
+			Yes:       true,
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete tasklist "+tasklistGUID, deleteResult, deleteErr)
 	})
 
 	return tasklistGUID
+}
+
+func findTaskInTasklist(t *testing.T, ctx context.Context, tasklistGUID string, taskGUID string) gjson.Result {
+	t.Helper()
+
+	require.NotEmpty(t, tasklistGUID, "tasklist GUID is required")
+	require.NotEmpty(t, taskGUID, "task GUID is required")
+
+	pageToken := ""
+	seenPageTokens := map[string]struct{}{}
+	for {
+		params := map[string]any{
+			"tasklist_guid": tasklistGUID,
+			"page_size":     50,
+		}
+		if pageToken != "" {
+			if _, seen := seenPageTokens[pageToken]; seen {
+				t.Fatalf("tasklist task pagination loop detected for tasklist %q, repeated page_token %q", tasklistGUID, pageToken)
+			}
+			seenPageTokens[pageToken] = struct{}{}
+			params["page_token"] = pageToken
+		}
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"task", "tasklists", "tasks"},
+			DefaultAs: "bot",
+			Params:    params,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, 0)
+
+		taskItem := gjson.Get(result.Stdout, `data.items.#(guid=="`+taskGUID+`")`)
+		if taskItem.Exists() {
+			return taskItem
+		}
+
+		hasMore := gjson.Get(result.Stdout, "data.has_more").Bool()
+		pageToken = gjson.Get(result.Stdout, "data.page_token").String()
+		if !hasMore || pageToken == "" {
+			t.Fatalf("task %q not found in tasklist %q pages, last stdout:\n%s", taskGUID, tasklistGUID, result.Stdout)
+		}
+	}
 }

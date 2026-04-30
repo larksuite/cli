@@ -51,20 +51,7 @@ func TestTask_TasklistAddTaskWorkflow(t *testing.T) {
 	})
 
 	t.Run("list tasklist tasks as bot", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"task", "tasklists", "tasks"},
-			DefaultAs: "bot",
-			Params: map[string]any{
-				"tasklist_guid": tasklistGUID,
-				"page_size":     50,
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-
-		taskItem := gjson.Get(result.Stdout, `data.items.#(guid=="`+taskGUID+`")`)
-		assert.True(t, taskItem.Exists(), "stdout:\n%s", result.Stdout)
+		taskItem := findTaskInTasklist(t, ctx, tasklistGUID, taskGUID)
 		assert.Equal(t, taskSummary, taskItem.Get("summary").String())
 	})
 

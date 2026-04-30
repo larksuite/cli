@@ -130,11 +130,16 @@ lark-cli vc +search --query "周会" --page-size 15 --page-token "<PAGE_TOKEN>"
 
 ## 搜索结果中的下一步
 
-搜索结果中的 `meeting_id` 可直接用于继续查询会议纪要：
+搜索结果中的 `meeting_id` 可直接用于继续查询会议纪要或妙记：
 
 ```bash
-# 根据 meeting_id 获取会议纪要
+# 如果要会议纪要 / 逐字稿 / AI 总结 / 待办 / 章节
 lark-cli vc +notes --meeting-ids <MEETING_ID>
+
+# 如果要会议对应的妙记信息 / minute_token / 妙记链接
+lark-cli vc +recording --meeting-ids <MEETING_ID>
+# 然后再用返回的 minute_token 调用：
+lark-cli minutes minutes get --params '{"minute_token":"<MINUTE_TOKEN>"}'
 ```
 
 ## 常见错误与排查
@@ -151,9 +156,11 @@ lark-cli vc +notes --meeting-ids <MEETING_ID>
 - 排查参数与请求结构时优先使用 `--dry-run`。
 - 搜索的时间范围最大为 1 个月，如果需要搜索更长时间范围的会议，需要拆分为多次时间范围为一个月查询。
 - 不要使用 `yesterday`、`today` 这类相对时间字面量；请先转换成明确日期，例如 `2026-03-10`。
+- 用户如果明确问的是“妙记信息”而不是“纪要内容”，不要默认走 `vc +notes`；应先用 `vc +recording`。
 
 ## 参考
 
 - [lark-vc](../SKILL.md) -- 视频会议全部命令
+- [lark-vc-recording](lark-vc-recording.md) -- 查询会议对应的 minute_token
 - [lark-vc-notes](lark-vc-notes.md) -- 获取会议纪要
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

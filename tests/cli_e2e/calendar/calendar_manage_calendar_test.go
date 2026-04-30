@@ -16,6 +16,7 @@ import (
 
 // TestCalendar_ManageCalendar tests the workflow of managing calendars.
 func TestCalendar_ManageCalendar(t *testing.T) {
+	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
@@ -25,6 +26,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 	calendarDescription := "test calendar created by e2e"
 
 	var createdCalendarID string
+	var deletedCalendar bool
 
 	t.Run("list calendars as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -50,6 +52,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 				"summary":     calendarSummary,
 				"description": calendarDescription,
 			},
+			Yes: true,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -57,6 +60,25 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 
 		createdCalendarID = gjson.Get(result.Stdout, "data.calendar.calendar_id").String()
 		require.NotEmpty(t, createdCalendarID)
+
+		parentT.Cleanup(func() {
+			if createdCalendarID == "" || deletedCalendar {
+				return
+			}
+
+			cleanupCtx, cancel := clie2e.CleanupContext()
+			defer cancel()
+
+			deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
+				Args:      []string{"calendar", "calendars", "delete"},
+				DefaultAs: "bot",
+				Params: map[string]any{
+					"calendar_id": createdCalendarID,
+				},
+				Yes: true,
+			})
+			clie2e.ReportCleanupFailure(parentT, "delete calendar "+createdCalendarID, deleteResult, deleteErr)
+		})
 	})
 
 	t.Run("get created calendar as bot", func(t *testing.T) {
@@ -78,14 +100,9 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 
 	t.Run("find created calendar in list as bot", func(t *testing.T) {
 		require.NotEmpty(t, createdCalendarID)
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"calendar", "calendars", "list"},
-			DefaultAs: "bot",
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-		require.True(t, gjson.Get(result.Stdout, `data.calendar_list.#(calendar_id=="`+createdCalendarID+`")`).Exists(), "stdout:\n%s", result.Stdout)
+		calendar := findCalendarByID(t, ctx, createdCalendarID)
+		assert.Equal(t, createdCalendarID, calendar.Get("calendar_id").String())
+		assert.Equal(t, calendarSummary, calendar.Get("summary").String())
 	})
 
 	t.Run("update calendar as bot", func(t *testing.T) {
@@ -99,6 +116,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 			Data: map[string]any{
 				"summary": updatedCalendarSummary,
 			},
+			Yes: true,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -128,9 +146,11 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 			Params: map[string]any{
 				"calendar_id": createdCalendarID,
 			},
+			Yes: true,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, 0)
+		deletedCalendar = true
 	})
 }

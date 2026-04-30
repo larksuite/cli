@@ -7,10 +7,11 @@
 
 ## 限制
 
-- **权限要求**：调用者必须是目标多维表格的管理员，它才能拥有目标多维表格的 **FA（Full Access / 完全访问权限）**，否则返回权限错误
-- **支持的字段类型**（白名单，仅以下类型可用于 dimensions / measures / filters / sort）：
-  文本、邮箱、条码、数字、进度、货币、评分、单选、多选、日期、复选框、人员、超链接
-- **不支持的字段类型**：公式、查找引用、附件、时长、阶段、创建时间、修改时间、创建人、修改人、群组、电话号码、自动编号、地理位置、关联、双向关联 —— 不可用于 dimensions / measures / filters / sort，使用会返回校验错误
+- **权限要求**（按文档类型分流）：
+  - **普通多维表格**：调用者拥有文档的**阅读权限**即可
+  - **高级权限多维表格**：调用者必须是文档管理员，拥有 **FA（Full Access / 完全访问权限）**
+
+  权限不足时返回权限错误。
 
 ## 推荐命令
 
@@ -56,7 +57,7 @@ lark-cli base +data-query \
 
 | 参数                     | 必填 | 说明 |
 |------------------------|------|------|
-| `--base-token <token>` | 是 | 多维表格 App Token（base_token） |
+| `--base-token <token>` | 是 | Base Token（base_token） |
 | `--dsl <json>`         | 是 | LiteQuery Protocol JSON DSL 查询语句 |
 
 ## 如何从链接中提取参数
@@ -64,7 +65,7 @@ lark-cli base +data-query \
 用户通常会提供如下 URL：
 
 ```
-https://example.feishu.cn/base/<app_token>?table=<table_id>
+https://example.feishu.cn/base/<base_token>?table=<table_id>
 ```
 
 - `--base-token`：取 `/base/` 后面的字符串
@@ -82,7 +83,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `base_token` | 是 | 多维表格 App Token |
+| `base_token` | 是 | Base Token |
 
 **Request Body — DSL 结构：**
 
@@ -119,11 +120,13 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 | 聚合函数 | 适用字段类型 |
 |----------|-------------|
-| `sum` / `avg` | 数字、进度、货币、评分（不含复选框） |
-| `min` / `max` | 数字、进度、货币、评分、日期 |
-| `count` | 白名单内所有类型，计数非空值 |
-| `count_all` | 白名单内所有类型，计数所有行 |
-| `distinct_count` | 白名单内所有类型 |
+| `sum` / `avg` | `number` |
+| `min` / `max` | `number`、`datetime` |
+| `count` | 全字段适用，计数非空值 |
+| `count_all` | 全字段适用，计数所有行 |
+| `distinct_count` | 全字段适用 |
+
+> `number` 包含 `style.type` 为 `progress` / `currency` / `rating` 等所有子类型。
 
 **FilterGroup：**
 
@@ -172,14 +175,18 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 **按各字段类型筛选时 value 格式详解：**
 
-*文本 / 邮箱 / 条码*
+*`text`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
 | `is` / `isNot` / `contains` / `doesNotContain` | `["文本内容"]` | 仅 1 个 | `["Hello"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
-*数字 / 货币*
+> **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：文本无自然顺序，比较运算无意义。
+> `text` 也覆盖电话、超链接、邮箱、条码字段；通过 `style.type` 区分（`plain`（默认）/ `phone` / `url` / `email` / `barcode`），运算符集合一致。
+> 当 `style.type=url` 时，value 筛选的是链接显示名称，而不是 URL 本身。
+
+*`number`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
@@ -187,24 +194,19 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
 > value 必须为合法数字的字符串形式。
+> `number` 也覆盖货币、进度、评分字段；通过 `style.type` 区分（`plain`（默认）/ `currency` / `progress` / `rating`），运算符集合一致，仅 value 解释不同：
+> - 当 `style.type=progress` 时，34% 对应 0.34 而不是 34。
+> - 当 `style.type=rating` 时，必须输入整数，代表评分。
 
-*进度*
-
-| 运算符 | value 格式 | 元素个数 | 示例 |
-|--------|-----------|---------|------|
-| `is` / `isNot` / `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual` | `["小数字符串"]` | 仅 1 个 | `["0.34"]`（= 34%） |
-| `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
-
-> **用小数表示百分比**：`["0.34"]` 表示 34%，不是 `["34"]`。
-
-*评分*
+*`auto_number`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
-| `is` / `isNot` / `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual` | `["数字字符串"]` | 仅 1 个 | `["4"]` |
+| `is` / `isNot` / `contains` / `doesNotContain` | `["编号字符串"]` | 仅 1 个 | `["00001"]` |
+| `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual` | `["编号字符串"]` | 仅 1 个 | `["00010"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
-*单选 / 多选*
+*`select`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
@@ -212,26 +214,52 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | `contains` / `doesNotContain` | `["选项A", "选项B"]` | 可多个 | `["选项A", "选项B"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
-*人员*
+> **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：选项为枚举值，无自然顺序。
+> 通过 `multiple` 区分单选（`multiple=false`，默认）/ 多选（`multiple=true`）。
+
+*`user` / `created_by` / `updated_by`*
 
 | 运算符 | value 格式 | 元素个数 | 示例                     |
 |--------|-----------|---------|------------------------|
-| `is` / `isNot` | `["用户ID"]` | **仅 1 个** | `["ou_aaa"]`           |
+| `is` / `isNot` | `["用户ID1", "用户ID2"]` | **可多个** | `["ou_aaa", "ou_bbb"]` |
 | `contains` / `doesNotContain` | `["用户ID1", "用户ID2"]` | 可多个 | `["ou_aaa", "ou_bbb"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]`                   |
 
+> **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：人员无法比大小。
 > 用户 ID 使用 `open_id`（`ou_` 前缀），接口层会自动做 ID 转换。
 
-*超链接*
+*`group_chat`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
-| `is` / `isNot` / `contains` / `doesNotContain` | `["链接显示名称"]` | 仅 1 个 | `["点击查看"]` |
+| `is` / `isNot` | `["群组ID1", "群组ID2"]` | 可多个 | `["oc_aaa", "oc_bbb"]` |
+| `contains` / `doesNotContain` | `["群组ID1", "群组ID2"]` | 可多个 | `["oc_aaa", "oc_bbb"]` |
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
-> **按显示名称筛选**，不是按 URL 本身。
+> **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：群组无法比大小。
 
-*复选框*
+*`link`*
+
+| 运算符 | value 格式 | 元素个数 | 示例 |
+|--------|-----------|---------|------|
+| `is` / `isNot` | `["recId1", "recId2"]` | 可多个 | `["recAAA", "recBBB"]` |
+| `contains` / `doesNotContain` | `["recId1", "recId2"]` | 可多个 | `["recAAA", "recBBB"]` |
+| `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
+
+> **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：关联记录无法比大小。
+> value 传关联表记录的 `record_id`。
+> 双向关联（创建时设 `bidirectional=true`）也属于 `link` 类型，运算符与单向关联一致。
+
+*`location`*
+
+| 运算符 | value 格式 | 元素个数 | 示例 |
+|--------|-----------|---------|------|
+| `is` / `isNot` / `contains` / `doesNotContain` | `["地址文本"]` | 仅 1 个 | `["北京市朝阳区..."]` |
+| `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
+
+> **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：地理位置无自然顺序。
+
+*`checkbox`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
 |--------|-----------|---------|------|
@@ -239,7 +267,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 
 > 仅支持 `is` 运算符，不支持其他运算符。
 
-*日期*
+*`datetime` / `created_at` / `updated_at`*
 
 日期字段仅支持 `is`、`isEmpty`、`isNotEmpty`、`isGreater`、`isLess` 五种运算符。
 
@@ -263,6 +291,22 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 > - **ExactDate 时区行为**：毫秒时间戳在实际筛选时会被转为**文档时区当天零点**，跨时区场景需注意日期可能偏移一天。
 > - **范围型关键字**（`CurrentWeek`、`LastWeek`、`CurrentMonth`、`LastMonth`、`TheLastWeek`、`TheNextWeek`、`TheLastMonth`、`TheNextMonth`）仅支持 `is` 运算符。
 > - **关键字大小写敏感**：`ExactDate`、`Today`、`CurrentWeek` 等首字母大写，写错大小写会导致校验失败。
+
+*`attachment`*
+
+| 运算符 | value 格式 | 元素个数 | 示例 |
+|--------|-----------|---------|------|
+| `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
+
+> 附件字段仅支持 `isEmpty` 和 `isNotEmpty`，不支持其他运算符。
+
+*`formula` / `lookup`*
+
+公式和查找引用字段的运算符和 value 格式 **取决于其结果数据类型**，按结果类型参照上方对应字段类型的规则。例如：
+
+- 公式结果为数字 → 按 `number` 规则
+- 公式结果为日期 → 按 `datetime` 规则
+- 公式结果为单选 → 按 `select` 规则
 
 **Sort 字段：**
 
@@ -343,10 +387,8 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 ## 工作流
 
 1. 确认 base-token 和 table-id
-2. **先查表结构**：执行 `lark-cli base app.table.fields list --params '{"app_token":"<token>","table_id":"<id>"}'`
-3. 从返回的字段列表中：
-   - 获取 field_name（DSL 中使用的字段名称）
-   - 仅选择白名单内的字段类型（见「限制」章节），排除公式、查找引用、附件等不支持的字段
+2. **先查表结构**：执行 `lark-cli base +field-list --base-token <base_token> --table-id <table_id>`
+3. 从返回的字段列表中获取 field_name（DSL 中使用的字段名称）
 4. 根据字段信息构造 DSL JSON
 5. 执行 +data-query
 6. 解读返回结果：
@@ -357,8 +399,8 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 
 ## 坑点
 
-- ⚠️ **必须先查表结构**：DSL 的 `field_name` 必须与表中字段名称精确匹配（区分大小写），不能凭猜测构造。先用 `base app.table.fields list` 获取真实字段名
-- ⚠️ **权限要求 FA**：调用者必须是目标多维表格的管理员，它才能拥有目标多维表格的 **FA（Full Access / 完全访问权限）**，否则返回权限错误
+- ⚠️ **必须先查表结构**：DSL 的 `field_name` 必须与表中字段名称精确匹配（区分大小写），不能凭猜测构造。先用 `lark-cli base +field-list --base-token <base_token> --table-id <table_id>` 获取真实字段名
+- ⚠️ **权限要求按文档类型分流**：普通多维表格只需文档**阅读权限**；高级权限多维表格必须是文档管理员（**FA / Full Access**），否则返回权限错误
 - ⚠️ **alias 不支持中文**：dimensions 和 measures 的 alias 必须使用英文（如 `dim_city`、`total_amount`），中文 alias 会导致错误
 - ⚠️ **API 路径是 `base/v3`**：本接口路径为 `/open-apis/base/v3/bases/:base_token/data/query`，不是 `bitable/v1`。两者完全不同，用错版本号会返回 `[2200] Internal Error`
 - ⚠️ **`dimensions` 和 `measures` 至少填一个**：两个都不填会返回 DSL 校验错误

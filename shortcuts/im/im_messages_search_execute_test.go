@@ -24,7 +24,7 @@ func newMessagesSearchRuntime(t *testing.T, stringFlags map[string]string, boolF
 	runtime := newBotShortcutRuntime(t, rt)
 	cmd := &cobra.Command{Use: "test"}
 
-	stringFlagNames := []string{"query", "page-token"}
+	stringFlagNames := []string{"query", "page-token", "at-chatter-ids"}
 	for _, name := range stringFlagNames {
 		cmd.Flags().String(name, "", "")
 	}

@@ -746,4 +746,29 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			t.Fatalf("ImChatMessageList.DryRun().Format() = %s", formatted)
 		}
 	})
+
+	t.Run("ImChatMessageList dry run includes root-only query", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id":   "oc_123",
+			"page-size": "20",
+			"sort":      "desc",
+		}, nil)
+		formatted := ImChatMessageList.DryRun(context.Background(), runtime).Format()
+		if !strings.Contains(formatted, "only_thread_root_messages=true") {
+			t.Fatalf("ImChatMessageList.DryRun().Format() = %s, want only_thread_root_messages=true", formatted)
+		}
+	})
+}
+
+func TestChatMessageListOnlyThreadRootMessagesDryRun(t *testing.T) {
+	runtime := newTestRuntimeContext(t, map[string]string{
+		"chat-id":   "oc_123",
+		"page-size": "20",
+		"sort":      "desc",
+	}, nil)
+
+	formatted := ImChatMessageList.DryRun(context.Background(), runtime).Format()
+	if !strings.Contains(formatted, "only_thread_root_messages=true") {
+		t.Fatalf("ImChatMessageList.DryRun().Format() = %s, want only_thread_root_messages=true", formatted)
+	}
 }

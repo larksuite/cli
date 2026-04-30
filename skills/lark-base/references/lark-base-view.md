@@ -32,11 +32,11 @@ view 相关命令索引。
 
 | 视图类型 | 可用能力 |
 |------|------|
-| `grid` | `group` `sort` `filter` |
-| `kanban` | `group` `sort` `filter` `card` |
-| `gallery` | `sort` `filter` `card` |
-| `calendar` | `filter` `timebar` |
-| `gantt` | `group` `sort` `filter` `timebar` |
+| `grid` | `group` `sort` `filter` `visible_fields` |
+| `kanban` | `group` `sort` `filter` `card` `visible_fields` |
+| `gallery` | `sort` `filter` `card` `visible_fields` |
+| `calendar` | `filter` `timebar` `visible_fields` |
+| `gantt` | `group` `sort` `filter` `timebar` `visible_fields` |
 
 ## 说明
 

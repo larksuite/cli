@@ -5,6 +5,8 @@
 
 通过 meeting_id 或 calendar_event_id 查询对应的 minute_token。这是 VC 域和 Minutes 域之间的桥梁命令。只读操作。
 
+> **边界提醒：** 如果用户明确要的是"妙记信息""妙记详情""妙记链接""minute_token""标题""时长""owner"这类妙记元信息，先用本命令拿到 `minute_token`，再调用 `minutes minutes get`。不要直接切到 `vc +notes`；`vc +notes` 只用于纪要内容和逐字稿。
+
 本 skill 对应 shortcut：`lark-cli vc +recording`。
 
 ## 命令
@@ -83,7 +85,17 @@ lark-cli vc +recording --meeting-ids xxx
 lark-cli minutes +download --minute-token <minute_token>
 ```
 
-### 场景 2：知道 meeting_id，想获取完整纪要（含 AI 产物）
+### 场景 2：知道 meeting_id，想查询妙记基础信息
+
+```bash
+# 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
+lark-cli vc +recording --meeting-ids xxx
+
+# 第 2 步：使用上一步返回的 minute_token 查询妙记基础信息
+lark-cli minutes minutes get --params '{"minute_token":"<minute_token>"}'
+```
+
+### 场景 3：知道 meeting_id，想获取完整纪要（含 AI 产物）
 
 ```bash
 # 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
@@ -93,7 +105,7 @@ lark-cli vc +recording --meeting-ids xxx
 lark-cli vc +notes --minute-tokens <minute_token>
 ```
 
-### 场景 3：先搜索会议，再获取录制并下载
+### 场景 4：先搜索会议，再获取录制并下载
 
 ```bash
 # 第 1 步：搜索历史会议，拿到 meeting_ids
@@ -106,7 +118,7 @@ lark-cli vc +recording --meeting-ids <ids>
 lark-cli minutes +download --minute-token <token>
 ```
 
-### 场景 4：从日历事件获取录制
+### 场景 5：从日历事件获取录制
 
 ```bash
 # 第 1 步：通过日历 event_id 查询录制，拿到 minute_token
@@ -131,7 +143,7 @@ lark-cli minutes +download --minute-token <minute_token>
 - 默认使用 `--format json` 输出，Agent 更擅长解析 JSON 数据。
 - 排查参数与请求结构时优先使用 `--dry-run`。
 - `minute_token` 从录制 URL 尾段解析（`https://meetings.feishu.cn/minutes/{minute_token}`）。
-- 拿到 `minute_token` 后可直接传给 `minutes +download` 或 `vc +notes --minute-tokens`。
+- 拿到 `minute_token` 后，如果要妙记基础信息，优先传给 `minutes minutes get`；如果要下载媒体文件，传给 `minutes +download`；如果要逐字稿、总结、待办、章节，再传给 `vc +notes --minute-tokens`。
 
 ## 参考
 

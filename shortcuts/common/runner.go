@@ -155,6 +155,19 @@ func (ctx *RuntimeContext) LarkSDK() *lark.Client {
 	return ctx.larkSDK
 }
 
+// EnsureScopes runs the same pre-flight scope check used by the framework
+// before Validate, but on a caller-supplied set of scopes. Use it from a
+// shortcut's Validate to enforce conditional scope requirements that depend
+// on flag values (e.g. --delete-remote needing space:document:delete) so a
+// destructive operation never starts on a token that can't finish it.
+//
+// Behavior matches checkShortcutScopes: when no token is available or the
+// resolver doesn't expose scope metadata, this is a silent no-op — the
+// downstream API call still surfaces missing_scope at runtime.
+func (ctx *RuntimeContext) EnsureScopes(scopes []string) error {
+	return checkShortcutScopes(ctx.Factory, ctx.ctx, ctx.As(), ctx.Config, scopes)
+}
+
 // ── Flag accessors ──
 
 // Str returns a string flag value.
@@ -185,6 +198,16 @@ func (ctx *RuntimeContext) StrArray(name string) []string {
 func (ctx *RuntimeContext) StrSlice(name string) []string {
 	v, _ := ctx.Cmd.Flags().GetStringSlice(name)
 	return v
+}
+
+// Changed reports whether the user explicitly set the named flag on the
+// command line, as opposed to the flag carrying its default value.
+func (ctx *RuntimeContext) Changed(name string) bool {
+	f := ctx.Cmd.Flags().Lookup(name)
+	if f == nil {
+		return false
+	}
+	return f.Changed
 }
 
 // ── API helpers ──
@@ -303,6 +326,17 @@ func (ctx *RuntimeContext) DoAPIStream(callCtx context.Context, req *larkcore.Ap
 // DoAPIJSON calls the Lark API via DoAPI, parses the JSON response envelope,
 // and returns the "data" field. Suitable for standard JSON APIs (non-file).
 func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	return ctx.doAPIJSON(method, apiPath, query, body, false)
+}
+
+// DoAPIJSONWithLogID is like DoAPIJSON but merges x-tt-logid from the response
+// header into the returned data and into error details as "log_id". Intended
+// for endpoints where surfacing the log id aids troubleshooting (e.g. doc v2).
+func (ctx *RuntimeContext) DoAPIJSONWithLogID(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	return ctx.doAPIJSON(method, apiPath, query, body, true)
+}
+
+func (ctx *RuntimeContext) doAPIJSON(method, apiPath string, query larkcore.QueryParams, body any, includeLogID bool) (map[string]any, error) {
 	req := &larkcore.ApiReq{
 		HttpMethod:  method,
 		ApiPath:     apiPath,
@@ -315,6 +349,10 @@ func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.Quer
 	if err != nil {
 		return nil, err
 	}
+	var detail map[string]any
+	if includeLogID {
+		detail = logIDFromHeader(resp)
+	}
 	if resp.StatusCode >= 400 {
 		if len(resp.RawBody) > 0 {
 			var errEnv struct {
@@ -322,10 +360,10 @@ func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.Quer
 				Msg  string `json:"msg"`
 			}
 			if json.Unmarshal(resp.RawBody, &errEnv) == nil && errEnv.Msg != "" {
-				return nil, output.ErrAPI(errEnv.Code, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, errEnv.Msg), nil)
+				return nil, output.ErrAPI(errEnv.Code, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, errEnv.Msg), detail)
 			}
 		}
-		return nil, output.ErrAPI(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
+		return nil, output.ErrAPI(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode), detail)
 	}
 	if len(resp.RawBody) == 0 {
 		return nil, fmt.Errorf("empty response body")
@@ -339,9 +377,30 @@ func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.Quer
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 	if envelope.Code != 0 {
-		return nil, output.ErrAPI(envelope.Code, envelope.Msg, nil)
+		return nil, output.ErrAPI(envelope.Code, envelope.Msg, detail)
+	}
+	if detail != nil {
+		if envelope.Data == nil {
+			envelope.Data = make(map[string]any)
+		}
+		for k, v := range detail {
+			envelope.Data[k] = v
+		}
 	}
 	return envelope.Data, nil
+}
+
+// logIDFromHeader extracts x-tt-logid from response headers and returns it as a detail map.
+// Returns nil if the header is absent.
+func logIDFromHeader(resp *larkcore.ApiResp) map[string]any {
+	if resp == nil {
+		return nil
+	}
+	logID := resp.Header.Get("x-tt-logid")
+	if logID == "" {
+		return nil
+	}
+	return map[string]any{"log_id": logID}
 }
 
 // ── IO access ──
@@ -482,7 +541,21 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
-	// Content safety scanning
+	ctx.emit(data, meta, false)
+}
+
+// OutRaw prints a success JSON envelope to stdout with HTML escaping disabled.
+// Use this instead of Out when the data contains XML/HTML content (e.g. document bodies)
+// that should be preserved as-is in JSON output.
+func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
+	ctx.emit(data, meta, true)
+}
+
+// emit is the shared success-path emitter. raw=true disables JSON HTML escaping so
+// XML/HTML payloads (e.g. DocxXML bodies) are preserved verbatim; otherwise behavior
+// is identical — content-safety scanning and race-safe first-error capture via
+// outputErrOnce apply in both modes.
+func (ctx *RuntimeContext) emit(data interface{}, meta *output.Meta, raw bool) {
 	scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
 	if scanResult.Blocked {
 		ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
@@ -493,11 +566,24 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	if scanResult.Alert != nil {
 		env.ContentSafetyAlert = scanResult.Alert
 	}
+
 	if ctx.JqExpr != "" {
-		if err := output.JqFilter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
+		filter := output.JqFilter
+		if raw {
+			filter = output.JqFilterRaw
+		}
+		if err := filter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
 			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
 			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
 		}
+		return
+	}
+
+	if raw {
+		enc := json.NewEncoder(ctx.IO().Out)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(env)
 		return
 	}
 	b, _ := json.MarshalIndent(env, "", "  ")
@@ -510,13 +596,25 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 // For json/"" and jq paths, Out() handles content safety scanning.
 // For pretty/table/csv/ndjson, scanning is done here and the alert is written to stderr.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
+	ctx.outFormat(data, meta, prettyFn, false)
+}
+
+// OutFormatRaw is like OutFormat but with HTML escaping disabled in JSON output.
+// Use this when the data contains XML/HTML content that should be preserved as-is.
+func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
+	ctx.outFormat(data, meta, prettyFn, true)
+}
+
+func (ctx *RuntimeContext) outFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer), raw bool) {
+	outFn := ctx.Out
+	if raw {
+		outFn = ctx.OutRaw
+	}
 	if ctx.JqExpr != "" {
-		ctx.Out(data, meta) // Out() handles scanning
+		outFn(data, meta)
 		return
 	}
 	switch ctx.Format {
-	case "json", "":
-		ctx.Out(data, meta) // Out() handles scanning
 	case "pretty":
 		scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
 		if scanResult.Blocked {
@@ -529,8 +627,10 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 		if prettyFn != nil {
 			prettyFn(ctx.IO().Out)
 		} else {
-			ctx.Out(data, meta)
+			outFn(data, meta)
 		}
+	case "json", "":
+		outFn(data, meta)
 	default:
 		// table, csv, ndjson — pass data directly; FormatValue handles both
 		// plain arrays and maps with array fields (e.g. {"members":[…]})
@@ -622,9 +722,10 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	botOnly := len(shortcut.AuthTypes) == 1 && shortcut.AuthTypes[0] == "bot"
 
 	cmd := &cobra.Command{
-		Use:   shortcut.Command,
-		Short: shortcut.Description,
-		Args:  rejectPositionalArgs(),
+		Use:    shortcut.Command,
+		Short:  shortcut.Description,
+		Hidden: shortcut.Hidden,
+		Args:   rejectPositionalArgs(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
@@ -632,7 +733,11 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
+	cmdutil.SetRisk(cmd, shortcut.Risk)
 	parent.AddCommand(cmd)
+	if shortcut.PostMount != nil {
+		shortcut.PostMount(cmd)
+	}
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
@@ -678,10 +783,8 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		return handleShortcutDryRun(f, rctx, s)
 	}
 
-	if s.Risk == "high-risk-write" {
-		if err := RequireConfirmation(s.Risk, rctx.Bool("yes"), s.Description); err != nil {
-			return err
-		}
+	if s.Risk == "high-risk-write" && !rctx.Bool("yes") {
+		return cmdutil.RequireConfirmation(s.Service + " " + s.Command)
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
@@ -792,17 +895,9 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if path == "" {
 				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
 			}
-			f, err := rctx.FileIO().Open(path)
+			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				if errors.Is(err, fileio.ErrPathValidation) {
-					return FlagErrorf("--%s: invalid file path %q: %v", fl.Name, path, err)
-				}
-				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
-			}
-			data, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
-				return FlagErrorf("--%s: cannot read file %q: %v", fl.Name, path, err)
+				return FlagErrorf("--%s: %v", fl.Name, err)
 			}
 			rctx.Cmd.Flags().Set(fl.Name, string(data))
 			continue

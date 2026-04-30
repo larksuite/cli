@@ -5,15 +5,19 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"testing"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -301,5 +305,74 @@ func (r *authScopesTokenResolver) ResolveToken(ctx context.Context, req credenti
 		return &credential.TokenResult{Token: "user-token"}, nil
 	default:
 		return &credential.TokenResult{Token: "unexpected-token"}, nil
+	}
+}
+
+// stubExternalProvider is a minimal extcred.Provider that always reports an account,
+// simulating env/sidecar mode for guard tests.
+type stubExternalProvider struct{ name string }
+
+func (s *stubExternalProvider) Name() string { return s.name }
+func (s *stubExternalProvider) ResolveAccount(_ context.Context) (*extcred.Account, error) {
+	return &extcred.Account{AppID: "test-app"}, nil
+}
+func (s *stubExternalProvider) ResolveToken(_ context.Context, _ extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+
+// newFactoryWithExternalProvider creates a Factory whose Credential uses a stub
+// extension provider, simulating env/sidecar credential mode.
+func newFactoryWithExternalProvider(t *testing.T) *cmdutil.Factory {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	stub := &stubExternalProvider{name: "env"}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Credential = cred
+	return f
+}
+
+func TestAuthBlockedByExternalProvider(t *testing.T) {
+	f := newFactoryWithExternalProvider(t)
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"login", []string{"login"}},
+		{"logout", []string{"logout"}},
+		{"status", []string{"status"}},
+		{"check", []string{"check", "--scope", "calendar:read"}}, // --scope is required
+		{"list", []string{"list"}},
+		{"scopes", []string{"scopes"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := NewCmdAuth(f)
+			cmd.SilenceErrors = true
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs(tt.args)
+
+			// Locate the subcommand before execution (PersistentPreRunE receives it as cmd).
+			matched, _, _ := cmd.Find(tt.args)
+
+			err := cmd.Execute()
+
+			// PersistentPreRunE sets SilenceUsage on the matched subcommand, not the parent.
+			if matched != nil && matched != cmd && !matched.SilenceUsage {
+				t.Error("expected PersistentPreRunE to set SilenceUsage on matched subcommand")
+			}
+			var exitErr *output.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+			}
+			if exitErr.Code != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+			}
+			if exitErr.Detail == nil || exitErr.Detail.Type != "external_provider" {
+				t.Errorf("error type = %v, want %q", exitErr.Detail, "external_provider")
+			}
+		})
 	}
 }

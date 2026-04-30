@@ -502,6 +502,9 @@ func TestWikiNodeCreateMountedExecuteWithExplicitSpaceID(t *testing.T) {
 	if envelope.Data["node_token"] != "wik_created" {
 		t.Fatalf("node_token = %#v, want %q", envelope.Data["node_token"], "wik_created")
 	}
+	if got, want := envelope.Data["url"], "https://www.feishu.cn/wiki/wik_created"; got != want {
+		t.Fatalf("url = %#v, want %q", got, want)
+	}
 
 	var captured map[string]interface{}
 	if err := json.Unmarshal(createStub.CapturedBody, &captured); err != nil {

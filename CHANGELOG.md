@@ -2,6 +2,102 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.22] - 2026-04-29
+
+### Features
+
+- **task**: Add resource agent & `agent_task_step_info` (#693)
+- **task**: Support app task members by id (#712)
+- **contact**: Add `--queries` multi-name fanout to `+search-user` (#707)
+- **slides**: Add slide templates with template-first skill guidance (#684)
+- **mail**: Support calendar events in emails (#646)
+- **install**: Honor `npm_config_registry` for binary URL resolution with npmmirror fallback (#690)
+
+### Bug Fixes
+
+- **install**: Make Windows zip extraction resilient (#713)
+- **config/init**: Respect `--brand` flag in `--new` mode (#711)
+
+### Documentation
+
+- **base**: Clarify base search routing (#708)
+- **base**: Align base skills and view config contracts (#653)
+
+## [v1.0.21] - 2026-04-28
+
+### Features
+
+- **contact**: Add search filters and richer profile fields to `+search-user` (#648)
+- **common**: Backfill resource URL when create APIs omit it (#680)
+- **risk**: Add risk tiering for command sensitivity classification (#633)
+- **okr**: Add progress records support (#574)
+- **calendar**: Enhance event search and meeting room finding (#679)
+- **event**: Add event subscription & consume system (#654)
+- **drive**: Extend `+add-comment` to support slides targets (#674)
+- **slides**: Add font management for slides (#681)
+
+### Bug Fixes
+
+- **cmdutil**: Default flag completions to disabled (#688)
+- **e2e/wiki**: Pass `obj_type` when deleting wiki nodes in cleanup (#687)
+- **readme**: Fix readme statistics (#691)
+
+## [v1.0.20] - 2026-04-27
+
+### Features
+
+- **drive**: Add `+search` shortcut with flat filter flags (#658)
+- **mail**: Support sharing emails to IM chats via `+share-to-chat` (#637)
+- **calendar**: Add `+update` shortcut (#678)
+- **im**: Add `--at-chatter-ids` filter to `+messages-search` (#612)
+- **pagination**: Preserve pagination state on truncation and natural end (#659)
+- **lark-im**: Add `chat.members.bots` to skill docs (#616)
+
+### Bug Fixes
+
+- **strict-mode**: Reject explicit `--as` instead of silently overriding it (#673)
+- **whiteboard**: Manual disable edge case for svg compatibility (#661)
+
+### Documentation
+
+- **lark-drive**: Add missing import command examples (#669)
+- **readme**: Add Project (Meegle) to Features table (#660)
+
+## [v1.0.19] - 2026-04-24
+
+### Features
+
+- **mail**: Add read receipt support — `--request-receipt` on compose, `+send-receipt` / `+decline-receipt` for response
+- **doc**: Add v2 API for `docs +create` / `+fetch` / `+update` (#638)
+- **im**: Request thread roots for chat message list (#635)
+- **drive**: Support wiki node targets in `+upload` (#611)
+- **config**: Block `auth` / `config` when external credential provider is active (#627)
+- **whiteboard**: Pin `whiteboard-cli` to `v0.2.10` in `lark-whiteboard` skill (#649)
+
+## [v1.0.18] - 2026-04-23
+
+### Features
+
+- **base**: Support `.base` import and export for bitable (#599)
+- **config**: Add `config bind` for per-Agent credential isolation (#515)
+- **slides**: Add `+replace-slide` shortcut for block-level XML edits (#516)
+- **wiki**: Add `+delete-space` shortcut with async task polling (#610)
+- **doc**: Add `--from-clipboard` flag to `docs +media-insert` (#508)
+- **minutes**: Unify minute artifacts output to `./minutes/{minute_token}/` (#604)
+- Add configurable content-safety scanning (#606)
+- **install**: Add SHA-256 checksum verification to `install.js` (#592)
+- **whiteboard**: Pin `whiteboard-cli` to `^0.2.9` (#617)
+
+### Bug Fixes
+
+- **drive**: Escape angle brackets in comment text (#632)
+- **im**: Unify `messages-search` pagination int flags (#446)
+- **im**: Fix markdown URL rendering issues in post content (#206)
+
+### Documentation
+
+- **base**: Refine record cell value guidance (#636)
+
 ## [v1.0.17] - 2026-04-22
 
 ### Features
@@ -464,6 +560,11 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.22]: https://github.com/larksuite/cli/releases/tag/v1.0.22
+[v1.0.21]: https://github.com/larksuite/cli/releases/tag/v1.0.21
+[v1.0.20]: https://github.com/larksuite/cli/releases/tag/v1.0.20
+[v1.0.19]: https://github.com/larksuite/cli/releases/tag/v1.0.19
+[v1.0.18]: https://github.com/larksuite/cli/releases/tag/v1.0.18
 [v1.0.17]: https://github.com/larksuite/cli/releases/tag/v1.0.17
 [v1.0.16]: https://github.com/larksuite/cli/releases/tag/v1.0.16
 [v1.0.15]: https://github.com/larksuite/cli/releases/tag/v1.0.15

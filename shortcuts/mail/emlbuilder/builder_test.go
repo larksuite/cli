@@ -39,6 +39,7 @@ func headerValue(eml, name string) string {
 
 // ── validation ────────────────────────────────────────────────────────────────
 
+// TestBuild_MissingFrom verifies build missing from.
 func TestBuild_MissingFrom(t *testing.T) {
 	_, err := New().To("", "bob@example.com").Subject("hi").Build()
 	if err == nil || !strings.Contains(err.Error(), "From") {
@@ -46,6 +47,7 @@ func TestBuild_MissingFrom(t *testing.T) {
 	}
 }
 
+// TestBuild_MissingRecipient verifies build missing recipient.
 func TestBuild_MissingRecipient(t *testing.T) {
 	_, err := New().From("", "alice@example.com").Subject("hi").Build()
 	if err == nil || !strings.Contains(err.Error(), "recipient") {
@@ -55,6 +57,7 @@ func TestBuild_MissingRecipient(t *testing.T) {
 
 // ── single text/plain ─────────────────────────────────────────────────────────
 
+// TestBuild_SingleTextPlain_ASCII verifies build single text plain ASCII.
 func TestBuild_SingleTextPlain_ASCII(t *testing.T) {
 	raw, err := New().
 		From("Alice", "alice@example.com").
@@ -99,6 +102,7 @@ func TestBuild_SingleTextPlain_ASCII(t *testing.T) {
 	}
 }
 
+// TestBuild_SingleTextPlain_NonASCII verifies build single text plain non ASCII.
 func TestBuild_SingleTextPlain_NonASCII(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -141,6 +145,7 @@ func TestBuild_SingleTextPlain_NonASCII(t *testing.T) {
 
 // ── multipart/alternative ─────────────────────────────────────────────────────
 
+// TestBuild_MultipartAlternative verifies build multipart alternative.
 func TestBuild_MultipartAlternative(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -177,6 +182,7 @@ func TestBuild_MultipartAlternative(t *testing.T) {
 
 // ── multipart/mixed (with attachments) ───────────────────────────────────────
 
+// TestBuild_WithAttachment verifies build with attachment.
 func TestBuild_WithAttachment(t *testing.T) {
 	attContent := []byte("PDF content here")
 	raw, err := New().
@@ -209,6 +215,7 @@ func TestBuild_WithAttachment(t *testing.T) {
 
 // ── reply threading headers ───────────────────────────────────────────────────
 
+// TestBuild_ReplyHeaders verifies build reply headers.
 func TestBuild_ReplyHeaders(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -235,6 +242,7 @@ func TestBuild_ReplyHeaders(t *testing.T) {
 	}
 }
 
+// TestBuild_LMSReplyToMessageID verifies build LMS reply to message ID.
 func TestBuild_LMSReplyToMessageID(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -256,6 +264,7 @@ func TestBuild_LMSReplyToMessageID(t *testing.T) {
 	}
 }
 
+// TestBuild_LMSReplyToMessageID_NotWrittenWithoutInReplyTo verifies build LMS reply to message ID not written without in reply to.
 func TestBuild_LMSReplyToMessageID_NotWrittenWithoutInReplyTo(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -276,8 +285,235 @@ func TestBuild_LMSReplyToMessageID_NotWrittenWithoutInReplyTo(t *testing.T) {
 	}
 }
 
+// ── Disposition-Notification-To (read receipt) ───────────────────────────────
+
+// TestBuild_DispositionNotificationTo verifies build disposition notification to.
+func TestBuild_DispositionNotificationTo(t *testing.T) {
+	raw, err := New().
+		From("Alice", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		MessageID("dnt@x").
+		DispositionNotificationTo("Alice", "alice@example.com").
+		TextBody([]byte("please ack")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := headerValue(string(raw), "Disposition-Notification-To")
+	want := `"Alice" <alice@example.com>`
+	if got != want {
+		t.Errorf("Disposition-Notification-To: got %q, want %q", got, want)
+	}
+}
+
+// TestBuild_DispositionNotificationTo_MultipleAddresses verifies build disposition notification to multiple addresses.
+func TestBuild_DispositionNotificationTo_MultipleAddresses(t *testing.T) {
+	raw, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		MessageID("dnt-multi@x").
+		DispositionNotificationTo("", "alice@example.com").
+		DispositionNotificationTo("", "carol@example.com").
+		TextBody([]byte("body")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := headerValue(string(raw), "Disposition-Notification-To")
+	want := "<alice@example.com>, <carol@example.com>"
+	if got != want {
+		t.Errorf("Disposition-Notification-To: got %q, want %q", got, want)
+	}
+}
+
+// TestBuild_DispositionNotificationTo_NotWrittenWhenUnset verifies build disposition notification to not written when unset.
+func TestBuild_DispositionNotificationTo_NotWrittenWhenUnset(t *testing.T) {
+	raw, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		MessageID("no-dnt@x").
+		TextBody([]byte("body")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := headerValue(string(raw), "Disposition-Notification-To"); got != "" {
+		t.Errorf("Disposition-Notification-To should be absent when unset, got %q", got)
+	}
+}
+
+// TestBuild_DispositionNotificationTo_EmptyAddressIgnored verifies build disposition notification to empty address ignored.
+func TestBuild_DispositionNotificationTo_EmptyAddressIgnored(t *testing.T) {
+	raw, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		MessageID("empty-dnt@x").
+		DispositionNotificationTo("", "").
+		TextBody([]byte("body")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := headerValue(string(raw), "Disposition-Notification-To"); got != "" {
+		t.Errorf("empty address should be ignored; got header %q", got)
+	}
+}
+
+// TestBuild_DispositionNotificationTo_CRLFRejected verifies build disposition notification to CR LF rejected.
+func TestBuild_DispositionNotificationTo_CRLFRejected(t *testing.T) {
+	_, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		DispositionNotificationTo("Alice\r\nBcc: evil@evil.com", "alice@example.com").
+		TextBody([]byte("body")).
+		Build()
+	if err == nil || !strings.Contains(err.Error(), "display name") {
+		t.Fatalf("expected display-name CRLF error, got %v", err)
+	}
+}
+
+// TestBuild_DispositionNotificationTo_AddrCRLFRejected verifies build disposition notification to addr CR LF rejected.
+func TestBuild_DispositionNotificationTo_AddrCRLFRejected(t *testing.T) {
+	// Injection via the address (not just the display name) must be blocked.
+	// A plain mail.Address.String() would emit "<alice@x.com\r\nX-Injected: 1>"
+	// unchanged, allowing the attacker to inject new headers.
+	_, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		DispositionNotificationTo("Alice", "alice@example.com\r\nX-Injected: pwned").
+		TextBody([]byte("body")).
+		Build()
+	if err == nil || !strings.Contains(err.Error(), "control character") {
+		t.Fatalf("expected addr CRLF error, got %v", err)
+	}
+}
+
+// TestBuild_DispositionNotificationTo_AddrBidiRejected verifies build disposition notification to addr bidi rejected.
+func TestBuild_DispositionNotificationTo_AddrBidiRejected(t *testing.T) {
+	// Bidi overrides (U+202E RLO) enable visual spoofing (e.g. "gmail" + RLO + "com.evil.com"
+	// renders as gmail.com at the tail); they must be blocked in the addr
+	// too, not only in header names / display names.
+	_, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		DispositionNotificationTo("Alice", "alice@gma\u202eil.com").
+		TextBody([]byte("body")).
+		Build()
+	if err == nil || !strings.Contains(err.Error(), "dangerous Unicode") {
+		t.Fatalf("expected addr dangerous-Unicode error, got %v", err)
+	}
+}
+
+// ── X-Lark-Read-Receipt-Mail (read receipt response marker) ──────────────────
+
+// TestBuild_IsReadReceiptMail_True verifies build is read receipt mail true.
+func TestBuild_IsReadReceiptMail_True(t *testing.T) {
+	raw, err := New().
+		From("", "bob@example.com").
+		To("", "alice@example.com").
+		Subject("已读回执：hi").
+		Date(fixedDate).
+		MessageID("irrm@x").
+		IsReadReceiptMail(true).
+		TextBody([]byte("read")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := headerValue(string(raw), "X-Lark-Read-Receipt-Mail")
+	if got != "1" {
+		t.Errorf("X-Lark-Read-Receipt-Mail: got %q, want 1", got)
+	}
+}
+
+// TestBuild_IsReadReceiptMail_DefaultAbsent verifies build is read receipt mail default absent.
+func TestBuild_IsReadReceiptMail_DefaultAbsent(t *testing.T) {
+	raw, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		MessageID("no-irrm@x").
+		TextBody([]byte("body")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := headerValue(string(raw), "X-Lark-Read-Receipt-Mail"); got != "" {
+		t.Errorf("X-Lark-Read-Receipt-Mail should be absent by default, got %q", got)
+	}
+}
+
+// TestBuild_IsReadReceiptMail_ExplicitFalse verifies build is read receipt mail explicit false.
+func TestBuild_IsReadReceiptMail_ExplicitFalse(t *testing.T) {
+	raw, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("hi").
+		Date(fixedDate).
+		MessageID("irrm-false@x").
+		IsReadReceiptMail(false).
+		TextBody([]byte("body")).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := headerValue(string(raw), "X-Lark-Read-Receipt-Mail"); got != "" {
+		t.Errorf("X-Lark-Read-Receipt-Mail should be absent when set false, got %q", got)
+	}
+}
+
+// TestBuild_DispositionNotificationTo_PreservesPriorError verifies that once
+// the Builder carries an error from a prior setter, DispositionNotificationTo
+// short-circuits and does NOT clobber the existing error with a nil.
+func TestBuild_DispositionNotificationTo_PreservesPriorError(t *testing.T) {
+	_, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("bad\r\nheader"). // injects err
+		DispositionNotificationTo("Alice", "alice@example.com").
+		Date(fixedDate).
+		TextBody([]byte("body")).
+		Build()
+	if err == nil || !strings.Contains(err.Error(), "control character") {
+		t.Fatalf("expected original Subject CRLF error to survive DispositionNotificationTo, got %v", err)
+	}
+}
+
+// TestBuild_IsReadReceiptMail_PreservesPriorError verifies that once the
+// Builder carries an error from a prior setter, IsReadReceiptMail short-
+// circuits and does NOT clobber the existing error with a nil.
+func TestBuild_IsReadReceiptMail_PreservesPriorError(t *testing.T) {
+	_, err := New().
+		From("", "alice@example.com").
+		To("", "bob@example.com").
+		Subject("bad\r\nheader"). // injects err
+		IsReadReceiptMail(true).
+		Date(fixedDate).
+		TextBody([]byte("body")).
+		Build()
+	if err == nil || !strings.Contains(err.Error(), "control character") {
+		t.Fatalf("expected original Subject CRLF error to survive IsReadReceiptMail, got %v", err)
+	}
+}
+
 // ── CC / BCC ──────────────────────────────────────────────────────────────────
 
+// TestBuild_CCBCC verifies build c c b c c.
 func TestBuild_CCBCC(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -308,6 +544,7 @@ func TestBuild_CCBCC(t *testing.T) {
 	}
 }
 
+// TestAllRecipients verifies all recipients.
 func TestAllRecipients(t *testing.T) {
 	b := New().
 		From("", "alice@example.com").
@@ -322,6 +559,7 @@ func TestAllRecipients(t *testing.T) {
 
 // ── BuildBase64URL ────────────────────────────────────────────────────────────
 
+// TestBuildBase64URL verifies build base64 URL.
 func TestBuildBase64URL(t *testing.T) {
 	encoded, err := New().
 		From("", "alice@example.com").
@@ -355,6 +593,7 @@ func TestBuildBase64URL(t *testing.T) {
 
 // ── immutability ──────────────────────────────────────────────────────────────
 
+// TestBuilder_Immutability verifies builder immutability.
 func TestBuilder_Immutability(t *testing.T) {
 	base := New().From("", "alice@example.com").Subject("base")
 	b1 := base.To("", "bob@example.com")
@@ -374,6 +613,7 @@ func TestBuilder_Immutability(t *testing.T) {
 
 // ── ToAddrs / CCAddrs ─────────────────────────────────────────────────────────
 
+// TestBuild_ToAddrs verifies build to addrs.
 func TestBuild_ToAddrs(t *testing.T) {
 	addrs := []mail.Address{
 		{Name: "Bob", Address: "bob@example.com"},
@@ -398,6 +638,7 @@ func TestBuild_ToAddrs(t *testing.T) {
 
 // ── CalendarBody ──────────────────────────────────────────────────────────────
 
+// TestBuild_CalendarBody_Single verifies build calendar body single.
 func TestBuild_CalendarBody_Single(t *testing.T) {
 	calData := []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR")
 	raw, err := New().
@@ -421,6 +662,7 @@ func TestBuild_CalendarBody_Single(t *testing.T) {
 	}
 }
 
+// TestBuild_CalendarWithText verifies build calendar with text.
 func TestBuild_CalendarWithText(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -436,6 +678,8 @@ func TestBuild_CalendarWithText(t *testing.T) {
 	}
 	eml := string(raw)
 
+	// text/calendar lives inside multipart/alternative as an alternative
+	// representation of the body, matching Feishu client behavior.
 	if !strings.Contains(eml, "multipart/alternative") {
 		t.Errorf("expected multipart/alternative for text+calendar:\n%s", eml)
 	}
@@ -449,6 +693,7 @@ func TestBuild_CalendarWithText(t *testing.T) {
 
 // ── AddInline / multipart/related ────────────────────────────────────────────
 
+// TestBuild_WithInline verifies build with inline.
 func TestBuild_WithInline(t *testing.T) {
 	imgBytes := []byte("\x89PNG\r\n\x1a\n") // minimal PNG magic bytes
 	raw, err := New().
@@ -488,6 +733,7 @@ func TestBuild_WithInline(t *testing.T) {
 	}
 }
 
+// TestBuild_WithOtherPart verifies build with other part.
 func TestBuild_WithOtherPart(t *testing.T) {
 	calData := []byte("BEGIN:VCALENDAR\r\nEND:VCALENDAR")
 	raw, err := New().
@@ -516,6 +762,7 @@ func TestBuild_WithOtherPart(t *testing.T) {
 	}
 }
 
+// TestBuild_FoldBodyLines_Base64 verifies build fold body lines base64.
 func TestBuild_FoldBodyLines_Base64(t *testing.T) {
 	body := strings.Repeat("你", 120)
 	raw, err := New().
@@ -541,6 +788,7 @@ func TestBuild_FoldBodyLines_Base64(t *testing.T) {
 	}
 }
 
+// TestBuild_FoldBodyLines_7bit verifies build fold body lines 7bit.
 func TestBuild_FoldBodyLines_7bit(t *testing.T) {
 	body := strings.Repeat("A", 200)
 	raw, err := New().
@@ -567,6 +815,7 @@ func TestBuild_FoldBodyLines_7bit(t *testing.T) {
 	}
 }
 
+// TestBuild_InlineAndAttachment verifies build inline and attachment.
 func TestBuild_InlineAndAttachment(t *testing.T) {
 	imgBytes := []byte("fake-png")
 	pdfBytes := []byte("fake-pdf")
@@ -620,6 +869,7 @@ func TestBuild_InlineContentIDNormalisation(t *testing.T) {
 
 // ── extra Header ─────────────────────────────────────────────────────────────
 
+// TestBuild_ExtraHeader verifies build extra header.
 func TestBuild_ExtraHeader(t *testing.T) {
 	raw, err := New().
 		From("", "alice@example.com").
@@ -640,6 +890,7 @@ func TestBuild_ExtraHeader(t *testing.T) {
 
 // ── CRLF / header-injection guards ───────────────────────────────────────────
 
+// TestSubjectCRLFRejected verifies subject CR LF rejected.
 func TestSubjectCRLFRejected(t *testing.T) {
 	for _, inj := range []string{"legit\r\nBcc: evil@evil.com", "legit\nBcc: evil@evil.com", "legit\rBcc: evil@evil.com"} {
 		_, err := New().
@@ -656,6 +907,7 @@ func TestSubjectCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestMessageIDCRLFRejected verifies message ID CR LF rejected.
 func TestMessageIDCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -670,6 +922,7 @@ func TestMessageIDCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestInReplyToCRLFRejected verifies in reply to CR LF rejected.
 func TestInReplyToCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -685,6 +938,7 @@ func TestInReplyToCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestReferencesCRLFRejected verifies references CR LF rejected.
 func TestReferencesCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -700,6 +954,7 @@ func TestReferencesCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestHeaderNameColonRejected verifies header name colon rejected.
 func TestHeaderNameColonRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -715,6 +970,7 @@ func TestHeaderNameColonRejected(t *testing.T) {
 	}
 }
 
+// TestHeaderNameCRLFRejected verifies header name CR LF rejected.
 func TestHeaderNameCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -730,6 +986,7 @@ func TestHeaderNameCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestHeaderValueCRLFRejected verifies header value CR LF rejected.
 func TestHeaderValueCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -745,6 +1002,7 @@ func TestHeaderValueCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestFromDisplayNameCRLFRejected verifies from display name CR LF rejected.
 func TestFromDisplayNameCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("Alice\r\nBcc: evil@evil.com", "alice@example.com").
@@ -759,6 +1017,7 @@ func TestFromDisplayNameCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestToDisplayNameCRLFRejected verifies to display name CR LF rejected.
 func TestToDisplayNameCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -773,6 +1032,7 @@ func TestToDisplayNameCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestAddAttachmentContentTypeCRLFRejected verifies add attachment content type CR LF rejected.
 func TestAddAttachmentContentTypeCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -788,6 +1048,7 @@ func TestAddAttachmentContentTypeCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestAddAttachmentFileNameCRLFRejected verifies add attachment file name CR LF rejected.
 func TestAddAttachmentFileNameCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -803,6 +1064,7 @@ func TestAddAttachmentFileNameCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestAddInlineContentTypeCRLFRejected verifies add inline content type CR LF rejected.
 func TestAddInlineContentTypeCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -818,6 +1080,7 @@ func TestAddInlineContentTypeCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestAddInlineContentIDCRLFRejected verifies add inline content ID CR LF rejected.
 func TestAddInlineContentIDCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -833,6 +1096,7 @@ func TestAddInlineContentIDCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestAddInlineFileNameCRLFRejected verifies add inline file name CR LF rejected.
 func TestAddInlineFileNameCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -848,6 +1112,7 @@ func TestAddInlineFileNameCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestAddOtherPartFileNameCRLFRejected verifies add other part file name CR LF rejected.
 func TestAddOtherPartFileNameCRLFRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -863,6 +1128,7 @@ func TestAddOtherPartFileNameCRLFRejected(t *testing.T) {
 	}
 }
 
+// TestAddInlineContentIDControlCharRejected verifies add inline content ID control char rejected.
 func TestAddInlineContentIDControlCharRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -878,6 +1144,7 @@ func TestAddInlineContentIDControlCharRejected(t *testing.T) {
 	}
 }
 
+// TestAddOtherPartContentIDControlCharRejected verifies add other part content ID control char rejected.
 func TestAddOtherPartContentIDControlCharRejected(t *testing.T) {
 	_, err := New().
 		From("", "alice@example.com").
@@ -893,6 +1160,7 @@ func TestAddOtherPartContentIDControlCharRejected(t *testing.T) {
 	}
 }
 
+// TestHeaderValueControlCharRejected verifies header value control char rejected.
 func TestHeaderValueControlCharRejected(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -923,6 +1191,7 @@ func TestHeaderValueControlCharRejected(t *testing.T) {
 	}
 }
 
+// TestHeaderValueDangerousUnicodeRejected verifies header value dangerous unicode rejected.
 func TestHeaderValueDangerousUnicodeRejected(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -954,6 +1223,7 @@ func TestHeaderValueDangerousUnicodeRejected(t *testing.T) {
 
 // ── blocked extension via AddFileAttachment ───────────────────────────────────
 
+// TestAddFileAttachmentBlockedExtension verifies add file attachment blocked extension.
 func TestAddFileAttachmentBlockedExtension(t *testing.T) {
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
@@ -985,6 +1255,7 @@ func TestAddFileAttachmentBlockedExtension(t *testing.T) {
 	}
 }
 
+// TestAddFileInlineBlockedFormat verifies add file inline blocked format.
 func TestAddFileInlineBlockedFormat(t *testing.T) {
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
@@ -1015,6 +1286,7 @@ func TestAddFileInlineBlockedFormat(t *testing.T) {
 	}
 }
 
+// TestAddFileInlineAllowedFormat verifies add file inline allowed format.
 func TestAddFileInlineAllowedFormat(t *testing.T) {
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
@@ -1044,6 +1316,7 @@ func TestAddFileInlineAllowedFormat(t *testing.T) {
 	}
 }
 
+// TestAddFileAttachmentAllowedExtension verifies add file attachment allowed extension.
 func TestAddFileAttachmentAllowedExtension(t *testing.T) {
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
@@ -1072,6 +1345,7 @@ func TestAddFileAttachmentAllowedExtension(t *testing.T) {
 	}
 }
 
+// TestHeaderValueTabAllowed verifies header value tab allowed.
 func TestHeaderValueTabAllowed(t *testing.T) {
 	// Tab (\t) is valid in folded header values per RFC 5322
 	_, err := New().
@@ -1085,5 +1359,37 @@ func TestHeaderValueTabAllowed(t *testing.T) {
 		Build()
 	if err != nil {
 		t.Errorf("Header with tab in value: expected no error, got %v", err)
+	}
+}
+
+func TestWriteCalendarPart_MethodFromBody(t *testing.T) {
+	cases := []struct {
+		name   string
+		ics    string
+		wantCT string
+	}{
+		{"request", "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n", "method=REQUEST"},
+		{"cancel", "BEGIN:VCALENDAR\r\nMETHOD:CANCEL\r\nEND:VCALENDAR\r\n", "method=CANCEL"},
+		{"reply", "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n", "method=REPLY"},
+		{"no method defaults to REQUEST", "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n", "method=REQUEST"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			eml, err := New().
+				From("", "sender@example.com").
+				To("", "recipient@example.com").
+				Subject("Test").
+				Date(fixedDate).
+				MessageID("test-method@x").
+				HTMLBody([]byte("<p>hi</p>")).
+				CalendarBody([]byte(tc.ics)).
+				Build()
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			if !strings.Contains(string(eml), tc.wantCT) {
+				t.Errorf("expected Content-Type to contain %q\n%s", tc.wantCT, eml)
+			}
+		})
 	}
 }

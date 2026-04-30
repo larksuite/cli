@@ -336,7 +336,7 @@ DSL 的语法是严格白名单，不能写原生 CSS 属性（不支持 `alignS
 先出骨架图导出坐标，再基于坐标补充连线和注解：
 
 ```bash
-npx -y @larksuite/whiteboard-cli@^0.2.9 -i skeleton.json -o step1.png -l coords.json
+npx -y @larksuite/whiteboard-cli@^0.2.10 -i skeleton.json -o step1.png -l coords.json
 ```
 
 `coords.json` 包含每个带 id 节点的精确坐标（absX, absY, width, height）。
@@ -372,14 +372,3 @@ npx -y @larksuite/whiteboard-cli@^0.2.9 -i skeleton.json -o step1.png -l coords.
 ```
 
 `alignItems: 'stretch'` + `width: 'fill-container'` = 等宽等高。
-
----
-
-## 图文卡片
-
-含图片的画板用图文卡片布局（vertical frame：图上文下）：
-
-- image 宽度 = 卡片宽度，height 按 3:2 比例（如 240×160）
-- 卡片间 gap: 24（比纯文字间距大）
-- 多卡片一行超过 3 张时，换行用嵌套 horizontal frame
-- 详见 `scenes/photo-showcase.md`

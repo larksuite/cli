@@ -12,12 +12,19 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// mailThreadOutput is the +thread JSON output: the thread identifier,
+// the number of messages in it, and the messages themselves in
+// chronological order.
 type mailThreadOutput struct {
 	ThreadID     string                   `json:"thread_id"`
 	MessageCount int                      `json:"message_count"`
 	Messages     []map[string]interface{} `json:"messages"`
 }
 
+// sortThreadMessagesByInternalDate filters out messages without a message_id
+// and orders the rest ascending by internal_date (parsed via
+// parseInternalDateMillis). Used to give +thread output a stable
+// chronological order regardless of API return order.
 func sortThreadMessagesByInternalDate(outs []map[string]interface{}) []map[string]interface{} {
 	messages := make([]map[string]interface{}, 0, len(outs))
 	for _, o := range outs {
@@ -34,6 +41,8 @@ func sortThreadMessagesByInternalDate(outs []map[string]interface{}) []map[strin
 	return messages
 }
 
+// MailThread is the `+thread` shortcut: fetch a full mail conversation by
+// thread ID, returning every message in chronological order.
 var MailThread = common.Shortcut{
 	Service:     "mail",
 	Command:     "+thread",
@@ -111,6 +120,17 @@ var MailThread = common.Shortcut{
 		messages := sortThreadMessagesByInternalDate(outs)
 
 		runtime.Out(mailThreadOutput{ThreadID: threadID, MessageCount: len(messages), Messages: messages}, nil)
+		for _, item := range items {
+			envelope, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			msg := envelope
+			if inner, ok := envelope["message"].(map[string]interface{}); ok {
+				msg = inner
+			}
+			maybeHintReadReceiptRequest(runtime, mailboxID, strVal(msg["message_id"]), msg)
+		}
 		return nil
 	},
 }

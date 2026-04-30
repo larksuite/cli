@@ -16,6 +16,29 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
+// RuntimeDirFunc returns the workspace-aware config directory.
+// Default: falls back to LARKSUITE_CLI_CONFIG_DIR or ~/.lark-cli (pre-workspace behavior).
+// Injected by cmdutil.NewDefault → core.GetRuntimeDir after workspace detection.
+// This avoids an import cycle (core → keychain → core).
+var RuntimeDirFunc = defaultRuntimeDir
+
+func defaultRuntimeDir() string {
+	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
+		return dir
+	}
+	home, err := vfs.UserHomeDir()
+	if err != nil || home == "" {
+		// Silent fallback to a relative ".lark-cli": this package has no
+		// IOStreams in scope, so we cannot surface a warning here without
+		// violating the IOStreams injection boundary (enforced by lint).
+		// Users who hit this path should set LARKSUITE_CLI_CONFIG_DIR
+		// explicitly; the relative path will otherwise surface as an
+		// explicit I/O error at first use.
+		home = ""
+	}
+	return filepath.Join(home, ".lark-cli")
+}
+
 var (
 	authResponseLogger     *log.Logger
 	authResponseLoggerOnce = &sync.Once{}
@@ -25,6 +48,8 @@ var (
 )
 
 func authLogDir() string {
+	// LARKSUITE_CLI_LOG_DIR is the highest-priority override.
+	// When set, it bypasses workspace subtree routing entirely.
 	if dir := os.Getenv("LARKSUITE_CLI_LOG_DIR"); dir != "" {
 		safeDir, err := validate.SafeEnvDirPath(dir, "LARKSUITE_CLI_LOG_DIR")
 		if err == nil {
@@ -32,16 +57,10 @@ func authLogDir() string {
 		}
 	}
 
-	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
-		return filepath.Join(dir, "logs")
-	}
-
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-
-	return filepath.Join(home, ".lark-cli", "logs")
+	// Fall back to the workspace-aware runtime dir. RuntimeDirFunc is injected
+	// by factory after workspace detection; before injection it defaults to
+	// the pre-workspace behavior so older call paths remain correct.
+	return filepath.Join(RuntimeDirFunc(), "logs")
 }
 
 func initAuthLogger() {

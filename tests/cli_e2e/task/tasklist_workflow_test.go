@@ -55,6 +55,7 @@ func TestTask_TasklistWorkflowAsBot(t *testing.T) {
 				Args:      []string{"task", "tasks", "delete"},
 				DefaultAs: "bot",
 				Params:    map[string]any{"task_guid": taskGUID},
+				Yes:       true,
 			})
 			clie2e.ReportCleanupFailure(parentT, "delete task "+taskGUID, deleteResult, deleteErr)
 		})
@@ -67,6 +68,7 @@ func TestTask_TasklistWorkflowAsBot(t *testing.T) {
 				Args:      []string{"task", "tasklists", "delete"},
 				DefaultAs: "bot",
 				Params:    map[string]any{"tasklist_guid": tasklistGUID},
+				Yes:       true,
 			})
 			clie2e.ReportCleanupFailure(parentT, "delete tasklist "+tasklistGUID, deleteResult, deleteErr)
 		})
@@ -91,20 +93,7 @@ func TestTask_TasklistWorkflowAsBot(t *testing.T) {
 		require.NotEmpty(t, tasklistGUID, "tasklist GUID should be created before listing tasks")
 		require.NotEmpty(t, taskGUID, "task GUID should be created before listing tasks")
 
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"task", "tasklists", "tasks"},
-			DefaultAs: "bot",
-			Params: map[string]any{
-				"tasklist_guid": tasklistGUID,
-				"page_size":     50,
-			},
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-
-		taskItem := gjson.Get(result.Stdout, `data.items.#(guid=="`+taskGUID+`")`)
-		assert.True(t, taskItem.Exists(), "stdout:\n%s", result.Stdout)
+		taskItem := findTaskInTasklist(t, ctx, tasklistGUID, taskGUID)
 		assert.Equal(t, taskSummary, taskItem.Get("summary").String())
 	})
 
@@ -151,6 +140,7 @@ func TestTask_TasklistWorkflowAsUser(t *testing.T) {
 			Args:      []string{"task", "tasklists", "delete"},
 			DefaultAs: "user",
 			Params:    map[string]any{"tasklist_guid": tasklistGUID},
+			Yes:       true,
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete user tasklist "+tasklistGUID, deleteResult, deleteErr)
 	})

@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 var BaseRecordGet = common.Shortcut{
@@ -22,11 +23,25 @@ var BaseRecordGet = common.Shortcut{
 		{Name: "record-id", Type: "string_array", Desc: "record ID (repeatable)"},
 		{Name: "field-id", Type: "string_array", Desc: "field ID or field name to include (repeatable)"},
 		{Name: "json", Desc: `JSON object with record_id_list, e.g. {"record_id_list":["rec_xxx"]}`},
+		recordReadFormatFlag(),
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateRecordReadFormat(runtime); err != nil {
+			return err
+		}
 		return validateRecordSelection(runtime)
 	},
+	Tips: []string{
+		"Example: lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id <record_id>",
+		"Example with projection: lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id rec_001 --record-id rec_002 --field-id Name --field-id Status",
+		"Default output is markdown; pass --format json to get the raw JSON envelope.",
+		"Use +record-get when record_id is already known; otherwise use +record-search or +record-list.",
+		"Agent hint: follow the lark-base record read SOP for record read routing.",
+	},
 	DryRun: dryRunRecordGet,
+	PostMount: func(cmd *cobra.Command) {
+		preserveFlagOrder(cmd)
+	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeRecordGet(runtime)
 	},

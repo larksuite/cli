@@ -365,6 +365,9 @@ func recordListFields(runtime *common.RuntimeContext) []string {
 }
 
 func executeRecordList(runtime *common.RuntimeContext) error {
+	if err := validateRecordReadFormat(runtime); err != nil {
+		return err
+	}
 	offset := runtime.Int("offset")
 	if offset < 0 {
 		offset = 0
@@ -382,11 +385,17 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if runtime.Str("format") == "markdown" {
+		return outputRecordMarkdown(runtime, data)
+	}
 	runtime.Out(data, nil)
 	return nil
 }
 
 func executeRecordGet(runtime *common.RuntimeContext) error {
+	if err := validateRecordReadFormat(runtime); err != nil {
+		return err
+	}
 	selection, err := resolveRecordSelection(runtime)
 	if err != nil {
 		return err
@@ -395,6 +404,9 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 	data, err := handleBaseAPIResult(result, err, "batch get records")
 	if err != nil {
 		return err
+	}
+	if runtime.Str("format") == "markdown" {
+		return outputRecordGetMarkdown(runtime, data)
 	}
 	runtime.Out(data, nil)
 	return nil
@@ -409,6 +421,9 @@ func executeRecordSearch(runtime *common.RuntimeContext) error {
 	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search"), nil, body)
 	if err != nil {
 		return err
+	}
+	if runtime.Str("format") == "markdown" {
+		return outputRecordMarkdown(runtime, data)
 	}
 	runtime.Out(data, nil)
 	return nil

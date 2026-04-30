@@ -10,12 +10,16 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// mailMessagesOutput is the +messages JSON output: the batch-get result,
+// plus the total count and any requested IDs the backend did not return.
 type mailMessagesOutput struct {
 	Messages              []map[string]interface{} `json:"messages"`
 	Total                 int                      `json:"total"`
 	UnavailableMessageIDs []string                 `json:"unavailable_message_ids,omitempty"`
 }
 
+// MailMessages is the `+messages` shortcut: batch-fetch full content for
+// up to 20 message IDs in a single call, preserving request order.
 var MailMessages = common.Shortcut{
 	Service:     "mail",
 	Command:     "+messages",
@@ -73,6 +77,9 @@ var MailMessages = common.Shortcut{
 			Total:                 len(messages),
 			UnavailableMessageIDs: missingMessageIDs,
 		}, nil)
+		for _, msg := range rawMessages {
+			maybeHintReadReceiptRequest(runtime, mailboxID, strVal(msg["message_id"]), msg)
+		}
 		return nil
 	},
 }

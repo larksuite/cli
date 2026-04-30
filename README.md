@@ -6,14 +6,14 @@
 
 [中文版](./README.zh.md) | [English](./README.md)
 
-The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Slides, Calendar, Mail, Tasks, Meetings, and more, with 200+ commands and 22 AI Agent [Skills](./skills/).
+The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Slides, Calendar, Mail, Tasks, Meetings, Markdown, and more, with 200+ commands and 24 AI Agent [Skills](./skills/).
 
 [Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
 
 ## Why lark-cli?
 
-- **Agent-Native Design** — 22 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
-- **Wide Coverage** — 14 business domains, 200+ curated commands, 22 AI Agent [Skills](./skills/)
+- **Agent-Native Design** — 24 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
+- **Wide Coverage** — 17 business domains, 200+ curated commands, 24 AI Agent [Skills](./skills/)
 - **AI-Friendly & Optimized** — Every command is tested with real Agents, featuring concise parameters, smart defaults, and structured output to maximize Agent call success rates
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
@@ -28,6 +28,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media                  |
 | 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards                                                        |
 | 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
+| 📝 Markdown   | Create, fetch, and overwrite Drive-native `.md` files                                                                             |
 | 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
 | 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                                                                    |
 | 🖼️ Slides     | Create and manage presentations, read presentation content, and add or remove slides                                              |
@@ -38,7 +39,8 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                                                                        |
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
-| 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments and indicators.                                            |
+| 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
+| 📋 Project    | Meegle — manage work items, schedules, and data via the standalone [meegle-cli](https://github.com/larksuite/meegle-cli) (install separately) |
 
 ## Installation & Quick Start
 
@@ -138,6 +140,7 @@ lark-cli auth status
 | `lark-im`                       | Send/reply messages, group chat management, message search, upload/download images & files, reactions          |
 | `lark-doc`                      | Create, read, update, search documents (Markdown-based)                                                        |
 | `lark-drive`                    | Upload, download files, manage permissions & comments                                                          |
+| `lark-markdown`                 | Create, fetch, and overwrite Drive-native Markdown files                                                       |
 | `lark-sheets`                   | Create, read, write, append, find, export spreadsheets                                                         |
 | `lark-slides`                   | Create and manage presentations, read presentation content, and add or remove slides                          |
 | `lark-base`                     | Tables, fields, records, views, dashboards, data aggregation & analytics                                       |
@@ -155,6 +158,7 @@ lark-cli auth status
 | `lark-approval`                 | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                   |
 | `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                                                      |
 | `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                                                |
+| `lark-okr`                      | Query, create, update OKRs; manage objective & key results, alignments and indicators.                         |
 
 ## Authentication
 
@@ -201,7 +205,7 @@ Prefixed with `+`, designed to be friendly for both humans and AI, with smart de
 ```bash
 lark-cli calendar +agenda
 lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
-lark-cli docs +create --title "Weekly Report" --markdown "# Progress\n- Completed feature X"
+lark-cli docs +create --api-version v2 --doc-format markdown --content $'<title>Weekly Report</title>\n# Progress\n- Completed feature X'
 ```
 
 Run `lark-cli <service> --help` to see all shortcut commands.

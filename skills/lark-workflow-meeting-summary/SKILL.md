@@ -92,9 +92,9 @@ lark-cli drive metas batch_query --data '{"request_docs": [{"doc_type": "docx", 
 阅读 [`../lark-doc/SKILL.md`](../lark-doc/SKILL.md) 学习云文档技能。
 
 ```bash
-lark-cli docs +create --title "会议纪要汇总 (<start> - <end>)" --markdown "<内容>"
+lark-cli docs +create --api-version v2 --doc-format markdown --content $'<title>会议纪要汇总 (<start> - <end>)</title>\n<内容>'
 # 或追加到已有文档
-lark-cli docs +update --doc "<url_or_token>" --mode append --markdown "<内容>"
+lark-cli docs +update --api-version v2 --doc "<url_or_token>" --command append --doc-format markdown --content $'<内容>'
 ```
 
 ## 参考

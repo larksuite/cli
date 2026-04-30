@@ -43,7 +43,7 @@ POST /open-apis/base/v3/bases/:base_token/copy
 - CLI 会额外标记 `copied: true`。
 - 回复结果时，必须主动返回新 Base 的可访问链接：
   - 优先使用返回结果中的 `base.url`
-  - 同时返回新 Base 的 token；字段名以实际返回为准，常见为 `base_token` 或 `app_token`
+  - 同时返回新 Base 的 token
   - 如果本次返回没有 `url`，至少返回新 Base 的名称和 token
 
 > [!IMPORTANT]

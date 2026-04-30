@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -161,4 +162,48 @@ func createRole(t *testing.T, ctx context.Context, baseToken string, body string
 	result.AssertStdoutStatus(t, true)
 
 	return gjson.Get(result.Stdout, "data.role_id").String()
+}
+
+func findBaseTableByID(t *testing.T, ctx context.Context, baseToken string, tableID string) gjson.Result {
+	t.Helper()
+
+	require.NotEmpty(t, baseToken, "base token is required")
+	require.NotEmpty(t, tableID, "table ID is required")
+
+	const pageLimit = 50
+
+	offset := 0
+	seenOffsets := map[int]struct{}{}
+	for {
+		if _, seen := seenOffsets[offset]; seen {
+			t.Fatalf("base table list pagination loop detected for base %q, repeated offset %d", baseToken, offset)
+		}
+		seenOffsets[offset] = struct{}{}
+
+		args := []string{
+			"base", "+table-list",
+			"--base-token", baseToken,
+			"--limit", strconv.Itoa(pageLimit),
+			"--offset", strconv.Itoa(offset),
+		}
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      args,
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+
+		table := gjson.Get(result.Stdout, `data.tables.#(id=="`+tableID+`")`)
+		if table.Exists() {
+			return table
+		}
+
+		tables := gjson.Get(result.Stdout, "data.tables").Array()
+		if len(tables) == 0 || len(tables) < pageLimit {
+			t.Fatalf("table %q not found in listed pages, last stdout:\n%s", tableID, result.Stdout)
+		}
+		offset += len(tables)
+	}
 }

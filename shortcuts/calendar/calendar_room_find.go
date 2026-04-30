@@ -205,12 +205,24 @@ func parseRoomFindAttendees(attendeesStr string, currentUserID string) ([]string
 	return userIDs, chatIDs, nil
 }
 
+func normalizeCommaSeparatedNames(raw string) string {
+	parts := strings.Split(raw, ",")
+	var cleaned []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			cleaned = append(cleaned, p)
+		}
+	}
+	return strings.Join(cleaned, ",")
+}
+
 func buildRoomFindBaseRequest(runtime *common.RuntimeContext) (*roomFindRequest, error) {
 	req := &roomFindRequest{
 		City:        strings.TrimSpace(runtime.Str(flagCity)),
 		Building:    strings.TrimSpace(runtime.Str(flagBuilding)),
 		Floor:       strings.TrimSpace(runtime.Str(flagFloor)),
-		RoomName:    strings.TrimSpace(runtime.Str(flagRoomName)),
+		RoomName:    normalizeCommaSeparatedNames(runtime.Str(flagRoomName)),
 		MinCapacity: runtime.Int(flagMinCapacity),
 		MaxCapacity: runtime.Int(flagMaxCapacity),
 		Timezone:    strings.TrimSpace(runtime.Str(flagTimezone)),
@@ -272,7 +284,7 @@ var CalendarRoomFind = common.Shortcut{
 		{Name: flagCity, Type: "string", Desc: "meeting room city constraint"},
 		{Name: flagBuilding, Type: "string", Desc: "meeting room building constraint"},
 		{Name: flagFloor, Type: "string", Desc: "meeting room floor constraint (e.g., F2)"},
-		{Name: flagRoomName, Type: "string", Desc: "meeting room name constraint (e.g., 木星, 02)"},
+		{Name: flagRoomName, Type: "string", Desc: "meeting room name constraint; comma-separated for multiple names (e.g., 01,02,03)"},
 		{Name: flagMinCapacity, Type: "int", Desc: "minimum meeting room capacity"},
 		{Name: flagMaxCapacity, Type: "int", Desc: "maximum meeting room capacity"},
 		{Name: flagAttendees, Type: "string", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_)"},
@@ -303,11 +315,20 @@ var CalendarRoomFind = common.Shortcut{
 		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
 			return err
 		}
-		for _, flag := range []string{flagCity, flagBuilding, flagFloor, flagRoomName, flagEventRrule, flagTimezone} {
+		for _, flag := range []string{flagCity, flagBuilding, flagFloor, flagEventRrule, flagTimezone} {
 			if val := strings.TrimSpace(runtime.Str(flag)); val != "" {
 				if err := common.RejectDangerousChars("--"+flag, val); err != nil {
 					return output.ErrValidation(err.Error())
 				}
+			}
+		}
+		for _, name := range strings.Split(runtime.Str(flagRoomName), ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if err := common.RejectDangerousChars("--"+flagRoomName, name); err != nil {
+				return output.ErrValidation(err.Error())
 			}
 		}
 		if _, err := parseRoomFindSlots(runtime); err != nil {

@@ -33,6 +33,7 @@ tests/mail/reports/
 
 
 # Generated / test artifacts
+.hammer/
 internal/registry/meta_data.json
 cmd/api/download.bin
 app.log

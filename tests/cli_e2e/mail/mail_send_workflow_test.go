@@ -48,6 +48,7 @@ func TestMail_SendWorkflowAsUser(t *testing.T) {
 					"user_mailbox_id": mailboxID,
 					"draft_id":        replyDraftID,
 				},
+				Yes: true,
 			})
 			clie2e.ReportCleanupFailure(parentT, "delete reply draft "+replyDraftID, result, err)
 		}
@@ -63,6 +64,7 @@ func TestMail_SendWorkflowAsUser(t *testing.T) {
 					"user_mailbox_id": mailboxID,
 					"draft_id":        forwardDraftID,
 				},
+				Yes: true,
 			})
 			clie2e.ReportCleanupFailure(parentT, "delete forward draft "+forwardDraftID, result, err)
 		}

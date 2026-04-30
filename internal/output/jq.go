@@ -14,8 +14,21 @@ import (
 
 // JqFilter applies a jq expression to data and writes the results to w.
 // Scalar values are printed raw (no quotes for strings), matching jq -r behavior.
-// Complex values (maps, arrays) are printed as indented JSON.
+// Complex values (maps, arrays) are printed as indented JSON with Go's default
+// HTML escaping (<, >, & → <, >, &).
 func JqFilter(w io.Writer, data interface{}, expr string) error {
+	return jqFilter(w, data, expr, false)
+}
+
+// JqFilterRaw is like JqFilter but disables HTML escaping when re-marshaling
+// complex jq results. Use it alongside OutRaw when the upstream envelope
+// carries XML/HTML content that must survive --jq '.data.document' style
+// projections without getting mangled into < escapes.
+func JqFilterRaw(w io.Writer, data interface{}, expr string) error {
+	return jqFilter(w, data, expr, true)
+}
+
+func jqFilter(w io.Writer, data interface{}, expr string, raw bool) error {
 	query, err := gojq.Parse(expr)
 	if err != nil {
 		return ErrValidation("invalid jq expression: %s", err)
@@ -39,7 +52,7 @@ func JqFilter(w io.Writer, data interface{}, expr string) error {
 		if err, isErr := v.(error); isErr {
 			return Errorf(ExitAPI, "jq_error", "jq error: %s", err)
 		}
-		if err := writeJqValue(w, v); err != nil {
+		if err := writeJqValue(w, v, raw); err != nil {
 			return err
 		}
 	}
@@ -76,7 +89,9 @@ func ValidateJqExpression(expr string) error {
 
 // writeJqValue writes a single jq result value to w.
 // Scalars are printed raw; complex values as indented JSON.
-func writeJqValue(w io.Writer, v interface{}) error {
+// When raw is true, HTML escaping is disabled on complex values so that
+// embedded XML/HTML content is preserved as-is.
+func writeJqValue(w io.Writer, v interface{}, raw bool) error {
 	switch val := v.(type) {
 	case nil:
 		fmt.Fprintln(w, "null")
@@ -94,6 +109,15 @@ func writeJqValue(w io.Writer, v interface{}) error {
 		fmt.Fprintln(w, val)
 	default:
 		// Complex value (map, array): indented JSON.
+		if raw {
+			enc := json.NewEncoder(w)
+			enc.SetEscapeHTML(false)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(v); err != nil {
+				return Errorf(ExitInternal, "jq_error", "failed to marshal jq result: %s", err)
+			}
+			return nil
+		}
 		b, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {
 			return Errorf(ExitInternal, "jq_error", "failed to marshal jq result: %s", err)

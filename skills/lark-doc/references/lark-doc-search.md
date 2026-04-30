@@ -1,6 +1,10 @@
 
 # docs +search（云空间搜索：文档 / Wiki / 电子表格）
 
+> ⚠️ **此命令进入维护期，后续会下线。新用法请使用 [`drive +search`](../../lark-drive/references/lark-drive-search.md)。**
+>
+> `drive +search` 把所有过滤条件扁平化为独立 flag（`--edited-since` / `--mine` / `--doc-types` 等），面向自然语言场景设计，同时新增了 `my_edit_time`（我编辑过）、`my_comment_time`（我评论过）等维度。除非要沿用老脚本里的 `--filter` JSON，否则**都应该切到 `drive +search`**。
+>
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，以**用户身份**统一搜索云空间对象。

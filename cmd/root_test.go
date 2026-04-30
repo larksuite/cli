@@ -198,7 +198,7 @@ func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 }
 
 func TestConfigureFlagCompletions(t *testing.T) {
-	t.Cleanup(func() { cmdutil.SetFlagCompletionsDisabled(false) })
+	t.Cleanup(func() { cmdutil.SetFlagCompletionsEnabled(false) })
 
 	tests := []struct {
 		name         string
@@ -213,10 +213,10 @@ func TestConfigureFlagCompletions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cmdutil.SetFlagCompletionsDisabled(!tc.wantDisabled)
+			cmdutil.SetFlagCompletionsEnabled(tc.wantDisabled)
 			configureFlagCompletions(tc.args)
-			if got := cmdutil.FlagCompletionsDisabled(); got != tc.wantDisabled {
-				t.Fatalf("FlagCompletionsDisabled() = %v, want %v", got, tc.wantDisabled)
+			if got := !cmdutil.FlagCompletionsEnabled(); got != tc.wantDisabled {
+				t.Fatalf("FlagCompletionsEnabled() = %v, want disabled=%v", !got, tc.wantDisabled)
 			}
 		})
 	}
