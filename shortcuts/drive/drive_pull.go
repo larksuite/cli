@@ -23,9 +23,6 @@ import (
 const (
 	drivePullIfExistsOverwrite = "overwrite"
 	drivePullIfExistsSkip      = "skip"
-	drivePullListPageSize      = 200
-	drivePullFileType          = "file"
-	drivePullFolderType        = "folder"
 )
 
 type drivePullItem struct {
@@ -135,9 +132,24 @@ var DrivePull = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
-		remoteFiles, remotePaths, err := drivePullListRemote(ctx, runtime, folderToken, "")
+		entries, err := listRemoteFolder(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
+		}
+		// Two views over the same listing:
+		//   - remoteFiles drives the download/skip loop (only type=file
+		//     has hashable bytes the local mirror can write back).
+		//   - remotePaths is the --delete-local guard: it carries every
+		//     rel_path Drive owns regardless of type, so a local file
+		//     shadowed by a remote folder / online doc / shortcut is NOT
+		//     treated as orphaned.
+		remoteFiles := make(map[string]string, len(entries))
+		remotePaths := make(map[string]struct{}, len(entries))
+		for rel, entry := range entries {
+			remotePaths[rel] = struct{}{}
+			if entry.Type == driveTypeFile {
+				remoteFiles[rel] = entry.FileToken
+			}
 		}
 
 		var downloaded, skipped, failed, deletedLocal int
@@ -275,96 +287,6 @@ var DrivePull = common.Shortcut{
 		runtime.Out(payload, nil)
 		return nil
 	},
-}
-
-// drivePullListRemote recursively lists a Drive folder.
-//
-// It returns two views:
-//   - files:    rel_path → file_token, for entries with type=file. This is
-//     the "downloadable" subset and drives the download/skip loop.
-//   - allPaths: every entry's rel_path regardless of type (file, online doc,
-//     shortcut, …). --delete-local consults this set so that a local file
-//     sitting at the same rel_path as e.g. an online doc is NOT treated as
-//     orphaned and deleted.
-//
-// Subfolders recurse; online docs and shortcuts are not added to files
-// (no equivalent local binary) but are recorded in allPaths.
-//
-// TODO(post-#692): when drive +status merges, lift this and the matching
-// helper in drive_status.go into a shared listRemoteFolderFiles in the
-// drive package.
-func drivePullListRemote(ctx context.Context, runtime *common.RuntimeContext, folderToken, relBase string) (map[string]string, map[string]struct{}, error) {
-	files := make(map[string]string)
-	allPaths := make(map[string]struct{})
-	pageToken := ""
-	for {
-		params := map[string]interface{}{
-			"folder_token": folderToken,
-			"page_size":    fmt.Sprint(drivePullListPageSize),
-		}
-		if pageToken != "" {
-			params["page_token"] = pageToken
-		}
-		result, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files", params, nil)
-		if err != nil {
-			return nil, nil, err
-		}
-		rawFiles, _ := result["files"].([]interface{})
-		for _, item := range rawFiles {
-			f, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			fType := common.GetString(f, "type")
-			fName := common.GetString(f, "name")
-			fToken := common.GetString(f, "token")
-			if fName == "" || fToken == "" {
-				continue
-			}
-			rel := drivePullJoinRel(relBase, fName)
-			switch fType {
-			case drivePullFileType:
-				files[rel] = fToken
-				allPaths[rel] = struct{}{}
-			case drivePullFolderType:
-				// Record the folder's own rel_path before recursing,
-				// otherwise a local regular file shadowed by a remote
-				// folder of the same name would still look orphaned to
-				// --delete-local. The "allPaths = every remote rel_path"
-				// contract has to cover folders too.
-				allPaths[rel] = struct{}{}
-				subFiles, subPaths, err := drivePullListRemote(ctx, runtime, fToken, rel)
-				if err != nil {
-					return nil, nil, err
-				}
-				for k, v := range subFiles {
-					files[k] = v
-				}
-				for k := range subPaths {
-					allPaths[k] = struct{}{}
-				}
-			default:
-				// docx, sheet, bitable, mindnote, slides, shortcut, …
-				// — not downloadable, but Drive still owns this rel_path
-				// so --delete-local must not treat a local same-named
-				// file as orphaned.
-				allPaths[rel] = struct{}{}
-			}
-		}
-		hasMore, nextToken := common.PaginationMeta(result)
-		if !hasMore || nextToken == "" {
-			break
-		}
-		pageToken = nextToken
-	}
-	return files, allPaths, nil
-}
-
-func drivePullJoinRel(base, name string) string {
-	if base == "" {
-		return name
-	}
-	return base + "/" + name
 }
 
 func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, target string) error {

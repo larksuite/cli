@@ -21,12 +21,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const (
-	driveStatusListPageSize = 200
-	driveStatusFileType     = "file"
-	driveStatusFolderType   = "folder"
-)
-
 type driveStatusEntry struct {
 	RelPath   string `json:"rel_path"`
 	FileToken string `json:"file_token,omitempty"`
@@ -124,9 +118,20 @@ var DriveStatus = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
-		remoteFiles, err := listRemoteForStatus(ctx, runtime, folderToken, "")
+		entries, err := listRemoteFolder(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
+		}
+		// +status only diffs binary content, so collapse the unified
+		// listing to type=file. Online docs / shortcuts have no
+		// hashable bytes and are intentionally absent from the diff
+		// view (a docx living next to a same-named local file is a
+		// known no-op).
+		remoteFiles := make(map[string]string, len(entries))
+		for rel, entry := range entries {
+			if entry.Type == driveTypeFile {
+				remoteFiles[rel] = entry.FileToken
+			}
 		}
 
 		paths := mergeStatusPaths(localHashes, remoteFiles)
@@ -220,59 +225,6 @@ func hashLocalForStatus(runtime *common.RuntimeContext, path string) (string, er
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func listRemoteForStatus(ctx context.Context, runtime *common.RuntimeContext, folderToken, relBase string) (map[string]string, error) {
-	files := make(map[string]string)
-	pageToken := ""
-	for {
-		params := map[string]interface{}{
-			"folder_token": folderToken,
-			"page_size":    fmt.Sprint(driveStatusListPageSize),
-		}
-		if pageToken != "" {
-			params["page_token"] = pageToken
-		}
-		result, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files", params, nil)
-		if err != nil {
-			return nil, err
-		}
-		rawFiles, _ := result["files"].([]interface{})
-		for _, item := range rawFiles {
-			f, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			fType := common.GetString(f, "type")
-			fName := common.GetString(f, "name")
-			fToken := common.GetString(f, "token")
-			if fName == "" || fToken == "" {
-				continue
-			}
-			switch fType {
-			case driveStatusFileType:
-				files[joinRelStatus(relBase, fName)] = fToken
-			case driveStatusFolderType:
-				subFiles, err := listRemoteForStatus(ctx, runtime, fToken, joinRelStatus(relBase, fName))
-				if err != nil {
-					return nil, err
-				}
-				for k, v := range subFiles {
-					files[k] = v
-				}
-			}
-		}
-		// Drive's list endpoint has historically returned next_page_token,
-		// but routing through the shared helper accepts both page_token
-		// and next_page_token — keeps us aligned with okr/im, and
-		// future-proofs against a backend rename.
-		hasMore, nextToken := common.PaginationMeta(result)
-		if !hasMore || nextToken == "" {
-			break
-		}
-		pageToken = nextToken
-	}
-	return files, nil
-}
-
 func hashRemoteForStatus(ctx context.Context, runtime *common.RuntimeContext, fileToken string) (string, error) {
 	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 		HttpMethod: "GET",
@@ -287,13 +239,6 @@ func hashRemoteForStatus(ctx context.Context, runtime *common.RuntimeContext, fi
 		return "", output.ErrNetwork("hash remote %s: %s", common.MaskToken(fileToken), err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func joinRelStatus(base, name string) string {
-	if base == "" {
-		return name
-	}
-	return base + "/" + name
 }
 
 func mergeStatusPaths(local, remote map[string]string) []string {

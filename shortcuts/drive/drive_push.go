@@ -26,9 +26,6 @@ import (
 const (
 	drivePushIfExistsOverwrite = "overwrite"
 	drivePushIfExistsSkip      = "skip"
-	drivePushListPageSize      = 200
-	drivePushFileType          = "file"
-	drivePushFolderType        = "folder"
 )
 
 type drivePushItem struct {
@@ -38,16 +35,6 @@ type drivePushItem struct {
 	Version   string `json:"version,omitempty"`
 	SizeBytes int64  `json:"size_bytes,omitempty"`
 	Error     string `json:"error,omitempty"`
-}
-
-// remoteEntry captures everything we know about a single rel_path under the
-// target Drive folder. type=file entries are upload candidates (we may
-// overwrite them); other types (docx/sheet/folder/...) are recorded so
-// --delete-remote can avoid touching them and so directory creation can
-// short-circuit when a folder already exists.
-type drivePushRemoteEntry struct {
-	FileToken string
-	Type      string
 }
 
 // DrivePush is a one-way, file-level mirror from a local directory onto a
@@ -203,9 +190,28 @@ var DrivePush = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
-		remoteFiles, remoteFolders, err := drivePushListRemote(ctx, runtime, folderToken, "")
+		entries, err := listRemoteFolder(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
+		}
+		// Two views over the same listing:
+		//   - remoteFiles drives upload / overwrite / orphan-delete
+		//     decisions (only type=file entries are upload candidates;
+		//     online docs / shortcuts are intentionally never overwritten
+		//     or deleted by --delete-remote).
+		//   - remoteFolders is the create_folder cache: lets the upload
+		//     path skip create_folder when an intermediate folder already
+		//     exists, and keeps directory recreation idempotent across
+		//     reruns.
+		remoteFiles := make(map[string]driveRemoteEntry, len(entries))
+		remoteFolders := make(map[string]driveRemoteEntry, len(entries))
+		for rel, entry := range entries {
+			switch entry.Type {
+			case driveTypeFile:
+				remoteFiles[rel] = entry
+			case driveTypeFolder:
+				remoteFolders[rel] = entry
+			}
 		}
 
 		var uploaded, skipped, failed, deletedRemote int
@@ -457,82 +463,6 @@ func drivePushWalkLocal(root, cwdCanonical string) (map[string]drivePushLocalFil
 	return files, dirs, nil
 }
 
-// drivePushListRemote recursively lists a Drive folder.
-//
-// Returns two views:
-//   - files:   rel_path → entry, for type=file. Drives upload/overwrite
-//     decisions and (with --delete-remote) the deletion loop.
-//   - folders: rel_path → entry, for every type=folder hit. Lets the upload
-//     path skip create_folder when an intermediate folder already exists,
-//     and keeps directory recreation idempotent across reruns.
-//
-// Online docs (docx/sheet/bitable/...) and shortcuts are intentionally NOT
-// returned. They are never deleted by --delete-remote (the contract says
-// type=file only) and the upload path doesn't need them either: if an
-// online doc happens to share a rel_path with a local file, the upload
-// will create a sibling type=file under the same parent, which is the
-// same behavior `lark-cli drive +upload` already has.
-//
-// TODO(post-#692/#696): when drive +status / +pull merge, lift this and the
-// matching helpers in drive_status.go / drive_pull.go into a shared
-// listRemoteFolderFiles in the drive package.
-func drivePushListRemote(ctx context.Context, runtime *common.RuntimeContext, folderToken, relBase string) (map[string]drivePushRemoteEntry, map[string]drivePushRemoteEntry, error) {
-	files := make(map[string]drivePushRemoteEntry)
-	folders := make(map[string]drivePushRemoteEntry)
-	pageToken := ""
-	for {
-		params := map[string]interface{}{
-			"folder_token": folderToken,
-			"page_size":    fmt.Sprint(drivePushListPageSize),
-		}
-		if pageToken != "" {
-			params["page_token"] = pageToken
-		}
-		result, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files", params, nil)
-		if err != nil {
-			return nil, nil, err
-		}
-		rawFiles, _ := result["files"].([]interface{})
-		for _, item := range rawFiles {
-			f, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			fType := common.GetString(f, "type")
-			fName := common.GetString(f, "name")
-			fToken := common.GetString(f, "token")
-			if fName == "" || fToken == "" {
-				continue
-			}
-			rel := drivePushJoinRel(relBase, fName)
-			switch fType {
-			case drivePushFileType:
-				files[rel] = drivePushRemoteEntry{FileToken: fToken, Type: fType}
-			case drivePushFolderType:
-				folders[rel] = drivePushRemoteEntry{FileToken: fToken, Type: fType}
-				subFiles, subFolders, err := drivePushListRemote(ctx, runtime, fToken, rel)
-				if err != nil {
-					return nil, nil, err
-				}
-				for k, v := range subFiles {
-					files[k] = v
-				}
-				for k, v := range subFolders {
-					folders[k] = v
-				}
-			default:
-				// online doc / shortcut — intentionally ignored.
-			}
-		}
-		hasMore, nextToken := common.PaginationMeta(result)
-		if !hasMore || nextToken == "" {
-			break
-		}
-		pageToken = nextToken
-	}
-	return files, folders, nil
-}
-
 // drivePushEnsureFolder ensures a folder chain (rel_dir relative to the root
 // folder identified by rootFolderToken) exists on Drive, creating any
 // missing segments via /open-apis/drive/v1/files/create_folder. Returns the
@@ -759,17 +689,10 @@ func drivePushDeleteFile(_ context.Context, runtime *common.RuntimeContext, file
 	_, err := runtime.CallAPI(
 		"DELETE",
 		fmt.Sprintf("/open-apis/drive/v1/files/%s", validate.EncodePathSegment(fileToken)),
-		map[string]interface{}{"type": drivePushFileType},
+		map[string]interface{}{"type": driveTypeFile},
 		nil,
 	)
 	return err
-}
-
-func drivePushJoinRel(base, name string) string {
-	if base == "" {
-		return name
-	}
-	return base + "/" + name
 }
 
 // drivePushParentRel returns the parent rel_path of rel ("" when the file

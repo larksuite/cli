@@ -797,11 +797,12 @@ func TestDrivePushExitsZeroOnCleanRun(t *testing.T) {
 // native cloud document on Drive (sheet/docx/bitable/...).
 //
 // The contract:
-//   - The native doc is NOT a candidate for overwrite — drivePushListRemote
-//     only puts type=file entries into the remoteFiles map, so the local
-//     "report" is treated as new and the upload_all body must NOT carry
-//     the sheet's token in the file_token form field (that would mean
-//     overwriting the sheet's bytes, not creating a sibling).
+//   - The native doc is NOT a candidate for overwrite — the remoteFiles
+//     view collapsed off listRemoteFolder only keeps type=file entries,
+//     so the local "report" is treated as new and the upload_all body
+//     must NOT carry the sheet's token in the file_token form field
+//     (that would mean overwriting the sheet's bytes, not creating a
+//     sibling).
 //   - The native doc must NOT be deleted by --delete-remote --yes either.
 //     The orphan check iterates remoteFiles only; a sheet at the same
 //     rel_path as a missing local file would otherwise look orphaned.
@@ -827,7 +828,9 @@ func TestDrivePushUploadsSiblingWhenRemoteSameNameIsNativeDoc(t *testing.T) {
 	//   - "minutes" as a native docx       (type=docx,  tok_docx)  — no
 	//     local counterpart, --delete-remote must skip it
 	// No type=file entries at all — every local rel_path is a "new upload"
-	// from drivePushListRemote's perspective.
+	// from the remoteFiles view's perspective (listRemoteFolder returns the
+	// sheet/docx in the unified entry map but they're filtered out when
+	// collapsing to the type=file view).
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "folder_token=folder_root",
@@ -1185,10 +1188,10 @@ func TestDrivePushHelpersRelPath(t *testing.T) {
 	if parent, name := drivePushSplitRel("solo"); parent != "" || name != "solo" {
 		t.Fatalf("split solo = (%q,%q), want (\"\",solo)", parent, name)
 	}
-	if got := drivePushJoinRel("", "x"); got != "x" {
-		t.Fatalf("joinRel(\"\", x) = %q, want x", got)
+	if got := joinRelDrive("", "x"); got != "x" {
+		t.Fatalf("joinRelDrive(\"\", x) = %q, want x", got)
 	}
-	if got := drivePushJoinRel("a", "x"); got != "a/x" {
-		t.Fatalf("joinRel(a, x) = %q, want a/x", got)
+	if got := joinRelDrive("a", "x"); got != "a/x" {
+		t.Fatalf("joinRelDrive(a, x) = %q, want a/x", got)
 	}
 }
