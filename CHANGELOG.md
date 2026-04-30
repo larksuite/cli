@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.23] - 2026-04-30
+
+### Features
+
+- **drive**: Add `+pull` shortcut for one-way Drive → local mirror (#696)
+- **drive**: Add `+push` shortcut for one-way local → Drive mirror (#709)
+- **drive**: Add `+status` shortcut for content-hash diff (#692)
+- **drive**: Support `--file-name` for drive export (#685)
+- **base**: Add markdown output for record reads (#726)
+- **minutes**: Add media upload shortcut (#725)
+- **doc**: Warn when callout uses `type=` without `background-color` (#467)
+- **cmdutil**: Support `@file` for params and data (#724)
+- Add markdown shortcuts and skill docs (#704)
+
+### Documentation
+
+- **doc**: Guide lark-doc v2 usage (#710)
+- **minutes**: Clarify minutes file-to-notes routing (#732)
+
 ## [v1.0.22] - 2026-04-29
 
 ### Features
@@ -560,6 +579,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.23]: https://github.com/larksuite/cli/releases/tag/v1.0.23
 [v1.0.22]: https://github.com/larksuite/cli/releases/tag/v1.0.22
 [v1.0.21]: https://github.com/larksuite/cli/releases/tag/v1.0.21
 [v1.0.20]: https://github.com/larksuite/cli/releases/tag/v1.0.20
