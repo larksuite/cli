@@ -827,28 +827,6 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 }
 
 func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
-	t.Run("list", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "limit=1&offset=0",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"records": map[string]interface{}{
-					"schema":     []interface{}{"Name", "Age"},
-					"record_ids": []interface{}{"rec_1"},
-					"rows":       []interface{}{[]interface{}{"Alice", 18}},
-				}},
-			},
-		})
-		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1", "--format", "json"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		if got := stdout.String(); !strings.Contains(got, `"records"`) || !strings.Contains(got, `"Alice"`) {
-			t.Fatalf("stdout=%s", got)
-		}
-	})
-
 	t.Run("list with fields and view", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -895,7 +873,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list new shape", func(t *testing.T) {
+	t.Run("list json format", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
@@ -904,6 +882,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 				"code": 0,
 				"data": map[string]interface{}{
 					"fields":         []interface{}{"Name", "Age"},
+					"field_id_list":  []interface{}{"fld_name", "fld_age"},
 					"record_id_list": []interface{}{"rec_2"},
 					"data":           []interface{}{[]interface{}{"Bob", 20}},
 					"total":          1,
