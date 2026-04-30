@@ -6,6 +6,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -33,6 +34,7 @@ func newRecordMarkdownTestRuntime(stdout, stderr *bytes.Buffer) *common.RuntimeC
 	parentCmd := &cobra.Command{Use: "lark-cli"}
 	baseCmd := &cobra.Command{Use: "base"}
 	cmd := &cobra.Command{Use: "+record-list"}
+	cmd.Flags().String("format", "markdown", "")
 	parentCmd.AddCommand(baseCmd)
 	baseCmd.AddCommand(cmd)
 	return &common.RuntimeContext{
@@ -150,5 +152,78 @@ func TestOutputRecordMarkdownContentSafetyBlockDoesNotWriteStdout(t *testing.T) 
 	}
 	if stderr.Len() > 0 {
 		t.Fatalf("block mode should not write warning to stderr, got:\n%s", stderr.String())
+	}
+}
+
+func TestOutputRecordMarkdownFallsBackToJSONWhenRenderFails(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := outputRecordMarkdown(newRecordMarkdownTestRuntime(stdout, stderr), map[string]interface{}{
+		"records": map[string]interface{}{
+			"schema": []interface{}{"Name"},
+			"rows":   []interface{}{[]interface{}{"Alice"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if strings.Contains(stdout.String(), "markdown render failed") {
+		t.Fatalf("stdout should not contain fallback warning:\n%s", stdout.String())
+	}
+	var env output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("stdout should be JSON fallback, got err=%v stdout=%s", err, stdout.String())
+	}
+	if !env.OK || !strings.Contains(stdout.String(), `"records"`) {
+		t.Fatalf("stdout missing JSON fallback data:\n%s", stdout.String())
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: record markdown render failed, falling back to json") {
+		t.Fatalf("stderr missing fallback warning:\n%s", got)
+	}
+}
+
+func TestOutputRecordMarkdownDefaultFormatAllowsJqJSONFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := newRecordMarkdownTestRuntime(stdout, stderr)
+	runtime.JqExpr = ".data.record_id_list[0]"
+	err := outputRecordMarkdown(runtime, map[string]interface{}{
+		"fields":         []interface{}{"Name"},
+		"record_id_list": []interface{}{"rec_1"},
+		"data":           []interface{}{[]interface{}{"Alice"}},
+	})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "rec_1" {
+		t.Fatalf("stdout jq fallback mismatch: %q", got)
+	}
+	if stderr.Len() > 0 {
+		t.Fatalf("stderr should be empty, got:\n%s", stderr.String())
+	}
+}
+
+func TestOutputRecordMarkdownExplicitFormatRejectsJq(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := newRecordMarkdownTestRuntime(stdout, stderr)
+	runtime.JqExpr = ".data"
+	if err := runtime.Cmd.Flags().Set("format", "markdown"); err != nil {
+		t.Fatalf("set format: %v", err)
+	}
+	err := outputRecordMarkdown(runtime, map[string]interface{}{
+		"fields":         []interface{}{"Name"},
+		"record_id_list": []interface{}{"rec_1"},
+		"data":           []interface{}{[]interface{}{"Alice"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "--jq and --format markdown are mutually exclusive") {
+		t.Fatalf("err=%v, want jq markdown conflict", err)
+	}
+	if stdout.Len() > 0 {
+		t.Fatalf("stdout should be empty, got:\n%s", stdout.String())
 	}
 }

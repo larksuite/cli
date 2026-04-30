@@ -25,11 +25,17 @@ func validateRecordReadFormat(runtime *common.RuntimeContext) error {
 
 func outputRecordMarkdown(runtime *common.RuntimeContext, data map[string]interface{}) error {
 	if runtime.JqExpr != "" {
+		if !runtime.Changed("format") {
+			runtime.Out(data, nil)
+			return nil
+		}
 		return output.ErrValidation("--jq and --format markdown are mutually exclusive")
 	}
 	rendered, err := renderRecordMarkdown(data)
 	if err != nil {
-		return err
+		fmt.Fprintf(runtime.IO().ErrOut, "warning: record markdown render failed, falling back to json: %v\n", err)
+		runtime.Out(data, nil)
+		return nil
 	}
 	scanResult := output.ScanForSafety(runtime.Cmd.CommandPath(), data, runtime.IO().ErrOut)
 	if scanResult.Blocked {
