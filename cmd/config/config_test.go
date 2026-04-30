@@ -90,15 +90,15 @@ func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError", err)
+	var cfgErr *core.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *core.ConfigError", err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if cfgErr.Code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", cfgErr.Code, output.ExitValidation)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "not configured" {
-		t.Fatalf("detail = %#v, want config/not configured", exitErr.Detail)
+	if cfgErr.Type != "config" || cfgErr.Message != "not configured" {
+		t.Fatalf("detail = %+v, want config/not configured", cfgErr)
 	}
 }
 

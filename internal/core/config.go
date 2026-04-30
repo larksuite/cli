@@ -225,7 +225,7 @@ func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
 func RequireConfigForProfile(kc keychain.KeychainAccess, profileOverride string) (*CliConfig, error) {
 	raw, err := LoadMultiAppConfig()
 	if err != nil || raw == nil || len(raw.Apps) == 0 {
-		return nil, &ConfigError{Code: 2, Type: "config", Message: "not configured", Hint: "run `lark-cli config init --new` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete setup."}
+		return nil, NotConfiguredError()
 	}
 	return ResolveConfigFromMulti(raw, kc, profileOverride)
 }

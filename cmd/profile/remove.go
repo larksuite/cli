@@ -32,9 +32,9 @@ func NewCmdProfileRemove(f *cmdutil.Factory) *cobra.Command {
 }
 
 func profileRemoveRun(f *cmdutil.Factory, name string) error {
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := core.LoadOrNotConfigured()
 	if err != nil {
-		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		return err
 	}
 
 	idx := multi.FindAppIndex(name)

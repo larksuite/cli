@@ -203,7 +203,7 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
 		return acct, nil
 	}
-	return nil, fmt.Errorf("no credential provider returned an account; run 'lark-cli config' to set up")
+	return nil, core.NotConfiguredError()
 }
 
 // enrichUserInfo resolves user identity when extension provides a UAT.

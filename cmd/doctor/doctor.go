@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -83,7 +84,20 @@ func doctorRun(opts *DoctorOptions) error {
 	// ── 1. Config file ──
 	_, err := core.LoadMultiAppConfig()
 	if err != nil {
-		checks = append(checks, fail("config_file", err.Error(), "run: lark-cli config init"))
+		// For "config not present" cases, prefer the workspace-aware
+		// NotConfiguredError message + hint (e.g. "openclaw context
+		// detected but lark-cli is not bound to it" → bind --help) over
+		// the OS-level "open ... no such file or directory".
+		// For other errors (parse, perms), keep the raw error so the
+		// underlying problem is still visible.
+		msg, hint := err.Error(), ""
+		if errors.Is(err, os.ErrNotExist) {
+			var cfgErr *core.ConfigError
+			if errors.As(core.NotConfiguredError(), &cfgErr) {
+				msg, hint = cfgErr.Message, cfgErr.Hint
+			}
+		}
+		checks = append(checks, fail("config_file", msg, hint))
 		return finishDoctor(f, checks)
 	}
 	checks = append(checks, pass("config_file", "config.json found"))

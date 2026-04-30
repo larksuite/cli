@@ -44,12 +44,12 @@ func configShowRun(opts *ConfigShowOptions) error {
 	config, err := core.LoadMultiAppConfig()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return notConfiguredError()
+			return core.NotConfiguredError()
 		}
 		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
 	}
 	if config == nil || len(config.Apps) == 0 {
-		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		return core.NotConfiguredError()
 	}
 	app := config.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil {
@@ -74,19 +74,4 @@ func configShowRun(opts *ConfigShowOptions) error {
 	})
 	fmt.Fprintf(f.IOStreams.ErrOut, "\nConfig file path: %s\n", core.GetConfigPath())
 	return nil
-}
-
-// notConfiguredError returns the "not configured" error with a hint that
-// points the user to the right next step: config init for the default local
-// workspace, config bind for an Agent workspace that has not been bound yet.
-func notConfiguredError() error {
-	ws := core.CurrentWorkspace()
-	if ws.IsLocal() {
-		return output.ErrWithHint(output.ExitValidation, "config",
-			"not configured",
-			"run: lark-cli config init")
-	}
-	return output.ErrWithHint(output.ExitValidation, ws.Display(),
-		fmt.Sprintf("%s context detected but lark-cli not bound to %s workspace", ws.Display(), ws.Display()),
-		fmt.Sprintf("run: lark-cli config bind --source %s", ws.Display()))
 }

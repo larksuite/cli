@@ -49,10 +49,9 @@ For AI agents: this command blocks until the user completes authorization in the
 browser. Run it in the background and retrieve the verification URL from its output.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if mode := f.ResolveStrictMode(cmd.Context()); mode == core.StrictModeBot {
-				return output.Errorf(output.ExitValidation, "strict_mode",
-					"strict mode is %q, user login is not allowed. "+
-						"This setting is managed by the administrator and must not be modified by AI agents.",
-					mode)
+				return output.ErrWithHint(output.ExitValidation, "strict_mode",
+					fmt.Sprintf("strict mode is %q, user login is disabled in this profile", mode),
+					"if the user explicitly wants to switch to user identity, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
 			}
 			opts.Ctx = cmd.Context()
 			if runF != nil {
@@ -243,7 +242,11 @@ func authLoginRun(opts *LoginOptions) error {
 		return nil
 	}
 
-	// Step 2: Show user code and verification URL
+	// Step 2: Show user code and verification URL.
+	// Both branches surface AgentTimeoutHint, but on different channels:
+	// JSON mode embeds it as a structured field (so an agent that captures
+	// stdout into a JSON parser sees it without stream-mixing surprises),
+	// text mode prints to stderr (alongside the URL prompt).
 	if opts.JSON {
 		data := map[string]interface{}{
 			"event":                     "device_authorization",
@@ -251,6 +254,7 @@ func authLoginRun(opts *LoginOptions) error {
 			"verification_uri_complete": authResp.VerificationUriComplete,
 			"user_code":                 authResp.UserCode,
 			"expires_in":                authResp.ExpiresIn,
+			"agent_hint":                msg.AgentTimeoutHint,
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -260,6 +264,7 @@ func authLoginRun(opts *LoginOptions) error {
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
+		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
 	}
 
 	// Step 3: Poll for token
@@ -345,6 +350,12 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		if err := removeLoginRequestedScope(opts.DeviceCode); err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to remove cached requested scopes: %v\n", err)
 		}
+	}
+	// Skip the stderr hint in JSON mode — the --no-wait call that issued the
+	// device_code already returned the hint as a JSON field, and writing
+	// text to stderr would pollute consumers that combine streams via 2>&1.
+	if !opts.JSON {
+		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
 	}
 	log(msg.WaitingAuth)
 	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,

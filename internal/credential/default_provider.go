@@ -36,7 +36,7 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 	// Load config once — used for both credentials and strict mode.
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
-		return nil, &core.ConfigError{Code: 2, Type: "config", Message: "not configured", Hint: "run `lark-cli config init --new` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete setup."}
+		return nil, core.NotConfiguredError()
 	}
 
 	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile)

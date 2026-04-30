@@ -62,11 +62,32 @@ func NewCmdConfigBind(f *cmdutil.Factory, runF func(*BindOptions) error) *cobra.
 		Short: "Bind Agent config to a workspace (source / app-id / force)",
 		Long: `Bind an AI Agent's (OpenClaw / Hermes) Feishu credentials to a lark-cli workspace.
 
-For AI agents: pass --source and --app-id to bind non-interactively.
-Credentials are synced once; subsequent calls in the Agent's process
-context automatically use the bound workspace.`,
-		Example: `  lark-cli config bind --source openclaw --app-id <id>
-  lark-cli config bind --source hermes`,
+--source is auto-detected from env (OPENCLAW_HOME / HERMES_HOME); pass it only to override.
+
+For AI agents — DO NOT bind without user confirmation. Binding may
+overwrite an existing one and locks in an identity policy. Ask the user:
+
+  --identity bot-only      bot only (safer default; no impersonation;
+                           cannot access user resources like personal
+                           calendar / mail / drive)
+  --identity user-default  user identity allowed (impersonates the user;
+                           needed for personal-resource access)
+
+Default to bot-only if the user is unsure. Only run the command after
+the user confirms both intent and identity preset.
+
+If lark-cli is already bound and the user only wants to change identity
+policy on the SAME app, use 'config strict-mode' — that's the policy
+switch and does not require re-bind. Use 'config bind' only when the
+underlying app itself changes.
+
+Interactive terminal use: run with no flags to enter the TUI form.`,
+		Example: `  # AI flow: confirm intent + identity with user FIRST, then run:
+  lark-cli config bind --source openclaw --app-id <id> --identity bot-only
+  lark-cli config bind --source hermes --identity user-default
+
+  # Interactive (terminal user) — TUI prompts for everything:
+  lark-cli config bind`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.langExplicit = cmd.Flags().Changed("lang")
 			if runF != nil {
@@ -125,6 +146,7 @@ func configBindRun(opts *BindOptions) error {
 		return err
 	}
 	applyPreferences(appConfig, opts)
+	noticeUserDefaultRisk(opts)
 
 	return commitBinding(opts, appConfig, existing.ConfigBytes, source, targetConfigPath)
 }
@@ -306,6 +328,23 @@ func warnIdentityEscalation(opts *BindOptions, previousConfigBytes []byte) error
 	msg := getBindMsg(opts.Lang)
 	return output.ErrWithHint(output.ExitValidation, "bind",
 		msg.IdentityEscalationMessage, msg.IdentityEscalationHint)
+}
+
+// noticeUserDefaultRisk surfaces the user-identity impersonation risk on every
+// flag-mode bind that lands on user-default. The bot-only → user-default
+// escalation is already covered by warnIdentityEscalation (errors out before
+// applyPreferences runs), and the TUI flow shows IdentityUserDefaultDesc
+// during identity selection — so this fires specifically for the case those
+// two miss: a fresh flag-mode bind that goes directly to user-default with
+// no previous bot lock to escalate from. Without this, AI agents finish such
+// a bind with only a "配置成功" message and never relay to the user that the
+// AI can now act under their identity.
+func noticeUserDefaultRisk(opts *BindOptions) {
+	if opts.IsTUI || opts.Identity != "user-default" {
+		return
+	}
+	msg := getBindMsg(opts.Lang)
+	fmt.Fprintln(opts.Factory.IOStreams.ErrOut, "⚠️ "+msg.IdentityEscalationMessage)
 }
 
 // applyPreferences expands the chosen identity preset into the underlying

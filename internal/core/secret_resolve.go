@@ -63,9 +63,8 @@ func ValidateSecretKeyMatch(appId string, secret SecretInput) error {
 	expected := secretAccountKey(appId)
 	if secret.Ref.ID != expected {
 		return fmt.Errorf(
-			"appSecret keychain key %q does not match appId %q (expected %q); "+
-				"please run `lark-cli config init` to reconfigure",
-			secret.Ref.ID, appId, expected,
+			"appSecret keychain key %q does not match appId %q (expected %q); %s",
+			secret.Ref.ID, appId, expected, reconfigureHint(),
 		)
 	}
 	return nil

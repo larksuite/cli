@@ -20,14 +20,14 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 		Long:  "Without arguments, shows the current default identity. Pass user, bot, or auto to set a new default.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			multi, err := core.LoadMultiAppConfig()
+			multi, err := core.LoadOrNotConfigured()
 			if err != nil {
-				return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+				return err
 			}
 
 			app := multi.CurrentAppConfig(f.Invocation.Profile)
 			if app == nil {
-				return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+				return core.NoActiveProfileError()
 			}
 
 			if len(args) == 0 {

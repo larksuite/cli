@@ -343,11 +343,15 @@ func TestIntegration_StrictModeBot_ProfileOverride_DirectAuthLoginReturnsEnvelop
 		"auth", "login", "--json", "--scope", "im:message.send_as_user",
 	})
 
+	// auth login is user-only, so it gets pruned in strict-mode-bot and the
+	// stub error fires (not login.go's inline check, which is shadowed by
+	// pruning).
 	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
 		OK: false,
 		Error: &output.ErrDetail{
 			Type:    "strict_mode",
-			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+			Message: `strict mode is "bot", only bot-identity commands are available`,
+			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
 		},
 	})
 }
@@ -364,7 +368,8 @@ func TestIntegration_StrictModeBot_ProfileOverride_DirectUserShortcutReturnsEnve
 		OK: false,
 		Error: &output.ErrDetail{
 			Type:    "strict_mode",
-			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+			Message: `strict mode is "bot", only bot-identity commands are available`,
+			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
 		},
 	})
 }
@@ -401,7 +406,8 @@ func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEn
 		Identity: "bot",
 		Error: &output.ErrDetail{
 			Type:    "strict_mode",
-			Message: `strict mode is "user", only user identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+			Message: `strict mode is "user", only user-identity commands are available`,
+			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
 		},
 	})
 }
@@ -419,7 +425,8 @@ func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnv
 		Identity: "user",
 		Error: &output.ErrDetail{
 			Type:    "strict_mode",
-			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+			Message: `strict mode is "bot", only bot-identity commands are available`,
+			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
 		},
 	})
 }
@@ -436,7 +443,8 @@ func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsE
 		OK: false,
 		Error: &output.ErrDetail{
 			Type:    "strict_mode",
-			Message: `strict mode is "user", only user identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+			Message: `strict mode is "user", only user-identity commands are available`,
+			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
 		},
 	})
 }
@@ -454,7 +462,8 @@ func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelop
 		Identity: "user",
 		Error: &output.ErrDetail{
 			Type:    "strict_mode",
-			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
+			Message: `strict mode is "bot", only bot-identity commands are available`,
+			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
 		},
 	})
 }

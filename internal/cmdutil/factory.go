@@ -160,10 +160,9 @@ func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 func (f *Factory) CheckStrictMode(ctx context.Context, as core.Identity) error {
 	mode := f.ResolveStrictMode(ctx)
 	if mode.IsActive() && !mode.AllowsIdentity(as) {
-		return output.Errorf(output.ExitValidation, "strict_mode",
-			"strict mode is %q, only %s identity is allowed. "+
-				"This setting is managed by the administrator and must not be modified by AI agents.",
-			mode, mode.ForcedIdentity())
+		return output.ErrWithHint(output.ExitValidation, "strict_mode",
+			fmt.Sprintf("strict mode is %q, only %s-identity commands are available", mode, mode.ForcedIdentity()),
+			"if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
 	}
 	return nil
 }

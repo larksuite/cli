@@ -377,16 +377,28 @@ func TestConfigShowRun_AgentWorkspaceNotBound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unbound workspace")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError", err)
+	// Should be a structured ConfigError suggesting config bind, not config init.
+	var cfgErr *core.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *core.ConfigError", err)
 	}
-	// Should suggest config bind, not config init
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "openclaw",
-		Message: "openclaw context detected but lark-cli not bound to openclaw workspace",
-		Hint:    "run: lark-cli config bind --source openclaw",
-	})
+	if cfgErr.Code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", cfgErr.Code, output.ExitValidation)
+	}
+	if cfgErr.Type != "openclaw" {
+		t.Errorf("type = %q, want %q", cfgErr.Type, "openclaw")
+	}
+	if !strings.Contains(cfgErr.Message, "openclaw context detected") {
+		t.Errorf("message missing 'openclaw context detected': %q", cfgErr.Message)
+	}
+	// Hint must point at config bind --help (NOT a ready-to-run bind command):
+	// AI must read the help and confirm identity preset with the user first.
+	if !strings.Contains(cfgErr.Hint, "config bind --help") {
+		t.Errorf("hint must point at `config bind --help`; got %q", cfgErr.Hint)
+	}
+	if strings.Contains(cfgErr.Hint, "config init") {
+		t.Errorf("agent hint must not mention config init; got %q", cfgErr.Hint)
+	}
 }
 
 // ── Helper function tests (dotenv, brand, path resolution) ──

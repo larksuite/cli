@@ -21,44 +21,44 @@ func NewCmdConfigStrictMode(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "strict-mode [bot|user|off]",
 		Short: "View or set strict mode (identity restriction policy)",
-		Long: `View or set strict mode (identity restriction policy).
+		Long: `View or set strict mode — the identity restriction policy.
 
-Without arguments, shows the current strict mode status and its source.
-Pass "bot", "user", or "off" to set strict mode.
-Use --global to set at the global level.
-Use --reset to clear the profile-level setting (inherit global).
+  bot   only bot identity allowed (user commands hidden)
+  user  only user identity allowed (bot commands hidden)
+  off   no restriction (default)
 
-Modes:
-  bot   — only bot identity is allowed, user commands are hidden
-  user  — only user identity is allowed, bot commands are hidden
-  off   — no restriction (default)
+No args: show current mode. Switching does NOT require re-bind.
 
-WARNING: Strict mode is a security policy set by the administrator.
-AI agents are strictly prohibited from modifying this setting.`,
+For AI agents: this is a security policy. DO NOT switch without
+explicit user confirmation — never run on your own initiative.`,
+		Example: `  lark-cli config strict-mode               # show current
+  lark-cli config strict-mode user          # switch (after user confirms)
+  lark-cli config strict-mode bot --global  # set globally
+  lark-cli config strict-mode --reset       # clear profile override`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			multi, err := core.LoadMultiAppConfig()
+			multi, err := core.LoadOrNotConfigured()
 			if err != nil {
-				return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+				return err
 			}
 
 			if reset {
 				app := multi.CurrentAppConfig(f.Invocation.Profile)
 				if app == nil {
-					return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+					return core.NoActiveProfileError()
 				}
 				return resetStrictMode(f, multi, app, global, args)
 			}
 			if len(args) == 0 {
 				app := multi.CurrentAppConfig(f.Invocation.Profile)
 				if app == nil {
-					return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+					return core.NoActiveProfileError()
 				}
 				return showStrictMode(cmd.Context(), f, multi, app)
 			}
 			app := multi.CurrentAppConfig(f.Invocation.Profile)
 			if !global && app == nil {
-				return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+				return core.NoActiveProfileError()
 			}
 			return setStrictMode(f, multi, app, args[0], global)
 		},
@@ -106,6 +106,24 @@ func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.App
 		return output.ErrValidation("invalid value %q, valid values: bot | user | off", value)
 	}
 
+	// Capture the old mode at the SAME scope being changed, so we can warn
+	// only when the policy actually expands user-identity at that scope.
+	//   --global → compare raw multi.StrictMode (profiles with explicit
+	//     overrides are unaffected; their warning comes from the existing
+	//     "profile %q has strict-mode explicitly set" notice below).
+	//   profile  → compare effective mode (override > global > default), so
+	//     a profile flipping from inherited bot to explicit off still warns.
+	// The previous version always used the profile's effective mode, which
+	// false-positived (--global change while current profile has an explicit
+	// override) and false-negatived (--global broadening that doesn't affect
+	// the current profile but does affect other inheriting profiles).
+	var oldMode core.StrictMode
+	if global {
+		oldMode = multi.StrictMode
+	} else {
+		oldMode, _ = resolveStrictModeStatus(multi, app)
+	}
+
 	if global {
 		multi.StrictMode = mode
 		for _, a := range multi.Apps {
@@ -119,7 +137,7 @@ func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.App
 		}
 	} else {
 		if app == nil {
-			return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+			return core.NoActiveProfileError()
 		}
 		app.StrictMode = &mode
 	}
@@ -127,12 +145,27 @@ func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.App
 	if err := core.SaveMultiAppConfig(multi); err != nil {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
+
+	if oldMode == core.StrictModeBot && (mode == core.StrictModeUser || mode == core.StrictModeOff) {
+		fmt.Fprintln(f.IOStreams.ErrOut, "⚠️ "+strictModeRelaxLang(app).IdentityEscalationMessage)
+	}
+
 	scope := "profile"
 	if global {
 		scope = "global"
 	}
 	fmt.Fprintf(f.IOStreams.ErrOut, "Strict mode set to %s (%s)\n", mode, scope)
 	return nil
+}
+
+// strictModeRelaxLang picks the bind-message bundle whose language matches the
+// active profile's Lang setting. Falls back to bindMsgZh when no profile is
+// available (global mutation with no current app).
+func strictModeRelaxLang(app *core.AppConfig) *bindMsg {
+	if app != nil {
+		return getBindMsg(app.Lang)
+	}
+	return getBindMsg("")
 }
 
 func resolveStrictModeStatus(multi *core.MultiAppConfig, app *core.AppConfig) (core.StrictMode, string) {

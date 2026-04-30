@@ -32,9 +32,9 @@ func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 		return output.ErrValidation("%v", err)
 	}
 
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := core.LoadOrNotConfigured()
 	if err != nil {
-		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		return err
 	}
 
 	idx := multi.FindAppIndex(oldName)
