@@ -18,22 +18,34 @@ import (
 
 const defaultLocateDocLimit = 10
 
-// maxCommentTextElementBytes is the per-text-element byte budget the server
-// accepts in `drive +add-comment` reply_elements.
+// maxCommentTotalRunes is the cap on the combined character (rune) count
+// across all `reply_elements[].text` fields in a single
+// `drive +add-comment` request.
 //
-// The open-platform comment API returns an opaque `[1069302] Invalid or
-// missing parameters` when a single `{"type":"text","text":"…"}` exceeds
-// this limit, with no indication that length is the cause or which element
-// is at fault. Empirically, Chinese text up to ~80 characters (≈240 bytes
-// UTF-8) lands reliably and ~130 characters (≈390 bytes) fails. 300 bytes
-// is inside the known-safe zone: it catches the 130-char failure case
-// pre-flight while leaving headroom for typical ~100-char comments.
+// The open-platform `/open-apis/drive/v1/files/{token}/new_comments`
+// endpoint returns an opaque `[1069302] Invalid or missing parameters`
+// when this is exceeded — no indication that length is the cause or
+// which element is at fault.
 //
-// ASCII callers can fit ~300 chars; Chinese callers ~100 chars per element.
-// Agents that have a longer message should split it across multiple text
-// elements — the comment UI still renders them as a single contiguous
-// comment.
-const maxCommentTextElementBytes = 300
+// Empirically (probing the live API):
+//
+//   - 10000 runes in a single text element: OK (10000 ASCII / 30000
+//     bytes for Chinese / 40000 bytes if all '<' — server counts the
+//     raw rune count, not byte width and not the post-escape form)
+//   - 10001 runes in a single text element: [1069302]
+//   - 5000 + 5000 across two elements (total 10000): OK
+//   - 5000 + 5001 across two elements (total 10001): [1069302]
+//
+// So the cap is applied to the *total* across all reply_elements, not
+// per element. Splitting an over-the-cap message into multiple text
+// elements does NOT help — the server enforces the same limit on the
+// sum.
+//
+// The schema doc currently advertises a 1-1000 character limit, but
+// the live API accepts up to 10000 runes; the schema is out of date.
+// If this constant ever needs to track a server-side change, re-probe
+// with `drive file.comments create_v2` against a fresh docx.
+const maxCommentTotalRunes = 10000
 
 type commentDocRef struct {
 	Kind  string
@@ -621,6 +633,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 	}
 
 	replyElements := make([]map[string]interface{}, 0, len(inputs))
+	totalRunes := 0
 	for i, input := range inputs {
 		index := i + 1
 		elementType := strings.TrimSpace(input.Type)
@@ -629,27 +642,30 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 			if strings.TrimSpace(input.Text) == "" {
 				return nil, output.ErrValidation("--content element #%d type=text requires non-empty text", index)
 			}
-			// Measure the escaped form, not the raw input, because the
-			// server receives the escaped text. escapeCommentText only
-			// expands '<' and '>' (each becomes 4 bytes: `&lt;` / `&gt;`);
-			// '&' is intentionally left as-is. Without measuring the
-			// escaped form an input that hits the limit on one of those
-			// characters would still surface as the opaque [1069302]
-			// from the server.
-			escaped := escapeCommentText(input.Text)
-			if byteLen := len(escaped); byteLen > maxCommentTextElementBytes {
-				runeCount := utf8.RuneCountInString(input.Text)
+			// Measure the raw rune count of the user input — that is what
+			// the server actually counts. byte width and post-escape form
+			// don't matter (10000 '<' chars succeed even though they
+			// expand to 40000 bytes when escaped, and 10000 Chinese chars
+			// succeed even though they encode as 30000 UTF-8 bytes).
+			runes := utf8.RuneCountInString(input.Text)
+			totalRunes += runes
+			if totalRunes > maxCommentTotalRunes {
 				return nil, output.ErrWithHint(
 					output.ExitValidation,
 					"text_too_long",
-					fmt.Sprintf("--content element #%d text is %d characters (%d bytes); per-element limit is ~%d bytes (≈100 Chinese characters / 300 ASCII characters)",
-						index, runeCount, byteLen, maxCommentTextElementBytes),
-					"split the content across multiple {\"type\":\"text\",\"text\":\"...\"} elements — the comment UI still renders them as one contiguous comment. The server returns an opaque [1069302] on overflow, so this check is pre-flight. Note: '<' and '>' are HTML-escaped and counted in their escaped form (4 bytes each).",
+					fmt.Sprintf("--content reply_elements text totals %d characters at element #%d (this element: %d); the server caps the combined length at %d characters across ALL reply_elements",
+						totalRunes, index, runes, maxCommentTotalRunes),
+					fmt.Sprintf("shorten the comment so the combined text across all reply_elements fits within %d characters. The server enforces this cap on the TOTAL — splitting one long element into multiple smaller text elements does NOT help (they all add up against the same %d-rune budget). Server returns an opaque [1069302] on overflow, so this check is pre-flight; no escape transform changes the count (server reads raw runes).", maxCommentTotalRunes, maxCommentTotalRunes),
 				)
 			}
+			// Escape '<' and '>' so the rendered comment displays them as
+			// literal characters instead of being interpreted as markup
+			// by Lark's comment renderer. This is independent of the
+			// length check — the server sees the escaped form, but
+			// counts characters by the raw input length above.
 			replyElements = append(replyElements, map[string]interface{}{
 				"type": "text",
-				"text": escaped,
+				"text": escapeCommentText(input.Text),
 			})
 		case "mention_user":
 			mentionUser := firstNonEmptyString(input.MentionUser, input.Text)

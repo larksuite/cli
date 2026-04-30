@@ -148,8 +148,8 @@ lark-cli drive +add-comment \
 
 - `--content` 接收结构化评论元素数组；`type` 支持 `text`、`mention_user`、`link`。为便于书写，`mention_user` / `link` 元素可以直接把用户 ID 或链接地址放在 `text` 字段中，shortcut 会转换成 OpenAPI 所需字段。
 - `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
-- **单个 `text` 元素 escape 后字节上限 ~300 字节**（约 100 个中文字符 / 300 个 ASCII 字符；shortcut 测量的是 `escapeCommentText` 之后的长度，所以含 `<` / `>` 的输入会按转义后形态计算 —— 每个 `<` 或 `>` 占 4 字节）。超过后服务端返回不透明的 `[1069302] Invalid or missing parameters`，shortcut 会在发送前 pre-flight 拦截，明确指出是第几个元素超长。**正确做法是把长文本拆成多个 `{"type":"text","text":"..."}` 元素**——UI 仍显示为同一条连续评论，不会被拆散。
-- 长度限制只对 `type=text` 生效。`type=mention_user`（`ou_xxxx` open_id）和 `type=link`（URL）的长度天然短于 300 字节，shortcut 不再额外 pre-flight；如果服务端对这些类型也有限制并返回 1069302，请反馈给 lark-cli 维护者补强。
+- **所有 `type=text` 元素的字符总和 ≤ 10000**（按字符算，中英文 / 符号一视同仁）。超过会被 shortcut 在发送前拒绝，并指出累计超长的元素。**拆成多个 text element 不能绕过这个上限**——上限是总额，不是每元素。需要更长内容就缩短或拆成多条评论。
+- 长度限制只对 `type=text` 生效，`mention_user` / `link` 不计入。
 - 局部评论走 `locate-doc` 时，内部固定使用 `limit=10`。
 - 当 `locate-doc` 命中多处时，shortcut 会中止并提示用户继续收窄 `--selection-with-ellipsis`，不支持手动指定匹配序号。
 - 写入评论前会自动生成符合 OpenAPI 定义的请求体：
