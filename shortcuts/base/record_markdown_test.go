@@ -4,10 +4,43 @@
 package base
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+
+	extcs "github.com/larksuite/cli/extension/contentsafety"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 )
+
+type recordMarkdownCSTestProvider struct {
+	alert *extcs.Alert
+}
+
+func (p *recordMarkdownCSTestProvider) Name() string { return "test" }
+func (p *recordMarkdownCSTestProvider) Scan(_ context.Context, _ extcs.ScanRequest) (*extcs.Alert, error) {
+	return p.alert, nil
+}
+
+func newRecordMarkdownTestRuntime(stdout, stderr *bytes.Buffer) *common.RuntimeContext {
+	parentCmd := &cobra.Command{Use: "lark-cli"}
+	baseCmd := &cobra.Command{Use: "base"}
+	cmd := &cobra.Command{Use: "+record-list"}
+	parentCmd.AddCommand(baseCmd)
+	baseCmd.AddCommand(cmd)
+	return &common.RuntimeContext{
+		Config:  &core.CliConfig{Brand: core.BrandFeishu},
+		Cmd:     cmd,
+		Factory: &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{Out: stdout, ErrOut: stderr}},
+	}
+}
 
 func TestRenderRecordMarkdownEmptyResult(t *testing.T) {
 	got, err := renderRecordMarkdown(map[string]interface{}{
@@ -66,5 +99,56 @@ func TestRenderRecordMarkdownTruncatesIgnoredFields(t *testing.T) {
 		!strings.Contains(got, fmt.Sprintf("...(%d total)", len(ignored))) ||
 		strings.Contains(got, "Field22") {
 		t.Fatalf("ignored field truncation mismatch:\n%s", got)
+	}
+}
+
+func TestOutputRecordMarkdownContentSafetyWarnKeepsStdoutClean(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	extcs.Register(&recordMarkdownCSTestProvider{
+		alert: &extcs.Alert{Provider: "test", MatchedRules: []string{"r1"}},
+	})
+	defer extcs.Register(nil)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := outputRecordMarkdown(newRecordMarkdownTestRuntime(stdout, stderr), map[string]interface{}{
+		"fields":         []interface{}{"Name"},
+		"record_id_list": []interface{}{"rec_1"},
+		"data":           []interface{}{[]interface{}{"Alice"}},
+	})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "| rec_1 | Alice |") || strings.Contains(got, "content safety") {
+		t.Fatalf("stdout should contain only markdown data, got:\n%s", got)
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: content safety alert") {
+		t.Fatalf("stderr missing content safety warning:\n%s", got)
+	}
+}
+
+func TestOutputRecordMarkdownContentSafetyBlockDoesNotWriteStdout(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	extcs.Register(&recordMarkdownCSTestProvider{
+		alert: &extcs.Alert{Provider: "test", MatchedRules: []string{"r1"}},
+	})
+	defer extcs.Register(nil)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := outputRecordMarkdown(newRecordMarkdownTestRuntime(stdout, stderr), map[string]interface{}{
+		"fields":         []interface{}{"Name"},
+		"record_id_list": []interface{}{"rec_1"},
+		"data":           []interface{}{[]interface{}{"Alice"}},
+	})
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitContentSafety {
+		t.Fatalf("err=%v, want content safety exit error", err)
+	}
+	if stdout.Len() > 0 {
+		t.Fatalf("block mode should not write stdout, got:\n%s", stdout.String())
+	}
+	if stderr.Len() > 0 {
+		t.Fatalf("block mode should not write warning to stderr, got:\n%s", stderr.String())
 	}
 }

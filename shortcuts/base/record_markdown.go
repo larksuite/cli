@@ -31,6 +31,13 @@ func outputRecordMarkdown(runtime *common.RuntimeContext, data map[string]interf
 	if err != nil {
 		return err
 	}
+	scanResult := output.ScanForSafety(runtime.Cmd.CommandPath(), data, runtime.IO().ErrOut)
+	if scanResult.Blocked {
+		return scanResult.BlockErr
+	}
+	if scanResult.Alert != nil {
+		output.WriteAlertWarning(runtime.IO().ErrOut, scanResult.Alert)
+	}
 	fmt.Fprint(runtime.IO().Out, rendered)
 	return nil
 }
