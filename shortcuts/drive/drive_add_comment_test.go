@@ -365,6 +365,17 @@ func TestParseCommentReplyElementsTextLength(t *testing.T) {
 			input:     `[{"type":"text","text":"` + strings.Repeat("<", 60) + `"}]`,
 			wantCount: 1,
 		},
+		{
+			// Pins that '&' is NOT expanded by escapeCommentText — only
+			// '<' and '>' are. 300 '&' chars stay 300 bytes after escape
+			// and must fit; an earlier hint string mistakenly claimed
+			// '&' was HTML-escaped too, which would have implied a budget
+			// of 60 '&' (300 bytes once expanded to '&amp;'). The actual
+			// behavior accepts the full 300.
+			name:      "300 ampersands accepted (escapeCommentText leaves '&' as-is)",
+			input:     `[{"type":"text","text":"` + strings.Repeat("&", 300) + `"}]`,
+			wantCount: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -397,6 +408,33 @@ func TestParseCommentReplyElementsTextLength(t *testing.T) {
 				t.Fatalf("expected %d reply elements, got %d", tt.wantCount, len(got))
 			}
 		})
+	}
+}
+
+// TestParseCommentReplyElementsHintMatchesEscape pins that the over-limit
+// hint only names the characters escapeCommentText actually expands —
+// '<' and '>'. An earlier draft of the hint incorrectly listed '&' too
+// (claiming a 4-5 byte expansion via '&amp;'), which would mislead users
+// into pre-emptively splitting strings that actually fit. If
+// escapeCommentText ever grows to also escape '&', this assertion plus
+// the corresponding code comment must be updated together.
+func TestParseCommentReplyElementsHintMatchesEscape(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseCommentReplyElements(`[{"type":"text","text":"` + strings.Repeat("a", 301) + `"}]`)
+	if err == nil {
+		t.Fatal("expected over-limit error, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError with Detail, got %T (%v)", err, err)
+	}
+	hint := exitErr.Detail.Hint
+	if strings.Contains(hint, "'&'") || strings.Contains(hint, "&amp;") || strings.Contains(hint, "4-5 bytes") {
+		t.Errorf("hint must not mention '&' / &amp; / 4-5 bytes, got: %q", hint)
+	}
+	if !strings.Contains(hint, "'<' and '>'") || !strings.Contains(hint, "4 bytes") {
+		t.Errorf("hint must mention '<' and '>' / 4 bytes, got: %q", hint)
 	}
 }
 

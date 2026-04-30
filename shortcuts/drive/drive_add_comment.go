@@ -629,11 +629,13 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 			if strings.TrimSpace(input.Text) == "" {
 				return nil, output.ErrValidation("--content element #%d type=text requires non-empty text", index)
 			}
-			// Measure the escaped form, not the raw input, because the server
-			// receives the escaped text and any '<' / '>' / '&' expand to 4-5
-			// bytes (`&lt;`, `&gt;`, `&amp;`). Without this, an input that
-			// hits the limit on one of those characters would still surface
-			// as the opaque [1069302] from the server.
+			// Measure the escaped form, not the raw input, because the
+			// server receives the escaped text. escapeCommentText only
+			// expands '<' and '>' (each becomes 4 bytes: `&lt;` / `&gt;`);
+			// '&' is intentionally left as-is. Without measuring the
+			// escaped form an input that hits the limit on one of those
+			// characters would still surface as the opaque [1069302]
+			// from the server.
 			escaped := escapeCommentText(input.Text)
 			if byteLen := len(escaped); byteLen > maxCommentTextElementBytes {
 				runeCount := utf8.RuneCountInString(input.Text)
@@ -642,7 +644,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 					"text_too_long",
 					fmt.Sprintf("--content element #%d text is %d characters (%d bytes); per-element limit is ~%d bytes (≈100 Chinese characters / 300 ASCII characters)",
 						index, runeCount, byteLen, maxCommentTextElementBytes),
-					"split the content across multiple {\"type\":\"text\",\"text\":\"...\"} elements — the comment UI still renders them as one contiguous comment. The server returns an opaque [1069302] on overflow, so this check is pre-flight. Note: '<' / '>' / '&' are HTML-escaped and counted in their escaped form (4-5 bytes each).",
+					"split the content across multiple {\"type\":\"text\",\"text\":\"...\"} elements — the comment UI still renders them as one contiguous comment. The server returns an opaque [1069302] on overflow, so this check is pre-flight. Note: '<' and '>' are HTML-escaped and counted in their escaped form (4 bytes each).",
 				)
 			}
 			replyElements = append(replyElements, map[string]interface{}{
