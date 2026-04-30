@@ -45,6 +45,19 @@ func TestValidateDriveImportSpec(t *testing.T) {
 			spec:    driveImportSpec{FilePath: "./data.rtf", DocType: "docx"},
 			wantErr: "unsupported file extension",
 		},
+		{
+			name:    "target-token rejected for non-bitable type",
+			spec:    driveImportSpec{FilePath: "./data.xlsx", DocType: "sheet", TargetToken: "bascnxxx"},
+			wantErr: "--target-token is only supported when --type is bitable",
+		},
+		{
+			name: "target-token accepted for bitable",
+			spec: driveImportSpec{FilePath: "./data.xlsx", DocType: "bitable", TargetToken: "bascnxxx"},
+		},
+		{
+			name: "target-token empty for bitable still ok",
+			spec: driveImportSpec{FilePath: "./data.xlsx", DocType: "bitable"},
+		},
 	}
 
 	for _, tt := range tests {

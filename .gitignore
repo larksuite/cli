@@ -42,3 +42,5 @@ app.log
 /server-demo
 .tmp/
 cover*.out
+
+lark-env.sh

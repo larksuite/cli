@@ -188,6 +188,8 @@ metadata:
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
 | `+form-list / +form-get` | 列出表单，或获取单个表单 | [`lark-base-form-list.md`](references/lark-base-form-list.md)、[`lark-base-form-get.md`](references/lark-base-form-get.md) | `+form-list` 可用来获取 `form-id`；`+form-get` 适合查看已有表单配置 |
+| `+form-detail` | 通过表单分享链接获取表单详情（含题目列表、字段类型、校验规则） | [`lark-base-form-detail.md`](references/lark-base-form-detail.md) | 只读；仅需 `--share-token`（从分享链接提取），不需要 base-token/table-id/form-id；返回的 `questions` 可直接用于 `+form-submit` 构造参数 |
+| `+form-submit` | 通过表单分享链接填写并提交表单（支持普通字段 + 附件上传） | [`lark-base-form-submit.md`](references/lark-base-form-submit.md) | 写入操作；仅支持 share_token 模式；**当 `--json` 包含 attachments 时必须额外提供 `--base-token`**（附件上传到 Base Drive Media 需要）；附件通过 `--json.attachments` 传入本地路径，CLI 自动并行上传 |
 | `+form-create / +form-update / +form-delete` | 创建、更新或删除表单 | [`lark-base-form-create.md`](references/lark-base-form-create.md)、[`lark-base-form-update.md`](references/lark-base-form-update.md)、[`lark-base-form-delete.md`](references/lark-base-form-delete.md) | 创建后可继续进入表单问题相关操作；更新或删除前先确认目标表单 |
 | `+form-questions-list` | 列出表单题目 | [`lark-base-form-questions-list.md`](references/lark-base-form-questions-list.md) | 适合查看已有题目结构 |
 | `+form-questions-create / +form-questions-update / +form-questions-delete` | 创建、更新或删除题目 | [`lark-base-form-questions-create.md`](references/lark-base-form-questions-create.md)、[`lark-base-form-questions-update.md`](references/lark-base-form-questions-update.md)、[`lark-base-form-questions-delete.md`](references/lark-base-form-questions-delete.md) | 先确认 `form-id`；更新或删除前先确认题目目标 |
