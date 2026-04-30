@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -276,6 +277,10 @@ func TestBuildFormdata(t *testing.T) {
 		if fd == nil {
 			t.Fatal("expected non-nil Formdata")
 		}
+
+		if got := formdataFieldTypeName(t, fd, "photo"); got != "*os.File" {
+			t.Fatalf("formdata file field type = %s, want *os.File", got)
+		}
 	})
 
 	t.Run("file not found", func(t *testing.T) {
@@ -335,6 +340,23 @@ func TestBuildFormdata(t *testing.T) {
 			t.Fatal("expected non-nil Formdata")
 		}
 	})
+}
+
+func formdataFieldTypeName(t *testing.T, fd any, field string) string {
+	t.Helper()
+
+	fields := reflect.ValueOf(fd).Elem().FieldByName("fields")
+	if !fields.IsValid() {
+		t.Fatal("Formdata.fields is not available")
+	}
+	value := fields.MapIndex(reflect.ValueOf(field))
+	if !value.IsValid() {
+		t.Fatalf("Formdata field %q is missing", field)
+	}
+	if value.Kind() == reflect.Interface {
+		value = value.Elem()
+	}
+	return value.Type().String()
 }
 
 // TestFormatFormFieldValue locks in the fix for the float64 -> scientific
