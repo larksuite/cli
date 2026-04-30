@@ -8,28 +8,41 @@ import "github.com/larksuite/cli/shortcuts/common"
 // Shortcuts returns all sheets shortcuts.
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
-		SheetInfo,
-		SheetRead,
-		SheetWrite,
-		SheetWriteImage,
-		SheetAppend,
-		SheetFind,
+		// Spreadsheet management
 		SheetCreate,
+		SheetInfo,
+		SheetExport,
+
+		// Sheet management
 		SheetCreateSheet,
 		SheetCopySheet,
 		SheetDeleteSheet,
 		SheetUpdateSheet,
-		SheetExport,
-		SheetMergeCells,
-		SheetUnmergeCells,
+
+		// Cell data
+		SheetRead,
+		SheetWrite,
+		SheetAppend,
+		SheetFind,
 		SheetReplace,
+
+		// Cell style and merge
 		SheetSetStyle,
 		SheetBatchSetStyle,
+		SheetMergeCells,
+		SheetUnmergeCells,
+
+		// Cell images
+		SheetWriteImage,
+
+		// Row/column management
 		SheetAddDimension,
 		SheetInsertDimension,
 		SheetUpdateDimension,
 		SheetMoveDimension,
 		SheetDeleteDimension,
+
+		// Filter views
 		SheetCreateFilterView,
 		SheetUpdateFilterView,
 		SheetListFilterViews,
@@ -40,10 +53,14 @@ func Shortcuts() []common.Shortcut {
 		SheetListFilterViewConditions,
 		SheetGetFilterViewCondition,
 		SheetDeleteFilterViewCondition,
+
+		// Dropdown
 		SheetSetDropdown,
 		SheetUpdateDropdown,
 		SheetGetDropdown,
 		SheetDeleteDropdown,
+
+		// Float images
 		SheetMediaUpload,
 		SheetCreateFloatImage,
 		SheetUpdateFloatImage,

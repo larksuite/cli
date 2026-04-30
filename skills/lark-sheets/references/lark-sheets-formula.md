@@ -1,7 +1,6 @@
-
 # 飞书表格公式规则
 
-> 生成或改写飞书电子表格公式时的参考规则。飞书不像 Excel 365 默认 spill，普通公式对区域默认"投影"（只取当前行/列对应的单值），必须显式使用 `ARRAYFORMULA` 或原生数组函数才能逐项展开。
+> 生成或改写飞书电子表格公式时的参考规则。飞书不像 Excel 365 默认 spill，普通公式对区域默认“投影”（只取当前行/列对应的单值），必须显式使用 `ARRAYFORMULA` 或原生数组函数才能逐项展开。
 
 ## 写入方式
 
@@ -45,7 +44,7 @@
 
 ## 隐式逐项求值 → MAP/LAMBDA
 
-Excel 中 `SUBTOTAL`、`INDIRECT`、`OFFSET` 等在 `SUMPRODUCT` 内会隐式逐行求值，飞书不会。用 MAP 显式遍历：
+Excel 中 `SUBTOTAL`、`INDIRECT`、`OFFSET` 等在 `SUMPRODUCT` 内会隐式逐行求值，飞书不会。用 `MAP` 显式遍历：
 
 ```text
 # Excel
@@ -55,11 +54,11 @@ Excel 中 `SUBTOTAL`、`INDIRECT`、`OFFSET` 等在 `SUMPRODUCT` 内会隐式逐
 =SUMPRODUCT(MAP(ARRAYFORMULA(ROW($E$16:$E$387)),LAMBDA(r,SUBTOTAL(103,INDIRECT("E"&r)))))
 ```
 
-同类场景：`SUMIF/COUNTIF/SUMIFS` 的范围参数来自 `INDIRECT/OFFSET` 时也需要 MAP。
+同类场景：`SUMIF/COUNTIF/SUMIFS` 的范围参数来自 `INDIRECT/OFFSET` 时也需要 `MAP`。
 
 ## 多维结果降维
 
-飞书公式结果只能是二维，不能返回"区域的列表"。合并多个区域时：
+飞书公式结果只能是二维，不能返回“区域的列表”。合并多个区域时：
 
 | 需求 | 写法 |
 |------|------|

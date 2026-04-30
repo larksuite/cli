@@ -175,66 +175,120 @@ lark-cli sheets +write --url "URL" --sheet-id "sheetId" --range "C6" \
 **限制**：
 - 公式支持 IMPORTRANGE 跨表引用（最多 5 层嵌套、每个工作表最多 100 个引用）
 - @人仅支持同租户用户，单次最多 50 人
-- 下拉列表需**先配置下拉选项**，否则 `multipleValue` 写入会变成纯文本。配置方法见 [`references/lark-sheets-set-dropdown.md`](references/lark-sheets-set-dropdown.md)。值中的字符串不能包含逗号
+- 下拉列表需**先配置下拉选项**，否则 `multipleValue` 写入会变成纯文本。配置方法见 [`references/lark-sheets-dropdown.md#set-dropdown`](references/lark-sheets-dropdown.md#set-dropdown)。值中的字符串不能包含逗号
 
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli sheets +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
-| Shortcut | 说明 |
-|----------|------|
-| [`+info`](references/lark-sheets-info.md) | View spreadsheet and sheet information |
-| [`+read`](references/lark-sheets-read.md) | Read spreadsheet cell values |
-| [`+write`](references/lark-sheets-write.md) | Write to spreadsheet cells (overwrite mode) |
-| [`+write-image`](references/lark-sheets-write-image.md) | Write an image into a spreadsheet cell |
-| [`+append`](references/lark-sheets-append.md) | Append rows to a spreadsheet |
-| [`+find`](references/lark-sheets-find.md) | Find cells in a spreadsheet |
-| [`+create`](references/lark-sheets-create.md) | Create a spreadsheet (optional header row and initial data) |
-| [`+create-sheet`](references/lark-sheets-create-sheet.md) | Create a sheet in an existing spreadsheet |
-| [`+copy-sheet`](references/lark-sheets-copy-sheet.md) | Copy a sheet within a spreadsheet |
-| [`+delete-sheet`](references/lark-sheets-delete-sheet.md) | Delete a sheet from a spreadsheet |
-| [`+update-sheet`](references/lark-sheets-update-sheet.md) | Update sheet title, position, visibility, freeze, or protection |
-| [`+export`](references/lark-sheets-export.md) | Export a spreadsheet (async task polling + optional download) |
-| [`+merge-cells`](references/lark-sheets-merge-cells.md) | Merge cells in a spreadsheet |
-| [`+unmerge-cells`](references/lark-sheets-unmerge-cells.md) | Unmerge (split) cells in a spreadsheet |
-| [`+replace`](references/lark-sheets-replace.md) | Find and replace cell values |
-| [`+set-style`](references/lark-sheets-set-style.md) | Set cell style for a range |
-| [`+batch-set-style`](references/lark-sheets-batch-set-style.md) | Batch set cell styles for multiple ranges |
-| [`+add-dimension`](references/lark-sheets-add-dimension.md) | Add rows or columns at the end of a sheet |
-| [`+insert-dimension`](references/lark-sheets-insert-dimension.md) | Insert rows or columns at a specified position |
-| [`+update-dimension`](references/lark-sheets-update-dimension.md) | Update row or column properties (visibility, size) |
-| [`+move-dimension`](references/lark-sheets-move-dimension.md) | Move rows or columns to a new position |
-| [`+delete-dimension`](references/lark-sheets-delete-dimension.md) | Delete rows or columns |
-| [`+create-filter-view`](references/lark-sheets-create-filter-view.md) | Create a filter view |
-| [`+update-filter-view`](references/lark-sheets-update-filter-view.md) | Update a filter view |
-| [`+list-filter-views`](references/lark-sheets-list-filter-views.md) | List all filter views in a sheet |
-| [`+get-filter-view`](references/lark-sheets-get-filter-view.md) | Get a filter view by ID |
-| [`+delete-filter-view`](references/lark-sheets-delete-filter-view.md) | Delete a filter view |
-| [`+create-filter-view-condition`](references/lark-sheets-create-filter-view-condition.md) | Create a filter condition on a filter view |
-| [`+update-filter-view-condition`](references/lark-sheets-update-filter-view-condition.md) | Update a filter condition |
-| [`+list-filter-view-conditions`](references/lark-sheets-list-filter-view-conditions.md) | List all filter conditions of a filter view |
-| [`+get-filter-view-condition`](references/lark-sheets-get-filter-view-condition.md) | Get a filter condition by column |
-| [`+delete-filter-view-condition`](references/lark-sheets-delete-filter-view-condition.md) | Delete a filter condition |
+### Spreadsheet Management
 
-### 下拉列表
+对应参考文档：[spreadsheet-management](references/lark-sheets-spreadsheet-management.md)
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+set-dropdown`](references/lark-sheets-set-dropdown.md) | 设置下拉列表（`multipleValue` 写入的前置步骤） |
-| [`+update-dropdown`](references/lark-sheets-update-dropdown.md) | 更新下拉列表选项 |
-| [`+get-dropdown`](references/lark-sheets-get-dropdown.md) | 查询下拉列表配置 |
-| [`+delete-dropdown`](references/lark-sheets-delete-dropdown.md) | 删除下拉列表 |
+| [`+create`](references/lark-sheets-spreadsheet-management.md#create) | Create a spreadsheet (optional header row and initial data) |
+| [`+info`](references/lark-sheets-spreadsheet-management.md#info) | View spreadsheet and sheet information |
+| [`+export`](references/lark-sheets-spreadsheet-management.md#export) | Export a spreadsheet (async task polling + optional download) |
 
-### 浮动图片
+### Sheet Management
+
+对应参考文档：[sheet-management](references/lark-sheets-sheet-management.md)
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+media-upload`](references/lark-sheets-media-upload.md) | 上传本地图片素材，返回 `file_token`（供 `+create-float-image` 使用；>20MB 自动分片） |
-| [`+create-float-image`](references/lark-sheets-create-float-image.md) | 创建浮动图片 |
-| [`+update-float-image`](references/lark-sheets-update-float-image.md) | 更新浮动图片属性 |
-| [`+get-float-image`](references/lark-sheets-get-float-image.md) | 获取浮动图片 |
-| [`+list-float-images`](references/lark-sheets-list-float-images.md) | 查询所有浮动图片 |
-| [`+delete-float-image`](references/lark-sheets-delete-float-image.md) | 删除浮动图片 |
+| [`+create-sheet`](references/lark-sheets-sheet-management.md#create-sheet) | Create a sheet in an existing spreadsheet |
+| [`+copy-sheet`](references/lark-sheets-sheet-management.md#copy-sheet) | Copy a sheet within a spreadsheet |
+| [`+delete-sheet`](references/lark-sheets-sheet-management.md#delete-sheet) | Delete a sheet from a spreadsheet |
+| [`+update-sheet`](references/lark-sheets-sheet-management.md#update-sheet) | Update sheet title, position, visibility, freeze, or protection |
+
+### Cell Data
+
+对应参考文档：[cell-data](references/lark-sheets-cell-data.md)
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+read`](references/lark-sheets-cell-data.md#read) | Read spreadsheet cell values |
+| [`+write`](references/lark-sheets-cell-data.md#write) | Write to spreadsheet cells (overwrite mode) |
+| [`+append`](references/lark-sheets-cell-data.md#append) | Append rows to a spreadsheet |
+| [`+find`](references/lark-sheets-cell-data.md#find) | Find cells in a spreadsheet |
+| [`+replace`](references/lark-sheets-cell-data.md#replace) | Find and replace cell values |
+
+### Cell Style And Merge
+
+对应参考文档：[cell-style-and-merge](references/lark-sheets-cell-style-and-merge.md)
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+set-style`](references/lark-sheets-cell-style-and-merge.md#set-style) | Set cell style for a range |
+| [`+batch-set-style`](references/lark-sheets-cell-style-and-merge.md#batch-set-style) | Batch set cell styles for multiple ranges |
+| [`+merge-cells`](references/lark-sheets-cell-style-and-merge.md#merge-cells) | Merge cells in a spreadsheet |
+| [`+unmerge-cells`](references/lark-sheets-cell-style-and-merge.md#unmerge-cells) | Unmerge (split) cells in a spreadsheet |
+
+### Cell Images
+
+对应参考文档：[cell-images](references/lark-sheets-cell-images.md)
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+write-image`](references/lark-sheets-cell-images.md#write-image) | Write an image into a spreadsheet cell |
+
+### Row Column Management
+
+对应参考文档：[row-column-management](references/lark-sheets-row-column-management.md)
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+add-dimension`](references/lark-sheets-row-column-management.md#add-dimension) | Add rows or columns at the end of a sheet |
+| [`+insert-dimension`](references/lark-sheets-row-column-management.md#insert-dimension) | Insert rows or columns at a specified position |
+| [`+update-dimension`](references/lark-sheets-row-column-management.md#update-dimension) | Update row or column properties (visibility, size) |
+| [`+move-dimension`](references/lark-sheets-row-column-management.md#move-dimension) | Move rows or columns to a new position |
+| [`+delete-dimension`](references/lark-sheets-row-column-management.md#delete-dimension) | Delete rows or columns |
+
+### Filter Views
+
+对应参考文档：[filter-views](references/lark-sheets-filter-views.md)
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+create-filter-view`](references/lark-sheets-filter-views.md#create-filter-view) | Create a filter view |
+| [`+update-filter-view`](references/lark-sheets-filter-views.md#update-filter-view) | Update a filter view |
+| [`+list-filter-views`](references/lark-sheets-filter-views.md#list-filter-views) | List all filter views in a sheet |
+| [`+get-filter-view`](references/lark-sheets-filter-views.md#get-filter-view) | Get a filter view by ID |
+| [`+delete-filter-view`](references/lark-sheets-filter-views.md#delete-filter-view) | Delete a filter view |
+| [`+create-filter-view-condition`](references/lark-sheets-filter-views.md#create-filter-view-condition) | Create a filter condition on a filter view |
+| [`+update-filter-view-condition`](references/lark-sheets-filter-views.md#update-filter-view-condition) | Update a filter condition |
+| [`+list-filter-view-conditions`](references/lark-sheets-filter-views.md#list-filter-view-conditions) | List all filter conditions of a filter view |
+| [`+get-filter-view-condition`](references/lark-sheets-filter-views.md#get-filter-view-condition) | Get a filter condition by column |
+| [`+delete-filter-view-condition`](references/lark-sheets-filter-views.md#delete-filter-view-condition) | Delete a filter condition |
+
+### Dropdown
+
+对应参考文档：[dropdown](references/lark-sheets-dropdown.md)
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+set-dropdown`](references/lark-sheets-dropdown.md#set-dropdown) | 设置下拉列表（`multipleValue` 写入的前置步骤） |
+| [`+update-dropdown`](references/lark-sheets-dropdown.md#update-dropdown) | 更新下拉列表选项 |
+| [`+get-dropdown`](references/lark-sheets-dropdown.md#get-dropdown) | 查询下拉列表配置 |
+| [`+delete-dropdown`](references/lark-sheets-dropdown.md#delete-dropdown) | 删除下拉列表 |
+
+### Float Images
+
+对应参考文档：[float-images](references/lark-sheets-float-images.md)
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+media-upload`](references/lark-sheets-float-images.md#media-upload) | 上传本地图片素材，返回 `file_token`（供 `+create-float-image` 使用；>20MB 自动分片） |
+| [`+create-float-image`](references/lark-sheets-float-images.md#create-float-image) | 创建浮动图片 |
+| [`+update-float-image`](references/lark-sheets-float-images.md#update-float-image) | 更新浮动图片属性 |
+| [`+get-float-image`](references/lark-sheets-float-images.md#get-float-image) | 获取浮动图片 |
+| [`+list-float-images`](references/lark-sheets-float-images.md#list-float-images) | 查询所有浮动图片 |
+| [`+delete-float-image`](references/lark-sheets-float-images.md#delete-float-image) | 删除浮动图片 |
+
+### Formula
+
+对应参考文档：[formula](references/lark-sheets-formula.md)
 
 > 浮动图片相关的读接口只返回元数据（含 `float_image_token`），**不包含图片字节**。要读取图片内容，用 token 调 `lark-cli docs +media-preview --token "<float_image_token>" --output ./image.png`。
 

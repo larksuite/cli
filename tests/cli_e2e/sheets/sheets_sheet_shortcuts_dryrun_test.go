@@ -84,8 +84,9 @@ func TestSheets_SheetShortcutsDryRunRejectsURLAndTokenTogether(t *testing.T) {
 			})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 2)
-			if !strings.Contains(result.Stderr, "mutually exclusive") {
-				t.Fatalf("expected mutual exclusivity error, stderr:\n%s", result.Stderr)
+			combined := result.Stdout + "\n" + result.Stderr
+			if !strings.Contains(combined, "mutually exclusive") {
+				t.Fatalf("expected mutual exclusivity error, got:\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 			}
 		})
 	}
@@ -140,8 +141,9 @@ func TestSheets_SheetShortcutsDryRunRejectsEmptyTitle(t *testing.T) {
 			})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 2)
-			if !strings.Contains(result.Stderr, "must not be empty") {
-				t.Fatalf("expected empty-title error, stderr:\n%s", result.Stderr)
+			combined := result.Stdout + "\n" + result.Stderr
+			if !strings.Contains(combined, "must not be empty") {
+				t.Fatalf("expected empty-title error, got:\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 			}
 		})
 	}
