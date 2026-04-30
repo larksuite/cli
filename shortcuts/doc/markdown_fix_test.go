@@ -415,6 +415,56 @@ func TestWarnCalloutType(t *testing.T) {
 			wantHint:     true,
 			hintContains: `border-color="red"`,
 		},
+		{
+			// Regression: the old `\btype=` regex matched the suffix of
+			// `data-type=` because `-` is a non-word character, so a tag
+			// carrying only data-attrs would silently get a bogus hint.
+			// The (?:^|\s) anchor requires a real attribute separator.
+			name:     "data-type attribute does not trigger hint",
+			input:    `<callout data-type="warning" emoji="📝">`,
+			wantHint: false,
+		},
+		{
+			// Symmetric guard for the background-color regex: a future
+			// `data-background-color=` attribute must not be mistaken
+			// for a present background-color and silently suppress the
+			// hint that the real type= would otherwise produce.
+			name:         "data-background-color does not suppress hint",
+			input:        `<callout type="warning" data-background-color="anything">`,
+			wantHint:     true,
+			hintContains: `background-color="light-yellow"`,
+		},
+		{
+			// Regression for the code-fence skip: a documentation sample
+			// inside a ``` fence is NOT a real callout the user wants
+			// rendered, so it must produce no stderr noise.
+			name: "callout inside backtick fence emits no hint",
+			input: "```markdown\n" +
+				`<callout type="warning" emoji="📝">` + "\n" +
+				"```\n",
+			wantHint: false,
+		},
+		{
+			// Same skip works for tilde fences (CommonMark §4.5 makes
+			// `~~~` an equivalent fence character).
+			name: "callout inside tilde fence emits no hint",
+			input: "~~~markdown\n" +
+				`<callout type="info" emoji="ℹ️">` + "\n" +
+				"~~~\n",
+			wantHint: false,
+		},
+		{
+			// Closing the fence must restore normal scanning: a real
+			// callout that follows a documentation block still gets a
+			// hint. Pins that fenceMarker is reset, not stuck.
+			name: "callout after fence close still emits hint",
+			input: "```markdown\n" +
+				`<callout type="warning">sample</callout>` + "\n" +
+				"```\n" +
+				`<callout type="error" emoji="❌">real</callout>` + "\n",
+			wantHint:     true,
+			hintContains: `border-color="red"`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
