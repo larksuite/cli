@@ -210,6 +210,102 @@ func TestBaseFieldUpdateHelpHidesReadGuideFlag(t *testing.T) {
 	}
 }
 
+func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		wantHelp []string
+		wantTips []string
+	}{
+		{
+			name:     "record list",
+			shortcut: BaseRecordList,
+			wantHelp: []string{
+				"field ID or name to include; repeat to project only needed fields",
+				"view ID or name; omit for reading all table records, or set to read a user-specified or temporary filtered/sorted view",
+				"pagination size, range 1-200",
+				"output format: markdown (default) | json",
+			},
+			wantTips: []string{
+				"lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
+				"lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 50",
+				"Default output is markdown",
+				"Use --field-id repeatedly to keep output small",
+				"Use --view-id when the user asks for a specific view or after creating a temporary filtered/sorted view",
+				"lark-base record read SOP",
+			},
+		},
+		{
+			name:     "record search",
+			shortcut: BaseRecordSearch,
+			wantHelp: []string{
+				"requires keyword/search_fields",
+				"optional select_fields/view_id/offset/limit",
+				"output format: markdown (default) | json",
+			},
+			wantTips: []string{
+				`lark-cli base +record-search --base-token <base_token> --table-id <table_id> --json`,
+				`"select_fields":["Name","Status"]`,
+				`JSON shape: {"keyword":"<text>","search_fields":["<field_id_or_name>"]`,
+				"search_fields length 1-20",
+				"limit range 1-200 defaults to 10",
+				"view_id scopes search to records in that view",
+				"Default output is markdown",
+				"only for keyword search",
+				"lark-base record read SOP",
+			},
+		},
+		{
+			name:     "record get",
+			shortcut: BaseRecordGet,
+			wantHelp: []string{
+				"record ID",
+			},
+			wantTips: []string{
+				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id <record_id>",
+				"record_id is already known",
+				"lark-base record read SOP",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+
+			help := cmd.Flags().FlagUsages()
+			for _, want := range tt.wantHelp {
+				if !strings.Contains(help, want) {
+					t.Fatalf("flag help missing %q:\n%s", want, help)
+				}
+			}
+			assertHelpOrder(t, help, "base token", "output format")
+			assertHelpOrder(t, help, "table ID", "output format")
+
+			tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+			for _, want := range tt.wantTips {
+				if !strings.Contains(tips, want) {
+					t.Fatalf("tips missing %q:\n%s", want, tips)
+				}
+			}
+		})
+	}
+}
+
+func assertHelpOrder(t *testing.T, help string, before string, after string) {
+	t.Helper()
+	beforeIndex := strings.Index(help, before)
+	afterIndex := strings.Index(help, after)
+	if beforeIndex < 0 || afterIndex < 0 {
+		return
+	}
+	if beforeIndex > afterIndex {
+		t.Fatalf("flag help order mismatch: %q should appear before %q:\n%s", before, after, help)
+	}
+}
+
 func TestBaseFieldValidate(t *testing.T) {
 	ctx := context.Background()
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
