@@ -33,8 +33,10 @@ func ReadJSONPointer(data interface{}, pointer string) (interface{}, error) {
 
 	for i, raw := range segments {
 		// RFC 6901 unescaping: ~1 → /, ~0 → ~ (order matters).
-		key := strings.ReplaceAll(raw, "~1", "/")
-		key = strings.ReplaceAll(key, "~0", "~")
+		key, err := decodeJSONPointerSegment(raw)
+		if err != nil {
+			return nil, fmt.Errorf("json pointer %q: segment %q: %w", pointer, raw, err)
+		}
 
 		m, ok := current.(map[string]interface{})
 		if !ok {
@@ -52,4 +54,27 @@ func ReadJSONPointer(data interface{}, pointer string) (interface{}, error) {
 	}
 
 	return current, nil
+}
+
+func decodeJSONPointerSegment(raw string) (string, error) {
+	var out strings.Builder
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '~' {
+			out.WriteByte(raw[i])
+			continue
+		}
+		if i+1 >= len(raw) {
+			return "", fmt.Errorf("invalid escape: ~ must be followed by 0 or 1")
+		}
+		switch raw[i+1] {
+		case '0':
+			out.WriteByte('~')
+		case '1':
+			out.WriteByte('/')
+		default:
+			return "", fmt.Errorf("invalid escape: ~%c must be ~0 or ~1", raw[i+1])
+		}
+		i++
+	}
+	return out.String(), nil
 }

@@ -98,6 +98,41 @@ func TestReadJSONPointer_RFC6901_Escaping(t *testing.T) {
 	}
 }
 
+func TestReadJSONPointer_InvalidEscape(t *testing.T) {
+	data := map[string]interface{}{
+		"a~2b": "literal",
+		"a~":   "literal",
+	}
+	tests := []struct {
+		name    string
+		pointer string
+		want    string
+	}{
+		{
+			name:    "unsupported escape code",
+			pointer: "/a~2b",
+			want:    `json pointer "/a~2b": segment "a~2b": invalid escape: ~2 must be ~0 or ~1`,
+		},
+		{
+			name:    "dangling tilde",
+			pointer: "/a~",
+			want:    `json pointer "/a~": segment "a~": invalid escape: ~ must be followed by 0 or 1`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ReadJSONPointer(data, tt.pointer)
+			if err == nil {
+				t.Fatal("expected error for invalid escape, got nil")
+			}
+			if err.Error() != tt.want {
+				t.Errorf("error = %q, want %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
 func TestReadJSONPointer_InvalidFormat(t *testing.T) {
 	data := map[string]interface{}{"key": "val"}
 	_, err := ReadJSONPointer(data, "no-leading-slash")
