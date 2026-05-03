@@ -80,6 +80,29 @@ Shortcut 是对常用操作的高级封装（`lark-cli calendar +<verb> [flags]`
 | [`+rsvp`](references/lark-calendar-rsvp.md) | 回复日程（接受/拒绝/待定） |
 | [`+suggestion`](references/lark-calendar-suggestion.md) | 根据非明确时间或一段时间范围，推荐多个可用时间块方案 |
 
+### `+rsvp` 用法补充
+
+当用户要**接受日程**、**拒绝日程**、**暂不确定/待定**某个邀请时，优先使用 `+rsvp`，不要绕到原生 API。
+
+前置步骤：
+- 必须先通过 [`+agenda`](references/lark-calendar-agenda.md) 或其他查询命令拿到目标日程的 `event_id`。
+- 需要 scope：`calendar:calendar.event:reply`
+
+常见示例：
+
+```bash
+# 拒绝日程
+lark-cli calendar +rsvp --event-id evt_xxx --rsvp-status decline
+
+# 接受日程
+lark-cli calendar +rsvp --event-id evt_xxx --rsvp-status accept
+
+# 待定日程
+lark-cli calendar +rsvp --event-id evt_xxx --rsvp-status tentative
+```
+
+如果用户没有提供 `event_id`，不要猜；先帮助用户查出对应日程，再执行 `+rsvp`。
+
 ## 会议室相关规则
 
 - **会议室是日程的一种参与人（resource attendee），不能脱离日程单独存在或单独预定。**
@@ -149,6 +172,7 @@ lark-cli calendar <resource> <method> [flags] # 调用 API
 | `events.search_event` | `calendar:calendar.event:read` |
 | `events.share_info` | `calendar:calendar.event:read` |
 | `freebusys.list` | `calendar:calendar.free_busy:read` |
+| `+rsvp` | `calendar:calendar.event:reply` |
 
 **注意（强制性）：**
 - 涉及日期（时间）字符串与时间戳的相互转换时，务必调用系统命令或脚本代码等外部工具进行处理，以确保转换的绝对准确。违者将导致严重的逻辑错误！
