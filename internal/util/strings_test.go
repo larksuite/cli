@@ -17,6 +17,7 @@ func TestTruncateStr(t *testing.T) {
 		{"truncate", "hello world", 5, "hello"},
 		{"empty", "", 5, ""},
 		{"zero limit", "hello", 0, ""},
+		{"negative limit", "hello", -1, ""},
 		{"CJK characters", "你好世界测试", 4, "你好世界"},
 	}
 	for _, tt := range tests {
@@ -41,6 +42,8 @@ func TestTruncateStrWithEllipsis(t *testing.T) {
 		{"limit less than 3", "hello", 2, "he"},
 		{"limit equals 3", "hello world", 3, "..."},
 		{"empty", "", 5, ""},
+		{"zero limit", "hello", 0, ""},
+		{"negative limit", "hello", -1, ""},
 		{"CJK with ellipsis", "你好世界测试", 5, "你好..."},
 	}
 	for _, tt := range tests {

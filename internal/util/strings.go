@@ -5,6 +5,9 @@ package util
 
 // TruncateStr truncates s to at most n runes, safe for multi-byte (e.g. CJK) characters.
 func TruncateStr(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
 	r := []rune(s)
 	if len(r) <= n {
 		return s
@@ -14,6 +17,9 @@ func TruncateStr(s string, n int) string {
 
 // TruncateStrWithEllipsis truncates s to at most n runes (including "..." suffix).
 func TruncateStrWithEllipsis(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
 	r := []rune(s)
 	if len(r) <= n {
 		return s
