@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.24] - 2026-05-06
+
+### Features
+
+- **sheets**: Add sheet management shortcuts (#722)
+- **base**: Support batch record get and delete (#630)
+- **task**: Add upload task attachment shortcut (#736)
+- **drive**: Pre-flight 10000-rune total cap for `+add-comment` `reply_elements` (#605)
+
+### Bug Fixes
+
+- **auth**: Handle missing scopes and device flow improvements (#752)
+- Add url to markdown `+create` output (#753)
+
+### Documentation
+
+- Refine field update conversion guidance (#748)
+
 ## [v1.0.23] - 2026-04-30
 
 ### Features
@@ -579,6 +597,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.24]: https://github.com/larksuite/cli/releases/tag/v1.0.24
 [v1.0.23]: https://github.com/larksuite/cli/releases/tag/v1.0.23
 [v1.0.22]: https://github.com/larksuite/cli/releases/tag/v1.0.22
 [v1.0.21]: https://github.com/larksuite/cli/releases/tag/v1.0.21
