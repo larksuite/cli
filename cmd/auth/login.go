@@ -348,7 +348,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	}
 	log(msg.WaitingAuth)
 	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
-		opts.DeviceCode, 5, 180, f.IOStreams.ErrOut)
+		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
 
 	if !result.OK {
 		if shouldRemoveLoginRequestedScope(result) {
