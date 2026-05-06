@@ -142,8 +142,12 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		errOut = io.Discard
 	}
 
+	if interval < 1 {
+		interval = 5
+	}
+
 	const maxPollInterval = 60
-	const maxPollAttempts = 200
+	const maxPollAttempts = 600
 
 	endpoints := ResolveOAuthEndpoints(brand)
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)

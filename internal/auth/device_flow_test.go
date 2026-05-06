@@ -5,10 +5,12 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +18,12 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/keychain"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 // TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
 func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
@@ -170,5 +178,35 @@ func TestLogAuthError_RecordsStructuredEntry(t *testing.T) {
 	}
 	if !strings.Contains(got, "cmdline=lark-cli auth login ...") {
 		t.Fatalf("expected truncated cmdline in log, got %q", got)
+	}
+}
+
+func TestPollDeviceToken_DefaultsIntervalBelowOne(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       http.NoBody,
+			}, nil
+		}),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	t.Cleanup(cancel)
+
+	result := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 0, 10, nil)
+	if result == nil {
+		t.Fatal("PollDeviceToken() returned nil result")
+	}
+	if result.Message != "Polling was cancelled" {
+		t.Fatalf("PollDeviceToken() message = %q, want polling cancellation", result.Message)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("PollDeviceToken() sent %d requests before context cancellation, want 0", got)
 	}
 }

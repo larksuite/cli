@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/zalando/go-keyring"
@@ -371,8 +372,12 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 			Granted:   []string{"base:app:copy"},
 		},
 	}, "ou_user", "tester")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if exitErr.Code != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAuth)
 	}
 	got := stderr.String()
 	for _, want := range []string{
@@ -410,8 +415,12 @@ func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
 			Granted:   []string{"base:app:copy"},
 		},
 	}, "ou_user", "tester")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if exitErr.Code != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAuth)
 	}
 
 	var data map[string]interface{}
@@ -616,8 +625,12 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 	})
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if exitErr.Code != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAuth)
 	}
 	got := stderr.String()
 	for _, want := range []string{
