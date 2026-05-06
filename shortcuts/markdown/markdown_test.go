@@ -467,6 +467,9 @@ func TestMarkdownCreateSuccessUploadAll(t *testing.T) {
 	if !strings.Contains(stdout.String(), `"file_name": "README.md"`) {
 		t.Fatalf("stdout missing file_name: %s", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), `"url": "https://www.feishu.cn/file/box_md_create"`) {
+		t.Fatalf("stdout missing url: %s", stdout.String())
+	}
 }
 
 func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
@@ -496,6 +499,9 @@ func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "file_token: box_md_create_pretty") {
 		t.Fatalf("pretty output missing file_token: %s", out)
+	}
+	if !strings.Contains(out, "url: https://www.feishu.cn/file/box_md_create_pretty") {
+		t.Fatalf("pretty output missing url: %s", out)
 	}
 	if !strings.Contains(out, "permission_grant.status: skipped") {
 		t.Fatalf("pretty output missing permission_grant.status: %s", out)

@@ -489,6 +489,9 @@ func fetchMarkdownFileName(runtime *common.RuntimeContext, fileToken string) (st
 func prettyPrintMarkdownWrite(w io.Writer, data map[string]interface{}) {
 	fmt.Fprintf(w, "file_token: %s\n", common.GetString(data, "file_token"))
 	fmt.Fprintf(w, "file_name: %s\n", common.GetString(data, "file_name"))
+	if url := common.GetString(data, "url"); url != "" {
+		fmt.Fprintf(w, "url: %s\n", url)
+	}
 	version := common.GetString(data, "version")
 	if version == "" {
 		version = common.GetString(data, "data_version")
