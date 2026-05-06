@@ -81,6 +81,71 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 1. 建议先用 `+field-get` 拉现状，再做最小化修改。
 2. `formula/lookup` 类型更新前先阅读对应指南。
+3. 如果这次更新会改变字段 `type` 先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
+
+## 字段类型变更规则
+
+字段类型变更采用白名单机制：**只允许白名单转换**；未命中白名单时，**不建议用 CLI 转换字段类型** 除非用户明确知道风险并同意。
+
+### 允许直接转换 type
+
+先 `+field-get` / `+field-list` 看结构，再抽样读值；只有命中以下规则时，转换才是比较安全的。
+
+#### 相对安全
+
+| 目标类型 | 允许的源类型 | 说明 |
+|------|------|------|
+| `text` | `number`、`select`、`datetime`、`location`、`auto_number`、`checkbox` | 保留字符串表示；丢失原类型语义和结构化能力 |
+| `number` | `text`、`number`、`datetime`、`checkbox` | 保留可解析的数字值；无法解析的值会变空，原文本格式会丢失 |
+| `datetime` | `text`、`number`、`datetime`、`created_at`、`updated_at` | 保留可解析的时间字符串和时间戳；无法解析的值会变空，原文本格式会丢失 |
+| `select` | `text -> select`、`single select -> multi select`、`select -> select` | 只有完全匹配目标选项名的值会转成对应选项；没匹配上的值会被丢弃 |
+
+#### 可执行但会截断 / 重算
+
+- `select(multi) -> select(single)`: 只保留第一个值，其余值会被丢弃。
+- `user(multi) -> user(single)`: 只保留第一个人员，其余值会被丢弃。
+- `group_chat(multi) -> group_chat(single)`: 只保留第一个群，其余值会被丢弃。
+
+### 一律不要用 CLI 转换
+
+以下场景全部视为黑名单；默认要求用户改到 Web 页面手动完成，或改走“新建字段 + 数据迁移”。
+
+- `any -> checkbox`
+- `any -> user`
+- `any -> group_chat`
+- `any -> attachment`
+- `any -> location`
+- `link` 类型变更
+- 任意涉及动态 / 静态选项来源切换的 `select` 类型变更
+
+### 可例外继续执行的场景
+
+只有在**整列数据丢失可接受**时，才允许对黑名单场景例外执行。
+
+- `EmptyColumn`: 该列为空
+- `FreshTableInit`: 新建空表初始化
+- `PrimaryFieldBootstrap`: 主列不能删，只能更新完成初始化
+- `ExplicitLossAccepted`: 用户明确接受整列数据丢失
+
+不满足以上条件时，不要转换。
+
+### 默认迁移方案
+
+用户要保留数据时，默认不要原地改类型，直接按下面执行：
+
+1. `+field-get` / `+field-list` 确认原字段和依赖
+2. 新建目标字段
+3. 抽样读取旧值，确认映射规则
+4. 批量迁移数据；无法映射的值单独列出
+5. 更新视图 / 筛选 / 排序 / 公式 / lookup / 写入引用
+6. 验证通过后，再决定是否删除旧字段
+
+### 完成态验证
+
+- `FieldReadback`: 读回字段结构，确认 `type` / `multiple` / `style` / `options`
+- `ValueReadback`: 抽样读回转换后的单元格值
+- `DownstreamReadback`: 若涉及看板 / 分组 / 排序 / lookup / 公式，继续读回结果
+- `CompletionRule`: 结构、值、下游能力都正确，才能回复“已完成”
 
 ## 坑点
 

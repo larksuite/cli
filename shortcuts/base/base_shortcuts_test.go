@@ -294,6 +294,39 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 	}
 }
 
+func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFieldUpdate.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	help := cmd.Flags().FlagUsages()
+	wantHelp := []string{
+		"complete field definition JSON object; update uses full PUT semantics, not a patch",
+	}
+	for _, want := range wantHelp {
+		if !strings.Contains(help, want) {
+			t.Fatalf("flag help missing %q:\n%s", want, help)
+		}
+	}
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	wantTips := []string{
+		`lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id <field_id> --json '{"name":"Status","type":"text"}'`,
+		`"type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]`,
+		"full field-definition PUT semantics",
+		"Read the current field first with +field-get",
+		"Type conversion is allowlist-based",
+		"web UI",
+		"Formula and lookup updates require reading the corresponding guide first.",
+		"lark-base skill's field-update guide",
+	}
+	for _, want := range wantTips {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+}
+
 func assertHelpOrder(t *testing.T, help string, before string, after string) {
 	t.Helper()
 	beforeIndex := strings.Index(help, before)

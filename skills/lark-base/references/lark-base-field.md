@@ -20,3 +20,4 @@ field 相关命令索引。
 - 聚合页只保留目录职责；每个命令的详细说明请进入对应单命令文档。
 - 所有 `+xxx-list` 调用都必须串行执行；若要批量跑多个 list 请求，只能串行执行。
 - 写字段 JSON 前优先阅读 [lark-base-shortcut-field-properties.md](lark-base-shortcut-field-properties.md)。
+- 涉及字段类型转换时，直接阅读 [lark-base-field-update.md](lark-base-field-update.md) 中的“字段类型变更规则”。

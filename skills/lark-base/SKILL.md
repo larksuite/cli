@@ -95,7 +95,7 @@ metadata:
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
 | `+field-list / +field-get` | 列出字段结构，或获取单个字段详情 | [`lark-base-field-list.md`](references/lark-base-field-list.md)、[`lark-base-field-get.md`](references/lark-base-field-get.md) | 写记录、写字段、做分析前常先读 `+field-list`；`+field-list` 只能串行执行；`+field-get` 适合删除/更新前确认目标 |
-| `+field-create / +field-update / +field-delete` | 创建、更新或删除普通字段 | [`lark-base-field-create.md`](references/lark-base-field-create.md)、[`lark-base-field-update.md`](references/lark-base-field-update.md)、[`lark-base-field-delete.md`](references/lark-base-field-delete.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 写字段前先看字段属性规范；如果类型是 `formula / lookup`，先转去读对应 guide；删除时用户已明确目标可直接执行并带 `--yes` |
+| `+field-create / +field-update / +field-delete` | 创建、更新或删除普通字段 | [`lark-base-field-create.md`](references/lark-base-field-create.md)、[`lark-base-field-update.md`](references/lark-base-field-update.md)、[`lark-base-field-delete.md`](references/lark-base-field-delete.md)、[`lark-base-shortcut-field-properties.md`](references/lark-base-shortcut-field-properties.md) | 写字段前先看字段属性规范；如果涉及类型转换，直接按 `+field-update` 中的字段类型变更规则执行，只在安全白名单内考虑原地转换；如果类型是 `formula / lookup`，先转去读对应 guide；删除时用户已明确目标可直接执行并带 `--yes` |
 | `+field-search-options` | 查询字段可选项 | [`lark-base-field-search-options.md`](references/lark-base-field-search-options.md) | 适合单选/多选等选项型字段 |
 
 #### 2.3.3 Record 子模块
