@@ -38,7 +38,7 @@ const defaultTaskAttachmentResourceType = "task"
 var UploadAttachmentTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+upload-attachment",
-	Description: "upload a local file as an attachment to a task",
+	Description: "upload a local file as an attachment to a task; use --resource-type=task_delivery when uploading to task agents",
 	Risk:        "write",
 	Scopes:      []string{"task:attachment:write"},
 	AuthTypes:   []string{"user", "bot"},
@@ -47,7 +47,7 @@ var UploadAttachmentTask = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "resource-id", Desc: "task guid (or task applink URL)", Required: true},
 		{Name: "file", Desc: "local file path (single file, <= 50MB)", Required: true},
-		{Name: "resource-type", Desc: "owning resource type (default: task)", Default: defaultTaskAttachmentResourceType},
+		{Name: "resource-type", Desc: "owning resource type (default: task); use task_delivery when uploading to task agents", Default: defaultTaskAttachmentResourceType},
 		{Name: "user-id-type", Desc: "user id type (default: open_id)", Default: "open_id"},
 	},
 
