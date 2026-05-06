@@ -181,7 +181,7 @@ func TestLogAuthError_RecordsStructuredEntry(t *testing.T) {
 	}
 }
 
-func TestPollDeviceToken_DefaultsIntervalBelowOne(t *testing.T) {
+func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
 	t.Parallel()
 
 	var requests atomic.Int32
