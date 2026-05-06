@@ -464,6 +464,8 @@
 { "type": "location", "name": "位置" }
 ```
 
+写入必须使用 `{lng,lat}`。location 读回会包含 `full_address`；筛选和 `location -> text` 类型转换按 `full_address` 字符串处理，只有公式能访问坐标。
+
 ```json
 { "type": "checkbox", "name": "完成" }
 ```

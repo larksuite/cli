@@ -34,6 +34,7 @@
 
 - **Base token 口径统一**：无论 Shortcut 还是原生 API，都统一使用 `base_token`
 - **附件字段**：上传本地文件时只能走 `lark-cli base +record-upload-attachment`
+- **地理位置字段**：写入必须使用 `{lng,lat}`；读取、筛选和转文本等场景使用 `full_address` 字符串，筛选优先用包含匹配；只有公式能访问坐标
 - **能力边界**：当前 `base/v3` 原生 spec 以单表 / 单记录 / 视图筛选配置为主，批量写入和旧 `search` 场景优先走 unified Shortcut 组合能力
 - **视图重命名确认规则**：用户已经明确“把哪个视图改成什么名字”时，执行 `table.views patch` / 对应 shortcut 直接改名即可，不需要再补一句确认
 - **删除确认规则（记录 / 字段 / 表）**：执行 `table.records delete / table.fields delete / tables delete` 或对应 shortcut 时，如果用户已经明确要求删除且目标明确，可以直接执行；只有目标不明确时才先追问
