@@ -194,6 +194,66 @@ func TestCredentialProvider_SelectedSourceWithoutTokenReturnsUnavailableError(t 
 	}
 }
 
+func TestCredentialProvider_EnvAccountWithAppSecretFallsBackToDefaultForTAT(t *testing.T) {
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "env",
+			account: &extcred.Account{
+				AppID:     "env_app",
+				AppSecret: "env_secret",
+				Brand:     "feishu",
+			},
+		}},
+		nil,
+		&mockDefaultToken{result: &TokenResult{Token: "default_tat"}},
+		nil,
+	)
+
+	if _, err := cp.ResolveAccount(context.Background()); err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+
+	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "env_app"})
+	if err != nil {
+		t.Fatalf("ResolveToken() error = %v", err)
+	}
+	if result.Token != "default_tat" {
+		t.Fatalf("ResolveToken() token = %q, want %q", result.Token, "default_tat")
+	}
+}
+
+func TestCredentialProvider_EnvAccountWithAppSecretDoesNotFallBackToDefaultForUAT(t *testing.T) {
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "env",
+			account: &extcred.Account{
+				AppID:     "env_app",
+				AppSecret: "env_secret",
+				Brand:     "feishu",
+			},
+		}},
+		nil,
+		&mockDefaultToken{result: &TokenResult{Token: "default_uat"}},
+		nil,
+	)
+
+	if _, err := cp.ResolveAccount(context.Background()); err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "env_app"})
+	if err == nil {
+		t.Fatal("ResolveToken() error = nil, want unavailable error")
+	}
+	var unavailableErr *TokenUnavailableError
+	if !errors.As(err, &unavailableErr) {
+		t.Fatalf("ResolveToken() error type = %T, want *TokenUnavailableError", err)
+	}
+	if unavailableErr.Source != "env" || unavailableErr.Type != TokenTypeUAT {
+		t.Fatalf("ResolveToken() unavailable error = %+v, want source env and type uat", unavailableErr)
+	}
+}
+
 func TestCredentialProvider_ResolveTokenPropagatesNonBlockExtensionError(t *testing.T) {
 	cp := NewCredentialProvider(
 		[]extcred.Provider{&mockExtProvider{name: "env", err: errors.New("provider exploded")}},

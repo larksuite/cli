@@ -265,6 +265,21 @@ func resolveTokenFromSource(ctx context.Context, source credentialSource, req To
 	return result, nil
 }
 
+// shouldFallbackToDefaultTAT reports whether an env-selected account with a
+// real app secret may mint a TAT via the built-in default token resolver.
+// This keeps env-provided explicit TAT/UAT values authoritative while letting
+// env app credentials behave like config-backed app credentials for bot flows.
+func (p *CredentialProvider) shouldFallbackToDefaultTAT(ctx context.Context, source credentialSource, req TokenSpec) bool {
+	if req.Type != TokenTypeTAT || source == nil || source.Name() != "env" || p.defaultToken == nil {
+		return false
+	}
+	acct, err := p.ResolveAccount(ctx)
+	if err != nil || acct == nil {
+		return false
+	}
+	return HasRealAppSecret(acct.AppSecret)
+}
+
 // ResolveIdentityHint resolves default/auto identity guidance from the selected source.
 // NOTE: Uses sync.Once — only the context from the first call is used for resolution.
 // This matches ResolveAccount and keeps identity decisions stable within one CLI invocation.
@@ -307,7 +322,17 @@ func (p *CredentialProvider) ResolveToken(ctx context.Context, req TokenSpec) (*
 		return nil, err
 	}
 	if source != nil {
-		return resolveTokenFromSource(ctx, source, req)
+		result, found, err := source.TryResolveToken(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			return result, nil
+		}
+		if p.shouldFallbackToDefaultTAT(ctx, source, req) {
+			return resolveTokenFromSource(ctx, defaultTokenSource{resolver: p.defaultToken}, req)
+		}
+		return nil, &TokenUnavailableError{Source: source.Name(), Type: req.Type}
 	}
 
 	for _, prov := range p.providers {
