@@ -200,9 +200,6 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 	if issue.Hint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Hint)
 	}
-	if loginSucceeded {
-		return output.ErrBare(output.ExitAuth)
-	}
 	return output.ErrBare(output.ExitAuth)
 }
 
