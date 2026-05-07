@@ -68,6 +68,8 @@
 
 用对象数组：
 
+> **群组筛选：不要猜 ID。** 不知道 `chat_id` 时，先用 `lark-im` 搜群：`lark-cli im +chat-search --query "<群名关键词>" --as user`；取结果里的 `oc_xxx`。
+
 ```json
 ["负责群", "intersects", [{ "id": "oc_xxx" }]]
 ```
