@@ -15,6 +15,11 @@ lark-cli task +create \
   --due "2026-03-25" \
   --tasklist-id "https://applink.larkoffice.com/client/todo/task_list?guid=a4b00000-000-000-000-00000000036c"
 
+# Create a task assigned to an app
+lark-cli task +create \
+  --summary "Nightly Sync" \
+  --assignee "cli_xxx"
+
 # Create a simple task
 lark-cli task +create \
   --summary "Buy milk"
@@ -29,7 +34,8 @@ lark-cli task +create --summary "Test Task" --dry-run
 |-----------|----------|-------------|
 | `--summary <text>` | Yes | The title or summary of the task |
 | `--description <text>` | No | Detailed description of the task |
-| `--assignee <id>` | No | The `open_id` of the user to assign the task to (e.g., `ou_xxx`) |
+| `--assignee <id>` | No | Assignee ID. Use user `open_id` like `ou_xxx` for people, or app ID like `cli_xxx` for apps. |
+| `--follower <id>` | No | Follower ID. Use user `open_id` like `ou_xxx` for people, or app ID like `cli_xxx` for apps. |
 | `--due <time>` | No | Due date. Supports ISO 8601, `YYYY-MM-DD`, relative time (e.g., `+2d`), or ms timestamp. `YYYY-MM-DD` and relative time will automatically set it as an all-day task. |
 | `--tasklist-id <id>` | No | The GUID of the tasklist, or a full AppLink URL (the CLI will automatically extract the `guid` parameter from the URL). |
 | `--idempotency-key <key>` | No | Client token to ensure idempotency of the request. |
