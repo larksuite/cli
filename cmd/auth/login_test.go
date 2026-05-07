@@ -70,6 +70,32 @@ func TestSuggestDomain_ExactMatch(t *testing.T) {
 	}
 }
 
+func TestNormalizeScopeInput(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"single", "vc:note:read", "vc:note:read"},
+		{"comma", "vc:note:read,vc:meeting.meetingevent:read", "vc:note:read vc:meeting.meetingevent:read"},
+		{"space", "vc:note:read vc:meeting.meetingevent:read", "vc:note:read vc:meeting.meetingevent:read"},
+		{"comma_and_spaces", "vc:note:read, vc:meeting.meetingevent:read", "vc:note:read vc:meeting.meetingevent:read"},
+		{"mixed_separators", "a, b\tc\nd  e", "a b c d e"},
+		{"trim_and_dedup", "  a , b , a  ", "a b"},
+		{"trailing_separators", "a,b,,", "a b"},
+		{"only_separators", " , , ", ""},
+		{"tab_separated", "im:message:send\toffline_access", "im:message:send offline_access"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeScopeInput(tc.in); got != tc.want {
+				t.Errorf("normalizeScopeInput(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestShortcutSupportsIdentity_DefaultUser(t *testing.T) {
 	// Empty AuthTypes defaults to ["user"]
 	sc := common.Shortcut{AuthTypes: nil}
