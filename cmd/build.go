@@ -109,6 +109,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	RegisterGlobalFlags(rootCmd.PersistentFlags(), &cfg.globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
+		f.CurrentCommand = cmd
 	}
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))

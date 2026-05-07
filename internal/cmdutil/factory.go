@@ -39,6 +39,7 @@ type Factory struct {
 	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)
 	IdentityAutoDetected bool                    // set by ResolveAs when identity was auto-detected
 	ResolvedIdentity     core.Identity           // identity resolved by the last ResolveAs call
+	CurrentCommand       *cobra.Command          // last matched command being executed; set during PersistentPreRun
 
 	Credential *credential.CredentialProvider
 

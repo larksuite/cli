@@ -11,9 +11,12 @@ import (
 	"github.com/larksuite/cli/cmd/auth"
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/schema"
+	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/registry"
+	"github.com/spf13/cobra"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -185,6 +188,95 @@ func TestEnrichPermissionError_SpecialCharsEscaped(t *testing.T) {
 				t.Errorf("console_url contains unescaped dangerous value\n  deny substring: %s\n  got url:        %s", tt.denyInURL, consoleURL)
 			}
 		})
+	}
+}
+
+func TestEnrichMissingScopeError_ServiceMethodUsesLocalScopesWhenNoUAT(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	var target registry.CommandEntry
+	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
+		if len(entry.Scopes) == 1 && entry.Scopes[0] == "calendar:calendar.event:create" {
+			target = entry
+			break
+		}
+	}
+	if target.Command == "" {
+		t.Fatal("failed to locate a calendar create command in local registry metadata")
+	}
+	parts := strings.Split(target.Command, " ")
+	if len(parts) != 2 {
+		t.Fatalf("expected resource/method command, got %q", target.Command)
+	}
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "calendar"}
+	resourceCmd := &cobra.Command{Use: parts[0]}
+	methodCmd := &cobra.Command{Use: parts[1]}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(resourceCmd)
+	resourceCmd.AddCommand(methodCmd)
+	f.CurrentCommand = methodCmd
+
+	exitErr := output.Errorf(output.ExitAPI, "api_error", "API call failed: %s", &internalauth.NeedAuthorizationError{})
+	enrichMissingScopeError(f, exitErr)
+
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected exit code %d, got %d", output.ExitAPI, exitErr.Code)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "api_error" {
+		t.Fatalf("expected api_error detail, got %+v", exitErr.Detail)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "need_user_authorization") {
+		t.Fatalf("expected original need_user_authorization message, got %q", exitErr.Detail.Message)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "current command requires scope(s): calendar:calendar.event:create") {
+		t.Fatalf("expected scope guidance in hint, got %q", exitErr.Detail.Hint)
+	}
+	if strings.Contains(exitErr.Detail.Hint, "lark-cli auth login --scope") {
+		t.Fatalf("expected hint without auth login command, got %q", exitErr.Detail.Hint)
+	}
+	if exitErr.Detail.Detail != nil {
+		t.Fatalf("expected detail to remain nil, got %#v", exitErr.Detail.Detail)
+	}
+}
+
+func TestEnrichMissingScopeError_ShortcutUsesDeclaredScopesWhenNoUAT(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "docs"}
+	shortcutCmd := &cobra.Command{Use: "+create"}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(shortcutCmd)
+	f.CurrentCommand = shortcutCmd
+
+	exitErr := output.ErrNetwork("API call failed: %s", &internalauth.NeedAuthorizationError{})
+	enrichMissingScopeError(f, exitErr)
+
+	if exitErr.Code != output.ExitNetwork {
+		t.Fatalf("expected exit code %d, got %d", output.ExitNetwork, exitErr.Code)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "network" {
+		t.Fatalf("expected network detail, got %+v", exitErr.Detail)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "need_user_authorization") {
+		t.Fatalf("expected original need_user_authorization message, got %q", exitErr.Detail.Message)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "current command requires scope(s): docx:document:create") {
+		t.Fatalf("expected shortcut scope hint, got %q", exitErr.Detail.Hint)
+	}
+	if strings.Contains(exitErr.Detail.Hint, "lark-cli auth login --scope") {
+		t.Fatalf("expected hint without auth login command, got %q", exitErr.Detail.Hint)
+	}
+	if exitErr.Detail.Detail != nil {
+		t.Fatalf("expected detail to remain nil, got %#v", exitErr.Detail.Detail)
 	}
 }
 

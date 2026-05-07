@@ -192,6 +192,7 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 		if !exitErr.Raw {
 			// Raw errors (e.g. from `api` command) preserve the original API
 			// error detail; skip enrichment which would clear it.
+			enrichMissingScopeError(f, exitErr)
 			enrichPermissionError(f, exitErr)
 		}
 		output.WriteErrorEnvelope(errOut, exitErr, string(f.ResolvedIdentity))
