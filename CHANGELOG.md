@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.25] - 2026-05-07
+
+### Features
+
+- Add skills version drift notice and unify update flow (#723)
+
+### Bug Fixes
+
+- Remove misleading default value from `--as` flag help text (#769)
+- Handle negative truncate lengths (#744)
+- Reject invalid JSON pointer escapes (#741)
+- Migrate task shortcut errors to structured `output.Errorf`/`ErrValidation` (#740)
+
+### Documentation
+
+- Clarify base `user_open_id` guidance (#763)
+
 ## [v1.0.24] - 2026-05-06
 
 ### Features
@@ -597,6 +614,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.25]: https://github.com/larksuite/cli/releases/tag/v1.0.25
 [v1.0.24]: https://github.com/larksuite/cli/releases/tag/v1.0.24
 [v1.0.23]: https://github.com/larksuite/cli/releases/tag/v1.0.23
 [v1.0.22]: https://github.com/larksuite/cli/releases/tag/v1.0.22
