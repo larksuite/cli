@@ -58,6 +58,8 @@
 
 用对象数组：
 
+> **人员筛选：不要猜 ID。** 不知道 `open_id` 时，先用 `lark-contact` 查 id：`lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --as user`。
+
 ```json
 ["负责人", "intersects", [{ "id": "ou_xxx" }]]
 ```
