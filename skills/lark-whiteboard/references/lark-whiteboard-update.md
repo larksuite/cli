@@ -45,7 +45,7 @@ EOF
 cat diagram.puml | lark-cli whiteboard +update \
   --whiteboard-token <画板Token> \
   --input_format plantuml --source -\
-  --overwrite --yes --as user
+  --overwrite --as user
 ```
 
 ### 示例 2：使用 Mermaid 代码更新画板（从文件读取）
@@ -65,7 +65,7 @@ lark-cli whiteboard +update \
   --whiteboard-token <画板Token> \
   --input_format mermaid \
   --source @./diagram.mmd \
-  --overwrite --yes --as user
+  --overwrite --as user
 ```
 
 ### 示例 3：使用 whiteboard-cli 生成 OpenAPI 格式并写入画板
@@ -79,7 +79,7 @@ npx -y @larksuite/whiteboard-cli@^0.2.10 -i <产物文件> --to openapi --format
     --whiteboard-token <画板Token> \
     --source - --input_format raw \
     --idempotent-token <10+字符唯一串> \
-    --yes --as user
+    --as user
 ```
 
 ### 示例 4：先生成产物文件，再从文件读取更新
@@ -96,5 +96,5 @@ lark-cli whiteboard +update \
   --idempotent-token <10+字符唯一串> \
   --input_format raw \
   --source @./temp.json \
-  --overwrite --yes --as user
+  --overwrite --as user
 ```
