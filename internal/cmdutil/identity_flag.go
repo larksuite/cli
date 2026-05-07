@@ -14,8 +14,8 @@ import (
 // AddAPIIdentityFlag registers the standard --as flag shape used by api/service commands.
 func AddAPIIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory, target *string) {
 	addIdentityFlag(ctx, cmd, f, target, identityFlagConfig{
-		defaultValue:     "auto",
-		usage:            "identity type: user | bot | auto (default)",
+		defaultValue:     "",
+		usage:            "identity type: user | bot",
 		completionValues: []string{"user", "bot"},
 	})
 }
@@ -26,7 +26,7 @@ func AddShortcutIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory
 		authTypes = []string{"user"}
 	}
 	addIdentityFlag(ctx, cmd, f, nil, identityFlagConfig{
-		defaultValue:     authTypes[0],
+		defaultValue:     "",
 		usage:            "identity type: " + strings.Join(authTypes, " | "),
 		completionValues: authTypes,
 	})

@@ -48,7 +48,7 @@ EXAMPLES:
 FLAGS:
     --params <json>       URL/query parameters JSON
     --data <json>         request body JSON (POST/PATCH/PUT/DELETE)
-    --as <type>           identity type: user | bot | auto (default: auto)
+    --as <type>           identity type: user | bot
     --format <fmt>        output format: json (default) | ndjson | table | csv | pretty
     --page-all            automatically paginate through all pages
     --page-size <N>       page size (0 = use API default)

@@ -24,8 +24,8 @@ func TestAddAPIIdentityFlag_NonStrictMode(t *testing.T) {
 	if flag.Hidden {
 		t.Fatal("expected --as flag to be visible outside strict mode")
 	}
-	if got := flag.DefValue; got != "auto" {
-		t.Fatalf("default value = %q, want %q", got, "auto")
+	if got := flag.DefValue; got != "" {
+		t.Fatalf("default value = %q, want empty string", got)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestAddAPIIdentityFlag_StrictModeHidesFlagAndLocksDefault(t *testing.T) {
 	}
 }
 
-func TestAddShortcutIdentityFlag_UsesAuthTypes(t *testing.T) {
+func TestAddShortcutIdentityFlag_NoDefault(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
@@ -62,7 +62,7 @@ func TestAddShortcutIdentityFlag_UsesAuthTypes(t *testing.T) {
 	if flag.Hidden {
 		t.Fatal("expected --as flag to be visible outside strict mode")
 	}
-	if got := flag.DefValue; got != "bot" {
-		t.Fatalf("default value = %q, want %q", got, "bot")
+	if got := flag.DefValue; got != "" {
+		t.Fatalf("default value = %q, want empty string", got)
 	}
 }
