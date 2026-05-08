@@ -11,8 +11,8 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 ## 0. Hard Rules
 
 - 全局问题不能用默认 `+record-list --limit N` 片面地回答。
-- `jq` / shell / 本地代码只适合处理小范围结果；超过 200 行默认不推荐本地统计、排序或求极值，应改用 Base 侧 filter/sort/aggregate。
-- “最高、最低、最新、最早、Top、Bottom、总数、全部、异常、最大、最小、最多、最少、优先级最高”等全局语义，必须把筛选、排序或聚合下推到 Base 侧。
+- `jq` / shell / 本地代码是在个人电脑或当前运行环境中处理已返回数据，只适合小范围结果；超过 200 行默认不推荐本地统计、排序或求极值，应改用 Base 云端查询服务的 filter/sort/aggregate。
+- “最高、最低、最新、最早、Top、Bottom、总数、全部、异常、最大、最小、最多、最少、优先级最高”等全局语义，必须在 Base 云端查询服务中完成筛选、排序或聚合。
 - `+record-search` 用于关键词检索字段的展示文本；可搜多类字段，但匹配的是文本表示（如人员命中 name），不要用它替代金额、状态、日期、空值等结构化条件。
 - 不要依赖已有视图，除非用户明确指定该视图，或你已读取并验证其 filter/sort/projection 符合当前问题。
 - 最终答案必须使用用户可读的展示值；内部 ID、`record_id`、关联记录 ID、open_id、编码字段只能作为连接键，不能替代最终答案，除非用户明确要求输出 ID。
@@ -49,8 +49,8 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 
 使用 `+data-query`：
 
-- 让 Base 侧完成 filters、dimensions、measures、sort、pagination.limit。
-- `pagination.limit` 是服务端聚合结果限制，不是分页扫描。
+- 让 Base 云端查询服务完成 filters、dimensions、measures、sort、pagination.limit。
+- `pagination.limit` 是 Base 云端查询服务中的聚合结果限制，不是本地分页扫描。
 - 需要输出明细或名称时，先拿业务 key，再用 record 路径精确回查。
 - 字段类型、日期 value、DSL shape 以 [lark-base-data-query.md](lark-base-data-query.md) 为准。
 
@@ -71,7 +71,7 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 
 - `+record-list` 默认页、固定 `--limit`、本地 `jq`、shell 管道、手工浏览输出，都只覆盖已读取范围；超过 200 行不要把本地处理当作推荐路径。
 - `has_more=true`、存在下一页 offset/page token、或返回行数等于 page size，都表示可能还有未读取数据。
-- 对全局问题，只有 Base 侧 filter/sort/aggregate 已经收敛目标范围，或者 `data-query` 已完成服务端聚合排序限制时，才可以用有限返回作答。
+- 对全局问题，只有 Base 云端查询服务已经通过 filter/sort/aggregate 收敛目标范围，或 `data-query` 已在云端完成聚合、排序和限制时，才可以用有限返回作答。
 - 必须全量导出时，按 CLI 分页语义串行翻页；不要并发调用 `+record-list`。
 
 ## 4. Final Answer Check
@@ -79,8 +79,8 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 回答前必须能确认：
 
 - 问题范围是局部样例、单点定位、全局明细、聚合分析、多表关联，还是查询后写入。
-- 筛选、排序、聚合是否发生在 Base 侧。
-- 如果使用 `jq` / shell，本地输入是否是 200 行以内的小范围结果；超过 200 行是否已改用 Base 侧查询。
+- 筛选、排序、聚合是否发生在 Base 云端查询服务中，而不是本地 `jq` / shell 中。
+- 如果使用 `jq` / shell，本地输入是否是 200 行以内的小范围结果；超过 200 行是否已改用 Base 云端查询服务查询。
 - 如果使用 `+record-list`，是否处理了 `has_more`，且投影包含业务 key 和解释字段。
 - 如果涉及关系查询，是否按 `record_id` 或业务 key 精确回查，最终答案是否来自关联表真实字段。
 - 最终答案能追溯到表、字段、筛选条件、排序/聚合条件和连接键。

@@ -5,7 +5,7 @@
 
 对多维表格数据进行聚合查询（分组、过滤、排序、聚合计算），基于以下语法的 JSON DSL：
 
-查询类任务还必须先遵守 [`lark-base-data-analysis-sop.md`](lark-base-data-analysis-sop.md)。`+data-query` 适合把筛选、分组、聚合、排序和 TopN 下推到 Base 侧；不要用默认分页的 `+record-list` 或本地 `jq` 替代聚合查询。
+查询类任务还必须先遵守 [`lark-base-data-analysis-sop.md`](lark-base-data-analysis-sop.md)。`+data-query` 适合让筛选、分组、聚合、排序和 TopN 在 Base 云端查询服务中执行；不要用默认分页的 `+record-list` 或本地 `jq` 替代聚合查询。
 
 ## 限制
 
@@ -420,14 +420,14 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 
 `+data-query` 不返回原始记录或 link 字段明细。需要输出聚合结果对应的原始记录字段、展示值或关联表字段时，按以下方式组合：
 
-1. 用 `+data-query` 在 Base 侧完成全局筛选、分组、聚合、排序和 TopN，得到业务 key、分组值或候选范围。
+1. 用 `+data-query` 在 Base 云端查询服务中完成全局筛选、分组、聚合、排序和 TopN，得到业务 key、分组值或候选范围。
 2. 如果已经拿到候选记录的 `record_id`，用 `+record-get` 读取明细字段。
 3. 如果拿到的是结构化业务 key（例如编号、状态、日期、金额等），优先创建临时视图做精确过滤后再 `+record-list --view-id` 读取；不要用 `+record-search` 代替结构化条件。
 4. 只有候选条件本身是文本展示值关键词时，才使用 `+record-search`，并用 `search_fields` 限定范围、`select_fields` 做投影。
 5. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
 6. 最终回答业务字段，不要把内部 `record_id` 当作用户可读答案。
 
-不要把 `data-query pagination.limit` 理解为分页扫描；它只限制服务端聚合结果行数，不支持 offset。需要全量明细导出时回到 data analysis SOP 的 record 分页规则。
+不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要全量明细导出时回到 data analysis SOP 的 record 分页规则。
 
 ## 坑点
 
@@ -440,7 +440,7 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 - ⚠️ **数据表标识 `tableId` vs `tableName`**：datasource 中可以用 `tableId`（如 `tblXXX`）或 `tableName`（数据表的用户自定义显示名称），二选一，不要混用
 - ⚠️ **`pagination.limit` 最大 5000**：超过会报错，且不支持 offset，只支持 limit
 - ⚠️ **所有 alias 必须全局唯一**：dimensions 和 measures 之间的 alias 也不能重名
-- ⚠️ **不要用本地分页结果替代 data-query**：凡是全局计数、分组、聚合、排序 TopN，优先让 `+data-query` 在 Base 侧完成；默认页 `+record-list` 后本地统计只能得到已读取范围内的结果
+- ⚠️ **不要用本地分页结果替代 data-query**：凡是全局计数、分组、聚合、排序 TopN，优先让 `+data-query` 在 Base 云端查询服务中执行；默认页 `+record-list` 后本地统计只能得到已读取范围内的结果
 
 ## 参考
 
