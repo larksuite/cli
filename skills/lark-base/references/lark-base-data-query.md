@@ -5,6 +5,8 @@
 
 对多维表格数据进行聚合查询（分组、过滤、排序、聚合计算），基于以下语法的 JSON DSL：
 
+查询类任务还必须先遵守 [`lark-base-data-analysis-sop.md`](lark-base-data-analysis-sop.md)。`+data-query` 适合把筛选、分组、聚合、排序和 TopN 下推到 Base 侧；不要用默认分页的 `+record-list` 或本地 `jq` 替代聚合查询。
+
 ## 限制
 
 - **权限要求**（按文档类型分流）：
@@ -49,6 +51,23 @@ lark-cli base +data-query \
   --dsl '{
     "datasource": {"type": "table", "table": {"tableName": "销售数据"}},
     "measures": [{"field_name": "金额", "aggregation": "sum", "alias": "total"}],
+    "shaper": {"format": "flat"}
+  }'
+
+# 先在服务端完成全局排序 TopN，再按结果中的业务 key 去读取明细或关联表
+lark-cli base +data-query \
+  --base-token MAGObxxxxx \
+  --dsl '{
+    "datasource": {"type": "table", "table": {"tableId": "tblxxxxxxxx"}},
+    "dimensions": [{"field_name": "客户ID", "alias": "customer_key"}],
+    "measures": [{"field_name": "风险分", "aggregation": "max", "alias": "max_risk"}],
+    "filters": {
+      "type": 1,
+      "conjunction": "and",
+      "conditions": [{"field_name": "状态", "operator": "is", "value": ["有效"]}]
+    },
+    "sort": [{"field_name": "max_risk", "order": "desc"}],
+    "pagination": {"limit": 1},
     "shaper": {"format": "flat"}
   }'
 ```
@@ -397,6 +416,17 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
    - 每个 value 是 CellValue 对象，实际值在 `value` 字段中，如 `{"value": "北京"}` 或 `{"value": 12345.00}`
    - 失败时结果在 `data.error` 中，包含具体错误码和信息
 
+## 与记录读取组合
+
+`+data-query` 不返回原始记录或 link 字段明细。需要最终输出业务实体名称、负责人、门店、供应商等明细时，按以下方式组合：
+
+1. 用 `+data-query` 在 Base 侧完成全局筛选、分组、聚合、排序和 TopN，得到业务 key、分组值或候选范围。
+2. 用 `+record-search`、临时视图或 `+record-get` 精确读取候选记录的明细字段。
+3. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
+4. 最终回答业务字段，不要把内部 `record_id` 当作用户可读答案。
+
+不要把 `data-query pagination.limit` 理解为分页扫描；它只限制服务端聚合结果行数，不支持 offset。需要全量明细导出时回到 data analysis SOP 的 record 分页规则。
+
 ## 坑点
 
 - ⚠️ **必须先查表结构**：DSL 的 `field_name` 必须与表中字段名称精确匹配（区分大小写），不能凭猜测构造。先用 `lark-cli base +field-list --base-token <base_token> --table-id <table_id>` 获取真实字段名
@@ -408,10 +438,12 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 - ⚠️ **数据表标识 `tableId` vs `tableName`**：datasource 中可以用 `tableId`（如 `tblXXX`）或 `tableName`（数据表的用户自定义显示名称），二选一，不要混用
 - ⚠️ **`pagination.limit` 最大 5000**：超过会报错，且不支持 offset，只支持 limit
 - ⚠️ **所有 alias 必须全局唯一**：dimensions 和 measures 之间的 alias 也不能重名
+- ⚠️ **不要用本地分页结果替代 data-query**：凡是全局计数、分组、聚合、排序 TopN，优先让 `+data-query` 在 Base 侧完成；默认页 `+record-list` 后本地统计只能得到已读取范围内的结果
 
 ## 参考
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
+- [lark-base-data-analysis-sop.md](lark-base-data-analysis-sop.md) — 查询范围、选路、下推、分页、record 明细回查和关系查询 SOP
 - [lark-base-cell-value.md](lark-base-cell-value.md) — CellValue 格式规范
 - [lark-base-shortcut-field-properties.md](lark-base-shortcut-field-properties.md) — shortcut 字段类型与 JSON 结构
