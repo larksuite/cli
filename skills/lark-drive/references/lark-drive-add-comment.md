@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-给文档、电子表格或飞书幻灯片添加评论。底层统一走 `/open-apis/drive/v1/files/:file_token/new_comments`（`create_v2`）接口；未指定位置时省略 `anchor` 创建全文评论，指定 `--block-id` 时传入 `anchor.block_id` 创建局部评论。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、sheet URL、slides URL，也支持传最终可解析为 doc/docx/sheet/slides 的 wiki URL。
+给文档、原生 Markdown 文件、电子表格或飞书幻灯片添加评论。底层统一走 `/open-apis/drive/v1/files/:file_token/new_comments`（`create_v2`）接口；未指定位置时省略 `anchor` 创建全文评论，指定 `--block-id` 时传入 `anchor.block_id` 创建局部评论。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、Drive file URL/token（**仅 `.md` 文件，且只支持全文评论**）、sheet URL、slides URL，也支持传最终可解析为 doc/docx/file/sheet/slides 的 wiki URL。
 
 ## 命令
 
@@ -23,6 +23,17 @@ lark-cli drive +add-comment \
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/wiki/<WIKI_TOKEN>" \
   --content '[{"type":"text","text":"这里需要一段全文评论"}]'
+
+# 给原生 Markdown 文件添加全文评论
+# 注意：CLI 会先查询 drive metas，只有标题以 .md 结尾的 file 才允许评论
+lark-cli drive +add-comment \
+  --doc "https://example.larksuite.com/file/<FILE_TOKEN>" \
+  --content '[{"type":"text","text":"请补充 README 示例"}]'
+
+# 裸 token 也支持，但必须显式声明 --type file
+lark-cli drive +add-comment \
+  --doc "<FILE_TOKEN>" --type file \
+  --content '[{"type":"text","text":"请补充目录说明"}]'
 
 # 给 docx 文档的指定 block 添加局部评论（block_id 可通过 docs +fetch --api-version v2 --detail with-ids 获取）
 lark-cli drive +add-comment \
@@ -128,8 +139,8 @@ lark-cli drive +add-comment \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--doc` | 是 | 文档 URL / token、sheet / slides URL，或可解析到 `doc`/`docx`/`sheet`/`slides` 的 wiki URL |
-| `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`sheet`、`slides`。URL 输入时自动识别，无需传 |
+| `--doc` | 是 | 文档 URL / token、file / sheet / slides URL，或可解析到 `doc`/`docx`/`file`/`sheet`/`slides` 的 wiki URL |
+| `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`file`、`sheet`、`slides`。URL 输入时自动识别，无需传 |
 | `--content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'` |
 | `--full-comment` | 否 | 显式指定创建全文评论；未传 `--block-id` 时也会默认走全文评论（不适用于 sheet） |
 | `--block-id` | 局部评论时必填 | 目标块 ID，可通过 `docs +fetch --api-version v2 --detail with-ids` 获取。**Sheet 评论**：格式为 `<sheetId>!<cell>`（如 `a281f9!D6`） |
@@ -139,6 +150,7 @@ lark-cli drive +add-comment \
 - **局部评论需要先获取 block ID**：先调用 `docs +fetch --api-version v2 --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
 - **Review 场景优先局部评论**：审阅、校对、逐条指出问题时，必须先尝试定位到具体 block / 单元格 / slide 元素，并逐问题创建局部评论；不要把所有问题合并成一条全文评论。
 - 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL，以及最终可解析为 `doc`/`docx` 的 wiki URL。
+- **Markdown file 评论**：仅支持 Drive 原生 `.md` 文件。CLI 会先调用 `POST /open-apis/drive/v1/metas/batch_query` 读取 file 元信息，并检查标题是否以 `.md` 结尾；不是 `.md` 会直接报错。Markdown file 只支持**全文评论**，不支持 `--block-id` 或 `--selection-with-ellipsis`。
 - 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。
 - **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。CLI 会将其拆分映射到 `anchor.block_id` / `anchor.slide_block_type`。此时 `--full-comment` 和 `--selection-with-ellipsis` 不可用。
