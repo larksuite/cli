@@ -192,6 +192,8 @@ func TestEnrichPermissionError_SpecialCharsEscaped(t *testing.T) {
 }
 
 func TestEnrichMissingScopeError_ServiceMethodUsesLocalScopesWhenNoUAT(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
@@ -245,6 +247,8 @@ func TestEnrichMissingScopeError_ServiceMethodUsesLocalScopesWhenNoUAT(t *testin
 }
 
 func TestEnrichMissingScopeError_ShortcutUsesDeclaredScopesWhenNoUAT(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
@@ -277,6 +281,31 @@ func TestEnrichMissingScopeError_ShortcutUsesDeclaredScopesWhenNoUAT(t *testing.
 	}
 	if exitErr.Detail.Detail != nil {
 		t.Fatalf("expected detail to remain nil, got %#v", exitErr.Detail.Detail)
+	}
+}
+
+func TestEnrichMissingScopeError_AppendsExistingHint(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "docs"}
+	shortcutCmd := &cobra.Command{Use: "+create"}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(shortcutCmd)
+	f.CurrentCommand = shortcutCmd
+
+	exitErr := output.ErrNetwork("API call failed: %s", &internalauth.NeedAuthorizationError{})
+	exitErr.Detail.Hint = "existing hint"
+	enrichMissingScopeError(f, exitErr)
+
+	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
+	if exitErr.Detail.Hint != want {
+		t.Fatalf("expected appended hint %q, got %q", want, exitErr.Detail.Hint)
 	}
 }
 

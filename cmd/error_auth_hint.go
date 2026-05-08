@@ -34,9 +34,16 @@ func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 		return
 	}
 
-	exitErr.Detail.Hint = fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
+	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
+	if exitErr.Detail.Hint == "" {
+		exitErr.Detail.Hint = scopeHint
+		return
+	}
+	exitErr.Detail.Hint += "\n" + scopeHint
 }
 
+// isNeedUserAuthorizationError reports whether err represents a missing-UAT
+// failure, either as the original auth error or as a wrapped ExitError.
 func isNeedUserAuthorizationError(err error) bool {
 	var needAuthErr *internalauth.NeedAuthorizationError
 	if errors.As(err, &needAuthErr) {
@@ -50,6 +57,9 @@ func isNeedUserAuthorizationError(err error) bool {
 	return strings.Contains(err.Error(), "need_user_authorization")
 }
 
+// resolveDeclaredScopesForCurrentCommand returns the scopes declared by the
+// current command for the resolved identity, checking shortcuts first and then
+// service methods from local registry metadata.
 func resolveDeclaredScopesForCurrentCommand(f *cmdutil.Factory) []string {
 	if f == nil || f.CurrentCommand == nil {
 		return nil
@@ -69,6 +79,8 @@ func resolveDeclaredScopesForCurrentCommand(f *cmdutil.Factory) []string {
 	return resolveDeclaredServiceMethodScopes(f.CurrentCommand, identity)
 }
 
+// resolveDeclaredShortcutScopes returns the scopes declared by a mounted
+// shortcut command for the given identity.
 func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string {
 	if cmd == nil || cmd.Parent() == nil || !strings.HasPrefix(cmd.Name(), "+") {
 		return nil
@@ -88,6 +100,8 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 	return nil
 }
 
+// resolveDeclaredServiceMethodScopes returns the scopes declared by a
+// service/resource/method command from the embedded from_meta registry.
 func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []string {
 	if cmd == nil || cmd.Parent() == nil || cmd.Parent().Parent() == nil || cmd.Parent().Parent().Parent() == nil {
 		return nil
@@ -117,6 +131,8 @@ func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []s
 	return declaredScopesForMethod(methodMap, identity)
 }
 
+// declaredScopesForMethod returns all requiredScopes when present; otherwise it
+// resolves the single recommended scope from the method's scopes list.
 func declaredScopesForMethod(method map[string]interface{}, identity string) []string {
 	if requiredRaw, ok := method["requiredScopes"].([]interface{}); ok && len(requiredRaw) > 0 {
 		return interfaceStrings(requiredRaw)
@@ -141,6 +157,8 @@ func declaredScopesForMethod(method map[string]interface{}, identity string) []s
 	return []string{recommended}
 }
 
+// interfaceStrings converts a []interface{} containing strings into a compact
+// []string, skipping empty or non-string values.
 func interfaceStrings(values []interface{}) []string {
 	scopes := make([]string, 0, len(values))
 	for _, value := range values {
@@ -153,6 +171,8 @@ func interfaceStrings(values []interface{}) []string {
 	return scopes
 }
 
+// shortcutSupportsIdentity reports whether a shortcut supports the requested
+// identity, applying the default user-only behavior when AuthTypes is empty.
 func shortcutSupportsIdentity(sc shortcutcommon.Shortcut, identity string) bool {
 	authTypes := sc.AuthTypes
 	if len(authTypes) == 0 {
