@@ -12,10 +12,11 @@ package config
 type bindMsg struct {
 	// Source selection.
 	// SelectSourceDesc format: brand.
-	SelectSource     string
-	SelectSourceDesc string
-	SourceOpenClaw   string // format: resolved config path.
-	SourceHermes     string // format: resolved dotenv path.
+	SelectSource      string
+	SelectSourceDesc  string
+	SourceOpenClaw    string // format: resolved config path.
+	SourceHermes      string // format: resolved dotenv path.
+	SourceLarkChannel string // format: resolved config path.
 
 	// Account selection (OpenClaw multi-account).
 	// Format: source display name ("OpenClaw" | "Hermes"), brand.
@@ -86,10 +87,11 @@ type bindMsg struct {
 }
 
 var bindMsgZh = &bindMsg{
-	SelectSource:     "你想在哪个 Agent 中使用 lark-cli?",
-	SelectSourceDesc: "从你选择的 Agent 中获取%s应用信息，并配置到 lark-cli 中",
-	SourceOpenClaw:   "OpenClaw — 配置文件: %s",
-	SourceHermes:     "Hermes — 配置文件: %s",
+	SelectSource:      "你想在哪个 Agent 中使用 lark-cli?",
+	SelectSourceDesc:  "从你选择的 Agent 中获取%s应用信息，并配置到 lark-cli 中",
+	SourceOpenClaw:    "OpenClaw — 配置文件: %s",
+	SourceHermes:      "Hermes — 配置文件: %s",
+	SourceLarkChannel: "Lark Channel — 配置文件: %s",
 
 	SelectAccount: "检测到 %s 中已配置多个%s应用，请选择一个",
 
@@ -117,10 +119,11 @@ var bindMsgZh = &bindMsg{
 }
 
 var bindMsgEn = &bindMsg{
-	SelectSource:     "Which Agent are you running?",
-	SelectSourceDesc: "lark-cli will read your %s app credentials from the selected Agent and apply them automatically.",
-	SourceOpenClaw:   "OpenClaw — config: %s",
-	SourceHermes:     "Hermes — config: %s",
+	SelectSource:      "Which Agent are you running?",
+	SelectSourceDesc:  "lark-cli will read your %s app credentials from the selected Agent and apply them automatically.",
+	SourceOpenClaw:    "OpenClaw — config: %s",
+	SourceHermes:      "Hermes — config: %s",
+	SourceLarkChannel: "Lark Channel — config: %s",
 
 	// Args order (source, brand) matches the Chinese template; %[N]s lets the
 	// English reading order differ while the caller passes args in one order.

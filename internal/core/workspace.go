@@ -27,6 +27,11 @@ const (
 	// WorkspaceHermes activates when any Hermes-specific env signal is
 	// present (see DetectWorkspaceFromEnv for the full list).
 	WorkspaceHermes Workspace = "hermes"
+
+	// WorkspaceLarkChannel activates when LARK_CHANNEL == "1" is set by
+	// lark-channel-bridge in subprocesses it spawns (e.g. claude). See
+	// DetectWorkspaceFromEnv for the detection rule.
+	WorkspaceLarkChannel Workspace = "lark-channel"
 )
 
 // currentWorkspace holds the workspace for the current process invocation.
@@ -90,7 +95,10 @@ func (w Workspace) IsLocal() bool {
 //     - HERMES_EXEC_ASK == "1": exported by the gateway (paired w/ QUIET)
 //     - HERMES_GATEWAY_TOKEN: injected into every gateway subprocess
 //     - HERMES_SESSION_KEY:   session identifier scoped to the current chat
-//  3. Otherwise → WorkspaceLocal
+//  3. LARK_CHANNEL == "1" → WorkspaceLarkChannel. Set by lark-channel-bridge
+//     when spawning subprocesses (e.g. claude). Single boolean marker —
+//     mirrors the OPENCLAW_CLI / HERMES_QUIET style.
+//  4. Otherwise → WorkspaceLocal
 func DetectWorkspaceFromEnv(getenv func(string) string) Workspace {
 	if getenv("OPENCLAW_CLI") == "1" ||
 		getenv("OPENCLAW_HOME") != "" ||
@@ -108,6 +116,9 @@ func DetectWorkspaceFromEnv(getenv func(string) string) Workspace {
 		getenv("HERMES_GATEWAY_TOKEN") != "" ||
 		getenv("HERMES_SESSION_KEY") != "" {
 		return WorkspaceHermes
+	}
+	if getenv("LARK_CHANNEL") == "1" {
+		return WorkspaceLarkChannel
 	}
 	return WorkspaceLocal
 }
@@ -139,6 +150,7 @@ func GetBaseConfigDir() string {
 //   - WorkspaceLocal → GetBaseConfigDir() (unchanged, backward-compatible)
 //   - WorkspaceOpenClaw → GetBaseConfigDir()/openclaw
 //   - WorkspaceHermes → GetBaseConfigDir()/hermes
+//   - WorkspaceLarkChannel → GetBaseConfigDir()/lark-channel
 func GetRuntimeDir() string {
 	base := GetBaseConfigDir()
 	ws := CurrentWorkspace()

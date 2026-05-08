@@ -119,6 +119,31 @@ func TestDetectWorkspaceFromEnv(t *testing.T) {
 			env:    map[string]string{"LARKSUITE_CLI_APP_ID": "cli_local", "LARKSUITE_CLI_APP_SECRET": "local_secret"},
 			expect: WorkspaceLocal,
 		},
+		{
+			name:   "LARK_CHANNEL=1 → lark-channel",
+			env:    map[string]string{"LARK_CHANNEL": "1"},
+			expect: WorkspaceLarkChannel,
+		},
+		{
+			name:   "LARK_CHANNEL=true → local (strict ==1 check)",
+			env:    map[string]string{"LARK_CHANNEL": "true"},
+			expect: WorkspaceLocal,
+		},
+		{
+			name:   "LARK_CHANNEL=0 → local",
+			env:    map[string]string{"LARK_CHANNEL": "0"},
+			expect: WorkspaceLocal,
+		},
+		{
+			name:   "OPENCLAW_CLI=1 + LARK_CHANNEL=1 → openclaw wins (priority)",
+			env:    map[string]string{"OPENCLAW_CLI": "1", "LARK_CHANNEL": "1"},
+			expect: WorkspaceOpenClaw,
+		},
+		{
+			name:   "HERMES_HOME + LARK_CHANNEL=1 → hermes wins (priority over lark-channel)",
+			env:    map[string]string{"HERMES_HOME": "/Users/me/.hermes", "LARK_CHANNEL": "1"},
+			expect: WorkspaceHermes,
+		},
 	}
 
 	for _, tt := range tests {
@@ -141,6 +166,7 @@ func TestWorkspaceDisplay(t *testing.T) {
 		{Workspace(""), "local"},
 		{WorkspaceOpenClaw, "openclaw"},
 		{WorkspaceHermes, "hermes"},
+		{WorkspaceLarkChannel, "lark-channel"},
 	}
 	for _, tt := range tests {
 		if got := tt.ws.Display(); got != tt.expect {
@@ -204,6 +230,13 @@ func TestGetRuntimeDir(t *testing.T) {
 	want = filepath.Join(tmp, "hermes")
 	if got := GetRuntimeDir(); got != want {
 		t.Errorf("hermes: GetRuntimeDir() = %q, want %q", got, want)
+	}
+
+	// LarkChannel → base/lark-channel
+	SetCurrentWorkspace(WorkspaceLarkChannel)
+	want = filepath.Join(tmp, "lark-channel")
+	if got := GetRuntimeDir(); got != want {
+		t.Errorf("lark-channel: GetRuntimeDir() = %q, want %q", got, want)
 	}
 }
 

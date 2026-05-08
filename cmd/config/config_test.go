@@ -38,6 +38,7 @@ func (r *recordingConfigKeychain) Remove(service, account string) error {
 }
 
 func TestConfigInitCmd_FlagParsing(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	f.IOStreams.In = strings.NewReader("secret123\n")
 
@@ -136,6 +137,7 @@ func TestConfigShowRun_NoActiveProfileReturnsStructuredError(t *testing.T) {
 }
 
 func TestConfigInitCmd_LangFlag(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
 	var gotOpts *ConfigInitOptions
@@ -157,6 +159,7 @@ func TestConfigInitCmd_LangFlag(t *testing.T) {
 }
 
 func TestConfigInitCmd_LangDefault(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
 	var gotOpts *ConfigInitOptions

@@ -46,6 +46,8 @@ func newBinder(source string, opts *BindOptions) (SourceBinder, error) {
 		return &openclawBinder{opts: opts, path: resolveOpenClawConfigPath()}, nil
 	case "hermes":
 		return &hermesBinder{opts: opts, path: resolveHermesEnvPath()}, nil
+	case "lark-channel":
+		return &larkChannelBinder{opts: opts, path: resolveLarkChannelConfigPath()}, nil
 	default:
 		return nil, output.ErrValidation("unsupported source: %s", source)
 	}
@@ -271,6 +273,65 @@ func (b *hermesBinder) Build(appID string) (*core.AppConfig, error) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// larkChannelBinder
+// ──────────────────────────────────────────────────────────────
+
+type larkChannelBinder struct {
+	opts *BindOptions
+	path string
+
+	// Cached between ListCandidates and Build so we don't re-read the file.
+	cfg *binding.LarkChannelRoot
+}
+
+func (b *larkChannelBinder) Name() string       { return "lark-channel" }
+func (b *larkChannelBinder) ConfigPath() string { return b.path }
+
+func (b *larkChannelBinder) ListCandidates() ([]Candidate, error) {
+	cfg, err := binding.ReadLarkChannelConfig(b.path)
+	if err != nil {
+		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
+			fmt.Sprintf("cannot read %s: %v", b.path, err),
+			"verify lark-channel-bridge is installed and configured")
+	}
+	if cfg.Accounts.App.ID == "" {
+		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
+			fmt.Sprintf("accounts.app.id missing in %s", b.path),
+			"run lark-channel-bridge's setup to populate the app credential")
+	}
+	b.cfg = cfg
+	return []Candidate{{AppID: cfg.Accounts.App.ID, Label: "default"}}, nil
+}
+
+func (b *larkChannelBinder) Build(appID string) (*core.AppConfig, error) {
+	if b.cfg == nil {
+		return nil, output.Errorf(output.ExitInternal, "lark-channel",
+			"internal: Build called before ListCandidates")
+	}
+	if b.cfg.Accounts.App.ID != appID {
+		return nil, output.Errorf(output.ExitInternal, "lark-channel",
+			"internal: appID %q does not match config", appID)
+	}
+	if b.cfg.Accounts.App.Secret == "" {
+		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
+			fmt.Sprintf("accounts.app.secret is empty in %s", b.path),
+			"run lark-channel-bridge's setup to populate the app credential")
+	}
+
+	stored, err := core.ForStorage(appID, core.PlainSecret(b.cfg.Accounts.App.Secret), b.opts.Factory.Keychain)
+	if err != nil {
+		return nil, output.Errorf(output.ExitInternal, "lark-channel",
+			"keychain unavailable: %v", err)
+	}
+
+	return &core.AppConfig{
+		AppId:     appID,
+		AppSecret: stored,
+		Brand:     core.LarkBrand(normalizeBrand(b.cfg.Accounts.App.Tenant)),
+	}, nil
+}
+
+// ──────────────────────────────────────────────────────────────
 // Source-specific helpers (path / dotenv / brand) — kept private to this package.
 // Moved here from bind.go so bind.go can focus on orchestration.
 // ──────────────────────────────────────────────────────────────
@@ -283,6 +344,8 @@ func sourceDisplayName(source string) string {
 		return "OpenClaw"
 	case "hermes":
 		return "Hermes"
+	case "lark-channel":
+		return "Lark Channel"
 	default:
 		return source
 	}
@@ -314,6 +377,18 @@ func resolveHermesEnvPath() string {
 		hermesHome = filepath.Join(home, ".hermes")
 	}
 	return filepath.Join(hermesHome, ".env")
+}
+
+// resolveLarkChannelConfigPath returns the path to lark-channel-bridge's
+// config.json. Mirrors the bridge's src/config/paths.ts which hardcodes
+// ~/.lark-channel/config.json with no env override — multi-instance is not
+// a supported scenario today.
+func resolveLarkChannelConfigPath() string {
+	home, err := vfs.UserHomeDir()
+	if err != nil || home == "" {
+		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
+	}
+	return filepath.Join(home, ".lark-channel", "config.json")
 }
 
 // resolveOpenClawConfigPath resolves openclaw.json path using the same priority

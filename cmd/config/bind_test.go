@@ -123,7 +123,7 @@ func TestConfigBindRun_InvalidSource(t *testing.T) {
 	err := configBindRun(&BindOptions{Factory: f, Source: "invalid"})
 	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
 		Type:    "validation",
-		Message: `invalid --source "invalid"; valid values: openclaw, hermes`,
+		Message: `invalid --source "invalid"; valid values: openclaw, hermes, lark-channel`,
 	})
 }
 
@@ -141,21 +141,29 @@ func TestConfigBindRun_MissingSourceNonTTY(t *testing.T) {
 	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
 		Type:    "bind",
 		Message: "cannot determine Agent source: no --source flag and no Agent environment detected",
-		Hint:    "pass --source openclaw|hermes, or run this command inside an OpenClaw or Hermes chat",
+		Hint:    "pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context",
 	})
 }
 
-// clearAgentEnv removes all env vars that DetectWorkspaceFromEnv checks, so
-// tests exercising the "no signals" path are not affected by whatever the
-// host shell happens to have exported. t.Setenv restores them after the
-// test returns.
+// clearAgentEnv removes every env var that DetectWorkspaceFromEnv treats as
+// an Agent signal, so tests exercising the "no signals" path stay isolated
+// from whatever the host shell exported. Prefix-based instead of an explicit
+// list — when DetectWorkspaceFromEnv gains a new OPENCLAW_* / HERMES_* signal,
+// this helper does not need to be updated and tests do not silently misroute.
+// t.Setenv restores the original values after the test returns.
 func clearAgentEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{
-		"OPENCLAW_CLI", "OPENCLAW_HOME", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH",
-		"HERMES_HOME", "HERMES_QUIET", "HERMES_EXEC_ASK", "HERMES_GATEWAY_TOKEN", "HERMES_SESSION_KEY",
-	} {
-		t.Setenv(k, "")
+	for _, kv := range os.Environ() {
+		idx := strings.IndexByte(kv, '=')
+		if idx < 0 {
+			continue
+		}
+		k := kv[:idx]
+		if strings.HasPrefix(k, "OPENCLAW_") ||
+			strings.HasPrefix(k, "HERMES_") ||
+			k == "LARK_CHANNEL" {
+			t.Setenv(k, "")
+		}
 	}
 }
 
@@ -336,6 +344,191 @@ func TestConfigBindRun_OpenClawMissingFile(t *testing.T) {
 		Type:    "openclaw",
 		Message: "cannot read " + configPath + ": open " + configPath + ": no such file or directory",
 		Hint:    "verify OpenClaw is installed and configured",
+	})
+}
+
+// writeLarkChannelFixture writes a ~/.lark-channel/config.json under fakeHome
+// and returns the config path. resolveLarkChannelConfigPath reads HOME via
+// os.UserHomeDir, so callers must `t.Setenv("HOME", fakeHome)`.
+func writeLarkChannelFixture(t *testing.T, fakeHome, body string) string {
+	t.Helper()
+	dir := filepath.Join(fakeHome, ".lark-channel")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	return path
+}
+
+// Happy-path: --source lark-channel reads ~/.lark-channel/config.json,
+// writes the workspace config, emits a JSON envelope with workspace:
+// "lark-channel" and brand from accounts.app.tenant.
+func TestConfigBindRun_LarkChannel_Success(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	clearAgentEnv(t)
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	writeLarkChannelFixture(t, fakeHome, `{"accounts":{"app":{"id":"cli_lc_main","secret":"lc_secret","tenant":"feishu"}}}`)
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+
+	envelope := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if envelope["workspace"] != "lark-channel" {
+		t.Errorf("workspace = %v, want %q", envelope["workspace"], "lark-channel")
+	}
+	if envelope["app_id"] != "cli_lc_main" {
+		t.Errorf("app_id = %v, want %q", envelope["app_id"], "cli_lc_main")
+	}
+
+	// Brand is not in the stdout envelope — read it back from the persisted
+	// workspace config to verify accounts.app.tenant flowed through to the
+	// stored AppConfig.Brand field.
+	core.SetCurrentWorkspace(core.WorkspaceLarkChannel)
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("load workspace config: %v", err)
+	}
+	if len(multi.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(multi.Apps))
+	}
+	if got := string(multi.Apps[0].Brand); got != "feishu" {
+		t.Errorf("Brand = %q, want %q", got, "feishu")
+	}
+}
+
+// tenant: "lark" should land as Brand("lark"), not normalized to "feishu".
+func TestConfigBindRun_LarkChannel_LarkTenant(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	writeLarkChannelFixture(t, fakeHome, `{"accounts":{"app":{"id":"cli_lc_lark","secret":"s","tenant":"lark"}}}`)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	core.SetCurrentWorkspace(core.WorkspaceLarkChannel)
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("load workspace config: %v", err)
+	}
+	if got := string(multi.Apps[0].Brand); got != "lark" {
+		t.Errorf("Brand = %q, want %q (tenant: lark must flow through to AppConfig.Brand)", got, "lark")
+	}
+}
+
+// LARK_CHANNEL=1 alone (no --source) auto-detects to the lark-channel
+// workspace, mirroring the OpenClaw/Hermes auto-detect flow.
+func TestConfigBindRun_AutoDetect_LarkChannelFromEnv(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	t.Setenv("LARK_CHANNEL", "1")
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	writeLarkChannelFixture(t, fakeHome, `{"accounts":{"app":{"id":"cli_auto_lc","secret":"s","tenant":"feishu"}}}`)
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	envelope := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if envelope["workspace"] != "lark-channel" {
+		t.Errorf("workspace = %v, want %q (auto-detection should pick lark-channel from LARK_CHANNEL=1)", envelope["workspace"], "lark-channel")
+	}
+}
+
+// --source lark-channel while the env signals OpenClaw must fail loud, same
+// rule as OpenClaw/Hermes mismatch (running in the wrong Agent context).
+func TestConfigBindRun_SourceEnvMismatch_LarkChannelFlagInOpenClawEnv(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	t.Setenv("OPENCLAW_HOME", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
+	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+		Type:    "bind",
+		Message: `--source "lark-channel" does not match detected Agent environment (openclaw)`,
+		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
+	})
+}
+
+// Missing config.json → typed error with a hint pointing at bridge setup.
+func TestConfigBindRun_LarkChannelMissingFile(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+
+	fakeHome := t.TempDir() // empty — no .lark-channel/config.json
+	t.Setenv("HOME", fakeHome)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
+	configPath := filepath.Join(fakeHome, ".lark-channel", "config.json")
+	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+		Type:    "lark-channel",
+		Message: "cannot read " + configPath + ": open " + configPath + ": no such file or directory",
+		Hint:    "verify lark-channel-bridge is installed and configured",
+	})
+}
+
+// Empty accounts.app.id → typed error pointing at bridge setup. Distinct
+// from "missing file" so users know whether to install or to re-run setup.
+func TestConfigBindRun_LarkChannelEmptyAppID(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	configPath := writeLarkChannelFixture(t, fakeHome, `{"accounts":{"app":{"id":"","secret":"","tenant":"feishu"}}}`)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
+	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+		Type:    "lark-channel",
+		Message: "accounts.app.id missing in " + configPath,
+		Hint:    "run lark-channel-bridge's setup to populate the app credential",
+	})
+}
+
+// app.id present but app.secret missing → typed error at the Build step.
+func TestConfigBindRun_LarkChannelEmptySecret(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	configPath := writeLarkChannelFixture(t, fakeHome, `{"accounts":{"app":{"id":"cli_no_secret","secret":"","tenant":"feishu"}}}`)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
+	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+		Type:    "lark-channel",
+		Message: "accounts.app.secret is empty in " + configPath,
+		Hint:    "run lark-channel-bridge's setup to populate the app credential",
 	})
 }
 

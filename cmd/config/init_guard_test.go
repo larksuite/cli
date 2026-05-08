@@ -12,9 +12,7 @@ import (
 )
 
 func TestGuardAgentWorkspace_LocalAllows(t *testing.T) {
-	t.Setenv("OPENCLAW_HOME", "")
-	t.Setenv("OPENCLAW_CLI", "")
-	t.Setenv("HERMES_HOME", "")
+	clearAgentEnv(t)
 
 	if err := guardAgentWorkspace(&ConfigInitOptions{}); err != nil {
 		t.Errorf("local workspace should allow init, got: %v", err)

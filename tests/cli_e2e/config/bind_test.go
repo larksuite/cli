@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,26 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+// clearAgentEnv removes every env var that DetectWorkspaceFromEnv treats as
+// an Agent signal (OPENCLAW_* / HERMES_* / LARK_CHANNEL). Prefix-based so the
+// helper stays correct when DetectWorkspaceFromEnv adds new signals; tests
+// no longer drift silently. Mirrors cmd/config/bind_test.go's helper.
+func clearAgentEnv(t *testing.T) {
+	t.Helper()
+	for _, kv := range os.Environ() {
+		idx := strings.IndexByte(kv, '=')
+		if idx < 0 {
+			continue
+		}
+		k := kv[:idx]
+		if strings.HasPrefix(k, "OPENCLAW_") ||
+			strings.HasPrefix(k, "HERMES_") ||
+			k == "LARK_CHANNEL" {
+			t.Setenv(k, "")
+		}
+	}
+}
 
 // setupTempConfig creates a temp config dir and sets LARKSUITE_CLI_CONFIG_DIR.
 func setupTempConfig(t *testing.T) string {
@@ -42,6 +63,16 @@ func writeOpenClawConfig(t *testing.T, openclawHome, appID, appSecret, brand str
 	require.NoError(t, os.MkdirAll(dir, 0700))
 	content := `{"channels":{"feishu":{"appId":"` + appID + `","appSecret":"` + appSecret + `","domain":"` + brand + `"}}}`
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "openclaw.json"), []byte(content), 0600))
+}
+
+// writeLarkChannelConfig creates a fake ~/.lark-channel/config.json under
+// fakeHome (caller is responsible for setting HOME=fakeHome via t.Setenv).
+func writeLarkChannelConfig(t *testing.T, fakeHome, appID, appSecret, tenant string) {
+	t.Helper()
+	dir := filepath.Join(fakeHome, ".lark-channel")
+	require.NoError(t, os.MkdirAll(dir, 0700))
+	content := `{"accounts":{"app":{"id":"` + appID + `","secret":"` + appSecret + `","tenant":"` + tenant + `"}}}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"), []byte(content), 0600))
 }
 
 // assertStderrError verifies the structured error JSON envelope in stderr.
@@ -74,7 +105,7 @@ func TestBind_InvalidSource(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assertStderrError(t, result, 2, "validation",
-		`invalid --source "invalid"; valid values: openclaw, hermes`, "")
+		`invalid --source "invalid"; valid values: openclaw, hermes, lark-channel`, "")
 }
 
 func TestBind_MissingSource_NonTTY(t *testing.T) {
@@ -83,12 +114,7 @@ func TestBind_MissingSource_NonTTY(t *testing.T) {
 	// finalizeSource hits the "cannot determine Agent source" branch instead
 	// of silently auto-detecting whichever Agent the CI runner happens to
 	// inherit env from.
-	for _, k := range []string{
-		"OPENCLAW_CLI", "OPENCLAW_HOME", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH",
-		"HERMES_HOME", "HERMES_QUIET", "HERMES_EXEC_ASK", "HERMES_GATEWAY_TOKEN", "HERMES_SESSION_KEY",
-	} {
-		t.Setenv(k, "")
-	}
+	clearAgentEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -100,7 +126,7 @@ func TestBind_MissingSource_NonTTY(t *testing.T) {
 	require.NoError(t, err)
 	assertStderrError(t, result, 2, "bind",
 		"cannot determine Agent source: no --source flag and no Agent environment detected",
-		"pass --source openclaw|hermes, or run this command inside an OpenClaw or Hermes chat")
+		"pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context")
 }
 
 func TestBind_Hermes_Success(t *testing.T) {
@@ -227,6 +253,10 @@ func TestBind_ConfigShow_WorkspaceField(t *testing.T) {
 	defer cancel()
 
 	configDir := setupTempConfig(t)
+	// Test asserts workspace == "local"; clear Agent signals so an inherited
+	// LARK_CHANNEL=1 / OPENCLAW_* / HERMES_* doesn't reroute to a workspace
+	// where the local config we just wrote is invisible.
+	clearAgentEnv(t)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(configDir, "config.json"),
 		[]byte(`{"apps":[{"appId":"cli_local","appSecret":"secret","brand":"feishu"}]}`),
@@ -314,5 +344,98 @@ func TestBind_OpenClaw_Success(t *testing.T) {
 		errType := gjson.Get(result.Stderr, "error.type").String()
 		assert.Equal(t, "openclaw", errType,
 			"non-zero exit should be from openclaw bind path\nstderr:\n%s", result.Stderr)
+	}
+}
+
+// TestBind_LarkChannel_Success exercises the full end-to-end happy path:
+// fake bridge config under HOME → bind reads it → workspace config written
+// to LARKSUITE_CLI_CONFIG_DIR/lark-channel/config.json with brand from tenant.
+func TestBind_LarkChannel_Success(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	configDir := setupTempConfig(t)
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	writeLarkChannelConfig(t, fakeHome, "cli_lc_e2e", "lc_secret", "lark")
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{"config", "bind", "--source", "lark-channel"},
+	})
+	require.NoError(t, err)
+
+	if result.ExitCode == 0 {
+		stdout := result.Stdout
+		assert.True(t, gjson.Get(stdout, "ok").Bool(), "stdout:\n%s", stdout)
+		assert.Equal(t, "lark-channel", gjson.Get(stdout, "workspace").String(), "stdout:\n%s", stdout)
+		assert.Equal(t, "cli_lc_e2e", gjson.Get(stdout, "app_id").String(), "stdout:\n%s", stdout)
+
+		expectedConfigPath := filepath.Join(configDir, "lark-channel", "config.json")
+		assert.Equal(t, expectedConfigPath, gjson.Get(stdout, "config_path").String(), "stdout:\n%s", stdout)
+
+		data, readErr := os.ReadFile(expectedConfigPath)
+		require.NoError(t, readErr)
+		assert.Equal(t, "cli_lc_e2e", gjson.GetBytes(data, "apps.0.appId").String())
+		assert.Equal(t, "lark", gjson.GetBytes(data, "apps.0.brand").String())
+	} else {
+		// Keychain failure acceptable in CI; verify the error came from the
+		// lark-channel binder (i.e. routing was correct) rather than another path.
+		errType := gjson.Get(result.Stderr, "error.type").String()
+		assert.Equal(t, "lark-channel", errType,
+			"non-zero exit should be from lark-channel bind path\nstderr:\n%s", result.Stderr)
+	}
+}
+
+// TestBind_LarkChannel_MissingFile verifies the routed error path when the
+// bridge has not been configured: hint must point at bridge setup, not at
+// `config init` (which would silently create a parallel local app and waste
+// the user's existing bridge credentials).
+func TestBind_LarkChannel_MissingFile(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setupTempConfig(t)
+	fakeHome := t.TempDir() // empty — no .lark-channel/config.json
+	t.Setenv("HOME", fakeHome)
+
+	configPath := filepath.Join(fakeHome, ".lark-channel", "config.json")
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{"config", "bind", "--source", "lark-channel"},
+	})
+	require.NoError(t, err)
+	assertStderrError(t, result, 2, "lark-channel",
+		"cannot read "+configPath+": open "+configPath+": no such file or directory",
+		"verify lark-channel-bridge is installed and configured")
+}
+
+// TestBind_LarkChannel_AutoDetect verifies LARK_CHANNEL=1 alone routes the
+// no-flag bind into the lark-channel workspace (matches the bridge's actual
+// runtime — it sets the env, not --source).
+func TestBind_LarkChannel_AutoDetect(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setupTempConfig(t)
+	// Clear other agent env so OpenClaw/Hermes signals from the host shell
+	// don't preempt the lark-channel detection.
+	clearAgentEnv(t)
+	t.Setenv("LARK_CHANNEL", "1")
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	writeLarkChannelConfig(t, fakeHome, "cli_lc_auto", "auto_secret", "feishu")
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{"config", "bind"}, // no --source
+	})
+	require.NoError(t, err)
+
+	if result.ExitCode == 0 {
+		assert.Equal(t, "lark-channel", gjson.Get(result.Stdout, "workspace").String(),
+			"stdout:\n%s", result.Stdout)
+	} else {
+		errType := gjson.Get(result.Stderr, "error.type").String()
+		assert.Equal(t, "lark-channel", errType,
+			"non-zero exit should be from lark-channel bind path\nstderr:\n%s", result.Stderr)
 	}
 }

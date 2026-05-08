@@ -60,9 +60,9 @@ func NewCmdConfigBind(f *cmdutil.Factory, runF func(*BindOptions) error) *cobra.
 	cmd := &cobra.Command{
 		Use:   "bind",
 		Short: "Bind Agent config to a workspace (source / app-id / force)",
-		Long: `Bind an AI Agent's (OpenClaw / Hermes) Feishu credentials to a lark-cli workspace.
+		Long: `Bind an AI Agent's (OpenClaw / Hermes / Lark Channel) Feishu credentials to a lark-cli workspace.
 
---source is auto-detected from env (OPENCLAW_HOME / HERMES_HOME); pass it only to override.
+--source is auto-detected from env (OPENCLAW_HOME / HERMES_HOME / LARK_CHANNEL); pass it only to override.
 
 For AI agents — DO NOT bind without user confirmation. Binding may
 overwrite an existing one and locks in an identity policy. Ask the user:
@@ -85,6 +85,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 		Example: `  # AI flow: confirm intent + identity with user FIRST, then run:
   lark-cli config bind --source openclaw --app-id <id> --identity bot-only
   lark-cli config bind --source hermes --identity user-default
+  lark-cli config bind --source lark-channel
 
   # Interactive (terminal user) — TUI prompts for everything:
   lark-cli config bind`,
@@ -97,7 +98,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Source, "source", "", "Agent source to bind from (openclaw|hermes); auto-detected from env signals when omitted")
+	cmd.Flags().StringVar(&opts.Source, "source", "", "Agent source to bind from (openclaw|hermes|lark-channel); auto-detected from env signals when omitted")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID to bind (required for OpenClaw multi-account)")
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
@@ -175,8 +176,8 @@ type existingBinding struct {
 //     fall back to a TUI prompt (TUI mode) or an error (flag mode).
 func finalizeSource(opts *BindOptions) (string, error) {
 	explicit := strings.TrimSpace(strings.ToLower(opts.Source))
-	if explicit != "" && explicit != "openclaw" && explicit != "hermes" {
-		return "", output.ErrValidation("invalid --source %q; valid values: openclaw, hermes", explicit)
+	if explicit != "" && explicit != "openclaw" && explicit != "hermes" && explicit != "lark-channel" {
+		return "", output.ErrValidation("invalid --source %q; valid values: openclaw, hermes, lark-channel", explicit)
 	}
 
 	var detected string
@@ -185,6 +186,8 @@ func finalizeSource(opts *BindOptions) (string, error) {
 		detected = "openclaw"
 	case core.WorkspaceHermes:
 		detected = "hermes"
+	case core.WorkspaceLarkChannel:
+		detected = "lark-channel"
 	}
 
 	// Explicit and env detection must agree when both are present. Reject
@@ -221,7 +224,7 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	}
 	return "", output.ErrWithHint(output.ExitValidation, "bind",
 		"cannot determine Agent source: no --source flag and no Agent environment detected",
-		"pass --source openclaw|hermes, or run this command inside an OpenClaw or Hermes chat")
+		"pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context")
 }
 
 // reconcileExistingBinding reads any existing config at configPath and decides
@@ -467,6 +470,8 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 		source = "openclaw"
 	case core.WorkspaceHermes:
 		source = "hermes"
+	case core.WorkspaceLarkChannel:
+		source = "lark-channel"
 	default:
 		source = "openclaw" // default first option
 	}
@@ -474,6 +479,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 	// Resolve actual paths for display
 	openclawPath := resolveOpenClawConfigPath()
 	hermesEnvPath := resolveHermesEnvPath()
+	larkChannelPath := resolveLarkChannelConfigPath()
 
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -483,6 +489,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 				Options(
 					huh.NewOption(fmt.Sprintf(msg.SourceOpenClaw, openclawPath), "openclaw"),
 					huh.NewOption(fmt.Sprintf(msg.SourceHermes, hermesEnvPath), "hermes"),
+					huh.NewOption(fmt.Sprintf(msg.SourceLarkChannel, larkChannelPath), "lark-channel"),
 				).
 				Value(&source),
 		),
