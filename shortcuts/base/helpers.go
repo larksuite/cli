@@ -412,6 +412,11 @@ func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[s
 	if err != nil {
 		return nil, err
 	}
+	result, parseErr := decodeBaseV3Response(resp.RawBody)
+	if parseErr == nil && baseV3ResultCode(result) != 0 {
+		attachBaseErrorLogID(result, baseResponseLogID(resp))
+		return result, nil
+	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		body := strings.TrimSpace(string(resp.RawBody))
 		if body == "" {
@@ -419,13 +424,60 @@ func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[s
 		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	return result, nil
+}
+
+func decodeBaseV3Response(body []byte) (map[string]interface{}, error) {
 	var result map[string]interface{}
-	dec := json.NewDecoder(bytes.NewReader(resp.RawBody))
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
 		return nil, fmt.Errorf("response parse error: %w", err)
 	}
 	return result, nil
+}
+
+func baseV3ResultCode(result map[string]interface{}) int {
+	if result == nil {
+		return 0
+	}
+	return toInt(result["code"])
+}
+
+func attachBaseErrorLogID(result map[string]interface{}, logID string) {
+	if result == nil || strings.TrimSpace(logID) == "" {
+		return
+	}
+	logID = strings.TrimSpace(logID)
+	if detail, ok := result["error"].(map[string]interface{}); ok {
+		if _, exists := detail["logid"]; !exists {
+			detail["logid"] = logID
+		}
+		return
+	}
+	data, _ := result["data"].(map[string]interface{})
+	if data == nil {
+		data = map[string]interface{}{}
+		result["data"] = data
+	}
+	detail, _ := data["error"].(map[string]interface{})
+	if detail == nil {
+		detail = map[string]interface{}{}
+		data["error"] = detail
+	}
+	if _, exists := detail["logid"]; !exists {
+		detail["logid"] = logID
+	}
+}
+
+func baseResponseLogID(resp *larkcore.ApiResp) string {
+	if resp == nil {
+		return ""
+	}
+	return strings.TrimSpace(resp.Header.Get("x-tt-logid"))
 }
 
 func baseV3Call(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {

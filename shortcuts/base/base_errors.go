@@ -4,7 +4,6 @@
 package base
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
@@ -20,6 +19,9 @@ func handleBaseAPIResult(result interface{}, err error, action string) (map[stri
 	return dataMap, nil
 }
 
+// handleBaseAPIResultAny normalizes the Base v3 {code,msg,data} envelope used
+// by shortcut APIs. Success returns data as-is; API failures become the CLI's
+// structured ErrAPI, with server-provided message/hint promoted to the top level.
 func handleBaseAPIResultAny(result interface{}, err error, action string) (interface{}, error) {
 	if err != nil {
 		return nil, output.Errorf(output.ExitAPI, "api_error", "%s: %s", action, err)
@@ -37,15 +39,32 @@ func handleBaseAPIResultAny(result interface{}, err error, action string) (inter
 		msg, _ = resultMap["msg"].(string)
 	}
 
-	fullMsg := fmt.Sprintf("%s: [%d] %s", action, larkCode, msg)
 	detail := extractErrorDetail(resultMap)
-	apiErr := output.ErrAPI(larkCode, fullMsg, detail)
-	if apiErr.Detail != nil && apiErr.Detail.Hint == "" {
-		if hint := extractErrorHint(resultMap); hint != "" {
-			apiErr.Detail.Hint = hint
-		}
+	apiErr := output.ErrAPI(larkCode, msg, detail)
+	hint := extractErrorHint(resultMap)
+	if apiErr.Detail != nil && apiErr.Detail.Hint == "" && hint != "" {
+		apiErr.Detail.Hint = hint
+	}
+	if apiErr.Detail != nil {
+		apiErr.Detail.Detail = cleanEmptyBaseErrorDetail(detail)
 	}
 	return nil, apiErr
+}
+
+func cleanEmptyBaseErrorDetail(detail interface{}) interface{} {
+	detailMap, ok := detail.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	for key, value := range detailMap {
+		if value == nil {
+			delete(detailMap, key)
+		}
+	}
+	if len(detailMap) == 0 {
+		return nil
+	}
+	return detailMap
 }
 
 func extractErrorDetail(resultMap map[string]interface{}) interface{} {
@@ -77,13 +96,13 @@ func nonNilMapValue(src map[string]interface{}, key string) (interface{}, bool) 
 
 func extractErrorHint(resultMap map[string]interface{}) string {
 	if detail, ok := resultMap["error"].(map[string]interface{}); ok {
-		if hint, _ := detail["hint"].(string); strings.TrimSpace(hint) != "" {
+		if hint := consumeStringField(detail, "hint"); hint != "" {
 			return hint
 		}
 	}
 	data, _ := resultMap["data"].(map[string]interface{})
 	if detail, ok := data["error"].(map[string]interface{}); ok {
-		if hint, _ := detail["hint"].(string); strings.TrimSpace(hint) != "" {
+		if hint := consumeStringField(detail, "hint"); hint != "" {
 			return hint
 		}
 	}
@@ -93,9 +112,17 @@ func extractErrorHint(resultMap map[string]interface{}) string {
 func extractDataErrorMessage(resultMap map[string]interface{}) string {
 	data, _ := resultMap["data"].(map[string]interface{})
 	if detail, ok := data["error"].(map[string]interface{}); ok {
-		if message, _ := detail["message"].(string); strings.TrimSpace(message) != "" {
+		if message := consumeStringField(detail, "message"); message != "" {
 			return message
 		}
 	}
 	return ""
+}
+
+func consumeStringField(src map[string]interface{}, key string) string {
+	value, _ := src[key].(string)
+	if _, exists := src[key]; exists {
+		delete(src, key)
+	}
+	return strings.TrimSpace(value)
 }
