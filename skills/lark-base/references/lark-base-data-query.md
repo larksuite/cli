@@ -421,9 +421,11 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 `+data-query` 不返回原始记录或 link 字段明细。需要最终输出业务实体名称、负责人、门店、供应商等明细时，按以下方式组合：
 
 1. 用 `+data-query` 在 Base 侧完成全局筛选、分组、聚合、排序和 TopN，得到业务 key、分组值或候选范围。
-2. 用 `+record-search`、临时视图或 `+record-get` 精确读取候选记录的明细字段。
-3. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
-4. 最终回答业务字段，不要把内部 `record_id` 当作用户可读答案。
+2. 如果已经拿到候选记录的 `record_id`，用 `+record-get` 读取明细字段。
+3. 如果拿到的是结构化业务 key（例如编号、状态、日期、金额等），优先创建临时视图做精确过滤后再 `+record-list --view-id` 读取；不要用 `+record-search` 代替结构化条件。
+4. 只有候选条件本身是文本展示值关键词时，才使用 `+record-search`，并用 `search_fields` 限定范围、`select_fields` 做投影。
+5. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
+6. 最终回答业务字段，不要把内部 `record_id` 当作用户可读答案。
 
 不要把 `data-query pagination.limit` 理解为分页扫描；它只限制服务端聚合结果行数，不支持 offset。需要全量明细导出时回到 data analysis SOP 的 record 分页规则。
 
