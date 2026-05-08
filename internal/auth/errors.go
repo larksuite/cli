@@ -4,7 +4,9 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 )
@@ -12,6 +14,7 @@ import (
 const (
 	LarkErrBlockByPolicy        = 21001 // access denied by access control policy
 	LarkErrBlockByPolicyTryAuth = 21000 // access denied by access control policy; challenge is required to be completed by user in order to gain access
+	needUserAuthorizationMarker = "need_user_authorization"
 )
 
 // RefreshTokenRetryable contains error codes that allow one immediate retry.
@@ -33,7 +36,22 @@ type NeedAuthorizationError struct {
 
 // Error returns the error message for NeedAuthorizationError.
 func (e *NeedAuthorizationError) Error() string {
-	return fmt.Sprintf("need_user_authorization (user: %s)", e.UserOpenId)
+	return fmt.Sprintf("%s (user: %s)", needUserAuthorizationMarker, e.UserOpenId)
+}
+
+// IsNeedUserAuthorizationError reports whether err represents a missing-UAT
+// failure, either as the original auth error or as a wrapped ExitError.
+func IsNeedUserAuthorizationError(err error) bool {
+	var needAuthErr *NeedAuthorizationError
+	if errors.As(err, &needAuthErr) {
+		return true
+	}
+
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) && exitErr.Detail != nil {
+		return strings.Contains(exitErr.Detail.Message, needUserAuthorizationMarker)
+	}
+	return strings.Contains(err.Error(), needUserAuthorizationMarker)
 }
 
 // SecurityPolicyError is returned when a request is blocked by access control policies.

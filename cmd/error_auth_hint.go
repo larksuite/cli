@@ -4,7 +4,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -25,7 +24,7 @@ func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if exitErr == nil || exitErr.Detail == nil {
 		return
 	}
-	if !isNeedUserAuthorizationError(exitErr) {
+	if !internalauth.IsNeedUserAuthorizationError(exitErr) {
 		return
 	}
 
@@ -40,21 +39,6 @@ func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 		return
 	}
 	exitErr.Detail.Hint += "\n" + scopeHint
-}
-
-// isNeedUserAuthorizationError reports whether err represents a missing-UAT
-// failure, either as the original auth error or as a wrapped ExitError.
-func isNeedUserAuthorizationError(err error) bool {
-	var needAuthErr *internalauth.NeedAuthorizationError
-	if errors.As(err, &needAuthErr) {
-		return true
-	}
-
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil {
-		return strings.Contains(exitErr.Detail.Message, "need_user_authorization")
-	}
-	return strings.Contains(err.Error(), "need_user_authorization")
 }
 
 // resolveDeclaredScopesForCurrentCommand returns the scopes declared by the
@@ -103,6 +87,10 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 // resolveDeclaredServiceMethodScopes returns the scopes declared by a
 // service/resource/method command from the embedded from_meta registry.
 func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []string {
+	// Service-method scope lookup only applies to commands mounted as
+	// root -> service -> resource -> method. Non-resource/method commands
+	// intentionally return no scopes here so auth-hint enrichment does not
+	// change runtime semantics for other command shapes.
 	if cmd == nil || cmd.Parent() == nil || cmd.Parent().Parent() == nil || cmd.Parent().Parent().Parent() == nil {
 		return nil
 	}
