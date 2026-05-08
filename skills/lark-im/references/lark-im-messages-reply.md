@@ -64,11 +64,26 @@ So `--markdown` is a convenience mode, not a full Markdown compatibility layer.
 - Block spacing and line breaks may be normalized during conversion.
 - Code blocks are preserved as code blocks.
 - Excess blank lines are compressed.
-- Only remote `http://...`, `https://...`, or already-uploaded `img_xxx` Markdown images are kept reliably.
-- Local paths in Markdown image syntax like `![x](./a.png)` are **not** auto-uploaded by `--markdown`.
+- Only already-uploaded `img_xxx` Markdown images are kept reliably.
+- Local paths (e.g. `![x](./a.png)`) and remote URLs are **not** supported as image links — all images must be downloaded and uploaded via `images.create`, provided as an `image_key`.
 - If remote Markdown image handling fails, that image is removed with a warning.
 
 If you need exact output, use `--msg-type post --content ...` instead of `--markdown`.
+
+### Image Constraint for `--markdown`
+
+When using `--markdown` and the reply content includes images, you **must** first upload the image via `images.create` to obtain an `image_key`, then reference it as `![alt](img_xxx)`.
+
+**Steps:**
+
+```bash
+# 1. Upload image to get image_key
+lark-cli im images create --data '{"image_type":"message"}' --file ./diagram.png
+# Returns: {"image_key":"img_v3_xxxx"}
+
+# 2. Use image_key in --markdown reply
+lark-cli im +messages-reply --message-id om_xxx --markdown $'## Result\n\n![diagram](img_v3_xxxx)\n\nSee above for details.'
+```
 
 ## Preserving Formatting
 
@@ -118,6 +133,11 @@ lark-cli im +messages-reply --message-id om_xxx --text "Let's discuss this" --re
 
 # Reply with basic Markdown (will be converted to post JSON)
 lark-cli im +messages-reply --message-id om_xxx --markdown $'## Reply\n\n- item 1\n- item 2'
+
+# Reply with Markdown containing an image (must pre-upload via images.create)
+lark-cli im images create --data '{"image_type":"message"}' --file ./screenshot.png
+# Use the returned image_key
+lark-cli im +messages-reply --message-id om_xxx --markdown $'## Screenshot\n\n![screenshot](img_v3_xxxx)\n\nConfirmed.'
 
 # If you need exact post structure, send JSON directly
 lark-cli im +messages-reply --message-id om_xxx --msg-type post --content '{"zh_cn":{"title":"Reply","content":[[{"tag":"text","text":"Detailed content"}]]}}'
@@ -172,6 +192,7 @@ lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' -
 - Choosing `--markdown` when you actually need exact plain text. If exact line breaks and spacing matter, use `--text`, usually with `$'...'`.
 - Assuming `--markdown` supports all Markdown features. It does not; it is converted into a Feishu `post` payload and rewritten first.
 - Putting local image paths inside Markdown like `![x](./a.png)`. `--markdown` does not auto-upload those paths.
+- **Using `--markdown` with images without first uploading via `images.create`.** All images must be pre-uploaded to obtain an `image_key`. Neither local paths nor remote URLs can be used directly — otherwise the image will be replaced with placeholder text.
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
@@ -226,3 +247,4 @@ The reply appears in the target message's thread and does not show up in the mai
 - Failures return error codes and messages
 - `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the reply is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT), and requires the `im:message:send_as_bot` scope
+- When using `--markdown` with images, all images must be uploaded via `images.create` first to obtain an `image_key`; local paths and remote URLs are not supported as image links directly
