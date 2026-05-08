@@ -42,6 +42,10 @@ func (e *NeedAuthorizationError) Error() string {
 // IsNeedUserAuthorizationError reports whether err represents a missing-UAT
 // failure, either as the original auth error or as a wrapped ExitError.
 func IsNeedUserAuthorizationError(err error) bool {
+	if err == nil {
+		return false
+	}
+
 	var needAuthErr *NeedAuthorizationError
 	if errors.As(err, &needAuthErr) {
 		return true

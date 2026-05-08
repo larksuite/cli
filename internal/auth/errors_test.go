@@ -10,6 +10,12 @@ import (
 )
 
 func TestIsNeedUserAuthorizationError(t *testing.T) {
+	t.Run("nil error", func(t *testing.T) {
+		if IsNeedUserAuthorizationError(nil) {
+			t.Fatal("expected nil error not to match")
+		}
+	})
+
 	t.Run("direct auth error", func(t *testing.T) {
 		if !IsNeedUserAuthorizationError(&NeedAuthorizationError{UserOpenId: "u_1"}) {
 			t.Fatal("expected direct NeedAuthorizationError to match")
