@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.26] - 2026-05-08
+
+### Features
+
+- **im**: Add `message_app_link` to message outputs (#668)
+- **auth**: Add scope hint for missing authorization errors (#776)
+
+### Bug Fixes
+
+- **base**: Clean error detail output (#783)
+- **whiteboard**: Reclassify `+update` as `write` risk (#775)
+
+### Documentation
+
+- **mail**: Add data integrity and write-confirmation rules (#749)
+
 ## [v1.0.25] - 2026-05-07
 
 ### Features
@@ -614,6 +630,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.26]: https://github.com/larksuite/cli/releases/tag/v1.0.26
 [v1.0.25]: https://github.com/larksuite/cli/releases/tag/v1.0.25
 [v1.0.24]: https://github.com/larksuite/cli/releases/tag/v1.0.24
 [v1.0.23]: https://github.com/larksuite/cli/releases/tag/v1.0.23
