@@ -54,20 +54,20 @@ lark-cli base +data-query \
     "shaper": {"format": "flat"}
   }'
 
-# 先在服务端完成全局排序 TopN，再按结果中的业务 key 去读取明细或关联表
+# 聚合后如需读取明细，先让 data-query 返回可回查的业务 key
 lark-cli base +data-query \
   --base-token MAGObxxxxx \
   --dsl '{
     "datasource": {"type": "table", "table": {"tableId": "tblxxxxxxxx"}},
-    "dimensions": [{"field_name": "客户ID", "alias": "customer_key"}],
-    "measures": [{"field_name": "风险分", "aggregation": "max", "alias": "max_risk"}],
+    "dimensions": [{"field_name": "业务编号", "alias": "biz_key"}],
+    "measures": [{"field_name": "指标值", "aggregation": "max", "alias": "max_value"}],
     "filters": {
       "type": 1,
       "conjunction": "and",
       "conditions": [{"field_name": "状态", "operator": "is", "value": ["有效"]}]
     },
-    "sort": [{"field_name": "max_risk", "order": "desc"}],
-    "pagination": {"limit": 1},
+    "sort": [{"field_name": "max_value", "order": "desc"}],
+    "pagination": {"limit": 10},
     "shaper": {"format": "flat"}
   }'
 ```
@@ -418,7 +418,7 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 
 ## 与记录读取组合
 
-`+data-query` 不返回原始记录或 link 字段明细。需要最终输出业务实体名称、负责人、门店、供应商等明细时，按以下方式组合：
+`+data-query` 不返回原始记录或 link 字段明细。需要输出聚合结果对应的原始记录字段、展示值或关联表字段时，按以下方式组合：
 
 1. 用 `+data-query` 在 Base 侧完成全局筛选、分组、聚合、排序和 TopN，得到业务 key、分组值或候选范围。
 2. 如果已经拿到候选记录的 `record_id`，用 `+record-get` 读取明细字段。
