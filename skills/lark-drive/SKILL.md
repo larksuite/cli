@@ -345,31 +345,37 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 
   - `update_reaction` — 添加/删除 reaction
 
+### quota_details
+
+  - `get` — 获取当前用户的容量信息，包含各业务使用量、租户配额是否超限、用户配额、所在部门配额
+
 ## 权限表
 
-| 方法                                             | 所需 scope                          |
-|------------------------------------------------|-----------------------------------|
-| `files.copy`                                   | `docs:document:copy`              |
-| `files.create_folder`                          | `space:folder:create`             |
-| `files.list`                                   | `space:document:retrieve`         |
-| `files.patch`                                  | `docx:document:write_only`        |
-| `file.comments.batch_query`                    | `docs:document.comment:read`      |
-| `file.comments.create_v2`                      | `docs:document.comment:create`    |
-| `file.comments.list`                           | `docs:document.comment:read`      |
-| `file.comments.patch`                          | `docs:document.comment:update`    |
-| `file.comment.replys.create`                   | `docs:document.comment:create`    |
-| `file.comment.replys.delete`                   | `docs:document.comment:delete`    |
-| `file.comment.replys.list`                     | `docs:document.comment:read`      |
-| `file.comment.replys.update`                   | `docs:document.comment:update`    |
-| `permission.members.auth`                      | `docs:permission.member:auth`     |
-| `permission.members.create`                    | `docs:permission.member:create`   |
-| `permission.members.transfer_owner`            | `docs:permission.member:transfer` |
-| `permission.public.get`                        | `docs:permission.setting:read`    |
+| 方法                                             | 所需 scope                             |
+|------------------------------------------------|--------------------------------------|
+| `files.copy`                                   | `docs:document:copy`                 |
+| `files.create_folder`                          | `space:folder:create`                |
+| `files.list`                                   | `space:document:retrieve`            |
+| `files.patch`                                  | `docx:document:write_only`           |
+| `file.comments.batch_query`                    | `docs:document.comment:read`         |
+| `file.comments.create_v2`                      | `docs:document.comment:create`       |
+| `file.comments.list`                           | `docs:document.comment:read`         |
+| `file.comments.patch`                          | `docs:document.comment:update`       |
+| `file.comment.replys.create`                   | `docs:document.comment:create`       |
+| `file.comment.replys.delete`                   | `docs:document.comment:delete`       |
+| `file.comment.replys.list`                     | `docs:document.comment:read`         |
+| `file.comment.replys.update`                   | `docs:document.comment:update`       |
+| `permission.members.auth`                      | `docs:permission.member:auth`        |
+| `permission.members.create`                    | `docs:permission.member:create`      |
+| `permission.members.transfer_owner`            | `docs:permission.member:transfer`    |
+| `permission.public.get`                        | `docs:permission.setting:read`       |
 | `permission.public.patch`                      | `docs:permission.setting:write_only` |
-| `metas.batch_query`                            | `drive:drive.metadata:readonly`   |
-| `user.remove_subscription`                     | `docs:event:subscribe`            |
-| `user.subscription`                            | `docs:event:subscribe`            |
-| `user.subscription_status`                     | `docs:event:subscribe`            |
-| `file.statistics.get`                          | `drive:drive.metadata:readonly`   |
-| `file.view_records.list`                       | `drive:file:view_record:readonly` |
-| `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create`    |
+| `metas.batch_query`                            | `drive:drive.metadata:readonly`      |
+| `user.remove_subscription`                     | `docs:event:subscribe`               |
+| `user.subscription`                            | `docs:event:subscribe`               |
+| `user.subscription_status`                     | `docs:event:subscribe`               |
+| `file.statistics.get`                          | `drive:drive.metadata:readonly`      |
+| `file.view_records.list`                       | `drive:file:view_record:readonly`    |
+| `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create`       |
+| `quota_details.get`                            | `drive:quota_detail:read_one`        |
+
