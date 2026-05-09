@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.27] - 2026-05-09
+
+### Features
+
+- **config**: Add `lark-channel` as a bind source (#786)
+
+### Bug Fixes
+
+- **install**: Fix installation errors when PowerShell is disabled by Group Policy (#789)
+
+### Documentation
+
+- **task**: Clarify task member id types in references (#777)
+
 ## [v1.0.26] - 2026-05-08
 
 ### Features
@@ -630,6 +644,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.27]: https://github.com/larksuite/cli/releases/tag/v1.0.27
 [v1.0.26]: https://github.com/larksuite/cli/releases/tag/v1.0.26
 [v1.0.25]: https://github.com/larksuite/cli/releases/tag/v1.0.25
 [v1.0.24]: https://github.com/larksuite/cli/releases/tag/v1.0.24
