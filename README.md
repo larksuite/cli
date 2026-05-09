@@ -24,7 +24,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 
 | Category      | Capabilities                                                                                                                      |
 | ------------- |-----------------------------------------------------------------------------------------------------------------------------------|
-| 📅 Calendar   | View agenda, create events, invite attendees, check free/busy status, time suggestions                                            |
+| 📅 Calendar   | View, create and update events, invite attendees, find meeting rooms, RSVP to invitations, check free/busy & time suggestions     |
 | 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media                  |
 | 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards                                                        |
 | 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
@@ -36,7 +36,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
 | 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
 | 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
-| 🎥 Meetings   | Search meeting records, query meeting minutes & recordings                                                                        |
+| 🎥 Meetings   | Search meeting records, query meeting minutes artifacts and recordings                                                            |
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 | 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
@@ -136,7 +136,7 @@ lark-cli auth status
 | Skill                           | Description                                                                                                    |
 | ------------------------------- |----------------------------------------------------------------------------------------------------------------|
 | `lark-shared`                   | App config, auth login, identity switching, scope management, security rules (auto-loaded by all other skills) |
-| `lark-calendar`                 | Calendar events, agenda view, free/busy queries, time suggestions                                              |
+| `lark-calendar`                 | Calendar events (create/update), agenda view, free/busy queries, time suggestions, room finding, RSVP replies  |
 | `lark-im`                       | Send/reply messages, group chat management, message search, upload/download images & files, reactions          |
 | `lark-doc`                      | Create, read, update, search documents (Markdown-based)                                                        |
 | `lark-drive`                    | Upload, download files, manage permissions & comments                                                          |
@@ -151,7 +151,7 @@ lark-cli auth status
 | `lark-event`                    | Real-time event subscriptions (WebSocket), regex routing & agent-friendly format                               |
 | `lark-vc`                       | Search meeting records, query meeting minutes (summary, todos, transcript)                                     |
 | `lark-whiteboard`               | Whiteboard/chart DSL rendering                                                                                 |
-| `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters)                                                     |
+| `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters); upload audio/video to create minutes, download media |
 | `lark-openapi-explorer`         | Explore underlying APIs from official docs                                                                     |
 | `lark-skill-maker`              | Custom skill creation framework                                                                                |
 | `lark-attendance`               | Query personal attendance check-in records                                                                     |
