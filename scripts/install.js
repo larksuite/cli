@@ -146,12 +146,17 @@ function extractZipWindows(archivePath, destDir) {
         "$ErrorActionPreference='Stop';" +
         "Expand-Archive -LiteralPath $env:LARK_CLI_ARCHIVE -DestinationPath $env:LARK_CLI_DEST -Force";
       execFileSync("powershell.exe", [...psOpts, cmdlet], { stdio: psStdio, env: psEnv });
-    } catch (fallbackErr) {
-      throw new Error(
-        `Failed to extract ${archivePath}. ` +
-        `.NET ZipFile attempt: ${primaryErr.message}. ` +
-        `Expand-Archive fallback: ${fallbackErr.message}`
-      );
+    } catch (secondErr) {
+      try {
+        execFileSync("tar", ["-xf", archivePath, "-C", destDir], { stdio: psStdio });
+      } catch (fallbackErr) {
+        throw new Error(
+          `Failed to extract ${archivePath}. ` +
+          `.NET ZipFile attempt: ${primaryErr.message}. ` +
+          `Expand-Archive fallback: ${secondErr.message}. ` +
+          `tar fallback: ${fallbackErr.message}`
+        );
+      }
     }
   }
 }
