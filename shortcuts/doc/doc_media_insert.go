@@ -138,7 +138,24 @@ var DocMediaInsert = common.Shortcut{
 		} else {
 			createBlockData["index"] = "<children_len>"
 		}
-		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption, 0, 0)
+		// Best-effort dimension computation for dry-run.
+		dryWidth := runtime.Int("width")
+		dryHeight := runtime.Int("height")
+		widthChanged := runtime.Changed("width")
+		heightChanged := runtime.Changed("height")
+
+		if (widthChanged || heightChanged) && !(widthChanged && heightChanged) {
+			// One dimension provided — try best-effort DecodeConfig for --file path.
+			if filePath != "<clipboard image>" {
+				if nativeW, nativeH, err := detectImageDimensionsFromPath(runtime.FileIO(), filePath); err == nil {
+					dims := computeMissingDimension(dryWidth, dryHeight, nativeW, nativeH)
+					dryWidth = dims.width
+					dryHeight = dims.height
+				}
+			}
+		}
+
+		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption, dryWidth, dryHeight)
 
 		d := common.NewDryRunAPI()
 		totalSteps := 4
@@ -205,6 +222,9 @@ var DocMediaInsert = common.Shortcut{
 		// real decision once it reads the bytes.
 		if runtime.Bool("from-clipboard") {
 			d.Set("upload_size_note", "clipboard size unknown; single-part vs multipart decision deferred to runtime")
+		}
+		if runtime.Bool("from-clipboard") && (widthChanged || heightChanged) && !(widthChanged && heightChanged) {
+			d.Set("dimension_note", "clipboard dimensions unknown; aspect-ratio calculation deferred to runtime")
 		}
 		return d
 	},
@@ -540,6 +560,15 @@ func detectImageDimensions(r io.Reader) (width, height int, err error) {
 		return 0, 0, err
 	}
 	return cfg.Width, cfg.Height, nil
+}
+
+func detectImageDimensionsFromPath(fio fileio.FileIO, filePath string) (int, int, error) {
+	f, err := fio.Open(filePath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+	return detectImageDimensions(f)
 }
 
 func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption string, width, height int) map[string]interface{} {
