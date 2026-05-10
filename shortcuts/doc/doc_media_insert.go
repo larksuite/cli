@@ -350,21 +350,63 @@ var DocMediaInsert = common.Shortcut{
 
 		fmt.Fprintf(runtime.IO().ErrOut, "File uploaded: %s\n", fileToken)
 
+		// Resolve display dimensions for image blocks.
+		var finalWidth, finalHeight int
+		if mediaType == "image" {
+			userWidth := runtime.Int("width")
+			userHeight := runtime.Int("height")
+			widthChanged := runtime.Changed("width")
+			heightChanged := runtime.Changed("height")
+
+			if widthChanged && heightChanged {
+				finalWidth = userWidth
+				finalHeight = userHeight
+			} else if widthChanged || heightChanged {
+				var nativeW, nativeH int
+				if clipboardContent != nil {
+					nativeW, nativeH, err = detectImageDimensions(bytes.NewReader(clipboardContent))
+				} else {
+					f, openErr := runtime.FileIO().Open(filePath)
+					if openErr != nil {
+						return withRollbackWarning(output.ErrValidation(
+							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+					}
+					nativeW, nativeH, err = detectImageDimensions(f)
+					f.Close()
+				}
+				if err != nil {
+					return withRollbackWarning(output.ErrValidation(
+						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+				}
+				dims := computeMissingDimension(userWidth, userHeight, nativeW, nativeH)
+				finalWidth = dims.width
+				finalHeight = dims.height
+				fmt.Fprintf(runtime.IO().ErrOut, "Image dimensions: %dx%d (native: %dx%d)\n", finalWidth, finalHeight, nativeW, nativeH)
+			}
+		}
+
 		// Step 4: Bind file token to block via batch_update
 		fmt.Fprintf(runtime.IO().ErrOut, "Binding uploaded media to block %s\n", replaceBlockID)
 
 		if _, err := runtime.CallAPI("PATCH",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/batch_update", validate.EncodePathSegment(documentID)),
-			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption, 0, 0)); err != nil {
+			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption, finalWidth, finalHeight)); err != nil {
 			return withRollbackWarning(err)
 		}
 
-		runtime.Out(map[string]interface{}{
+		outData := map[string]interface{}{
 			"document_id": documentID,
 			"block_id":    blockId,
 			"file_token":  fileToken,
 			"type":        mediaType,
-		}, nil)
+		}
+		if finalWidth > 0 {
+			outData["width"] = finalWidth
+		}
+		if finalHeight > 0 {
+			outData["height"] = finalHeight
+		}
+		runtime.Out(outData, nil)
 		return nil
 	},
 }
