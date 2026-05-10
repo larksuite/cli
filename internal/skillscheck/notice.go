@@ -15,20 +15,20 @@ import (
 
 // StaleNotice signals that the locally synced skills version does not
 // match the running binary. Current is the last successfully synced
-// version (or "" when never synced); Target is the running binary
-// version. Mirrors internal/update.UpdateInfo's pending-notice pattern.
+// version (always non-empty — Init no longer emits a notice on cold
+// start). Target is the running binary version. Mirrors
+// internal/update.UpdateInfo's pending-notice pattern.
 type StaleNotice struct {
 	Current string `json:"current"`
 	Target  string `json:"target"`
 }
 
 // Message returns a single-line, AI-agent-parseable description of the
-// gap plus the canonical fix command. Mirrors internal/update.UpdateInfo.Message
-// in style ("..., run: lark-cli update" suffix).
+// drift plus the canonical fix command. Mirrors internal/update.UpdateInfo.Message
+// in style ("..., run: lark-cli update" suffix). Current is guaranteed
+// non-empty because Init only emits a StaleNotice for the drift case
+// (stamp present and != binary version).
 func (s *StaleNotice) Message() string {
-	if s.Current == "" {
-		return "lark-cli skills not installed, run: lark-cli update"
-	}
 	return fmt.Sprintf(
 		"lark-cli skills %s out of sync with binary %s, run: lark-cli update",
 		s.Current, s.Target,

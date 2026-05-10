@@ -504,10 +504,12 @@ func TestIntegration_Shortcut_BusinessError_OutputsEnvelope(t *testing.T) {
 	})
 }
 
-// TestSetupNotices_ColdStart verifies that when no skills stamp exists,
-// the composed PendingNotice provider includes a "skills" key with an
-// empty Current and the cold-start message.
-func TestSetupNotices_ColdStart(t *testing.T) {
+// TestSetupNotices_ColdStart_NoNotice verifies that a missing stamp
+// produces no skills key in the composed notice. Users who installed
+// skills via `npx skills add` (no stamp) must not see the misleading
+// "not installed" notice — only `lark-cli update` users opt into the
+// drift tracker.
+func TestSetupNotices_ColdStart_NoNotice(t *testing.T) {
 	clearNoticeEnv(t)
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
@@ -530,17 +532,10 @@ func TestSetupNotices_ColdStart(t *testing.T) {
 
 	notice := output.GetNotice()
 	if notice == nil {
-		t.Fatal("GetNotice() = nil, want non-nil for cold start")
+		return // expected — no pending notices at all
 	}
-	skills, ok := notice["skills"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("notice.skills missing, got %+v", notice)
-	}
-	if skills["current"] != "" || skills["target"] != "1.0.21" {
-		t.Errorf("notice.skills = %+v, want {current:\"\", target:\"1.0.21\"}", skills)
-	}
-	if msg, _ := skills["message"].(string); msg != "lark-cli skills not installed, run: lark-cli update" {
-		t.Errorf("notice.skills.message = %q, want cold-start message", msg)
+	if _, ok := notice["skills"]; ok {
+		t.Errorf("notice.skills present in cold-start state, want absent: %+v", notice)
 	}
 }
 

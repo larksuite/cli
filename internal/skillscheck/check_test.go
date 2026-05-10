@@ -29,17 +29,13 @@ func TestInit_InSync_NoNotice(t *testing.T) {
 	}
 }
 
-func TestInit_ColdStart_NoticeWithEmptyCurrent(t *testing.T) {
+func TestInit_ColdStart_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	Init("1.0.21")
-	got := GetPending()
-	if got == nil {
-		t.Fatal("GetPending() = nil, want non-nil for cold start")
-	}
-	if got.Current != "" || got.Target != "1.0.21" {
-		t.Errorf("notice = %+v, want {Current:\"\", Target:\"1.0.21\"}", got)
+	if got := GetPending(); got != nil {
+		t.Errorf("GetPending() = %+v, want nil (cold start is silent)", got)
 	}
 }
 
