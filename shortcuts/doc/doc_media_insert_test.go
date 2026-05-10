@@ -843,6 +843,30 @@ func TestDocMediaInsertValidateNoWidthHeightIsValid(t *testing.T) {
 	}
 }
 
+func TestAutoAspectRatioFromWidth(t *testing.T) {
+	t.Parallel()
+
+	// Native image: 1200x800 (3:2 ratio)
+	// User provides width=600 → expected height = 600 * 800 / 1200 = 400
+	got := computeMissingDimension(600, 0, 1200, 800)
+	wantWidth, wantHeight := 600, 400
+	if got.width != wantWidth || got.height != wantHeight {
+		t.Fatalf("computeMissingDimension(600, 0, 1200, 800) = (%d, %d), want (%d, %d)", got.width, got.height, wantWidth, wantHeight)
+	}
+}
+
+func TestAutoAspectRatioFromHeight(t *testing.T) {
+	t.Parallel()
+
+	// Native image: 1200x800 (3:2 ratio)
+	// User provides height=400 → expected width = 400 * 1200 / 800 = 600
+	got := computeMissingDimension(0, 400, 1200, 800)
+	wantWidth, wantHeight := 600, 400
+	if got.width != wantWidth || got.height != wantHeight {
+		t.Fatalf("computeMissingDimension(0, 400, 1200, 800) = (%d, %d), want (%d, %d)", got.width, got.height, wantWidth, wantHeight)
+	}
+}
+
 // Validate is the real user-facing contract for --file-view: unknown
 // values must be rejected, and passing the flag alongside --type!=file
 // must also be rejected. buildCreateBlockData tests alone cannot catch

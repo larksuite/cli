@@ -7,6 +7,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -464,6 +469,35 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 	default:
 		return "", output.ErrValidation("docs +media-insert only supports docx documents")
 	}
+}
+
+type imageDimensions struct {
+	width  int
+	height int
+}
+
+func computeMissingDimension(userWidth, userHeight, nativeWidth, nativeHeight int) imageDimensions {
+	if userWidth > 0 && userHeight == 0 {
+		return imageDimensions{
+			width:  userWidth,
+			height: userWidth * nativeHeight / nativeWidth,
+		}
+	}
+	if userHeight > 0 && userWidth == 0 {
+		return imageDimensions{
+			width:  userHeight * nativeWidth / nativeHeight,
+			height: userHeight,
+		}
+	}
+	return imageDimensions{width: userWidth, height: userHeight}
+}
+
+func detectImageDimensions(r io.Reader) (width, height int, err error) {
+	cfg, _, err := image.DecodeConfig(r)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
 }
 
 func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption string, width, height int) map[string]interface{} {
