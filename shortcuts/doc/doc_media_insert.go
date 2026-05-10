@@ -55,6 +55,8 @@ var DocMediaInsert = common.Shortcut{
 		{Name: "selection-with-ellipsis", Desc: "plain text (or 'start...end' to disambiguate) matching the target block's content. Media is inserted at the top-level ancestor of the matched block — i.e., when the selection is inside a callout, table cell, or nested list, media lands outside that container, not inside it. Pass 'start...end' (a unique prefix and suffix separated by '...') when the plain text appears in more than one block"},
 		{Name: "before", Type: "bool", Desc: "insert before the matched block instead of after (requires --selection-with-ellipsis)"},
 		{Name: "file-view", Desc: "file block rendering: card (default) | preview | inline; only applies when --type=file. preview renders audio/video as an inline player"},
+		{Name: "width", Type: "int", Desc: "image display width in pixels (only for --type=image); if --height is omitted it is auto-computed from the source image aspect ratio"},
+		{Name: "height", Type: "int", Desc: "image display height in pixels (only for --type=image); if --width is omitted it is auto-computed from the source image aspect ratio"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
@@ -92,6 +94,17 @@ var DocMediaInsert = common.Shortcut{
 			if runtime.Str("type") != "file" {
 				return output.ErrValidation("--file-view only applies when --type=file")
 			}
+		}
+		widthChanged := runtime.Changed("width")
+		heightChanged := runtime.Changed("height")
+		if (widthChanged || heightChanged) && runtime.Str("type") != "image" {
+			return output.ErrValidation("--width/--height only apply when --type=image")
+		}
+		if widthChanged && runtime.Int("width") <= 0 {
+			return output.ErrValidation("--width must be a positive integer")
+		}
+		if heightChanged && runtime.Int("height") <= 0 {
+			return output.ErrValidation("--height must be a positive integer")
 		}
 		return nil
 	},

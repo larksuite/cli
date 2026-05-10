@@ -6,6 +6,7 @@ package doc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -709,6 +710,137 @@ func newMediaInsertValidateRuntime(t *testing.T, doc, mediaType, fileView string
 		}
 	}
 	return common.TestNewRuntimeContext(cmd, nil)
+}
+
+func newMediaInsertValidateRuntimeWithSize(t *testing.T, doc, mediaType string, width, height int, setWidth, setHeight bool) *common.RuntimeContext {
+	t.Helper()
+
+	cmd := &cobra.Command{Use: "docs +media-insert"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().Bool("from-clipboard", false, "")
+	cmd.Flags().String("doc", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("file-view", "", "")
+	cmd.Flags().Int("width", 0, "")
+	cmd.Flags().Int("height", 0, "")
+	cmd.Flags().String("selection-with-ellipsis", "", "")
+	cmd.Flags().Bool("before", false, "")
+	if err := cmd.Flags().Set("file", "dummy.bin"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("doc", doc); err != nil {
+		t.Fatalf("set --doc: %v", err)
+	}
+	if err := cmd.Flags().Set("type", mediaType); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+	if setWidth {
+		if err := cmd.Flags().Set("width", fmt.Sprintf("%d", width)); err != nil {
+			t.Fatalf("set --width: %v", err)
+		}
+	}
+	if setHeight {
+		if err := cmd.Flags().Set("height", fmt.Sprintf("%d", height)); err != nil {
+			t.Fatalf("set --height: %v", err)
+		}
+	}
+	return common.TestNewRuntimeContext(cmd, nil)
+}
+
+func TestDocMediaInsertValidateWidthHeightOnlyForImage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		mediaType string
+		width     int
+		height    int
+		setWidth  bool
+		setHeight bool
+		wantErr   string
+	}{
+		{
+			name:      "width with file type is rejected",
+			mediaType: "file",
+			width:     800,
+			setWidth:  true,
+			wantErr:   "--width/--height only apply when --type=image",
+		},
+		{
+			name:      "height with file type is rejected",
+			mediaType: "file",
+			height:    600,
+			setHeight: true,
+			wantErr:   "--width/--height only apply when --type=image",
+		},
+		{
+			name:      "explicit zero width is rejected",
+			mediaType: "image",
+			width:     0,
+			setWidth:  true,
+			wantErr:   "--width must be a positive integer",
+		},
+		{
+			name:      "negative width is rejected",
+			mediaType: "image",
+			width:     -1,
+			setWidth:  true,
+			wantErr:   "--width must be a positive integer",
+		},
+		{
+			name:      "negative height is rejected",
+			mediaType: "image",
+			height:    -5,
+			setHeight: true,
+			wantErr:   "--height must be a positive integer",
+		},
+		{
+			name:      "valid width with image type is accepted",
+			mediaType: "image",
+			width:     800,
+			setWidth:  true,
+		},
+		{
+			name:      "valid width and height with image type is accepted",
+			mediaType: "image",
+			width:     800,
+			height:    600,
+			setWidth:  true,
+			setHeight: true,
+		},
+	}
+
+	for _, ttTemp := range tests {
+		tt := ttTemp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rt := newMediaInsertValidateRuntimeWithSize(t, "doxcnValidateSize", tt.mediaType, tt.width, tt.height, tt.setWidth, tt.setHeight)
+			err := DocMediaInsert.Validate(context.Background(), rt)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() error = nil, want error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDocMediaInsertValidateNoWidthHeightIsValid(t *testing.T) {
+	t.Parallel()
+
+	rt := newMediaInsertValidateRuntimeWithSize(t, "doxcnNoSize", "image", 0, 0, false, false)
+	err := DocMediaInsert.Validate(context.Background(), rt)
+	if err != nil {
+		t.Fatalf("Validate() unexpected error when neither --width nor --height passed: %v", err)
+	}
 }
 
 // Validate is the real user-facing contract for --file-view: unknown
