@@ -176,7 +176,7 @@ func TestBuildDeleteBlockDataUsesHalfOpenInterval(t *testing.T) {
 func TestBuildBatchUpdateDataForImage(t *testing.T) {
 	t.Parallel()
 
-	got := buildBatchUpdateData("blk_1", "image", "file_tok", "center", "caption text")
+	got := buildBatchUpdateData("blk_1", "image", "file_tok", "center", "caption text", 0, 0)
 	want := map[string]interface{}{
 		"requests": []interface{}{
 			map[string]interface{}{
@@ -199,7 +199,7 @@ func TestBuildBatchUpdateDataForImage(t *testing.T) {
 func TestBuildBatchUpdateDataForFile(t *testing.T) {
 	t.Parallel()
 
-	got := buildBatchUpdateData("blk_2", "file", "file_tok", "", "")
+	got := buildBatchUpdateData("blk_2", "file", "file_tok", "", "", 0, 0)
 	want := map[string]interface{}{
 		"requests": []interface{}{
 			map[string]interface{}{
@@ -212,6 +212,48 @@ func TestBuildBatchUpdateDataForFile(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildBatchUpdateData(file) = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildBatchUpdateDataForImageWithWidthHeight(t *testing.T) {
+	t.Parallel()
+
+	got := buildBatchUpdateData("blk_1", "image", "file_tok", "center", "caption text", 800, 447)
+	want := map[string]interface{}{
+		"requests": []interface{}{
+			map[string]interface{}{
+				"block_id": "blk_1",
+				"replace_image": map[string]interface{}{
+					"token":   "file_tok",
+					"width":   800,
+					"height":  447,
+					"align":   2,
+					"caption": map[string]interface{}{"content": "caption text"},
+				},
+			},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildBatchUpdateData(image, 800, 447) = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildBatchUpdateDataForFileIgnoresWidthHeight(t *testing.T) {
+	t.Parallel()
+
+	got := buildBatchUpdateData("blk_2", "file", "file_tok", "", "", 800, 600)
+	want := map[string]interface{}{
+		"requests": []interface{}{
+			map[string]interface{}{
+				"block_id": "blk_2",
+				"replace_file": map[string]interface{}{
+					"token": "file_tok",
+				},
+			},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildBatchUpdateData(file, 800, 600) = %#v, want %#v", got, want)
 	}
 }
 

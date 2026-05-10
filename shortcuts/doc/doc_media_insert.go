@@ -120,7 +120,7 @@ var DocMediaInsert = common.Shortcut{
 		} else {
 			createBlockData["index"] = "<children_len>"
 		}
-		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption)
+		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption, 0, 0)
 
 		d := common.NewDryRunAPI()
 		totalSteps := 4
@@ -337,7 +337,7 @@ var DocMediaInsert = common.Shortcut{
 
 		if _, err := runtime.CallAPI("PATCH",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/batch_update", validate.EncodePathSegment(documentID)),
-			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption)); err != nil {
+			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption, 0, 0)); err != nil {
 			return withRollbackWarning(err)
 		}
 
@@ -453,7 +453,7 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 	}
 }
 
-func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption string) map[string]interface{} {
+func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption string, width, height int) map[string]interface{} {
 	request := map[string]interface{}{
 		"block_id": blockID,
 	}
@@ -464,6 +464,12 @@ func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption strin
 	} else {
 		replaceImage := map[string]interface{}{
 			"token": fileToken,
+		}
+		if width > 0 {
+			replaceImage["width"] = width
+		}
+		if height > 0 {
+			replaceImage["height"] = height
 		}
 		if alignVal, ok := alignMap[alignStr]; ok {
 			replaceImage["align"] = alignVal
