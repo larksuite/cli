@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -874,5 +875,28 @@ func TestShortcuts(t *testing.T) {
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("Shortcuts() commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestMessageReadShortcutsDeclareBotBasicInfoScope(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		shortcut common.Shortcut
+		identity string
+	}{
+		{name: "chat messages user", shortcut: ImChatMessageList, identity: "user"},
+		{name: "chat messages bot", shortcut: ImChatMessageList, identity: "bot"},
+		{name: "messages mget user", shortcut: ImMessagesMGet, identity: "user"},
+		{name: "messages mget bot", shortcut: ImMessagesMGet, identity: "bot"},
+		{name: "thread messages user", shortcut: ImThreadsMessagesList, identity: "user"},
+		{name: "thread messages bot", shortcut: ImThreadsMessagesList, identity: "bot"},
+		{name: "messages search user", shortcut: ImMessagesSearch, identity: "user"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			const wantScope = "application:bot.basic_info:read"
+			if !slices.Contains(tt.shortcut.ScopesForIdentity(tt.identity), wantScope) {
+				t.Fatalf("%s scopes = %#v, want %s", tt.name, tt.shortcut.ScopesForIdentity(tt.identity), wantScope)
+			}
+		})
 	}
 }
