@@ -67,6 +67,7 @@ func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
 	if v := runtime.Str("parent-position"); v != "" {
 		body["parent_position"] = v
 	}
+	injectDocsScene(runtime, body)
 	return body
 }
 

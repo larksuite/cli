@@ -162,5 +162,6 @@ func buildUpdateBody(runtime *common.RuntimeContext) map[string]interface{} {
 	if v := runtime.Str("src-block-ids"); v != "" {
 		body["src_block_ids"] = v
 	}
+	injectDocsScene(runtime, body)
 	return body
 }
