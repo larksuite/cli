@@ -56,10 +56,12 @@ func TestRunWritePathLint_HTMLAlwaysAutofixesNeverStrict(t *testing.T) {
 	}
 }
 
-// TestApplyLintToEnvelope_DefaultOnlyCounts verifies the helper writes
-// only counts in the default (non-detail) mode and omits the full Finding
-// arrays.
-func TestApplyLintToEnvelope_DefaultOnlyCounts(t *testing.T) {
+// TestApplyLintToEnvelope_DefaultOmitsAllLintFields verifies the helper
+// writes NONE of the 4 lint fields in the default (non-detail) mode so the
+// envelope stays token-frugal (only the 3 core keys: compose_hint /
+// draft_id|message_id / reference). Honors tech-design §4.1.5 «field
+// same-in-same-out» rule.
+func TestApplyLintToEnvelope_DefaultOmitsAllLintFields(t *testing.T) {
 	data := map[string]interface{}{"existing": "value"}
 	rep := lint.EmptyReport(`<p>x</p>`)
 	applyLintToEnvelope(data, rep.Applied, rep.Blocked, false)
@@ -67,11 +69,11 @@ func TestApplyLintToEnvelope_DefaultOnlyCounts(t *testing.T) {
 	if data["existing"] != "value" {
 		t.Error("existing key was clobbered")
 	}
-	if data["lint_applied_count"] != 0 {
-		t.Errorf("lint_applied_count = %v, want 0", data["lint_applied_count"])
+	if _, ok := data["lint_applied_count"]; ok {
+		t.Error("lint_applied_count must NOT be present in default mode")
 	}
-	if data["original_blocked_count"] != 0 {
-		t.Errorf("original_blocked_count = %v, want 0", data["original_blocked_count"])
+	if _, ok := data["original_blocked_count"]; ok {
+		t.Error("original_blocked_count must NOT be present in default mode")
 	}
 	if _, ok := data["lint_applied"]; ok {
 		t.Error("lint_applied[] must NOT be present in default mode")
@@ -81,16 +83,20 @@ func TestApplyLintToEnvelope_DefaultOnlyCounts(t *testing.T) {
 	}
 }
 
-// TestApplyLintToEnvelope_DetailModeIncludesArrays verifies the detail mode
-// (showDetails=true) attaches the full non-nil Finding arrays alongside the
-// count fields.
-func TestApplyLintToEnvelope_DetailModeIncludesArrays(t *testing.T) {
+// TestApplyLintToEnvelope_DetailModeIncludesAllFour verifies the detail mode
+// (showDetails=true) attaches ALL 4 lint fields together: the 2 count fields
+// alongside the 2 non-nil Finding arrays. The 4 fields appear and disappear
+// together (tech-design §4.1.5 same-in-same-out rule).
+func TestApplyLintToEnvelope_DetailModeIncludesAllFour(t *testing.T) {
 	data := map[string]interface{}{}
 	rep := lint.EmptyReport(`<p>x</p>`)
 	applyLintToEnvelope(data, rep.Applied, rep.Blocked, true)
 
 	if data["lint_applied_count"] != 0 {
 		t.Errorf("lint_applied_count = %v, want 0", data["lint_applied_count"])
+	}
+	if data["original_blocked_count"] != 0 {
+		t.Errorf("original_blocked_count = %v, want 0", data["original_blocked_count"])
 	}
 	la, ok := data["lint_applied"].([]lint.Finding)
 	if !ok {
@@ -113,8 +119,10 @@ func TestApplyLintToEnvelope_DetailModeIncludesArrays(t *testing.T) {
 // =====================================================================
 
 // TestMailDraftCreate_WritePathLintEnvelopeDefault verifies +draft-create's
-// default envelope carries lint_applied_count / original_blocked_count and
-// suppresses the full Finding arrays.
+// default envelope hides ALL 4 lint fields (counts + arrays) so the response
+// stays token-frugal — even when the input body has warnings (<font>) and
+// errors (<script>) that the writing path autofixes. Honors tech-design
+// §4.1.5 «field same-in-same-out» rule.
 func TestMailDraftCreate_WritePathLintEnvelopeDefault(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	chdirTemp(t)
@@ -132,16 +140,14 @@ func TestMailDraftCreate_WritePathLintEnvelopeDefault(t *testing.T) {
 	}
 	data := decodeShortcutEnvelopeData(t, stdout)
 
-	// Counts must be present and reflect ≥1 warning (<font>) + ≥1 error (<script>).
-	laCount, ok := data["lint_applied_count"].(float64)
-	if !ok || int(laCount) < 1 {
-		t.Errorf("lint_applied_count missing or <1: %v", data["lint_applied_count"])
+	// All 4 lint fields must be absent in default mode (even when the writing
+	// path actually applied autofixes / blocked tags under the hood).
+	if _, present := data["lint_applied_count"]; present {
+		t.Error("lint_applied_count must be hidden in default mode")
 	}
-	obCount, ok := data["original_blocked_count"].(float64)
-	if !ok || int(obCount) < 1 {
-		t.Errorf("original_blocked_count missing or <1: %v", data["original_blocked_count"])
+	if _, present := data["original_blocked_count"]; present {
+		t.Error("original_blocked_count must be hidden in default mode")
 	}
-	// Detail arrays must NOT appear in default mode.
 	if _, present := data["lint_applied"]; present {
 		t.Error("lint_applied[] must be hidden in default mode")
 	}
@@ -185,9 +191,11 @@ func TestMailDraftCreate_WritePathLintEnvelopeWithDetails(t *testing.T) {
 	}
 }
 
-// TestMailDraftCreate_PlainTextWritePathCountsAreZero verifies the envelope
-// emits zero counts (and no detail arrays) on the plain-text path.
-func TestMailDraftCreate_PlainTextWritePathCountsAreZero(t *testing.T) {
+// TestMailDraftCreate_PlainTextWritePathLintFieldsHidden verifies the
+// envelope omits ALL 4 lint fields on the plain-text path (in default mode,
+// no --show-lint-details). Same-in-same-out rule applies regardless of body
+// kind.
+func TestMailDraftCreate_PlainTextWritePathLintFieldsHidden(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	chdirTemp(t)
 	registerMailboxProfileMock(reg)
@@ -204,11 +212,11 @@ func TestMailDraftCreate_PlainTextWritePathCountsAreZero(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	data := decodeShortcutEnvelopeData(t, stdout)
-	if cnt, _ := data["lint_applied_count"].(float64); int(cnt) != 0 {
-		t.Errorf("lint_applied_count should be 0 on plain-text path, got %v", data["lint_applied_count"])
+	if _, present := data["lint_applied_count"]; present {
+		t.Error("lint_applied_count must be hidden in default mode (plain-text)")
 	}
-	if cnt, _ := data["original_blocked_count"].(float64); int(cnt) != 0 {
-		t.Errorf("original_blocked_count should be 0 on plain-text path, got %v", data["original_blocked_count"])
+	if _, present := data["original_blocked_count"]; present {
+		t.Error("original_blocked_count must be hidden in default mode (plain-text)")
 	}
 	if _, present := data["lint_applied"]; present {
 		t.Error("lint_applied[] must be hidden in default mode (plain-text)")

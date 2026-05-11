@@ -55,14 +55,20 @@ func runWritePathLint(body string) (cleaned string, rep lint.Report) {
 // applyLintToEnvelope mutates the OutFormat data map by adding the
 // writing-path lint contract keys.
 //
-//   - `lint_applied_count` / `original_blocked_count` — ALWAYS present.
-//     Counts let AI / users know whether lint changed anything without paying
-//     the token cost of the full Finding payload (S3 envelope contract:
-//     compose responses must stay small enough for AI consumers).
-//   - `lint_applied[]` / `original_blocked[]` — ONLY present when the caller
-//     passes `--show-lint-details`. Both arrays are non-nil (possibly empty)
-//     so detail-mode consumers can rely on `data.lint_applied[]` /
-//     `data.original_blocked[]` unconditionally.
+// All 4 lint fields are gated together on `--show-lint-details` to honor the
+// tech-design §4.1.5 «field same-in-same-out» rule: the 2 count fields
+// (`lint_applied_count` / `original_blocked_count`) and the 2 array fields
+// (`lint_applied[]` / `original_blocked[]`) must appear together or be
+// absent together, so the default-mode envelope stays token-frugal (only
+// the 3 core keys: `compose_hint` / `draft_id` (or `message_id`) /
+// `reference`) and detail-mode consumers can rely on all 4 keys
+// unconditionally.
+//
+//   - Default (no `--show-lint-details`): none of the 4 lint fields are
+//     written to `data`.
+//   - With `--show-lint-details=true`: all 4 lint fields are written.
+//     The arrays are non-nil (possibly empty) so callers can rely on
+//     `data.lint_applied[]` / `data.original_blocked[]` unconditionally.
 func applyLintToEnvelope(data map[string]interface{}, applied, blocked []lint.Finding, showDetails bool) {
 	if applied == nil {
 		applied = []lint.Finding{}
@@ -70,9 +76,9 @@ func applyLintToEnvelope(data map[string]interface{}, applied, blocked []lint.Fi
 	if blocked == nil {
 		blocked = []lint.Finding{}
 	}
-	data["lint_applied_count"] = len(applied)
-	data["original_blocked_count"] = len(blocked)
 	if showDetails {
+		data["lint_applied_count"] = len(applied)
+		data["original_blocked_count"] = len(blocked)
 		data["lint_applied"] = applied
 		data["original_blocked"] = blocked
 	}
