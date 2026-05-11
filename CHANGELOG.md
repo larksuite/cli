@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.28] - 2026-05-11
+
+### Features
+
+- **im**: Support UAT for `messages.forward` and add `threads.forward` (#689)
+- **im**: Add flag shortcuts `+flag-create` / `+flag-list` / `+flag-cancel` for message bookmarks (#770)
+
+### Bug Fixes
+
+- **drive**: Handle duplicate remote sync paths (#803)
+
+### Documentation
+
+- **im**: Name `--query` / `--member-ids` in `+chat-search` shortcut row (#812)
+
 ## [v1.0.27] - 2026-05-09
 
 ### Features
@@ -644,6 +659,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.28]: https://github.com/larksuite/cli/releases/tag/v1.0.28
 [v1.0.27]: https://github.com/larksuite/cli/releases/tag/v1.0.27
 [v1.0.26]: https://github.com/larksuite/cli/releases/tag/v1.0.26
 [v1.0.25]: https://github.com/larksuite/cli/releases/tag/v1.0.25
