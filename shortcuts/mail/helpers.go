@@ -2192,10 +2192,21 @@ func buildDraftSendOutput(resData map[string]interface{}, mailboxID string) map[
 
 // buildDraftSavedOutput formats a successful drafts.create / drafts.update
 // response into the public output map (draft_id + optional preview URL).
+//
+// The default envelope is intentionally minimal per tech-design §4.1.5
+// (token-frugal contract: only {compose_hint, draft_id, reference} for the
+// save-as-draft path on +send / +reply / +reply-all / +forward). The same
+// "how to send the draft" hint is emitted on stderr by hintSendDraft so UX
+// is unchanged; it is not duplicated into the JSON envelope.
+//
+// The mailboxID parameter is retained for backward compatibility with the
+// four callers (mail_send.go / mail_reply.go / mail_reply_all.go /
+// mail_forward.go) and may be used in the future; it is intentionally
+// unused inside the body now that the tip has moved to stderr.
 func buildDraftSavedOutput(draftResult draftpkg.DraftResult, mailboxID string) map[string]interface{} {
+	_ = mailboxID // reserved; tip teaching is emitted via hintSendDraft on stderr
 	out := map[string]interface{}{
 		"draft_id": draftResult.DraftID,
-		"tip":      fmt.Sprintf(`draft saved. To send: lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"%s","draft_id":"%s"}'`, mailboxID, draftResult.DraftID),
 	}
 	if draftResult.Reference != "" {
 		out["reference"] = draftResult.Reference
