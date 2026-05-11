@@ -89,7 +89,7 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 		nameMap = make(map[string]string)
 	}
 
-	// Step 1: extract names from mentions (free)
+	// Step 1: extract user names from mentions (free)
 	for _, msg := range messages {
 		switch mentions := msg["mentions"].(type) {
 		case []interface{}:
@@ -113,36 +113,58 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 		}
 	}
 
-	// Collect sender IDs still missing a name
-	seen := make(map[string]bool)
-	var missingIDs []string
+	// Collect sender IDs still missing a name.
+	// - user senders: resolve via contact API (open_id → name)
+	// - bot/app senders: resolve via application API (app_id → app_name)
+	seenUsers := make(map[string]bool)
+	seenApps := make(map[string]bool)
+	var missingUserIDs []string
+	var missingAppIDs []string
 	for _, msg := range messages {
 		sender, ok := msg["sender"].(map[string]interface{})
 		if !ok {
 			continue
 		}
 		senderType, _ := sender["sender_type"].(string)
-		if senderType != "user" {
-			continue
-		}
 		id, _ := sender["id"].(string)
-		if id == "" || !strings.HasPrefix(id, "ou_") || seen[id] || nameMap[id] != "" {
+		if id == "" || nameMap[id] != "" {
 			continue
 		}
-		seen[id] = true
-		missingIDs = append(missingIDs, id)
+
+		switch senderType {
+		case "user":
+			if !strings.HasPrefix(id, "ou_") || seenUsers[id] {
+				continue
+			}
+			seenUsers[id] = true
+			missingUserIDs = append(missingUserIDs, id)
+		case "app", "bot":
+			if seenApps[id] {
+				continue
+			}
+			seenApps[id] = true
+			missingAppIDs = append(missingAppIDs, id)
+		}
 	}
-	if len(missingIDs) == 0 {
+
+	if len(missingUserIDs) == 0 && len(missingAppIDs) == 0 {
 		return nameMap
 	}
 
-	// Step 2: batch resolve remaining via contact API.
+	// Step 2: batch resolve remaining user senders via contact API.
 	// Use basic_batch for user identity (lighter permission requirement),
 	// full batch for bot identity.
-	if runtime.As().IsBot() {
-		batchResolveUsers(runtime, missingIDs, nameMap)
-	} else {
-		batchResolveByBasicContact(runtime, missingIDs, nameMap)
+	if len(missingUserIDs) > 0 {
+		if runtime.As().IsBot() {
+			batchResolveUsers(runtime, missingUserIDs, nameMap)
+		} else {
+			batchResolveByBasicContact(runtime, missingUserIDs, nameMap)
+		}
+	}
+
+	// Step 3: resolve bot/app sender names via application API.
+	if len(missingAppIDs) > 0 {
+		batchResolveApps(runtime, missingAppIDs, nameMap)
 	}
 
 	return nameMap
@@ -213,6 +235,64 @@ func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, name
 			}
 		}
 	}
+}
+
+func batchResolveApps(runtime *common.RuntimeContext, appIDs []string, nameMap map[string]string) {
+	query := larkcore.QueryParams{"lang": []string{"zh_cn"}}
+	for _, appID := range appIDs {
+		data, err := doAPIJSONAsBotIfPossible(runtime, http.MethodGet, "/open-apis/application/v6/applications/"+url.PathEscape(appID), query, nil)
+		if err != nil {
+			continue
+		}
+		app, _ := data["app"].(map[string]any)
+		name, _ := app["app_name"].(string)
+		if name == "" {
+			name, _ = data["app_name"].(string)
+		}
+		if name != "" {
+			nameMap[appID] = name
+		}
+	}
+}
+
+func doAPIJSONAsBotIfPossible(runtime *common.RuntimeContext, method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	if runtime == nil {
+		return nil, fmt.Errorf("runtime is nil")
+	}
+	if runtime.Config == nil || !runtime.Config.CanBot() {
+		return runtime.DoAPIJSON(method, apiPath, query, body)
+	}
+
+	req := &larkcore.ApiReq{
+		HttpMethod:  method,
+		ApiPath:     apiPath,
+		QueryParams: query,
+	}
+	if body != nil {
+		req.Body = body
+	}
+	resp, err := runtime.DoAPIAsBot(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	if len(resp.RawBody) == 0 {
+		return nil, fmt.Errorf("empty response body")
+	}
+	var envelope struct {
+		Code int            `json:"code"`
+		Msg  string         `json:"msg"`
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(resp.RawBody, &envelope); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+	if envelope.Code != 0 {
+		return nil, fmt.Errorf("[%d] %s", envelope.Code, envelope.Msg)
+	}
+	return envelope.Data, nil
 }
 
 // AttachSenderNames enriches message sender objects with resolved display names.

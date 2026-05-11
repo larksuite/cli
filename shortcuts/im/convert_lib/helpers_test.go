@@ -143,6 +143,23 @@ func TestResolveSenderNames(t *testing.T) {
 					},
 				},
 			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/application/v6/applications/cli_bot"):
+			if got := req.URL.Query().Get("lang"); got != "zh_cn" {
+				t.Fatalf("application lang = %q, want zh_cn", got)
+			}
+			return convertlibJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"app": map[string]interface{}{"app_name": "Bot Sender"},
+				},
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/application/v6/applications/cli_app"):
+			return convertlibJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"app": map[string]interface{}{"app_name": "App Sender"},
+				},
+			}), nil
 		default:
 			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
 		}
@@ -157,7 +174,8 @@ func TestResolveSenderNames(t *testing.T) {
 		},
 		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_api"}},
 		{"sender": map[string]interface{}{"sender_type": "user", "id": "ou_missing"}},
-		{"sender": map[string]interface{}{"sender_type": "bot", "id": "cli_1"}},
+		{"sender": map[string]interface{}{"sender_type": "bot", "id": "cli_bot"}},
+		{"sender": map[string]interface{}{"sender_type": "app", "id": "cli_app"}},
 	}
 
 	got := ResolveSenderNames(runtime, messages, nil)
@@ -166,6 +184,12 @@ func TestResolveSenderNames(t *testing.T) {
 	}
 	if got["ou_api"] != "API User" {
 		t.Fatalf("api-resolved sender = %#v, want %#v", got["ou_api"], "API User")
+	}
+	if got["cli_bot"] != "Bot Sender" {
+		t.Fatalf("bot-resolved sender = %#v, want %#v", got["cli_bot"], "Bot Sender")
+	}
+	if got["cli_app"] != "App Sender" {
+		t.Fatalf("app-resolved sender = %#v, want %#v", got["cli_app"], "App Sender")
 	}
 	if got["ou_missing"] != "" {
 		t.Fatalf("missing sender = %#v, want empty", got["ou_missing"])
