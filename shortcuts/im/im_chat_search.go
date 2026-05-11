@@ -15,10 +15,14 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// ImChatSearch is the +chat-search shortcut: wraps POST /open-apis/im/v2/chats/search
+// to find visible group chats by keyword and/or member open_ids. Supports
+// member/type filters, sort order, pagination, and (user identity only) the
+// --exclude-muted client-side mute filter.
 var ImChatSearch = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-search",
-	Description: "Search visible group chats by keyword and/or member open_ids (e.g. look up chat_id by group name); user/bot; supports member/type filters, sorting, and pagination",
+	Description: "Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, pagination, and --exclude-muted (user identity only)",
 	Risk:        "read",
 	Scopes:      []string{"im:chat:read"},
 	AuthTypes:   []string{"user", "bot"},
@@ -32,7 +36,9 @@ var ImChatSearch = common.Shortcut{
 		{Name: "sort-by", Desc: "sort field (descending)", Enum: []string{"create_time_desc", "update_time_desc", "member_count_desc"}},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-100)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
 	},
+	// DryRun previews the POST /open-apis/im/v2/chats/search request without executing.
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := buildSearchChatBody(runtime)
 		params := buildSearchChatParams(runtime)
@@ -41,6 +47,8 @@ var ImChatSearch = common.Shortcut{
 			Params(params).
 			Body(body)
 	},
+	// Validate enforces query/member-ids presence, --query rune cap, search-types
+	// enum, --member-ids count and format, and --page-size bounds.
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		query := runtime.Str("query")
 		memberIDs := runtime.Str("member-ids")
@@ -79,6 +87,10 @@ var ImChatSearch = common.Shortcut{
 		}
 		return nil
 	},
+	// Execute fetches one page, extracts per-item meta_data, optionally applies
+	// the --exclude-muted client-side filter (with a PreSkipReason when
+	// --search-types is exactly public_not_joined), and renders the result.
+	// outData["filter"] is populated only when --exclude-muted is set.
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildSearchChatBody(runtime)
 		params := buildSearchChatParams(runtime)
@@ -106,16 +118,39 @@ var ImChatSearch = common.Shortcut{
 			items = append(items, meta)
 		}
 
+		preSkipReason := ""
+		if runtime.Bool("exclude-muted") {
+			preSkipReason = detectAllNonMemberPreSkip(runtime.Str("search-types"))
+		}
+		mfOut, err := MaybeApplyMuteFilter(runtime, MuteFilterInput{
+			ExcludeMuted:  runtime.Bool("exclude-muted"),
+			IsBot:         runtime.IsBot(),
+			PreSkipReason: preSkipReason,
+			Chats:         items,
+			ChatIDKey:     "chat_id",
+			HasMore:       hasMore,
+		})
+		if err != nil {
+			return err
+		}
+		items = mfOut.Chats
+
 		outData := map[string]interface{}{
 			"chats":      items,
 			"total":      int(total),
 			"has_more":   hasMore,
 			"page_token": pageToken,
 		}
+		if mfOut.Meta.Applied != "" {
+			outData["filter"] = MuteFilterMetaToMap(mfOut.Meta)
+		}
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			if len(items) == 0 {
 				fmt.Fprintln(w, "No matching group chats found.")
+				if mfOut.Meta.Hint != "" {
+					fmt.Fprintln(w, mfOut.Meta.Hint)
+				}
 				return
 			}
 			var rows []map[string]interface{}
@@ -154,11 +189,19 @@ var ImChatSearch = common.Shortcut{
 				moreHint += ")"
 			}
 			fmt.Fprintf(w, "\n%d chat(s) found%s\n", int(total), moreHint)
+			if mfOut.Meta.Hint != "" {
+				fmt.Fprintln(w, mfOut.Meta.Hint)
+			}
 		})
 		return nil
 	},
 }
 
+// buildSearchChatBody builds the JSON request body for POST /im/v2/chats/search
+// from the runtime flag values. The query string is normalized via
+// normalizeChatSearchQuery (hyphenated terms get quoted). The "filter" object
+// is omitted when no filter flags are set; "sorter" is omitted when --sort-by
+// is empty.
 func buildSearchChatBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{}
 
@@ -194,6 +237,9 @@ func buildSearchChatBody(runtime *common.RuntimeContext) map[string]interface{} 
 	return body
 }
 
+// buildSearchChatParams builds the query parameters for the POST
+// /im/v2/chats/search call. page_size defaults to the API default of 20 when
+// not provided; page_token is omitted when empty.
 func buildSearchChatParams(runtime *common.RuntimeContext) map[string]interface{} {
 	params := map[string]interface{}{}
 	if n := runtime.Int("page-size"); n > 0 {
@@ -207,10 +253,11 @@ func buildSearchChatParams(runtime *common.RuntimeContext) map[string]interface{
 	return params
 }
 
+// normalizeChatSearchQuery wraps hyphenated search queries in double quotes
+// because the search API treats hyphenated keywords specially and expects the
+// whole query to be quoted. Already-quoted input is unwrapped before requoting
+// so we don't emit nested quotes. Inputs without "-" pass through unchanged.
 func normalizeChatSearchQuery(query string) string {
-	// The search API treats hyphenated keywords specially and expects the whole
-	// query to be quoted. Normalize already-quoted input before requoting so we
-	// don't emit nested quotes.
 	if !strings.Contains(query, "-") {
 		return query
 	}
@@ -218,4 +265,16 @@ func normalizeChatSearchQuery(query string) string {
 		query = unquoted
 	}
 	return strconv.Quote(query)
+}
+
+// detectAllNonMemberPreSkip returns SkipReasonAllNonMember when --search-types
+// is exactly "public_not_joined" — the one combination guaranteeing no member
+// chats, making the mute filter a no-op. Any other value (including empty or
+// mixed) returns "".
+func detectAllNonMemberPreSkip(searchTypesCSV string) string {
+	types := common.SplitCSV(searchTypesCSV)
+	if len(types) == 1 && types[0] == "public_not_joined" {
+		return SkipReasonAllNonMember
+	}
+	return ""
 }

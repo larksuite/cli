@@ -168,7 +168,7 @@ lark-cli im +chat-search --query "<chat name keyword>" --format json
 lark-cli im +messages-search --query "keyword" --chat-id <chat_id>
 ```
 
-**Do not use `im chats search` or `im chats list` — always use the `+chat-search` shortcut.**
+**Do not use `im chats search` or `+chat-list` — always use the `+chat-search` shortcut.**
 
 ## Work Summary / Report Generation
 

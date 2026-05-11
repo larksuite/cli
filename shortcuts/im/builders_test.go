@@ -674,6 +674,25 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		}
 	})
 
+	t.Run("ImChatSearch dry run still works with --exclude-muted set", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query": "team-alpha",
+		}, map[string]bool{
+			"exclude-muted": true,
+		})
+		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
+		// Filter is client-side; --exclude-muted must NOT mutate request body or auto-inject search_types.
+		if !strings.Contains(got, `"/open-apis/im/v2/chats/search"`) {
+			t.Fatalf("ImChatSearch.DryRun() missing endpoint: %s", got)
+		}
+		if strings.Contains(got, `"exclude_muted"`) || strings.Contains(got, `"exclude-muted"`) {
+			t.Fatalf("--exclude-muted leaked into request: %s", got)
+		}
+		if strings.Contains(got, `"search_types"`) {
+			t.Fatalf("search_types must not be auto-injected by --exclude-muted: %s", got)
+		}
+	})
+
 	t.Run("ImMessagesSearch dry run uses messages search endpoint", func(t *testing.T) {
 		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":      "incident",
@@ -809,6 +828,20 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			t.Fatalf("ImChatMessageList.DryRun().Format() = %s, want only_thread_root_messages=true", formatted)
 		}
 	})
+
+	t.Run("ImChatList dry run includes endpoint and params", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"user-id-type": "open_id",
+			"sort-type":    "ByCreateTimeAsc",
+		}, nil)
+		got := mustMarshalDryRun(t, ImChatList.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) {
+			t.Fatalf("ImChatList.DryRun() = %s", got)
+		}
+		if !strings.Contains(got, `"sort_type":"ByCreateTimeAsc"`) {
+			t.Fatalf("ImChatList.DryRun() missing sort_type: %s", got)
+		}
+	})
 }
 
 func TestChatMessageListOnlyThreadRootMessagesDryRun(t *testing.T) {
@@ -821,5 +854,28 @@ func TestChatMessageListOnlyThreadRootMessagesDryRun(t *testing.T) {
 	formatted := ImChatMessageList.DryRun(context.Background(), runtime).Format()
 	if !strings.Contains(formatted, "only_thread_root_messages=true") {
 		t.Fatalf("ImChatMessageList.DryRun().Format() = %s, want only_thread_root_messages=true", formatted)
+	}
+}
+
+func TestDetectAllNonMemberPreSkip(t *testing.T) {
+	cases := []struct {
+		name        string
+		searchTypes string
+		want        string
+	}{
+		{"empty", "", ""},
+		{"only public_not_joined", "public_not_joined", SkipReasonAllNonMember},
+		{"public_not_joined with whitespace", "  public_not_joined  ", SkipReasonAllNonMember},
+		{"private only", "private", ""},
+		{"mixed includes public_not_joined", "public_not_joined,private", ""},
+		{"all four types", "private,public_joined,external,public_not_joined", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := detectAllNonMemberPreSkip(c.searchTypes)
+			if got != c.want {
+				t.Fatalf("detectAllNonMemberPreSkip(%q) = %q, want %q", c.searchTypes, got, c.want)
+			}
+		})
 	}
 }

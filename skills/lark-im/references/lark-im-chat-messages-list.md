@@ -129,7 +129,7 @@ lark-cli api GET /open-apis/im/v1/messages \
    lark-cli im +chat-search --query "<chat name keyword>" --format json
    lark-cli im +chat-messages-list --chat-id <chat_id>
    ```
-   **Do not use `im chats search` or `im chats list` — always use the `+chat-search` shortcut.**
+   **Do not use `im chats search` or `+chat-list` — always use the `+chat-search` shortcut.**
 2. **Prefer `--chat-id` when available:** if the chat_id is already known, use it directly to avoid extra API calls.
 3. **For direct messages:** use `--user-id` to resolve the p2p chat automatically instead of looking it up manually. This requires user identity (`--as user`); with bot identity, resolve the p2p `chat_id` yourself and pass it via `--chat-id`.
 4. **For time ranges:** both ISO 8601 and date-only inputs are supported. Date-only is usually simpler.

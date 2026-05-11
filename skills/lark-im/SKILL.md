@@ -69,8 +69,9 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | Shortcut | 说明 |
 |----------|------|
 | [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat or topic chat; user/bot; --chat-mode group|topic; private/public; invites users/bots; optionally sets bot manager |
+| [`+chat-list`](references/lark-im-chat-list.md) | List groups the current user/bot is a member of; user/bot; supports sorting, pagination, and --exclude-muted (user identity only) |
 | [`+chat-messages-list`](references/lark-im-chat-messages-list.md) | List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range/sort/pagination |
-| [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by `--query` keyword and/or `--member-ids`; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, and pagination |
+| [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, pagination, and --exclude-muted (user identity only) |
 | [`+chat-update`](references/lark-im-chat-update.md) | Update group chat name or description; user/bot; updates a chat's name or description |
 | [`+messages-mget`](references/lark-im-messages-mget.md) | Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies |
 | [`+messages-reply`](references/lark-im-messages-reply.md) | Reply to a message (supports thread replies); user/bot; supports text/markdown/post/media replies, reply-in-thread, idempotency key |
@@ -96,7 +97,6 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `create` — 创建群。Identity: `bot` only (`tenant_access_token`).
   - `get` — 获取群信息。Identity: supports `user` and `bot`; the caller must be in the target chat to get full details, and must belong to the same tenant for internal chats.
   - `link` — 获取群分享链接。Identity: supports `user` and `bot`; the caller must be in the target chat, must be an owner or admin when chat sharing is restricted to owners/admins, and must belong to the same tenant for internal chats.
-  - `list` — 获取用户或机器人所在的群列表。Identity: supports `user` and `bot`.
   - `update` — 更新群信息。Identity: supports `user` and `bot`.
 
 ### chat.members
@@ -141,7 +141,6 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `chats.create` | `im:chat:create` |
 | `chats.get` | `im:chat:read` |
 | `chats.link` | `im:chat:read` |
-| `chats.list` | `im:chat:read` |
 | `chats.update` | `im:chat:update` |
 | `chat.members.bots` | `im:chat.members:read` |
 | `chat.members.create` | `im:chat.members:write_only` |

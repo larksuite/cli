@@ -49,6 +49,7 @@ lark-cli im +chat-search --query "project" --dry-run
 | `--sort-by <field>` | No | `create_time_desc`, `update_time_desc`, `member_count_desc` | Sort field in descending order |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
 | `--page-token <token>` | No | - | Pagination token from the previous response |
+| `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive (mute is a per-user setting); see "Filtering muted chats" below |
 | `--format json` | No | - | Output as JSON |
 | `--dry-run` | No | - | Preview the request without executing it |
 
@@ -64,6 +65,27 @@ lark-cli im +chat-search --query "project" --dry-run
 | `owner_id` | Owner ID |
 | `external` | Whether the chat is external |
 | `chat_status` | Chat status (`normal` / `dissolved` / `dissolved_save`) |
+
+## Filtering muted chats
+
+`--exclude-muted` (user identity only) drops chats the current user has set to do-not-disturb. After the search call, the CLI batches the page's chat_ids through `POST /open-apis/im/v1/chat_user_setting/batch_get_mute_status` and filters client-side. Under `--as bot`, the mute API is UAT-only and the filter is silently skipped.
+
+When the flag is set, the JSON envelope gains a `filter` sub-object (absent otherwise, so existing consumers are unaffected); `fetched_count == returned_count + filtered_count` always holds:
+
+```json
+{
+  "chats": [...],
+  "filter": {
+    "applied": "exclude_muted",
+    "fetched_count": 20,
+    "returned_count": 19,
+    "filtered_count": 1,
+    "hint": "Filtered out 1 muted chat(s) on this page (19 remaining, including 2 non-member public group(s)); use --page-token to fetch more."
+  }
+}
+```
+
+Note: only confirmed-muted chats count toward `filtered_count`; non-member public groups are retained and surfaced in `hint`. For strict member-only results, combine with `--search-types "private,public_joined,external"`.
 
 ## Usage Scenarios
 
@@ -106,7 +128,7 @@ When the user asks to search chats, follow these rules:
 2. **Search scope is limited:** only chats visible to the current user or bot can be found (joined chats plus public chats). This is not a global search over all chats.
 3. **Control result volume:** the result set may be large. Use `--page-size` deliberately.
 4. **Suggest follow-up actions:** after finding a chat, common next steps include listing recent messages (`im +chat-messages-list`) or sending a message (`im +messages-send`).
-5. **NEVER fall back to chats list:** If `+chat-search` returns empty results, do NOT attempt to use `im chats list` or `GET /open-apis/im/v1/chats` as a fallback. The list API is not a search API — it returns all chats without keyword filtering and will not help locate the target chat. Instead, ask the user to refine the keyword or check whether the chat is visible to the current identity.
+5. **NEVER fall back to chats list:** If `+chat-search` returns empty results, do NOT attempt to use `+chat-list` or `GET /open-apis/im/v1/chats` as a fallback. The list API is not a search API — it returns all chats without keyword filtering and will not help locate the target chat. Instead, ask the user to refine the keyword or check whether the chat is visible to the current identity.
 
 ## References
 
