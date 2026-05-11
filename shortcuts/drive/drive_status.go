@@ -118,9 +118,12 @@ var DriveStatus = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
-		entries, err := listRemoteFolder(ctx, runtime, folderToken, "")
+		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
+		}
+		if duplicates := duplicateRemoteFilePaths(entries); len(duplicates) > 0 {
+			return duplicateRemotePathError(duplicates)
 		}
 		// +status only diffs binary content, so collapse the unified
 		// listing to type=file. Online docs / shortcuts have no
@@ -128,9 +131,9 @@ var DriveStatus = common.Shortcut{
 		// view (a docx living next to a same-named local file is a
 		// known no-op).
 		remoteFiles := make(map[string]string, len(entries))
-		for rel, entry := range entries {
+		for _, entry := range entries {
 			if entry.Type == driveTypeFile {
-				remoteFiles[rel] = entry.FileToken
+				remoteFiles[entry.RelPath] = entry.FileToken
 			}
 		}
 

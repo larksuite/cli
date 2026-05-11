@@ -21,6 +21,18 @@
 
 > 本地目录（包括空目录）会被镜像到 Drive；新建的子目录会以 `action: "folder_created"` 出现在 `items[]` 里，但**不计入** `summary.uploaded`（该字段只数文件）。已存在的远端目录复用其 token，不会重复 `create_folder`，也不会出现在 `items[]` 里。
 
+## 远端同名文件冲突
+
+如果 Drive 中多个条目映射到同一个 `rel_path`，默认直接失败（`error.type=duplicate_remote_path`），且不会上传、覆盖或进入 `--delete-remote` 删除阶段。只有“多个 `type=file` 同名”的场景支持显式策略；`file-folder` 这类异构冲突始终直接失败。
+
+| 策略 | 行为 |
+|------|------|
+| `fail` | 默认。返回所有冲突条目的完整信息，不写远端 |
+| `newest` | 只把本地文件与 `modified_time` 最新的远端文件对齐 |
+| `oldest` | 只把本地文件与 `created_time` 最早的远端文件对齐 |
+
+`+push` 不提供 `rename`：本地一个文件无法表达要覆盖多个远端对象。若用户想保留多个云端副本，应先显式整理云端文件，再重新 push。
+
 ## 命令
 
 ```bash
@@ -31,6 +43,10 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx
 # 显式覆盖远端同名文件（依赖 upload_all 的灰度协议字段，详见下文"覆盖语义"）
 lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
   --if-exists overwrite
+
+# 云端已有多个同名二进制文件时，显式选择一个远端目标再覆盖
+lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
+  --if-exists overwrite --on-duplicate-remote newest
 
 # 文件级镜像同步：上传 / 覆盖 + 删除本地不存在的远端文件
 # （--delete-remote 必须搭配 --yes，否则会被 Validate 直接拒绝；
@@ -47,6 +63,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 | `--local-dir` | 是 | path | 本地根目录（**必须是 cwd 的相对路径**；绝对路径或逃出 cwd 的相对路径会被 CLI 直接拒绝） |
 | `--folder-token` | 是 | string | 目标 Drive 文件夹 token |
 | `--if-exists` | 否 | enum | 远端文件已存在时的策略：`skip`（**默认**，安全）/ `overwrite`（依赖灰度后端协议，详见"覆盖语义"） |
+| `--on-duplicate-remote` | 否 | enum | 云端多个条目映射到同一个 `rel_path` 时的策略：`fail`（默认）；如果冲突全是 `type=file`，还可选 `newest` / `oldest` |
 | `--delete-remote` | 否 | bool | 删除云端本地不存在的文件（文件级镜像；**不会**清理远端只有的目录）；**必须配合 `--yes`**，且 Validate 阶段会动态检查 `space:document:delete` scope |
 | `--yes` | 否 | bool | 确认 `--delete-remote`；不传时该破坏性操作在 Validate 阶段被拒绝 |
 
@@ -55,6 +72,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 - **只上传 / 覆盖 / 删除 Drive `type=file`**。在线文档（`docx` / `sheet` / `bitable` / `mindnote` / `slides`）和快捷方式（`shortcut`）即使在同一 rel_path 下出现，也不会被覆盖或删除 —— 它们没有等价的本地二进制。
 - **本地目录结构整体被镜像**：所有子目录（含**空目录**）会按需在 Drive 上 `create_folder`；同名远端目录复用其 token，不重建。空目录不计入 `summary.uploaded`，但会在 `items[]` 里以 `folder_created` 形式留痕。
 - 已存在的远端文件按 `--if-exists` 决定 `overwrite` 还是 `skip`，没有第三种选择 —— 想做 `keep-both` 这类的请自行改名再 push。
+- 云端同名冲突默认失败；只有“冲突全是 `type=file`”且传了 `--on-duplicate-remote newest|oldest` 时才会选择一个远端文件继续。启用 `--delete-remote` 时，未被选中的 duplicate sibling 也会被删除，最终远端只保留一个被选中的文件副本；只有在 `--if-exists=overwrite` 成功时，才能保证该副本内容与本地对齐。
 
 ## 覆盖语义
 
@@ -71,6 +89,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 - `--delete-remote`（无 `--yes`）→ Validate 直接报错：`--delete-remote requires --yes`，不会发起任何列表 / 上传 / 删除请求。
 - `--delete-remote --yes` → Validate 阶段还会**动态做一次** `space:document:delete` 的 scope 预检：缺这条 scope 时整次运行立刻失败、不发任何上传请求，避免出现"上传都成功了，但删除阶段才报 missing_scope"的半同步状态。
 - `--delete-remote --yes`（且 scope 已授权）→ 正常执行：先把本地文件 push 上去，再扫一遍远端 `type=file` 列表，把不在本地清单里的逐个删除。**任何上传 / 覆盖 / 建目录失败时，整段 `--delete-remote` 阶段会被跳过**（stderr 上有提示），命令以非零状态退出，远端不会被破坏。
+- 远端同名冲突且使用默认 `fail`，或冲突里混有 folder / 其他非 `type=file` 对象 → 在上传阶段前失败，删除阶段不会运行。
 - 不传 `--delete-remote` → `summary.deleted_remote` 永远是 0；命令对远端"多余"文件视而不见。
 - 在线文档（docx / sheet / bitable / ...）和快捷方式即使本地完全没有同名文件，也**不会**进入删除候选，因为它们从来不进 `summary.uploaded` 的对齐域。
 - **远端只有的空目录、本地已删除的目录**也不会被清理 —— 这是"文件级镜像"的语义边界，命令不会对目录结构做主动收敛。

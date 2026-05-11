@@ -14,6 +14,10 @@
 
 只读命令：流式 hash，不下载落盘；但双端都有的文件会从云端拉一份字节流过来在内存里算 hash，大目录 / 大文件会有可观的网络流量。
 
+## 远端同名文件冲突
+
+如果 Drive 中多个条目映射到同一个 `rel_path`，`+status` 会在下载/hash 前直接失败，返回 `error.type=duplicate_remote_path`，并在 `error.detail.duplicates_remote[]` 中列出该路径下所有冲突条目的 `file_token`、`type`、名称、大小和时间字段；其中 `created_time`、`modified_time` 缺失时会省略，`size` 在缺失或为 `0` 时都可能被省略。不要把这种情况当成普通 `modified`；它表示同步域本身有歧义，需要先整理云端结构，或在 `+pull` / `+push` 中仅对“duplicate file”场景显式选择冲突策略。
+
 ## 命令
 
 ```bash
@@ -38,6 +42,8 @@ lark-cli drive +status \
 
 ## 输出 schema
 
+成功时：
+
 ```json
 {
   "new_local":  [{"rel_path": "..."}],
@@ -49,10 +55,34 @@ lark-cli drive +status \
 
 `rel_path` 始终用 `/` 作为分隔符（跨平台一致），相对于 `--local-dir` 或 `--folder-token` 的根。仅本地存在时没有 `file_token` 字段。
 
+远端同名文件冲突时：
+
+```json
+{
+  "ok": false,
+  "error": {
+    "type": "duplicate_remote_path",
+    "message": "multiple Drive entries map to the same rel_path",
+    "detail": {
+      "duplicates_remote": [
+        {
+          "rel_path": "dup.txt",
+          "entries": [
+            {"file_token": "<full_file_token>", "type": "file", "name": "dup.txt", "size": 5, "created_time": "1730000000", "modified_time": "1730000000"},
+            {"file_token": "<folder_token>", "type": "folder", "name": "dup.txt", "created_time": "1730000060", "modified_time": "1730000060"}
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
 ## 比较范围
 
 - **只比对 Drive `type=file` 的二进制文件**。在线文档（`docx` / `sheet` / `bitable` / `mindnote` / `slides`）和快捷方式（`shortcut`）都被跳过 —— 它们没有等价的本地二进制可对齐，否则会在 `new_remote` 里产生大量误报。
 - 子文件夹会递归遍历；rel_path 形如 `sub1/sub2/file.txt`。
+- 多个远端条目映射到同一个 rel_path 时不做隐式选择，默认失败。
 - 本地侧只比对常规文件（regular file）；符号链接、设备文件等被忽略。
 
 ## 范围限制

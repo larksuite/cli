@@ -15,9 +15,22 @@
 | `summary.skipped` | 按 `--if-exists=skip` 跳过的文件数 |
 | `summary.failed` | 下载或写盘失败的文件数 |
 | `summary.deleted_local` | 启用 `--delete-local --yes` 时删除的本地文件数 |
-| `items[]` | 每个文件的明细（`rel_path` / `file_token` / `action` / 失败时的 `error`） |
+| `items[]` | 每个文件的明细（`rel_path` / `file_token` / `source_id` / `action` / 失败时的 `error`） |
 
 `summary.failed > 0` 时命令以 **非零状态码**（`exit=1`，`error.type=partial_failure`）退出，且同一份 `summary + items` 会在 `error.detail` 里返回；脚本/agent 直接通过 exit code 判断成败即可，不需要再去解 `summary.failed`。
+
+## 远端同名文件冲突
+
+如果 Drive 中多个条目映射到同一个 `rel_path`，默认直接失败（`error.type=duplicate_remote_path`），且不会下载、覆盖或删除任何本地文件。只有“多个 `type=file` 同名”的场景支持显式策略；`file-folder` 这类异构冲突始终直接失败。
+
+| 策略 | 行为 |
+|------|------|
+| `fail` | 默认。返回所有冲突条目的完整信息，不写盘 |
+| `rename` | 仅适用于 duplicate file。下载全部重复文件；第一个保留原名，后续文件使用稳定 hash 后缀生成唯一文件名；若短后缀目标已被占用，会自动升级到更强后缀 |
+| `newest` | 只下载 `modified_time` 最新的远端文件 |
+| `oldest` | 只下载 `created_time` 最早的远端文件 |
+
+`rename` 命名规则稳定且可追溯：`report.pdf` 的后续重复项会落盘为 `report__lark_<hash>.pdf`，例如 `report__lark_3a2f4c5d6e7f.pdf`。如果这个短 hash 目标名已经被同目录下的其他远端对象占用，CLI 会自动改用更长的稳定 hash，必要时再追加序号后缀，直到目标名唯一。此模式下 `items[]` 不再返回可直接复用的 Drive `file_token`；CLI 会在 `source_id` 中返回稳定 hash 标识符，供日志、比对和人工排查使用。
 
 ## 命令
 
@@ -28,6 +41,10 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx
 # 已存在的本地文件保持不动
 lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
   --if-exists skip
+
+# 云端有多个同名二进制文件时，显式下载全部并用稳定 hash 后缀改名
+lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
+  --on-duplicate-remote rename
 
 # 文件级镜像：下载新文件 + 删除云端没有的本地文件（不删空目录）
 # （--delete-local 必须搭配 --yes，否则会被 Validate 直接拒绝）
@@ -42,6 +59,7 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 | `--local-dir` | 是 | path | 本地根目录（**必须是 cwd 的相对路径**；绝对路径或逃出 cwd 的相对路径会被 CLI 直接拒绝） |
 | `--folder-token` | 是 | string | 源 Drive 文件夹 token |
 | `--if-exists` | 否 | enum | 本地文件已存在时的策略：`overwrite`（默认）/ `skip` |
+| `--on-duplicate-remote` | 否 | enum | 云端多个条目映射到同一个 `rel_path` 时的策略：`fail`（默认）；如果冲突全是 `type=file`，还可选 `rename` / `newest` / `oldest` |
 | `--delete-local` | 否 | bool | 删除本地"云端没有的常规文件"（**不删空目录**，因此是 file-level mirror）；**必须配合 `--yes`** |
 | `--yes` | 否 | bool | 确认 `--delete-local`；不传时该破坏性操作在 Validate 阶段被拒绝 |
 
@@ -50,6 +68,7 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 - **只下载 Drive `type=file` 的二进制文件**。在线文档（`docx` / `sheet` / `bitable` / `mindnote` / `slides`）和快捷方式（`shortcut`）会被跳过 —— 它们没有等价的本地二进制可写盘，否则会变成产生噪声的"假"下载。
 - 子文件夹会递归遍历；rel_path 形如 `sub1/sub2/file.txt`，本地缺失的父目录会被自动创建。
 - 已存在的本地文件按 `--if-exists` 决定 `overwrite` 还是 `skip`，没有第三种选择 —— 想做 `keep-both` 这类的请自己改名再 pull。
+- 云端同名冲突默认失败；只有“冲突全是 `type=file`”且传了 `--on-duplicate-remote rename|newest|oldest` 时才会继续。
 
 ## --delete-local 的安全行为
 
@@ -58,6 +77,7 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 - `--delete-local`（无 `--yes`）→ Validate 直接报错：`--delete-local requires --yes`，没有任何下载、列表请求或删除发生。
 - `--delete-local --yes`，**且下载阶段全部成功** → 扫一遍 `--local-dir` 下所有常规文件，把不在云端清单里的逐个 `os.Remove`。**只删常规文件，不删目录**：远端文件夹被删除后，对应本地目录会保留空壳。
 - `--delete-local --yes`，**但下载阶段有任何条目失败** → **跳过整个删除阶段**，命令以 `partial_failure` 非零退出。设计意图：避免出现"前面下载失败、后面继续删本地文件"的半同步状态；操作者修好下载错误后再重跑即可。
+- 远端同名文件冲突且使用默认 `fail` → 在下载阶段前失败，删除阶段不会运行。
 - 不传 `--delete-local` → `summary.deleted_local` 永远是 0；命令对本地"多余"文件视而不见。
 
 第 6 章里把 `+pull --delete-local` 标了 `high-risk-write`，CLI 这边的实现等价于"未传 `--yes` 时拒绝执行"，符合该约束的精神。
@@ -74,15 +94,15 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
   },
   "items": [
     {"rel_path": "...", "file_token": "...", "action": "downloaded"},
-    {"rel_path": "...", "file_token": "...", "action": "skipped"},
-    {"rel_path": "...", "file_token": "...", "action": "failed", "error": "..."},
+    {"rel_path": "...", "source_id": "hash_3a2f4c5d6e7f", "action": "downloaded"},
+    {"rel_path": "...", "source_id": "hash_3a2f4c5d6e7f", "action": "failed", "error": "..."},
     {"rel_path": "...", "action": "deleted_local"},
     {"rel_path": "...", "action": "delete_failed", "error": "..."}
   ]
 }
 ```
 
-`rel_path` 始终用 `/` 作为分隔符（跨平台一致）。删除条目（`deleted_local` / `delete_failed`）没有 `file_token`，因为该文件本来就只在本地。
+`rel_path` 始终用 `/` 作为分隔符（跨平台一致）。删除条目（`deleted_local` / `delete_failed`）没有 `file_token`。`rename` 模式下，duplicate 文件条目会返回 `source_id` 而不是可调用 API 的真实 `file_token`；其余模式仍返回真实 `file_token`。
 
 ## 性能注意
 

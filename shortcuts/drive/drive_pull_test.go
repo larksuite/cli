@@ -293,6 +293,49 @@ func TestDrivePullPaginationHandlesPageTokenField(t *testing.T) {
 	reg.Verify(t)
 }
 
+func TestDrivePullRenameSummarizesDuplicateDownloadsAndAvoidsRawTokenInRelPath(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	registerDuplicateRemoteFiles(reg)
+	registerDownload(reg, duplicateRemoteFileIDFirst, "FIRST")
+	registerDownload(reg, duplicateRemoteFileIDSecond, "SECOND")
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--on-duplicate-remote", "rename",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	renamedRelPath := expectedRenamedRelPath("dup.txt", duplicateRemoteFileIDSecond, 12, 0)
+	payload := decodeDrivePullStdout(t, stdout.Bytes())
+	if got := payload.Data.Summary.Downloaded; got != 2 {
+		t.Fatalf("summary.downloaded = %d, want 2", got)
+	}
+	if out := stdout.String(); strings.Contains(out, duplicateRemoteFileIDSecond) {
+		t.Fatalf("stdout should not expose the raw duplicate file token in rename mode, got: %s", out)
+	}
+	if item := findPullItem(payload.Data.Items, renamedRelPath); item.SourceID == "" || item.FileToken != "" {
+		t.Fatalf("rename item should emit source_id without file_token, got: %#v", item)
+	}
+	mustReadFile(t, filepath.Join("local", "dup.txt"), "FIRST")
+	mustReadFile(t, filepath.Join("local", renamedRelPath), "SECOND")
+	assertPullItemAction(t, stdout.Bytes(), "dup.txt", "downloaded")
+	assertPullItemAction(t, stdout.Bytes(), renamedRelPath, "downloaded")
+
+	reg.Verify(t)
+}
+
 // TestDrivePullDeleteLocalRequiresYes verifies the upfront safety guard:
 // --delete-local without --yes must be rejected before any API call.
 func TestDrivePullDeleteLocalRequiresYes(t *testing.T) {

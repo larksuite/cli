@@ -454,6 +454,124 @@ func TestDrivePushDeleteRemoteSkipsOnlineDocs(t *testing.T) {
 	}
 }
 
+func TestDrivePushNewestOverwritesChosenDuplicateAndDeletesSibling(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "dup.txt"), []byte("LOCAL"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	registerDuplicateRemoteFiles(reg)
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "dup-new-token",
+				"version":    "v99",
+			},
+		},
+	}
+	reg.Register(uploadStub)
+	deleteStub := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/" + duplicateRemoteFileIDFirst,
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	reg.Register(deleteStub)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--on-duplicate-remote", "newest",
+		"--delete-remote",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	body := decodeDriveMultipartBody(t, uploadStub)
+	if got := body.Fields["file_token"]; got != duplicateRemoteFileIDSecond {
+		t.Fatalf("upload_all form file_token = %q, want %q", got, duplicateRemoteFileIDSecond)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"uploaded": 1`) {
+		t.Fatalf("expected uploaded=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"deleted_remote": 1`) {
+		t.Fatalf("expected deleted_remote=1, got: %s", out)
+	}
+	assertPushItemAction(t, stdout.Bytes(), "dup.txt", "deleted_remote", duplicateRemoteFileIDFirst)
+	if deleteStub.CapturedHeaders == nil {
+		t.Fatal("DELETE for the unchosen duplicate sibling was never issued")
+	}
+
+	reg.Verify(t)
+}
+
+func TestDrivePushDeleteRemoteDeletesEntireDuplicateGroupWithoutLocalCounterpart(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	registerDuplicateRemoteFiles(reg)
+	deleteFirst := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/" + duplicateRemoteFileIDFirst,
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	deleteSecond := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/" + duplicateRemoteFileIDSecond,
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	reg.Register(deleteFirst)
+	reg.Register(deleteSecond)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "skip",
+		"--on-duplicate-remote", "newest",
+		"--delete-remote",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"uploaded": 0`) {
+		t.Fatalf("expected uploaded=0, got: %s", out)
+	}
+	if !strings.Contains(out, `"deleted_remote": 2`) {
+		t.Fatalf("expected deleted_remote=2, got: %s", out)
+	}
+	assertPushItemAction(t, stdout.Bytes(), "dup.txt", "deleted_remote", duplicateRemoteFileIDFirst)
+	assertPushItemAction(t, stdout.Bytes(), "dup.txt", "deleted_remote", duplicateRemoteFileIDSecond)
+	if deleteFirst.CapturedHeaders == nil || deleteSecond.CapturedHeaders == nil {
+		t.Fatal("expected both duplicate remote DELETE requests to be issued")
+	}
+
+	reg.Verify(t)
+}
+
 // TestDrivePushRejectsAbsoluteLocalDir confirms SafeLocalFlagPath surfaces
 // the proper flag name in the error message.
 func TestDrivePushRejectsAbsoluteLocalDir(t *testing.T) {

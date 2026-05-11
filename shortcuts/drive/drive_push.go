@@ -92,12 +92,14 @@ var DrivePush = common.Shortcut{
 		{Name: "local-dir", Desc: "local root directory (relative to cwd)", Required: true},
 		{Name: "folder-token", Desc: "target Drive folder token", Required: true},
 		{Name: "if-exists", Desc: "policy when a Drive file already exists at the same rel_path (default: skip — safe; opt into overwrite explicitly while the backend version field is rolling out)", Default: drivePushIfExistsSkip, Enum: []string{drivePushIfExistsOverwrite, drivePushIfExistsSkip}},
+		{Name: "on-duplicate-remote", Desc: "policy when multiple remote Drive entries map to the same rel_path", Default: driveDuplicateRemoteFail, Enum: []string{driveDuplicateRemoteFail, driveDuplicateRemoteNewest, driveDuplicateRemoteOldest}},
 		{Name: "delete-remote", Type: "bool", Desc: "delete Drive files absent locally (file-level mirror; remote-only directories are not removed); requires --yes"},
 		{Name: "yes", Type: "bool", Desc: "confirm --delete-remote before deleting Drive files"},
 	},
 	Tips: []string{
 		"This is a file-level mirror: only type=file entries are uploaded, overwritten or deleted. Online docs (docx, sheet, bitable, mindnote, slides), shortcuts, and remote-only directories are never touched.",
 		"Local directory structure (including empty directories) is mirrored to Drive via create_folder; existing remote folders are reused.",
+		"Duplicate remote rel_path conflicts fail by default before upload, overwrite, or delete. Use --on-duplicate-remote=newest|oldest only when the conflict is duplicate files and you explicitly want to target one.",
 		"Default --if-exists=skip is the safe choice while the upload_all overwrite-version field is rolling out. Pass --if-exists=overwrite to replace remote bytes; on tenants without the field it surfaces a structured api_error and the run exits non-zero.",
 		"--delete-remote requires --yes; without --yes the command is rejected upfront so a stray flag never deletes anything.",
 		"--delete-remote --yes also requires the space:document:delete scope. Validate runs a dynamic pre-flight check when the flag is on, so a missing grant fails the run before any upload — preventing a half-synced state where files were uploaded but the cleanup pass cannot delete.",
@@ -164,6 +166,10 @@ var DrivePush = common.Shortcut{
 			// rolling-out upload_all `file_token`/`version` protocol field.
 			ifExists = drivePushIfExistsSkip
 		}
+		duplicateRemote := strings.TrimSpace(runtime.Str("on-duplicate-remote"))
+		if duplicateRemote == "" {
+			duplicateRemote = driveDuplicateRemoteFail
+		}
 		deleteRemote := runtime.Bool("delete-remote")
 
 		// Resolve --local-dir to its canonical absolute path before walking.
@@ -190,9 +196,12 @@ var DrivePush = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
-		entries, err := listRemoteFolder(ctx, runtime, folderToken, "")
+		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
+		}
+		if duplicates := blockingRemotePathConflicts(entries, duplicateRemote); len(duplicates) > 0 {
+			return duplicateRemotePathError(duplicates)
 		}
 		// Two views over the same listing:
 		//   - remoteFiles drives upload / overwrite / orphan-delete
@@ -203,15 +212,9 @@ var DrivePush = common.Shortcut{
 		//     path skip create_folder when an intermediate folder already
 		//     exists, and keeps directory recreation idempotent across
 		//     reruns.
-		remoteFiles := make(map[string]driveRemoteEntry, len(entries))
-		remoteFolders := make(map[string]driveRemoteEntry, len(entries))
-		for rel, entry := range entries {
-			switch entry.Type {
-			case driveTypeFile:
-				remoteFiles[rel] = entry
-			case driveTypeFolder:
-				remoteFolders[rel] = entry
-			}
+		remoteFiles, remoteFolders, remoteFileGroups, err := drivePushRemoteViews(entries, duplicateRemote)
+		if err != nil {
+			return output.Errorf(output.ExitInternal, "internal", "%s", err)
 		}
 
 		var uploaded, skipped, failed, deletedRemote int
@@ -333,24 +336,31 @@ var DrivePush = common.Shortcut{
 		}
 		if deleteRemote && !uploadFailed {
 			// Stable iteration order so failures (and tests) are deterministic.
-			remoteRelPaths := make([]string, 0, len(remoteFiles))
-			for p := range remoteFiles {
+			remoteRelPaths := make([]string, 0, len(remoteFileGroups))
+			for p := range remoteFileGroups {
 				remoteRelPaths = append(remoteRelPaths, p)
 			}
 			sort.Strings(remoteRelPaths)
 
 			for _, rel := range remoteRelPaths {
+				keepToken := ""
 				if _, ok := localFiles[rel]; ok {
-					continue
+					if chosen, ok := remoteFiles[rel]; ok {
+						keepToken = chosen.FileToken
+					}
 				}
-				entry := remoteFiles[rel]
-				if err := drivePushDeleteFile(ctx, runtime, entry.FileToken); err != nil {
-					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "delete_failed", Error: err.Error()})
-					failed++
-					continue
+				for _, entry := range remoteFileGroups[rel] {
+					if entry.FileToken == keepToken {
+						continue
+					}
+					if err := drivePushDeleteFile(ctx, runtime, entry.FileToken); err != nil {
+						items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "delete_failed", Error: err.Error()})
+						failed++
+						continue
+					}
+					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "deleted_remote"})
+					deletedRemote++
 				}
-				items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "deleted_remote"})
-				deletedRemote++
 			}
 		}
 
@@ -461,6 +471,46 @@ func drivePushWalkLocal(root, cwdCanonical string) (map[string]drivePushLocalFil
 		return dirs[i] < dirs[j]
 	})
 	return files, dirs, nil
+}
+
+func drivePushRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]driveRemoteEntry, map[string]driveRemoteEntry, map[string][]driveRemoteEntry, error) {
+	remoteFiles := make(map[string]driveRemoteEntry, len(entries))
+	remoteFolders := make(map[string]driveRemoteEntry, len(entries))
+	fileGroups := make(map[string][]driveRemoteEntry)
+
+	for _, entry := range entries {
+		switch entry.Type {
+		case driveTypeFile:
+			fileGroups[entry.RelPath] = append(fileGroups[entry.RelPath], entry)
+		case driveTypeFolder:
+			remoteFolders[entry.RelPath] = entry
+		}
+	}
+
+	relPaths := make([]string, 0, len(fileGroups))
+	for rel := range fileGroups {
+		relPaths = append(relPaths, rel)
+	}
+	sort.Strings(relPaths)
+
+	for _, rel := range relPaths {
+		files := fileGroups[rel]
+		if len(files) == 1 {
+			remoteFiles[rel] = files[0]
+			continue
+		}
+		switch duplicateRemote {
+		case driveDuplicateRemoteNewest, driveDuplicateRemoteOldest:
+			chosen, err := chooseRemoteFile(files, duplicateRemote)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			remoteFiles[rel] = chosen
+		default:
+			return nil, nil, nil, fmt.Errorf("unsupported duplicate remote strategy %q", duplicateRemote)
+		}
+	}
+	return remoteFiles, remoteFolders, fileGroups, nil
 }
 
 // drivePushEnsureFolder ensures a folder chain (rel_dir relative to the root

@@ -213,6 +213,37 @@ func TestDriveStatusPaginatesRemoteListing(t *testing.T) {
 	reg.Verify(t)
 }
 
+func TestDriveStatusFailsOnRemoteFileFolderConflict(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	registerRemoteListing(reg, "folder_root", []map[string]interface{}{
+		{"token": duplicateRemoteFileIDFirst, "name": "dup", "type": "file", "size": 5, "created_time": "1", "modified_time": "1"},
+		{"token": duplicateRemoteFolderID, "name": "dup", "type": "folder", "created_time": "2", "modified_time": "2"},
+	})
+	registerRemoteListing(reg, duplicateRemoteFolderID, []map[string]interface{}{
+		{"token": "nested-file-token", "name": "child.txt", "type": "file", "size": 1, "created_time": "3", "modified_time": "3"},
+	})
+
+	err := mountAndRunDrive(t, DriveStatus, []string{
+		"+status",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	assertDuplicateRemotePathError(t, err, "dup", duplicateRemoteFileIDFirst, duplicateRemoteFolderID)
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout should be empty on duplicate_remote_path, got: %s", stdout.String())
+	}
+
+	reg.Verify(t)
+}
+
 func TestDriveStatusRejectsMissingLocalDir(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
