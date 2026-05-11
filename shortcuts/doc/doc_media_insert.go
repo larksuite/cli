@@ -563,6 +563,9 @@ func detectImageDimensions(r io.Reader) (width, height int, err error) {
 }
 
 func detectImageDimensionsFromPath(fio fileio.FileIO, filePath string) (int, int, error) {
+	if _, err := validate.SafeInputPath(filePath); err != nil {
+		return 0, 0, err
+	}
 	f, err := fio.Open(filePath)
 	if err != nil {
 		return 0, 0, err
