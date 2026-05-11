@@ -13,6 +13,7 @@ import (
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/doctor"
 	cmdevent "github.com/larksuite/cli/cmd/event"
+	cmdinfo "github.com/larksuite/cli/cmd/info"
 	"github.com/larksuite/cli/cmd/profile"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/cmd/service"
@@ -116,6 +117,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
 	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
+	rootCmd.AddCommand(cmdinfo.NewCmdInfo(f))
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
