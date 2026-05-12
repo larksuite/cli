@@ -143,21 +143,20 @@ func TestResolveSenderNames(t *testing.T) {
 					},
 				},
 			}), nil
-		case strings.Contains(req.URL.Path, "/open-apis/application/v6/applications/cli_bot"):
-			if got := req.URL.Query().Get("lang"); got != "zh_cn" {
-				t.Fatalf("application lang = %q, want zh_cn", got)
+		case strings.Contains(req.URL.Path, "/open-apis/bot/v3/bots/basic_batch"):
+			botIDs := req.URL.Query()["bot_ids"]
+			bots := map[string]interface{}{}
+			for _, id := range botIDs {
+				if id == "cli_bot" {
+					bots[id] = map[string]interface{}{"name": "Bot Sender"}
+				} else if id == "cli_app" {
+					bots[id] = map[string]interface{}{"name": "App Sender"}
+				}
 			}
 			return convertlibJSONResponse(200, map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"app": map[string]interface{}{"app_name": "Bot Sender"},
-				},
-			}), nil
-		case strings.Contains(req.URL.Path, "/open-apis/application/v6/applications/cli_app"):
-			return convertlibJSONResponse(200, map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"app": map[string]interface{}{"app_name": "App Sender"},
+					"bots": bots,
 				},
 			}), nil
 		default:

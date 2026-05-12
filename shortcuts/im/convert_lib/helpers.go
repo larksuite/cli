@@ -238,19 +238,31 @@ func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, name
 }
 
 func batchResolveApps(runtime *common.RuntimeContext, appIDs []string, nameMap map[string]string) {
-	query := larkcore.QueryParams{"lang": []string{"zh_cn"}}
-	for _, appID := range appIDs {
-		data, err := doAPIJSONAsBotIfPossible(runtime, http.MethodGet, "/open-apis/application/v6/applications/"+url.PathEscape(appID), query, nil)
+	const batchSize = 50
+	for i := 0; i < len(appIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(appIDs) {
+			end = len(appIDs)
+		}
+		batch := appIDs[i:end]
+
+		query := larkcore.QueryParams{"bot_ids": batch}
+		// Uses the new v3 bulk API which supports both tenant and user access tokens.
+		data, err := runtime.DoAPIJSON(http.MethodGet, "/open-apis/bot/v3/bots/basic_batch", query, nil)
 		if err != nil {
-			continue
+			break
 		}
-		app, _ := data["app"].(map[string]any)
-		name, _ := app["app_name"].(string)
-		if name == "" {
-			name, _ = data["app_name"].(string)
-		}
-		if name != "" {
-			nameMap[appID] = name
+
+		bots, _ := data["bots"].(map[string]interface{})
+		for id, item := range bots {
+			botInfo, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			name, _ := botInfo["name"].(string)
+			if name != "" {
+				nameMap[id] = name
+			}
 		}
 	}
 }
