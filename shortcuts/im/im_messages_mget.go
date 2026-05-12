@@ -22,8 +22,8 @@ var ImMessagesMGet = common.Shortcut{
 	Description: "Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "contact:user.basic_profile:readonly"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "contact:user.base:readonly"},
+	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "contact:user.basic_profile:readonly", "application:bot.basic_info:read"},
+	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "contact:user.base:readonly", "application:bot.basic_info:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{

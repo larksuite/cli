@@ -30,7 +30,7 @@ var ImMessagesSearch = common.Shortcut{
 	Command:     "+messages-search",
 	Description: "Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
 	Risk:        "read",
-	Scopes:      []string{"search:message", "contact:user.basic_profile:readonly"},
+	Scopes:      []string{"search:message", "contact:user.basic_profile:readonly", "application:bot.basic_info:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
