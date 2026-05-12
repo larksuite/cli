@@ -6,13 +6,14 @@ package events
 
 import (
 	"github.com/larksuite/cli/events/im"
+	"github.com/larksuite/cli/events/mail"
 	"github.com/larksuite/cli/internal/event"
 )
 
-// Mail is intentionally omitted: only IM is wired up this phase.
 func init() {
 	all := [][]event.KeyDefinition{
 		im.Keys(),
+		mail.Keys(),
 	}
 	for _, keys := range all {
 		for _, k := range keys {
