@@ -6,6 +6,7 @@ package binding
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -228,5 +229,90 @@ func TestResolveFileRef_ExceedsMaxBytes(t *testing.T) {
 	want := "file provider exceeded maxBytes (5)"
 	if err.Error() != want {
 		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+// TestResolveFileRef_TildePath_SingleValue is the end-to-end smoke test
+// for the fix: a singleValue file provider with a ~/-relative path
+// resolves correctly through resolveFileRef. Before this PR the audit
+// would reject the path as "must be absolute".
+func TestResolveFileRef_TildePath_SingleValue(t *testing.T) {
+	dir := t.TempDir()
+	setFakeOSHome(t, dir)
+	t.Setenv("OPENCLAW_HOME", "")
+
+	p := filepath.Join(dir, "secret.txt")
+	if err := os.WriteFile(p, []byte("tilde_secret\n"), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	ref := &SecretRef{Source: "file", ID: SingleValueFileRefID}
+	pc := &ProviderConfig{
+		Source:            "file",
+		Path:              "~/secret.txt",
+		Mode:              "singleValue",
+		AllowInsecurePath: true,
+	}
+
+	got, err := resolveFileRef(ref, pc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "tilde_secret" {
+		t.Errorf("got %q, want %q", got, "tilde_secret")
+	}
+}
+
+// TestResolveFileRef_RelativePath_StillRejected guards the absolute-path
+// audit: cwd-relative input must still be rejected even though tilde was
+// loosened. Catches regressions if expandTildePath is ever widened to
+// also expand "./..." (which would weaken the audit's invariant).
+func TestResolveFileRef_RelativePath_StillRejected(t *testing.T) {
+	ref := &SecretRef{Source: "file", ID: SingleValueFileRefID}
+	pc := &ProviderConfig{
+		Source:            "file",
+		Path:              "relative/secret.txt",
+		Mode:              "singleValue",
+		AllowInsecurePath: true,
+	}
+
+	_, err := resolveFileRef(ref, pc)
+	if err == nil {
+		t.Fatal("expected error for relative path, got nil")
+	}
+	wantSub := "path must be absolute"
+	if !strings.Contains(err.Error(), wantSub) {
+		t.Errorf("error = %q, want substring %q", err.Error(), wantSub)
+	}
+}
+
+// TestResolveFileRef_TildePath_JSONMode verifies the tilde-expansion
+// path works for json mode (where ref id is a JSON pointer) as well as
+// singleValue mode — the mechanism is mode-agnostic.
+func TestResolveFileRef_TildePath_JSONMode(t *testing.T) {
+	dir := t.TempDir()
+	setFakeOSHome(t, dir)
+	t.Setenv("OPENCLAW_HOME", "")
+
+	p := filepath.Join(dir, "secrets.json")
+	content := `{"providers":{"feishu":{"key":"json_via_tilde"}}}`
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	ref := &SecretRef{Source: "file", ID: "/providers/feishu/key"}
+	pc := &ProviderConfig{
+		Source:            "file",
+		Path:              "~/secrets.json",
+		Mode:              "json",
+		AllowInsecurePath: true,
+	}
+
+	got, err := resolveFileRef(ref, pc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "json_via_tilde" {
+		t.Errorf("got %q, want %q", got, "json_via_tilde")
 	}
 }
