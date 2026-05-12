@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/drive"
 	"github.com/larksuite/cli/shortcuts/event"
 	"github.com/larksuite/cli/shortcuts/im"
+	"github.com/larksuite/cli/shortcuts/lingo"
 	"github.com/larksuite/cli/shortcuts/mail"
 	"github.com/larksuite/cli/shortcuts/markdown"
 	"github.com/larksuite/cli/shortcuts/minutes"
@@ -51,6 +52,7 @@ func init() {
 	allShortcuts = append(allShortcuts, whiteboard.Shortcuts()...)
 	allShortcuts = append(allShortcuts, wiki.Shortcuts()...)
 	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
+	allShortcuts = append(allShortcuts, lingo.Shortcuts()...)
 }
 
 // AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).

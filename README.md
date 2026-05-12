@@ -40,6 +40,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 | 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
+| 📚 Lingo      | Search, match, get, create, update, delete enterprise dictionary entries (Feishu Baike)                                           |
 | 📋 Project    | Meegle — manage work items, schedules, and data via the standalone [meegle-cli](https://github.com/larksuite/meegle-cli) (install separately) |
 
 ## Installation & Quick Start
@@ -159,6 +160,7 @@ lark-cli auth status
 | `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                                                      |
 | `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                                                |
 | `lark-okr`                      | Query, create, update OKRs; manage objective & key results, alignments and indicators.                         |
+| `lark-lingo`                    | Enterprise dictionary entry search, match, get, create, update, delete                                         |
 
 ## Authentication
 

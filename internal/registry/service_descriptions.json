@@ -71,5 +71,9 @@
   "okr": {
     "en": { "title": "OKR", "description": "Lark OKR objectives, key results, alignments, indicators, progresses" },
     "zh": { "title": "OKR", "description": "飞书 OKR 目标、关键结果、对齐、量化指标、进展记录" }
+  },
+  "lingo": {
+    "en": { "title": "Lingo", "description": "Dictionary entry search, match, get, create, update, delete" },
+    "zh": { "title": "词典", "description": "词条搜索、精准匹配、获取详情、创建、修改、删除" }
   }
 }
