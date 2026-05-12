@@ -52,7 +52,7 @@ var MailTriage = common.Shortcut{
 	Description: `List mail summaries (date/from/subject/message_id). Use --query for full-text search, --filter for exact-match conditions.`,
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
-	AuthTypes:   []string{"user", "bot"},
+	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "format", Default: "table", Desc: "output format: table | json | data (json/data output object with pagination fields)"},
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},

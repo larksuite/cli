@@ -19,7 +19,7 @@ var MailTemplateCreate = common.Shortcut{
 	Description: "Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
-	AuthTypes:   []string{"user", "bot"},
+	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Desc: "Mailbox email address that owns the template (default: me)."},

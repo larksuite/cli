@@ -49,7 +49,7 @@ var MailThread = common.Shortcut{
 	Description: "Use when querying a full mail conversation/thread by thread ID. Returns all messages in chronological order, including replies and drafts, with body content and attachments metadata, including inline images.",
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
-	AuthTypes:   []string{"user", "bot"},
+	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
