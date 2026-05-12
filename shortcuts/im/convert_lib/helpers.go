@@ -253,15 +253,49 @@ func batchResolveApps(runtime *common.RuntimeContext, appIDs []string, nameMap m
 			break
 		}
 
-		bots, _ := data["bots"].(map[string]interface{})
-		for id, item := range bots {
-			botInfo, ok := item.(map[string]interface{})
+		// Defensively parse various possible response structures:
+		// 1. Array of items under "items" or "bots"
+		var list []interface{}
+		if items, ok := data["items"].([]interface{}); ok {
+			list = items
+		} else if bots, ok := data["bots"].([]interface{}); ok {
+			list = bots
+		} else if botList, ok := data["bot_list"].([]interface{}); ok {
+			list = botList
+		}
+
+		for _, item := range list {
+			info, ok := item.(map[string]interface{})
 			if !ok {
 				continue
 			}
-			name, _ := botInfo["name"].(string)
-			if name != "" {
+			name, _ := info["name"].(string)
+			if name == "" {
+				name, _ = info["app_name"].(string)
+			}
+			id, _ := info["bot_id"].(string)
+			if id == "" {
+				id, _ = info["app_id"].(string)
+			}
+			if name != "" && id != "" {
 				nameMap[id] = name
+			}
+		}
+
+		// 2. Map of bot_id -> info under "bots" (if it returns a map instead of a list)
+		if botsMap, ok := data["bots"].(map[string]interface{}); ok {
+			for id, item := range botsMap {
+				info, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				name, _ := info["name"].(string)
+				if name == "" {
+					name, _ = info["app_name"].(string)
+				}
+				if name != "" {
+					nameMap[id] = name
+				}
 			}
 		}
 	}
