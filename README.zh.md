@@ -267,6 +267,15 @@ lark-cli schema calendar.events.instance_view
 lark-cli schema im.messages.delete
 ```
 
+### 命令前置体检
+
+使用 `doctor preflight` 在真正执行 shortcut 前检查是否已具备配置、身份、登录、scope 与风险确认条件，尤其适合 AI agent 在执行前先判断 readiness。
+
+```bash
+lark-cli doctor preflight calendar +agenda
+lark-cli doctor preflight im +messages-send --as bot
+```
+
 ## 安全与风险提示（使用前必读）
 
 本工具可供 AI Agent 调用以自动化操作飞书/Lark 开放平台，存在模型幻觉、执行不可控、提示词注入等固有风险；授权飞书权限后，AI Agent 将以您的用户身份在授权范围内执行操作，可能导致敏感数据泄露、越权操作等高风险后果，请您谨慎操作和使用。

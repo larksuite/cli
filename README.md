@@ -266,6 +266,15 @@ lark-cli schema calendar.events.instance_view
 lark-cli schema im.messages.delete
 ```
 
+### Command Preflight
+
+Use `doctor preflight` to check whether a shortcut is ready before executing it. This is especially useful for AI agents that need to know whether config, identity, login, scopes, or risk confirmations are still missing.
+
+```bash
+lark-cli doctor preflight calendar +agenda
+lark-cli doctor preflight im +messages-send --as bot
+```
+
 ## Security & Risk Warnings (Read Before Use)
 
 This tool can be invoked by AI Agents to automate operations on the Lark/Feishu Open Platform, and carries inherent risks such as model hallucinations, unpredictable execution, and prompt injection. After you authorize Lark/Feishu permissions, the AI Agent will act under your user identity within the authorized scope, which may lead to high-risk consequences such as leakage of sensitive data or unauthorized operations. Please use with caution.
