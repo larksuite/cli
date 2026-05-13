@@ -11,6 +11,7 @@ import (
 	"path"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -195,6 +196,9 @@ const (
 	driveDuplicateRemoteOldest = "oldest"
 )
 
+// sortRemoteFiles orders duplicate Drive files according to the conflict
+// strategy, using parsed Drive timestamps so mixed second/millisecond/
+// microsecond epochs compare by actual time rather than raw integer width.
 func sortRemoteFiles(files []driveRemoteEntry, strategy string) {
 	sort.SliceStable(files, func(i, j int) bool {
 		a, b := files[i], files[j]
@@ -226,16 +230,61 @@ func sortRemoteFiles(files []driveRemoteEntry, strategy string) {
 	})
 }
 
+// compareDriveTimes compares two Drive epoch strings after normalizing their
+// unit (seconds, milliseconds, or microseconds) into time.Time values.
 func compareDriveTimes(a, b string) (int, bool) {
-	av, aErr := strconv.ParseInt(a, 10, 64)
-	bv, bErr := strconv.ParseInt(b, 10, 64)
-	if aErr != nil || bErr != nil {
+	at, _, aOK := parseDriveEpoch(a)
+	bt, _, bOK := parseDriveEpoch(b)
+	if !aOK || !bOK {
 		return 0, false
 	}
 	switch {
-	case av < bv:
+	case at.Before(bt):
 		return -1, true
-	case av > bv:
+	case at.After(bt):
+		return 1, true
+	default:
+		return 0, true
+	}
+}
+
+func parseDriveEpoch(raw string) (time.Time, time.Duration, bool) {
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, 0, false
+	}
+	// Drive timestamps are epoch strings. The API currently returns
+	// milliseconds, but tests and older payloads may still use seconds.
+	// Infer the unit conservatively from magnitude and compare local mtimes
+	// at the same resolution so sub-second filesystem noise does not force
+	// a transfer in smart mode.
+	switch {
+	case v > 1e14 || v < -1e14:
+		return time.UnixMicro(v), time.Microsecond, true
+	case v > 1e11 || v < -1e11:
+		return time.UnixMilli(v), time.Millisecond, true
+	default:
+		return time.Unix(v, 0), time.Second, true
+	}
+}
+
+// compareDriveRemoteModifiedToLocal compares one Drive modified_time string to a
+// local file mtime.
+//   - returns -1 when remote < local
+//   - returns  0 when remote == local at the remote timestamp resolution
+//   - returns  1 when remote > local
+//
+// The bool reports whether the remote timestamp was parseable.
+func compareDriveRemoteModifiedToLocal(remoteModified string, local time.Time) (int, bool) {
+	remoteTime, resolution, ok := parseDriveEpoch(remoteModified)
+	if !ok {
+		return 0, false
+	}
+	localAtRemoteResolution := local.Truncate(resolution)
+	switch {
+	case remoteTime.Before(localAtRemoteResolution):
+		return -1, true
+	case remoteTime.After(localAtRemoteResolution):
 		return 1, true
 	default:
 		return 0, true

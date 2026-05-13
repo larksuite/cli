@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -322,6 +323,203 @@ func TestDrivePushSkipsWhenIfExistsSkip(t *testing.T) {
 	// reg.Verify is implicit via the registry's no-stub-or-die contract:
 	// if --if-exists=skip had triggered an upload_all anyway, the request
 	// would 404 against the registry and the run would have errored above.
+}
+
+// TestDrivePushSkipsWhenIfExistsSmartAndRemoteIsUpToDate verifies the smart
+// fast path for local → Drive mirrors: when the remote copy is already at
+// least as new as the local file, +push skips the upload.
+func TestDrivePushSkipsWhenIfExistsSmartAndRemoteIsUpToDate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	// Intentionally NO upload_all stub: smart mode should skip the transfer.
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"uploaded": 0`) {
+		t.Errorf("expected uploaded=0, got: %s", out)
+	}
+}
+
+// TestDrivePushOverwritesWhenIfExistsSmartAndLocalIsNewer verifies the smart
+// path still uploads when the local file is newer than the remote one.
+func TestDrivePushOverwritesWhenIfExistsSmartAndLocalIsNewer(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(200, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep_old", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "tok_keep_new", "version": "v43"},
+		},
+	}
+	reg.Register(uploadStub)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"uploaded": 1`) {
+		t.Errorf("expected uploaded=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"action": "overwritten"`) {
+		t.Errorf("expected overwritten action, got: %s", out)
+	}
+	body := decodeDriveMultipartBody(t, uploadStub)
+	if got := body.Fields["file_token"]; got != "tok_keep_old" {
+		t.Fatalf("upload_all form file_token = %q, want tok_keep_old", got)
+	}
+}
+
+func TestDrivePushShouldSkipSmartFallsBackWhenMetadataCannotBeTrusted(t *testing.T) {
+	t.Parallel()
+
+	localFile := drivePushLocalFile{
+		Size:    5,
+		ModTime: time.Unix(100, 500*int64(time.Millisecond)),
+	}
+
+	for _, tt := range []struct {
+		name       string
+		remoteFile driveRemoteEntry
+	}{
+		{
+			name:       "invalid remote timestamp",
+			remoteFile: driveRemoteEntry{ModifiedTime: "not-a-time"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := drivePushShouldSkipSmart(localFile, tt.remoteFile); got {
+				t.Fatalf("drivePushShouldSkipSmart() = true, want false for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestDrivePushSkipsWhenSmartIgnoresRemoteSize(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 999, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"uploaded": 0`) {
+		t.Errorf("expected uploaded=0, got: %s", out)
+	}
 }
 
 // TestDrivePushDeleteRemoteRequiresYes locks in the upfront safety guard:

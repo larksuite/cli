@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -625,6 +626,94 @@ func TestChooseRemoteFileSortsByParsedTimes(t *testing.T) {
 	}
 }
 
+// TestChooseRemoteFileSortsMixedUnitEpochsByActualTime verifies duplicate
+// resolution compares actual timestamps rather than raw integer magnitudes when
+// Drive mixes second- and millisecond-resolution epoch strings.
+func TestChooseRemoteFileSortsMixedUnitEpochsByActualTime(t *testing.T) {
+	files := []driveRemoteEntry{
+		{FileToken: "token_seconds", CreatedTime: "1715594881", ModifiedTime: "1715594881"},
+		{FileToken: "token_millis", CreatedTime: "1715594880123", ModifiedTime: "1715594880123"},
+	}
+	gotNewest, err := chooseRemoteFile(files, driveDuplicateRemoteNewest)
+	if err != nil {
+		t.Fatalf("chooseRemoteFile newest: %v", err)
+	}
+	if gotNewest.FileToken != "token_seconds" {
+		t.Fatalf("newest token = %q, want token_seconds", gotNewest.FileToken)
+	}
+	gotOldest, err := chooseRemoteFile(files, driveDuplicateRemoteOldest)
+	if err != nil {
+		t.Fatalf("chooseRemoteFile oldest: %v", err)
+	}
+	if gotOldest.FileToken != "token_millis" {
+		t.Fatalf("oldest token = %q, want token_millis", gotOldest.FileToken)
+	}
+}
+
+// TestDrivePushDeleteRemoteKeepsActualNewestDuplicateAcrossMixedEpochUnits
+// proves the duplicate selector and delete pass agree on the true newest file
+// even when remote timestamps use mixed epoch units.
+func TestDrivePushDeleteRemoteKeepsActualNewestDuplicateAcrossMixedEpochUnits(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "dup.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	registerRemoteListing(reg, "folder_root", []map[string]interface{}{
+		{"token": duplicateRemoteFileIDFirst, "name": "dup.txt", "type": "file", "size": 5, "created_time": "1715594880123", "modified_time": "1715594880123"},
+		{"token": duplicateRemoteFileIDSecond, "name": "dup.txt", "type": "file", "size": 6, "created_time": "1715594881", "modified_time": "1715594881"},
+	})
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "dup-new-token",
+				"version":    "v7",
+			},
+		},
+	}
+	reg.Register(uploadStub)
+	deleteStub := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/" + duplicateRemoteFileIDFirst,
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	reg.Register(deleteStub)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--on-duplicate-remote", "newest",
+		"--delete-remote",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	body := decodeDriveMultipartBody(t, uploadStub)
+	if got := body.Fields["file_token"]; got != duplicateRemoteFileIDSecond {
+		t.Fatalf("upload_all form file_token = %q, want %q", got, duplicateRemoteFileIDSecond)
+	}
+	assertPushItemAction(t, stdout.Bytes(), "dup.txt", "deleted_remote", duplicateRemoteFileIDFirst)
+	if deleteStub.CapturedHeaders == nil {
+		t.Fatal("DELETE for older mixed-unit duplicate sibling was never issued")
+	}
+
+	reg.Verify(t)
+}
+
 func TestChooseRemoteFileFallsBackToFileTokenOnTimeParseFailure(t *testing.T) {
 	files := []driveRemoteEntry{
 		{FileToken: "token_a", CreatedTime: "bad", ModifiedTime: "bad"},
@@ -644,6 +733,46 @@ func TestChooseRemoteFileRejectsEmptyCandidates(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected chooseRemoteFile to reject empty candidates")
 	}
+}
+
+func TestCompareDriveRemoteModifiedToLocalSupportsSecondAndMillisecondEpochs(t *testing.T) {
+	t.Run("second resolution truncates local mtime", func(t *testing.T) {
+		cmp, ok := compareDriveRemoteModifiedToLocal("100", time.Unix(100, 900*int64(time.Millisecond)))
+		if !ok {
+			t.Fatal("expected second-resolution timestamp to parse")
+		}
+		if cmp != 0 {
+			t.Fatalf("cmp = %d, want 0 when local only differs below second resolution", cmp)
+		}
+	})
+
+	t.Run("millisecond resolution stays precise", func(t *testing.T) {
+		const remoteMillis = int64(1715594880123)
+		cmp, ok := compareDriveRemoteModifiedToLocal(strconv.FormatInt(remoteMillis, 10), time.UnixMilli(remoteMillis))
+		if !ok {
+			t.Fatal("expected millisecond-resolution timestamp to parse")
+		}
+		if cmp != 0 {
+			t.Fatalf("cmp = %d, want 0 for equal millisecond timestamps", cmp)
+		}
+	})
+
+	t.Run("microsecond resolution stays precise", func(t *testing.T) {
+		const remoteMicros = int64(1715594880123456)
+		cmp, ok := compareDriveRemoteModifiedToLocal(strconv.FormatInt(remoteMicros, 10), time.UnixMicro(remoteMicros))
+		if !ok {
+			t.Fatal("expected microsecond-resolution timestamp to parse")
+		}
+		if cmp != 0 {
+			t.Fatalf("cmp = %d, want 0 for equal microsecond timestamps", cmp)
+		}
+	})
+
+	t.Run("invalid timestamp is rejected", func(t *testing.T) {
+		if _, ok := compareDriveRemoteModifiedToLocal("not-a-time", time.Now()); ok {
+			t.Fatal("expected invalid remote timestamp to be rejected")
+		}
+	})
 }
 
 func TestDrivePullRemoteViewsRejectsUnknownStrategy(t *testing.T) {

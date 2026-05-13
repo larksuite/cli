@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -20,8 +21,18 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+var drivePullChtimes = drivePullApplyChtimes
+
+// drivePullApplyChtimes is a tiny indirection that keeps the production path on
+// os.Chtimes while still letting tests inject mtime failures without requiring a
+// custom filesystem implementation.
+func drivePullApplyChtimes(path string, atime, mtime time.Time) error {
+	return os.Chtimes(path, atime, mtime) //nolint:forbidigo // FileIO exposes no mtime mutation API yet; callers resolve and bound the path first.
+}
+
 const (
 	drivePullIfExistsOverwrite = "overwrite"
+	drivePullIfExistsSmart     = "smart"
 	drivePullIfExistsSkip      = "skip"
 )
 
@@ -37,6 +48,7 @@ type drivePullTarget struct {
 	DownloadToken string
 	ItemFileToken string
 	ItemSourceID  string
+	ModifiedTime  string
 }
 
 // DrivePull performs a one-way file-level mirror from a Drive folder onto
@@ -60,7 +72,7 @@ var DrivePull = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "local-dir", Desc: "local root directory (relative to cwd)", Required: true},
 		{Name: "folder-token", Desc: "source Drive folder token", Required: true},
-		{Name: "if-exists", Desc: "policy when a local file already exists", Default: drivePullIfExistsOverwrite, Enum: []string{drivePullIfExistsOverwrite, drivePullIfExistsSkip}},
+		{Name: "if-exists", Desc: "policy when a local file already exists (skip = never touch existing files; smart = skip when local mtime is already up to date; overwrite = always replace)", Default: drivePullIfExistsOverwrite, Enum: []string{drivePullIfExistsOverwrite, drivePullIfExistsSmart, drivePullIfExistsSkip}},
 		{Name: "on-duplicate-remote", Desc: "policy when multiple remote Drive entries map to the same rel_path", Default: driveDuplicateRemoteFail, Enum: []string{driveDuplicateRemoteFail, driveDuplicateRemoteRename, driveDuplicateRemoteNewest, driveDuplicateRemoteOldest}},
 		{Name: "delete-local", Type: "bool", Desc: "delete local regular files absent from Drive (file-level mirror; empty directories are NOT pruned); requires --yes"},
 		{Name: "yes", Type: "bool", Desc: "confirm --delete-local before deleting local files"},
@@ -68,6 +80,7 @@ var DrivePull = common.Shortcut{
 	Tips: []string{
 		"Only entries with type=file are downloaded; online docs (docx, sheet, bitable, mindnote, slides) and shortcuts are skipped.",
 		"Subfolders recurse and are reproduced as local directories under --local-dir; missing parents are created automatically.",
+		"For repeat syncs, --if-exists=smart is the recommended best-effort incremental mode: it compares local mtime with Drive modified_time and skips downloads when the local copy is already up to date.",
 		"Duplicate remote rel_path conflicts fail by default. Use --on-duplicate-remote=rename to download duplicate files with stable hashed suffixes.",
 		"--delete-local requires --yes; without --yes the command is rejected upfront so a stray flag never deletes anything.",
 	},
@@ -202,14 +215,14 @@ var DrivePull = common.Shortcut{
 					downloadFailed++
 					continue
 				}
-				if ifExists == drivePullIfExistsSkip {
+				if ifExists == drivePullIfExistsSkip || drivePullShouldSkipSmart(target, targetFile, ifExists, runtime) {
 					items = append(items, drivePullItem{RelPath: rel, FileToken: itemFileToken, SourceID: itemSourceID, Action: "skipped"})
 					skipped++
 					continue
 				}
 			}
 
-			if err := drivePullDownload(ctx, runtime, downloadToken, target); err != nil {
+			if err := drivePullDownload(ctx, runtime, downloadToken, target, targetFile.ModifiedTime); err != nil {
 				items = append(items, drivePullItem{RelPath: rel, FileToken: itemFileToken, SourceID: itemSourceID, Action: "failed", Error: err.Error()})
 				failed++
 				downloadFailed++
@@ -305,7 +318,9 @@ var DrivePull = common.Shortcut{
 	},
 }
 
-func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, target string) error {
+// drivePullDownload streams one Drive file into the local mirror target and
+// then best-effort aligns the local mtime to Drive's modified_time.
+func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken, target, remoteModifiedTime string) error {
 	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 		HttpMethod: "GET",
 		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
@@ -320,7 +335,51 @@ func drivePullDownload(ctx context.Context, runtime *common.RuntimeContext, file
 	}, resp.Body); err != nil {
 		return common.WrapSaveErrorByCategory(err, "io")
 	}
+	if err := drivePullApplyRemoteModifiedTime(target, remoteModifiedTime, runtime); err != nil {
+		fmt.Fprintf(runtime.IO().ErrOut, "Downloaded %s but could not preserve remote modified_time: %s\n", target, err)
+	}
 	return nil
+}
+
+// drivePullApplyRemoteModifiedTime preserves Drive's modified_time on a local
+// file when the remote timestamp is parseable and the target path is safe.
+func drivePullApplyRemoteModifiedTime(target, remoteModifiedTime string, runtime *common.RuntimeContext) error {
+	remoteTime, _, ok := parseDriveEpoch(remoteModifiedTime)
+	if !ok {
+		return nil
+	}
+	resolved, err := runtime.FileIO().ResolvePath(target)
+	if err != nil {
+		return output.ErrValidation("unsafe output path: %s", err)
+	}
+	if err := drivePullChtimes(resolved, remoteTime, remoteTime); err != nil {
+		return output.Errorf(output.ExitInternal, "io", "cannot preserve remote modified_time on local file: %s", err)
+	}
+	return nil
+}
+
+func drivePullShouldSkipSmart(target string, remoteFile drivePullTarget, ifExists string, runtime *common.RuntimeContext) bool {
+	if ifExists != drivePullIfExistsSmart {
+		return false
+	}
+	if remoteFile.ModifiedTime == "" {
+		return false
+	}
+	resolved, err := runtime.FileIO().ResolvePath(target)
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(resolved) //nolint:forbidigo // FileIO exposes no ModTime-capable Stat; ResolvePath already bounded the path.
+	if err != nil {
+		return false
+	}
+	cmp, ok := compareDriveRemoteModifiedToLocal(remoteFile.ModifiedTime, info.ModTime())
+	if !ok {
+		return false
+	}
+	// Local is already at least as new as the remote file, so another
+	// download would be redundant.
+	return cmp <= 0
 }
 
 func drivePullRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]drivePullTarget, map[string]struct{}, error) {
@@ -346,7 +405,7 @@ func drivePullRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (m
 	for _, rel := range relPaths {
 		files := fileGroups[rel]
 		if len(files) == 1 {
-			remoteFiles[rel] = drivePullTarget{DownloadToken: files[0].FileToken, ItemFileToken: files[0].FileToken}
+			remoteFiles[rel] = drivePullTarget{DownloadToken: files[0].FileToken, ItemFileToken: files[0].FileToken, ModifiedTime: files[0].ModifiedTime}
 			remotePaths[rel] = struct{}{}
 			continue
 		}
@@ -366,6 +425,7 @@ func drivePullRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (m
 				remoteFiles[targetRel] = drivePullTarget{
 					DownloadToken: file.FileToken,
 					ItemSourceID:  stableTokenIdentifier(file.FileToken),
+					ModifiedTime:  file.ModifiedTime,
 				}
 				remotePaths[targetRel] = struct{}{}
 			}
@@ -374,7 +434,7 @@ func drivePullRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (m
 			if err != nil {
 				return nil, nil, err
 			}
-			remoteFiles[rel] = drivePullTarget{DownloadToken: chosen.FileToken, ItemFileToken: chosen.FileToken}
+			remoteFiles[rel] = drivePullTarget{DownloadToken: chosen.FileToken, ItemFileToken: chosen.FileToken, ModifiedTime: chosen.ModifiedTime}
 			remotePaths[rel] = struct{}{}
 		default:
 			return nil, nil, fmt.Errorf("unsupported duplicate remote strategy %q", duplicateRemote)

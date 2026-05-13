@@ -4,17 +4,23 @@
 package drive
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 // TestDrivePullDownloadsAndCreatesParents verifies the happy path: a remote
@@ -149,6 +155,322 @@ func TestDrivePullSkipsExistingWhenSkipPolicy(t *testing.T) {
 
 	// Existing local content must be preserved verbatim.
 	mustReadFile(t, filepath.Join("local", "keep.txt"), "local-original")
+}
+
+// TestDrivePullSkipsExistingWhenSmartPolicyAndLocalIsUpToDate verifies the
+// smart fast path for Drive → local mirrors: when the local copy is already
+// at least as new as the remote file, +pull skips the download.
+func TestDrivePullSkipsExistingWhenSmartPolicyAndLocalIsUpToDate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(200, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	// Intentionally NO download stub: smart mode should skip the transfer.
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"downloaded": 0`) {
+		t.Errorf("expected downloaded=0, got: %s", out)
+	}
+	mustReadFile(t, localPath, "hello")
+}
+
+// TestDrivePullDownloadsWhenSmartPolicyAndRemoteIsNewer verifies the smart
+// policy still downloads when the remote file is newer than the local copy.
+func TestDrivePullDownloadsWhenSmartPolicyAndRemoteIsNewer(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_keep/download",
+		Status:  200,
+		Body:    []byte("WORLD"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"downloaded": 1`) {
+		t.Errorf("expected downloaded=1, got: %s", out)
+	}
+	mustReadFile(t, localPath, "WORLD")
+	info, err := os.Stat(localPath)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if got, want := info.ModTime(), time.Unix(200, 0); !got.Equal(want) {
+		t.Fatalf("local mtime = %v, want %v", got, want)
+	}
+}
+
+// TestDrivePullTreatsModifiedTimePreservationFailureAsNotice verifies a local
+// write that succeeds but cannot preserve remote modified_time still reports a
+// successful download and only emits an operator-facing notice on stderr.
+func TestDrivePullTreatsModifiedTimePreservationFailureAsNotice(t *testing.T) {
+	f, stdout, stderrBuf, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	prevChtimes := drivePullChtimes
+	drivePullChtimes = func(string, time.Time, time.Time) error {
+		return fmt.Errorf("mtime mutation unsupported")
+	}
+	t.Cleanup(func() {
+		drivePullChtimes = prevChtimes
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_keep/download",
+		Status:  200,
+		Body:    []byte("WORLD"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderrBuf.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"downloaded": 1`) {
+		t.Errorf("expected downloaded=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"failed": 0`) {
+		t.Errorf("expected failed=0, got: %s", out)
+	}
+	mustReadFile(t, filepath.Join("local", "keep.txt"), "WORLD")
+	if !strings.Contains(stderrBuf.String(), "could not preserve remote modified_time") {
+		t.Errorf("expected stderr notice about modified_time preservation failure, got: %s", stderrBuf.String())
+	}
+
+	reg.Verify(t)
+}
+
+func TestDrivePullShouldSkipSmartFallsBackWhenMetadataCannotBeTrusted(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+
+	for _, tt := range []struct {
+		name       string
+		ifExists   string
+		remoteFile drivePullTarget
+	}{
+		{
+			name:       "non-smart policy",
+			ifExists:   drivePullIfExistsOverwrite,
+			remoteFile: drivePullTarget{ModifiedTime: "100"},
+		},
+		{
+			name:       "missing remote timestamp",
+			ifExists:   drivePullIfExistsSmart,
+			remoteFile: drivePullTarget{ModifiedTime: ""},
+		},
+		{
+			name:       "invalid remote timestamp",
+			ifExists:   drivePullIfExistsSmart,
+			remoteFile: drivePullTarget{ModifiedTime: "not-a-time"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := drivePullShouldSkipSmart(localPath, tt.remoteFile, tt.ifExists, runtime); got {
+				t.Fatalf("drivePullShouldSkipSmart() = true, want false for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestDrivePullShouldSkipSmartFallsBackWhenPathCannotBeResolved(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+
+	if got := drivePullShouldSkipSmart("../escape.txt", drivePullTarget{ModifiedTime: "100"}, drivePullIfExistsSmart, runtime); got {
+		t.Fatal("drivePullShouldSkipSmart() = true, want false when ResolvePath rejects the target")
+	}
+}
+
+func TestDrivePullShouldSkipSmartFallsBackWhenLocalFileDisappeared(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+
+	if got := drivePullShouldSkipSmart(filepath.Join("local", "missing.txt"), drivePullTarget{ModifiedTime: "100"}, drivePullIfExistsSmart, runtime); got {
+		t.Fatal("drivePullShouldSkipSmart() = true, want false when os.Stat cannot find the local file")
+	}
+}
+
+func TestDrivePullSkipsWhenSmartIgnoresRemoteSize(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(200, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 999, "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"downloaded": 0`) {
+		t.Errorf("expected downloaded=0, got: %s", out)
+	}
+	mustReadFile(t, localPath, "hello")
 }
 
 // TestDrivePullSurfacesDirectoryFileMirrorConflict pins the contract

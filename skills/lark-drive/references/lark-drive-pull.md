@@ -12,7 +12,7 @@
 | 字段 | 含义 |
 |------|------|
 | `summary.downloaded` | 成功下载的文件数 |
-| `summary.skipped` | 按 `--if-exists=skip` 跳过的文件数 |
+| `summary.skipped` | 因 `--if-exists=skip` 或 `--if-exists=smart` 命中“无需下载”而跳过的文件数 |
 | `summary.failed` | 下载或写盘失败的文件数 |
 | `summary.deleted_local` | 启用 `--delete-local --yes` 时删除的本地文件数 |
 | `items[]` | 每个文件的明细（`rel_path` / `file_token` / `source_id` / `action` / 失败时的 `error`） |
@@ -38,6 +38,10 @@
 # 基础用法 —— 把云端 fldcXXX 镜像到 ./repo
 lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx
 
+# 推荐的重复同步用法：smart 会按 modified_time 跳过已经对齐的本地文件
+lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
+  --if-exists smart
+
 # 已存在的本地文件保持不动
 lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
   --if-exists skip
@@ -58,7 +62,7 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 |------|------|------|------|
 | `--local-dir` | 是 | path | 本地根目录（**必须是 cwd 的相对路径**；绝对路径或逃出 cwd 的相对路径会被 CLI 直接拒绝） |
 | `--folder-token` | 是 | string | 源 Drive 文件夹 token |
-| `--if-exists` | 否 | enum | 本地文件已存在时的策略：`overwrite`（默认）/ `skip` |
+| `--if-exists` | 否 | enum | 本地文件已存在时的策略：`overwrite`（**默认**，Drive 作为权威源时使用）/ `smart`（**推荐用于重复增量同步**；当本地 mtime 已与远端 `modified_time` 匹配或更新时跳过下载）/ `skip` |
 | `--on-duplicate-remote` | 否 | enum | 云端多个条目映射到同一个 `rel_path` 时的策略：`fail`（默认）；如果冲突全是 `type=file`，还可选 `rename` / `newest` / `oldest` |
 | `--delete-local` | 否 | bool | 删除本地"云端没有的常规文件"（**不删空目录**，因此是 file-level mirror）；**必须配合 `--yes`** |
 | `--yes` | 否 | bool | 确认 `--delete-local`；不传时该破坏性操作在 Validate 阶段被拒绝 |
@@ -67,7 +71,7 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 - **只下载 Drive `type=file` 的二进制文件**。在线文档（`docx` / `sheet` / `bitable` / `mindnote` / `slides`）和快捷方式（`shortcut`）会被跳过 —— 它们没有等价的本地二进制可写盘，否则会变成产生噪声的"假"下载。
 - 子文件夹会递归遍历；rel_path 形如 `sub1/sub2/file.txt`，本地缺失的父目录会被自动创建。
-- 已存在的本地文件按 `--if-exists` 决定 `overwrite` 还是 `skip`，没有第三种选择 —— 想做 `keep-both` 这类的请自己改名再 pull。
+- 已存在的本地文件按 `--if-exists` 决定 `overwrite` / `smart` / `skip`。其中 **`smart` 是推荐的重复同步模式**：只要本地 mtime 在远端时间精度下已经等于或晚于远端 `modified_time`，就跳过下载；时间戳缺失/非法时会退回安全路径继续下载，不会盲跳。想做 `keep-both` 这类的仍需自己改名再 pull。
 - 云端同名冲突默认失败；只有“冲突全是 `type=file`”且传了 `--on-duplicate-remote rename|newest|oldest` 时才会继续。
 
 ## --delete-local 的安全行为
@@ -106,8 +110,8 @@ lark-cli drive +pull --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 ## 性能注意
 
-- 下载流量 ≈ 云端待下载文件的总字节数。pull 是**全量**写盘 —— 跟 `+status` 不一样，不会跳过"内容相同"的文件（status 是按 hash 比较，pull 是按 `--if-exists`），所以一次跑可能很重。
-- 想避免重跑全量，可以先 `+status` 找出 `new_remote` 和 `modified`，再只对这些文件单独 `+download`。
+- 默认 `overwrite` 下，重复跑会重新下载所有命中的同名文件；`skip` 下则完全不碰已存在文件；**`smart` 下才会按 `modified_time` 跳过已经对齐的本地文件**，适合重复增量同步。
+- 想更精细地控制下载量，可以先 `+status` 找出 `new_remote` 和 `modified`，再只对这些文件单独 `+download`；或者直接在整目录同步时使用 `--if-exists smart`。
 - 大文件会用 SDK 的流式下载（不会把整个 body 读进内存），但本地磁盘空间需要够。
 
 ## 所需 scope
