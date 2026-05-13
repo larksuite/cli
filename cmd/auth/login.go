@@ -30,6 +30,7 @@ type LoginOptions struct {
 	Scope      string
 	Recommend  bool
 	Domains    []string
+	Exclude    []string
 	NoWait     bool
 	DeviceCode string
 }
@@ -62,11 +63,13 @@ browser. Run it in the background and retrieve the verification URL from its out
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
 
-	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated)")
+	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend") Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
 	available := sortedKnownDomains()
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
+	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
+		"scopes to exclude from the request (repeatable or comma-separated, e.g. --exclude drive:file:download)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.NoWait, "no-wait", false, "initiate device authorization and return immediately; use --device-code to complete")
 	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
@@ -156,12 +159,7 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 	}
 
-	hasAnyOption := opts.Scope != "" || opts.Recommend || len(selectedDomains) > 0
-
-	// Validate --exclude without --scope/--domain/--recommend
-	if len(opts.Exclude) > 0 && opts.Scope == "" && !opts.Recommend && len(selectedDomains) == 0 {
-		return output.ErrValidation("--exclude requires --scope, --domain, or --recommend to be specified")
-	}
+	hasAnyOption := opts.Scope != "" || opts.Recommend || len(selectedDomains) > 0 || len(opts.Exclude) > 0
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
@@ -196,12 +194,11 @@ func authLoginRun(opts *LoginOptions) error {
 	// endpoint rejects raw "a,b" strings as a single malformed scope.
 	finalScope := normalizeScopeInput(opts.Scope)
 
-	// Resolve scopes from domain/permission filters
+	// Resolve scopes from domain/permission filters and merge with --scope.
+	// --scope, --domain, and --recommend combine additively so callers can,
+	// for example, request all `docs` scopes plus a few specific `drive`
+	// scopes in a single command.
 	if len(selectedDomains) > 0 || opts.Recommend {
-		if opts.Scope != "" {
-			return output.ErrValidation("cannot use --scope together with --domain/--recommend")
-		}
-
 		var candidateScopes []string
 		if len(selectedDomains) > 0 {
 			candidateScopes = collectScopesForDomains(selectedDomains, "user")
@@ -215,11 +212,35 @@ func authLoginRun(opts *LoginOptions) error {
 			candidateScopes = registry.FilterAutoApproveScopes(candidateScopes)
 		}
 
-		if len(candidateScopes) == 0 {
+		if len(candidateScopes) == 0 && opts.Scope == "" {
 			return output.ErrValidation("no matching scopes found, check domain/scope options")
 		}
 
-		finalScope = strings.Join(candidateScopes, " ")
+		// Merge --scope additively with the resolved domain scopes.
+		merged := make(map[string]bool, len(candidateScopes)+len(strings.Fields(opts.Scope)))
+		for _, s := range candidateScopes {
+			merged[s] = true
+		}
+		for _, s := range strings.Fields(opts.Scope) {
+			merged[s] = true
+		}
+		finalScope = joinSortedScopeSet(merged)
+	}
+
+	// Apply --exclude on top of the resolved scope set. We honour exclude
+	// regardless of whether scopes came from --scope, --domain, --recommend,
+	// or any combination thereof.
+	if len(opts.Exclude) > 0 {
+		excluded, unknown := applyExcludeScopes(finalScope, opts.Exclude)
+		if len(unknown) > 0 {
+			return output.ErrValidation(
+				"these --exclude scopes are not present in the requested set: %s",
+				strings.Join(unknown, ", "))
+		}
+		finalScope = excluded
+		if strings.TrimSpace(finalScope) == "" {
+			return output.ErrValidation("no scopes left after applying --exclude; nothing to authorize")
+		}
 	}
 
 	// Step 1: Request device authorization
@@ -584,4 +605,59 @@ func suggestDomain(input string, known map[string]bool) string {
 		}
 	}
 	return ""
+}
+
+// joinSortedScopeSet returns a deterministic, space-separated scope string
+// from a set, sorted alphabetically. Empty/blank scopes are dropped.
+func joinSortedScopeSet(set map[string]bool) string {
+	out := make([]string, 0, len(set))
+	for s := range set {
+		if strings.TrimSpace(s) == "" {
+			continue
+		}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return strings.Join(out, " ")
+}
+
+// applyExcludeScopes removes the provided exclude entries from the requested
+// scope string. Each --exclude flag value may itself contain comma- or
+// whitespace-separated scopes. Returns the filtered scope string and any
+// exclude entries that were not present in the requested set (callers can
+// surface those as a validation error to catch typos like
+// `--exclude drive:file:downlod`).
+func applyExcludeScopes(requested string, excludes []string) (string, []string) {
+	requestedSet := make(map[string]bool)
+	for _, s := range strings.Fields(requested) {
+		requestedSet[s] = true
+	}
+
+	excludeSet := make(map[string]bool)
+	for _, raw := range excludes {
+		// --exclude already splits on commas (StringSliceVar), but also
+		// tolerate whitespace-separated entries inside a single value.
+		for _, s := range strings.Fields(strings.ReplaceAll(raw, ",", " ")) {
+			excludeSet[s] = true
+		}
+	}
+
+	var unknown []string
+	for s := range excludeSet {
+		if !requestedSet[s] {
+			unknown = append(unknown, s)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return requested, unknown
+	}
+
+	kept := make(map[string]bool, len(requestedSet))
+	for s := range requestedSet {
+		if !excludeSet[s] {
+			kept[s] = true
+		}
+	}
+	return joinSortedScopeSet(kept), nil
 }
