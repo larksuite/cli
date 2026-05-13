@@ -200,6 +200,19 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
 | `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides） |
 
+#### `permission.public.patch` 错误码引导
+
+调用 `lark-cli drive permission.public patch` 更新文档公开权限失败时，如果返回以下错误码，按表格给用户明确下一步。不要把这些错误简单归类为缺少 scope；它们通常表示租户、对外分享或文档密级策略拦截。
+
+| 错误码 | 含义                     | 给用户的引导 |
+|--------|------------------------|--------------|
+| `91009` | 对外分享被租户安全策略管控，当前用户无法开启 | 提示用户：对外分享能力被租户安全策略统一管控，无法通过 API 或当前用户直接开启；需要联系租户管理员调整组织级对外分享策略。 |
+| `91010` | 文档对外分享未打开              | 提示用户：当前文档尚未打开对外分享，请先在文档权限设置中打开对外分享，再重试 `permission.public.patch`。 |
+| `91011` | 对外分享被文档密级管控            | 提示用户：对外分享被密级策略拦截，需要打开目标文档，在文档内发起密级豁免或进行密级降级后再重试；回复中必须给出目标文档 URL。 |
+| `91012` | 权限设置被文档密级管控            | 提示用户：该权限设置被密级策略拦截，需要打开目标文档，在文档内发起密级豁免或进行密级降级后再重试；回复中必须给出目标文档 URL。 |
+
+当用户最初提供的是文档 URL，遇到 `91011` 或 `91012` 时直接把该 URL 原样返回给用户作为操作入口；如果上下文只有 token，需要先尽量通过已有上下文、搜索结果或元数据恢复目标文档 URL，再给出可点击的文档 URL。
+
 ### 授权当前应用访问文档
 
 当需要将文档权限授予**当前应用（bot）自身**时，先通过 bot info 接口获取应用的 open_id，再调用权限接口授权：
@@ -302,27 +315,29 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 
 ## 权限表
 
-| 方法 | 所需 scope |
-|------|-----------|
-| `files.copy` | `docs:document:copy` |
-| `files.create_folder` | `space:folder:create` |
-| `files.list` | `space:document:retrieve` |
-| `files.patch` | `docx:document:write_only` |
-| `file.comments.batch_query` | `docs:document.comment:read` |
-| `file.comments.create_v2` | `docs:document.comment:create` |
-| `file.comments.list` | `docs:document.comment:read` |
-| `file.comments.patch` | `docs:document.comment:update` |
-| `file.comment.replys.create` | `docs:document.comment:create` |
-| `file.comment.replys.delete` | `docs:document.comment:delete` |
-| `file.comment.replys.list` | `docs:document.comment:read` |
-| `file.comment.replys.update` | `docs:document.comment:update` |
-| `permission.members.auth` | `docs:permission.member:auth` |
-| `permission.members.create` | `docs:permission.member:create` |
-| `permission.members.transfer_owner` | `docs:permission.member:transfer` |
-| `metas.batch_query` | `drive:drive.metadata:readonly` |
-| `user.remove_subscription` | `docs:event:subscribe` |
-| `user.subscription` | `docs:event:subscribe` |
-| `user.subscription_status` | `docs:event:subscribe` |
-| `file.statistics.get` | `drive:drive.metadata:readonly` |
-| `file.view_records.list` | `drive:file:view_record:readonly` |
-| `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create` |
+| 方法                                             | 所需 scope                          |
+|------------------------------------------------|-----------------------------------|
+| `files.copy`                                   | `docs:document:copy`              |
+| `files.create_folder`                          | `space:folder:create`             |
+| `files.list`                                   | `space:document:retrieve`         |
+| `files.patch`                                  | `docx:document:write_only`        |
+| `file.comments.batch_query`                    | `docs:document.comment:read`      |
+| `file.comments.create_v2`                      | `docs:document.comment:create`    |
+| `file.comments.list`                           | `docs:document.comment:read`      |
+| `file.comments.patch`                          | `docs:document.comment:update`    |
+| `file.comment.replys.create`                   | `docs:document.comment:create`    |
+| `file.comment.replys.delete`                   | `docs:document.comment:delete`    |
+| `file.comment.replys.list`                     | `docs:document.comment:read`      |
+| `file.comment.replys.update`                   | `docs:document.comment:update`    |
+| `permission.members.auth`                      | `docs:permission.member:auth`     |
+| `permission.members.create`                    | `docs:permission.member:create`   |
+| `permission.members.transfer_owner`            | `docs:permission.member:transfer` |
+| `permission.public.get`                        | `docs:permission.setting:read`    |
+| `permission.public.patch`                      | `docs:permission.setting:write_only` |
+| `metas.batch_query`                            | `drive:drive.metadata:readonly`   |
+| `user.remove_subscription`                     | `docs:event:subscribe`            |
+| `user.subscription`                            | `docs:event:subscribe`            |
+| `user.subscription_status`                     | `docs:event:subscribe`            |
+| `file.statistics.get`                          | `drive:drive.metadata:readonly`   |
+| `file.view_records.list`                       | `drive:file:view_record:readonly` |
+| `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create`    |
