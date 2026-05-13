@@ -1,0 +1,15 @@
+{
+  "name": "larksuite/cli",
+  "version": "1.0.4",
+  "description": "The official CLI for Lark/Feishu open platform",
+  "author": "Lark Open Platform",
+  "homepage": "https://github.com/larksuite/cli",
+  "repository": "git+https://github.com/larksuite/cli.git",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "lark",
+    "feishu",
+    "skills"
+  ]
+}
