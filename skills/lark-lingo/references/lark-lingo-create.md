@@ -23,6 +23,18 @@ lark-cli lingo +create --as bot \
   --aliases "Know Your Customer" \
   --rich-text '<p><b>Know Your Customer 了解你的客户</b><span>，是金融机构在为客户提供服务前，对其</span><span>身份</span><span>、背景、风险等级进行核实的合规流程。</span></p>'
 
+# 携带相关元数据：分类 / 关联词条 / 关联用户 / 文档 / 链接 / 图片 / 群 / 值班
+lark-cli lingo +create --as bot \
+  --main-key "KYC" \
+  --description "Know Your Customer" \
+  --related-meta '{"classifications":[{"id":"7517595051844222977","father_id":"7517595051644862466"}],"abbreviations":[{"id":"enterprise_xxx"}]}'
+
+# related_meta 长可走 @file
+lark-cli lingo +create --as bot \
+  --main-key "KYC" \
+  --description "Know Your Customer" \
+  --related-meta @./related-meta.json
+
 # 从文件读释义
 lark-cli lingo +create --as bot \
   --main-key "KYC" \
@@ -67,6 +79,7 @@ lark-cli lingo +create --as bot \
 | `--aliases` | 否 | 别名列表，**逗号分隔**；空格会被自动 trim |
 | `--description` | 否 | **纯文本**释义；与 `--rich-text` 互斥；支持 `@file` 和 `-`（stdin） |
 | `--rich-text` | 否 | **HTML 富文本**释义；与 `--description` 互斥；支持 `@file` 和 `-`（stdin） |
+| `--related-meta` | 否 | 相关元数据 **JSON 对象**（分类、关联词条、用户、文档等）；支持 `@file` 和 `-`（stdin）；详见下表 |
 | `--repo-id` | 否 | 词典库 ID；省略时写入全公司共享词典 |
 | `--allow-highlight` | 否 | 是否在文档中高亮，默认 `true` |
 | `--allow-search` | 否 | 是否参与搜索，默认 `true` |
@@ -91,6 +104,40 @@ lark-cli lingo +create --as bot \
 **惯例样式**：`<p><b>主词 中文名</b><span>，释义内容…</span></p>`
 
 不传 `rich_text` 而只传 `description` 时，飞书后端会自动把纯文本包装成上述结构（主词部分自动加粗）。需要更精细排版（多段、换行、自定义高亮位置）时再用 `--rich-text`。
+
+## related_meta JSON 格式
+
+`--related-meta` 接受一个 JSON 对象，键为下表的字段名，每个值是子结构数组。**所有字段都可选**，按需填写。
+
+| 字段 | 元素结构 | 含义 |
+|------|---------|------|
+| `classifications` | `{"id":"<二级分类id>","father_id":"<一级分类id>"}` | 词条所属分类。**只能选二级分类**，且每个一级分类下只能选一个二级 |
+| `abbreviations` | `{"id":"enterprise_xxx"}` | 关联词条 ID（如缩写 ↔ 全称互链） |
+| `users` | `{"id":"ou_xxx","title":"人名"}` | 相关联系人（open_id），`title` 可选 |
+| `chats` | `{"id":"oc_xxx","title":"群名"}` | 相关公开群 |
+| `docs` | `{"title":"标题","url":"https://feishu.cn/docs/xxx"}` | 相关云文档 |
+| `links` | `{"title":"标题","url":"https://…"}` | 相关外部链接 |
+| `oncalls` | `{"id":"<值班号>","title":"标题"}` | 相关值班号 |
+| `images` | `{"token":"box_xxx"}` | 图片 token（先用文件接口上传图片），**最多 10 张** |
+
+**完整示例**（多个字段同时设置）：
+
+```json
+{
+  "classifications": [
+    {"id":"7517595051844222977","father_id":"7517595051644862466"}
+  ],
+  "abbreviations": [
+    {"id":"enterprise_7611747915522264030"}
+  ],
+  "users": [
+    {"id":"ou_xxx","title":"人名"}
+  ],
+  "docs": [
+    {"title":"KYC 合规流程","url":"https://feishu.cn/docs/yyy"}
+  ]
+}
+```
 
 ## 返回值
 

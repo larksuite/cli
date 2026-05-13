@@ -18,16 +18,17 @@ metadata:
 - 用户要**判断"这个词是否已收录"** → [`+match`](references/lark-lingo-match.md)
 - 用户要**列出候选 / 关键词召回** → [`+search`](references/lark-lingo-search.md)
 - 用户要**看某条词条的完整释义** → [`+get`](references/lark-lingo-get.md)
-- 用户要**新增企业术语 / 黑话** → [`+create`](references/lark-lingo-create.md)（必须 `--as bot`；纯文本用 `--description`，HTML 富文本用 `--rich-text`）
-- 用户要**改词条释义** → [`+update`](references/lark-lingo-update.md)（PUT 整体覆盖；先 `+get` 取当前值再合并；必须 `--as bot`；纯文本用 `--description`，HTML 富文本用 `--rich-text`）
+- 用户要**新增企业术语 / 黑话** → [`+create`](references/lark-lingo-create.md)（必须 `--as bot`；纯文本用 `--description`，HTML 富文本用 `--rich-text`，分类/关联用 `--related-meta`）
+- 用户要**改词条释义** → [`+update`](references/lark-lingo-update.md)（PUT 整体覆盖；先 `+get` 取当前值再合并；必须 `--as bot`；纯文本用 `--description`，HTML 富文本用 `--rich-text`，分类/关联用 `--related-meta`）
 - 用户要**删词条** → [`+delete`](references/lark-lingo-delete.md)（不可逆；需 `--yes`；必须 `--as bot`）
 
 ## 核心边界
 
 - **写操作（create/update/delete）只接受 tenant_access_token**：API 端点拒收 user token，会返 `99991668 "user access token not support"`。所以这三个 shortcut **必须 `--as bot`**，没有 user 路径可走。读操作（search/match/get）user/bot 都行。
 - **bot scope 不在 `auth login` 申请**：bot 走 tenant_access_token，scope 是在飞书开发者后台 app 配置页 → 权限管理勾选 → 创建版本 → 管理员审批。`lark-cli auth login --scope` 申请的是 user scope，对 bot 调用无效（`auth status` 显示的也是 user scope，不是 bot 的）。
-- **`+update` 是 PUT 整体覆盖，不是 PATCH**：未传字段会被远端清空。改之前先 `+get` 拿当前值，合并后再 `+update`。
+- **`+update` 是 PUT 整体覆盖，不是 PATCH**：未传字段会被远端清空。改之前先 `+get` 拿当前值，合并后再 `+update`。这条规则**对 related_meta 同样适用** — 不传 `--related-meta` 会清空所有分类、关联词条、用户、文档、链接、图片。
 - **释义格式**：`+create` / `+update` 支持 `--description`（纯文本）和 `--rich-text`（HTML 富文本），两者**互斥**。惯例 HTML 结构：`<p><b>主词</b><span>释义</span></p>`。飞书会自动双向同步两个字段（纯文本 ⇄ 富文本）。
+- **相关元数据**：`+create` / `+update` 支持 `--related-meta`，接受一个 JSON 对象，键包括 `classifications`（分类）、`abbreviations`（关联词条）、`users`、`chats`、`docs`、`links`、`oncalls`、`images`（图片 token，最多 10）。详见 [+create 参考](references/lark-lingo-create.md#related_meta-json-格式)。
 - **审核机制**：API 创建/修改的词条**默认进入审核队列**，管理员审批通过后才公开可见。需要免审写入时，应用须开通 `baike:entity:exempt_review`（**仅自建应用**可申请）。
 - **词典库 (repo_id)**：可选参数。不传时操作**全公司共享词典**；传入 `repo_id` 则操作指定的私有词典库。
 
@@ -40,8 +41,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli lingo +<verb> [flags]`）
 | [`+search`](references/lark-lingo-search.md) | 模糊搜索词条 | 只读 |
 | [`+match`](references/lark-lingo-match.md) | 精准匹配词条（判断是否已收录） | 只读 |
 | [`+get`](references/lark-lingo-get.md) | 通过 entity_id 获取词条详情 | 只读 |
-| [`+create`](references/lark-lingo-create.md) | 创建词条（默认进入审核队列；支持 `--description` 或 `--rich-text`） | 写入 |
-| [`+update`](references/lark-lingo-update.md) | 修改词条（PUT 整体覆盖；支持 `--description` 或 `--rich-text`） | 写入 |
+| [`+create`](references/lark-lingo-create.md) | 创建词条（默认进入审核队列；支持 `--description` / `--rich-text` / `--related-meta`） | 写入 |
+| [`+update`](references/lark-lingo-update.md) | 修改词条（PUT 整体覆盖；支持 `--description` / `--rich-text` / `--related-meta`） | 写入 |
 | [`+delete`](references/lark-lingo-delete.md) | 删除词条（不可逆） | high-risk-write |
 
 ## 典型流程：词条幂等收录

@@ -5,6 +5,7 @@ package lingo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -20,10 +21,13 @@ import (
 //
 // Accepts either a plain-text description (--description) or an HTML
 // rich-text body (--rich-text); the two flags are mutually exclusive.
+// Optional structured metadata (classifications, related users/chats/docs/
+// links/images/oncalls, abbreviation cross-links) can be attached via
+// --related-meta as a JSON object.
 var LingoEntityCreate = common.Shortcut{
 	Service:     "lingo",
 	Command:     "+create",
-	Description: "Create a dictionary entry (enters review queue by default; supports --description or --rich-text)",
+	Description: "Create a dictionary entry (enters review queue by default; supports --description/--rich-text and --related-meta)",
 	Risk:        "write",
 	Scopes:      []string{"baike:entity"},
 	AuthTypes:   []string{"user", "bot"},
@@ -33,6 +37,7 @@ var LingoEntityCreate = common.Shortcut{
 		{Name: "aliases", Desc: "comma-separated alias list (optional)"},
 		{Name: "description", Desc: "plain-text description (mutually exclusive with --rich-text)", Input: []string{common.File, common.Stdin}},
 		{Name: "rich-text", Desc: "HTML rich-text description, e.g. <p><b>主词</b><span>释义</span></p> (mutually exclusive with --description)", Input: []string{common.File, common.Stdin}},
+		{Name: "related-meta", Desc: "related metadata as JSON object: classifications/abbreviations/users/chats/docs/links/oncalls/images (supports @file or stdin)", Input: []string{common.File, common.Stdin}},
 		{Name: "repo-id", Desc: "dictionary repo ID; empty = shared company dictionary"},
 		{Name: "allow-highlight", Type: "bool", Default: "true", Desc: "whether the entry is highlighted in documents"},
 		{Name: "allow-search", Type: "bool", Default: "true", Desc: "whether the entry participates in search"},
@@ -62,6 +67,11 @@ var LingoEntityCreate = common.Shortcut{
 		}
 		if rich != "" {
 			if err := validate.RejectControlChars(rich, "rich-text"); err != nil {
+				return err
+			}
+		}
+		if v := runtime.Str("related-meta"); v != "" {
+			if _, err := parseRelatedMeta(v); err != nil {
 				return err
 			}
 		}
@@ -129,11 +139,31 @@ func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
 		body["rich_text"] = rich
 	}
 
+	if rm := runtime.Str("related-meta"); rm != "" {
+		// Validate already ran; ignore error here.
+		if parsed, err := parseRelatedMeta(rm); err == nil {
+			body["related_meta"] = parsed
+		}
+	}
+
 	if repo := runtime.Str("repo-id"); repo != "" {
 		body["repo_id"] = repo
 	}
 
 	return body
+}
+
+// parseRelatedMeta unmarshals the --related-meta flag value into a JSON object.
+// Returns an actionable error if the input is not a valid JSON object.
+func parseRelatedMeta(raw string) (map[string]interface{}, error) {
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, common.FlagErrorf("--related-meta must be a JSON object: %s", err)
+	}
+	if out == nil {
+		return nil, common.FlagErrorf("--related-meta must be a JSON object, got null")
+	}
+	return out, nil
 }
 
 // splitAliases splits a comma-separated alias list and pairs each with the display_status block.

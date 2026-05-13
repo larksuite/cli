@@ -229,3 +229,96 @@ func TestEntityCreateValidate_ControlCharsInRichText(t *testing.T) {
 		t.Fatal("expected error for control chars in --rich-text")
 	}
 }
+
+// --- related_meta tests ---
+
+func TestEntityCreateValidate_InvalidRelatedMeta(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		val  string
+	}{
+		{"not_json", "not-a-json"},
+		{"top_level_array", `["x"]`},
+		{"top_level_null", `null`},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, lingoTestConfig(t))
+			err := runLingoShortcut(t, LingoEntityCreate, f, stdout, []string{
+				"+create",
+				"--main-key", "KYC",
+				"--related-meta", tc.val,
+			})
+			if err == nil {
+				t.Fatal("expected error for invalid --related-meta")
+			}
+			if !strings.Contains(err.Error(), "related-meta") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestEntityCreateDryRun_RelatedMeta(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, lingoTestConfig(t))
+	rm := `{"classifications":[{"id":"7517595051844222977","father_id":"7517595051644862466"}],"abbreviations":[{"id":"enterprise_xxx"}]}`
+	err := runLingoShortcut(t, LingoEntityCreate, f, stdout, []string{
+		"+create",
+		"--main-key", "KYC",
+		"--description", "Know Your Customer",
+		"--related-meta", rm,
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "related_meta") {
+		t.Fatalf("dry-run body should contain related_meta, got: %s", out)
+	}
+	if !strings.Contains(out, "classifications") {
+		t.Fatalf("dry-run body should contain classifications, got: %s", out)
+	}
+	if !strings.Contains(out, "7517595051844222977") {
+		t.Fatalf("dry-run body should contain classification id, got: %s", out)
+	}
+}
+
+func TestEntityCreateExecute_RelatedMeta(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, reg := cmdutil.TestFactory(t, lingoTestConfig(t))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/lingo/v1/entities",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"entity": map[string]interface{}{
+					"id":        "ent-rm",
+					"main_keys": []interface{}{map[string]interface{}{"key": "KYC"}},
+					"related_meta": map[string]interface{}{
+						"classifications": []interface{}{map[string]interface{}{"id": "7517595051844222977"}},
+					},
+				},
+			},
+		},
+	})
+	err := runLingoShortcut(t, LingoEntityCreate, f, stdout, []string{
+		"+create",
+		"--main-key", "KYC",
+		"--related-meta", `{"classifications":[{"id":"7517595051844222977"}]}`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeEnvelope(t, stdout)
+	entity, _ := data["entity"].(map[string]interface{})
+	if entity == nil || entity["id"] != "ent-rm" {
+		t.Fatalf("missing or wrong entity in data: %#v", data)
+	}
+}

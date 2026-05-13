@@ -20,10 +20,13 @@ import (
 //
 // Accepts either a plain-text description (--description) or an HTML
 // rich-text body (--rich-text); the two flags are mutually exclusive.
+// Optional structured metadata (classifications, related users/chats/docs/
+// links/images/oncalls, abbreviation cross-links) can be attached via
+// --related-meta as a JSON object; omitting it clears the existing value.
 var LingoEntityUpdate = common.Shortcut{
 	Service:     "lingo",
 	Command:     "+update",
-	Description: "Update a dictionary entry (PUT — full-body overwrite; supports --description or --rich-text)",
+	Description: "Update a dictionary entry (PUT — full-body overwrite; supports --description/--rich-text and --related-meta)",
 	Risk:        "write",
 	Scopes:      []string{"baike:entity"},
 	AuthTypes:   []string{"user", "bot"},
@@ -34,6 +37,7 @@ var LingoEntityUpdate = common.Shortcut{
 		{Name: "aliases", Desc: "comma-separated alias list (empty = clear aliases)"},
 		{Name: "description", Desc: "plain-text description; empty = clear (mutually exclusive with --rich-text)", Input: []string{common.File, common.Stdin}},
 		{Name: "rich-text", Desc: "HTML rich-text description; empty = clear (mutually exclusive with --description)", Input: []string{common.File, common.Stdin}},
+		{Name: "related-meta", Desc: "related metadata as JSON object (PUT overwrite — empty clears all related metadata; +get first and merge to keep)", Input: []string{common.File, common.Stdin}},
 		{Name: "allow-highlight", Type: "bool", Default: "true", Desc: "whether the entry is highlighted in documents"},
 		{Name: "allow-search", Type: "bool", Default: "true", Desc: "whether the entry participates in search"},
 	},
@@ -65,6 +69,11 @@ var LingoEntityUpdate = common.Shortcut{
 		}
 		if rich != "" {
 			if err := validate.RejectControlChars(rich, "rich-text"); err != nil {
+				return err
+			}
+		}
+		if v := runtime.Str("related-meta"); v != "" {
+			if _, err := parseRelatedMeta(v); err != nil {
 				return err
 			}
 		}
@@ -128,6 +137,13 @@ func buildUpdateBody(runtime *common.RuntimeContext) map[string]interface{} {
 		body["description"] = desc
 	} else if rich := runtime.Str("rich-text"); rich != "" {
 		body["rich_text"] = rich
+	}
+
+	if rm := runtime.Str("related-meta"); rm != "" {
+		// Validate already ran; ignore error here.
+		if parsed, err := parseRelatedMeta(rm); err == nil {
+			body["related_meta"] = parsed
+		}
 	}
 
 	return body
