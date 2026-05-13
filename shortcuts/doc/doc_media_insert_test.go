@@ -867,10 +867,47 @@ func TestAutoAspectRatioFromHeight(t *testing.T) {
 	}
 }
 
-// Validate is the real user-facing contract for --file-view: unknown
-// values must be rejected, and passing the flag alongside --type!=file
-// must also be rejected. buildCreateBlockData tests alone cannot catch
-// regressions here, so lock the guard logic down explicitly.
+func TestComputeMissingDimensionBothProvided(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(800, 600, 1200, 900)
+	if got.width != 800 || got.height != 600 {
+		t.Fatalf("computeMissingDimension(800, 600, 1200, 900) = (%d, %d), want (800, 600)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionNeitherProvided(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(0, 0, 1200, 900)
+	if got.width != 0 || got.height != 0 {
+		t.Fatalf("computeMissingDimension(0, 0, 1200, 900) = (%d, %d), want (0, 0)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionZeroNativeWidth(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(600, 0, 0, 800)
+	if got.width != 600 || got.height != 0 {
+		t.Fatalf("computeMissingDimension(600, 0, 0, 800) = (%d, %d), want (600, 0)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionZeroNativeHeight(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(0, 400, 1200, 0)
+	if got.width != 0 || got.height != 400 {
+		t.Fatalf("computeMissingDimension(0, 400, 1200, 0) = (%d, %d), want (0, 400)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionRounding(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(999, 0, 1000, 333)
+	want := (999*333 + 500) / 1000
+	if got.height != want {
+		t.Fatalf("computeMissingDimension(999, 0, 1000, 333).height = %d, want %d (rounded)", got.height, want)
+	}
+}
+
 func TestDocMediaInsertValidateFileView(t *testing.T) {
 	t.Parallel()
 

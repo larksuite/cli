@@ -539,15 +539,15 @@ type imageDimensions struct {
 }
 
 func computeMissingDimension(userWidth, userHeight, nativeWidth, nativeHeight int) imageDimensions {
-	if userWidth > 0 && userHeight == 0 {
+	if userWidth > 0 && userHeight == 0 && nativeWidth > 0 {
 		return imageDimensions{
 			width:  userWidth,
-			height: userWidth * nativeHeight / nativeWidth,
+			height: (userWidth*nativeHeight + nativeWidth/2) / nativeWidth,
 		}
 	}
-	if userHeight > 0 && userWidth == 0 {
+	if userHeight > 0 && userWidth == 0 && nativeHeight > 0 {
 		return imageDimensions{
-			width:  userHeight * nativeWidth / nativeHeight,
+			width:  (userHeight*nativeWidth + nativeHeight/2) / nativeHeight,
 			height: userHeight,
 		}
 	}
