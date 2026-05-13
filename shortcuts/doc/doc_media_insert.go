@@ -113,10 +113,10 @@ var DocMediaInsert = common.Shortcut{
 		}
 		const maxDimension = 10000
 		if widthChanged && runtime.Int("width") > maxDimension {
-			return output.ErrValidation("--width must not exceed %d", maxDimension)
+			return output.ErrValidation("--width must not exceed %d pixels", maxDimension)
 		}
 		if heightChanged && runtime.Int("height") > maxDimension {
-			return output.ErrValidation("--height must not exceed %d", maxDimension)
+			return output.ErrValidation("--height must not exceed %d pixels", maxDimension)
 		}
 		return nil
 	},
