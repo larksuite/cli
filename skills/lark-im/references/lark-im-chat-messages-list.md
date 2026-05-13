@@ -135,6 +135,12 @@ lark-cli api GET /open-apis/im/v1/messages \
 4. **For time ranges:** both ISO 8601 and date-only inputs are supported. Date-only is usually simpler.
 5. **For full content:** table output truncates content. Use `--format json` when you need the complete message body.
 6. **For sender info:** the command already resolves sender names, so you do not need a separate lookup.
+7. **Application/bot identity + named group history:** If the user says "使用应用身份/以 bot 身份" and asks to list or read historical messages for a named group, use bot identity for both steps:
+   ```bash
+   lark-cli im +chat-search --as bot --query "<chat name keyword>" --format json
+   lark-cli im +chat-messages-list --as bot --chat-id <chat_id> --page-size 50 --format json
+   ```
+   Do not use `im +messages-search --as bot`; `+messages-search` is user-only. Continue with `--page-token` if `has_more=true`.
 
 ## References
 
