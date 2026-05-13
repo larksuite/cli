@@ -87,6 +87,15 @@ CHAT_ID=$(lark-cli im +chat-search --query "daily report" --format json | jq -r 
 lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Today's progress update"
 ```
 
+### Scenario 4: Search a chat and get its share link
+
+```bash
+CHAT_ID=$(lark-cli im +chat-search --query "alert group" --format json | jq -r '.data.chats[0].chat_id')
+lark-cli im chats link --params "{\"chat_id\":\"$CHAT_ID\"}"
+```
+
+Never hand-build `applink.feishu.cn/...?chatId=oc_xxx` URLs — see [SKILL.md](../SKILL.md#sharing-chats--generating-chat-urls).
+
 ## Common Errors and Troubleshooting
 
 | Symptom | Root Cause | Solution |
