@@ -98,3 +98,79 @@ func TestEntityUpdateExecute_OK(t *testing.T) {
 		t.Fatalf("unexpected entity in data: %#v", data)
 	}
 }
+
+// --- rich_text tests ---
+
+func TestEntityUpdateValidate_DescriptionAndRichTextMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, lingoTestConfig(t))
+	err := runLingoShortcut(t, LingoEntityUpdate, f, stdout, []string{
+		"+update",
+		"--entity-id", "ent-1",
+		"--main-key", "KYC",
+		"--description", "plain",
+		"--rich-text", "<p>html</p>",
+	})
+	if err == nil {
+		t.Fatal("expected error for passing both --description and --rich-text")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEntityUpdateDryRun_RichText(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, lingoTestConfig(t))
+	err := runLingoShortcut(t, LingoEntityUpdate, f, stdout, []string{
+		"+update",
+		"--entity-id", "ent-1",
+		"--main-key", "KYC",
+		"--rich-text", "<p><b>KYC</b><span>updated</span></p>",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "rich_text") {
+		t.Fatalf("dry-run body should contain rich_text, got: %s", out)
+	}
+	if strings.Contains(out, "\"description\"") {
+		t.Fatalf("dry-run body should NOT contain description when only --rich-text provided, got: %s", out)
+	}
+}
+
+func TestEntityUpdateExecute_RichText(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, reg := cmdutil.TestFactory(t, lingoTestConfig(t))
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/lingo/v1/entities/ent-1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"entity": map[string]interface{}{
+					"id":        "ent-1",
+					"main_keys": []interface{}{map[string]interface{}{"key": "KYC"}},
+					"rich_text": "<p><b>KYC</b></p>",
+				},
+			},
+		},
+	})
+	err := runLingoShortcut(t, LingoEntityUpdate, f, stdout, []string{
+		"+update",
+		"--entity-id", "ent-1",
+		"--main-key", "KYC",
+		"--rich-text", "<p><b>KYC</b></p>",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeEnvelope(t, stdout)
+	entity, _ := data["entity"].(map[string]interface{})
+	if entity == nil || entity["id"] != "ent-1" {
+		t.Fatalf("unexpected entity in data: %#v", data)
+	}
+}

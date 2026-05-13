@@ -17,10 +17,13 @@ import (
 // LingoEntityCreate creates a new dictionary entry.
 // Entries created via this API default to the review queue unless the
 // app has been granted baike:entity:exempt_review.
+//
+// Accepts either a plain-text description (--description) or an HTML
+// rich-text body (--rich-text); the two flags are mutually exclusive.
 var LingoEntityCreate = common.Shortcut{
 	Service:     "lingo",
 	Command:     "+create",
-	Description: "Create a dictionary entry (enters review queue by default)",
+	Description: "Create a dictionary entry (enters review queue by default; supports --description or --rich-text)",
 	Risk:        "write",
 	Scopes:      []string{"baike:entity"},
 	AuthTypes:   []string{"user", "bot"},
@@ -28,7 +31,8 @@ var LingoEntityCreate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "main-key", Desc: "main key (required, e.g. \"飞书\")", Required: true},
 		{Name: "aliases", Desc: "comma-separated alias list (optional)"},
-		{Name: "description", Desc: "entry description text", Input: []string{common.File, common.Stdin}},
+		{Name: "description", Desc: "plain-text description (mutually exclusive with --rich-text)", Input: []string{common.File, common.Stdin}},
+		{Name: "rich-text", Desc: "HTML rich-text description, e.g. <p><b>主词</b><span>释义</span></p> (mutually exclusive with --description)", Input: []string{common.File, common.Stdin}},
 		{Name: "repo-id", Desc: "dictionary repo ID; empty = shared company dictionary"},
 		{Name: "allow-highlight", Type: "bool", Default: "true", Desc: "whether the entry is highlighted in documents"},
 		{Name: "allow-search", Type: "bool", Default: "true", Desc: "whether the entry participates in search"},
@@ -46,8 +50,18 @@ var LingoEntityCreate = common.Shortcut{
 				return err
 			}
 		}
-		if v := runtime.Str("description"); v != "" {
-			if err := validate.RejectControlChars(v, "description"); err != nil {
+		desc := runtime.Str("description")
+		rich := runtime.Str("rich-text")
+		if desc != "" && rich != "" {
+			return common.FlagErrorf("--description and --rich-text are mutually exclusive")
+		}
+		if desc != "" {
+			if err := validate.RejectControlChars(desc, "description"); err != nil {
+				return err
+			}
+		}
+		if rich != "" {
+			if err := validate.RejectControlChars(rich, "rich-text"); err != nil {
 				return err
 			}
 		}
@@ -111,6 +125,8 @@ func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
 
 	if desc := runtime.Str("description"); desc != "" {
 		body["description"] = desc
+	} else if rich := runtime.Str("rich-text"); rich != "" {
+		body["rich_text"] = rich
 	}
 
 	if repo := runtime.Str("repo-id"); repo != "" {

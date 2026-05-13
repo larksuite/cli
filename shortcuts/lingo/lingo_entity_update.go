@@ -17,10 +17,13 @@ import (
 // LingoEntityUpdate replaces a dictionary entry (PUT — full-body overwrite).
 // Fields not provided are CLEARED on the remote side; call +get first if you
 // only want to patch a subset.
+//
+// Accepts either a plain-text description (--description) or an HTML
+// rich-text body (--rich-text); the two flags are mutually exclusive.
 var LingoEntityUpdate = common.Shortcut{
 	Service:     "lingo",
 	Command:     "+update",
-	Description: "Update a dictionary entry (PUT — full-body overwrite; missing fields are cleared)",
+	Description: "Update a dictionary entry (PUT — full-body overwrite; supports --description or --rich-text)",
 	Risk:        "write",
 	Scopes:      []string{"baike:entity"},
 	AuthTypes:   []string{"user", "bot"},
@@ -29,7 +32,8 @@ var LingoEntityUpdate = common.Shortcut{
 		{Name: "entity-id", Desc: "dictionary entity ID (required)", Required: true},
 		{Name: "main-key", Desc: "main key (required)", Required: true},
 		{Name: "aliases", Desc: "comma-separated alias list (empty = clear aliases)"},
-		{Name: "description", Desc: "entry description text (empty = clear)", Input: []string{common.File, common.Stdin}},
+		{Name: "description", Desc: "plain-text description; empty = clear (mutually exclusive with --rich-text)", Input: []string{common.File, common.Stdin}},
+		{Name: "rich-text", Desc: "HTML rich-text description; empty = clear (mutually exclusive with --description)", Input: []string{common.File, common.Stdin}},
 		{Name: "allow-highlight", Type: "bool", Default: "true", Desc: "whether the entry is highlighted in documents"},
 		{Name: "allow-search", Type: "bool", Default: "true", Desc: "whether the entry participates in search"},
 	},
@@ -49,8 +53,18 @@ var LingoEntityUpdate = common.Shortcut{
 				return err
 			}
 		}
-		if v := runtime.Str("description"); v != "" {
-			if err := validate.RejectControlChars(v, "description"); err != nil {
+		desc := runtime.Str("description")
+		rich := runtime.Str("rich-text")
+		if desc != "" && rich != "" {
+			return common.FlagErrorf("--description and --rich-text are mutually exclusive")
+		}
+		if desc != "" {
+			if err := validate.RejectControlChars(desc, "description"); err != nil {
+				return err
+			}
+		}
+		if rich != "" {
+			if err := validate.RejectControlChars(rich, "rich-text"); err != nil {
 				return err
 			}
 		}
@@ -112,6 +126,8 @@ func buildUpdateBody(runtime *common.RuntimeContext) map[string]interface{} {
 
 	if desc := runtime.Str("description"); desc != "" {
 		body["description"] = desc
+	} else if rich := runtime.Str("rich-text"); rich != "" {
+		body["rich_text"] = rich
 	}
 
 	return body

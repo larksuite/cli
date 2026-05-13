@@ -140,3 +140,92 @@ func TestEntityCreateExecute_PermissionError(t *testing.T) {
 		t.Fatal("expected error for API permission failure")
 	}
 }
+
+// --- rich_text tests ---
+
+func TestEntityCreateValidate_DescriptionAndRichTextMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, lingoTestConfig(t))
+	err := runLingoShortcut(t, LingoEntityCreate, f, stdout, []string{
+		"+create",
+		"--main-key", "KYC",
+		"--description", "plain text",
+		"--rich-text", "<p>html</p>",
+	})
+	if err == nil {
+		t.Fatal("expected error for passing both --description and --rich-text")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEntityCreateDryRun_RichText(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, lingoTestConfig(t))
+	err := runLingoShortcut(t, LingoEntityCreate, f, stdout, []string{
+		"+create",
+		"--main-key", "KYC",
+		"--rich-text", "<p><b>KYC</b><span>Know Your Customer</span></p>",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "rich_text") {
+		t.Fatalf("dry-run body should contain rich_text, got: %s", out)
+	}
+	if strings.Contains(out, "\"description\"") {
+		t.Fatalf("dry-run body should NOT contain description when only --rich-text provided, got: %s", out)
+	}
+	if !strings.Contains(out, "Know Your Customer") {
+		t.Fatalf("dry-run body missing rich-text content, got: %s", out)
+	}
+}
+
+func TestEntityCreateExecute_RichText(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, reg := cmdutil.TestFactory(t, lingoTestConfig(t))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/lingo/v1/entities",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"entity": map[string]interface{}{
+					"id":        "ent-rich",
+					"main_keys": []interface{}{map[string]interface{}{"key": "KYC"}},
+					"rich_text": "<p><b>KYC</b></p>",
+				},
+			},
+		},
+	})
+	err := runLingoShortcut(t, LingoEntityCreate, f, stdout, []string{
+		"+create",
+		"--main-key", "KYC",
+		"--rich-text", "<p><b>KYC</b></p>",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeEnvelope(t, stdout)
+	entity, _ := data["entity"].(map[string]interface{})
+	if entity == nil || entity["id"] != "ent-rich" {
+		t.Fatalf("missing or wrong entity in data: %#v", data)
+	}
+}
+
+func TestEntityCreateValidate_ControlCharsInRichText(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, lingoTestConfig(t))
+	err := runLingoShortcut(t, LingoEntityCreate, f, stdout, []string{
+		"+create",
+		"--main-key", "KYC",
+		"--rich-text", "<p>bad\x00char</p>",
+	})
+	if err == nil {
+		t.Fatal("expected error for control chars in --rich-text")
+	}
+}

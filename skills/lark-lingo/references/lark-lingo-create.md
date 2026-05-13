@@ -11,16 +11,27 @@
 lark-cli lingo +create --as bot \
   --main-key "KYC"
 
-# 常规：主词 + 别名（逗号分隔） + 释义
+# 常规：主词 + 别名（逗号分隔） + 纯文本释义
 lark-cli lingo +create --as bot \
   --main-key "飞书" \
   --aliases "Lark,FeiShu,飞书办公" \
   --description "企业协作平台"
 
+# 富文本释义（HTML，与 --description 互斥）
+lark-cli lingo +create --as bot \
+  --main-key "KYC" \
+  --aliases "Know Your Customer" \
+  --rich-text '<p><b>Know Your Customer 了解你的客户</b><span>，是金融机构在为客户提供服务前，对其</span><span>身份</span><span>、背景、风险等级进行核实的合规流程。</span></p>'
+
 # 从文件读释义
 lark-cli lingo +create --as bot \
   --main-key "KYC" \
   --description @./desc.txt
+
+# 从文件读富文本
+lark-cli lingo +create --as bot \
+  --main-key "KYC" \
+  --rich-text @./desc.html
 
 # 从 stdin 读释义
 printf "Know Your Customer …" | \
@@ -54,7 +65,8 @@ lark-cli lingo +create --as bot \
 |------|------|------|
 | `--main-key` | 是 | 主词（词条显示的主关键词） |
 | `--aliases` | 否 | 别名列表，**逗号分隔**；空格会被自动 trim |
-| `--description` | 否 | 释义文本；支持 `@file` 和 `-`（stdin） |
+| `--description` | 否 | **纯文本**释义；与 `--rich-text` 互斥；支持 `@file` 和 `-`（stdin） |
+| `--rich-text` | 否 | **HTML 富文本**释义；与 `--description` 互斥；支持 `@file` 和 `-`（stdin） |
 | `--repo-id` | 否 | 词典库 ID；省略时写入全公司共享词典 |
 | `--allow-highlight` | 否 | 是否在文档中高亮，默认 `true` |
 | `--allow-search` | 否 | 是否参与搜索，默认 `true` |
@@ -62,9 +74,23 @@ lark-cli lingo +create --as bot \
 ## 关键约束
 
 - **必须 `--as bot`**：API 端点拒收 user token，user 调用会返 `99991668 "user access token not support"`。
+- **`--description` 与 `--rich-text` 互斥**：同时传 CLI 直接报错。两者都不传时词条无释义。
 - **主词只能 1 个**：API schema 限制 `main_keys` 数组最多 1 个元素；本 shortcut 只暴露单 `--main-key`。多主词需求请用原生 `lark-cli api POST /open-apis/lingo/v1/entities --data '{...}'`。
 - **创建会进审核队列**：除非应用已开通 `baike:entity:exempt_review`，词条要等管理员审批通过才对外可见。创建成功后应告知用户「已提交审核」。
 - **幂等性**：本 shortcut 不做存在性检查。"没收录就新建"的流程必须自己先调 [`+match`](lark-lingo-match.md) 判断。
+
+## rich_text HTML 格式
+
+实测从飞书 Web UI 创建的词条，`rich_text` 是 HTML 字符串，常见标签：
+
+- `<p>` — 段落（最外层包裹）
+- `<b>` — 加粗（约定主词部分加粗）
+- `<span>` — 文本片段（飞书 Web UI 倾向把每个文本块都包成 `<span>`）
+- `\n` — 换行（在 HTML 内嵌入）
+
+**惯例样式**：`<p><b>主词 中文名</b><span>，释义内容…</span></p>`
+
+不传 `rich_text` 而只传 `description` 时，飞书后端会自动把纯文本包装成上述结构（主词部分自动加粗）。需要更精细排版（多段、换行、自定义高亮位置）时再用 `--rich-text`。
 
 ## 返回值
 
@@ -77,11 +103,14 @@ lark-cli lingo +create --as bot \
       "id": "enterprise_xxxx",
       "main_keys": [{"key": "KYC"}],
       "aliases": [{"key": "Know Your Customer"}],
-      "description": "…"
+      "description": "…",
+      "rich_text": "<p>…</p>"
     }
   }
 }
 ```
+
+> 即使创建时只传 `--description`，返回的 `entity` 里也会有 `rich_text`（飞书自动转换）；反之只传 `--rich-text` 时返回里也会有 strip 标签后的 `description`。
 
 ## 错误排查
 
