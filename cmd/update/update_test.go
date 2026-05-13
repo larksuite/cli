@@ -168,6 +168,11 @@ func TestUpdateManual_Human(t *testing.T) {
 }
 
 func TestUpdateNpm_JSON(t *testing.T) {
+	// Isolate config dir: this test mocks fetchLatest="2.0.0" and lets
+	// runSkillsAndStamp → WriteStamp succeed, which without isolation would
+	// clobber the real ~/.lark-cli/skills.stamp with "2.0.0".
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -195,6 +200,9 @@ func TestUpdateNpm_JSON(t *testing.T) {
 }
 
 func TestUpdateNpm_Human(t *testing.T) {
+	// Same isolation as TestUpdateNpm_JSON — see comment there.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, _, stderr := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
@@ -222,6 +230,9 @@ func TestUpdateNpm_Human(t *testing.T) {
 }
 
 func TestUpdateForce_JSON(t *testing.T) {
+	// Same stamp-isolation rationale as TestUpdateNpm_JSON.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--force", "--json"})
@@ -312,6 +323,9 @@ func TestUpdateInvalidVersion_JSON(t *testing.T) {
 }
 
 func TestUpdateDevVersion_JSON(t *testing.T) {
+	// Same stamp-isolation rationale as TestUpdateNpm_JSON.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -629,6 +643,9 @@ func TestPermissionHint(t *testing.T) {
 
 func TestUpdateWindows_NpmSuccess_JSON(t *testing.T) {
 	// With the rename trick, Windows npm installs can now auto-update.
+	// Same stamp-isolation rationale as TestUpdateNpm_JSON.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
