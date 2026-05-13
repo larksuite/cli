@@ -158,6 +158,11 @@ func authLoginRun(opts *LoginOptions) error {
 
 	hasAnyOption := opts.Scope != "" || opts.Recommend || len(selectedDomains) > 0
 
+	// Validate --exclude without --scope/--domain/--recommend
+	if len(opts.Exclude) > 0 && opts.Scope == "" && !opts.Recommend && len(selectedDomains) == 0 {
+		return output.ErrValidation("--exclude requires --scope, --domain, or --recommend to be specified")
+	}
+
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
 			result, err := runInteractiveLogin(f.IOStreams, lang, msg)
