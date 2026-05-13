@@ -6,7 +6,6 @@ package markdown
 import (
 	"context"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
@@ -73,19 +72,9 @@ var MarkdownOverwrite = common.Shortcut{
 			return err
 		}
 
-		fileName := strings.TrimSpace(spec.FileName)
-		if fileName == "" && spec.FileSet {
-			fileName = filepath.Base(spec.FilePath)
-		}
-		if fileName == "" {
-			remoteName, err := fetchMarkdownFileName(runtime, fileToken)
-			if err != nil {
-				return err
-			}
-			fileName = strings.TrimSpace(remoteName)
-		}
-		if fileName == "" {
-			fileName = fileToken + ".md"
+		fileName, err := resolveMarkdownOverwriteFileName(runtime, spec)
+		if err != nil {
+			return err
 		}
 		spec.FileName = fileName
 

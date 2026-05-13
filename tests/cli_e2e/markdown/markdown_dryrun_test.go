@@ -176,6 +176,31 @@ func TestMarkdownOverwriteDryRun_RejectsEmptyFile(t *testing.T) {
 	assert.Contains(t, errMsg, "empty markdown content is not supported")
 }
 
+func TestMarkdownPatchDryRun_Content(t *testing.T) {
+	setMarkdownDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+patch",
+			"--file-token", "boxcnMarkdownDryRun",
+			"--pattern", "TODO",
+			"--content", "DONE",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
+	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+}
+
 func setMarkdownDryRunConfigEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())

@@ -28,7 +28,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media                  |
 | 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards                                                        |
 | 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
-| 📝 Markdown   | Create, fetch, and overwrite Drive-native `.md` files                                                                             |
+| 📝 Markdown   | Create, fetch, patch, and overwrite Drive-native `.md` files                                                                      |
 | 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
 | 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                                                                    |
 | 🖼️ Slides     | Create and manage presentations, read presentation content, and add or remove slides                                              |
@@ -132,7 +132,7 @@ lark-cli auth status
 | `lark-im`                       | Send/reply messages, group chat management, message search, upload/download images & files, reactions          |
 | `lark-doc`                      | Create, read, update, search documents (Markdown-based)                                                        |
 | `lark-drive`                    | Upload, download files, manage permissions & comments                                                          |
-| `lark-markdown`                 | Create, fetch, and overwrite Drive-native Markdown files                                                       |
+| `lark-markdown`                 | Create, fetch, patch, and overwrite Drive-native Markdown files                                                |
 | `lark-sheets`                   | Create, read, write, append, find, export spreadsheets                                                         |
 | `lark-slides`                   | Create and manage presentations, read presentation content, and add or remove slides                          |
 | `lark-base`                     | Tables, fields, records, views, dashboards, data aggregation & analytics                                       |

@@ -5,6 +5,7 @@ package markdown
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -110,6 +111,35 @@ func finalMarkdownFileName(spec markdownUploadSpec) string {
 		return ""
 	}
 	return filepath.Base(spec.FilePath)
+}
+
+func resolveMarkdownOverwriteFileName(runtime *common.RuntimeContext, spec markdownUploadSpec) (string, error) {
+	fileName := strings.TrimSpace(spec.FileName)
+	if fileName == "" && spec.FileSet {
+		fileName = filepath.Base(spec.FilePath)
+	}
+	if fileName == "" {
+		remoteName, err := fetchMarkdownFileName(runtime, spec.FileToken)
+		if err != nil {
+			return "", err
+		}
+		fileName = strings.TrimSpace(remoteName)
+	}
+	if fileName == "" {
+		fileName = spec.FileToken + ".md"
+	}
+	return fileName, nil
+}
+
+func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken string) (*http.Response, string, error) {
+	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
+	})
+	if err != nil {
+		return nil, "", output.ErrNetwork("download failed: %s", err)
+	}
+	return resp, fileNameFromDownloadHeader(resp.Header, fileToken+".md"), nil
 }
 
 func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec) (int64, error) {

@@ -28,6 +28,7 @@ func TestMarkdownLifecycleWorkflow(t *testing.T) {
 	suffix := clie2e.GenerateSuffix()
 	fileName := "lark-cli-e2e-markdown-" + suffix + ".md"
 	initialContent := "# Initial\n\nhello markdown workflow\n"
+	patchedContent := "# Initial\n\nhello patched workflow\n"
 	updatedContent := "# Updated\n\nnew body\n"
 
 	createResult, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -72,6 +73,34 @@ func TestMarkdownLifecycleWorkflow(t *testing.T) {
 	fetchInitialResult.AssertExitCode(t, 0)
 	fetchInitialResult.AssertStdoutStatus(t, true)
 	require.Equal(t, initialContent, gjson.Get(fetchInitialResult.Stdout, "data.content").String(), "stdout:\n%s", fetchInitialResult.Stdout)
+
+	patchResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+patch",
+			"--file-token", fileToken,
+			"--pattern", "hello markdown workflow",
+			"--content", "hello patched workflow",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	patchResult.AssertExitCode(t, 0)
+	patchResult.AssertStdoutStatus(t, true)
+	require.Equal(t, true, gjson.Get(patchResult.Stdout, "data.updated").Bool(), "stdout:\n%s", patchResult.Stdout)
+	require.Equal(t, int64(1), gjson.Get(patchResult.Stdout, "data.match_count").Int(), "stdout:\n%s", patchResult.Stdout)
+	require.NotEmpty(t, gjson.Get(patchResult.Stdout, "data.version").String(), "stdout:\n%s", patchResult.Stdout)
+
+	fetchPatchedResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+fetch",
+			"--file-token", fileToken,
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	fetchPatchedResult.AssertExitCode(t, 0)
+	fetchPatchedResult.AssertStdoutStatus(t, true)
+	require.Equal(t, patchedContent, gjson.Get(fetchPatchedResult.Stdout, "data.content").String(), "stdout:\n%s", fetchPatchedResult.Stdout)
 
 	overwriteResult, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
