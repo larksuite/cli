@@ -63,7 +63,7 @@ browser. Run it in the background and retrieve the verification URL from its out
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
 
-	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend") Combines additively with --domain/--recommend")
+	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
 	available := sortedKnownDomains()
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
@@ -217,11 +217,11 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 
 		// Merge --scope additively with the resolved domain scopes.
-		merged := make(map[string]bool, len(candidateScopes)+len(strings.Fields(opts.Scope)))
+		merged := make(map[string]bool, len(candidateScopes)+len(strings.Fields(finalScope)))
 		for _, s := range candidateScopes {
 			merged[s] = true
 		}
-		for _, s := range strings.Fields(opts.Scope) {
+		for _, s := range strings.Fields(finalScope) {
 			merged[s] = true
 		}
 		finalScope = joinSortedScopeSet(merged)
