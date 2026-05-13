@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -29,7 +31,7 @@ var ImFlagList = common.Shortcut{
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
-		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and require im:message.group_msg:get_as_user/im:message.p2p_msg:get_as_user; use --enrich-feed-thread=false to avoid extra scopes)"},
+		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and bot basic info; use --enrich-feed-thread=false to avoid extra scopes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateListOptions(runtime)
@@ -45,7 +47,12 @@ var ImFlagList = common.Shortcut{
 				"page_token": runtime.Str("page-token"),
 			})
 		if runtime.Bool("enrich-feed-thread") {
-			d.Desc("conditional enrichment: if feed/thread flag items are missing message content, execution may also call GET /open-apis/im/v1/messages/mget and requires scopes im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user; pass --enrich-feed-thread=false to skip this extra call and extra scopes")
+			// Dry-run must name every conditional API because agents use this output
+			// to decide which scopes to request before executing the real command.
+			d.Desc(fmt.Sprintf(
+				"conditional enrichment: if feed/thread flag items are missing message content, execution may also call GET /open-apis/im/v1/messages/mget and GET /open-apis/bot/v3/bots/basic_batch; requires scopes %s; pass --enrich-feed-thread=false to skip these extra calls and extra scopes",
+				strings.Join(flagMessageReadScopes, " "),
+			))
 		}
 		return d
 	},
@@ -180,6 +187,9 @@ func enrichFeedThreadItems(rt *common.RuntimeContext, data map[string]any) error
 	if len(byID) == 0 {
 		return nil
 	}
+	// Flag-list nests message payloads under each flag item, so enrich them before
+	// attachment to match the sender contract of other message read shortcuts.
+	enrichFlagMessageSenderNames(rt, byID)
 	// Attach message payload to the matching list entries.
 	for _, it := range items {
 		m, _ := it.(map[string]any)
@@ -199,6 +209,18 @@ func enrichFeedThreadItems(rt *common.RuntimeContext, data map[string]any) error
 		}
 	}
 	return nil
+}
+
+// enrichFlagMessageSenderNames applies message-read sender enrichment to the
+// raw messages collected from inline flag data and mget fallback responses.
+func enrichFlagMessageSenderNames(rt *common.RuntimeContext, byID map[string]map[string]any) {
+	messages := make([]map[string]interface{}, 0, len(byID))
+	for _, msg := range byID {
+		messages = append(messages, msg)
+	}
+	nameCache := make(map[string]string)
+	convertlib.ResolveSenderNames(rt, messages, nameCache)
+	convertlib.AttachSenderNames(messages, nameCache)
 }
 
 // asString converts an arbitrary value to its string representation.

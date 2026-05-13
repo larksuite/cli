@@ -1482,9 +1482,12 @@ const (
 
 var (
 	flagWriteLookupScopes = append([]string{flagWriteScope}, flagLookupScopes...)
+	// Feed-thread flag enrichment can expose nested messages sent by bots, so keep
+	// the dynamic scope check aligned with sender-name resolution's bot lookup.
 	flagMessageReadScopes = []string{
 		"im:message.group_msg:get_as_user",
 		"im:message.p2p_msg:get_as_user",
+		botBasicInfoReadScope,
 	}
 	flagLookupScopes = []string{
 		"im:message.group_msg:get_as_user",

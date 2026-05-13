@@ -43,7 +43,7 @@ lark-cli im +flag-list --as user --page-all --page-limit 10
 | `--page-token <token>` | empty | Pagination token from previous page; empty string must still be provided |
 | `--page-all` | false | Auto-paginate to fetch all pages and merge results |
 | `--page-limit <n>` | 20 | Max pages in `--page-all` mode (max 1000) |
-| `--enrich-feed-thread` | true | Auto-enrich feed-layer thread entries with message content (calls `im.messages.mget`) |
+| `--enrich-feed-thread` | true | Auto-enrich feed-layer thread entries with message content and bot sender names (calls `im.messages.mget` and bot basic info when needed) |
 | `--as user` | Required | Currently only supports user identity |
 
 ## Response Structure
@@ -58,7 +58,7 @@ The response has `data` as the main body, with fields described below:
 | `has_more` | boolean | Whether there's a next page |
 | `page_token` | string | Pagination token for the next page |
 
-Note: `(thread, feed)` / `(msg_thread, feed)` entries are automatically enriched via `mget` by the shortcut, and written to the corresponding entry's `message` field.
+Note: `(thread, feed)` / `(msg_thread, feed)` entries are automatically enriched via `mget` by the shortcut, with bot sender names resolved when possible, and written to the corresponding entry's `message` field.
 
 ## Limitations
 
