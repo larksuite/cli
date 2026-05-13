@@ -111,6 +111,13 @@ var DocMediaInsert = common.Shortcut{
 		if heightChanged && runtime.Int("height") <= 0 {
 			return output.ErrValidation("--height must be a positive integer")
 		}
+		const maxDimension = 10000
+		if widthChanged && runtime.Int("width") > maxDimension {
+			return output.ErrValidation("--width must not exceed %d", maxDimension)
+		}
+		if heightChanged && runtime.Int("height") > maxDimension {
+			return output.ErrValidation("--height must not exceed %d", maxDimension)
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -383,18 +390,19 @@ var DocMediaInsert = common.Shortcut{
 				finalHeight = userHeight
 			} else if widthChanged || heightChanged {
 				var nativeW, nativeH int
+				var dimErr error
 				if clipboardContent != nil {
-					nativeW, nativeH, err = detectImageDimensions(bytes.NewReader(clipboardContent))
+					nativeW, nativeH, dimErr = detectImageDimensions(bytes.NewReader(clipboardContent))
 				} else {
 					f, openErr := runtime.FileIO().Open(filePath)
 					if openErr != nil {
 						return withRollbackWarning(output.ErrValidation(
 							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
 					}
-					nativeW, nativeH, err = detectImageDimensions(f)
+					nativeW, nativeH, dimErr = detectImageDimensions(f)
 					f.Close()
 				}
-				if err != nil {
+				if dimErr != nil {
 					return withRollbackWarning(output.ErrValidation(
 						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
 				}
