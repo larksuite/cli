@@ -24,10 +24,16 @@ import (
 const markdownSinglePartSizeLimit = common.MaxDriveMediaUploadSinglePartSize
 const markdownEmptyContentError = "empty markdown content is not supported; cannot create or overwrite an empty file"
 
+const (
+	markdownUploadParentTypeExplorer = "explorer"
+	markdownUploadParentTypeWiki     = "wiki"
+)
+
 type markdownUploadSpec struct {
 	FileToken   string
 	FileName    string
 	FolderToken string
+	WikiToken   string
 	FilePath    string
 	Content     string
 	ContentSet  bool
@@ -45,6 +51,25 @@ type markdownMultipartSession struct {
 	BlockNum  int
 }
 
+type markdownUploadTarget struct {
+	ParentType string
+	ParentNode string
+}
+
+func (spec markdownUploadSpec) Target() markdownUploadTarget {
+	if spec.WikiToken != "" {
+		return markdownUploadTarget{
+			ParentType: markdownUploadParentTypeWiki,
+			ParentNode: spec.WikiToken,
+		}
+	}
+	// An empty explorer parent node uploads to the user's Drive root folder.
+	return markdownUploadTarget{
+		ParentType: markdownUploadParentTypeExplorer,
+		ParentNode: spec.FolderToken,
+	}
+}
+
 func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpec, requireName bool) error {
 	switch {
 	case spec.ContentSet && spec.FileSet:
@@ -53,11 +78,29 @@ func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpe
 		return common.FlagErrorf("specify exactly one of --content or --file")
 	}
 
-	if runtime.Changed("folder-token") && strings.TrimSpace(spec.FolderToken) == "" {
+	if markdownFlagExplicitlyEmpty(runtime, "folder-token") {
 		return common.FlagErrorf("--folder-token cannot be empty; omit it to upload into Drive root folder")
+	}
+	if markdownFlagExplicitlyEmpty(runtime, "wiki-token") {
+		return common.FlagErrorf("--wiki-token cannot be empty; provide a valid wiki node token or omit the flag entirely")
+	}
+	targets := 0
+	if spec.FolderToken != "" {
+		targets++
+	}
+	if spec.WikiToken != "" {
+		targets++
+	}
+	if targets > 1 {
+		return common.FlagErrorf("--folder-token and --wiki-token are mutually exclusive")
 	}
 	if spec.FolderToken != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
+			return output.ErrValidation("%s", err)
+		}
+	}
+	if spec.WikiToken != "" {
+		if err := validate.ResourceName(spec.WikiToken, "--wiki-token"); err != nil {
 			return output.ErrValidation("%s", err)
 		}
 	}
@@ -90,6 +133,10 @@ func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpe
 	}
 
 	return nil
+}
+
+func markdownFlagExplicitlyEmpty(runtime *common.RuntimeContext, flagName string) bool {
+	return runtime.Changed(flagName) && strings.TrimSpace(runtime.Str(flagName)) == ""
 }
 
 func validateMarkdownFileName(name, flagName string) error {
@@ -205,12 +252,13 @@ func markdownDryRunFileField(spec markdownUploadSpec) string {
 
 func markdownUploadDryRun(spec markdownUploadSpec, fileSize int64, multipart bool) *common.DryRunAPI {
 	fileName := finalMarkdownFileName(spec)
+	target := spec.Target()
 
 	if !multipart {
 		body := map[string]interface{}{
 			"file_name":   fileName,
-			"parent_type": "explorer",
-			"parent_node": spec.FolderToken,
+			"parent_type": target.ParentType,
+			"parent_node": target.ParentNode,
 			"size":        fileSize,
 			"file":        markdownDryRunFileField(spec),
 		}
@@ -231,8 +279,8 @@ func markdownUploadDryRun(spec markdownUploadSpec, fileSize int64, multipart boo
 
 	prepareBody := map[string]interface{}{
 		"file_name":   fileName,
-		"parent_type": "explorer",
-		"parent_node": spec.FolderToken,
+		"parent_type": target.ParentType,
+		"parent_node": target.ParentNode,
 		"size":        fileSize,
 	}
 	if spec.FileToken != "" {
@@ -267,6 +315,7 @@ func markdownUploadDryRun(spec markdownUploadSpec, fileSize int64, multipart boo
 
 func markdownOverwriteDryRun(spec markdownUploadSpec, fileSize int64, multipart bool) *common.DryRunAPI {
 	fileName := strings.TrimSpace(spec.FileName)
+	target := spec.Target()
 	if fileName == "" && spec.FileSet {
 		fileName = finalMarkdownFileName(spec)
 	}
@@ -293,8 +342,8 @@ func markdownOverwriteDryRun(spec markdownUploadSpec, fileSize int64, multipart 
 			Desc("[2] Overwrite file contents with multipart/form-data upload").
 			Body(map[string]interface{}{
 				"file_name":   spec.FileName,
-				"parent_type": "explorer",
-				"parent_node": spec.FolderToken,
+				"parent_type": target.ParentType,
+				"parent_node": target.ParentNode,
 				"size":        fileSize,
 				"file":        markdownDryRunFileField(spec),
 				"file_token":  spec.FileToken,
@@ -306,8 +355,8 @@ func markdownOverwriteDryRun(spec markdownUploadSpec, fileSize int64, multipart 
 		Desc("[2] Initialize multipart overwrite upload").
 		Body(map[string]interface{}{
 			"file_name":   spec.FileName,
-			"parent_type": "explorer",
-			"parent_node": spec.FolderToken,
+			"parent_type": target.ParentType,
+			"parent_node": target.ParentNode,
 			"size":        fileSize,
 			"file_token":  spec.FileToken,
 		}).
@@ -352,10 +401,11 @@ func uploadMarkdownLocalFile(runtime *common.RuntimeContext, spec markdownUpload
 }
 
 func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSpec, fileReader io.Reader, fileName string, fileSize int64) (markdownUploadResult, error) {
+	target := spec.Target()
 	fd := larkcore.NewFormdata()
 	fd.AddField("file_name", fileName)
-	fd.AddField("parent_type", "explorer")
-	fd.AddField("parent_node", spec.FolderToken)
+	fd.AddField("parent_type", target.ParentType)
+	fd.AddField("parent_node", target.ParentNode)
 	fd.AddField("size", fmt.Sprintf("%d", fileSize))
 	if spec.FileToken != "" {
 		fd.AddField("file_token", spec.FileToken)
@@ -383,10 +433,11 @@ func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSp
 }
 
 func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUploadSpec, fileReader io.Reader, fileName string, fileSize int64) (markdownUploadResult, error) {
+	target := spec.Target()
 	prepareBody := map[string]interface{}{
 		"file_name":   fileName,
-		"parent_type": "explorer",
-		"parent_node": spec.FolderToken,
+		"parent_type": target.ParentType,
+		"parent_node": target.ParentNode,
 		"size":        fileSize,
 	}
 	if spec.FileToken != "" {

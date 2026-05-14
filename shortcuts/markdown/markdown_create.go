@@ -20,15 +20,21 @@ var MarkdownCreate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "folder-token", Desc: "target Drive folder token (default: root folder)"},
+		{Name: "folder-token", Desc: "target Drive folder token (default: root folder; mutually exclusive with --wiki-token)"},
+		{Name: "wiki-token", Desc: "target wiki node token (uploads under that wiki node; mutually exclusive with --folder-token)"},
 		{Name: "name", Desc: "file name with .md suffix; required with --content, optional with --file"},
 		{Name: "content", Desc: "Markdown content", Input: []string{common.File, common.Stdin}},
 		{Name: "file", Desc: "local .md file path"},
+	},
+	Tips: []string{
+		"Omit both --folder-token and --wiki-token to create the Markdown file in the caller's Drive root folder.",
+		"Use --wiki-token <wiki_node_token> to create the Markdown file under a wiki node; the shortcut maps this to parent_type=wiki automatically.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateMarkdownSpec(runtime, markdownUploadSpec{
 			FileName:    strings.TrimSpace(runtime.Str("name")),
 			FolderToken: strings.TrimSpace(runtime.Str("folder-token")),
+			WikiToken:   strings.TrimSpace(runtime.Str("wiki-token")),
 			FilePath:    strings.TrimSpace(runtime.Str("file")),
 			FileSet:     runtime.Changed("file"),
 			Content:     runtime.Str("content"),
@@ -39,6 +45,7 @@ var MarkdownCreate = common.Shortcut{
 		spec := markdownUploadSpec{
 			FileName:    strings.TrimSpace(runtime.Str("name")),
 			FolderToken: strings.TrimSpace(runtime.Str("folder-token")),
+			WikiToken:   strings.TrimSpace(runtime.Str("wiki-token")),
 			FilePath:    strings.TrimSpace(runtime.Str("file")),
 			FileSet:     runtime.Changed("file"),
 			Content:     runtime.Str("content"),
@@ -54,6 +61,7 @@ var MarkdownCreate = common.Shortcut{
 		spec := markdownUploadSpec{
 			FileName:    strings.TrimSpace(runtime.Str("name")),
 			FolderToken: strings.TrimSpace(runtime.Str("folder-token")),
+			WikiToken:   strings.TrimSpace(runtime.Str("wiki-token")),
 			FilePath:    strings.TrimSpace(runtime.Str("file")),
 			FileSet:     runtime.Changed("file"),
 			Content:     runtime.Str("content"),
@@ -79,8 +87,10 @@ var MarkdownCreate = common.Shortcut{
 			"file_name":  finalMarkdownFileName(spec),
 			"size_bytes": fileSize,
 		}
-		if u := common.BuildResourceURL(runtime.Config.Brand, "file", result.FileToken); u != "" {
-			out["url"] = u
+		if target := spec.Target(); target.ParentType == markdownUploadParentTypeExplorer {
+			if u := common.BuildResourceURL(runtime.Config.Brand, "file", result.FileToken); u != "" {
+				out["url"] = u
+			}
 		}
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, result.FileToken, "file"); grant != nil {
 			out["permission_grant"] = grant
