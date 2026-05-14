@@ -255,12 +255,26 @@ func doSyncFetch() {
 
 // --- background refresh ---
 
-var refreshOnce sync.Once
+var (
+	refreshOnce       sync.Once
+	bgRefreshInFlight sync.WaitGroup // tracks doBackgroundRefresh goroutines for test teardown (resetInit)
+)
 
 func triggerBackgroundRefresh() {
 	refreshOnce.Do(func() {
-		go doBackgroundRefresh()
+		bgRefreshInFlight.Add(1)
+		go func() {
+			defer bgRefreshInFlight.Done()
+			doBackgroundRefresh()
+		}()
 	})
+}
+
+// waitBackgroundRefresh blocks until any in-flight background refresh started by
+// triggerBackgroundRefresh has finished. Tests use this via resetInit to avoid
+// races with package-level globals (configuredBrand, testMetaURL, etc.).
+func waitBackgroundRefresh() {
+	bgRefreshInFlight.Wait()
 }
 
 func doBackgroundRefresh() {

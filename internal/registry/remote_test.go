@@ -19,6 +19,9 @@ import (
 
 // resetInit resets the package-level state so each test starts fresh.
 func resetInit() {
+	// Must wait: a prior test's Init() may have started doBackgroundRefresh which
+	// reads globals this function mutates (see CI race: TestComputeMinimumScopeSet → Tenant).
+	waitBackgroundRefresh()
 	initOnce = sync.Once{}
 	mergedServices = make(map[string]map[string]interface{})
 	mergedProjectList = nil
