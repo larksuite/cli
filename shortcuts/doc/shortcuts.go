@@ -18,8 +18,19 @@ const docsServiceHelpDefault = `Document and content operations.`
 const docsServiceHelpV2 = `Document and content operations (v2).`
 
 var docsVersionSelectionTips = []string{
-	"Agent version rule: use --api-version v2 only when the installed lark-doc skill explicitly instructs docs +create, docs +fetch, or docs +update to use v2; otherwise use the default v1 flags.",
-	"Do not mix versions: if the skill does not mention v2, follow its legacy v1 examples and flags.",
+	"Docs v1 is deprecated and will be removed soon. Check the installed lark-doc skill first; if it is not the v2 skill, run `lark-cli update` to upgrade skills.",
+	"After confirming lark-doc is v2, follow that skill's examples and use `--api-version v2` with docs +create, docs +fetch, and docs +update.",
+}
+
+var docsV2VersionSelectionTips = []string{
+	"Check the installed lark-doc skill first; if it is not the v2 skill, run `lark-cli update` to upgrade skills.",
+}
+
+func docsTipsForVersion(apiVersion string) []string {
+	if apiVersion == "v2" {
+		return docsV2VersionSelectionTips
+	}
+	return docsVersionSelectionTips
 }
 
 // Shortcuts returns all docs shortcuts.
@@ -38,8 +49,7 @@ func Shortcuts() []common.Shortcut {
 
 // ConfigureServiceHelp adds docs-specific guidance to the parent `docs` command.
 // The shortcut-level help remains compatible with legacy v1 skills; this parent
-// help gives agents enough context to choose v2 only when their installed skill
-// explicitly asks for `--api-version v2`.
+// help switches docs guidance to match the selected API version.
 func ConfigureServiceHelp(cmd *cobra.Command) {
 	if cmd == nil {
 		return
@@ -75,7 +85,7 @@ func ConfigureServiceHelp(cmd *cobra.Command) {
 		out := cmd.OutOrStdout()
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Tips:")
-		for _, tip := range docsVersionSelectionTips {
+		for _, tip := range docsTipsForVersion(apiVersion) {
 			fmt.Fprintf(out, "    • %s\n", tip)
 		}
 	})

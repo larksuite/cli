@@ -111,7 +111,7 @@ func TestRegisterShortcutsMountsDocsMediaPreview(t *testing.T) {
 	}
 }
 
-func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndLegacyTips(t *testing.T) {
+func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndUpgradeTips(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))
 
@@ -137,11 +137,11 @@ func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndLegacyTips(t *testing.T)
 	}
 	for _, want := range []string{
 		"Tips:",
-		"Agent version rule",
-		"use --api-version v2 only when the installed lark-doc skill explicitly instructs",
-		"otherwise use the default v1 flags",
-		"if the skill does not mention v2",
-		"legacy v1 examples and flags",
+		"Docs v1 is deprecated and will be removed soon",
+		"Check the installed lark-doc skill first",
+		"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
+		"After confirming lark-doc is v2",
+		"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
 	} {
 		if !strings.Contains(defaultHelp.String(), want) {
 			t.Fatalf("docs default help missing %q:\n%s", want, defaultHelp.String())
@@ -170,13 +170,20 @@ func TestRegisterShortcutsDocsV2HelpUsesV2Description(t *testing.T) {
 	for _, want := range []string{
 		"Document and content operations (v2).",
 		"Tips:",
-		"Agent version rule",
-		"otherwise use the default v1 flags",
-		"if the skill does not mention v2",
-		"legacy v1 examples and flags",
+		"Check the installed lark-doc skill first",
+		"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("docs v2 help missing %q:\n%s", want, out.String())
+		}
+	}
+	for _, unwanted := range []string{
+		"Docs v1 is deprecated and will be removed soon",
+		"After confirming lark-doc is v2",
+		"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+	} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("docs v2 help should not include %q:\n%s", unwanted, out.String())
 		}
 	}
 }
@@ -255,24 +262,47 @@ func TestRegisterShortcutsDocsVersionedShortcutHelpAddsVersionTips(t *testing.T)
 				t.Fatalf("docs %s help failed: %v", tt.shortcut, err)
 			}
 
+			wantTips := []string{
+				"Tips:",
+				"Docs v1 is deprecated and will be removed soon",
+				"Check the installed lark-doc skill first",
+				"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
+				"After confirming lark-doc is v2",
+				"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+			}
+			unwantedTips := []string{
+				"[NOTE]",
+				"Use --api-version v2 for the latest API",
+				"otherwise use the default v1 flags",
+				"legacy v1 examples and flags",
+			}
+			if tt.apiVersion == "v2" {
+				wantTips = []string{
+					"Tips:",
+					"Check the installed lark-doc skill first",
+					"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
+				}
+				unwantedTips = append(unwantedTips,
+					"Docs v1 is deprecated and will be removed soon",
+					"After confirming lark-doc is v2",
+					"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+				)
+			}
+
 			for _, want := range []string{
 				tt.shortcutHelp,
 				tt.versionedFlag,
-				"Tips:",
-				"Agent version rule",
-				"use --api-version v2 only when the installed lark-doc skill explicitly instructs",
-				"otherwise use the default v1 flags",
-				"if the skill does not mention v2",
-				"legacy v1 examples and flags",
 			} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatalf("docs %s %s help missing %q:\n%s", tt.shortcut, tt.apiVersion, want, out.String())
 				}
 			}
-			for _, unwanted := range []string{
-				"[NOTE]",
-				"Use --api-version v2 for the latest API",
-			} {
+			for _, want := range wantTips {
+				if !strings.Contains(out.String(), want) {
+					t.Fatalf("docs %s %s help missing %q:\n%s", tt.shortcut, tt.apiVersion, want, out.String())
+				}
+			}
+			for _, unwanted := range unwantedTips {
 				if strings.Contains(out.String(), unwanted) {
 					t.Fatalf("docs %s %s help should not include %q:\n%s", tt.shortcut, tt.apiVersion, unwanted, out.String())
 				}
