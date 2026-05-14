@@ -360,25 +360,7 @@ var DocMediaInsert = common.Shortcut{
 		// interface stays a true nil for the --file path. Passing a typed-nil
 		// *bytes.Reader here would make the downstream `if cfg.Content != nil`
 		// check incorrectly take the clipboard branch and crash on Read.
-		uploadCfg := UploadDocMediaFileConfig{
-			FilePath:   filePath,
-			FileName:   fileName,
-			FileSize:   fileSize,
-			ParentType: parentTypeForMediaType(mediaType),
-			ParentNode: uploadParentNode,
-			DocID:      documentID,
-		}
-		if clipboardContent != nil {
-			uploadCfg.Reader = bytes.NewReader(clipboardContent)
-		}
-		fileToken, err := uploadDocMediaFile(runtime, uploadCfg)
-		if err != nil {
-			return withRollbackWarning(err)
-		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "File uploaded: %s\n", fileToken)
-
-		// Resolve display dimensions for image blocks.
+		// Resolve display dimensions before upload to fail fast on unreadable images.
 		var finalWidth, finalHeight int
 		if mediaType == "image" {
 			userWidth := runtime.Int("width")
@@ -397,15 +379,15 @@ var DocMediaInsert = common.Shortcut{
 				} else {
 					f, openErr := runtime.FileIO().Open(filePath)
 					if openErr != nil {
-						return withRollbackWarning(output.ErrValidation(
-							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+						return output.ErrValidation(
+							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName)
 					}
 					nativeW, nativeH, dimErr = detectImageDimensions(f)
 					f.Close()
 				}
 				if dimErr != nil {
-					return withRollbackWarning(output.ErrValidation(
-						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+					return output.ErrValidation(
+						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName)
 				}
 				dims := computeMissingDimension(userWidth, userHeight, nativeW, nativeH)
 				finalWidth = dims.width
@@ -413,6 +395,24 @@ var DocMediaInsert = common.Shortcut{
 				fmt.Fprintf(runtime.IO().ErrOut, "Image dimensions: %dx%d (native: %dx%d)\n", finalWidth, finalHeight, nativeW, nativeH)
 			}
 		}
+
+		uploadCfg := UploadDocMediaFileConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: parentTypeForMediaType(mediaType),
+			ParentNode: uploadParentNode,
+			DocID:      documentID,
+		}
+		if clipboardContent != nil {
+			uploadCfg.Reader = bytes.NewReader(clipboardContent)
+		}
+		fileToken, err := uploadDocMediaFile(runtime, uploadCfg)
+		if err != nil {
+			return withRollbackWarning(err)
+		}
+
+		fmt.Fprintf(runtime.IO().ErrOut, "File uploaded: %s\n", fileToken)
 
 		// Step 4: Bind file token to block via batch_update
 		fmt.Fprintf(runtime.IO().ErrOut, "Binding uploaded media to block %s\n", replaceBlockID)
