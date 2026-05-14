@@ -62,11 +62,7 @@ Choose **one** of the following methods:
 **Option 1 — From npm (recommended):**
 
 ```bash
-# Install CLI
-npm install -g @larksuite/cli
-
-# Install CLI SKILL (required)
-npx skills add larksuite/cli -y -g
+npx @larksuite/cli@latest install
 ```
 
 **Option 2 — From source:**
@@ -102,11 +98,7 @@ lark-cli calendar +agenda
 **Step 1 — Install**
 
 ```bash
-# Install CLI
-npm install -g @larksuite/cli
-
-# Install CLI SKILL (required)
-npx skills add larksuite/cli -y -g
+npx @larksuite/cli@latest install
 ```
 
 **Step 2 — Configure app credentials**

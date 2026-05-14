@@ -62,11 +62,7 @@
 **方式一 — 从 npm 安装（推荐）：**
 
 ```bash
-# 安装 CLI
-npm install -g @larksuite/cli
-
-# 安装 CLI SKILL（必需）
-npx skills add larksuite/cli -y -g
+npx @larksuite/cli@latest install
 ```
 
 **方式二 — 从源码安装：**
@@ -102,11 +98,7 @@ lark-cli calendar +agenda
 **第 1 步 — 安装**
 
 ```bash
-# 安装 CLI
-npm install -g @larksuite/cli
-
-# 安装 CLI SKILL（必需）
-npx skills add larksuite/cli -y -g
+npx @larksuite/cli@latest install
 ```
 
 **第 2 步 — 配置应用凭证**
