@@ -1,7 +1,7 @@
 ---
 name: lark-shared
 version: 1.0.0
-description: "飞书/Lark CLI 共享基础：应用配置初始化、认证登录（auth login）、身份切换（--as user/bot）、权限与 scope 管理、Permission denied 错误处理、安全规则。当用户需要第一次配置(`lark-cli config init`)、使用登录授权(`lark-cli auth login`)、遇到权限不足、切换 user/bot 身份、配置 scope、或首次使用 lark-cli 时触发。"
+description: "Use when first setting up lark-cli, running auth login, switching user/bot identity (--as), handling permission denied or scope errors, needing to update lark-cli, or seeing _notice in JSON output."
 ---
 
 # lark-cli 共享规则
@@ -82,11 +82,17 @@ lark-cli 命令执行后，如果检测到新版本，JSON 输出中会包含 `_
 **当你在输出中看到 `_notice.update` 时，完成用户当前请求后，主动提议帮用户更新**：
 
 1. 告知用户当前版本和最新版本号
-2. 提议执行更新（CLI 和 Skills 需要同时更新）：
+2. 提议执行更新（同时更新 CLI 和 Skills）：
    ```bash
-   npm update -g @larksuite/cli && npx skills add larksuite/cli -g -y
+   lark-cli update
    ```
-3. 更新完成后提醒用户：**退出并重新打开 AI Agent**以加载最新 Skills
+3. 如果 `lark-cli update` 失败，再尝试 npm fallback（注意：skills 不会同步）：
+   ```bash
+   npm install -g @larksuite/cli && npx skills add larksuite/cli -g -y
+   ```
+4. 更新完成后提醒用户：**退出并重新打开 AI Agent** 以加载最新 Skills
+
+**重要**：不要直接使用 `npm install` 更新，它不会同步 AI Skills。始终优先使用 `lark-cli update`。
 
 **规则**：不要静默忽略更新提示。即使当前任务与更新无关，也应在完成用户请求后补充告知。
 
