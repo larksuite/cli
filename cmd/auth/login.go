@@ -62,7 +62,7 @@ browser. Run it in the background and retrieve the verification URL from its out
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
 
-	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space-separated)")
+	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated)")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
 	available := sortedKnownDomains()
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
@@ -185,7 +185,11 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 	}
 
-	finalScope := opts.Scope
+	// Normalize --scope so users can pass either OAuth-standard space-separated
+	// values or the more natural comma-separated list. RFC 6749 §3.3 mandates
+	// space-delimited scopes in the wire request, so the device authorization
+	// endpoint rejects raw "a,b" strings as a single malformed scope.
+	finalScope := normalizeScopeInput(opts.Scope)
 
 	// Resolve scopes from domain/permission filters
 	if len(selectedDomains) > 0 || opts.Recommend {
@@ -232,7 +236,7 @@ func authLoginRun(opts *LoginOptions) error {
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
 			"expires_in":       authResp.ExpiresIn,
-			"hint":             fmt.Sprintf("Show verification_url to user, then immediately execute: lark-cli auth login --device-code %s (blocks until authorized or timeout). Do not instruct the user to run this command themselves.", authResp.DeviceCode),
+			"hint":             fmt.Sprintf("Show verification_url to the user exactly as returned by the CLI and treat it as an opaque string. Do not URL-encode or decode it, do not normalize or rewrite it, do not add %%20, spaces, or punctuation, and do not wrap it as Markdown link text; prefer a fenced code block containing only the raw URL. Then immediately execute: lark-cli auth login --device-code %s (blocks until authorized or timeout). Do not instruct the user to run this command themselves.", authResp.DeviceCode),
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -530,6 +534,40 @@ func shortcutSupportsIdentity(sc common.Shortcut, identity string) bool {
 		}
 	}
 	return false
+}
+
+// normalizeScopeInput accepts a user-supplied --scope value that may use
+// commas, spaces, tabs, or newlines (or any mix) as separators and returns the
+// canonical OAuth 2.0 wire form: a single space-joined string with empties
+// trimmed and duplicates removed (first occurrence wins; order preserved).
+//
+// Examples:
+//
+//	"vc:note:read,vc:meeting.meetingevent:read" -> "vc:note:read vc:meeting.meetingevent:read"
+//	"a, b ,  c"                                 -> "a b c"
+//	"a b a"                                     -> "a b"
+//	""                                          -> ""
+func normalizeScopeInput(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	// Treat both commas and any whitespace as separators.
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	if len(fields) == 0 {
+		return ""
+	}
+	seen := make(map[string]struct{}, len(fields))
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if _, ok := seen[f]; ok {
+			continue
+		}
+		seen[f] = struct{}{}
+		out = append(out, f)
+	}
+	return strings.Join(out, " ")
 }
 
 // suggestDomain finds the best "did you mean" match for an unknown domain.

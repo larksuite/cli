@@ -12,6 +12,7 @@ metadata:
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 > **执行前必做：** 执行任何 `base` 命令前，必须先阅读对应命令的 reference 文档，再调用命令。
+> **查询类任务必做：** 涉及筛选、排序、Top/Bottom N、聚合、多表关联、查询后写入或判断全局结论时，必须先阅读 [`references/lark-base-data-analysis-sop.md`](references/lark-base-data-analysis-sop.md)，再选择 `record / view / data-query` 路径。
 > **命名约定：** Base 业务命令仅使用 `lark-cli base +...` 形式；如需先解析 Wiki 链接，可先调用 `lark-cli wiki ...`。
 > **分流规则：** 如果用户要“把本地文件导入成 Base / 多维表格 / bitable”，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 
@@ -104,7 +105,7 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `+record-search / +record-list / +record-get` | 按关键词检索记录、读取记录明细 / 分页导出，或按 ID 获取一条或多条记录 | [`lark-base-record-read-sop.md`](references/lark-base-record-read-sop.md) | 记录读取统一先读 read SOP guide：已知 `record_id` 用 `+record-get`；明确关键词用 `+record-search`；普通明细用 `+record-list`；明确筛选 / 排序 / Top N 用临时视图投影后 `+record-list --view-id`；统计聚合才分流到 `+data-query`；`+record-get` 支持重复 `--record-id` 或 `--json` 读取多条记录 |
+| `+record-search / +record-list / +record-get` | 按关键词检索记录、读取记录明细 / 分页导出，或按 ID 获取一条或多条记录 | [`lark-base-data-analysis-sop.md`](references/lark-base-data-analysis-sop.md) | 记录读取统一先读 data analysis SOP：已知 `record_id` 用 `+record-get`；明确关键词用 `+record-search`；普通明细用 `+record-list`；明确筛选 / 排序 / Top N 用临时视图投影后 `+record-list --view-id`；统计聚合才分流到 `+data-query`；`+record-get` 支持重复 `--record-id` 或 `--json` 读取多条记录 |
 | `+record-upsert / +record-batch-create / +record-batch-update` | 创建、更新或批量写入记录 | [`lark-base-record-upsert.md`](references/lark-base-record-upsert.md)、[`lark-base-record-batch-create.md`](references/lark-base-record-batch-create.md)、[`lark-base-record-batch-update.md`](references/lark-base-record-batch-update.md)、[`lark-base-cell-value.md`](references/lark-base-cell-value.md) | 写前先 `+field-list`；只写存储字段；`+record-batch-update` 为同值更新（同一 patch 应用到多条记录）；批量单次不超过 `200` 条；附件不要走这里 |
 | `+record-upload-attachment` | 给已有记录上传附件 | [`lark-base-record-upload-attachment.md`](references/lark-base-record-upload-attachment.md) | 附件上传专用链路，不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | `lark-cli docs +media-download` | 下载 Base 附件文件到本地 | [`../lark-doc/references/lark-doc-media-download.md`](../lark-doc/references/lark-doc-media-download.md) | Base 附件的 `file_token` 从 `+record-get` 返回的附件字段数组里取；**不要用 `lark-cli drive +download`**（对 Base 附件返回 403） |
@@ -120,7 +121,7 @@ metadata:
 |------|------------------|----------------|----------|
 | `+view-list / +view-get` | 列出视图，或获取视图详情 | [`lark-base-view-list.md`](references/lark-base-view-list.md)、[`lark-base-view-get.md`](references/lark-base-view-get.md) | `+view-list` 只能串行执行；`+view-get` 适合查看已有视图配置 |
 | `+view-create / +view-delete / +view-rename` | 创建、删除或重命名视图 | [`lark-base-view-create.md`](references/lark-base-view-create.md)、[`lark-base-view-delete.md`](references/lark-base-view-delete.md)、[`lark-base-view-rename.md`](references/lark-base-view-rename.md) | 创建前先确认表和视图类型；删除前先确认目标；用户已明确新名字时可直接重命名 |
-| `+view-get-filter / +view-set-filter` | 读取或配置筛选条件 | [`lark-base-view-get-filter.md`](references/lark-base-view-get-filter.md)、[`lark-base-view-set-filter.md`](references/lark-base-view-set-filter.md)、[`lark-base-record-read-sop.md`](references/lark-base-record-read-sop.md) | 常与 `+record-list` 组合，用于按视图筛选读取 |
+| `+view-get-filter / +view-set-filter` | 读取或配置筛选条件 | [`lark-base-view-get-filter.md`](references/lark-base-view-get-filter.md)、[`lark-base-view-set-filter.md`](references/lark-base-view-set-filter.md)、[`lark-base-data-analysis-sop.md`](references/lark-base-data-analysis-sop.md) | 常与 `+record-list` 组合，用于按视图筛选读取 |
 | `+view-get-sort / +view-set-sort` | 读取或配置排序 | [`lark-base-view-get-sort.md`](references/lark-base-view-get-sort.md)、[`lark-base-view-set-sort.md`](references/lark-base-view-set-sort.md) | 字段名必须来自真实结构 |
 | `+view-get-group / +view-set-group` | 读取或配置分组 | [`lark-base-view-get-group.md`](references/lark-base-view-get-group.md)、[`lark-base-view-set-group.md`](references/lark-base-view-set-group.md) | 字段名必须来自真实结构 |
 | `+view-get-visible-fields / +view-set-visible-fields` | 读取或配置视图可见字段 | [`lark-base-view-get-visible-fields.md`](references/lark-base-view-get-visible-fields.md)、[`lark-base-view-set-visible-fields.md`](references/lark-base-view-set-visible-fields.md) | 用于控制视图中的字段顺序与可见性；字段名必须来自真实结构 |
@@ -228,14 +229,24 @@ metadata:
 | 基于视图做筛选读取 | `+view-set-filter` + `+record-list` | 不要跳过视图筛选直接猜条件 |
 | 本地 Excel / CSV / `.base` 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
 
-### 3.3 表名、字段名与表达式引用
+### 3.3 查询执行契约
+
+涉及查询、统计或判断结论时，先阅读 [`references/lark-base-data-analysis-sop.md`](references/lark-base-data-analysis-sop.md)，并遵守以下高优先级规则：
+
+1. `+record-list` 默认页、固定 `--limit` 和本地 `jq` 只能证明已读取范围内的事实，不能直接支撑全局最值、全量计数、Top/Bottom N、异常识别或分组结论。
+2. 能由 Base 表达的筛选、排序、投影、聚合、分组和限制，应在 Base 云端查询服务中执行；不要先拉明细到本地上下文再手工筛选排序。
+3. `has_more=true` 或等价分页信号表示当前结果不是全量；除非用户只要样例/前 N 条，不能基于该页回答全局问题。
+4. 多表查询必须先确认关系字段和连接键；link 单元格里的 `record_id` 是关系键，不是用户可读答案。
+5. 最终答案必须能追溯到真实表、真实字段、查询范围、筛选/排序/聚合条件和必要的连接键。
+
+### 3.4 表名、字段名与表达式引用
 
 1. 表名、字段名必须精确匹配真实返回，来源应是 `+table-list / +table-get / +field-list`。
 2. 不要凭自然语言猜名称，不要自行改写用户口述中的表名、字段名。
 3. `formula / lookup / data-query / workflow` 中出现的名称同样必须精确匹配；表达式引用、where 条件、DSL 字段名、workflow 配置都遵守同一规则。
 4. 跨表场景必须额外读取目标表结构，不能只看当前表。
 
-### 3.4 Token 与链接
+### 3.5 Token 与链接
 
 这是高优先级章节。只要用户输入里出现链接、token，或报错涉及 `baseToken` / `wiki_token` / `obj_token`，都应优先回到这里检查。
 
@@ -254,7 +265,7 @@ metadata:
 | `slides` | 转到 Drive 相关 skill | 不继续使用本 skill 的 Base 命令 |
 | `mindnote` | 转到 Drive 相关 skill | 不继续使用本 skill 的 Base 命令 |
 
-### 3.5 身份选择与权限降级策略
+### 3.6 身份选择与权限降级策略
 
 多维表格通常属于用户的个人或团队资源。**默认应优先使用 `--as user`（用户身份）执行所有 Base 操作**，始终显式指定身份。
 
@@ -282,10 +293,11 @@ lark-cli auth login --domain base
 
 1. 先判断任务属于哪个模块，选对命令族。
 2. 如果用户给了链接，先解析 token，不要把 wiki token、完整 URL 或其他对象 ID 误当成 `base_token`。
-3. 先拿结构，再写命令，避免猜表名、字段名、表达式引用。
-4. 定位到命令后，先读对应 reference，再执行命令。
-5. 执行命令，并按返回结果判断下一步。
-6. 回复时返回关键结果和后续可继续操作的信息，方便 agent 链式执行下一步。
+3. 如果是查询类任务，先判断问题范围，阅读 data analysis SOP，再决定使用 `record / view / data-query`。
+4. 先拿结构，再写命令，避免猜表名、字段名、表达式引用。
+5. 定位到命令后，先读对应 reference，再执行命令。
+6. 执行命令，并按返回结果判断下一步。
+7. 回复时返回关键结果和后续可继续操作的信息，方便 agent 链式执行下一步。
 
 ### 4.2 不可违反规则
 
@@ -297,11 +309,12 @@ lark-cli auth login --domain base
 6. 只写可写字段；系统字段、附件字段、`formula`、`lookup` 默认不作为普通记录写入目标。
 7. 聚合分析与取数分流；统计走 `+data-query`，关键词检索走 `+record-search`，明细走 `+record-list / +record-get`。
 8. 筛选查询按视图能力执行；先用 `+view-set-filter` 配置筛选，再结合 `+record-list` 读取。
-9. Base 场景不要改走裸 API，不要切去 `lark-cli api /open-apis/bitable/v1/...`。
-10. 统一使用 `--base-token`。
-11. workflow 场景先读 schema，不要凭自然语言猜 `type`。
-12. dashboard 场景先读 guide；提到图表、看板、block 就先进入 dashboard 模块。
-13. formula / lookup 场景先读 guide；没读 guide 前不要直接创建或更新。
+9. 全局查询不得基于默认分页、小 `--limit` 或未证明全量的本地 `jq` 结果下结论。
+10. Base 场景不要改走裸 API，不要切去 `lark-cli api /open-apis/bitable/v1/...`。
+11. 统一使用 `--base-token`。
+12. workflow 场景先读 schema，不要凭自然语言猜 `type`。
+13. dashboard 场景先读 guide；提到图表、看板、block 就先进入 dashboard 模块。
+14. formula / lookup 场景先读 guide；没读 guide 前不要直接创建或更新。
 
 ### 4.3 并发、分页与批量限制
 

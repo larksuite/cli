@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-Create a group chat. Supports both user identity (`--as user`) and bot identity (`--as bot`). You can specify the group name, description, members (users/bots), owner, and chat type (private/public).
+Create a group chat. Supports both user identity (`--as user`) and bot identity (`--as bot`). You can specify the group name, description, members (users/bots), owner, chat type (private/public), and group mode. Set `--chat-mode topic` to create a topic chat.
 
 This skill maps to the shortcut: `lark-cli im +chat-create` (internally calls `POST /open-apis/im/v1/chats`).
 
@@ -17,6 +17,9 @@ lark-cli im +chat-create --name "My Group"
 
 # Create a public group (name is required and must be at least 2 characters)
 lark-cli im +chat-create --name "Public Group" --type public
+
+# Create a topic chat
+lark-cli im +chat-create --name "Topic Group" --chat-mode topic
 
 # Specify the group owner
 lark-cli im +chat-create --name "My Group" --owner ou_xxx
@@ -55,11 +58,14 @@ lark-cli im +chat-create --name "My Group" --dry-run
 | `--users <ids>` | No | Up to 50, format `ou_xxx` | Comma-separated user open_ids |
 | `--bots <ids>` | No | Up to 5, format `cli_xxx` | Comma-separated bot app IDs |
 | `--owner <open_id>` | No | Format `ou_xxx` | Owner open_id (defaults to the bot when using `--as bot`, or the authorized user when using `--as user`) |
-| `--type <type>` | No | `private` (default) or `public` | Group type |
+| `--type <type>` | No | `private` (default) or `public` | Group type. Default to `private`; pass `public` only when the user explicitly asks for a discoverable/public group. |
+| `--chat-mode <mode>` | No | `group` (default) or `topic` | Group mode; `topic` creates a topic chat (not the same as `group_message_type=thread`). When the user asks for a topic chat, pass `topic` explicitly — do not rely on the default. |
 | `--set-bot-manager` | No | - | Set the creating bot as a group manager (only effective with `--as bot`) |
 | `--format json` | No | - | Output as JSON |
 | `--as <identity>` | No | `bot` or `user` | Identity type |
 | `--dry-run` | No | - | Preview the request without executing it |
+
+> **`--chat-mode topic` vs "normal group with topic-message mode"**: `--chat-mode topic` here creates a 话题群 — the entire group is a topic chat. This is different from "normal group (`chat_mode=group`) + topic-message mode (`group_message_type=thread`)". This CLI exposes only `chat_mode`; `group_message_type` is intentionally not surfaced.
 
 ## AI Usage Guidance
 

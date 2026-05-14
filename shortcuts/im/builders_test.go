@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// mustMarshalDryRun marshals v to a JSON string, calling t.Fatalf on error.
 func mustMarshalDryRun(t *testing.T, v interface{}) string {
 	t.Helper()
 
@@ -25,6 +26,9 @@ func mustMarshalDryRun(t *testing.T, v interface{}) string {
 	return string(b)
 }
 
+// newTestRuntimeContext builds a *common.RuntimeContext backed by a cobra
+// command whose flags are populated from the provided string and bool maps,
+// for unit-testing shortcut bodies, validators, and dry-run shapes.
 func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -55,6 +59,9 @@ func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlag
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
+// newMessagesSearchTestRuntimeContext is the messages-search variant of
+// newTestRuntimeContext: registers the search-specific --page-size flag
+// before applying caller-provided values.
 func newMessagesSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -86,6 +93,8 @@ func newMessagesSearchTestRuntimeContext(t *testing.T, stringFlags map[string]st
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
+// TestBuildCreateChatBody verifies the request body assembled when every
+// flag is populated, including the default chat_mode="group".
 func TestBuildCreateChatBody(t *testing.T) {
 	runtime := newTestRuntimeContext(t, map[string]string{
 		"type":        "public",
@@ -94,11 +103,13 @@ func TestBuildCreateChatBody(t *testing.T) {
 		"users":       "ou_1, ou_2",
 		"bots":        "cli_1, cli_2",
 		"owner":       "ou_owner",
+		"chat-mode":   "group",
 	}, nil)
 
 	got := buildCreateChatBody(runtime)
 	want := map[string]interface{}{
 		"chat_type":   "public",
+		"chat_mode":   "group",
 		"name":        "Team Chat",
 		"description": "daily sync",
 		"user_id_list": []string{
@@ -113,6 +124,43 @@ func TestBuildCreateChatBody(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildCreateChatBody() = %#v, want %#v", got, want)
+	}
+}
+
+// TestBuildCreateChatBody_TopicMode verifies that --chat-mode topic produces
+// chat_mode="topic" in the request body, the topic-chat creation path.
+func TestBuildCreateChatBody_TopicMode(t *testing.T) {
+	runtime := newTestRuntimeContext(t, map[string]string{
+		"type":      "public",
+		"name":      "Topic Group",
+		"chat-mode": "topic",
+	}, nil)
+
+	got := buildCreateChatBody(runtime)
+	want := map[string]interface{}{
+		"chat_type": "public",
+		"chat_mode": "topic",
+		"name":      "Topic Group",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildCreateChatBody() = %#v, want %#v", got, want)
+	}
+}
+
+// TestBuildCreateChatBody_EmptyChatModeFallsBack pins the defensive fallback:
+// explicit `--chat-mode ""` slips past validateEnumFlags (which skips empty
+// values), but buildCreateChatBody must still emit chat_mode="group" rather
+// than an empty string with unspecified server semantics.
+func TestBuildCreateChatBody_EmptyChatModeFallsBack(t *testing.T) {
+	runtime := newTestRuntimeContext(t, map[string]string{
+		"type":      "public",
+		"name":      "Fallback Test",
+		"chat-mode": "",
+	}, nil)
+
+	got := buildCreateChatBody(runtime)
+	if got["chat_mode"] != "group" {
+		t.Fatalf("buildCreateChatBody() chat_mode = %#v, want \"group\"", got["chat_mode"])
 	}
 }
 
@@ -591,10 +639,12 @@ func TestMessagesSearchPaginationConfig(t *testing.T) {
 	})
 }
 
+// TestShortcutDryRunShapes verifies that each shortcut's DryRun function
+// produces the expected API path, query parameters, and request body.
 func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatCreate dry run includes params and body", func(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
-		for _, name := range []string{"type", "name", "users", "owner"} {
+		for _, name := range []string{"type", "name", "users", "owner", "chat-mode"} {
 			cmd.Flags().String(name, "", "")
 		}
 		cmd.Flags().Bool("set-bot-manager", false, "")
@@ -604,9 +654,10 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		_ = cmd.Flags().Set("users", "ou_1,ou_2")
 		_ = cmd.Flags().Set("owner", "ou_owner")
 		_ = cmd.Flags().Set("set-bot-manager", "true")
+		_ = cmd.Flags().Set("chat-mode", "group")
 		runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, "bot")
 		got := mustMarshalDryRun(t, ImChatCreate.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) || !strings.Contains(got, `"set_bot_manager":true`) || !strings.Contains(got, `"chat_type":"public"`) {
+		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) || !strings.Contains(got, `"set_bot_manager":true`) || !strings.Contains(got, `"chat_type":"public"`) || !strings.Contains(got, `"chat_mode":"group"`) {
 			t.Fatalf("ImChatCreate.DryRun() = %s", got)
 		}
 	})

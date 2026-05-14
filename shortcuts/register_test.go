@@ -6,6 +6,7 @@ package shortcuts
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -302,6 +304,65 @@ func TestRegisterShortcutsReusesExistingServiceCommand(t *testing.T) {
 	}
 	if workspaceCmd == nil {
 		t.Fatal("base workspace shortcut not mounted on existing service command")
+	}
+}
+
+// TestRegisterShortcutsInstallsMailFlagSuggestHook is the end-to-end
+// wiring guard for the mail unknown-flag fuzzy-match feature: it ensures
+// the `if service == "mail" { mail.InstallOnMail(svc) }` branch in
+// RegisterShortcutsWithContext is actually exercised, so a future refactor
+// that drops the branch (or breaks the import) will fail this test rather
+// than silently regressing the structured-error contract.
+func TestRegisterShortcutsInstallsMailFlagSuggestHook(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	mailCmd, _, err := program.Find([]string{"mail"})
+	if err != nil {
+		t.Fatalf("find mail command: %v", err)
+	}
+	if mailCmd == nil || mailCmd.Name() != "mail" {
+		t.Fatalf("mail command not mounted: %#v", mailCmd)
+	}
+
+	// The FlagErrorFunc lookup walks up to the nearest non-nil hook, so
+	// invoking it on the mail parent (or any of its children) must yield
+	// a structured *output.ExitError with type "unknown_flag".
+	got := mailCmd.FlagErrorFunc()(mailCmd, errors.New("unknown flag: --bogus"))
+	var exitErr *output.ExitError
+	if !errors.As(got, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T (%v)", got, got)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "unknown_flag" {
+		t.Fatalf("expected Detail.Type=unknown_flag, got %#v", exitErr.Detail)
+	}
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("expected Code=ExitAPI(%d), got %d", output.ExitAPI, exitErr.Code)
+	}
+}
+
+// TestRegisterShortcutsLeavesNonMailFlagErrorUntouched confirms the
+// install is scoped: a non-mail service must keep the default cobra
+// pass-through behaviour, otherwise an accidental fall-through in
+// register.go would silently change every domain's error envelope.
+func TestRegisterShortcutsLeavesNonMailFlagErrorUntouched(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	baseCmd, _, err := program.Find([]string{"base"})
+	if err != nil {
+		t.Fatalf("find base command: %v", err)
+	}
+	in := errors.New("unknown flag: --bogus")
+	got := baseCmd.FlagErrorFunc()(baseCmd, in)
+	// Default cobra hook is identity — anything else means the mail hook
+	// leaked across domains.
+	var exitErr *output.ExitError
+	if errors.As(got, &exitErr) {
+		t.Fatalf("base service unexpectedly produced *output.ExitError: %#v", exitErr)
+	}
+	if got != in {
+		t.Fatalf("base service should pass through original error pointer, got %T (%v)", got, got)
 	}
 }
 

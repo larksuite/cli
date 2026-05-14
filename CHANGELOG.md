@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.30] - 2026-05-13
+
+### Features
+
+- **im**: Add `--chat-mode topic` to `+chat-create` (#790)
+
+### Bug Fixes
+
+- **auth**: Support comma-separated `--scope` in `auth login` (#764)
+- **auth**: Clarify URL handling in auth messages and docs (#856)
+- **bind**: Accept `~/` paths in OpenClaw secret references (#839)
+
+### Tests
+
+- **update**: Isolate stamp writes from real `~/.lark-cli/skills.stamp` (#858)
+
+## [v1.0.29] - 2026-05-12
+
+### Features
+
+- **vc**: Add agent meeting join, leave, and events shortcuts (#824)
+- **mail**: Add unknown-flag fuzzy match for `lark-cli mail` commands (#806)
+- **whiteboard**: Pin `whiteboard-cli` to `v0.2.11` in `lark-whiteboard` skill (#850)
+
+### Bug Fixes
+
+- Silence misleading "skills not installed" startup notice (#801)
+
+### Documentation
+
+- **base**: Refine data analysis SOP wording (#784, #849)
+- Update README capability descriptions (#793)
+
 ## [v1.0.28] - 2026-05-11
 
 ### Features
@@ -659,6 +692,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.30]: https://github.com/larksuite/cli/releases/tag/v1.0.30
+[v1.0.29]: https://github.com/larksuite/cli/releases/tag/v1.0.29
 [v1.0.28]: https://github.com/larksuite/cli/releases/tag/v1.0.28
 [v1.0.27]: https://github.com/larksuite/cli/releases/tag/v1.0.27
 [v1.0.26]: https://github.com/larksuite/cli/releases/tag/v1.0.26
