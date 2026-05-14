@@ -5,6 +5,9 @@ package base
 
 import (
 	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"io/fs"
 	"os"
@@ -79,6 +82,21 @@ func TestDetectAttachmentMIMETypeFallsBackToContent(t *testing.T) {
 	}
 	if got != "text/plain" {
 		t.Fatalf("detectAttachmentMIMEType() = %q, want %q", got, "text/plain")
+	}
+}
+
+func TestDetectAttachmentImageDimensions(t *testing.T) {
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 4, 3))
+	img.Set(0, 0, color.RGBA{G: 255, A: 255})
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("png.Encode() error = %v", err)
+	}
+	fio := attachmentTestFileIO{openFile: newAttachmentTestFile(buf.Bytes())}
+
+	width, height, ok := detectAttachmentImageDimensions(fio, "image.png", "image/png")
+	if !ok || width != 4 || height != 3 {
+		t.Fatalf("detectAttachmentImageDimensions() = (%d,%d,%v), want (4,3,true)", width, height, ok)
 	}
 }
 

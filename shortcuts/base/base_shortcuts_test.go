@@ -132,7 +132,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
-		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-delete",
+		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-download-attachment", "+record-remove-attachment", "+record-delete",
 		"+record-history-list",
 		"+base-get", "+base-copy", "+base-create",
 		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+advperm-enable", "+advperm-disable",
@@ -169,14 +169,15 @@ func TestBaseTableDeleteRisk(t *testing.T) {
 
 func TestBaseDeleteShortcutsRisk(t *testing.T) {
 	cases := map[string]string{
-		BaseFieldDelete.Command:          BaseFieldDelete.Risk,
-		BaseViewDelete.Command:           BaseViewDelete.Risk,
-		BaseRecordDelete.Command:         BaseRecordDelete.Risk,
-		BaseFormDelete.Command:           BaseFormDelete.Risk,
-		BaseFormQuestionsDelete.Command:  BaseFormQuestionsDelete.Risk,
-		BaseDashboardDelete.Command:      BaseDashboardDelete.Risk,
-		BaseDashboardBlockDelete.Command: BaseDashboardBlockDelete.Risk,
-		BaseRoleDelete.Command:           BaseRoleDelete.Risk,
+		BaseFieldDelete.Command:            BaseFieldDelete.Risk,
+		BaseViewDelete.Command:             BaseViewDelete.Risk,
+		BaseRecordDelete.Command:           BaseRecordDelete.Risk,
+		BaseRecordRemoveAttachment.Command: BaseRecordRemoveAttachment.Risk,
+		BaseFormDelete.Command:             BaseFormDelete.Risk,
+		BaseFormQuestionsDelete.Command:    BaseFormQuestionsDelete.Risk,
+		BaseDashboardDelete.Command:        BaseDashboardDelete.Risk,
+		BaseDashboardBlockDelete.Command:   BaseDashboardBlockDelete.Risk,
+		BaseRoleDelete.Command:             BaseRoleDelete.Risk,
 	}
 
 	for command, risk := range cases {
@@ -329,6 +330,79 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 		if !strings.Contains(tips, want) {
 			t.Fatalf("tips missing %q:\n%s", want, tips)
 		}
+	}
+}
+
+func TestBaseAttachmentHelpGuidesAgents(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		wantHelp []string
+		wantTips []string
+	}{
+		{
+			name:     "upload attachment",
+			shortcut: BaseRecordUploadAttachment,
+			wantHelp: []string{
+				"repeat to append multiple attachments in one cell",
+				"max 50 files, max 2GB each",
+			},
+			wantTips: []string{
+				"lark-cli base +record-upload-attachment",
+				"Repeat --file to append multiple attachments",
+				"Reuse returned file_token values for download/remove",
+			},
+		},
+		{
+			name:     "download attachment",
+			shortcut: BaseRecordDownloadAttachment,
+			wantHelp: []string{
+				"repeat to download selected files",
+				"omit to download all attachments in the record",
+				"with multiple or omitted file tokens this must be an existing directory",
+			},
+			wantTips: []string{
+				"lark-cli base +record-download-attachment",
+				"Omit --file-token to download every attachment in the record",
+				"Base attachments should be downloaded with this command",
+				"other download commands may fail",
+			},
+		},
+		{
+			name:     "remove attachment",
+			shortcut: BaseRecordRemoveAttachment,
+			wantHelp: []string{
+				"remove from the target cell",
+				"max 50 tokens",
+			},
+			wantTips: []string{
+				"lark-cli base +record-remove-attachment",
+				"Repeat --file-token",
+				"requires --yes",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+
+			help := cmd.Flags().FlagUsages()
+			for _, want := range tt.wantHelp {
+				if !strings.Contains(help, want) {
+					t.Fatalf("flag help missing %q:\n%s", want, help)
+				}
+			}
+
+			tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+			for _, want := range tt.wantTips {
+				if !strings.Contains(tips, want) {
+					t.Fatalf("tips missing %q:\n%s", want, tips)
+				}
+			}
+		})
 	}
 }
 

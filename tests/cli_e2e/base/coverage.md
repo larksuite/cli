@@ -54,7 +54,9 @@
 | ✕ | base +record-history-list | shortcut |  | none | record workflows not covered |
 | ✕ | base +record-list | shortcut |  | none | record workflows not covered |
 | ✕ | base +record-search | shortcut |  | none | record workflows not covered |
-| ✕ | base +record-upload-attachment | shortcut |  | none | record workflows not covered |
+| ✓ | base +record-upload-attachment | shortcut | base_attachment_dryrun_test.go::TestBase_AttachmentDryRun/upload | dry-run only | request shape only |
+| ✓ | base +record-download-attachment | shortcut | base_attachment_dryrun_test.go::TestBase_AttachmentDryRun/download | dry-run only | request shape only |
+| ✓ | base +record-remove-attachment | shortcut | base_attachment_dryrun_test.go::TestBase_AttachmentDryRun/remove | dry-run only | request shape only |
 | ✕ | base +record-upsert | shortcut |  | none | record workflows not covered |
 | ✓ | base +role-create | shortcut | base/helpers_test.go::createRole | `--base-token`; `--json` | helper asserts created role id |
 | ✕ | base +role-delete | shortcut |  | none | cleanup only |

@@ -7,6 +7,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1589,12 +1593,14 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 	t.Run("upload attachment", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 
-		tmpFile, err := os.CreateTemp(t.TempDir(), "base-attachment-*.txt")
+		tmpFile, err := os.CreateTemp(t.TempDir(), "base-attachment-*.png")
 		if err != nil {
 			t.Fatalf("CreateTemp() err=%v", err)
 		}
-		if _, err := tmpFile.WriteString("hello attachment"); err != nil {
-			t.Fatalf("WriteString() err=%v", err)
+		img := image.NewRGBA(image.Rect(0, 0, 3, 2))
+		img.Set(0, 0, color.RGBA{R: 255, A: 255})
+		if err := png.Encode(tmpFile, img); err != nil {
+			t.Fatalf("png.Encode() err=%v", err)
 		}
 		if err := tmpFile.Close(); err != nil {
 			t.Fatalf("Close() err=%v", err)
@@ -1609,28 +1615,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 				"data": map[string]interface{}{"id": "fld_att", "name": "附件", "type": "attachment"},
 			},
 		})
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"record_id": "rec_x",
-					"fields": map[string]interface{}{
-						"附件": []interface{}{
-							map[string]interface{}{
-								"file_token":                "existing_tok",
-								"name":                      "existing.pdf",
-								"size":                      2048,
-								"image_width":               640,
-								"image_height":              480,
-								"deprecated_set_attachment": false,
-							},
-						},
-					},
-				},
-			},
-		})
 		uploadStub := &httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/drive/v1/medias/upload_all",
@@ -1640,34 +1624,27 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			},
 		}
 		reg.Register(uploadStub)
-		updateStub := &httpmock.Stub{
-			Method: "PATCH",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
+		appendStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/append_attachments",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"record_id": "rec_x",
-					"fields": map[string]interface{}{
-						"附件": []interface{}{
-							map[string]interface{}{
-								"file_token":                "existing_tok",
-								"name":                      "existing.pdf",
-								"size":                      2048,
-								"image_width":               640,
-								"image_height":              480,
-								"deprecated_set_attachment": true,
-							},
-							map[string]interface{}{
-								"file_token":                "file_tok_1",
-								"name":                      "report.txt",
-								"deprecated_set_attachment": true,
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{
+									"file_token": "file_tok_1",
+									"name":       "base-attachment.png",
+									"size":       73,
+								},
 							},
 						},
 					},
 				},
 			},
 		}
-		reg.Register(updateStub)
+		reg.Register(appendStub)
 
 		if err := runShortcut(t, BaseRecordUploadAttachment, []string{
 			"+record-upload-attachment",
@@ -1676,11 +1653,10 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--record-id", "rec_x",
 			"--field-id", "fld_att",
 			"--file", "./" + filepath.Base(tmpFile.Name()),
-			"--name", "report.txt",
 		}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"updated": true`) || !strings.Contains(got, `"file_tok_1"`) || !strings.Contains(got, `"report.txt"`) {
+		if got := stdout.String(); !strings.Contains(got, `"file_tok_1"`) || strings.Contains(got, `"updated"`) || strings.Contains(got, `"uploaded"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 
@@ -1689,19 +1665,13 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			t.Fatalf("upload body=%s", uploadBody)
 		}
 
-		updateBody := string(updateStub.CapturedBody)
-		if !strings.Contains(updateBody, `"附件"`) ||
-			!strings.Contains(updateBody, `"file_token":"existing_tok"`) ||
-			!strings.Contains(updateBody, `"name":"existing.pdf"`) ||
-			!strings.Contains(updateBody, `"size":2048`) ||
-			!strings.Contains(updateBody, `"image_width":640`) ||
-			!strings.Contains(updateBody, `"image_height":480`) ||
-			!strings.Contains(updateBody, `"deprecated_set_attachment":true`) ||
-			!strings.Contains(updateBody, `"file_token":"file_tok_1"`) ||
-			!strings.Contains(updateBody, `"name":"report.txt"`) ||
-			!strings.Contains(updateBody, `"size":16`) ||
-			!strings.Contains(updateBody, `"mime_type":"text/plain"`) {
-			t.Fatalf("update body=%s", updateBody)
+		appendBody := string(appendStub.CapturedBody)
+		if !strings.Contains(appendBody, `"rec_x"`) ||
+			!strings.Contains(appendBody, `"fld_att"`) ||
+			!strings.Contains(appendBody, `"file_token":"file_tok_1"`) ||
+			!strings.Contains(appendBody, `"image_width":3`) ||
+			!strings.Contains(appendBody, `"image_height":2`) {
+			t.Fatalf("append body=%s", appendBody)
 		}
 	})
 
@@ -1726,17 +1696,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"id": "fld_att", "name": "附件", "type": "attachment"},
-			},
-		})
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"record_id": "rec_x",
-					"fields":    map[string]interface{}{},
-				},
 			},
 		})
 
@@ -1778,26 +1737,23 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 		reg.Register(finishStub)
 
-		updateStub := &httpmock.Stub{
-			Method: "PATCH",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
+		appendStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/append_attachments",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"record_id": "rec_x",
-					"fields": map[string]interface{}{
-						"附件": []interface{}{
-							map[string]interface{}{
-								"file_token":                "file_tok_big",
-								"name":                      "large-report.bin",
-								"deprecated_set_attachment": true,
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{"file_token": "file_tok_big"},
 							},
 						},
 					},
 				},
 			},
 		}
-		reg.Register(updateStub)
+		reg.Register(appendStub)
 
 		if err := runShortcut(t, BaseRecordUploadAttachment, []string{
 			"+record-upload-attachment",
@@ -1806,17 +1762,16 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--record-id", "rec_x",
 			"--field-id", "fld_att",
 			"--file", "./" + filepath.Base(tmpFile.Name()),
-			"--name", "large-report.bin",
 		}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 
-		if got := stdout.String(); !strings.Contains(got, `"updated": true`) || !strings.Contains(got, `"file_tok_big"`) || !strings.Contains(got, `"large-report.bin"`) {
+		if got := stdout.String(); !strings.Contains(got, `"file_tok_big"`) || strings.Contains(got, `"updated"`) || strings.Contains(got, `"uploaded"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 
 		prepareBody := string(prepareStub.CapturedBody)
-		if !strings.Contains(prepareBody, `"file_name":"large-report.bin"`) ||
+		if !strings.Contains(prepareBody, `"file_name":"`+filepath.Base(tmpFile.Name())+`"`) ||
 			!strings.Contains(prepareBody, `"parent_type":"bitable_file"`) ||
 			!strings.Contains(prepareBody, `"parent_node":"app_x"`) ||
 			!strings.Contains(prepareBody, `"size":20971521`) {
@@ -1847,14 +1802,11 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			t.Fatalf("finish body=%s", finishBody)
 		}
 
-		updateBody := string(updateStub.CapturedBody)
-		if !strings.Contains(updateBody, `"附件"`) ||
-			!strings.Contains(updateBody, `"file_token":"file_tok_big"`) ||
-			!strings.Contains(updateBody, `"name":"large-report.bin"`) ||
-			!strings.Contains(updateBody, `"size":20971521`) ||
-			!strings.Contains(updateBody, `"mime_type":"application/octet-stream"`) ||
-			!strings.Contains(updateBody, `"deprecated_set_attachment":true`) {
-			t.Fatalf("update body=%s", updateBody)
+		appendBody := string(appendStub.CapturedBody)
+		if !strings.Contains(appendBody, `"rec_x"`) ||
+			!strings.Contains(appendBody, `"fld_att"`) ||
+			!strings.Contains(appendBody, `"file_token":"file_tok_big"`) {
+			t.Fatalf("append body=%s", appendBody)
 		}
 	})
 
@@ -1926,6 +1878,260 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "exceeds 2GB limit") {
 			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("upload attachment rejects deprecated name flag", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+
+		tmpFile, err := os.CreateTemp(t.TempDir(), "base-name-*.txt")
+		if err != nil {
+			t.Fatalf("CreateTemp() err=%v", err)
+		}
+		if err := tmpFile.Close(); err != nil {
+			t.Fatalf("Close() err=%v", err)
+		}
+		withBaseWorkingDir(t, filepath.Dir(tmpFile.Name()))
+
+		err = runShortcut(t, BaseRecordUploadAttachment, []string{
+			"+record-upload-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--field-id", "fld_att",
+			"--file", "./" + filepath.Base(tmpFile.Name()),
+			"--name", "renamed.txt",
+		}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "--name is no longer supported") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("download attachment uses extra info", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+
+		extra := `{"bitablePerm":{"tableId":"tbl_x","attachments":{"fld_att":{"rec_x":["box_a"]}}}}`
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{
+									"file_token": "box_a",
+									"name":       "pic.png",
+									"size":       7,
+									"extra_info": extra,
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		downloadStub := &httpmock.Stub{
+			Method:      "GET",
+			URL:         "/open-apis/drive/v1/medias/box_a/download?" + url.Values{"extra": []string{extra}}.Encode(),
+			RawBody:     []byte("payload"),
+			ContentType: "image/png",
+		}
+		reg.Register(downloadStub)
+
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+		if err := os.Mkdir("downloads", 0700); err != nil {
+			t.Fatalf("Mkdir() err=%v", err)
+		}
+
+		if err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--file-token", "box_a",
+			"--output", "downloads",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "pic.png")); err != nil {
+			t.Fatalf("expected downloaded file: %v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		gotItems, _ := data["downloaded"].([]interface{})
+		if len(gotItems) != 1 {
+			t.Fatalf("downloaded=%#v", data["downloaded"])
+		}
+		got, _ := gotItems[0].(map[string]interface{})
+		if got["file_token"] != "box_a" || got["saved_path"] == "" || got["extra_info_used"] != nil {
+			t.Fatalf("download output=%#v", got)
+		}
+	})
+
+	t.Run("download all row attachments when file token omitted", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{"file_token": "box_a", "name": "a.txt", "size": 7},
+								map[string]interface{}{"file_token": "box_b", "name": "b.txt", "size": 8},
+							},
+						},
+					},
+				},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method:      "GET",
+			URL:         "/open-apis/drive/v1/medias/box_a/download",
+			RawBody:     []byte("payload-a"),
+			ContentType: "text/plain",
+		})
+		reg.Register(&httpmock.Stub{
+			Method:      "GET",
+			URL:         "/open-apis/drive/v1/medias/box_b/download",
+			RawBody:     []byte("payload-b"),
+			ContentType: "text/plain",
+		})
+
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+		if err := os.Mkdir("downloads", 0700); err != nil {
+			t.Fatalf("Mkdir() err=%v", err)
+		}
+
+		if err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--output", "downloads",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "a.txt")); err != nil {
+			t.Fatalf("expected downloaded file a.txt: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "b.txt")); err != nil {
+			t.Fatalf("expected downloaded file b.txt: %v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		gotItems, _ := data["downloaded"].([]interface{})
+		if len(gotItems) != 2 {
+			t.Fatalf("downloaded=%#v", data["downloaded"])
+		}
+	})
+
+	t.Run("download without file token requires output directory", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+
+		err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--output", "file.txt",
+		}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "--output must be an existing directory") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("download all rejects duplicate target names", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{"file_token": "box_a", "name": "same.txt", "size": 7},
+								map[string]interface{}{"file_token": "box_b", "name": "same.txt", "size": 8},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+		if err := os.Mkdir("downloads", 0700); err != nil {
+			t.Fatalf("Mkdir() err=%v", err)
+		}
+
+		err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--output", "downloads",
+			"--overwrite",
+		}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "multiple attachments resolve to the same output path") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("remove attachment", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_att",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_att", "name": "附件", "type": "attachment"},
+			},
+		})
+		removeStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/remove_attachments",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{"fld_att": []interface{}{}},
+					},
+				},
+			},
+		}
+		reg.Register(removeStub)
+
+		if err := runShortcut(t, BaseRecordRemoveAttachment, []string{
+			"+record-remove-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--field-id", "fld_att",
+			"--file-token", "box_a",
+			"--file-token", "box_b",
+			"--yes",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); strings.Contains(got, `"removed"`) || strings.Contains(got, `"updated"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(removeStub.CapturedBody)
+		if !strings.Contains(body, `"rec_x"`) ||
+			!strings.Contains(body, `"fld_att"`) ||
+			!strings.Contains(body, `"file_token":"box_a"`) ||
+			!strings.Contains(body, `"file_token":"box_b"`) {
+			t.Fatalf("remove body=%s", body)
 		}
 	})
 }

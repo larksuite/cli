@@ -149,29 +149,26 @@ func TestDryRunRecordOps(t *testing.T) {
 	assertDryRunContains(t, dryRunRecordGet(ctx, getJSONRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_get", `"record_id_list":["rec_3"]`, `"select_fields":["Status"]`)
 	assertDryRunContains(t, dryRunRecordDelete(ctx, getJSONRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_delete", `"record_id_list":["rec_3"]`)
 
-	uploadAttachmentRT := newBaseTestRuntime(
+	uploadAttachmentRT := newBaseTestRuntimeWithArrays(
 		map[string]string{
 			"base-token": "app_x",
 			"table-id":   "tbl_1",
 			"record-id":  "rec_1",
 			"field-id":   "fld_att",
-			"file":       "/tmp/report.pdf",
-			"name":       "report-final.pdf",
 		},
+		map[string][]string{"file": {"/tmp/report.pdf"}},
 		nil,
 		nil,
 	)
 	assertDryRunContains(t,
 		BaseRecordUploadAttachment.DryRun(ctx, uploadAttachmentRT),
 		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_att",
-		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1",
 		"POST /open-apis/drive/v1/medias/upload_all",
 		"bitable_file",
-		"PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1/records/rec_1",
-		"report-final.pdf",
-		`"mime_type":"\u003cdetected_mime_type\u003e"`,
-		`"size":"\u003cfile_size\u003e"`,
-		"deprecated_set_attachment",
+		"POST /open-apis/base/v3/bases/app_x/tables/tbl_1/append_attachments",
+		"report.pdf",
+		`"image_width":"\u003cimage_width_if_image\u003e"`,
+		`"image_height":"\u003cimage_height_if_image\u003e"`,
 	)
 }
 
