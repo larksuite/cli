@@ -5,6 +5,7 @@ package selfupdate
 
 import (
 	"fmt"
+	"os/exec"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -72,6 +73,7 @@ func TestCleanupStaleFiles_NoPanic(t *testing.T) {
 }
 
 func TestVerifyBinaryLookPath(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a POSIX shell script")
 	}
@@ -97,6 +99,7 @@ func TestVerifyBinaryLookPath(t *testing.T) {
 }
 
 func TestVerifyBinaryLookPathNotFound(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	mock := &lookPathMock{result: "", resultErr: fmt.Errorf("not found")}
 	mock.install("lark-cli")
 	t.Cleanup(mock.restore)
@@ -107,6 +110,7 @@ func TestVerifyBinaryLookPathNotFound(t *testing.T) {
 }
 
 func TestVerifyBinaryEmptyOutput(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a POSIX shell script")
 	}
