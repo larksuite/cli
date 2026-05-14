@@ -22,6 +22,9 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+var preflightGetStoredToken = internalauth.GetStoredToken
+var preflightTokenStatus = internalauth.TokenStatus
+
 // DoctorPreflightOptions holds inputs for doctor preflight.
 type DoctorPreflightOptions struct {
 	Factory     *cmdutil.Factory
@@ -61,15 +64,35 @@ type preflightAction struct {
 	Reason   string `json:"reason"`
 }
 
+type preflightExecutionFlag struct {
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Required    bool     `json:"required"`
+	Default     string   `json:"default,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
+	Input       []string `json:"input,omitempty"`
+	Description string   `json:"description,omitempty"`
+}
+
+type preflightExecution struct {
+	Command              string                   `json:"command"`
+	DryRunCommand        string                   `json:"dry_run_command,omitempty"`
+	SupportsDryRun       bool                     `json:"supports_dry_run"`
+	RequiresConfirmation bool                     `json:"requires_confirmation"`
+	Flags                []preflightExecutionFlag `json:"flags,omitempty"`
+	Notes                []string                 `json:"notes,omitempty"`
+}
+
 type preflightResult struct {
-	OK          bool              `json:"ok"`
-	Ready       bool              `json:"ready"`
-	Workspace   string            `json:"workspace"`
-	Target      preflightTarget   `json:"target"`
-	Identity    preflightIdentity `json:"identity"`
-	Checks      []preflightCheck  `json:"checks"`
-	NextActions []preflightAction `json:"next_actions,omitempty"`
-	Notice      map[string]any    `json:"_notice,omitempty"`
+	OK          bool               `json:"ok"`
+	Ready       bool               `json:"ready"`
+	Workspace   string             `json:"workspace"`
+	Target      preflightTarget    `json:"target"`
+	Identity    preflightIdentity  `json:"identity"`
+	Execution   preflightExecution `json:"execution"`
+	Checks      []preflightCheck   `json:"checks"`
+	NextActions []preflightAction  `json:"next_actions,omitempty"`
+	Notice      map[string]any     `json:"_notice,omitempty"`
 }
 
 func NewCmdDoctorPreflight(f *cmdutil.Factory) *cobra.Command {
@@ -130,6 +153,7 @@ func doctorPreflightRun(opts *DoctorPreflightOptions) error {
 	identity.Resolved = string(resolvedAs)
 	identity.Source = source
 
+	execution := buildPreflightExecution(shortcut, resolvedAs)
 	checks, actions := runPreflightChecks(opts, cfg, shortcut, resolvedAs, target.Scopes)
 	ready := isPreflightReady(checks)
 	result := preflightResult{
@@ -138,6 +162,7 @@ func doctorPreflightRun(opts *DoctorPreflightOptions) error {
 		Workspace:   core.CurrentWorkspace().Display(),
 		Target:      target,
 		Identity:    identity,
+		Execution:   execution,
 		Checks:      checks,
 		NextActions: actions,
 		Notice:      output.GetNotice(),
@@ -360,8 +385,8 @@ func evaluateUserTokenReadiness(opts *DoctorPreflightOptions, cfg *core.CliConfi
 	}
 
 	statusMsg := fmt.Sprintf("user token resolved for %s (%s)", cfg.UserName, cfg.UserOpenId)
-	if stored := internalauth.GetStoredToken(cfg.AppID, cfg.UserOpenId); stored != nil {
-		switch internalauth.TokenStatus(stored) {
+	if stored := preflightGetStoredToken(cfg.AppID, cfg.UserOpenId); stored != nil {
+		switch preflightTokenStatus(stored) {
 		case "valid":
 			statusMsg = fmt.Sprintf("user token is valid for %s (%s)", cfg.UserName, cfg.UserOpenId)
 		case "needs_refresh":
@@ -502,8 +527,22 @@ func renderPreflightPretty(w io.Writer, result preflightResult) {
 	fmt.Fprintf(w, "Workspace: %s\n", result.Workspace)
 	fmt.Fprintf(w, "Target: %s %s\n", result.Target.Service, result.Target.Command)
 	fmt.Fprintf(w, "Identity: requested=%s resolved=%s (%s)\n", result.Identity.Requested, result.Identity.Resolved, result.Identity.Source)
+	fmt.Fprintf(w, "Command: %s\n", result.Execution.Command)
+	if result.Execution.DryRunCommand != "" {
+		fmt.Fprintf(w, "Dry Run: %s\n", result.Execution.DryRunCommand)
+	}
 	if len(result.Target.Scopes) > 0 {
 		fmt.Fprintf(w, "Scopes: %s\n", strings.Join(result.Target.Scopes, ", "))
+	}
+	if len(result.Execution.Flags) > 0 {
+		fmt.Fprintln(w, "Flags:")
+		for _, flag := range result.Execution.Flags {
+			required := ""
+			if flag.Required {
+				required = " [required]"
+			}
+			fmt.Fprintf(w, "  - --%s%s: %s\n", flag.Name, required, flag.Description)
+		}
 	}
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Checks:")
@@ -567,6 +606,7 @@ func buildConfigFailureResult(target preflightTarget, identity preflightIdentity
 		Workspace:   core.CurrentWorkspace().Display(),
 		Target:      target,
 		Identity:    identity,
+		Execution:   preflightExecution{Command: fmt.Sprintf("lark-cli %s %s --help", target.Service, target.Command)},
 		Checks:      []preflightCheck{check},
 		NextActions: actions,
 		Notice:      output.GetNotice(),
@@ -600,4 +640,90 @@ func normalizedRequestedIdentity(requested string) string {
 		return string(core.AsAuto)
 	}
 	return requested
+}
+
+func buildPreflightExecution(shortcut *common.Shortcut, resolvedAs core.Identity) preflightExecution {
+	base := []string{"lark-cli", shortcut.Service, shortcut.Command}
+	if resolvedAs != "" {
+		base = append(base, "--as", string(resolvedAs))
+	}
+	for _, flag := range shortcut.Flags {
+		if flag.Hidden || !flag.Required {
+			continue
+		}
+		base = appendRequiredFlagTemplate(base, flag)
+	}
+
+	execution := preflightExecution{
+		Command:              strings.Join(base, " "),
+		SupportsDryRun:       shortcut.DryRun != nil,
+		RequiresConfirmation: shortcutRisk(shortcut) == "high-risk-write",
+		Flags:                buildPreflightExecutionFlags(shortcut.Flags),
+		Notes:                buildPreflightExecutionNotes(shortcut),
+	}
+	if execution.RequiresConfirmation {
+		execution.Command += " --yes"
+	}
+	if execution.SupportsDryRun {
+		dryRun := append([]string(nil), base...)
+		dryRun = append(dryRun, "--dry-run")
+		execution.DryRunCommand = strings.Join(dryRun, " ")
+	}
+	return execution
+}
+
+func buildPreflightExecutionFlags(flags []common.Flag) []preflightExecutionFlag {
+	var out []preflightExecutionFlag
+	for _, flag := range flags {
+		if flag.Hidden {
+			continue
+		}
+		out = append(out, preflightExecutionFlag{
+			Name:        flag.Name,
+			Type:        normalizedFlagType(flag.Type),
+			Required:    flag.Required,
+			Default:     flag.Default,
+			Enum:        append([]string(nil), flag.Enum...),
+			Input:       append([]string(nil), flag.Input...),
+			Description: flag.Desc,
+		})
+	}
+	return out
+}
+
+func buildPreflightExecutionNotes(shortcut *common.Shortcut) []string {
+	var notes []string
+	if shortcut.Risk == "write" && shortcut.DryRun != nil {
+		notes = append(notes, "write shortcut: run dry_run_command before real execution")
+	}
+	if shortcutRisk(shortcut) == "high-risk-write" {
+		notes = append(notes, "high-risk write shortcut: real execution requires --yes")
+		if shortcut.DryRun != nil {
+			notes = append(notes, "preview with dry_run_command before confirming")
+		}
+	}
+	notes = append(notes, "field requirements come from shortcut metadata; dynamic validation rules remain in command --help")
+	return notes
+}
+
+func flagPlaceholder(flag common.Flag) string {
+	if flag.Type == "bool" {
+		return "true"
+	}
+	return "<" + flag.Name + ">"
+}
+
+func normalizedFlagType(flagType string) string {
+	if strings.TrimSpace(flagType) == "" {
+		return "string"
+	}
+	return flagType
+}
+
+func appendRequiredFlagTemplate(args []string, flag common.Flag) []string {
+	args = append(args, "--"+flag.Name)
+	if flag.Type == "bool" {
+		return args
+	}
+	return append(args, flagPlaceholder(flag))
 }
