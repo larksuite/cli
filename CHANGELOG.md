@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.31] - 2026-05-14
+
+### Features
+
+- **install**: Skip interactive prompts in non-TTY environments (#888)
+- **update**: Recommend `lark-cli update` over `npm install` for AI agents (#884)
+- **im**: Add `--exclude-muted` to `+chat-search` and new `+chat-list` shortcut (#820)
+- **auth**: Add `--exclude` flag and allow combining `--scope` with `--domain`/`--recommend` (#844)
+- **drive**: Add modified-time smart sync mode (#859)
+- **approval**: Add `tasks.add_sign` and `tasks.rollback` methods (#867)
+
 ## [v1.0.30] - 2026-05-13
 
 ### Features
@@ -692,6 +703,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.31]: https://github.com/larksuite/cli/releases/tag/v1.0.31
 [v1.0.30]: https://github.com/larksuite/cli/releases/tag/v1.0.30
 [v1.0.29]: https://github.com/larksuite/cli/releases/tag/v1.0.29
 [v1.0.28]: https://github.com/larksuite/cli/releases/tag/v1.0.28
