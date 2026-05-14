@@ -43,10 +43,6 @@ func (m *lookPathMock) restore() {
 	execLookPath = m.oldLookPath
 }
 
-// execLookPath is the LookPath implementation used by VerifyBinary.
-// Swapped in tests via lookPathMock.
-var execLookPath = exec.LookPath
-
 func TestResolveExe(t *testing.T) {
 	u := New()
 	p, err := u.resolveExe()
