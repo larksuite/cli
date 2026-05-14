@@ -159,7 +159,11 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 	}
 
-	hasAnyOption := opts.Scope != "" || opts.Recommend || len(selectedDomains) > 0 || len(opts.Exclude) > 0
+	hasAnyOption := opts.Scope != "" || opts.Recommend || len(selectedDomains) > 0
+
+	if len(opts.Exclude) > 0 && !hasAnyOption {
+		return output.ErrValidation("--exclude requires --scope, --domain, or --recommend to be specified")
+	}
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
