@@ -5,7 +5,6 @@ package selfupdate
 
 import (
 	"fmt"
-	"os/exec"
 	"os"
 	"path/filepath"
 	"runtime"
