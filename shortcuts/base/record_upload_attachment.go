@@ -16,6 +16,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -230,7 +231,7 @@ func validateRecordUploadAttachment(runtime *common.RuntimeContext) error {
 }
 
 func validateRecordDownloadAttachment(runtime *common.RuntimeContext) error {
-	tokens, err := normalizeOptionalAttachmentFileTokens(runtime.StrArray("file-token"))
+	tokens, err := normalizeOptionalDownloadAttachmentFileTokens(runtime.StrArray("file-token"))
 	if err != nil {
 		return err
 	}
@@ -319,7 +320,7 @@ func executeRecordRemoveAttachment(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordDownloadAttachment(ctx context.Context, runtime *common.RuntimeContext) error {
-	tokens, err := normalizeOptionalAttachmentFileTokens(runtime.StrArray("file-token"))
+	tokens, err := normalizeOptionalDownloadAttachmentFileTokens(runtime.StrArray("file-token"))
 	if err != nil {
 		return err
 	}
@@ -331,14 +332,16 @@ func executeRecordDownloadAttachment(ctx context.Context, runtime *common.Runtim
 	if err != nil {
 		return err
 	}
-	if err := validateDownloadTargetConflicts(runtime, items, runtime.Str("output"), len(tokens) != 1); err != nil {
+	targets, err := planAttachmentDownloadTargets(runtime, items, runtime.Str("output"), len(tokens) != 1 || len(items) > 1, runtime.Bool("overwrite"))
+	if err != nil {
 		return err
 	}
-	downloaded := make([]map[string]interface{}, 0, len(items))
-	for _, item := range items {
-		saved, err := downloadBaseAttachment(ctx, runtime, item, runtime.Str("output"), len(tokens) != 1 || len(items) > 1, runtime.Bool("overwrite"))
+	downloaded := make([]map[string]interface{}, 0, len(targets))
+	for _, target := range targets {
+		saved, err := downloadBaseAttachment(ctx, runtime, target.Item, target.TargetPath, runtime.Bool("overwrite"))
 		if err != nil {
-			return err
+			failed := attachmentDownloadFailure(target, err)
+			return attachmentDownloadProgressError(err, downloaded, []map[string]interface{}{failed})
 		}
 		downloaded = append(downloaded, saved)
 	}
@@ -394,6 +397,38 @@ func normalizeOptionalAttachmentFileTokens(tokens []string) ([]string, error) {
 		return nil, nil
 	}
 	return normalizeAttachmentFileTokens(tokens)
+}
+
+func normalizeOptionalDownloadAttachmentFileTokens(tokens []string) ([]string, error) {
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+	normalized := make([]string, 0, len(tokens))
+	for index, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			return nil, common.FlagErrorf("attachment file token %d must not be empty", index+1)
+		}
+		normalized = append(normalized, token)
+	}
+	normalized = dedupeStringsPreserveOrder(normalized)
+	if len(normalized) > baseAttachmentMaxBatchSize {
+		return nil, common.FlagErrorf("attachment file token count exceeds maximum limit of %d (got %d)", baseAttachmentMaxBatchSize, len(normalized))
+	}
+	return normalized, nil
+}
+
+func dedupeStringsPreserveOrder(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func baseAttachmentShouldUseMultipart(fio fileio.FileIO, filePath string) bool {
@@ -557,6 +592,12 @@ type baseAttachmentDownloadItem struct {
 	RawPayload map[string]interface{}
 }
 
+type baseAttachmentDownloadTarget struct {
+	Item         baseAttachmentDownloadItem
+	TargetPath   string
+	ResolvedPath string
+}
+
 func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID string, tokens []string) ([]baseAttachmentDownloadItem, error) {
 	recordRaw, ok := attachments[recordID]
 	if !ok {
@@ -567,7 +608,13 @@ func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID 
 		return nil, output.ErrValidation("record %q attachment metadata has unexpected type %T", recordID, recordRaw)
 	}
 	byToken := map[string]baseAttachmentDownloadItem{}
-	for currentFieldID, rawList := range fields {
+	fieldIDs := make([]string, 0, len(fields))
+	for currentFieldID := range fields {
+		fieldIDs = append(fieldIDs, currentFieldID)
+	}
+	sort.Strings(fieldIDs)
+	for _, currentFieldID := range fieldIDs {
+		rawList := fields[currentFieldID]
 		items, ok := rawList.([]interface{})
 		if !ok {
 			return nil, output.ErrValidation("record %q field %q attachment metadata has unexpected type %T", recordID, currentFieldID, rawList)
@@ -607,6 +654,14 @@ func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID 
 		if len(result) == 0 {
 			return nil, output.ErrValidation("record %q has no attachments to download", recordID)
 		}
+		sort.SliceStable(result, func(i, j int) bool {
+			leftName := strings.ToLower(baseAttachmentDownloadName(result[i]))
+			rightName := strings.ToLower(baseAttachmentDownloadName(result[j]))
+			if leftName != rightName {
+				return leftName < rightName
+			}
+			return result[i].FileToken < result[j].FileToken
+		})
 		return result, nil
 	}
 	for _, token := range tokens {
@@ -619,38 +674,91 @@ func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID 
 	return result, nil
 }
 
-func validateDownloadTargetConflicts(runtime *common.RuntimeContext, items []baseAttachmentDownloadItem, outputPath string, outputIsDir bool) error {
-	if len(items) <= 1 || !outputIsDir {
-		return nil
-	}
-	seen := map[string]string{}
+func planAttachmentDownloadTargets(runtime *common.RuntimeContext, items []baseAttachmentDownloadItem, outputPath string, outputIsDir bool, overwrite bool) ([]baseAttachmentDownloadTarget, error) {
+	names := downloadTargetNames(items, outputIsDir || outputPathLooksDirectory(runtime, outputPath))
+	targets := make([]baseAttachmentDownloadTarget, 0, len(items))
+	seen := map[string]baseAttachmentDownloadItem{}
 	for _, item := range items {
-		targetPath := downloadTargetPath(runtime, item, outputPath, outputIsDir)
+		targetName := names[item.FileToken]
+		targetPath := outputPath
+		if targetName != "" {
+			targetPath = filepath.Join(outputPath, targetName)
+		}
 		resolved, err := runtime.ResolveSavePath(targetPath)
 		if err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
-		}
-		if resolved == "" {
-			resolved = targetPath
+			return nil, output.ErrValidation("unsafe output path: %s", err)
 		}
 		if previous, exists := seen[resolved]; exists {
-			name := strings.TrimSpace(item.Name)
-			if name == "" {
-				name = item.FileToken
+			return nil, output.ErrValidation("multiple attachments resolve to the same output path %q (%s and %s); download them separately or choose a different directory", resolved, previous.FileToken, item.FileToken)
+		}
+		seen[resolved] = item
+		if !overwrite {
+			if _, statErr := runtime.FileIO().Stat(targetPath); statErr == nil {
+				return nil, output.ErrValidation("output file already exists: %s (use --overwrite to replace)", targetPath)
 			}
-			return output.ErrValidation("multiple attachments resolve to the same output path %q (%s and %s); download them separately or choose a different directory", resolved, previous, name)
 		}
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			name = item.FileToken
-		}
-		seen[resolved] = name
+		targets = append(targets, baseAttachmentDownloadTarget{
+			Item:         item,
+			TargetPath:   targetPath,
+			ResolvedPath: resolved,
+		})
 	}
-	return nil
+	return targets, nil
 }
 
-func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext, item baseAttachmentDownloadItem, outputPath string, outputIsDir bool, overwrite bool) (map[string]interface{}, error) {
-	targetPath := downloadTargetPath(runtime, item, outputPath, outputIsDir)
+func downloadTargetNames(items []baseAttachmentDownloadItem, outputIsDir bool) map[string]string {
+	if !outputIsDir {
+		return nil
+	}
+	nameCounts := make(map[string]int, len(items))
+	for _, item := range items {
+		nameCounts[baseAttachmentDownloadName(item)]++
+	}
+	names := make(map[string]string, len(items))
+	for _, item := range items {
+		name := baseAttachmentDownloadName(item)
+		if nameCounts[name] > 1 {
+			name = attachmentNameWithTokenSuffix(name, item.FileToken)
+		}
+		names[item.FileToken] = name
+	}
+	return names
+}
+
+func baseAttachmentDownloadName(item baseAttachmentDownloadItem) string {
+	name := filepath.Base(strings.TrimSpace(item.Name))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		name = item.FileToken
+	}
+	return name
+}
+
+func attachmentNameWithTokenSuffix(name, fileToken string) string {
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	if stem == "" {
+		stem = name
+	}
+	return stem + "_" + safeAttachmentFileTokenSuffix(fileToken) + ext
+}
+
+func safeAttachmentFileTokenSuffix(fileToken string) string {
+	var b strings.Builder
+	for _, r := range fileToken {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('_')
+	}
+	suffix := strings.Trim(b.String(), "_")
+	if suffix == "" {
+		return "file"
+	}
+	return suffix
+}
+
+func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext, item baseAttachmentDownloadItem, targetPath string, overwrite bool) (map[string]interface{}, error) {
 	if _, err := runtime.ResolveSavePath(targetPath); err != nil {
 		return nil, output.ErrValidation("unsafe output path: %s", err)
 	}
@@ -697,15 +805,50 @@ func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext,
 	}, nil
 }
 
-func downloadTargetPath(runtime *common.RuntimeContext, item baseAttachmentDownloadItem, outputPath string, outputIsDir bool) string {
-	if outputIsDir || outputPathLooksDirectory(runtime, outputPath) {
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			name = item.FileToken
-		}
-		return filepath.Join(outputPath, filepath.Base(name))
+func attachmentDownloadFailure(target baseAttachmentDownloadTarget, err error) map[string]interface{} {
+	return map[string]interface{}{
+		"record_id":     target.Item.RecordID,
+		"field_id":      target.Item.FieldID,
+		"file_token":    target.Item.FileToken,
+		"name":          target.Item.Name,
+		"target_path":   target.TargetPath,
+		"resolved_path": target.ResolvedPath,
+		"error":         err.Error(),
 	}
-	return outputPath
+}
+
+func attachmentDownloadProgressError(err error, downloaded []map[string]interface{}, failed []map[string]interface{}) error {
+	msg := fmt.Sprintf("download failed after %d attachment(s) succeeded and %d failed: %v", len(downloaded), len(failed), err)
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) && exitErr.Detail != nil {
+		return &output.ExitError{
+			Code: exitErr.Code,
+			Detail: &output.ErrDetail{
+				Type:    exitErr.Detail.Type,
+				Code:    exitErr.Detail.Code,
+				Message: msg,
+				Hint:    "Some files may already have been saved. Inspect error.detail.downloaded before retrying, or rerun with --overwrite if the failed target now exists.",
+				Detail: map[string]interface{}{
+					"downloaded": downloaded,
+					"failed":     failed,
+				},
+			},
+			Err: err,
+		}
+	}
+	return &output.ExitError{
+		Code: output.ExitInternal,
+		Detail: &output.ErrDetail{
+			Type:    "io",
+			Message: msg,
+			Hint:    "Some files may already have been saved. Inspect error.detail.downloaded before retrying, or rerun with --overwrite if the failed target now exists.",
+			Detail: map[string]interface{}{
+				"downloaded": downloaded,
+				"failed":     failed,
+			},
+		},
+		Err: err,
+	}
 }
 
 func outputPathLooksDirectory(runtime *common.RuntimeContext, outputPath string) bool {

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -19,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -2048,7 +2050,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("download all rejects duplicate target names", func(t *testing.T) {
+	t.Run("download all disambiguates duplicate attachment names with file token", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
@@ -2060,12 +2062,174 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 						"rec_x": map[string]interface{}{
 							"fld_att": []interface{}{
 								map[string]interface{}{"file_token": "box_a", "name": "same.txt", "size": 7},
+								map[string]interface{}{"file_token": "box_a", "name": "same.txt", "size": 7},
 								map[string]interface{}{"file_token": "box_b", "name": "same.txt", "size": 8},
 							},
 						},
 					},
 				},
 			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method:      "GET",
+			URL:         "/open-apis/drive/v1/medias/box_a/download",
+			RawBody:     []byte("payload-a"),
+			ContentType: "text/plain",
+		})
+		reg.Register(&httpmock.Stub{
+			Method:      "GET",
+			URL:         "/open-apis/drive/v1/medias/box_b/download",
+			RawBody:     []byte("payload-b"),
+			ContentType: "text/plain",
+		})
+
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+		if err := os.Mkdir("downloads", 0700); err != nil {
+			t.Fatalf("Mkdir() err=%v", err)
+		}
+
+		if err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--output", "downloads",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "same_box_a.txt")); err != nil {
+			t.Fatalf("expected downloaded file same_box_a.txt: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "same_box_b.txt")); err != nil {
+			t.Fatalf("expected downloaded file same_box_b.txt: %v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		gotItems, _ := data["downloaded"].([]interface{})
+		if len(gotItems) != 2 {
+			t.Fatalf("downloaded=%#v", data["downloaded"])
+		}
+	})
+
+	t.Run("download duplicate requested file token only once", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{"file_token": "box_a", "name": "a.txt", "size": 7},
+							},
+						},
+					},
+				},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method:      "GET",
+			URL:         "/open-apis/drive/v1/medias/box_a/download",
+			RawBody:     []byte("payload-a"),
+			ContentType: "text/plain",
+		})
+
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+		if err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--file-token", "box_a",
+			"--file-token", "box_a",
+			"--output", "a.txt",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		gotItems, _ := data["downloaded"].([]interface{})
+		if len(gotItems) != 1 {
+			t.Fatalf("downloaded=%#v", data["downloaded"])
+		}
+	})
+
+	t.Run("download all preflights local target conflicts before writing", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{"file_token": "box_a", "name": "a.txt", "size": 7},
+								map[string]interface{}{"file_token": "box_b", "name": "b.txt", "size": 8},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+		if err := os.Mkdir("downloads", 0700); err != nil {
+			t.Fatalf("Mkdir() err=%v", err)
+		}
+		if err := os.WriteFile(filepath.Join("downloads", "b.txt"), []byte("existing"), 0600); err != nil {
+			t.Fatalf("WriteFile() err=%v", err)
+		}
+
+		err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--output", "downloads",
+		}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "output file already exists: downloads/b.txt") {
+			t.Fatalf("err=%v", err)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "a.txt")); err == nil {
+			t.Fatalf("a.txt should not be written after preflight conflict")
+		}
+	})
+
+	t.Run("download reports progress when later attachment fails", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/get_attachments",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"attachments": map[string]interface{}{
+						"rec_x": map[string]interface{}{
+							"fld_att": []interface{}{
+								map[string]interface{}{"file_token": "box_a", "name": "a.txt", "size": 7},
+								map[string]interface{}{"file_token": "box_b", "name": "b.txt", "size": 8},
+							},
+						},
+					},
+				},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method:      "GET",
+			URL:         "/open-apis/drive/v1/medias/box_a/download",
+			RawBody:     []byte("payload-a"),
+			ContentType: "text/plain",
+		})
+		reg.Register(&httpmock.Stub{
+			Method:  "GET",
+			URL:     "/open-apis/drive/v1/medias/box_b/download",
+			Status:  500,
+			RawBody: []byte("server error"),
 		})
 
 		tmpDir := t.TempDir()
@@ -2080,10 +2244,22 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--table-id", "tbl_x",
 			"--record-id", "rec_x",
 			"--output", "downloads",
-			"--overwrite",
 		}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "multiple attachments resolve to the same output path") {
+		if err == nil || !strings.Contains(err.Error(), "download failed after 1 attachment(s) succeeded and 1 failed") {
 			t.Fatalf("err=%v", err)
+		}
+		var exitErr *output.ExitError
+		if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+			t.Fatalf("expected structured error, got %T %v", err, err)
+		}
+		detail, _ := exitErr.Detail.Detail.(map[string]interface{})
+		downloaded, _ := detail["downloaded"].([]map[string]interface{})
+		failed, _ := detail["failed"].([]map[string]interface{})
+		if len(downloaded) != 1 || downloaded[0]["file_token"] != "box_a" || len(failed) != 1 || failed[0]["file_token"] != "box_b" {
+			t.Fatalf("detail=%#v", exitErr.Detail.Detail)
+		}
+		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "a.txt")); err != nil {
+			t.Fatalf("expected first file to remain: %v", err)
 		}
 	})
 
