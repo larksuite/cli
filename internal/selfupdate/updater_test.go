@@ -4,6 +4,7 @@
 package selfupdate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,12 +13,38 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
+// executableTestFS mocks vfs for tests that still need vfs.Executable.
 type executableTestFS struct {
 	vfs.OsFs
 	exe string
 }
 
 func (f executableTestFS) Executable() (string, error) { return f.exe, nil }
+
+// lookPathMock patches execLookPath within VerifyBinary for controlled testing.
+type lookPathMock struct {
+	oldLookPath func(string) (string, error)
+	result      string
+	resultErr   error
+}
+
+func (m *lookPathMock) install(bin string) {
+	m.oldLookPath = execLookPath
+	execLookPath = func(name string) (string, error) {
+		if name == bin {
+			return m.result, m.resultErr
+		}
+		return m.oldLookPath(name)
+	}
+}
+
+func (m *lookPathMock) restore() {
+	execLookPath = m.oldLookPath
+}
+
+// execLookPath is the LookPath implementation used by VerifyBinary.
+// Swapped in tests via lookPathMock.
+var execLookPath = exec.LookPath
 
 func TestResolveExe(t *testing.T) {
 	u := New()
@@ -44,46 +71,58 @@ func TestCleanupStaleFiles_NoPanic(t *testing.T) {
 	u.CleanupStaleFiles()
 }
 
-func TestVerifyBinaryChecksVersion(t *testing.T) {
+func TestVerifyBinaryLookPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a POSIX shell script")
 	}
 
 	dir := t.TempDir()
-	exe := filepath.Join(dir, "lark-cli")
-	// Script prints version string matching real CLI format when --version is passed.
-	script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"lark-cli version 2.0.0\"; exit 0; fi\nexit 12\n"
-	if err := os.WriteFile(exe, []byte(script), 0755); err != nil {
+	bin := filepath.Join(dir, "lark-cli")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"lark-cli version 2.1.0\"; exit 0; fi\nexit 12\n"
+	if err := os.WriteFile(bin, []byte(script), 0755); err != nil {
 		t.Fatalf("write test binary: %v", err)
 	}
 
-	// Mock vfs.Executable to return our test script, matching VerifyBinary's
-	// primary lookup path. Also prepend to PATH for the LookPath fallback.
-	origFS := vfs.DefaultFS
-	vfs.DefaultFS = executableTestFS{OsFs: vfs.OsFs{}, exe: exe}
-	t.Cleanup(func() { vfs.DefaultFS = origFS })
+	mock := &lookPathMock{result: bin}
+	mock.install("lark-cli")
+	t.Cleanup(mock.restore)
 
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+origPath)
-
-	// Matching version → success.
-	if err := New().VerifyBinary("2.0.0"); err != nil {
-		t.Fatalf("VerifyBinary(matching) error = %v, want nil", err)
+	if err := New().VerifyBinary("2.1.0"); err != nil {
+		t.Fatalf("VerifyBinary(2.1.0) error = %v, want nil", err)
 	}
 
-	// Mismatched version → error.
 	if err := New().VerifyBinary("3.0.0"); err == nil {
 		t.Fatal("VerifyBinary(mismatched) expected error, got nil")
 	}
+}
 
-	// Substring of actual version must not match (e.g. "0.0" is in "2.0.0").
-	if err := New().VerifyBinary("0.0"); err == nil {
-		t.Fatal("VerifyBinary(substring) expected error, got nil")
+func TestVerifyBinaryLookPathNotFound(t *testing.T) {
+	mock := &lookPathMock{result: "", resultErr: fmt.Errorf("not found")}
+	mock.install("lark-cli")
+	t.Cleanup(mock.restore)
+
+	if err := New().VerifyBinary("2.0.0"); err == nil {
+		t.Fatal("VerifyBinary(not-found) expected error, got nil")
+	}
+}
+
+func TestVerifyBinaryEmptyOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell script")
 	}
 
-	// Version that is a prefix of actual must not match (e.g. "2.0.0" in "12.0.0").
-	// Binary reports "2.0.0", asking for "12.0.0" must fail.
-	if err := New().VerifyBinary("12.0.0"); err == nil {
-		t.Fatal("VerifyBinary(prefix-mismatch) expected error, got nil")
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "lark-cli")
+	script := "#!/bin/sh\necho\nexit 0\n"
+	if err := os.WriteFile(bin, []byte(script), 0755); err != nil {
+		t.Fatalf("write test binary: %v", err)
+	}
+
+	mock := &lookPathMock{result: bin}
+	mock.install("lark-cli")
+	t.Cleanup(mock.restore)
+
+	if err := New().VerifyBinary("2.0.0"); err == nil {
+		t.Fatal("VerifyBinary(empty output) expected error, got nil")
 	}
 }

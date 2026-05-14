@@ -190,7 +190,7 @@ func (u *Updater) VerifyBinary(expectedVersion string) error {
 	// runs "lark-cli" — this resolves through npm's bin symlink to the newly
 	// installed version, rather than os.Executable() which returns the
 	// running binary's inode (i.e. the old version before the update).
-	exe, err := exec.LookPath("lark-cli")
+	exe, err := execLookPath("lark-cli")
 	if err != nil {
 		return fmt.Errorf("cannot locate binary: %w", err)
 	}
