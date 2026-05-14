@@ -19,7 +19,7 @@
 ### 第一波 — 规划与骨架（串行）
 
 1. 分析用户需求：受众、目的、范围
-2. 设计大纲——每个 h1/h2 章节至少规划 1 个非文本 block
+2. 设计大纲——每个 h1/h2 章节至少规划 1 个非文本 block；承载重要信息的章节优先规划画板
 3. `docs +create --api-version v2` **只建骨架**：标题 + 开头 `<callout>` + 各级标题 + 每节一句占位摘要
    - ⚠️ **不要**一次性把完整章节内容塞进 `--content`。超长 `--content` 容易触发字符/参数限制。
    - 完整内容留到第二波，由各 Agent 用 `docs +update --command append` 或 `block_insert_after` 分段写入。
@@ -35,11 +35,13 @@
 
 5. `docs +fetch --api-version v2 --detail with-ids` 获取文档，审查整体效果
 6. 评估样式达标（富 block 密度、元素多样性、连续 `<p>` 数量）
-7. **画板意图识别**：逐章节扫描，按 `lark-doc-style.md`「画板意图识别」表判断是否有段落适合用图表达。记录需要插图的章节及推荐的画板类型
+7. **画板意图识别**：逐章节扫描，按 `lark-doc-style.md`「画板意图识别」表判断是否有段落适合用图表达。重要信息优先画板化，记录需要插图的章节、推荐画板类型、简单/复杂路径和用于画图的源内容
 
-### 第四波 — 润色与图表（并行 Agent）
-8. Spawn Agent 定向改进：（结合 `lark-doc-style.md` 润色）
-   - **优先处理第三波识别出的画板需求**：简单图直接 `<whiteboard type="mermaid|plantuml">`，复杂图 spawn Agent 使用 **lark-whiteboard** skill
+### 第四波 — 画板与润色（并行 Agent）
+8. **优先处理第三波识别出的画板需求**：
+   - 简单图：启动 SVG SubAgent，直接插入 `<whiteboard type="svg">完整 SVG</whiteboard>`；不读取 **lark-whiteboard**
+   - 复杂图：主 Agent 先插入 `<whiteboard type="blank"></whiteboard>` 并提取 `block_token`，再为每个 `block_token` 启动 SubAgent 使用 **lark-whiteboard** skill 写入画板
+9. Spawn 内容改写 Agent 定向润色：
    - 文字密集章节转为 `<table>`/`<grid>`/`<callout>`
    - 主要章节间补充 `<hr/>`
    - 本地图片使用 `docs +media-insert` 插入
@@ -47,4 +49,8 @@
 
 ## Agent 子任务要求
 
-Spawn Agent 时必须提供：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 和 `lark-doc-style.md` 路径、具体的 `docs +update` command 和 `--block-id`。
+内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 和 `lark-doc-style.md` 路径、具体的 `docs +update` command 和 `--block-id`。
+
+SVG SubAgent 必须收到：文档 token、插入位置（标题/block ID）、图表目标、源内容片段、`lark-doc-xml.md` 路径。它只负责插入一个 `<whiteboard type="svg">...</whiteboard>`，不改其他正文，也不读取 `lark-whiteboard`。
+
+复杂画板 SubAgent 必须收到：board_token、图表目标、推荐画板类型、源内容片段、[`../../../lark-whiteboard/SKILL.md`](../../../lark-whiteboard/SKILL.md) 路径。它只负责写入画板，不改文档正文。

@@ -25,24 +25,30 @@
    - 用户明确要改整篇 → `docs +fetch --api-version v2 --detail with-ids`
    - 详见 [`lark-doc-fetch.md`](../lark-doc-fetch.md) "意图引导：选择正确的 --scope"
 2. 系统性评估：结构清晰度、富 block 密度（≥40%）、元素多样性（≥3种）、连续 `<p>` 是否超过 3 段、是否有开头 callout 和章节 `<hr/>`
-3. **画板意图识别**：逐章节扫描，按 `lark-doc-style.md`「画板意图识别」表判断哪些段落的信息适合用图表达。记录需要插图的章节（block ID）及推荐的画板类型
+3. **画板意图识别**：逐章节扫描，按 `lark-doc-style.md`「画板意图识别」表判断哪些段落的信息适合用图表达。重要信息优先画板化，记录需要插图的章节（block ID）、推荐画板类型、简单/复杂路径和源内容片段
 4. 向用户简要说明改进计划（包含识别出的画板机会）
 
 ### 第二波 — 定向改写（并行 Agent）
 
-5. Spawn Agent 在不重叠的章节上并行改进，各 Agent 收到文档 token 和特定 block ID：（见 `lark-doc-style.md`）
+5. **优先处理第一波识别出的画板候选段落**：
+   - 简单图：启动 SVG SubAgent，直接插入 `<whiteboard type="svg">完整 SVG</whiteboard>`；不读取 **lark-whiteboard**
+   - 复杂图：主 Agent 先插入 `<whiteboard type="blank"></whiteboard>` 并提取 `block_token`，再为每个 `block_token` 启动 SubAgent 使用 **lark-whiteboard** skill 写入画板
+6. Spawn 内容改写 Agent 在不重叠的章节上并行改进，各 Agent 收到文档 token 和特定 block ID：（见 `lark-doc-style.md`）
    - 开头适当添加 `<callout>`、重组引言
-   - 纯文本转为 `<grid>`/`<table>`/`<whiteboard>`
-   - **对第一波识别出的画板候选段落**：简单图直接 `<whiteboard type="mermaid|plantuml">`，复杂图 spawn Agent 使用 **lark-whiteboard** skill
-   - 添加流程图、对比分栏等富 block
+   - 纯文本转为 `<grid>`/`<table>`/`<callout>`
+   - 添加低重要度对比分栏、关键提示等富 block；画板类需求只走第 5 步
 
 ### 第三波 — 验证（串行）
 
-5. 获取更新后文档局部内容，重新检查样式指标
-6. 未达标则定向修正，向用户呈现结果
+7. 获取更新后文档局部内容，重新检查样式指标
+8. 未达标则定向修正，向用户呈现结果
 
 ## Agent 子任务要求
 
-Spawn Agent 时必须提供：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 和 `lark-doc-style.md` 路径、具体的 `docs +update` command 和 `--block-id`。
+内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 和 `lark-doc-style.md` 路径、具体的 `docs +update` command 和 `--block-id`。
+
+SVG SubAgent 必须收到：文档 token、插入位置（标题/block ID）、图表目标、源内容片段、`lark-doc-xml.md` 路径。它只负责插入一个 `<whiteboard type="svg">...</whiteboard>`，不改其他正文，也不读取 `lark-whiteboard`。
+
+复杂画板 SubAgent 必须收到：board_token、图表目标、推荐画板类型、源内容片段、[`../../../lark-whiteboard/SKILL.md`](../../../lark-whiteboard/SKILL.md) 路径。它只负责写入画板，不改文档正文。
 
 **上下文节省提示**：Agent 如需在自己负责的章节内重新读取内容，优先用 `docs +fetch --api-version v2 --scope section --start-block-id <章节标题id>`（自动覆盖整节），或 `--scope range --start-block-id xxx --end-block-id yyy` 精确区间，只拉自己的章节，不要重复拉全文。
