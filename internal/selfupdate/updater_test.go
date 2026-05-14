@@ -22,6 +22,7 @@ type executableTestFS struct {
 func (f executableTestFS) Executable() (string, error) { return f.exe, nil }
 
 // lookPathMock patches execLookPath within VerifyBinary for controlled testing.
+// Do not use t.Parallel() in tests that install this mock — it mutates a package-level var.
 type lookPathMock struct {
 	oldLookPath func(string) (string, error)
 	result      string
@@ -90,6 +91,14 @@ func TestVerifyBinaryLookPath(t *testing.T) {
 
 	if err := New().VerifyBinary("3.0.0"); err == nil {
 		t.Fatal("VerifyBinary(mismatched) expected error, got nil")
+	}
+
+	// Regression: version must match exactly (not substring / prefix).
+	if err := New().VerifyBinary("0.0"); err == nil {
+		t.Fatal("VerifyBinary(substring-style mismatch) expected error, got nil")
+	}
+	if err := New().VerifyBinary("12.1.0"); err == nil {
+		t.Fatal("VerifyBinary(prefix-style mismatch) expected error, got nil")
 	}
 }
 

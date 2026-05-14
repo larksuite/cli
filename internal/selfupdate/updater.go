@@ -17,6 +17,13 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
+// execLookPath is the LookPath implementation used by VerifyBinary.
+// It defaults to the standard library exec.LookPath but is swapped in tests
+// via lookPathMock to provide controlled binary resolution.
+//
+// Tests that mutate execLookPath must not call t.Parallel().
+var execLookPath = exec.LookPath
+
 // InstallMethod describes how the CLI was installed.
 type InstallMethod int
 
