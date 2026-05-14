@@ -228,6 +228,206 @@ func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
 	}
 }
 
+func TestDriveUploadLargeFileOverwriteUsesMultipart(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-large-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	prepareStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"upload_id":  "test-upload-id",
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize),
+				"block_num":  float64(2),
+			},
+		},
+	}
+	reg.Register(prepareStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "file_multipart_overwrite_token",
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	fh, err := os.Create("large.bin")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	err = mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "large.bin",
+		"--file-token", "box_existing_large_upload",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected multipart overwrite upload to succeed, got error: %v", err)
+	}
+
+	body := decodeCapturedJSONBody(t, prepareStub)
+	if got := body["file_token"]; got != "box_existing_large_upload" {
+		t.Fatalf("file_token = %#v, want %q", got, "box_existing_large_upload")
+	}
+}
+
+func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-large-overwrite-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"upload_id":  "test-upload-id",
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize),
+				"block_num":  float64(1),
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "file_multipart_overwrite_version_token",
+				"version":    "v44",
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	fh, err := os.Create("large.bin")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	err = mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "large.bin",
+		"--file-token", "box_existing_large_upload",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected multipart overwrite upload to succeed, got error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got := data["version"]; got != "v44" {
+		t.Fatalf("data.version = %#v, want %q", got, "v44")
+	}
+}
+
+func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-large-overwrite-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"upload_id":  "test-upload-id",
+				"block_size": float64(common.MaxDriveMediaUploadSinglePartSize),
+				"block_num":  float64(1),
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_part",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token":   "file_multipart_overwrite_alias_token",
+				"data_version": "v45",
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	fh, err := os.Create("large.bin")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	err = mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "large.bin",
+		"--file-token", "box_existing_large_upload",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected multipart overwrite upload to succeed, got error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got := data["version"]; got != "v45" {
+		t.Fatalf("data.version = %#v, want %q", got, "v45")
+	}
+}
+
 func TestDriveUploadSmallFile(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -264,6 +464,93 @@ func TestDriveUploadSmallFile(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "file_small_token") {
 		t.Fatalf("stdout missing file_token: %s", stdout.String())
+	}
+}
+
+func TestDriveUploadSmallFileOverwriteUsesFileToken(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-small-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "file_small_overwrite_token",
+				"version":    "v42",
+			},
+		},
+	}
+	reg.Register(stub)
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "small.bin",
+		"--file-token", "box_existing_small_upload",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected small overwrite upload to succeed, got error: %v", err)
+	}
+
+	body := decodeDriveMultipartBody(t, stub)
+	if got := body.Fields["file_token"]; got != "box_existing_small_upload" {
+		t.Fatalf("file_token = %q, want %q", got, "box_existing_small_upload")
+	}
+	data := decodeDriveEnvelope(t, stdout)
+	if got := data["version"]; got != "v42" {
+		t.Fatalf("data.version = %#v, want %q", got, "v42")
+	}
+}
+
+func TestDriveUploadReturnsVersionFromDataVersionAlias(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-small-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token":   "file_small_alias_token",
+				"data_version": "v43",
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "small.bin",
+		"--file-token", "box_existing_alias_upload",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected overwrite upload to succeed, got error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got := data["version"]; got != "v43" {
+		t.Fatalf("data.version = %#v, want %q", got, "v43")
 	}
 }
 
@@ -767,6 +1054,7 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 
 	cmd := &cobra.Command{Use: "drive +upload"}
 	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("wiki-token", "", "")
 	cmd.Flags().String("name", "", "")
@@ -812,6 +1100,7 @@ func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
 
 	cmd := &cobra.Command{Use: "drive +upload"}
 	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("wiki-token", "", "")
 	cmd.Flags().String("name", "", "")
@@ -820,6 +1109,9 @@ func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
 	}
 	if err := cmd.Flags().Set("folder-token", " fld_upload_target "); err != nil {
 		t.Fatalf("set --folder-token: %v", err)
+	}
+	if err := cmd.Flags().Set("file-token", " box_upload_target "); err != nil {
+		t.Fatalf("set --file-token: %v", err)
 	}
 	if err := cmd.Flags().Set("wiki-token", " wikcn_upload_target "); err != nil {
 		t.Fatalf("set --wiki-token: %v", err)
@@ -839,8 +1131,105 @@ func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
 	if got.FolderToken != "fld_upload_target" {
 		t.Fatalf("FolderToken = %q, want trimmed token", got.FolderToken)
 	}
+	if got.FileToken != "box_upload_target" {
+		t.Fatalf("FileToken = %q, want trimmed token", got.FileToken)
+	}
 	if got.WikiToken != "wikcn_upload_target" {
 		t.Fatalf("WikiToken = %q, want trimmed token", got.WikiToken)
+	}
+}
+
+func TestDriveUploadDryRunIncludesFileToken(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "./report.pdf"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("file-token", "boxcn_dryrun_overwrite"); err != nil {
+		t.Fatalf("set --file-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveUpload.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API []struct {
+			Body map[string]interface{} `json:"body"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if len(got.API) != 1 {
+		t.Fatalf("expected 1 API call, got %d", len(got.API))
+	}
+	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
+		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")
+	}
+}
+
+func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("as", "", "")
+	if err := cmd.Flags().Set("file", "./report.pdf"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("file-token", "boxcn_dryrun_overwrite"); err != nil {
+		t.Fatalf("set --file-token: %v", err)
+	}
+	if err := cmd.Flags().Set("as", "bot"); err != nil {
+		t.Fatalf("set --as: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveUpload.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API []struct {
+			Desc string                 `json:"desc"`
+			Body map[string]interface{} `json:"body"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if len(got.API) != 1 {
+		t.Fatalf("expected 1 API call, got %d", len(got.API))
+	}
+	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
+		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")
+	}
+	if strings.Contains(got.API[0].Desc, "grant the current CLI user full_access") {
+		t.Fatalf("dry-run desc should skip permission-grant hint for overwrite, got %q", got.API[0].Desc)
 	}
 }
 
@@ -901,6 +1290,7 @@ func TestDriveUploadValidateRejectsConflictingTargets(t *testing.T) {
 
 	cmd := &cobra.Command{Use: "drive +upload"}
 	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("wiki-token", "", "")
 	cmd.Flags().String("name", "", "")
@@ -923,6 +1313,7 @@ func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
 
 	cmd := &cobra.Command{Use: "drive +upload"}
 	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("wiki-token", "", "")
 	cmd.Flags().String("name", "", "")
@@ -940,11 +1331,35 @@ func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
 	}
 }
 
+func TestDriveUploadValidateRejectsExplicitEmptyFileToken(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("wiki-token", "", "")
+	cmd.Flags().String("name", "", "")
+	if err := cmd.Flags().Set("file", "report.pdf"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("file-token", "   "); err != nil {
+		t.Fatalf("set --file-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	err := DriveUpload.Validate(context.Background(), runtime)
+	if err == nil || !strings.Contains(err.Error(), "--file-token cannot be empty") {
+		t.Fatalf("Validate() error = %v, want empty file-token error", err)
+	}
+}
+
 func TestDriveUploadValidateRejectsExplicitEmptyFolderToken(t *testing.T) {
 	t.Parallel()
 
 	cmd := &cobra.Command{Use: "drive +upload"}
 	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("file-token", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("wiki-token", "", "")
 	cmd.Flags().String("name", "", "")
@@ -983,6 +1398,12 @@ func TestDriveUploadValidateRejectsInvalidTargetTokens(t *testing.T) {
 			value:   "wikcn_bad#fragment",
 			wantErr: "--wiki-token contains invalid characters",
 		},
+		{
+			name:    "file token",
+			flag:    "file-token",
+			value:   "box_bad?query=true",
+			wantErr: "--file-token contains invalid characters",
+		},
 	}
 
 	for _, tt := range tests {
@@ -991,6 +1412,7 @@ func TestDriveUploadValidateRejectsInvalidTargetTokens(t *testing.T) {
 
 			cmd := &cobra.Command{Use: "drive +upload"}
 			cmd.Flags().String("file", "", "")
+			cmd.Flags().String("file-token", "", "")
 			cmd.Flags().String("folder-token", "", "")
 			cmd.Flags().String("wiki-token", "", "")
 			cmd.Flags().String("name", "", "")

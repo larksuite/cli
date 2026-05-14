@@ -40,6 +40,31 @@ func TestDriveUploadDryRun_WikiTarget(t *testing.T) {
 	assert.Contains(t, output, `"parent_type": "wiki"`)
 }
 
+func TestDriveUploadDryRun_WithFileToken(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+upload",
+			"--file", "./report.pdf",
+			"--folder-token", "fldDryRunUploadTarget",
+			"--file-token", "boxcnDryRunOverwriteTarget",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, `"parent_node": "fldDryRunUploadTarget"`)
+	assert.Contains(t, output, `"file_token": "boxcnDryRunOverwriteTarget"`)
+}
+
 func TestDriveUploadDryRunRejectsEmptyWikiToken(t *testing.T) {
 	setDriveDryRunConfigEnv(t)
 

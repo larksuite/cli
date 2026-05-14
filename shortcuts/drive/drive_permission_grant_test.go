@@ -75,6 +75,48 @@ func TestDriveUploadBotAutoGrantSuccess(t *testing.T) {
 	}
 }
 
+func TestDriveUploadBotOverwriteSkipsPermissionGrant(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, "ou_current_user"))
+	registerDriveBotTokenStub(reg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"file_token": "file_uploaded",
+				"version":    "v2",
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("report.pdf", []byte("pdf"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload",
+		"--file", "report.pdf",
+		"--file-token", "file_uploaded",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if _, ok := data["permission_grant"]; ok {
+		t.Fatalf("did not expect permission_grant for overwrite output: %#v", data)
+	}
+	if got := data["version"]; got != "v2" {
+		t.Fatalf("version = %#v, want %q", got, "v2")
+	}
+}
+
 func TestDriveImportBotAutoGrantSuccess(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, "ou_current_user"))
 	registerDriveBotTokenStub(reg)
