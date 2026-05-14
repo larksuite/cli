@@ -481,6 +481,12 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 	if !strings.Contains(out, "npm install -g @larksuite/cli@2.0.0") {
 		t.Errorf("expected manual reinstall command in hint, got: %s", out)
 	}
+	if !strings.Contains(out, "skills will not be synced") {
+		t.Errorf("expected skills-not-synced warning in rollback hint, got: %s", out)
+	}
+	if !strings.Contains(out, "lark-cli update") {
+		t.Errorf("expected lark-cli update hint for skills sync, got: %s", out)
+	}
 }
 
 func TestUpdateCheck_JSON_Npm(t *testing.T) {

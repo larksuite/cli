@@ -227,7 +227,7 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", selfupdate.NpmPackage, latest)
+	fmt.Fprintf(io.ErrOut, "\nOr install via npm (note: skills will not be synced):\n  npm install -g %s@%s\n", selfupdate.NpmPackage, latest)
 	emitSkillsTextHints(io, skillsResult)
 	return nil
 }
@@ -324,7 +324,7 @@ func verificationFailureHint(updater *selfupdate.Updater, latest string) string 
 	if updater.CanRestorePreviousVersion() {
 		return "the previous version has been restored"
 	}
-	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually: npm install -g %s@%s, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
+	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s, or download %s; to sync skills afterward, run: lark-cli update", selfupdate.NpmPackage, latest, releaseURL(latest))
 }
 
 // runSkillsAndStamp triggers updater.RunSkillsUpdate and persists the
