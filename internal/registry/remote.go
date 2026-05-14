@@ -270,13 +270,6 @@ func triggerBackgroundRefresh() {
 	})
 }
 
-// waitBackgroundRefresh blocks until any in-flight background refresh started by
-// triggerBackgroundRefresh has finished. Tests use this via resetInit to avoid
-// races with package-level globals (configuredBrand, testMetaURL, etc.).
-func waitBackgroundRefresh() {
-	bgRefreshInFlight.Wait()
-}
-
 func doBackgroundRefresh() {
 	defer func() { _ = recover() }()
 	meta, _ := loadCacheMeta()

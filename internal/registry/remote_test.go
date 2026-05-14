@@ -17,6 +17,13 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
+// waitBackgroundRefresh blocks until any in-flight background refresh started by
+// triggerBackgroundRefresh has finished. Lives in this _test file so production
+// binaries cannot call it and accidentally block on test teardown state.
+func waitBackgroundRefresh() {
+	bgRefreshInFlight.Wait()
+}
+
 // resetInit resets the package-level state so each test starts fresh.
 func resetInit() {
 	// Must wait: a prior test's Init() may have started doBackgroundRefresh which
