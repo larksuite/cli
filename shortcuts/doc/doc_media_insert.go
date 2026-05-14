@@ -152,13 +152,14 @@ var DocMediaInsert = common.Shortcut{
 		heightChanged := runtime.Changed("height")
 
 		if (widthChanged || heightChanged) && !(widthChanged && heightChanged) {
-			// One dimension provided — try best-effort DecodeConfig for --file path.
-			if filePath != "<clipboard image>" {
-				if nativeW, nativeH, err := detectImageDimensionsFromPath(runtime.FileIO(), filePath); err == nil {
-					dims := computeMissingDimension(dryWidth, dryHeight, nativeW, nativeH)
-					dryWidth = dims.width
-					dryHeight = dims.height
-				}
+			if filePath == "<clipboard image>" {
+				fmt.Fprintf(runtime.IO().ErrOut, "Note: cannot detect clipboard image dimensions in dry-run; provide both --width and --height for accurate preview\n")
+			} else if nativeW, nativeH, err := detectImageDimensionsFromPath(runtime.FileIO(), filePath); err == nil {
+				dims := computeMissingDimension(dryWidth, dryHeight, nativeW, nativeH)
+				dryWidth = dims.width
+				dryHeight = dims.height
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut, "Note: unable to detect image dimensions from %s; provide both --width and --height to avoid failure at execution time\n", filePath)
 			}
 		}
 
