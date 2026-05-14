@@ -108,8 +108,40 @@ func TestVerifyBinaryLookPathNotFound(t *testing.T) {
 	mock.install("lark-cli")
 	t.Cleanup(mock.restore)
 
+	oldFS := vfs.DefaultFS
+	t.Cleanup(func() { vfs.DefaultFS = oldFS })
+	// Without this, VerifyBinary would fall back to the real test binary, which
+	// is not a lark-cli --version implementation.
+	vfs.DefaultFS = executableTestFS{exe: filepath.Join(t.TempDir(), "missing-lark-cli")}
+
 	if err := New().VerifyBinary("2.0.0"); err == nil {
 		t.Fatal("VerifyBinary(not-found) expected error, got nil")
+	}
+}
+
+func TestVerifyBinaryFallbackExecutableWhenNotOnPath(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell script")
+	}
+
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "lark-cli-abs")
+	script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"lark-cli version 2.1.0\"; exit 0; fi\nexit 12\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatalf("write test binary: %v", err)
+	}
+
+	mock := &lookPathMock{result: "", resultErr: fmt.Errorf("not on PATH")}
+	mock.install("lark-cli")
+	t.Cleanup(mock.restore)
+
+	oldFS := vfs.DefaultFS
+	t.Cleanup(func() { vfs.DefaultFS = oldFS })
+	vfs.DefaultFS = executableTestFS{exe: bin}
+
+	if err := New().VerifyBinary("2.1.0"); err != nil {
+		t.Fatalf("VerifyBinary(fallback executable) error = %v, want nil", err)
 	}
 }
 

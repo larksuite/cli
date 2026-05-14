@@ -193,13 +193,16 @@ func (u *Updater) VerifyBinary(expectedVersion string) error {
 	if u.VerifyOverride != nil {
 		return u.VerifyOverride(expectedVersion)
 	}
-	// Use LookPath to find the binary that will be invoked when the user
-	// runs "lark-cli" — this resolves through npm's bin symlink to the newly
-	// installed version, rather than os.Executable() which returns the
-	// running binary's inode (i.e. the old version before the update).
+	// Prefer PATH resolution so npm global bin symlinks pick up the newly
+	// installed binary (#836). If `lark-cli` is not on PATH (e.g. the user
+	// invoked this process by absolute path), fall back to the running
+	// executable — same as the pre-#836 secondary resolution path.
 	exe, err := execLookPath("lark-cli")
 	if err != nil {
-		return fmt.Errorf("cannot locate binary: %w", err)
+		exe, err = vfs.Executable()
+		if err != nil {
+			return fmt.Errorf("cannot locate binary: %w", err)
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), verifyTimeout)
 	defer cancel()
