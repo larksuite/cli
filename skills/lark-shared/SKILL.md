@@ -86,13 +86,9 @@ lark-cli 命令执行后，如果检测到新版本，JSON 输出中会包含 `_
    ```bash
    lark-cli update
    ```
-3. 如果 `lark-cli update` 失败，再尝试 npm fallback（注意：skills 不会同步）：
-   ```bash
-   npm install -g @larksuite/cli && npx skills add larksuite/cli -g -y
-   ```
-4. 更新完成后提醒用户：**退出并重新打开 AI Agent** 以加载最新 Skills
+3. 更新完成后提醒用户：**退出并重新打开 AI Agent** 以加载最新 Skills
 
-**重要**：不要直接使用 `npm install` 更新，它不会同步 AI Skills。始终优先使用 `lark-cli update`。
+**重要**：始终使用 `lark-cli update` 更新，它会同时更新 CLI 和 AI Skills。
 
 **规则**：不要静默忽略更新提示。即使当前任务与更新无关，也应在完成用户请求后补充告知。
 

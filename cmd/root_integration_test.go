@@ -661,11 +661,17 @@ func TestSetupNotices_BothUpdateAndSkills(t *testing.T) {
 	if _, ok := notice["skills"].(map[string]interface{}); !ok {
 		t.Errorf("missing 'skills' key: %+v", notice)
 	}
-	upd := notice["update"].(map[string]interface{})
+	upd, ok := notice["update"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("notice.update missing or wrong type: %+v", notice)
+	}
 	if cmd, _ := upd["command"].(string); cmd != "lark-cli update" {
 		t.Errorf("notice.update.command = %q, want %q", cmd, "lark-cli update")
 	}
-	sk := notice["skills"].(map[string]interface{})
+	sk, ok := notice["skills"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("notice.skills missing or wrong type: %+v", notice)
+	}
 	if cmd, _ := sk["command"].(string); cmd != "lark-cli update" {
 		t.Errorf("notice.skills.command = %q, want %q", cmd, "lark-cli update")
 	}
