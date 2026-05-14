@@ -70,6 +70,7 @@ func TestDrive_DuplicateRemoteWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
+		skipDriveStatusExactIfMissingDownloadScope(t, statusResult)
 		if statusResult.ExitCode == 0 {
 			t.Fatalf("+status should fail on duplicate remote rel_path\nstdout:\n%s\nstderr:\n%s", statusResult.Stdout, statusResult.Stderr)
 		}
@@ -191,6 +192,7 @@ func TestDrive_DuplicateRemoteWorkflow(t *testing.T) {
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
+		skipDriveStatusExactIfMissingDownloadScope(t, statusResult)
 		statusResult.AssertExitCode(t, 0)
 		statusResult.AssertStdoutStatus(t, true)
 		if got := gjson.Get(statusResult.Stdout, "data.unchanged.#").Int(); got != 1 {

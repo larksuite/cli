@@ -71,3 +71,37 @@ func TestScopesForIdentity_NilScopes(t *testing.T) {
 		t.Errorf("expected nil, got %v", got)
 	}
 }
+
+func TestConditionalScopesForIdentity_FallbackAndOverrides(t *testing.T) {
+	s := Shortcut{
+		ConditionalScopes:     []string{"c-default"},
+		ConditionalUserScopes: []string{"c-user"},
+		ConditionalBotScopes:  []string{"c-bot"},
+	}
+	if got := s.ConditionalScopesForIdentity("user"); !reflect.DeepEqual(got, []string{"c-user"}) {
+		t.Errorf("expected user conditional scopes, got %v", got)
+	}
+	if got := s.ConditionalScopesForIdentity("bot"); !reflect.DeepEqual(got, []string{"c-bot"}) {
+		t.Errorf("expected bot conditional scopes, got %v", got)
+	}
+	if got := s.ConditionalScopesForIdentity("tenant"); !reflect.DeepEqual(got, []string{"c-default"}) {
+		t.Errorf("expected default conditional scopes for unknown identity, got %v", got)
+	}
+}
+
+func TestDeclaredScopesForIdentity_MergesAndDeduplicates(t *testing.T) {
+	s := Shortcut{
+		Scopes:            []string{"base-a", "shared"},
+		ConditionalScopes: []string{"shared", "cond-b"},
+	}
+	if got := s.DeclaredScopesForIdentity("user"); !reflect.DeepEqual(got, []string{"base-a", "shared", "cond-b"}) {
+		t.Errorf("expected merged declared scopes, got %v", got)
+	}
+}
+
+func TestDeclaredScopesForIdentity_ConditionalOnly(t *testing.T) {
+	s := Shortcut{ConditionalScopes: []string{"cond-only"}}
+	if got := s.DeclaredScopesForIdentity("user"); !reflect.DeepEqual(got, []string{"cond-only"}) {
+		t.Errorf("expected conditional-only declared scopes, got %v", got)
+	}
+}

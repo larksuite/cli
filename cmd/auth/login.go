@@ -507,7 +507,7 @@ func collectScopesForDomains(domains []string, identity string) []string {
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
 	for _, sc := range shortcuts.AllShortcuts() {
 		if domainSet[sc.Service] && shortcutSupportsIdentity(sc, identity) {
-			for _, s := range sc.ScopesForIdentity(identity) {
+			for _, s := range sc.DeclaredScopesForIdentity(identity) {
 				scopeSet[s] = true
 			}
 		}

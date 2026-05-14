@@ -284,6 +284,32 @@ func TestEnrichMissingScopeError_ShortcutUsesDeclaredScopesWhenNoUAT(t *testing.
 	}
 }
 
+func TestEnrichMissingScopeError_ShortcutIncludesConditionalScopes(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "drive"}
+	shortcutCmd := &cobra.Command{Use: "+status"}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(shortcutCmd)
+	f.CurrentCommand = shortcutCmd
+
+	exitErr := output.ErrNetwork("API call failed: %s", &internalauth.NeedAuthorizationError{})
+	enrichMissingScopeError(f, exitErr)
+
+	if exitErr.Detail == nil {
+		t.Fatal("expected error detail")
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
+		t.Fatalf("expected conditional scope hint for drive +status, got %q", exitErr.Detail.Hint)
+	}
+}
+
 func TestEnrichMissingScopeError_AppendsExistingHint(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 

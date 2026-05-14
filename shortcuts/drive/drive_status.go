@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -26,8 +27,24 @@ type driveStatusEntry struct {
 	FileToken string `json:"file_token,omitempty"`
 }
 
+type driveStatusLocalFile struct {
+	PathToCwd string
+	ModTime   time.Time
+}
+
+type driveStatusRemoteFile struct {
+	FileToken    string
+	ModifiedTime string
+}
+
+const (
+	driveStatusDetectionExact = "exact"
+	driveStatusDetectionQuick = "quick"
+)
+
 // DriveStatus walks --local-dir, recursively lists --folder-token, and reports
-// four buckets (new_local, new_remote, modified, unchanged) by SHA-256 hash.
+// four buckets (new_local, new_remote, modified, unchanged) either by exact
+// SHA-256 hash (default) or by a quick modified_time comparison (--quick).
 //
 // Only Drive entries with type=file are compared; online docs (docx, sheet,
 // bitable, mindnote, slides) and shortcuts are skipped because there is no
@@ -37,19 +54,22 @@ type driveStatusEntry struct {
 // path that resolves outside cwd, which keeps the local side bounded to the
 // caller's working directory.
 var DriveStatus = common.Shortcut{
-	Service:     "drive",
-	Command:     "+status",
-	Description: "Compare a local directory with a Drive folder by content hash",
-	Risk:        "read",
-	Scopes:      []string{"drive:drive.metadata:readonly", "drive:file:download"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "drive",
+	Command:           "+status",
+	Description:       "Compare a local directory with a Drive folder by exact hash or quick modified_time",
+	Risk:              "read",
+	Scopes:            []string{"drive:drive.metadata:readonly"},
+	ConditionalScopes: []string{"drive:file:download"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "local-dir", Desc: "local root directory (relative to cwd)", Required: true},
 		{Name: "folder-token", Desc: "Drive folder token", Required: true},
+		{Name: "quick", Type: "bool", Desc: "compare modified_time only and skip remote downloads for files present on both sides"},
 	},
 	Tips: []string{
 		"Only entries with type=file are compared; online docs (docx, sheet, bitable, mindnote, slides) and shortcuts are skipped.",
-		"Files present on both sides are downloaded and SHA-256 hashed in memory to decide modified vs unchanged; expect noticeable I/O on large folders.",
+		"Default detection=exact downloads files present on both sides and SHA-256 hashes them in memory; expect noticeable I/O on large folders.",
+		"Pass --quick for the recommended fast preflight mode: it compares local mtime with Drive modified_time, skips remote downloads, and reports detection=quick as a best-effort diff.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
@@ -77,17 +97,37 @@ var DriveStatus = common.Shortcut{
 		if !info.IsDir() {
 			return output.ErrValidation("--local-dir is not a directory: %s", localDir)
 		}
+		// Conditional scope pre-check: quick mode only compares local mtime with
+		// Drive modified_time, so it must not be blocked on the download grant.
+		// Exact mode hashes remote bytes, which requires drive:file:download. Do
+		// the stricter check here once we know which execution path the flags
+		// selected. EnsureScopes is a silent no-op when scope metadata is
+		// unavailable, so environments without token scope introspection still
+		// proceed and rely on the API-level missing_scope error if needed.
+		if !runtime.Bool("quick") {
+			if err := runtime.EnsureScopes([]string{"drive:file:download"}); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		desc := "Walk --local-dir, recursively list --folder-token, and download files present on both sides to compare SHA-256."
+		if runtime.Bool("quick") {
+			desc = "Walk --local-dir, recursively list --folder-token, and compare local mtime with Drive modified_time for files present on both sides without downloading remote bytes."
+		}
 		return common.NewDryRunAPI().
-			Desc("Walk --local-dir, recursively list --folder-token, and download files present on both sides to compare SHA-256.").
+			Desc(desc).
 			GET("/open-apis/drive/v1/files").
 			Set("folder_token", runtime.Str("folder-token"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
 		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
+		detection := driveStatusDetectionExact
+		if runtime.Bool("quick") {
+			detection = driveStatusDetectionQuick
+		}
 
 		// Resolve --local-dir to its canonical absolute path before walking.
 		// SafeInputPath fully evaluates symlinks across the entire path,
@@ -112,7 +152,7 @@ var DriveStatus = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
-		localHashes, err := walkLocalForStatus(runtime, safeRoot, cwdCanonical)
+		localFiles, err := walkLocalForStatus(safeRoot, cwdCanonical)
 		if err != nil {
 			return err
 		}
@@ -130,30 +170,42 @@ var DriveStatus = common.Shortcut{
 		// hashable bytes and are intentionally absent from the diff
 		// view (a docx living next to a same-named local file is a
 		// known no-op).
-		remoteFiles := make(map[string]string, len(entries))
+		remoteFiles := make(map[string]driveStatusRemoteFile, len(entries))
 		for _, entry := range entries {
 			if entry.Type == driveTypeFile {
-				remoteFiles[entry.RelPath] = entry.FileToken
+				remoteFiles[entry.RelPath] = driveStatusRemoteFile{FileToken: entry.FileToken, ModifiedTime: entry.ModifiedTime}
 			}
 		}
 
-		paths := mergeStatusPaths(localHashes, remoteFiles)
+		paths := mergeStatusPaths(localFiles, remoteFiles)
 
 		var newLocal, newRemote, modified, unchanged []driveStatusEntry
 		for _, relPath := range paths {
-			localHash, hasLocal := localHashes[relPath]
-			remoteToken, hasRemote := remoteFiles[relPath]
+			localFile, hasLocal := localFiles[relPath]
+			remoteFile, hasRemote := remoteFiles[relPath]
 			switch {
 			case hasLocal && !hasRemote:
 				newLocal = append(newLocal, driveStatusEntry{RelPath: relPath})
 			case !hasLocal && hasRemote:
-				newRemote = append(newRemote, driveStatusEntry{RelPath: relPath, FileToken: remoteToken})
+				newRemote = append(newRemote, driveStatusEntry{RelPath: relPath, FileToken: remoteFile.FileToken})
 			default:
-				remoteHash, err := hashRemoteForStatus(ctx, runtime, remoteToken)
+				entry := driveStatusEntry{RelPath: relPath, FileToken: remoteFile.FileToken}
+				if detection == driveStatusDetectionQuick {
+					if driveStatusShouldTreatAsUnchangedQuick(remoteFile.ModifiedTime, localFile.ModTime) {
+						unchanged = append(unchanged, entry)
+					} else {
+						modified = append(modified, entry)
+					}
+					continue
+				}
+				localHash, err := hashLocalForStatus(runtime, localFile.PathToCwd)
 				if err != nil {
 					return err
 				}
-				entry := driveStatusEntry{RelPath: relPath, FileToken: remoteToken}
+				remoteHash, err := hashRemoteForStatus(ctx, runtime, remoteFile.FileToken)
+				if err != nil {
+					return err
+				}
 				if localHash == remoteHash {
 					unchanged = append(unchanged, entry)
 				} else {
@@ -163,6 +215,7 @@ var DriveStatus = common.Shortcut{
 		}
 
 		runtime.Out(map[string]interface{}{
+			"detection":  detection,
 			"new_local":  emptyIfNil(newLocal),
 			"new_remote": emptyIfNil(newRemote),
 			"modified":   emptyIfNil(modified),
@@ -180,8 +233,8 @@ var DriveStatus = common.Shortcut{
 // hit, we report rel_path relative to root for the JSON output, and
 // convert the absolute path to a cwd-relative form so FileIO.Open's
 // SafeInputPath check (which rejects absolute paths) still applies.
-func walkLocalForStatus(runtime *common.RuntimeContext, root, cwdCanonical string) (map[string]string, error) {
-	files := make(map[string]string)
+func walkLocalForStatus(root, cwdCanonical string) (map[string]driveStatusLocalFile, error) {
+	files := make(map[string]driveStatusLocalFile)
 	// FileIO has no walker today and shortcuts can't import internal/vfs.
 	// The walk root is the canonical absolute path returned by
 	// validate.SafeInputPath, so it is no longer a symlink itself, and
@@ -202,17 +255,22 @@ func walkLocalForStatus(runtime *common.RuntimeContext, root, cwdCanonical strin
 		if err != nil {
 			return err
 		}
-		sum, err := hashLocalForStatus(runtime, relToCwd)
+		info, err := d.Info()
 		if err != nil {
 			return err
 		}
-		files[filepath.ToSlash(rel)] = sum
+		files[filepath.ToSlash(rel)] = driveStatusLocalFile{PathToCwd: relToCwd, ModTime: info.ModTime()}
 		return nil
 	})
 	if err != nil {
 		return nil, output.Errorf(output.ExitInternal, "io", "walk %s: %s", root, err)
 	}
 	return files, nil
+}
+
+func driveStatusShouldTreatAsUnchangedQuick(remoteModified string, local time.Time) bool {
+	cmp, ok := compareDriveRemoteModifiedToLocal(remoteModified, local)
+	return ok && cmp == 0
 }
 
 func hashLocalForStatus(runtime *common.RuntimeContext, path string) (string, error) {
@@ -244,7 +302,7 @@ func hashRemoteForStatus(ctx context.Context, runtime *common.RuntimeContext, fi
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func mergeStatusPaths(local, remote map[string]string) []string {
+func mergeStatusPaths(local map[string]driveStatusLocalFile, remote map[string]driveStatusRemoteFile) []string {
 	seen := make(map[string]struct{}, len(local)+len(remote))
 	for p := range local {
 		seen[p] = struct{}{}

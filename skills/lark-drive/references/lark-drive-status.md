@@ -3,16 +3,19 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-按 SHA-256 内容哈希比较本地目录与飞书云空间文件夹，输出四类差异：
+按 **精确 SHA-256**（默认）或 **快速 modified_time**（`--quick`）比较本地目录与飞书云空间文件夹，输出四类差异：
 
 | 字段 | 含义 |
 |------|------|
 | `new_local` | 仅本地存在 |
 | `new_remote` | 仅云端存在 |
-| `modified` | 双端都存在但 hash 不一致 |
-| `unchanged` | 双端都存在且 hash 一致 |
+| `modified` | 双端都存在且本次检测判定为已变更：`detection=exact` 时表示 hash 不一致；`detection=quick` 时表示本地 mtime 与远端 `modified_time` 不一致，或远端时间戳不可可信 |
+| `unchanged` | 双端都存在且本次检测判定为未变更：`detection=exact` 时表示 hash 一致；`detection=quick` 时表示本地 mtime 与远端 `modified_time` 相等 |
 
-只读命令：流式 hash，不下载落盘；但双端都有的文件会从云端拉一份字节流过来在内存里算 hash，大目录 / 大文件会有可观的网络流量。
+只读命令：
+
+- 默认 `detection=exact`：双端都有的文件会从云端拉一份字节流过来在内存里算 hash，不下载落盘，但大目录 / 大文件会有可观的网络流量。
+- 传 `--quick` 后 `detection=quick`：只比较本地 mtime 与远端 `modified_time`，**不下载远端文件内容**，适合先做快速预检查；它是 best-effort，不等同于严格内容一致性判断。
 
 ## 远端同名文件冲突
 
@@ -26,7 +29,13 @@ lark-cli drive +status \
   --local-dir ./repo \
   --folder-token fldcnxxxxxxxxx
 
-# 只看 hash 不一致的项（结合 --jq 过滤）
+# 快速模式 —— 只比较 modified_time，不下载远端文件内容
+lark-cli drive +status \
+  --local-dir ./repo \
+  --folder-token fldcnxxxxxxxxx \
+  --quick
+
+# 只看判定为 modified 的项（exact=hash 不一致；quick=mtime 不一致）（结合 --jq 过滤）
 lark-cli drive +status \
   --local-dir ./repo \
   --folder-token fldcnxxxxxxxxx \
@@ -39,6 +48,7 @@ lark-cli drive +status \
 |------|------|------|------|
 | `--local-dir` | 是 | path | 本地根目录（**必须是 cwd 的相对路径**；绝对路径或逃逸到 cwd 外的相对路径会被 CLI 直接拒绝） |
 | `--folder-token` | 是 | string | Drive 文件夹 token |
+| `--quick` | 否 | bool | 快速模式：只比较本地 mtime 与远端 `modified_time`，跳过远端下载和 SHA-256 计算；输出里的 `detection` 会变成 `quick` |
 
 ## 输出 schema
 
@@ -46,12 +56,18 @@ lark-cli drive +status \
 
 ```json
 {
+  "detection":  "exact",
   "new_local":  [{"rel_path": "..."}],
   "new_remote": [{"rel_path": "...", "file_token": "..."}],
   "modified":   [{"rel_path": "...", "file_token": "..."}],
   "unchanged":  [{"rel_path": "...", "file_token": "..."}]
 }
 ```
+
+其中：
+
+- `detection=exact`：默认模式，双端都有的文件会下载远端字节流并做 SHA-256 比较。
+- `detection=quick`：`--quick` 模式，只按本地 mtime 与远端 `modified_time` 做 best-effort 判断。
 
 `rel_path` 始终用 `/` 作为分隔符（跨平台一致），相对于 `--local-dir` 或 `--folder-token` 的根。仅本地存在时没有 `file_token` 字段。
 
@@ -84,6 +100,7 @@ lark-cli drive +status \
 - 子文件夹会递归遍历；rel_path 形如 `sub1/sub2/file.txt`。
 - 多个远端条目映射到同一个 rel_path 时不做隐式选择，默认失败。
 - 本地侧只比对常规文件（regular file）；符号链接、设备文件等被忽略。
+- `--quick` 模式下，双端都有的文件只在 **远端时间精度** 下比较 `modified_time` / 本地 mtime：相等才记为 `unchanged`，否则记为 `modified`；远端时间戳缺失或非法时，走保守路径记为 `modified`，不会盲判 `unchanged`。
 
 ## 范围限制
 
@@ -99,9 +116,10 @@ lark-cli drive +status \
 
 ## 性能注意
 
-- `unchanged` + `modified` 的总字节数 = 本次需从云端下载的流量。100GB 的双端共享内容意味着 100GB 网络往返。
+- 默认 `detection=exact` 下，`unchanged` + `modified` 的总字节数 = 本次需从云端下载的流量。100GB 的双端共享内容意味着 100GB 网络往返。
+- `--quick` / `detection=quick` 下，不会下载双端共有文件的远端内容，执行时间更接近 `O(文件数量)`，而不是 `O(总文件大小)`。
 - 仅一侧存在的文件不会被下载。
-- Hash 计算在内存里流式做（io.Copy → sha256.New），不会把云端文件落到磁盘。
+- 默认模式的 hash 计算在内存里流式做（io.Copy → sha256.New），不会把云端文件落到磁盘。
 
 ## 所需 scope
 
@@ -110,7 +128,7 @@ lark-cli drive +status \
 | 列出文件夹 / 子目录 | `drive:drive.metadata:readonly` |
 | 下载并 hash 文件 | `drive:file:download` |
 
-如果当前 token 缺这些 scope，命令会直接报 `missing_scope` 并提示重新登录。`drive:drive` 在部分企业被策略禁用，所以 +status 故意只声明上面这两个细粒度 scope。
+默认会先要求 `drive:drive.metadata:readonly`。在 `detection=exact` 路径（默认，不传 `--quick`）下，CLI 还会额外要求 `drive:file:download`；传 `--quick` 时不会要求下载 scope。如果当前 token 缺本次执行路径需要的 scope，命令会报 `missing_scope` 并提示重新登录。`drive:drive` 在部分企业被策略禁用，所以 +status 故意只依赖上面这些细粒度 scope。
 
 ## 参考
 

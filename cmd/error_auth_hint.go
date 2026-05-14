@@ -75,7 +75,7 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 		if sc.Service != service || sc.Command != cmd.Name() || !shortcutSupportsIdentity(sc, identity) {
 			continue
 		}
-		scopes := sc.ScopesForIdentity(identity)
+		scopes := sc.DeclaredScopesForIdentity(identity)
 		if len(scopes) == 0 {
 			return nil
 		}

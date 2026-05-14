@@ -70,6 +70,50 @@ func TestDrive_StatusDryRun(t *testing.T) {
 	}
 }
 
+func TestDrive_StatusDryRunQuick(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, "local"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+status",
+			"--local-dir", "local",
+			"--folder-token", "fldcnE2E001",
+			"--quick",
+			"--dry-run",
+		},
+		WorkDir:   workDir,
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
+		t.Fatalf("method = %q, want GET\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/drive/v1/files" {
+		t.Fatalf("url = %q, want /open-apis/drive/v1/files\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "folder_token").String(); got != "fldcnE2E001" {
+		t.Fatalf("folder_token = %q, want fldcnE2E001\nstdout:\n%s", got, out)
+	}
+	desc := gjson.Get(out, "description").String()
+	if !strings.Contains(desc, "modified_time") || strings.Contains(desc, "SHA-256") {
+		t.Fatalf("quick description must mention modified_time and skip SHA-256 wording, got %q\nstdout:\n%s", desc, out)
+	}
+}
+
 // TestDrive_StatusDryRunRejectsAbsoluteLocalDir confirms that the
 // --local-dir path validator runs in the real binary's Validate stage and
 // surfaces a structured error referencing --local-dir (not the framework
