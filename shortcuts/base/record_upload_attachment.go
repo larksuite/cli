@@ -392,13 +392,6 @@ func normalizeAttachmentFileTokens(tokens []string) ([]string, error) {
 	})
 }
 
-func normalizeOptionalAttachmentFileTokens(tokens []string) ([]string, error) {
-	if len(tokens) == 0 {
-		return nil, nil
-	}
-	return normalizeAttachmentFileTokens(tokens)
-}
-
 func normalizeOptionalDownloadAttachmentFileTokens(tokens []string) ([]string, error) {
 	if len(tokens) == 0 {
 		return nil, nil
