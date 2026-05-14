@@ -33,7 +33,7 @@
 
 ### 第三波 — 整合审查 + 画板意图识别（串行）
 
-5. `docs +fetch --detail with-ids` 获取文档，审查整体效果
+5. `docs +fetch --api-version v2 --detail with-ids` 获取文档，审查整体效果
 6. 评估样式达标（富 block 密度、元素多样性、连续 `<p>` 数量）
 7. **画板意图识别**：逐章节扫描，按 `lark-doc-style.md`「画板意图识别」表判断是否有段落适合用图表达。记录需要插图的章节及推荐的画板类型
 

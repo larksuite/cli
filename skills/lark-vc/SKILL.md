@@ -60,7 +60,7 @@ lark-cli schema drive.metas.batch_query
 # 批量获取文档基本信息: 一次最多查询 10 个文档
 lark-cli drive metas batch_query --data '{"request_docs": [{"doc_type": "docx", "doc_token": "<doc_token>"}], "with_url": true}'
 ```
-3. 需要获取文档内容时，使用 `lark-cli docs +fetch`。
+3. 需要获取文档内容时，使用 `lark-cli docs +fetch --api-version v2`。
 ```bash
 # 获取文档内容
 lark-cli docs +fetch --api-version v2 --doc <doc_token> --doc-format markdown
@@ -79,7 +79,7 @@ lark-cli vc meeting get --params '{"meeting_id":"<meeting_id>","with_participant
 | 用户意图 | 推荐命令 | 所在 skill |
 |---------|---------|--------|
 | 参会人快照（谁参加过、何时入/离会，任意时点）| `vc meeting get --with-participants` | 本 skill |
-| 已结束会议的发言内容 | `vc +notes` 取 `verbatim_doc_token` 再 `docs +fetch` | 本 skill |
+| 已结束会议的发言内容 | `vc +notes` 取 `verbatim_doc_token` 再 `docs +fetch --api-version v2` | 本 skill |
 | **进行中会议**的实时事件流（转写、聊天、共享、会中加入/离开）| `vc +meeting-events` | [`lark-vc-agent`](../lark-vc-agent/SKILL.md) |
 | **Agent 真实入会 / 离会** | `vc +meeting-join` / `vc +meeting-leave` | [`lark-vc-agent`](../lark-vc-agent/SKILL.md) |
 

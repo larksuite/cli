@@ -117,7 +117,7 @@ Drive Folder (云空间文件夹)
 
 | 操作 | 需要的 Token | 说明 |
 |------|-------------|------|
-| 读取文档内容 | `file_token` / 通过 `docs +fetch --api-version v2` 自动处理 | `docs +fetch` 支持直接传入 URL |
+| 读取文档内容 | `file_token` / 通过 `docs +fetch --api-version v2` 自动处理 | `docs +fetch --api-version v2` 支持直接传入 URL |
 | 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`slides` 仅支持 block_id，且都支持最终解析到对应类型的 wiki URL |
 | 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL |
 | 下载文件 | `file_token` | 从文件 URL 中直接提取 |

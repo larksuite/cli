@@ -54,7 +54,7 @@ metadata:
 | 用户给了什么 | 怎么获取 |
 |---|---|
 | 直接给了 whiteboard token（`wbcnXXX`）| 直接使用 |
-| 文档 URL 或 doc_id，文档中已有画板 | `lark-cli docs +fetch --doc <URL> --as user`，从返回的 `<whiteboard token="xxx"/>` 提取 |
+| 文档 URL 或 doc_id，文档中已有画板 | `lark-cli docs +fetch --api-version v2 --doc <URL> --as user`，从返回的 `<whiteboard token="xxx"/>` 提取 |
 | 文档 URL 或 doc_id，需要新建画板 | `lark-cli docs +update --api-version v2 --doc <doc_id> --command append --content '<whiteboard type="blank"></whiteboard>' --as user`，从响应 `data.new_blocks[0].block_token` 取得（`block_type == "whiteboard"` 的那条；参数详见 lark-doc SKILL.md）|
 
 **Step 2：渲染 & 写入**

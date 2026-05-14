@@ -86,8 +86,8 @@ Drive Folder (云空间文件夹)
 
 ## 重要说明：画板编辑
 > **⚠️ lark-doc skill 不能直接编辑已有画板内容，但 `docs +update` 可以新建空白画板**
-### 场景 1：已通过 docs +fetch 获取到文档内容和画板 token
-如果用户已经通过 `docs +fetch` 拉取了文档内容，并且文档中已有画板（返回的 markdown 中包含 `<whiteboard token="xxx"/>` 标签），请引导用户：
+### 场景 1：已通过 docs +fetch --api-version v2 获取到文档内容和画板 token
+如果用户已经通过 `docs +fetch --api-version v2` 拉取了文档内容，并且文档中已有画板（返回的 markdown 中包含 `<whiteboard token="xxx"/>` 标签），请引导用户：
 1. 记录画板的 token
 2. 查看 [`../lark-whiteboard/SKILL.md`](../lark-whiteboard/SKILL.md) 了解如何编辑画板内容
 ### 场景 2：刚创建画板，需要编辑
