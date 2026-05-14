@@ -64,15 +64,15 @@ This means `--markdown` is convenient, but it is not a full-fidelity Markdown tr
 - Block spacing and line breaks may be normalized during conversion.
 - Code blocks are preserved as code blocks.
 - Excess blank lines are compressed.
-- Only already-uploaded `img_xxx` Markdown images are kept reliably.
-- Local paths in Markdown image syntax like `![x](./a.png)` are **not** supported.
-- If remote Markdown image download/upload fails, that image is removed with a warning.
+- Already-uploaded `img_xxx` image keys are the most reliable Markdown image input.
+- Local paths in Markdown image syntax like `![x](./a.png)` are **not** supported and will not be auto-uploaded.
+- Remote URLs (`https://...`) will be auto-downloaded and uploaded at runtime; if the download or upload fails, the image is removed with a warning.
 
 If any of the above is unacceptable, do **not** use `--markdown`; use `--content` and provide the final JSON yourself.
 
 ### Image Constraint for `--markdown`
 
-When using `--markdown` and the message content includes images, you **must** first upload the image via `images.create` to obtain an `image_key`, then reference it as `![alt](img_xxx)`.
+When using `--markdown` with images, prefer pre-uploading via `images.create` and referencing `![alt](img_xxx)` for predictable results. Remote URLs may work but are not guaranteed.
 
 **Steps:**
 
@@ -198,7 +198,7 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - Choosing `--markdown` when you actually need exact plain text. If exact line breaks and spacing matter, use `--text`, usually with `$'...'`.
 - Assuming `--markdown` supports all Markdown features. It does not; it is converted into a Feishu `post` payload and rewritten first.
 - Putting local image paths inside Markdown like `![x](./a.png)`. `--markdown` does not auto-upload those paths.
-- **Using `--markdown` with images without first uploading via `images.create`.** All images must be pre-uploaded to obtain an `image_key`. Neither local paths nor remote URLs can be used directly — otherwise the image will be replaced with placeholder text.
+- **Using local file paths inside Markdown image syntax** (e.g. `![x](./a.png)`) with `--markdown`. Local paths are not auto-uploaded and will not render as an image. Pre-upload via `images.create` to get an `image_key` instead.
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
@@ -248,4 +248,4 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the message is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT) and requires the `im:message:send_as_bot` scope
 - When sending as a bot, the app must already be in the target group or already have a direct-message relationship with the target user
-- When using `--markdown` with images, all images must be uploaded via `images.create` first to obtain an `image_key`; local paths and remote URLs are not supported as image links directly
+- When using `--markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the image is removed with a warning; local paths are not supported
