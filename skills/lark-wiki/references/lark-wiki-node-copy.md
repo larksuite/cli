@@ -27,7 +27,7 @@ lark-cli wiki +node-copy \
 | `--title` | No | New title for the copied node. Omit to keep the original title |
 | `--yes` | **Yes** | Confirm the high-risk operation. Without this flag the shortcut refuses to send the API request |
 | `--format` | No | Output format: `json` (default) / `pretty` / `table` / `csv` / `ndjson` |
-| `--as` | No | Identity: `user` or `bot` (default: `user`) |
+| `--as` | No | Identity `user`/`bot` (default `auto`); wiki is user-centric → pass `--as user` |
 
 > At least one of `--target-space-id` or `--target-parent-node-token` must be provided.
 

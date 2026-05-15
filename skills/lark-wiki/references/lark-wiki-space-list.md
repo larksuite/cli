@@ -31,7 +31,7 @@ lark-cli wiki +space-list --format table
 | `--page-all` | bool | `false` | Automatically paginate through all pages (capped by `--page-limit`) |
 | `--page-limit` | int | 10 | Max pages with `--page-all` (0 = unlimited) |
 | `--format` | enum | `json` | `json` / `pretty` / `table` / `csv` / `ndjson` |
-| `--as` | enum | `user` | Identity: `user` or `bot` |
+| `--as` | enum | `auto` | Identity `user`/`bot`; wiki is user-centric → pass `--as user` |
 
 ## Output
 

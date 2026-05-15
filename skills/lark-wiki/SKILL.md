@@ -18,6 +18,10 @@ metadata:
 > - 遇到“部门 + --as bot”时，禁止先调用 `lark-cli wiki members create` 试错；直接说明该路径不可行。
 > - 如果用户明确要求“以 bot 身份运行”，且目标是部门，必须停下说明 bot 路径无法完成，不要静默切到 `--as user`。
 
+## 身份选择：优先使用 user 身份
+
+知识空间和节点都是用户的个人资源，**策略上应优先显式使用 `--as user`**（CLI 的 `--as` 默认值为 `auto`，不带 `--as` 时常被解析成 `bot`，列出的是应用所属空间而非用户的）。仅当用户明确要求“应用 / bot 视角”时才用 `--as bot`（仍受上面的成员管理硬限制约束）。
+
 ## 快速决策
 
 - 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark-cli wiki spaces get_node --params '{"token":"<wiki_token>"}'` 获取 `space_id`，后续成员接口统一使用 `space_id`。
