@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 // ResolveInput resolves special input conventions for a raw flag value:
@@ -80,6 +83,19 @@ func ResolveInput(raw string, stdin io.Reader, fileIO fileio.FileIO) (string, er
 func ReadInputFile(fileIO fileio.FileIO, path string) ([]byte, error) {
 	if fileIO == nil {
 		return nil, fmt.Errorf("file input is not available in this context")
+	}
+	// For absolute paths, use os.Open directly after safety validation.
+	// This allows agents and scripts to use /tmp/ and other absolute paths.
+	if filepath.IsAbs(path) {
+		safePath, err := localfileio.SafeAbsoluteInputPath(path)
+		if err != nil {
+			return nil, wrapInputFileError(path, err)
+		}
+		data, err := os.ReadFile(safePath)
+		if err != nil {
+			return nil, wrapInputFileError(path, err)
+		}
+		return data, nil
 	}
 	f, err := fileIO.Open(path)
 	if err != nil {

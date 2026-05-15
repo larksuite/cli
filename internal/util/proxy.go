@@ -58,9 +58,14 @@ func redactProxyURL(raw string) string {
 // WarnIfProxied prints a one-time warning to w when a proxy environment variable
 // is detected and proxy is not disabled via LARK_CLI_NO_PROXY. Proxy credentials
 // are redacted. Safe to call multiple times; only the first call prints.
+// Suppressed when LARK_CLI_NO_PROXY_WARNING is set, or in CI environments.
 func WarnIfProxied(w io.Writer) {
 	proxyWarningOnce.Do(func() {
 		if os.Getenv(EnvNoProxy) != "" {
+			return
+		}
+		// Suppress proxy warning when explicitly requested or in CI.
+		if os.Getenv("LARK_CLI_NO_PROXY_WARNING") != "" || os.Getenv("CI") != "" {
 			return
 		}
 		key, val := DetectProxyEnv()
