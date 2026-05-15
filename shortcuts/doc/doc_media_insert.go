@@ -379,15 +379,15 @@ var DocMediaInsert = common.Shortcut{
 				} else {
 					f, openErr := runtime.FileIO().Open(filePath)
 					if openErr != nil {
-						return output.ErrValidation(
-							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName)
+						return withRollbackWarning(output.ErrValidation(
+							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
 					}
 					nativeW, nativeH, dimErr = detectImageDimensions(f)
 					f.Close()
 				}
 				if dimErr != nil {
-					return output.ErrValidation(
-						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName)
+					return withRollbackWarning(output.ErrValidation(
+						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
 				}
 				dims := computeMissingDimension(userWidth, userHeight, nativeW, nativeH)
 				finalWidth = dims.width
