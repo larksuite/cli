@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	wikiSpaceListAPIPath         = "/open-apis/wiki/v2/spaces"
+	wikiSpacesAPIPath            = "/open-apis/wiki/v2/spaces"
 	wikiSpaceListDefaultPageSize = 50
 	wikiSpaceListMaxPageSize     = 50
 )
@@ -59,7 +59,7 @@ var WikiSpaceList = common.Shortcut{
 		if wikiListShouldAutoPaginate(runtime) {
 			dry.Desc("Auto-paginates through all pages (capped by --page-limit when > 0)")
 		}
-		return dry.GET(wikiSpaceListAPIPath).Params(params)
+		return dry.GET(wikiSpacesAPIPath).Params(params)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		warnIfConflictingPagingFlags(runtime)
@@ -103,7 +103,7 @@ func fetchWikiSpaces(runtime *common.RuntimeContext) ([]map[string]interface{}, 
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
-		data, err := runtime.CallAPI("GET", wikiSpaceListAPIPath, params, nil)
+		data, err := runtime.CallAPI("GET", wikiSpacesAPIPath, params, nil)
 		if err != nil {
 			return nil, false, "", err
 		}

@@ -5,7 +5,6 @@ package wiki
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -21,10 +20,12 @@ var (
 	wikiDeleteSpacePollInterval = 2 * time.Second
 )
 
+// Back-compat aliases — the shared async-task helper now owns the strings,
+// but tests still reference these names.
 const (
-	wikiDeleteSpaceStatusSuccess    = "success"
-	wikiDeleteSpaceStatusFailure    = "failure"
-	wikiDeleteSpaceStatusProcessing = "processing"
+	wikiDeleteSpaceStatusSuccess    = wikiAsyncStatusSuccess
+	wikiDeleteSpaceStatusFailure    = wikiAsyncStatusFailure
+	wikiDeleteSpaceStatusProcessing = wikiAsyncStatusProcessing
 )
 
 // WikiDeleteSpace deletes a wiki space. The DELETE endpoint may complete
@@ -73,48 +74,10 @@ type wikiDeleteSpaceResponse struct {
 	TaskID string
 }
 
-type wikiDeleteSpaceTaskStatus struct {
-	TaskID    string
-	Status    string
-	StatusMsg string
-}
-
-// normalizedStatus collapses whitespace and case so "  SUCCESS  " is
-// classified the same as "success". Ready / Failed / StatusCode all derive
-// from this so classification and the output `status` field can't disagree.
-func (s wikiDeleteSpaceTaskStatus) normalizedStatus() string {
-	return strings.ToLower(strings.TrimSpace(s.Status))
-}
-
-func (s wikiDeleteSpaceTaskStatus) Ready() bool {
-	return s.normalizedStatus() == wikiDeleteSpaceStatusSuccess
-}
-
-func (s wikiDeleteSpaceTaskStatus) Failed() bool {
-	// The sample protocol only documents "success" as a terminal OK. Treat any
-	// explicit "failure"/"failed" signal as terminal, and unknown non-success
-	// values as still-processing so we don't misreport a novel status as a hard
-	// failure.
-	lowered := s.normalizedStatus()
-	return lowered == wikiDeleteSpaceStatusFailure || lowered == "failed"
-}
-
-// StatusCode returns a never-empty status value for the output envelope. If
-// the backend response omits delete_space_result.status (or sends whitespace),
-// fall back to "processing" so the documented timeout-shape stays accurate.
-func (s wikiDeleteSpaceTaskStatus) StatusCode() string {
-	if status := strings.TrimSpace(s.Status); status != "" {
-		return status
-	}
-	return wikiDeleteSpaceStatusProcessing
-}
-
-func (s wikiDeleteSpaceTaskStatus) StatusLabel() string {
-	if msg := strings.TrimSpace(s.StatusMsg); msg != "" {
-		return msg
-	}
-	return s.StatusCode()
-}
+// wikiDeleteSpaceTaskStatus is an alias for the shared wiki async-task shape;
+// kept as a named type for the existing test surface. delete-node uses the
+// same type directly under its real name (wikiAsyncTaskStatus).
+type wikiDeleteSpaceTaskStatus = wikiAsyncTaskStatus
 
 type wikiDeleteSpaceClient interface {
 	DeleteSpace(ctx context.Context, spaceID string) (*wikiDeleteSpaceResponse, error)
@@ -150,7 +113,7 @@ func (api wikiDeleteSpaceAPI) GetDeleteSpaceTask(ctx context.Context, taskID str
 	if err != nil {
 		return wikiDeleteSpaceTaskStatus{}, err
 	}
-	return parseWikiDeleteSpaceTaskStatus(taskID, common.GetMap(data, "task"))
+	return parseWikiAsyncTaskStatus(taskID, common.GetMap(data, "task"), wikiAsyncResultDeleteSpace)
 }
 
 func readWikiDeleteSpaceSpec(runtime *common.RuntimeContext) wikiDeleteSpaceSpec {
@@ -237,77 +200,18 @@ func wikiDeleteSpaceTaskResultCommand(taskID string, identity core.Identity) str
 }
 
 func pollWikiDeleteSpaceTask(ctx context.Context, client wikiDeleteSpaceClient, runtime *common.RuntimeContext, taskID string) (wikiDeleteSpaceTaskStatus, bool, error) {
-	lastStatus := wikiDeleteSpaceTaskStatus{TaskID: taskID}
-	var lastErr error
-	hadSuccessfulPoll := false
-
-	// The delete request already succeeded. Treat poll failures as transient
-	// until every attempt fails, then return a resume hint instead of discarding
-	// the task identifier.
-	for attempt := 1; attempt <= wikiDeleteSpacePollAttempts; attempt++ {
-		if attempt > 1 {
-			select {
-			case <-ctx.Done():
-				return lastStatus, false, ctx.Err()
-			case <-time.After(wikiDeleteSpacePollInterval):
-			}
-		}
-
-		status, err := client.GetDeleteSpaceTask(ctx, taskID)
-		if err != nil {
-			lastErr = err
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki delete-space status attempt %d/%d failed: %v\n", attempt, wikiDeleteSpacePollAttempts, err)
-			continue
-		}
-		lastStatus = status
-		hadSuccessfulPoll = true
-
-		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki delete-space task completed successfully.\n")
-			return status, true, nil
-		}
-		if status.Failed() {
-			return status, false, output.Errorf(output.ExitAPI, "api_error", "wiki delete-space task %s failed: %s", taskID, status.StatusLabel())
-		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Wiki delete-space status %d/%d: %s\n", attempt, wikiDeleteSpacePollAttempts, status.StatusLabel())
-	}
-
-	if !hadSuccessfulPoll && lastErr != nil {
-		nextCommand := wikiDeleteSpaceTaskResultCommand(taskID, runtime.As())
-		hint := fmt.Sprintf(
-			"the wiki delete-space task was created but every status poll failed (task_id=%s)\nretry status lookup with: %s",
-			taskID,
-			nextCommand,
-		)
-		var exitErr *output.ExitError
-		if errors.As(lastErr, &exitErr) && exitErr.Detail != nil {
-			if strings.TrimSpace(exitErr.Detail.Hint) != "" {
-				hint = exitErr.Detail.Hint + "\n" + hint
-			}
-			return lastStatus, false, output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, hint)
-		}
-		return lastStatus, false, output.ErrWithHint(output.ExitAPI, "api_error", lastErr.Error(), hint)
-	}
-
-	return lastStatus, false, nil
+	return pollWikiAsyncTask(
+		ctx, runtime, taskID, "delete-space",
+		wikiDeleteSpacePollAttempts, wikiDeleteSpacePollInterval,
+		func(ctx context.Context, id string) (wikiAsyncTaskStatus, error) {
+			return client.GetDeleteSpaceTask(ctx, id)
+		},
+		wikiDeleteSpaceTaskResultCommand(taskID, runtime.As()),
+	)
 }
 
+// parseWikiDeleteSpaceTaskStatus is kept as a thin wrapper for the existing
+// test surface; new callers should use parseWikiAsyncTaskStatus directly.
 func parseWikiDeleteSpaceTaskStatus(taskID string, task map[string]interface{}) (wikiDeleteSpaceTaskStatus, error) {
-	if task == nil {
-		return wikiDeleteSpaceTaskStatus{}, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
-	}
-
-	result := common.GetMap(task, "delete_space_result")
-	status := wikiDeleteSpaceTaskStatus{
-		TaskID: common.GetString(task, "task_id"),
-	}
-	if status.TaskID == "" {
-		status.TaskID = taskID
-	}
-	if result != nil {
-		status.Status = common.GetString(result, "status")
-		status.StatusMsg = common.GetString(result, "status_msg")
-	}
-	return status, nil
+	return parseWikiAsyncTaskStatus(taskID, task, wikiAsyncResultDeleteSpace)
 }

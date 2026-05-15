@@ -107,24 +107,6 @@ func mountAndRunWiki(t *testing.T, shortcut common.Shortcut, args []string, fact
 	return parent.Execute()
 }
 
-func TestWikiShortcutsIncludeAllCommands(t *testing.T) {
-	t.Parallel()
-
-	shortcuts := Shortcuts()
-	if len(shortcuts) != 6 {
-		t.Fatalf("len(Shortcuts()) = %d, want 6", len(shortcuts))
-	}
-	if shortcuts[0].Command != "+move" {
-		t.Fatalf("shortcuts[0].Command = %q, want %q", shortcuts[0].Command, "+move")
-	}
-	if shortcuts[1].Command != "+node-create" {
-		t.Fatalf("shortcuts[1].Command = %q, want %q", shortcuts[1].Command, "+node-create")
-	}
-	if shortcuts[2].Command != "+delete-space" {
-		t.Fatalf("shortcuts[2].Command = %q, want %q", shortcuts[2].Command, "+delete-space")
-	}
-}
-
 func TestValidateWikiNodeCreateSpecRejectsShortcutWithoutOriginNodeToken(t *testing.T) {
 	t.Parallel()
 

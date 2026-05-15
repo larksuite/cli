@@ -266,8 +266,19 @@ func TestPollWikiDeleteSpaceTaskWrapsPollFailuresWithHint(t *testing.T) {
 	withSingleWikiDeleteSpacePoll(t)
 
 	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, core.AsUser, "")
+	// Seed an error that carries an upstream Lark Detail.Code so the test
+	// pins that structured fields survive a fully failed poll (not just the
+	// hint). ErrWithHint drops Detail.Code, which is exactly what we fixed.
 	client := &fakeWikiDeleteSpaceClient{
-		taskErrs: []error{output.ErrWithHint(output.ExitAPI, "api_error", "poll failed", "retry original")},
+		taskErrs: []error{&output.ExitError{
+			Code: output.ExitAPI,
+			Detail: &output.ErrDetail{
+				Type:    "api_error",
+				Code:    131006,
+				Message: "poll failed",
+				Hint:    "retry original",
+			},
+		}},
 	}
 
 	status, ready, err := pollWikiDeleteSpaceTask(context.Background(), client, runtime, "task_123")
@@ -286,6 +297,9 @@ func TestPollWikiDeleteSpaceTaskWrapsPollFailuresWithHint(t *testing.T) {
 	}
 	if !strings.Contains(exitErr.Detail.Hint, "retry original") || !strings.Contains(exitErr.Detail.Hint, wikiDeleteSpaceTaskResultCommand("task_123", core.AsUser)) {
 		t.Fatalf("hint = %q, want original hint and resume command", exitErr.Detail.Hint)
+	}
+	if exitErr.Detail.Code != 131006 {
+		t.Fatalf("Detail.Code = %d, want 131006 preserved through poll exhaustion", exitErr.Detail.Code)
 	}
 	if !strings.Contains(stderr.String(), "Wiki delete-space status attempt 1/1 failed") {
 		t.Fatalf("stderr = %q, want poll failure log", stderr.String())

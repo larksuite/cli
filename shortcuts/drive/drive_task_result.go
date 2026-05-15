@@ -20,7 +20,7 @@ import (
 var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
 	Command:     "+task_result",
-	Description: "Poll async task result for import, export, drive move/delete, wiki move, or wiki delete-space operations",
+	Description: "Poll async task result for import, export, drive move/delete, wiki move, wiki delete-space, or wiki delete-node operations",
 	Risk:        "read",
 	// This shortcut multiplexes multiple backend APIs with different scope
 	// requirements, so scenario-specific prechecks are handled in Validate.
@@ -28,8 +28,8 @@ var DriveTaskResult = common.Shortcut{
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "ticket", Desc: "async task ticket (for import/export tasks)", Required: false},
-		{Name: "task-id", Desc: "async task ID (for drive task_check, wiki_move, or wiki_delete_space tasks)", Required: false},
-		{Name: "scenario", Desc: "task scenario: import, export, task_check, wiki_move, or wiki_delete_space", Required: true},
+		{Name: "task-id", Desc: "async task ID (for drive task_check, wiki_move, wiki_delete_space, or wiki_delete_node tasks)", Required: false},
+		{Name: "scenario", Desc: "task scenario: import, export, task_check, wiki_move, wiki_delete_space, or wiki_delete_node", Required: true},
 		{Name: "file-token", Desc: "source document token used for export task status lookup", Required: false},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -40,9 +40,10 @@ var DriveTaskResult = common.Shortcut{
 			"task_check":        true,
 			"wiki_move":         true,
 			"wiki_delete_space": true,
+			"wiki_delete_node":  true,
 		}
 		if !validScenarios[scenario] {
-			return output.ErrValidation("unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move, wiki_delete_space", scenario)
+			return output.ErrValidation("unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move, wiki_delete_space, wiki_delete_node", scenario)
 		}
 
 		// Validate required params based on scenario
@@ -54,7 +55,7 @@ var DriveTaskResult = common.Shortcut{
 			if err := validate.ResourceName(runtime.Str("ticket"), "--ticket"); err != nil {
 				return output.ErrValidation("%s", err)
 			}
-		case "task_check", "wiki_move", "wiki_delete_space":
+		case "task_check", "wiki_move", "wiki_delete_space", "wiki_delete_node":
 			if runtime.Str("task-id") == "" {
 				return output.ErrValidation("--task-id is required for %s scenario", scenario)
 			}
@@ -108,6 +109,11 @@ var DriveTaskResult = common.Shortcut{
 				Desc("[1] Query wiki delete-space task result").
 				Set("task_id", taskID).
 				Params(map[string]interface{}{"task_type": "delete_space"})
+		case "wiki_delete_node":
+			dry.GET("/open-apis/wiki/v2/tasks/:task_id").
+				Desc("[1] Query wiki delete-node task result").
+				Set("task_id", taskID).
+				Params(map[string]interface{}{"task_type": "delete_node"})
 		}
 
 		return dry
@@ -136,6 +142,8 @@ var DriveTaskResult = common.Shortcut{
 			result, err = queryWikiMoveTask(runtime, taskID)
 		case "wiki_delete_space":
 			result, err = queryWikiDeleteSpaceTask(runtime, taskID)
+		case "wiki_delete_node":
+			result, err = queryWikiDeleteNodeTask(runtime, taskID)
 		}
 
 		if err != nil {
@@ -236,7 +244,7 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 	switch scenario {
 	case "import", "export", "task_check":
 		required = []string{"drive:drive.metadata:readonly"}
-	case "wiki_move", "wiki_delete_space":
+	case "wiki_move", "wiki_delete_space", "wiki_delete_node":
 		required = []string{"wiki:space:read"}
 	}
 
@@ -538,5 +546,66 @@ func queryWikiDeleteSpaceTask(runtime *common.RuntimeContext, taskID string) (ma
 		"failed":     failed,
 		"status":     resolvedStatus,
 		"status_msg": label,
+	}, nil
+}
+
+// queryWikiDeleteNodeTask returns the normalized status of an async wiki
+// delete-node task. For historical reasons the gateway stashes delete-node
+// status under the generic `simple_task_result` key (NOT `delete_node_result`),
+// and that object only carries `status` — there is no `status_msg`, so the
+// label falls back to the status code. Mirrors queryWikiDeleteSpaceTask;
+// intentionally duplicated here (rather than importing the wiki package) to
+// keep drive from depending on shortcuts/wiki.
+func queryWikiDeleteNodeTask(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
+	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
+		return nil, output.ErrValidation("%s", err)
+	}
+
+	data, err := runtime.CallAPI(
+		"GET",
+		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
+		map[string]interface{}{"task_type": "delete_node"},
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	task := common.GetMap(data, "task")
+	if task == nil {
+		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
+	}
+
+	resolvedTaskID := common.GetString(task, "task_id")
+	if resolvedTaskID == "" {
+		resolvedTaskID = taskID
+	}
+
+	result := common.GetMap(task, "simple_task_result")
+	var status string
+	if result != nil {
+		status = common.GetString(result, "status")
+	}
+
+	// Keep in sync with wiki.parseWikiAsyncTaskStatus / wikiAsyncTaskStatus
+	// classification (intentionally duplicated to avoid a drive→wiki import —
+	// see the doc comment above). If the success/failed/processing rules change
+	// there, mirror the change here.
+	lowered := strings.ToLower(strings.TrimSpace(status))
+	ready := lowered == "success"
+	failed := lowered == "failure" || lowered == "failed"
+
+	resolvedStatus := strings.TrimSpace(status)
+	if resolvedStatus == "" {
+		resolvedStatus = "processing"
+	}
+
+	return map[string]interface{}{
+		"scenario":   "wiki_delete_node",
+		"task_id":    resolvedTaskID,
+		"ready":      ready,
+		"failed":     failed,
+		"status":     resolvedStatus,
+		"status_msg": resolvedStatus,
 	}, nil
 }

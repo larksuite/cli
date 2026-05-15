@@ -12,7 +12,10 @@ func Shortcuts() []common.Shortcut {
 		WikiNodeCreate,
 		WikiDeleteSpace,
 		WikiSpaceList,
+		WikiSpaceCreate,
 		WikiNodeList,
 		WikiNodeCopy,
+		WikiNodeGet,
+		WikiNodeDelete,
 	}
 }
