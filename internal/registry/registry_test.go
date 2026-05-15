@@ -238,7 +238,7 @@ func TestLoadAutoApproveSet(t *testing.T) {
 
 	// Verify allow list entries are present
 	if !aaSet["sheets:spreadsheet:readonly"] {
-		t.Error("expected sheets:spreadsheet:read in auto-approve set (from allow list)")
+		t.Error("expected sheets:spreadsheet:readonly in auto-approve set (from allow list)")
 	}
 
 	t.Logf("Auto-approve set has %d scopes", len(aaSet))
