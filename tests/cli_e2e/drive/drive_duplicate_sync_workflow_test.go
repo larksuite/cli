@@ -207,4 +207,69 @@ func TestDrive_DuplicateRemoteWorkflow(t *testing.T) {
 			t.Fatalf("+status should converge to a clean unchanged mirror\nstdout:\n%s", statusResult.Stdout)
 		}
 	})
+
+	t.Run("push overwrites nested remote file under its real parent", func(t *testing.T) {
+		suffix := clie2e.GenerateSuffix()
+		folderToken := createDriveFolder(t, parentT, ctx, "lark-cli-e2e-drive-nested-push-"+suffix, "")
+		subFolderToken := createDriveFolder(t, parentT, ctx, "sub", folderToken)
+
+		workDir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(workDir, "local", "sub"), 0o755); err != nil {
+			t.Fatalf("mkdir local/sub: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(workDir, "local", "sub", "keep.txt"), []byte("local-nested-overwrite"), 0o644); err != nil {
+			t.Fatalf("write local/sub/keep.txt: %v", err)
+		}
+
+		existingToken := uploadNamedFile(t, workDir, subFolderToken, "_nested_keep.txt", "keep.txt", "remote-before")
+
+		pushResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"drive", "+push",
+				"--local-dir", "local",
+				"--folder-token", folderToken,
+				"--if-exists", "overwrite",
+			},
+			WorkDir:   workDir,
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		pushResult.AssertExitCode(t, 0)
+		pushResult.AssertStdoutStatus(t, true)
+
+		if got := gjson.Get(pushResult.Stdout, "data.summary.uploaded").Int(); got != 1 {
+			t.Fatalf("nested +push uploaded=%d, want 1\nstdout:\n%s", got, pushResult.Stdout)
+		}
+		if got := gjson.Get(pushResult.Stdout, `data.items.#(rel_path="sub/keep.txt").action`).String(); got != "overwritten" {
+			t.Fatalf("nested +push action=%q, want overwritten\nstdout:\n%s", got, pushResult.Stdout)
+		}
+		if got := gjson.Get(pushResult.Stdout, `data.items.#(rel_path="sub/keep.txt").file_token`).String(); got != existingToken {
+			t.Fatalf("nested +push file_token=%q, want existing token %q\nstdout:\n%s", got, existingToken, pushResult.Stdout)
+		}
+
+		statusResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"drive", "+status",
+				"--local-dir", "local",
+				"--folder-token", folderToken,
+			},
+			WorkDir:   workDir,
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		skipDriveStatusExactIfMissingDownloadScope(t, statusResult)
+		statusResult.AssertExitCode(t, 0)
+		statusResult.AssertStdoutStatus(t, true)
+		if got := gjson.Get(statusResult.Stdout, "data.unchanged.#").Int(); got != 1 {
+			t.Fatalf("nested +status unchanged count=%d, want 1\nstdout:\n%s", got, statusResult.Stdout)
+		}
+		if got := gjson.Get(statusResult.Stdout, "data.unchanged.0.rel_path").String(); got != "sub/keep.txt" {
+			t.Fatalf("nested +status unchanged rel_path=%q, want sub/keep.txt\nstdout:\n%s", got, statusResult.Stdout)
+		}
+		if got := gjson.Get(statusResult.Stdout, "data.modified.#").Int(); got != 0 ||
+			gjson.Get(statusResult.Stdout, "data.new_local.#").Int() != 0 ||
+			gjson.Get(statusResult.Stdout, "data.new_remote.#").Int() != 0 {
+			t.Fatalf("nested overwrite should converge to a clean unchanged mirror\nstdout:\n%s", statusResult.Stdout)
+		}
+	})
 }
