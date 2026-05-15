@@ -275,7 +275,14 @@ var DrivePush = common.Shortcut{
 					skipped++
 					continue
 				}
-				token, version, upErr := drivePushUploadFile(ctx, runtime, localFile, entry.FileToken, folderToken)
+				parentToken, parentErr := drivePushEnsureParentToken(ctx, runtime, folderToken, rel, folderCache)
+				if parentErr != nil {
+					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "failed", SizeBytes: localFile.Size, Error: parentErr.Error()})
+					failed++
+					uploadFailed = true
+					continue
+				}
+				token, version, upErr := drivePushUploadFile(ctx, runtime, localFile, entry.FileToken, parentToken)
 				if upErr != nil {
 					// Token contract on overwrite failure: an in-place
 					// overwrite preserves the file's token, so the
@@ -578,6 +585,10 @@ func drivePushEnsureFolder(ctx context.Context, runtime *common.RuntimeContext, 
 	}
 	folderCache[relDir] = token
 	return token, nil
+}
+
+func drivePushEnsureParentToken(ctx context.Context, runtime *common.RuntimeContext, rootFolderToken, relPath string, folderCache map[string]string) (string, error) {
+	return drivePushEnsureFolder(ctx, runtime, rootFolderToken, drivePushParentRel(relPath), folderCache)
 }
 
 // drivePushUploadFile uploads (or overwrites) a single local file. When

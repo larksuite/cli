@@ -1296,6 +1296,130 @@ func TestDrivePushReusesExistingRemoteFolder(t *testing.T) {
 	}
 }
 
+// TestDrivePushOverwriteNestedFileUsesParentFolderToken verifies that
+// overwriting an existing nested remote file keeps parent_node aligned with
+// the file's actual parent folder instead of the root folder token.
+func TestDrivePushOverwriteNestedFileUsesParentFolderToken(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "sub", "keep.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "fld_existing_sub", "name": "sub", "type": "folder"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=fld_existing_sub",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep_nested", "name": "keep.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "tok_keep_nested",
+				"version":    "v2",
+			},
+		},
+	}
+	reg.Register(uploadStub)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	body := decodeDriveMultipartBody(t, uploadStub)
+	if got := body.Fields["file_token"]; got != "tok_keep_nested" {
+		t.Fatalf("upload_all file_token = %q, want tok_keep_nested", got)
+	}
+	if got := body.Fields["parent_node"]; got != "fld_existing_sub" {
+		t.Fatalf("upload_all parent_node = %q, want fld_existing_sub", got)
+	}
+}
+
+func TestDrivePushOverwriteNestedFileReportsParentEnsureFailure(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "sub", "keep.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep_nested", "name": "sub/keep.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 9999,
+			"msg":  "create parent failed",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected parent ensure failure\nstdout: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"action": "failed"`) || !strings.Contains(stdout.String(), "create parent failed") {
+		t.Fatalf("expected failed item with create_folder error, got: %s", stdout.String())
+	}
+}
+
 // TestDrivePushMirrorsEmptyDirectories confirms the gap codex review
 // flagged: a local directory with no files inside must still surface on
 // Drive as a created sub-folder, not be silently dropped because the
