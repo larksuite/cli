@@ -1310,9 +1310,10 @@ func detectIMFileType(filePath string) string {
 const maxImageUploadSize = 5 * 1024 * 1024  // 5MB — Lark API limit for images
 const maxFileUploadSize = 100 * 1024 * 1024 // 100MB — Lark API limit for files
 
-// openMediaFile opens a file for media upload. For absolute paths, it uses
-// os.Open directly (the path must have been validated by validateMediaFlagPath).
-// For relative paths, it uses the FileIO provider which restricts to cwd.
+// openMediaFile opens a file for media upload. The caller MUST validate the
+// path first (e.g. via validateMediaFlagPath). For absolute paths, it uses
+// os.Open directly. For relative paths, it uses the FileIO provider which
+// restricts to the working directory.
 func openMediaFile(runtime *common.RuntimeContext, filePath string) (io.ReadCloser, error) {
 	if filepath.IsAbs(filePath) {
 		return os.Open(filePath)
@@ -1320,8 +1321,9 @@ func openMediaFile(runtime *common.RuntimeContext, filePath string) (io.ReadClos
 	return runtime.FileIO().Open(filePath)
 }
 
-// statMediaFile returns file info for a media file. For absolute paths, it uses
-// os.Stat directly. For relative paths, it uses the FileIO provider.
+// statMediaFile returns file info for a media file. The caller MUST validate
+// the path first (e.g. via validateMediaFlagPath). For absolute paths, it
+// uses os.Stat directly. For relative paths, it uses the FileIO provider.
 func statMediaFile(runtime *common.RuntimeContext, filePath string) (os.FileInfo, error) {
 	if filepath.IsAbs(filePath) {
 		return os.Stat(filePath)
