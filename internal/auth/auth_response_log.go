@@ -6,36 +6,28 @@ package auth
 import (
 	"net/http"
 
-	"github.com/larksuite/cli/internal/keychain"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	"github.com/larksuite/cli/internal/tracking"
 )
 
-// logHTTPResponse logs the HTTP response details for an authentication request.
-// It extracts the request path, status code, and x-tt-logid from the given HTTP response.
-func logHTTPResponse(resp *http.Response) {
-	if resp == nil {
-		return
-	}
-
-	path := "missing"
-	if resp.Request != nil && resp.Request.URL != nil {
-		path = resp.Request.URL.Path
-	}
-
-	keychain.LogAuthResponse(path, resp.StatusCode, resp.Header.Get("x-tt-logid"))
-}
-
-// logSDKResponse logs the SDK response details for an authentication request.
-// It extracts the status code and x-tt-logid from the given API response object.
-func logSDKResponse(path string, apiResp *larkcore.ApiResp) {
+func logAuthResponse(path string, statusCode int, logID string) {
 	if path == "" {
 		path = "missing"
 	}
 
-	if apiResp == nil {
-		keychain.LogAuthResponse(path, 0, "")
+	if shouldSkipAuthResponseLog(path, statusCode) {
 		return
 	}
 
-	keychain.LogAuthResponse(path, apiResp.StatusCode, apiResp.Header.Get("x-tt-logid"))
+	tracking.LogAuthResponse(path, statusCode, logID)
+}
+
+func responsePath(resp *http.Response) string {
+	if resp != nil && resp.Request != nil && resp.Request.URL != nil {
+		return resp.Request.URL.Path
+	}
+	return "missing"
+}
+
+func shouldSkipAuthResponseLog(path string, statusCode int) bool {
+	return path == "missing" || statusCode == 400
 }

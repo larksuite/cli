@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
+	"github.com/larksuite/cli/internal/tracking"
 	"github.com/larksuite/cli/internal/util"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
 )
@@ -48,9 +50,8 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	ws := core.DetectWorkspaceFromEnv(os.Getenv)
 	core.SetCurrentWorkspace(ws)
 
-	// Inject workspace-aware dir into keychain's log system.
-	// This breaks the core↔keychain import cycle by using a function variable.
-	keychain.RuntimeDirFunc = core.GetRuntimeDir
+	// Initialize tracking globals
+	initTrackingGlobals(inv.Profile)
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
@@ -75,6 +76,7 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		}
 		cfg := acct.ToCliConfig()
 		registry.InitWithBrand(cfg.Brand)
+		tracking.SetTrackingFromConfig(string(cfg.Brand), cfg.AppID)
 		return cfg, nil
 	})
 
@@ -167,4 +169,30 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 	// provider clears unverified identity fields), so silencing the
 	// warning is safe.
 	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+}
+
+func initTrackingGlobals(profileOverride string) {
+	tracking.RuntimeDirFunc = core.GetRuntimeDir
+
+	raw, err := core.LoadMultiAppConfig()
+	if err != nil {
+		return
+	}
+	app := raw.CurrentAppConfig(profileOverride)
+	if app == nil {
+		return
+	}
+	tracking.SetTrackingFromConfig(string(app.Brand), app.AppId)
+
+	appId := app.AppId
+	tracking.OfflineAccessChecker = func() bool {
+		if len(app.Users) == 0 {
+			return false
+		}
+		token := auth.GetStoredToken(appId, app.Users[0].UserOpenId)
+		if token == nil {
+			return false
+		}
+		return strings.Contains(token.Scope, "offline_access")
+	}
 }

@@ -93,7 +93,7 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 		return nil, err
 	}
 	defer resp.Body.Close()
-	logHTTPResponse(resp)
+	logAuthResponse(responsePath(resp), resp.StatusCode, resp.Header.Get("x-tt-logid"))
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -184,7 +184,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			currentInterval = minInt(currentInterval+1, maxPollInterval)
 			continue
 		}
-		logHTTPResponse(resp)
+		logAuthResponse(responsePath(resp), resp.StatusCode, resp.Header.Get("x-tt-logid"))
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()

@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/tracking"
 )
 
 var (
@@ -28,9 +29,15 @@ const (
 	LarkCliService = "lark-cli"
 )
 
+var suppressKeychainReadErrorTracking bool
+
+func SuppressKeychainReadErrorTracking(suppress bool) {
+	suppressKeychainReadErrorTracking = suppress
+}
+
 // wrapError is a helper to wrap underlying errors into output.ExitError.
 // It formats the error message and provides a hint for troubleshooting keychain access issues.
-func wrapError(op string, err error) error {
+func wrapError(op tracking.AuthOp, err error) error {
 	if err == nil || errors.Is(err, ErrNotFound) {
 		return err
 	}
@@ -42,10 +49,12 @@ func wrapError(op string, err error) error {
 		hint = "The keychain master key may have been cleaned up or deleted. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox. Otherwise, please reconfigure the CLI by running lark-cli config init."
 	}
 
-	func() {
-		defer func() { recover() }()
-		LogAuthError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
-	}()
+	if !suppressKeychainReadErrorTracking || op != tracking.AuthOpKeychainGet {
+		func() {
+			defer func() { recover() }()
+			tracking.LogAuthError(tracking.AuthComponentKeychain, op, fmt.Errorf("keychain %s error: %w", op, err))
+		}()
+	}
 
 	return output.ErrWithHint(output.ExitAPI, "config", msg, hint)
 }
@@ -63,15 +72,15 @@ type KeychainAccess interface {
 // Returns empty string if the entry does not exist.
 func Get(service, account string) (string, error) {
 	val, err := platformGet(service, account)
-	return val, wrapError("Get", err)
+	return val, wrapError(tracking.AuthOpKeychainGet, err)
 }
 
 // Set stores a value in the keychain, overwriting any existing entry.
 func Set(service, account, data string) error {
-	return wrapError("Set", platformSet(service, account, data))
+	return wrapError(tracking.AuthOpKeychainSet, platformSet(service, account, data))
 }
 
 // Remove deletes an entry from the keychain. No error if not found.
 func Remove(service, account string) error {
-	return wrapError("Remove", platformRemove(service, account))
+	return wrapError(tracking.AuthOpKeychainRemove, platformRemove(service, account))
 }

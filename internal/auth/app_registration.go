@@ -66,7 +66,7 @@ func RequestAppRegistration(httpClient *http.Client, brand core.LarkBrand, errOu
 		return nil, err
 	}
 	defer resp.Body.Close()
-	logHTTPResponse(resp)
+	logAuthResponse(responsePath(resp), resp.StatusCode, resp.Header.Get("x-tt-logid"))
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -163,7 +163,7 @@ func PollAppRegistration(ctx context.Context, httpClient *http.Client, brand cor
 			currentInterval = minInt(currentInterval+1, maxPollInterval)
 			continue
 		}
-		logHTTPResponse(resp)
+		logAuthResponse(responsePath(resp), resp.StatusCode, resp.Header.Get("x-tt-logid"))
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()

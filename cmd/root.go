@@ -26,6 +26,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/skillscheck"
+	"github.com/larksuite/cli/internal/tracking"
 	"github.com/larksuite/cli/internal/update"
 	"github.com/spf13/cobra"
 )
@@ -207,15 +208,18 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 	// that differs from the standard ErrDetail, so it's handled separately.
 	var spErr *internalauth.SecurityPolicyError
 	if errors.As(err, &spErr) {
+		logSecurityPolicyError(spErr)
 		writeSecurityPolicyError(errOut, spErr)
 		return 1
 	}
 
 	// All other structured errors normalize to ExitError.
 	if exitErr := asExitError(err); exitErr != nil {
-		if !exitErr.Raw {
+		if exitErr.Raw {
 			// Raw errors (e.g. from `api` command) preserve the original API
-			// error detail; skip enrichment which would clear it.
+			// error detail; skip enrichment but still log auth failures.
+			logRawAuthFailure(exitErr)
+		} else {
 			enrichMissingScopeError(f, exitErr)
 			enrichPermissionError(f, exitErr)
 		}
@@ -235,6 +239,12 @@ func asExitError(err error) *output.ExitError {
 	if errors.As(err, &cfgErr) {
 		return output.ErrWithHint(cfgErr.Code, cfgErr.Type, cfgErr.Message, cfgErr.Hint)
 	}
+
+	var needAuthErr *internalauth.NeedAuthorizationError
+	if errors.As(err, &needAuthErr) {
+		return output.ErrAuth("authentication required: %s", err)
+	}
+
 	var exitErr *output.ExitError
 	if errors.As(err, &exitErr) {
 		return exitErr
@@ -242,20 +252,24 @@ func asExitError(err error) *output.ExitError {
 	return nil
 }
 
+// securityPolicyCodeString maps a security policy numeric code to a human-readable string.
+func securityPolicyCodeString(code int) string {
+	switch code {
+	case internalauth.LarkErrBlockByPolicyTryAuth:
+		return "challenge_required"
+	case internalauth.LarkErrBlockByPolicy:
+		return "access_denied"
+	default:
+		return strconv.Itoa(code)
+	}
+}
+
 // writeSecurityPolicyError writes the security-policy-specific JSON envelope to w.
 // This format intentionally differs from the standard ErrDetail envelope:
 // it uses string codes ("challenge_required"/"access_denied") and extra fields
 // (retryable, challenge_url) for machine-readable policy error handling.
 func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyError) {
-	var codeStr string
-	switch spErr.Code {
-	case internalauth.LarkErrBlockByPolicyTryAuth:
-		codeStr = "challenge_required"
-	case internalauth.LarkErrBlockByPolicy:
-		codeStr = "access_denied"
-	default:
-		codeStr = strconv.Itoa(spErr.Code)
-	}
+	codeStr := securityPolicyCodeString(spErr.Code)
 
 	errData := map[string]interface{}{
 		"type":      "auth_error",
@@ -423,6 +437,8 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	isBot := f.ResolvedIdentity.IsBot()
 
 	larkCode := exitErr.Detail.Code
+
+	var reason internalauth.NeedAuthorizationReason
 	switch larkCode {
 	case output.LarkErrUserScopeInsufficient, output.LarkErrUserNotAuthorized:
 		// User has not authorized the scope → re-authorize
@@ -433,12 +449,14 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 			exitErr.Detail.Hint = fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
 		}
 		exitErr.Detail.ConsoleURL = consoleURL
+		reason = internalauth.ReasonPermissionDenied
 
 	case output.LarkErrAppScopeNotEnabled:
 		// App has not enabled the API scope → admin console
 		exitErr.Detail.Message = fmt.Sprintf("App scope not enabled: required scope %s [%d]", recommended, larkCode)
 		exitErr.Detail.Hint = "enable the scope in developer console (see console_url)"
 		exitErr.Detail.ConsoleURL = consoleURL
+		reason = internalauth.ReasonPermissionDenied
 
 	default:
 		// Other permission errors (matched by keyword)
@@ -450,6 +468,13 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 				"enable scope in console (see console_url), or run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
 		}
 		exitErr.Detail.ConsoleURL = consoleURL
+		reason = internalauth.ReasonPermissionDenied
+	}
+
+	// Log permission error
+	if reason != "" {
+		errMsg := fmt.Sprintf("user=%s reason=%s scopes=%v", cfg.UserOpenId, reason, scopes)
+		tracking.LogAuthError(tracking.AuthComponentAuth, tracking.AuthOpPermissionDenied, fmt.Errorf(errMsg))
 	}
 }
 

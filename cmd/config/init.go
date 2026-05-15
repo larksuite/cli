@@ -245,6 +245,9 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 func configInitRun(opts *ConfigInitOptions) error {
 	f := opts.Factory
 
+	keychain.SuppressKeychainReadErrorTracking(true)
+	defer keychain.SuppressKeychainReadErrorTracking(false)
+
 	// Read secret from stdin if --app-secret-stdin is set
 	if opts.AppSecretStdin {
 		scanner := bufio.NewScanner(f.IOStreams.In)

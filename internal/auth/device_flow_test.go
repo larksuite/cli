@@ -16,7 +16,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/tracking"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -47,7 +47,8 @@ func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	}
 }
 
-// TestRequestDeviceAuthorization_LogsResponse checks if API responses are logged correctly.
+// TestRequestDeviceAuthorization_LogsResponse checks that responses with
+// unresolvable paths (path="missing") are not logged.
 func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	reg := &httpmock.Registry{}
 	t.Cleanup(func() { reg.Verify(t) })
@@ -70,7 +71,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
+	restore := tracking.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}, func() []string {
 		return []string{"lark-cli", "auth", "login", "--device-code", "device-code-secret", "--app-secret=top-secret"}
@@ -82,66 +83,36 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
 	}
 
-	got := buf.String()
-	if !strings.Contains(got, "time=2026-04-02T03:04:05Z") {
-		t.Fatalf("expected time in log, got %q", got)
-	}
-	if !strings.Contains(got, "path=missing") {
-		t.Fatalf("expected path in log, got %q", got)
-	}
-	if !strings.Contains(got, "status=200") {
-		t.Fatalf("expected status=200 in log, got %q", got)
-	}
-	if !strings.Contains(got, "x-tt-logid=device-log-id") {
-		t.Fatalf("expected x-tt-logid in log, got %q", got)
-	}
-	if !strings.Contains(got, "cmdline=lark-cli auth login ...") {
-		t.Fatalf("expected cmdline in log, got %q", got)
+	if got := buf.String(); got != "" {
+		t.Fatalf("expected no log for missing path, got %q", got)
 	}
 }
 
-// TestFormatAuthCmdline_TruncatesExtraArgs verifies that long command lines are truncated.
-func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
-	got := keychain.FormatAuthCmdline([]string{
-		"lark-cli",
-		"auth",
-		"login",
-		"--device-code", "device-code-secret",
-		"--app-secret=top-secret",
-		"--scope", "contact:read",
-	})
-
-	want := "lark-cli auth login ..."
-	if got != want {
-		t.Fatalf("formatAuthCmdline() = %q, want %q", got, want)
-	}
-}
-
-// TestLogAuthResponse_IgnoresTypedNilHTTPResponse tests that a typed nil HTTP response is ignored gracefully.
-func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
+// TestLogAuthResponse_IgnoresNilHTTPResponse tests that a nil HTTP response produces no log output.
+func TestLogAuthResponse_IgnoresNilHTTPResponse(t *testing.T) {
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), nil, nil)
+	restore := tracking.SetAuthLogHooksForTest(log.New(&buf, "", 0), nil, nil)
 	t.Cleanup(restore)
 
-	var resp *http.Response
-	logHTTPResponse(resp)
-
+	if got := responsePath(nil); got != "missing" {
+		t.Fatalf("responsePath(nil) = %q, want %q", got, "missing")
+	}
 	if got := buf.String(); got != "" {
 		t.Fatalf("expected no log output, got %q", got)
 	}
 }
 
-// TestLogAuthResponse_HandlesNilSDKResponse verifies that a nil SDK response is handled without panicking.
-func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
+// TestLogAuthResponse_LogsNilSDKResponseWithZeroStatus verifies that a nil SDK response is logged with status=0.
+func TestLogAuthResponse_LogsNilSDKResponseWithZeroStatus(t *testing.T) {
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
+	restore := tracking.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}, func() []string {
 		return []string{"lark-cli", "auth", "status", "--verify"}
 	})
 	t.Cleanup(restore)
 
-	logSDKResponse(PathUserInfoV1, nil)
+	logAuthResponse(PathUserInfoV1, 0, "")
 
 	got := buf.String()
 	if !strings.Contains(got, "path="+PathUserInfoV1) {
@@ -154,14 +125,17 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 
 func TestLogAuthError_RecordsStructuredEntry(t *testing.T) {
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
+	restoreLocal := tracking.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}, func() []string {
 		return []string{"lark-cli", "auth", "login", "--device-code", "secret"}
 	})
-	t.Cleanup(restore)
+	t.Cleanup(restoreLocal)
 
-	keychain.LogAuthError("keychain", "Set", fmt.Errorf("keychain Set error: %w", http.ErrUseLastResponse))
+	restoreRemote := tracking.SetAuthLogRemoteHooksForTest(nil, "", nil, false)
+	t.Cleanup(restoreRemote)
+
+	tracking.LogAuthError(tracking.AuthComponentKeychain, tracking.AuthOpKeychainSet, fmt.Errorf("keychain Set error: %w", http.ErrUseLastResponse))
 
 	got := buf.String()
 	if !strings.Contains(got, "auth-error") {
@@ -178,6 +152,65 @@ func TestLogAuthError_RecordsStructuredEntry(t *testing.T) {
 	}
 	if !strings.Contains(got, "cmdline=lark-cli auth login ...") {
 		t.Fatalf("expected truncated cmdline in log, got %q", got)
+	}
+}
+
+func TestShouldSkipAuthResponseLog(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		statusCode int
+		want       bool
+	}{
+		{
+			name:       "oauth token 400 skipped",
+			path:       PathOAuthTokenV2,
+			statusCode: 400,
+			want:       true,
+		},
+		{
+			name:       "oauth token 200 not skipped",
+			path:       PathOAuthTokenV2,
+			statusCode: 200,
+			want:       false,
+		},
+		{
+			name:       "oauth token 401 not skipped",
+			path:       PathOAuthTokenV2,
+			statusCode: 401,
+			want:       false,
+		},
+		{
+			name:       "oauth token 500 not skipped",
+			path:       PathOAuthTokenV2,
+			statusCode: 500,
+			want:       false,
+		},
+		{
+			name:       "other path 400 skipped",
+			path:       PathUserInfoV1,
+			statusCode: 400,
+			want:       true,
+		},
+		{
+			name:       "other path 200 not skipped",
+			path:       PathUserInfoV1,
+			statusCode: 200,
+			want:       false,
+		},
+		{
+			name:       "missing path skipped",
+			path:       "missing",
+			statusCode: 200,
+			want:       true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldSkipAuthResponseLog(tt.path, tt.statusCode); got != tt.want {
+				t.Errorf("shouldSkipAuthResponseLog(%q, %d) = %v, want %v", tt.path, tt.statusCode, got, tt.want)
+			}
+		})
 	}
 }
 

@@ -4,14 +4,18 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/tracking"
 	"github.com/larksuite/cli/shortcuts"
 	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -20,10 +24,14 @@ import (
 // enrichMissingScopeError preserves the original need_user_authorization
 // message and appends a scope hint when the current command declares the
 // required scopes locally.
+// It also logs the auth failure reason using tracking.LogAuthError.
 func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if exitErr == nil || exitErr.Detail == nil {
 		return
 	}
+
+	logAuthFailureReason(exitErr)
+
 	if !internalauth.IsNeedUserAuthorizationError(exitErr) {
 		return
 	}
@@ -39,6 +47,97 @@ func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 		return
 	}
 	exitErr.Detail.Hint += "\n" + scopeHint
+}
+
+// logSecurityPolicyError logs a security policy error using tracking.LogAuthError.
+func logSecurityPolicyError(spErr *internalauth.SecurityPolicyError) {
+	codeStr := securityPolicyCodeString(spErr.Code)
+	errMsg := fmt.Sprintf("reason=security_policy code=%s message=%q", codeStr, spErr.Message)
+	tracking.LogAuthError(tracking.AuthComponentAuth, tracking.AuthOpSecurityPolicy, fmt.Errorf(errMsg))
+}
+
+// logRawAuthFailure logs auth-related failures for Raw errors (e.g. from `api` command).
+// This preserves the original API error detail while still logging auth failures.
+func logRawAuthFailure(exitErr *output.ExitError) {
+	if exitErr.Detail == nil {
+		return
+	}
+
+	if exitErr.Detail.Type == "permission" {
+		errMsg := fmt.Sprintf("reason=permission_denied code=%d message=%q", exitErr.Detail.Code, exitErr.Detail.Message)
+		tracking.LogAuthError(tracking.AuthComponentAuth, tracking.AuthOpPermissionDenied, fmt.Errorf(errMsg))
+		return
+	}
+
+	if exitErr.Detail.Type == "auth" {
+		errMsg := fmt.Sprintf("reason=auth_error message=%q", exitErr.Detail.Message)
+		tracking.LogAuthError(tracking.AuthComponentAuth, tracking.AuthOpAuthError, fmt.Errorf(errMsg))
+	}
+}
+
+// logAuthFailureReason extracts authorization-related errors from exitErr and logs
+// the failure reason using tracking.LogAuthError.
+func logAuthFailureReason(exitErr *output.ExitError) {
+	if exitErr.Detail == nil {
+		return
+	}
+
+	// Handle NeedAuthorizationError first
+	var needAuthErr *internalauth.NeedAuthorizationError
+	if errors.As(exitErr.Err, &needAuthErr) {
+		errMsg := buildAuthFailureErrorMessage(needAuthErr)
+		tracking.LogAuthError(tracking.AuthComponentAuth, tracking.AuthOpNeedAuthorization, fmt.Errorf(errMsg))
+		return
+	}
+
+	// Handle TokenUnavailableError
+	var unavailableErr *credential.TokenUnavailableError
+	if errors.As(exitErr.Err, &unavailableErr) {
+		errMsg := fmt.Sprintf("reason=no_token source=%s type=%s", unavailableErr.Source, unavailableErr.Type)
+		tracking.LogAuthError(tracking.AuthComponentAuth, tracking.AuthOpTokenUnavailable, fmt.Errorf(errMsg))
+		return
+	}
+
+	// Handle general auth errors (type "auth")
+	if exitErr.Detail.Type == "auth" {
+		errMsg := fmt.Sprintf("reason=auth_error message=%q", exitErr.Detail.Message)
+		tracking.LogAuthError(tracking.AuthComponentAuth, tracking.AuthOpAuthError, fmt.Errorf(errMsg))
+	}
+}
+
+// buildAuthFailureErrorMessage constructs a detailed error message for auth failure logging.
+func buildAuthFailureErrorMessage(err *internalauth.NeedAuthorizationError) string {
+	if err == nil {
+		return "unknown auth failure"
+	}
+
+	var parts []string
+	parts = append(parts, fmt.Sprintf("user=%s", err.UserOpenId))
+
+	switch err.Reason {
+	case internalauth.ReasonNoToken:
+		parts = append(parts, "reason=no_token")
+	case internalauth.ReasonTokenExpired:
+		parts = append(parts, "reason=token_expired")
+	case internalauth.ReasonRefreshExpired:
+		parts = append(parts, "reason=refresh_expired")
+		if err.GrantedAt > 0 {
+			grantedTime := time.UnixMilli(err.GrantedAt).Format(time.RFC3339)
+			parts = append(parts, fmt.Sprintf("refresh_token_granted_at=%s", grantedTime))
+		}
+	case internalauth.ReasonRefreshFailed:
+		parts = append(parts, "reason=refresh_failed")
+		if err.GrantedAt > 0 {
+			grantedTime := time.UnixMilli(err.GrantedAt).Format(time.RFC3339)
+			parts = append(parts, fmt.Sprintf("refresh_token_granted_at=%s", grantedTime))
+		}
+	case internalauth.ReasonPermissionDenied:
+		parts = append(parts, "reason=permission_denied")
+	default:
+		parts = append(parts, fmt.Sprintf("reason=%s", err.Reason))
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // resolveDeclaredScopesForCurrentCommand returns the scopes declared by the

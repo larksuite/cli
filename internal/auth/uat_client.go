@@ -69,7 +69,7 @@ var refreshLocks sync.Map
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
 	stored := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if stored == nil {
-		return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+		return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId, Reason: ReasonNoToken}
 	}
 
 	status := TokenStatus(stored)
@@ -84,12 +84,16 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 			return "", err
 		}
 		if refreshed == nil {
-			return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+			reason := ReasonRefreshFailed
+			if stored.RefreshExpiresAt > 0 && time.Now().UnixMilli() >= stored.RefreshExpiresAt {
+				reason = ReasonRefreshExpired
+			}
+			return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId, Reason: reason, GrantedAt: stored.GrantedAt}
 		}
 		return refreshed.AccessToken, nil
 	}
 
-	// expired
+	// expired (refresh token also expired)
 	if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
 		if opts.ErrOut != nil {
 			fmt.Fprintf(opts.ErrOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
@@ -97,7 +101,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 			fmt.Fprintf(os.Stderr, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
 		}
 	}
-	return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+	return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId, Reason: ReasonRefreshExpired, GrantedAt: stored.GrantedAt}
 }
 
 // refreshWithLock acquires a file lock before attempting to refresh the token.
@@ -204,7 +208,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			return nil, err
 		}
 		defer resp.Body.Close()
-		logHTTPResponse(resp)
+		logAuthResponse(responsePath(resp), resp.StatusCode, resp.Header.Get("x-tt-logid"))
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {

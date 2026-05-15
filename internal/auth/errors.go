@@ -29,13 +29,29 @@ var TokenRetryCodes = map[int]bool{
 	output.LarkErrTokenExpired: true,
 }
 
+// NeedAuthorizationReason describes why authorization is needed.
+type NeedAuthorizationReason string
+
+const (
+	ReasonNoToken          NeedAuthorizationReason = "no_token"          // No token exists
+	ReasonTokenExpired     NeedAuthorizationReason = "token_expired"     // Access token expired
+	ReasonRefreshExpired   NeedAuthorizationReason = "refresh_expired"   // Refresh token expired
+	ReasonRefreshFailed    NeedAuthorizationReason = "refresh_failed"    // Refresh attempt failed
+	ReasonPermissionDenied NeedAuthorizationReason = "permission_denied" // Insufficient permissions/scopes
+)
+
 // NeedAuthorizationError is thrown when no valid UAT exists.
 type NeedAuthorizationError struct {
 	UserOpenId string
+	Reason     NeedAuthorizationReason
+	GrantedAt  int64 // Unix ms, only set when Reason is ReasonTokenExpired or ReasonRefreshExpired
 }
 
 // Error returns the error message for NeedAuthorizationError.
 func (e *NeedAuthorizationError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("%s (user: %s, reason: %s)", needUserAuthorizationMarker, e.UserOpenId, e.Reason)
+	}
 	return fmt.Sprintf("%s (user: %s)", needUserAuthorizationMarker, e.UserOpenId)
 }
 

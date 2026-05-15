@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -17,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/tracking"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -27,10 +29,16 @@ func (n *noopKeychain) Get(service, account string) (string, error) { return "",
 func (n *noopKeychain) Set(service, account, value string) error    { return nil }
 func (n *noopKeychain) Remove(service, account string) error        { return nil }
 
+var disableRemoteOnce sync.Once
+
 // TestFactory creates a Factory for testing.
 // Returns (factory, stdout buffer, stderr buffer, http mock registry).
 func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
+
+	disableRemoteOnce.Do(func() {
+		tracking.SetAuthLogRemoteHooksForTest(nil, "", nil, false)
+	})
 
 	reg := &httpmock.Registry{}
 	t.Cleanup(func() { reg.Verify(t) })
