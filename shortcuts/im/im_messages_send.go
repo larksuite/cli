@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -33,8 +35,8 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
 		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
 		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
-		{Name: "image", Desc: "image_key, local file path"},
-		{Name: "file", Desc: "file_key, local file path"},
+		{Name: "image", Desc: "image_key or local file path (absolute or relative)"},
+		{Name: "file", Desc: "file_key or local file path (absolute or relative)"},
 		{Name: "video", Desc: "video file_key, local file path; must be used together with --video-cover"},
 		{Name: "video-cover", Desc: "video cover image_key, local file path; required when using --video"},
 		{Name: "audio", Desc: "audio file_key, local file path"},
@@ -213,6 +215,13 @@ func isMediaKey(value string) bool {
 // Empty values, URLs, and media keys are skipped (not local files).
 func validateMediaFlagPath(fio fileio.FileIO, flagName, value string) error {
 	if value == "" || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") || isMediaKey(value) {
+		return nil
+	}
+	// For absolute paths, validate safety without restricting to cwd.
+	if filepath.IsAbs(value) {
+		if err := validate.SafeAbsoluteInputPath(value); err != nil {
+			return output.ErrValidation("%s: %v", flagName, err)
+		}
 		return nil
 	}
 	if _, err := fio.Stat(value); err != nil && !os.IsNotExist(err) {

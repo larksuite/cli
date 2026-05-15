@@ -24,8 +24,16 @@ func SafeInputPath(path string) (string, error) {
 
 // SafeLocalFlagPath validates a flag value as a local file path.
 // Empty values and http/https URLs are returned unchanged without validation.
+// Absolute paths are accepted and validated for safety (control characters,
+// symlink resolution) without restricting to the working directory.
 func SafeLocalFlagPath(flagName, value string) (string, error) {
 	if value == "" || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		return value, nil
+	}
+	if filepath.IsAbs(value) {
+		if _, err := safePathAbsolute(value, flagName); err != nil {
+			return "", err
+		}
 		return value, nil
 	}
 	if _, err := SafeInputPath(value); err != nil {
@@ -90,6 +98,31 @@ func safePath(raw, flagName string) (string, error) {
 	}
 
 	return resolved, nil
+}
+
+// safePathAbsolute validates an absolute path for safety without restricting
+// to the working directory. It rejects control characters and resolves
+// symlinks through the nearest existing ancestor.
+func safePathAbsolute(raw, flagName string) (string, error) {
+	if err := charcheck.RejectControlChars(raw, flagName); err != nil {
+		return "", err
+	}
+
+	path := filepath.Clean(raw)
+
+	resolved, err := resolveNearestAncestor(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve symlinks: %w", err)
+	}
+	return resolved, nil
+}
+
+// SafeAbsoluteInputPath validates an absolute path for safety (control
+// characters, symlink resolution) without restricting to the working directory.
+// This is intended for user-provided flag values where absolute paths are
+// explicitly allowed.
+func SafeAbsoluteInputPath(path string) (string, error) {
+	return safePathAbsolute(path, "path")
 }
 
 func resolveNearestAncestor(path string) (string, error) {
