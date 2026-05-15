@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
@@ -91,7 +91,7 @@ func ReadInputFile(fileIO fileio.FileIO, path string) ([]byte, error) {
 		if err != nil {
 			return nil, wrapInputFileError(path, err)
 		}
-		data, err := os.ReadFile(safePath)
+		data, err := vfs.ReadFile(safePath)
 		if err != nil {
 			return nil, wrapInputFileError(path, err)
 		}
