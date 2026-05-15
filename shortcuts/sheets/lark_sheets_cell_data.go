@@ -28,7 +28,7 @@ var SheetRead = common.Shortcut{
 	Command:     "+read",
 	Description: "Read spreadsheet cell values",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -99,7 +99,7 @@ var SheetWrite = common.Shortcut{
 	Command:     "+write",
 	Description: "Write to spreadsheet cells (overwrite mode)",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -175,7 +175,7 @@ var SheetAppend = common.Shortcut{
 	Command:     "+append",
 	Description: "Append rows to a spreadsheet",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -251,7 +251,7 @@ var SheetFind = common.Shortcut{
 	Command:     "+find",
 	Description: "Find cells in a spreadsheet",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -335,7 +335,7 @@ var SheetReplace = common.Shortcut{
 	Command:     "+replace",
 	Description: "Find and replace cell values in a spreadsheet",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
