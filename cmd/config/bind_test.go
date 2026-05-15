@@ -408,6 +408,26 @@ func TestConfigBindRun_LarkChannel_Success(t *testing.T) {
 	}
 }
 
+// Env template form: secret = "${VAR}" should resolve via the SecretInput
+// pipeline (same path openclaw uses), so the keychain receives the env value
+// not the literal template string.
+func TestConfigBindRun_LarkChannel_EnvTemplate(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("LARK_APP_SECRET", "resolved_via_env")
+	writeLarkChannelFixture(t, fakeHome,
+		`{"accounts":{"app":{"id":"cli_lc_env","secret":"${LARK_APP_SECRET}","tenant":"feishu"}}}`)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+}
+
 // tenant: "lark" should land as Brand("lark"), not normalized to "feishu".
 func TestConfigBindRun_LarkChannel_LarkTenant(t *testing.T) {
 	saveWorkspace(t)

@@ -312,13 +312,22 @@ func (b *larkChannelBinder) Build(appID string) (*core.AppConfig, error) {
 		return nil, output.Errorf(output.ExitInternal, "lark-channel",
 			"internal: appID %q does not match config", appID)
 	}
-	if b.cfg.Accounts.App.Secret == "" {
+	if b.cfg.Accounts.App.Secret.IsZero() {
 		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
 			fmt.Sprintf("accounts.app.secret is empty in %s", b.path),
 			"run lark-channel-bridge's setup to populate the app credential")
 	}
 
-	stored, err := core.ForStorage(appID, core.PlainSecret(b.cfg.Accounts.App.Secret), b.opts.Factory.Keychain)
+	// Resolve through the same SecretInput pipeline openclaw uses, so
+	// bridge configs can use ${VAR} / env / file / exec just like openclaw.
+	secret, err := binding.ResolveSecretInput(b.cfg.Accounts.App.Secret, b.cfg.Secrets, os.Getenv)
+	if err != nil {
+		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
+			fmt.Sprintf("failed to resolve appSecret for %s: %v", appID, err),
+			fmt.Sprintf("check appSecret configuration in %s", b.path))
+	}
+
+	stored, err := core.ForStorage(appID, core.PlainSecret(secret), b.opts.Factory.Keychain)
 	if err != nil {
 		return nil, output.Errorf(output.ExitInternal, "lark-channel",
 			"keychain unavailable: %v", err)
