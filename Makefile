@@ -8,7 +8,9 @@ DATE     := $(shell date +%Y-%m-%d)
 LDFLAGS  := -s -w -X $(MODULE)/internal/build.Version=$(VERSION) -X $(MODULE)/internal/build.Date=$(DATE)
 PREFIX   ?= /usr/local
 
-.PHONY: build vet test unit-test integration-test install uninstall clean fetch_meta
+.PHONY: all build vet test unit-test integration-test install uninstall clean fetch_meta gitleaks
+
+all: test
 
 fetch_meta:
 	python3 scripts/fetch_meta.py
@@ -37,3 +39,13 @@ uninstall:
 
 clean:
 	rm -f $(BINARY)
+
+# Run secret-leak checks locally before pushing.
+# Step 1: check-doc-tokens catches realistic-looking example tokens in reference
+#         docs and asks you to use _EXAMPLE_TOKEN placeholders instead.
+# Step 2: gitleaks scans the full repo for real leaked secrets.
+# Install gitleaks: https://github.com/gitleaks/gitleaks#installing
+gitleaks:
+	@bash scripts/check-doc-tokens.sh
+	@command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not found. Install: brew install gitleaks"; exit 1; }
+	gitleaks detect --redact -v --exit-code=2

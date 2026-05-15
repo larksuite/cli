@@ -413,6 +413,25 @@ func requireWikiSpaceID(space *wikiSpaceRecord) (string, error) {
 	return "", output.ErrValidation("personal document library was not found, please specify --space-id")
 }
 
+// resolveMyLibrarySpaceID calls GET /wiki/v2/spaces/my_library and returns
+// the per-user real space_id. Shared by shortcuts that accept the my_library
+// alias (e.g. +node-create, +node-list) so the behavior stays consistent.
+func resolveMyLibrarySpaceID(runtime *common.RuntimeContext) (string, error) {
+	data, err := runtime.CallAPI(
+		"GET",
+		fmt.Sprintf("/open-apis/wiki/v2/spaces/%s", validate.EncodePathSegment(wikiMyLibrarySpaceID)),
+		nil, nil,
+	)
+	if err != nil {
+		return "", err
+	}
+	space, err := parseWikiSpaceRecord(common.GetMap(data, "space"))
+	if err != nil {
+		return "", err
+	}
+	return requireWikiSpaceID(space)
+}
+
 func validateOptionalResourceName(value, flagName string) error {
 	if value == "" {
 		return nil
