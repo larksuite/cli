@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.32] - 2026-05-15
+
+### Features
+
+- **doc**: Add `--width`/`--height` flags to `docs +media-insert` (#832)
+- **wiki**: Add `+space-list` / `+node-list` / `+node-copy` shortcuts (#392)
+
+### Bug Fixes
+
+- **drive**: Preserve parent token on nested overwrite (#908)
+- **selfupdate**: Use `LookPath` instead of `Executable` for binary verification (#886)
+- **registry**: Wait for background meta refresh before test reset (#894)
+
+### Documentation
+
+- **doc**: Add SVG whiteboard support to `lark-doc` v2 skill (#901)
+- **drive**: Add permission public patch error guidance (#863)
+
 ## [v1.0.31] - 2026-05-14
 
 ### Features
@@ -703,6 +721,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.32]: https://github.com/larksuite/cli/releases/tag/v1.0.32
 [v1.0.31]: https://github.com/larksuite/cli/releases/tag/v1.0.31
 [v1.0.30]: https://github.com/larksuite/cli/releases/tag/v1.0.30
 [v1.0.29]: https://github.com/larksuite/cli/releases/tag/v1.0.29
