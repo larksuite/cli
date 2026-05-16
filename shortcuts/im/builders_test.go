@@ -729,6 +729,18 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		}
 	})
 
+	t.Run("ImMessagesSend dry run warns chat membership is not verified", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "oc_123",
+			"text":    "hello",
+		}, nil)
+		got := mustMarshalDryRun(t, ImMessagesSend.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, "does not verify that the selected bot/user is a member of the target chat") ||
+			!strings.Contains(got, "Bot/User can NOT be out of the chat") {
+			t.Fatalf("ImMessagesSend.DryRun() missing membership warning: %s", got)
+		}
+	})
+
 	t.Run("ImMessagesSend dry run uses placeholder media key for url input", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"chat-id": "oc_123",
