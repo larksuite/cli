@@ -335,11 +335,11 @@ lark-cli sheets <resource> <method> [flags] # 调用 API
 | `spreadsheets.patch` | `sheets:spreadsheet.meta:write_only` |
 | `spreadsheet.sheet.filters.create` | `sheets:spreadsheet:write_only` |
 | `spreadsheet.sheet.filters.delete` | `sheets:spreadsheet:write_only` |
-| `spreadsheet.sheet.filters.get` | `sheets:spreadsheet:read` |
+| `spreadsheet.sheet.filters.get` | `sheets:spreadsheet:readonly` |
 | `spreadsheet.sheet.filters.update` | `sheets:spreadsheet:write_only` |
-| `spreadsheet.sheets.find` | `sheets:spreadsheet:read` |
+| `spreadsheet.sheets.find` | `sheets:spreadsheet:readonly` |
 | `spreadsheet.sheet.float_images.create` | `sheets:spreadsheet:write_only` |
 | `spreadsheet.sheet.float_images.patch` | `sheets:spreadsheet:write_only` |
-| `spreadsheet.sheet.float_images.get` | `sheets:spreadsheet:read` |
-| `spreadsheet.sheet.float_images.query` | `sheets:spreadsheet:read` |
+| `spreadsheet.sheet.float_images.get` | `sheets:spreadsheet:readonly` |
+| `spreadsheet.sheet.float_images.query` | `sheets:spreadsheet:readonly` |
 | `spreadsheet.sheet.float_images.delete` | `sheets:spreadsheet:write_only` |

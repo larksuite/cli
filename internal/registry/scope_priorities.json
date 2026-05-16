@@ -85,11 +85,6 @@
     "recommend": "true"
   },
   {
-    "scope_name": "sheets:spreadsheet:read",
-    "final_score": "65.0000",
-    "recommend": "true"
-  },
-  {
     "scope_name": "base:workflow:create",
     "final_score": "79.4755",
     "recommend": "true"
