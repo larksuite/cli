@@ -179,7 +179,7 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 		}
 	}
 
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Timeout: 10 * time.Second}
 	mcpURL := ep.MCP + "/mcp"
 
 	type probeResult struct {

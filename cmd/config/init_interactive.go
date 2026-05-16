@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/larksuite/cli/internal/build"
@@ -168,7 +169,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 
 	// Step 1: Request app registration (begin)
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	authResp, err := larkauth.RequestAppRegistration(httpClient, larkBrand, f.IOStreams.ErrOut)
 	if err != nil {
 		return nil, output.ErrAuth("app registration failed: %v", err)

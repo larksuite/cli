@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
@@ -108,7 +109,7 @@ func ValidateDownloadSourceURL(ctx context.Context, rawURL string) error {
 // and connection rules for untrusted URLs.
 func NewDownloadHTTPClient(base *http.Client, opts DownloadHTTPClientOptions) *http.Client {
 	if base == nil {
-		base = &http.Client{}
+		base = &http.Client{Timeout: 30 * time.Second}
 	}
 	if opts.MaxRedirects <= 0 {
 		opts.MaxRedirects = defaultDownloadMaxRedirects
