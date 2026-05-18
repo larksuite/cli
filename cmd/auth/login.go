@@ -706,14 +706,3 @@ func generateQRCode(verificationURL string) (ascii string, base64Str string) {
 	}
 	return
 }
-
-// qrCodeToBase64 generates a base64-encoded PNG image of a QR code for the given URL.
-// Returns an empty string if generation fails.
-func qrCodeToBase64(url string) string {
-	if qr, err := qrcode.New(url, qrcode.Medium); err == nil {
-		if pngBytes, err := qr.PNG(256); err == nil {
-			return base64.StdEncoding.EncodeToString(pngBytes)
-		}
-	}
-	return ""
-}
