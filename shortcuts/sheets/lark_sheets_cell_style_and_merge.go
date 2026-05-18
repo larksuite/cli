@@ -95,7 +95,7 @@ var SheetSetStyle = common.Shortcut{
 		}
 		r := normalizePointRange(runtime.Str("sheet-id"), runtime.Str("range"))
 		var style interface{}
-		json.Unmarshal([]byte(runtime.Str("style")), &style)
+		_ = json.Unmarshal([]byte(runtime.Str("style")), &style) // Validate already parses and validates this JSON.
 		return common.NewDryRunAPI().
 			PUT("/open-apis/sheets/v2/spreadsheets/:token/style").
 			Body(map[string]interface{}{
@@ -164,7 +164,7 @@ var SheetBatchSetStyle = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 		var data interface{}
-		json.Unmarshal([]byte(runtime.Str("data")), &data)
+		_ = json.Unmarshal([]byte(runtime.Str("data")), &data) // Validate already parses and validates this JSON via validateBatchStyleData().
 		normalizeBatchStyleRanges(data)
 		return common.NewDryRunAPI().
 			PUT("/open-apis/sheets/v2/spreadsheets/:token/styles_batch_update").
