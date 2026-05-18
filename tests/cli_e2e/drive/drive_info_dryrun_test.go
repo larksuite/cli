@@ -23,7 +23,7 @@ func TestDriveInfoDryRun_DocxURL(t *testing.T) {
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"drive", "+info",
+			"drive", "+resolve",
 			"--url", "https://xxx.feishu.cn/docx/doxcnDryRunE2E",
 			"--dry-run",
 		},
@@ -50,7 +50,7 @@ func TestDriveInfoDryRun_WikiURL(t *testing.T) {
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"drive", "+info",
+			"drive", "+resolve",
 			"--url", "https://xxx.feishu.cn/wiki/wikcnDryRunE2E",
 			"--dry-run",
 		},
@@ -80,7 +80,7 @@ func TestDriveInfoDryRun_BareTokenWithType(t *testing.T) {
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"drive", "+info",
+			"drive", "+resolve",
 			"--url", "doxcnBareToken",
 			"--type", "docx",
 			"--dry-run",

@@ -15,7 +15,7 @@ import (
 
 var DriveInfo = common.Shortcut{
 	Service:           "drive",
-	Command:           "+info",
+	Command:           "+resolve",
 	Description:       "Resolve a Lark document URL to its type, title, and canonical token (with wiki unwrapping)",
 	Risk:              "read",
 	Scopes:            []string{"drive:drive.metadata:readonly"},
