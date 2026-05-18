@@ -161,3 +161,91 @@ func TestPlatformSetPrefersExistingFileMasterKey(t *testing.T) {
 		t.Fatalf("platformGet() = %q, want %q", got, secret)
 	}
 }
+
+// TestPlatformSetDefaultFileBackendSkipsSystemKeychain verifies the default
+// file backend never touches the system keychain.
+func TestPlatformSetDefaultFileBackendSkipsSystemKeychain(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	origGet := keyringGet
+	origSet := keyringSet
+	keyringGet = func(service, user string) (string, error) {
+		t.Fatalf("keyringGet should not be called by the default file backend")
+		return "", nil
+	}
+	keyringSet = func(service, user, password string) error {
+		t.Fatalf("keyringSet should not be called by the default file backend")
+		return nil
+	}
+	t.Cleanup(func() {
+		keyringGet = origGet
+		keyringSet = origSet
+	})
+
+	service := "test-service"
+	account := "test-account"
+	secret := "secret-value"
+
+	if err := platformSet(service, account, secret); err != nil {
+		t.Fatalf("platformSet() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(StorageDir(service), fileMasterKeyName)); err != nil {
+		t.Fatalf("file master key not created: %v", err)
+	}
+
+	got, err := platformGet(service, account)
+	if err != nil {
+		t.Fatalf("platformGet() error = %v", err)
+	}
+	if got != secret {
+		t.Fatalf("platformGet() = %q, want %q", got, secret)
+	}
+}
+
+func TestResolveKeychainBackendModeDefaultsToFile(t *testing.T) {
+	mode, err := resolveKeychainBackendMode()
+	if err != nil {
+		t.Fatalf("resolveKeychainBackendMode() error = %v", err)
+	}
+	if mode != keychainBackendFile {
+		t.Fatalf("resolveKeychainBackendMode() = %q, want %q", mode, keychainBackendFile)
+	}
+}
+
+// TestPlatformSetKeychainBackendSkipsFileFallback verifies the explicit keychain
+// backend fails instead of silently falling back to local file storage.
+func TestPlatformSetKeychainBackendSkipsFileFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(keychainBackendEnv, string(keychainBackendKeychain))
+
+	origGet := keyringGet
+	origSet := keyringSet
+	keyringGet = func(service, user string) (string, error) {
+		return "", keyring.ErrNotFound
+	}
+	keyringSet = func(service, user, password string) error {
+		return errors.New("blocked")
+	}
+	t.Cleanup(func() {
+		keyringGet = origGet
+		keyringSet = origSet
+	})
+
+	err := platformSet("test-service", "test-account", "secret-value")
+	if err == nil {
+		t.Fatal("platformSet() error = nil, want keychain error")
+	}
+	if _, statErr := os.Stat(filepath.Join(StorageDir("test-service"), fileMasterKeyName)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("file master key should not be created in keychain mode, stat error = %v", statErr)
+	}
+}
+
+func TestResolveKeychainBackendModeRejectsInvalidValue(t *testing.T) {
+	t.Setenv(keychainBackendEnv, "invalid")
+
+	if _, err := resolveKeychainBackendMode(); err == nil {
+		t.Fatal("resolveKeychainBackendMode() error = nil, want validation error")
+	}
+}

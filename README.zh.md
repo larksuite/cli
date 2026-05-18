@@ -224,6 +224,26 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 
 ## 进阶用法
 
+### macOS 凭证后端
+
+macOS 默认使用本地加密文件后端保存凭证，避免本机自动化、无头会话或 AI Agent
+工作流被 Keychain 密码/指纹弹窗打断：
+
+```bash
+lark-cli config init
+lark-cli auth login --recommend
+```
+
+只有需要切换后端时，才需要设置 `LARKSUITE_CLI_KEYCHAIN_BACKEND`：
+
+支持的取值：
+
+| 取值       | 行为                                                                     |
+| ---------- | ------------------------------------------------------------------------ |
+| `file`     | 默认：将加密 master key 存在本地 `0600` 文件中，并且不会触发 Keychain 弹窗 |
+| `auto`     | 优先使用已有文件 master key，否则使用 Keychain，写入失败时 fallback 到文件 |
+| `keychain` | 强制使用 macOS Keychain；不可用时直接失败                                 |
+
 ### 输出格式
 
 ```bash

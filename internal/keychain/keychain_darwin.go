@@ -12,9 +12,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,11 +39,38 @@ const tagBytes = 16
 // fileMasterKeyName is the local fallback master key file name.
 const fileMasterKeyName = "master.key.file"
 
+// keychainBackendEnv selects the macOS secret master-key backend.
+const keychainBackendEnv = "LARKSUITE_CLI_KEYCHAIN_BACKEND"
+
+type keychainBackendMode string
+
+const (
+	keychainBackendAuto     keychainBackendMode = "auto"
+	keychainBackendKeychain keychainBackendMode = "keychain"
+	keychainBackendFile     keychainBackendMode = "file"
+)
+
 // keyringGet is overridden in tests to simulate system keychain reads.
 var keyringGet = keyring.Get
 
 // keyringSet is overridden in tests to simulate system keychain writes.
 var keyringSet = keyring.Set
+
+func resolveKeychainBackendMode() (keychainBackendMode, error) {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(keychainBackendEnv)))
+	switch value {
+	case "":
+		return keychainBackendFile, nil
+	case string(keychainBackendAuto):
+		return keychainBackendAuto, nil
+	case string(keychainBackendKeychain):
+		return keychainBackendKeychain, nil
+	case string(keychainBackendFile):
+		return keychainBackendFile, nil
+	default:
+		return "", fmt.Errorf("invalid %s %q (want auto, keychain, or file)", keychainBackendEnv, value)
+	}
+}
 
 // StorageDir returns the storage directory for a given service name on macOS.
 func StorageDir(service string) string {
@@ -256,11 +285,28 @@ func platformGet(service, account string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if key, ferr := getFileMasterKey(service, false); ferr == nil {
-		if plaintext, derr := decryptData(data, key); derr == nil {
-			return plaintext, nil
+
+	mode, err := resolveKeychainBackendMode()
+	if err != nil {
+		return "", err
+	}
+
+	if mode == keychainBackendFile {
+		key, err := getFileMasterKey(service, false)
+		if err != nil {
+			return "", err
+		}
+		return decryptData(data, key)
+	}
+
+	if mode == keychainBackendAuto {
+		if key, ferr := getFileMasterKey(service, false); ferr == nil {
+			if plaintext, derr := decryptData(data, key); derr == nil {
+				return plaintext, nil
+			}
 		}
 	}
+
 	key, err := getMasterKey(service, false)
 	if err != nil {
 		return "", err
@@ -274,16 +320,30 @@ func platformGet(service, account string) (string, error) {
 
 // platformSet stores a value in the macOS keychain.
 func platformSet(service, account, data string) error {
-	key, err := getFileMasterKey(service, false)
+	mode, err := resolveKeychainBackendMode()
 	if err != nil {
+		return err
+	}
+
+	var key []byte
+	switch mode {
+	case keychainBackendFile:
+		key, err = getFileMasterKey(service, true)
+	case keychainBackendKeychain:
 		key, err = getMasterKey(service, true)
+	default:
+		key, err = getFileMasterKey(service, false)
 		if err != nil {
-			key, err = getFileMasterKey(service, true)
+			key, err = getMasterKey(service, true)
 			if err != nil {
-				return err
+				key, err = getFileMasterKey(service, true)
 			}
 		}
 	}
+	if err != nil {
+		return err
+	}
+
 	dir := StorageDir(service)
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err

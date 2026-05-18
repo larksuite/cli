@@ -223,6 +223,27 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 
 ## Advanced Usage
 
+### macOS Credential Backend
+
+On macOS, credentials use a local encrypted file backend by default so local
+automation, headless sessions, and AI agent workflows are not interrupted by
+Keychain prompts:
+
+```bash
+lark-cli config init
+lark-cli auth login --recommend
+```
+
+Set `LARKSUITE_CLI_KEYCHAIN_BACKEND` only when you need a different backend:
+
+Supported values are:
+
+| Value      | Behavior                                                                 |
+| ---------- | ------------------------------------------------------------------------ |
+| `file`     | Default: store the encryption master key in a local `0600` file and never prompt Keychain |
+| `auto`     | Prefer an existing file master key, otherwise use Keychain, with file fallback on write failure |
+| `keychain` | Force macOS Keychain and fail if it is unavailable                       |
+
 ### Output Formats
 
 ```bash
