@@ -9,7 +9,7 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	drivee2e "github.com/larksuite/cli/tests/cli_e2e/drive"
+	"github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -27,12 +27,13 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 	updatedTitle := "lark-cli-e2e-update-updated-" + suffix
 	originalContent := "# Original\n\nThis is the original content."
 	updatedContent := "# Updated\n\nThis is the updated content."
+	const defaultAs = "bot"
 
-	folderToken := drivee2e.CreateDriveFolder(t, parentT, ctx, folderName, "bot", "")
+	folderToken := drive.CreateDriveFolder(t, parentT, ctx, folderName, defaultAs, "")
 	var docToken string
 
 	t.Run("create as bot", func(t *testing.T) {
-		docToken = createDocWithRetry(t, parentT, ctx, folderToken, originalTitle, originalContent, "bot")
+		docToken = createDocWithRetry(t, parentT, ctx, folderToken, originalTitle, originalContent, defaultAs)
 	})
 
 	t.Run("update-title-and-content as bot", func(t *testing.T) {
@@ -46,7 +47,7 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 				"--markdown", updatedContent,
 				"--new-title", updatedTitle,
 			},
-			DefaultAs: "bot",
+			DefaultAs: defaultAs,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -61,7 +62,7 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 				"docs", "+fetch",
 				"--doc", docToken,
 			},
-			DefaultAs: "bot",
+			DefaultAs: defaultAs,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

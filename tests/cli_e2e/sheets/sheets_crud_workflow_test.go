@@ -12,7 +12,7 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	drivee2e "github.com/larksuite/cli/tests/cli_e2e/drive"
+	"github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -180,12 +180,13 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 
 	suffix := clie2e.GenerateSuffix()
 	spreadsheetToken := ""
+	const defaultAs = "bot"
 
 	t.Run("create spreadsheet with spreadsheets create as bot", func(t *testing.T) {
-		folderToken := drivee2e.CreateDriveFolder(t, parentT, ctx, "lark-cli-e2e-sheets-resource-folder-"+suffix, "bot", "")
+		folderToken := drive.CreateDriveFolder(t, parentT, ctx, "lark-cli-e2e-sheets-resource-folder-"+suffix, defaultAs, "")
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"sheets", "spreadsheets", "create"},
-			DefaultAs: "bot",
+			DefaultAs: defaultAs,
 			Data: map[string]any{
 				"title":        "lark-cli-e2e-sheets-resource-" + suffix,
 				"folder_token": folderToken,
@@ -202,15 +203,7 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 			cleanupCtx, cancel := clie2e.CleanupContext()
 			defer cancel()
 
-			deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
-				Args: []string{
-					"drive", "+delete",
-					"--file-token", spreadsheetToken,
-					"--type", "sheet",
-					"--yes",
-				},
-				DefaultAs: "bot",
-			})
+			deleteResult, deleteErr := drive.DeleteDriveResourceAndVerify(cleanupCtx, spreadsheetToken, "sheet", defaultAs)
 			clie2e.ReportCleanupFailure(parentT, "delete spreadsheet "+spreadsheetToken, deleteResult, deleteErr)
 		})
 	})

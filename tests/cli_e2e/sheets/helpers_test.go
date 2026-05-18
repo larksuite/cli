@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	drivee2e "github.com/larksuite/cli/tests/cli_e2e/drive"
+	"github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -16,7 +16,7 @@ import (
 func createSpreadsheet(t *testing.T, parentT *testing.T, ctx context.Context, title string, defaultAs string) string {
 	t.Helper()
 
-	folderToken := drivee2e.CreateDriveFolder(t, parentT, ctx, title+"-folder", defaultAs, "")
+	folderToken := drive.CreateDriveFolder(t, parentT, ctx, title+"-folder", defaultAs, "")
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
@@ -37,15 +37,7 @@ func createSpreadsheet(t *testing.T, parentT *testing.T, ctx context.Context, ti
 		cleanupCtx, cancel := clie2e.CleanupContext()
 		defer cancel()
 
-		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
-			Args: []string{
-				"drive", "+delete",
-				"--file-token", spreadsheetToken,
-				"--type", "sheet",
-				"--yes",
-			},
-			DefaultAs: defaultAs,
-		})
+		deleteResult, deleteErr := drive.DeleteDriveResourceAndVerify(cleanupCtx, spreadsheetToken, "sheet", defaultAs)
 		clie2e.ReportCleanupFailure(parentT, "delete spreadsheet "+spreadsheetToken, deleteResult, deleteErr)
 	})
 

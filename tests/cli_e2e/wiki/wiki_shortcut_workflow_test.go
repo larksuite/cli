@@ -31,7 +31,7 @@ func TestWiki_ShortcutWorkflow(t *testing.T) {
 	childTitle := "lark-cli-e2e-wiki-sc-child-" + suffix
 	copyTitle := "lark-cli-e2e-wiki-sc-copy-" + suffix
 
-	var spaceID, parentNodeToken, childNodeToken, childObjType string
+	var spaceID, parentNodeToken, childNodeToken, childObjType, copiedNodeToken string
 
 	// Setup: reuse an existing first-layer node in my_library as the host so
 	// we never bump the top-layer node count (the bot's my_library top layer
@@ -46,44 +46,22 @@ func TestWiki_ShortcutWorkflow(t *testing.T) {
 	// parent always has exactly the children this test creates, so the
 	// pagination scan never has to dig through historical cruft.
 	t.Run("setup: locate my_library host node + create isolated parent + create test child", func(t *testing.T) {
-		listResult, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"api", "get", "/open-apis/wiki/v2/spaces/my_library/nodes"},
-			DefaultAs: "bot",
-			Params:    map[string]any{"page_size": 50},
-		})
-		require.NoError(t, err)
-		listResult.AssertExitCode(t, 0)
-		listResult.AssertStdoutStatus(t, 0)
-
-		items := gjson.Get(listResult.Stdout, "data.items").Array()
-		if len(items) == 0 {
-			t.Skip("skipped: my_library has no existing top-level nodes to host the test structure")
-		}
-		host := items[0]
+		host, isolatedParent := createWikiNodeUnderAnyHost(t, parentT, ctx, parentTitle)
 		spaceID = host.Get("space_id").String()
-		hostNodeToken := host.Get("node_token").String()
 		require.NotEmpty(t, spaceID, "host space_id must be present in listing")
-		require.NotEmpty(t, hostNodeToken, "host node_token must be present in listing")
-
-		// Create a fresh intermediate parent under the host. The helper
-		// auto-registers a t.Cleanup callback that deletes this parent
-		// (and, by API cascade, anything still under it) after the test.
-		isolatedParent := createWikiNode(t, parentT, ctx, spaceID, map[string]any{
-			"node_type":         "origin",
-			"obj_type":          "docx",
-			"title":             parentTitle,
-			"parent_node_token": hostNodeToken,
-		})
 		parentNodeToken = isolatedParent.Get("node_token").String()
 		require.NotEmpty(t, parentNodeToken, "isolated parent node_token must be present after create")
 
 		// Create the test child UNDER the freshly-isolated parent.
-		child := createWikiNode(t, parentT, ctx, spaceID, map[string]any{
+		child, result, err := createWikiNode(t, parentT, ctx, spaceID, map[string]any{
 			"node_type":         "origin",
 			"obj_type":          "docx",
 			"title":             childTitle,
 			"parent_node_token": parentNodeToken,
 		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, 0)
 		childNodeToken = child.Get("node_token").String()
 		childObjType = child.Get("obj_type").String()
 		require.NotEmpty(t, childNodeToken)
@@ -184,7 +162,7 @@ func TestWiki_ShortcutWorkflow(t *testing.T) {
 		require.NotEmpty(t, parentNodeToken)
 		require.NotEmpty(t, childNodeToken)
 
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args: []string{
 				"wiki", "+node-copy",
 				"--space-id", spaceID,
@@ -197,13 +175,13 @@ func TestWiki_ShortcutWorkflow(t *testing.T) {
 			// explicit confirmation before issuing the request.
 			Yes:       true,
 			DefaultAs: "bot",
-		})
+		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
 		out := gjson.Parse(result.Stdout)
 		require.True(t, out.Get("ok").Bool(), "stdout:\n%s", result.Stdout)
-		copiedNodeToken := out.Get("data.node_token").String()
+		copiedNodeToken = out.Get("data.node_token").String()
 		copiedSpaceID := out.Get("data.space_id").String()
 		copiedObjType := out.Get("data.obj_type").String()
 		require.NotEmpty(t, copiedNodeToken, "stdout:\n%s", result.Stdout)
@@ -213,7 +191,7 @@ func TestWiki_ShortcutWorkflow(t *testing.T) {
 		parentT.Cleanup(func() {
 			cleanupCtx, cancel := clie2e.CleanupContext()
 			defer cancel()
-			deleteResult, deleteErr := deleteWikiNode(cleanupCtx, copiedSpaceID, copiedNodeToken, copiedObjType)
+			deleteResult, deleteErr := deleteWikiNodeAndVerify(cleanupCtx, copiedSpaceID, copiedNodeToken, copiedObjType)
 			clie2e.ReportCleanupFailure(parentT, "delete copied wiki node "+copiedNodeToken, deleteResult, deleteErr)
 		})
 
