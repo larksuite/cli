@@ -40,7 +40,7 @@ var CellsSet = common.Shortcut{
 	HasFormat:   true,
 	Flags: append(publicSheetFlags(),
 		common.Flag{Name: "range", Required: true, Desc: "target A1 range (e.g. A1:C10); cells dimensions must match"},
-		common.Flag{Name: "data", Input: []string{common.File, common.Stdin}, Required: true,
+		common.Flag{Name: "cells", Input: []string{common.File, common.Stdin}, Required: true,
 			Desc: "JSON body: { \"cells\": [[{value|formula|cell_styles|...}, ...]], optional copy_to_range / resize_width / resize_height }"},
 		common.Flag{Name: "allow-overwrite", Type: "bool", Default: "true", Desc: "allow overwriting non-empty cells (default true)"},
 		common.Flag{Name: "max-cells", Type: "int", Default: "50000", Hidden: true, Desc: "anti-burst cells write cap"},
@@ -55,12 +55,12 @@ var CellsSet = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("range")) == "" {
 			return common.FlagErrorf("--range is required")
 		}
-		body, err := requireJSONObject(runtime, "data")
+		body, err := requireJSONObject(runtime, "cells")
 		if err != nil {
 			return err
 		}
 		if _, ok := body["cells"]; !ok {
-			return common.FlagErrorf("--data must include a \"cells\" field")
+			return common.FlagErrorf("--cells must include a \"cells\" field")
 		}
 		return nil
 	},
@@ -93,7 +93,7 @@ var CellsSet = common.Shortcut{
 }
 
 func cellsSetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) (map[string]interface{}, error) {
-	body, err := requireJSONObject(runtime, "data")
+	body, err := requireJSONObject(runtime, "cells")
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func cellsSetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 		"range":    strings.TrimSpace(runtime.Str("range")),
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
-	// --data fields override any of these except the core selectors.
+	// --cells fields override any of these except the core selectors.
 	for k, v := range body {
 		switch k {
 		case "excel_id", "range", "sheet_id", "sheet_name":
@@ -117,21 +117,24 @@ func cellsSetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 	return input, nil
 }
 
-// CellsSetStyle wraps set_cell_range applied to a uniform style: parse
-// --style once, fan it out to a (rows × cols) cells matrix, and let
-// set_cell_range stamp every cell in the range with that style.
+// CellsSetStyle stamps a single style block across every cell in --range.
+// Style is composed from a dozen flat flags (background-color, font-color,
+// font-size, font-style, font-weight, font-line, horizontal-alignment,
+// vertical-alignment, word-wrap, number-format) plus --border-styles for
+// the only field that still needs a nested object. At least one flag must
+// be set.
 var CellsSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-set-style",
-	Description: "Apply a single style block to every cell in a range (values / formulas untouched).",
+	Description: "Apply style flags to every cell in a range (values / formulas untouched).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "target A1 range (e.g. A1:B2)"},
-		common.Flag{Name: "style", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "style JSON: { font, backColor, horizontal_alignment, vertical_alignment, ... , optional border_styles }"},
+	Flags: append(
+		append(publicSheetFlags(),
+			common.Flag{Name: "range", Required: true, Desc: "target A1 range (e.g. A1:B2)"}),
+		styleFlatFlags()...,
 	),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
@@ -147,7 +150,10 @@ var CellsSetStyle = common.Shortcut{
 		if _, _, err := rangeDimensions(r); err != nil {
 			return common.FlagErrorf("--range %q: %v", r, err)
 		}
-		if _, err := requireJSONObject(runtime, "style"); err != nil {
+		if err := requireAnyStyleFlag(runtime); err != nil {
+			return err
+		}
+		if _, err := borderStylesFromFlag(runtime); err != nil {
 			return err
 		}
 		return nil
@@ -181,31 +187,24 @@ var CellsSetStyle = common.Shortcut{
 }
 
 func cellsSetStyleInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) (map[string]interface{}, error) {
-	style, err := requireJSONObject(runtime, "style")
-	if err != nil {
-		return nil, err
-	}
 	rangeStr := strings.TrimSpace(runtime.Str("range"))
 	rows, cols, err := rangeDimensions(rangeStr)
 	if err != nil {
 		return nil, common.FlagErrorf("--range %q: %v", rangeStr, err)
 	}
-	// Split border_styles out of the style block since the tool models it
-	// as a sibling field of cell_styles.
-	cellStyle := map[string]interface{}{}
-	var borderStyles interface{}
-	for k, v := range style {
-		if k == "border_styles" {
-			borderStyles = v
-			continue
-		}
-		cellStyle[k] = v
+	cellStyle := buildCellStyleFromFlags(runtime)
+	borderStyles, err := borderStylesFromFlag(runtime)
+	if err != nil {
+		return nil, err
 	}
 	cells := make([][]interface{}, rows)
 	for r := range cells {
 		row := make([]interface{}, cols)
 		for c := range row {
-			cell := map[string]interface{}{"cell_styles": cellStyle}
+			cell := map[string]interface{}{}
+			if len(cellStyle) > 0 {
+				cell["cell_styles"] = cellStyle
+			}
 			if borderStyles != nil {
 				cell["border_styles"] = borderStyles
 			}

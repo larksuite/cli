@@ -72,8 +72,6 @@ manage_conditional_format_object create
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `get_conditional_format_objects` | `+cond-format-list` | read | 对象 |
@@ -82,8 +80,6 @@ manage_conditional_format_object create
 |  | `+cond-format-delete` | high-risk-write | 对象 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+cond-format-list`
 
@@ -104,7 +100,9 @@ manage_conditional_format_object create
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--data` | 专有 | string + File + Stdin | 是 | JSON：`{"range":"Sheet1!A2:F1000","rule":{"type":"cell_value","operator":"greater_than","value":100,"style":{...}}}`，type 可选 `cell_value` / `duplicate` / `data_bar` / `color_scale` / `rank` / `formula` |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | +cond-format-create / --data: 规则配置 JSON，含 `style`（命中样式，必填）和 `attrs?`（规则参数列表，因 rule_type 不同结构而异）/ `has_ref?`。`rule_type` 和 `ranges` 已拎为独立 flag |
+| `--rule-type` | 专有 | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
+| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+cond-format-update`
@@ -116,7 +114,9 @@ manage_conditional_format_object create
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--rule-id` | 专有 | string | 是 | 目标规则 id |
-| `--data` | 专有 | string + File + Stdin | 是 | 完整或足够完整的规则配置（先 `+cond-format-list --rule-id <id>` 回读再 patch） |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | +cond-format-update / --data: 同 +cond-format-create；update 是整组覆盖式 |
+| `--rule-type` | 专有 | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
+| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+cond-format-delete`
@@ -135,7 +135,7 @@ manage_conditional_format_object create
 
 > 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
 
-### `+cond-format-create` `--data` / `+cond-format-update` `--data`
+### `+cond-format-create` `--properties` / `+cond-format-update` `--properties`
 
 _创建/更新的条件格式属性_
 
@@ -147,8 +147,6 @@ _创建/更新的条件格式属性_
 - `style` (object) — 命中规则时应用的单元格样式 { back_color?: string, font?: enum, fore_color?: string, text_decoration?: enum }
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR）。
 

@@ -166,3 +166,101 @@ func requireJSONArray(runtime *common.RuntimeContext, name string) ([]interface{
 	}
 	return a, nil
 }
+
+// ─── style flags (shared by +cells-set-style and +cells-batch-set-style) ─
+
+var (
+	fontStyleEnum  = []string{"normal", "italic"}
+	fontWeightEnum = []string{"normal", "bold"}
+	fontLineEnum   = []string{"none", "underline", "line-through"}
+	hAlignEnum     = []string{"left", "center", "right"}
+	vAlignEnum     = []string{"top", "middle", "bottom"}
+	wordWrapEnum   = []string{"overflow", "auto-wrap", "word-clip"}
+)
+
+// styleFlatFlags returns the 11 flat style flags + --border-styles that both
+// +cells-set-style and +cells-batch-set-style expose. Keeping them in one
+// place stops the two shortcuts from drifting apart.
+func styleFlatFlags() []common.Flag {
+	return []common.Flag{
+		{Name: "background-color", Desc: "hex background color (e.g. #ffffff)"},
+		{Name: "font-color", Desc: "hex font color (e.g. #000000)"},
+		{Name: "font-size", Type: "int", Desc: "font size in pixels (e.g. 10, 12, 14)"},
+		{Name: "font-style", Enum: fontStyleEnum, Desc: "normal / italic"},
+		{Name: "font-weight", Enum: fontWeightEnum, Desc: "normal / bold"},
+		{Name: "font-line", Enum: fontLineEnum, Desc: "none / underline / line-through"},
+		{Name: "horizontal-alignment", Enum: hAlignEnum, Desc: "left / center / right"},
+		{Name: "vertical-alignment", Enum: vAlignEnum, Desc: "top / middle / bottom"},
+		{Name: "word-wrap", Enum: wordWrapEnum, Desc: "overflow (default) / auto-wrap / word-clip"},
+		{Name: "number-format", Desc: "number format string (e.g. @, 0.00, $#,##0.00, mm/dd/yyyy)"},
+		{Name: "border-styles", Input: []string{common.File, common.Stdin},
+			Desc: "border JSON: { top, bottom, left, right } each = { color, style, weight }"},
+	}
+}
+
+// buildCellStyleFromFlags reads the 11 flat style flags and returns the
+// cell_styles map expected by set_cell_range. Skips any flag the user
+// didn't set so partial styles work.
+func buildCellStyleFromFlags(runtime *common.RuntimeContext) map[string]interface{} {
+	style := map[string]interface{}{}
+	if v := runtime.Str("background-color"); v != "" {
+		style["background_color"] = v
+	}
+	if v := runtime.Str("font-color"); v != "" {
+		style["font_color"] = v
+	}
+	if runtime.Changed("font-size") && runtime.Int("font-size") > 0 {
+		style["font_size"] = runtime.Int("font-size")
+	}
+	if v := runtime.Str("font-style"); v != "" {
+		style["font_style"] = v
+	}
+	if v := runtime.Str("font-weight"); v != "" {
+		style["font_weight"] = v
+	}
+	if v := runtime.Str("font-line"); v != "" {
+		style["font_line"] = v
+	}
+	if v := runtime.Str("horizontal-alignment"); v != "" {
+		style["horizontal_alignment"] = v
+	}
+	if v := runtime.Str("vertical-alignment"); v != "" {
+		style["vertical_alignment"] = v
+	}
+	if v := runtime.Str("word-wrap"); v != "" {
+		style["word_wrap"] = v
+	}
+	if v := runtime.Str("number-format"); v != "" {
+		style["number_format"] = v
+	}
+	return style
+}
+
+// borderStylesFromFlag parses --border-styles as a JSON object (top/bottom/
+// left/right with style sub-objects). Returns nil when the flag is empty.
+func borderStylesFromFlag(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+	if runtime.Str("border-styles") == "" {
+		return nil, nil
+	}
+	v, err := parseJSONFlag(runtime, "border-styles")
+	if err != nil {
+		return nil, err
+	}
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return nil, common.FlagErrorf("--border-styles must be a JSON object")
+	}
+	return m, nil
+}
+
+// requireAnyStyleFlag ensures at least one style-defining flag (style or
+// border) is set — otherwise the request would do nothing.
+func requireAnyStyleFlag(runtime *common.RuntimeContext) error {
+	if len(buildCellStyleFromFlags(runtime)) > 0 {
+		return nil
+	}
+	if runtime.Str("border-styles") != "" {
+		return nil
+	}
+	return common.FlagErrorf("at least one style flag is required (e.g. --background-color, --font-weight, --border-styles)")
+}

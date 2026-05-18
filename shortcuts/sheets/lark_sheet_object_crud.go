@@ -37,18 +37,22 @@ type objectCRUDSpec struct {
 	toolName         string // e.g. "manage_chart_object"
 	idFlag           string // e.g. "chart-id"
 	idField          string // e.g. "chart_id"
-	createDataDesc   string // help text for --data on create
-	updateDataDesc   string // help text for --data on update
+	createDataDesc   string // help text for --properties on create
+	updateDataDesc   string // help text for --properties on update
 	createExtraFlags []common.Flag
-	// createExtraInput, when set, mutates the tool input after the standard
-	// fields are written. Used by pivot to inject --target-sheet-id /
-	// --target-position alongside properties.
-	createExtraInput func(rt *common.RuntimeContext, input map[string]interface{})
+	updateExtraFlags []common.Flag
+	// enhanceCreateInput / enhanceUpdateInput, when set, mutate the tool
+	// input after the standard fields are written. Used to inject
+	// shortcut-specific flat flags into the input (typically into the
+	// properties map). The callback is responsible for navigating to the
+	// right nesting level.
+	enhanceCreateInput func(rt *common.RuntimeContext, input map[string]interface{})
+	enhanceUpdateInput func(rt *common.RuntimeContext, input map[string]interface{})
 }
 
 func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 	flags := append(publicSheetFlags(),
-		common.Flag{Name: "data", Input: []string{common.File, common.Stdin}, Required: true, Desc: spec.createDataDesc},
+		common.Flag{Name: "properties", Input: []string{common.File, common.Stdin}, Required: true, Desc: spec.createDataDesc},
 	)
 	flags = append(flags, spec.createExtraFlags...)
 	return common.Shortcut{
@@ -67,7 +71,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			if _, _, err := resolveSheetSelector(runtime); err != nil {
 				return err
 			}
-			_, err := requireJSONObject(runtime, "data")
+			_, err := requireJSONObject(runtime, "properties")
 			return err
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -100,7 +104,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 }
 
 func objectCreateInput(runtime *common.RuntimeContext, token, sheetID, sheetName string, spec objectCRUDSpec) (map[string]interface{}, error) {
-	props, err := requireJSONObject(runtime, "data")
+	props, err := requireJSONObject(runtime, "properties")
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +114,8 @@ func objectCreateInput(runtime *common.RuntimeContext, token, sheetID, sheetName
 		"properties": props,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
-	if spec.createExtraInput != nil {
-		spec.createExtraInput(runtime, input)
+	if spec.enhanceCreateInput != nil {
+		spec.enhanceCreateInput(runtime, input)
 	}
 	return input, nil
 }
@@ -125,9 +129,10 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 		})
 	}
 	flags = append(flags, common.Flag{
-		Name: "data", Input: []string{common.File, common.Stdin}, Required: true,
+		Name: "properties", Input: []string{common.File, common.Stdin}, Required: true,
 		Desc: spec.updateDataDesc,
 	})
+	flags = append(flags, spec.updateExtraFlags...)
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     spec.commandPrefix + "-update",
@@ -147,7 +152,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			if spec.idFlag != "" && strings.TrimSpace(runtime.Str(spec.idFlag)) == "" {
 				return common.FlagErrorf("--%s is required", spec.idFlag)
 			}
-			_, err := requireJSONObject(runtime, "data")
+			_, err := requireJSONObject(runtime, "properties")
 			return err
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -180,7 +185,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 }
 
 func objectUpdateInput(runtime *common.RuntimeContext, token, sheetID, sheetName string, spec objectCRUDSpec) (map[string]interface{}, error) {
-	props, err := requireJSONObject(runtime, "data")
+	props, err := requireJSONObject(runtime, "properties")
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +197,9 @@ func objectUpdateInput(runtime *common.RuntimeContext, token, sheetID, sheetName
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if spec.idFlag != "" {
 		input[spec.idField] = strings.TrimSpace(runtime.Str(spec.idFlag))
+	}
+	if spec.enhanceUpdateInput != nil {
+		spec.enhanceUpdateInput(runtime, input)
 	}
 	return input, nil
 }
@@ -276,24 +284,37 @@ var ChartCreate = newObjectCreateShortcut(chartSpec)
 var ChartUpdate = newObjectUpdateShortcut(chartSpec)
 var ChartDelete = newObjectDeleteShortcut(chartSpec)
 
-// pivot — adds --target-sheet-id / --target-position on create
+// pivot — create exposes --target-sheet-id / --target-position (top-level
+// of the tool input) plus --source / --range hoisted from properties.
 var pivotSpec = objectCRUDSpec{
 	commandPrefix:  "+pivot",
 	toolName:       "manage_pivot_table_object",
 	idFlag:         "pivot-table-id",
 	idField:        "pivot_table_id",
-	createDataDesc: "pivot table properties JSON: { data_range, rows, columns, values, filters, show_row_grand_total, show_col_grand_total }",
+	createDataDesc: "pivot table properties JSON: { rows, columns, values, filters, show_row_grand_total, ... }; --source / --range cover the common scalar fields",
 	updateDataDesc: "full or partial pivot properties JSON (`+pivot-list --pivot-table-id <id>` first, then patch)",
 	createExtraFlags: []common.Flag{
 		{Name: "target-sheet-id", Desc: "destination sheet id for the pivot table; omit to auto-create a fresh sheet (recommended)"},
 		{Name: "target-position", Default: "A1", Desc: "destination start cell, default A1"},
+		{Name: "source", Required: true, Desc: "pivot source range, e.g. Sheet1!A1:D100 (--source overrides any properties.source)"},
+		{Name: "range", Desc: "destination top-left A1 cell, e.g. F1 (--range overrides any properties.range)"},
 	},
-	createExtraInput: func(rt *common.RuntimeContext, input map[string]interface{}) {
+	enhanceCreateInput: func(rt *common.RuntimeContext, input map[string]interface{}) {
 		if v := strings.TrimSpace(rt.Str("target-sheet-id")); v != "" {
 			input["target_sheet_id"] = v
 		}
 		if v := strings.TrimSpace(rt.Str("target-position")); v != "" && v != "A1" {
 			input["target_position"] = v
+		}
+		props, _ := input["properties"].(map[string]interface{})
+		if props == nil {
+			return
+		}
+		if v := strings.TrimSpace(rt.Str("source")); v != "" {
+			props["source"] = v
+		}
+		if v := strings.TrimSpace(rt.Str("range")); v != "" {
+			props["range"] = v
 		}
 	},
 }
@@ -302,14 +323,50 @@ var PivotUpdate = newObjectUpdateShortcut(pivotSpec)
 var PivotDelete = newObjectDeleteShortcut(pivotSpec)
 
 // conditional format — CLI surface uses --rule-id (short), wired to the
-// tool's conditional_format_id on the wire.
+// tool's conditional_format_id on the wire. --rule-type and --ranges are
+// hoisted out of properties (both required, set on every CRUD write).
+var condFormatRuleTypeEnum = []string{
+	"cellValue", "formula", "duplicate", "unique",
+	"topBottom", "aboveBelowAverage", "dataBar", "colorScale",
+	"iconSet", "textContains", "dateOccurring", "blankCell", "errorCell",
+}
+var condFormatExtraFlags = []common.Flag{
+	{Name: "rule-type", Required: true, Enum: condFormatRuleTypeEnum,
+		Desc: "rule type enum (cellValue / formula / duplicate / ...); merged into properties.rule.type"},
+	{Name: "ranges", Input: []string{common.File, common.Stdin}, Required: true,
+		Desc: "A1 ranges JSON array (e.g. [\"A1:A100\",\"C2:C50\"]); merged into properties.ranges"},
+}
+var condFormatEnhance = func(rt *common.RuntimeContext, input map[string]interface{}) {
+	props, _ := input["properties"].(map[string]interface{})
+	if props == nil {
+		return
+	}
+	if ruleType := strings.TrimSpace(rt.Str("rule-type")); ruleType != "" {
+		rule, _ := props["rule"].(map[string]interface{})
+		if rule == nil {
+			rule = map[string]interface{}{}
+		}
+		rule["type"] = ruleType
+		props["rule"] = rule
+	}
+	if rt.Str("ranges") != "" {
+		if arr, err := requireJSONArray(rt, "ranges"); err == nil {
+			props["ranges"] = arr
+		}
+	}
+}
+
 var condFormatSpec = objectCRUDSpec{
-	commandPrefix:  "+cond-format",
-	toolName:       "manage_conditional_format_object",
-	idFlag:         "rule-id",
-	idField:        "conditional_format_id",
-	createDataDesc: "rule JSON: { range, rule: { type: cell_value|duplicate|data_bar|color_scale|rank|formula, ... } }",
-	updateDataDesc: "full or partial rule JSON (`+cond-format-list --rule-id <id>` first, then patch)",
+	commandPrefix:      "+cond-format",
+	toolName:           "manage_conditional_format_object",
+	idFlag:             "rule-id",
+	idField:            "conditional_format_id",
+	createDataDesc:     "rule JSON: { rule: { operator, value, style, ... }, ... }; --rule-type and --ranges cover the common scalar fields",
+	updateDataDesc:     "full or partial rule JSON (`+cond-format-list --rule-id <id>` first, then patch); --rule-type and --ranges still required",
+	createExtraFlags:   condFormatExtraFlags,
+	updateExtraFlags:   condFormatExtraFlags,
+	enhanceCreateInput: condFormatEnhance,
+	enhanceUpdateInput: condFormatEnhance,
 }
 var CondFormatCreate = newObjectCreateShortcut(condFormatSpec)
 var CondFormatUpdate = newObjectUpdateShortcut(condFormatSpec)
@@ -328,28 +385,199 @@ var SparklineCreate = newObjectCreateShortcut(sparklineSpec)
 var SparklineUpdate = newObjectUpdateShortcut(sparklineSpec)
 var SparklineDelete = newObjectDeleteShortcut(sparklineSpec)
 
-// float image
-var floatImageSpec = objectCRUDSpec{
-	commandPrefix:  "+float-image",
-	toolName:       "manage_float_image_object",
-	idFlag:         "float-image-id",
-	idField:        "float_image_id",
-	createDataDesc: "float image JSON: { image_uri, image_name, position:{row,col}, size:{width,height}, offset:{x,y} } — image_uri must be pre-uploaded",
-	updateDataDesc: "full or partial float image JSON (`+float-image-list --float-image-id <id>` first, then patch)",
+// float image — fully hoisted to 10 flat flags. No --properties flag;
+// the tool's properties is composed entirely from the position / size /
+// offset / image_token / image_uri / z_index flat flags.
+
+var floatImageFlatFlags = []common.Flag{
+	{Name: "image-name", Required: true, Desc: "image file name with extension (e.g. logo.png)"},
+	{Name: "image-token", Desc: "image file_token (XOR --image-uri); commonly returned by +float-image-list"},
+	{Name: "image-uri", Desc: "image reference_id (XOR --image-token); upstream-supplied like \"<|image|>:abcdef\""},
+	{Name: "position-row", Type: "int", Required: true, Desc: "top-left row index (0-based)"},
+	{Name: "position-col", Required: true, Desc: "top-left column letter (e.g. A, B)"},
+	{Name: "size-width", Type: "int", Required: true, Desc: "image width in pixels"},
+	{Name: "size-height", Type: "int", Required: true, Desc: "image height in pixels"},
+	{Name: "offset-row", Type: "int", Desc: "in-cell row offset in pixels (optional)"},
+	{Name: "offset-col", Type: "int", Desc: "in-cell column offset in pixels (optional)"},
+	{Name: "z-index", Type: "int", Desc: "z-order layer for overlapping images (optional)"},
 }
-var FloatImageCreate = newObjectCreateShortcut(floatImageSpec)
-var FloatImageUpdate = newObjectUpdateShortcut(floatImageSpec)
-var FloatImageDelete = newObjectDeleteShortcut(floatImageSpec)
+
+// floatImageProperties assembles the tool's properties object from the
+// 10 flat flags. Caller is responsible for marking required flags via
+// cobra Required:true; this function only enforces the image_token XOR
+// image_uri pair (one must be set).
+func floatImageProperties(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+	token := strings.TrimSpace(runtime.Str("image-token"))
+	uri := strings.TrimSpace(runtime.Str("image-uri"))
+	if token == "" && uri == "" {
+		return nil, common.FlagErrorf("either --image-token or --image-uri is required")
+	}
+	if token != "" && uri != "" {
+		return nil, common.FlagErrorf("--image-token and --image-uri are mutually exclusive")
+	}
+	props := map[string]interface{}{
+		"image_name": strings.TrimSpace(runtime.Str("image-name")),
+		"position": map[string]interface{}{
+			"row": runtime.Int("position-row"),
+			"col": strings.TrimSpace(runtime.Str("position-col")),
+		},
+		"size": map[string]interface{}{
+			"width":  runtime.Int("size-width"),
+			"height": runtime.Int("size-height"),
+		},
+	}
+	if token != "" {
+		props["image_token"] = token
+	} else {
+		props["image_uri"] = uri
+	}
+	if runtime.Changed("offset-row") || runtime.Changed("offset-col") {
+		offset := map[string]interface{}{}
+		if runtime.Changed("offset-row") {
+			offset["row_offset"] = runtime.Int("offset-row")
+		}
+		if runtime.Changed("offset-col") {
+			offset["col_offset"] = runtime.Int("offset-col")
+		}
+		props["offset"] = offset
+	}
+	if runtime.Changed("z-index") {
+		props["z_index"] = runtime.Int("z-index")
+	}
+	return props, nil
+}
+
+func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isHighRisk bool) common.Shortcut {
+	risk := "write"
+	if isHighRisk {
+		risk = "high-risk-write"
+	}
+	flags := publicSheetFlags()
+	if withIDFlag {
+		flags = append(flags, common.Flag{Name: "float-image-id", Required: true, Desc: "target image reference_id"})
+	}
+	flags = append(flags, floatImageFlatFlags...)
+	return common.Shortcut{
+		Service:     "sheets",
+		Command:     command,
+		Description: description,
+		Risk:        risk,
+		Scopes:      []string{"sheets:spreadsheet:write_only"},
+		AuthTypes:   []string{"user", "bot"},
+		HasFormat:   true,
+		Flags:       flags,
+		Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+			if _, err := resolveSpreadsheetToken(runtime); err != nil {
+				return err
+			}
+			if _, _, err := resolveSheetSelector(runtime); err != nil {
+				return err
+			}
+			if withIDFlag && strings.TrimSpace(runtime.Str("float-image-id")) == "" {
+				return common.FlagErrorf("--float-image-id is required")
+			}
+			_, err := floatImageProperties(runtime)
+			return err
+		},
+		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+			token, _ := resolveSpreadsheetToken(runtime)
+			sheetID, sheetName, _ := resolveSheetSelector(runtime)
+			input, _ := floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag)
+			return invokeToolDryRun(token, ToolKindWrite, "manage_float_image_object", input)
+		},
+		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+			token, err := resolveSpreadsheetToken(runtime)
+			if err != nil {
+				return err
+			}
+			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			if err != nil {
+				return err
+			}
+			input, err := floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag)
+			if err != nil {
+				return err
+			}
+			out, err := callTool(ctx, runtime, token, ToolKindWrite, "manage_float_image_object", input)
+			if err != nil {
+				return err
+			}
+			runtime.Out(out, nil)
+			return nil
+		},
+	}
+}
+
+func floatImageWriteInput(runtime *common.RuntimeContext, token, sheetID, sheetName, op string, withIDFlag bool) (map[string]interface{}, error) {
+	props, err := floatImageProperties(runtime)
+	if err != nil {
+		return nil, err
+	}
+	input := map[string]interface{}{
+		"excel_id":   token,
+		"operation":  op,
+		"properties": props,
+	}
+	sheetSelectorForToolInput(input, sheetID, sheetName)
+	if withIDFlag {
+		input["float_image_id"] = strings.TrimSpace(runtime.Str("float-image-id"))
+	}
+	return input, nil
+}
+
+var FloatImageCreate = newFloatImageWriteShortcut(
+	"+float-image-create",
+	"Create a floating image (referenced by --image-token or --image-uri).",
+	"create", false, false,
+)
+var FloatImageUpdate = newFloatImageWriteShortcut(
+	"+float-image-update",
+	"Update an existing floating image (target by --float-image-id; provide the full set of flat flags).",
+	"update", true, false,
+)
+
+// FloatImageDelete uses the standard CRUD delete factory since it only
+// needs --float-image-id + --yes.
+var floatImageDeleteSpec = objectCRUDSpec{
+	commandPrefix: "+float-image",
+	toolName:      "manage_float_image_object",
+	idFlag:        "float-image-id",
+	idField:       "float_image_id",
+}
+var FloatImageDelete = newObjectDeleteShortcut(floatImageDeleteSpec)
 
 // filter view — cli_status: cli-only but the tool is in mcp-tools.json so
 // it dispatches via the same One-OpenAPI endpoint as every other shortcut.
+// --view-name and --range are hoisted out of properties (optional on both
+// create and update; they always win over properties.{view_name, range}).
+var filterViewExtraFlags = []common.Flag{
+	{Name: "range", Desc: "filter view range (A1 covering the header, e.g. A1:F1000); overrides properties.range"},
+	{Name: "view-name", Desc: "view title; create omits → server-generated, update omits → keep current. Overrides properties.view_name"},
+}
+var filterViewEnhance = func(rt *common.RuntimeContext, input map[string]interface{}) {
+	props, _ := input["properties"].(map[string]interface{})
+	if props == nil {
+		return
+	}
+	if v := strings.TrimSpace(rt.Str("range")); v != "" {
+		props["range"] = v
+	}
+	if v := strings.TrimSpace(rt.Str("view-name")); v != "" {
+		props["view_name"] = v
+	}
+}
+
 var filterViewSpec = objectCRUDSpec{
-	commandPrefix:  "+filter-view",
-	toolName:       "manage_filter_view_object",
-	idFlag:         "view-id",
-	idField:        "view_id",
-	createDataDesc: "filter view JSON: { view_name, range (required, covers header), rules: [...] }",
-	updateDataDesc: "partial update JSON: any of { view_name, range, rules }; `+filter-view-list --view-id <id>` first",
+	commandPrefix:      "+filter-view",
+	toolName:           "manage_filter_view_object",
+	idFlag:             "view-id",
+	idField:            "view_id",
+	createDataDesc:     "filter view JSON: { rules?: [...] , filtered_columns?: [...] }; --range / --view-name cover the scalar fields",
+	updateDataDesc:     "partial update JSON: any of { rules, filtered_columns }; `+filter-view-list --view-id <id>` first",
+	createExtraFlags:   filterViewExtraFlags,
+	updateExtraFlags:   filterViewExtraFlags,
+	enhanceCreateInput: filterViewEnhance,
+	enhanceUpdateInput: filterViewEnhance,
 }
 var FilterViewCreate = newObjectCreateShortcut(filterViewSpec)
 var FilterViewUpdate = newObjectUpdateShortcut(filterViewSpec)
@@ -374,8 +602,8 @@ var FilterCreate = common.Shortcut{
 	HasFormat:   true,
 	Flags: append(publicSheetFlags(),
 		common.Flag{Name: "range", Required: true, Desc: "filter range including the header row (e.g. A1:F1000)"},
-		common.Flag{Name: "data", Input: []string{common.File, common.Stdin},
-			Desc: "optional conditions JSON: { conditions: [{col, filter_type, expected, ...}] }; empty filter when omitted"},
+		common.Flag{Name: "properties", Input: []string{common.File, common.Stdin},
+			Desc: "optional rules JSON: { rules: [...], filtered_columns?: [...] }; empty filter when omitted"},
 	),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
@@ -387,8 +615,8 @@ var FilterCreate = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("range")) == "" {
 			return common.FlagErrorf("--range is required")
 		}
-		if runtime.Str("data") != "" {
-			if _, err := requireJSONObject(runtime, "data"); err != nil {
+		if runtime.Str("properties") != "" {
+			if _, err := requireJSONObject(runtime, "properties"); err != nil {
 				return err
 			}
 		}
@@ -426,8 +654,8 @@ func filterCreateInput(runtime *common.RuntimeContext, token, sheetID, sheetName
 	props := map[string]interface{}{
 		"range": strings.TrimSpace(runtime.Str("range")),
 	}
-	if runtime.Str("data") != "" {
-		extra, err := requireJSONObject(runtime, "data")
+	if runtime.Str("properties") != "" {
+		extra, err := requireJSONObject(runtime, "properties")
 		if err != nil {
 			return nil, err
 		}
@@ -447,19 +675,21 @@ func filterCreateInput(runtime *common.RuntimeContext, token, sheetID, sheetName
 	return input, nil
 }
 
-// FilterUpdate patches the sheet-level filter — change range or
-// add/replace conditions. filter_id is implicit (sheet-scoped).
+// FilterUpdate patches the sheet-level filter. --properties carries the
+// rules; --range is first-class and overrides any properties.range.
+// filter_id is implicit (sheet-scoped).
 var FilterUpdate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+filter-update",
-	Description: "Update the sheet-level filter (patch range or conditions).",
+	Description: "Update the sheet-level filter (overwrite rules + range).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "data", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "patch JSON: { range?, conditions?: [...] } — read with +filter-list first"},
+		common.Flag{Name: "properties", Input: []string{common.File, common.Stdin}, Required: true,
+			Desc: "patch JSON: { rules: [...], filtered_columns?: [...] } — read with +filter-list first"},
+		common.Flag{Name: "range", Required: true, Desc: "filter range A1 (e.g. A1:F1000); overrides properties.range"},
 	),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
@@ -468,7 +698,10 @@ var FilterUpdate = common.Shortcut{
 		if _, _, err := resolveSheetSelector(runtime); err != nil {
 			return err
 		}
-		_, err := requireJSONObject(runtime, "data")
+		if strings.TrimSpace(runtime.Str("range")) == "" {
+			return common.FlagErrorf("--range is required")
+		}
+		_, err := requireJSONObject(runtime, "properties")
 		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -500,10 +733,12 @@ var FilterUpdate = common.Shortcut{
 }
 
 func filterUpdateInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) (map[string]interface{}, error) {
-	props, err := requireJSONObject(runtime, "data")
+	props, err := requireJSONObject(runtime, "properties")
 	if err != nil {
 		return nil, err
 	}
+	// --range wins over any properties.range
+	props["range"] = strings.TrimSpace(runtime.Str("range"))
 	input := map[string]interface{}{
 		"excel_id":   token,
 		"operation":  "update",

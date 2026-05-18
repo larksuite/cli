@@ -24,16 +24,12 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `search_data` | `+cells-search` | read | 单元格 |
 | `replace_data` | `+cells-replace` | write | 单元格 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+cells-search`
 
@@ -70,8 +66,6 @@
 | `--dry-run` | 系统 | bool | 否 | 必跑：输出 `would_replace_count` 让用户先确认 |
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR 规则）。
 

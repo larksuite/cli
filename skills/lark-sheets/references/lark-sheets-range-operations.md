@@ -106,8 +106,6 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `clear_cell_range` | `+cells-clear` | high-risk-write | 单元格 |
@@ -120,8 +118,6 @@
 |  | `+range-sort` | write | 区域 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+cells-clear`
 
@@ -225,7 +221,7 @@
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--range` | 专有 | string | 是 | 排序范围（含或不含表头由 `--has-header` 决定） |
-| `--sort-keys` | 专有 | string + File + Stdin | 是 | JSON：`[{"col":"B","order":"asc"},{"col":"D","order":"desc"}]` |
+| `--sort-keys` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`[{"col":"B","order":"asc"},{"col":"D","order":"desc"}]` |
 | `--has-header` | 专有 | bool | 否 | 第一行是表头不参与排序，默认 false |
 | `--dry-run` | 系统 | bool | 否 |  |
 
@@ -242,8 +238,6 @@ _排序条件列表（仅 sort 操作）_
 - `column` (string) — 排序依据的列字母（如 "C"、"D"），必须在 range 范围内
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 > ⚠️ 本 skill 派生的 7 条 shortcut 跨 3 个分组：`+dim-resize` → 工作表，`+cells-*` → 单元格，`+range-*` → 区域。skill 视角统一在这里讲解。
 

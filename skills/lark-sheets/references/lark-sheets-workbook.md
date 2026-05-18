@@ -30,8 +30,6 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `get_workbook_structure` | `+workbook-info` | read | 工作簿 |
@@ -47,8 +45,6 @@
 | `export_workbook` | `+workbook-export` | read | 工作簿 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+workbook-info`
 
@@ -154,8 +150,8 @@
 | --- | --- | --- | --- | --- |
 | `--title` | 专有 | string | 是 | 新 spreadsheet 标题 |
 | `--folder-token` | 专有 | string | 否 | 目标文件夹 token；省略放根目录 |
-| `--headers` | 专有 | string + File + Stdin | 否 | 表头行 JSON 数组：`["列A","列B"]` |
-| `--data` | 专有 | string + File + Stdin | 否 | 初始数据 JSON 二维数组：`[["alice",95]]` |
+| `--headers` | 专有 | string + File + Stdin（简单 JSON） | 否 | 表头行 JSON 数组：`["列A","列B"]` |
+| `--values` | 专有 | string + File + Stdin（简单 JSON） | 否 | 初始数据 JSON 二维数组：`[["alice",95]]` |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+workbook-export`
@@ -170,8 +166,6 @@
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR）。`+workbook-info` 只用前两者；`+sheet-*` 系列对单个工作表操作，需 `--sheet-id` 或 `--sheet-name`。
 

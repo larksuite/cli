@@ -167,8 +167,6 @@ set_cell_range — range="A11:H11", cells=[[
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `set_cell_range` | `+cells-set` | write | 单元格 |
@@ -180,8 +178,6 @@ set_cell_range — range="A11:H11", cells=[[
 
 ## Flags
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
-
 ### `+cells-set`
 
 | Flag | 分类 | Type | 必填 | 说明 |
@@ -191,7 +187,7 @@ set_cell_range — range="A11:H11", cells=[[
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--range` | 专有 | string | 是 | 写入区域 A1 格式 |
-| `--data` | 专有 | string + File + Stdin | 是 | JSON：`{"values": [[...], ...]}`；可含 `formula` / `cell_styles` / `comments` / `embed_image` 富信息 |
+| `--cells` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`{"values": [[...], ...]}`；可含 `formula` / `cell_styles` / `comments` / `embed_image` 富信息 |
 | `--allow-overwrite` | 专有 | bool | 否 | 允许覆盖非空 cell；默认 false 时遇非空 cell 报错 |
 | `--max-cells` | 专有 | int + Hidden | 否 | 防爆，默认 50000 |
 | `--dry-run` | 系统 | bool | 否 |  |
@@ -205,7 +201,17 @@ set_cell_range — range="A11:H11", cells=[[
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--range` | 专有 | string | 是 | 目标范围 A1 格式（如 `A1:B2`） |
-| `--style` | 专有 | string + File + Stdin | 是 | 样式 JSON：`{"font":{"bold":true},"backColor":"#fff","border_styles":{...}}`；只改样式，不动 value/formula（底层走 set_cell_range 的 cell_styles + border_styles 字段） |
+| `--background-color` | 专有 | string | 否 | 背景颜色（十六进制，如 `#ffffff`） |
+| `--font-color` | 专有 | string | 否 | 字体颜色（十六进制，如 `#000000`） |
+| `--font-size` | 专有 | number | 否 | 字体大小（px，例：10、12、14） |
+| `--font-style` | 专有 | string + Enum | 否 | 字体样式 enum：`normal` / `italic` |
+| `--font-weight` | 专有 | string + Enum | 否 | 字重 enum：`normal` / `bold` |
+| `--font-line` | 专有 | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
+| `--horizontal-alignment` | 专有 | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
+| `--vertical-alignment` | 专有 | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
+| `--word-wrap` | 专有 | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
+| `--number-format` | 专有 | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
+| `--border-styles` | 专有 | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON：`{ top: {style,color,weight}, bottom: ..., left: ..., right: ... }`；4 方向结构相同 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+cells-set-image`
@@ -230,8 +236,8 @@ set_cell_range — range="A11:H11", cells=[[
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--range` | 专有 | string | 是 | 目标范围 A1 格式（如 `A2:A100`） |
-| `--options` | 专有 | string + File + Stdin | 是 | 选项 JSON 数组 `["opt1","opt2"]`；最多 500 项，每项 ≤100 字符，不含逗号 |
-| `--colors` | 专有 | string + File + Stdin | 否 | RGB hex 颜色数组（如 `["#1FB6C1","#F006C2"]`），长度必须与 `--options` 一致 |
+| `--options` | 专有 | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 `["opt1","opt2"]`；最多 500 项，每项 ≤100 字符，不含逗号 |
+| `--colors` | 专有 | string + File + Stdin（简单 JSON） | 否 | RGB hex 颜色数组（如 `["#1FB6C1","#F006C2"]`），长度必须与 `--options` 一致 |
 | `--multiple` | 专有 | bool | 否 | 启用多选；默认 `false` |
 | `--highlight` | 专有 | bool | 否 | 选项配色显示；默认 `false` |
 | `--dry-run` | 系统 | bool | 否 |  |
@@ -245,7 +251,7 @@ set_cell_range — range="A11:H11", cells=[[
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--range` | 专有 | string | 是 | 目标区域起点 A1（如 `Sheet1!A1`）；自动按 CSV 行列数推断终点 |
-| `--csv` | 专有 | string + File + Stdin | 是 | RFC 4180 CSV 文本；只写纯值，不带公式/样式/批注 |
+| `--csv` | 专有 | string + File + Stdin（非 JSON 文本） | 是 | RFC 4180 CSV 文本；只写纯值，不带公式/样式/批注 |
 | `--allow-overwrite` | 专有 | bool | 否 | 允许覆盖；默认 false 时若目标非空报错 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
@@ -253,7 +259,7 @@ set_cell_range — range="A11:H11", cells=[[
 
 > 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
 
-### `+cells-set` `--data`
+### `+cells-set` `--cells`
 
 
 **顶层字段**：
@@ -266,21 +272,15 @@ set_cell_range — range="A11:H11", cells=[[
 - `rich_text` (array<object>?) — 富文本内容 each: { attachment_name?: string, attachment_token?: string, attachment_uri?: string, file_size?: number, image_height?: number, …共 17 项 }
 - `value` (oneOf?) — 静态单元格值（文本、数字、布尔）
 
-### `+cells-set-style` `--style`
+### `+cells-set-style` `--border-styles`
 
-_单元格样式属性，包括字体、颜色、对齐方式和数字格式_
+_单元格边框配置，含 top/bottom/left/right 四个方向，每个方向的结构相同（见 top）_
 
 **顶层字段**：
-- `background_color` (string?) — 背景颜色（十六进制，例如 "#ffffff"）
-- `font_color` (string?) — 字体颜色（十六进制，例如 "#000000"）
-- `font_line` (enum?) — 字体线条样式 [none / underline / line-through]
-- `font_size` (number?) — 字体大小（单位：px/像素，例如 10、12、14）
-- `font_style` (enum?) — 字体样式 [normal / italic]
-- `font_weight` (enum?) — 字重 [normal / bold]
-- `horizontal_alignment` (enum?) — 水平对齐方式 [left / center / right]
-- `number_format` (string?) — 数字格式（例如：文本用 "@"、数字用 "0.00"、货币用 "$#,##0.00"、日期用 "mm/dd/yyyy"）
-- `vertical_alignment` (enum?) — 垂直对齐方式 [top / middle / bottom]
-- `word_wrap` (enum?) — 是否自动换行，默认溢出，可选自动换行或裁剪 [overflow / auto-wrap / word-clip]
+- `bottom` (object?) { color?: string, style?: enum, weight?: enum }
+- `left` (object?) { color?: string, style?: enum, weight?: enum }
+- `right` (object?) { color?: string, style?: enum, weight?: enum }
+- `top` (object?) { color?: string, style?: enum, weight?: enum }
 
 ### `+dropdown-set` `--options`
 
@@ -296,8 +296,6 @@ _数据验证配置_
 - `values` (array<oneOf>?) — 比较值（operator 为 'between'/'notBetween' 时需要两个值，其它运算符需要一个值）
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR）。
 

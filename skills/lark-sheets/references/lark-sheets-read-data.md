@@ -76,8 +76,6 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `export_sheet_to_sandbox` | _Sheet Tool 独有，CLI 不实现_ | — | — |
@@ -86,8 +84,6 @@
 | `get_range_as_csv` | `+csv-get` | read | 单元格 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+cells-get`
 
@@ -130,8 +126,6 @@
 | `--dry-run` | 系统 | bool | 否 | 仅打印请求路径与参数，不执行 |
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 ### `+csv-get`
 

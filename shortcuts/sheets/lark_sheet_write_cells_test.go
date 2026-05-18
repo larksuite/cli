@@ -26,7 +26,7 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 			args: []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--range", "A1:B2",
-				"--data", `{"cells":[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]}`,
+				"--cells", `{"cells":[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]}`,
 			},
 			toolName: "set_cell_range",
 			wantInput: map[string]interface{}{
@@ -42,7 +42,7 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 			args: []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--range", "A1",
-				"--data", `{"cells":[[{"value":1}]]}`,
+				"--cells", `{"cells":[[{"value":1}]]}`,
 				"--allow-overwrite=false",
 			},
 			toolName: "set_cell_range",
@@ -130,26 +130,42 @@ func TestDropdownSet_CellsShape(t *testing.T) {
 	}
 }
 
-// TestCellsSetStyle_FanOutsBorderStylesOut confirms the border_styles
-// field is split out of --style and placed as a sibling of cell_styles
-// per the tool contract.
-func TestCellsSetStyle_FanOutsBorderStylesOut(t *testing.T) {
+// TestCellsSetStyle_FlatFlags verifies that the 11 flat style flags +
+// --border-styles compose into cell_styles + border_styles per cell.
+func TestCellsSetStyle_FlatFlags(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, CellsSetStyle, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1:B1",
-		"--style", `{"font":{"bold":true},"border_styles":{"top":{"style":"thick"}}}`,
+		"--font-weight", "bold",
+		"--background-color", "#ffff00",
+		"--horizontal-alignment", "center",
+		"--border-styles", `{"top":{"style":"thick"}}`,
 	})
 	input := decodeToolInput(t, body, "set_cell_range")
 	cells, _ := input["cells"].([]interface{})
 	row, _ := cells[0].([]interface{})
 	cell, _ := row[0].(map[string]interface{})
+	style, _ := cell["cell_styles"].(map[string]interface{})
+	if style["font_weight"] != "bold" || style["background_color"] != "#ffff00" || style["horizontal_alignment"] != "center" {
+		t.Errorf("cell_styles wrong: %#v", style)
+	}
 	if cell["border_styles"] == nil {
 		t.Fatalf("border_styles missing on cell: %#v", cell)
 	}
-	style, _ := cell["cell_styles"].(map[string]interface{})
 	if _, leaked := style["border_styles"]; leaked {
 		t.Errorf("border_styles leaked into cell_styles: %#v", style)
+	}
+}
+
+func TestCellsSetStyle_RequiresAtLeastOneFlag(t *testing.T) {
+	t.Parallel()
+	stdout, stderr, err := runShortcutCapturingErr(t, CellsSetStyle, []string{
+		"--url", testURL, "--sheet-id", testSheetID,
+		"--range", "A1:B2", "--dry-run",
+	})
+	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "at least one style flag") {
+		t.Errorf("expected style-flag guard; got=%s|%s|%v", stdout, stderr, err)
 	}
 }
 
@@ -157,7 +173,7 @@ func TestCellsSet_RequiresCellsField(t *testing.T) {
 	t.Parallel()
 	stdout, stderr, err := runShortcutCapturingErr(t, CellsSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
-		"--range", "A1", "--data", `{"foo":"bar"}`, "--dry-run",
+		"--range", "A1", "--cells", `{"foo":"bar"}`, "--dry-run",
 	})
 	if err == nil {
 		t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)

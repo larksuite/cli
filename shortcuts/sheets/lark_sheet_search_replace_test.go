@@ -56,7 +56,7 @@ func TestSearchReplaceShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+cells-replace empty replace deletes match",
 			sc:       CellsReplace,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--find", "foo", "--replace", ""},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--find", "foo", "--replacement", ""},
 			toolName: "replace_data",
 			wantInput: map[string]interface{}{
 				"excel_id":     testToken,

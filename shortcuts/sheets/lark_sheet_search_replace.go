@@ -124,7 +124,7 @@ var CellsReplace = common.Shortcut{
 	HasFormat:   true,
 	Flags: append(publicSheetFlags(),
 		common.Flag{Name: "find", Required: true, Desc: "text to find (regex when --regex is set)"},
-		common.Flag{Name: "replace", Required: true, Desc: "replacement text (empty string deletes the match)"},
+		common.Flag{Name: "replacement", Required: true, Desc: "replacement text (empty string deletes the match)"},
 		common.Flag{Name: "range", Desc: "optional A1 range to scope the replace"},
 		common.Flag{Name: "match-case", Type: "bool", Desc: "case-sensitive match"},
 		common.Flag{Name: "match-entire-cell", Type: "bool", Desc: "match the entire cell content only"},
@@ -141,8 +141,8 @@ var CellsReplace = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("find")) == "" {
 			return common.FlagErrorf("--find is required")
 		}
-		if !runtime.Changed("replace") {
-			return common.FlagErrorf("--replace is required (pass an empty string to delete matches)")
+		if !runtime.Changed("replacement") {
+			return common.FlagErrorf("--replacement is required (pass an empty string to delete matches)")
 		}
 		return nil
 	},
@@ -176,7 +176,7 @@ func replaceInput(runtime *common.RuntimeContext, token, sheetID, sheetName stri
 	input := map[string]interface{}{
 		"excel_id":     token,
 		"search_term":  runtime.Str("find"),
-		"replace_term": runtime.Str("replace"),
+		"replace_term": runtime.Str("replacement"),
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if r := strings.TrimSpace(runtime.Str("range")); r != "" {

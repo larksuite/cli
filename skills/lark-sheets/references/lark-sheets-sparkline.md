@@ -22,8 +22,6 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `get_sparkline_objects` | `+sparkline-list` | read | 对象 |
@@ -32,8 +30,6 @@
 |  | `+sparkline-delete` | high-risk-write | 对象 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+sparkline-list`
 
@@ -54,7 +50,7 @@
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--data` | 专有 | string + File + Stdin | 是 | JSON：`{"type":"line\\ |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`{"type":"line\|column\|winLoss","data_range":"A2:F10","target_range":"G2:G10","style":{...},"special_points":{...}}`；type 三种 enum；data_range 与 target_range 行/列数需对齐 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+sparkline-update`
@@ -66,7 +62,7 @@
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--group-id` | 专有 | string | 是 | 目标组 id |
-| `--data` | 专有 | string + File + Stdin | 是 | 完整或足够完整的配置（先 `+sparkline-list --group-id <id>` 回读再 patch） |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的配置（先 `+sparkline-list --group-id <id>` 回读再 patch）；可改 type / data_range / target_range / style / special_points 等字段 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+sparkline-delete`
@@ -85,7 +81,7 @@
 
 > 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
 
-### `+sparkline-create` `--data` / `+sparkline-update` `--data`
+### `+sparkline-create` `--properties` / `+sparkline-update` `--properties`
 
 _创建/更新/部分删除的迷你图属性_
 
@@ -94,8 +90,6 @@ _创建/更新/部分删除的迷你图属性_
 - `sparklines` (array<object>?) — 迷你图项列表 each: { position?: object, source?: string, source_range?: object, sparkline_id?: string }
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR）。迷你图按 `group_id` 管理——一组同形态的迷你图共享类型 / 样式 / 数据源映射。注意：不等同于已禁用的 `SPARKLINE()` 公式函数。
 

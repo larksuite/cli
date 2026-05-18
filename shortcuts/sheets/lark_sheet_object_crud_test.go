@@ -29,7 +29,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+chart-create",
 			sc:       ChartCreate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--data", `{"type":"line"}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--properties", `{"type":"line"}`},
 			toolName: "manage_chart_object",
 			wantInput: map[string]interface{}{
 				"excel_id":   testToken,
@@ -41,7 +41,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+chart-update",
 			sc:       ChartUpdate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-id", "chartXYZ", "--data", `{"type":"bar"}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-id", "chartXYZ", "--properties", `{"type":"bar"}`},
 			toolName: "manage_chart_object",
 			wantInput: map[string]interface{}{
 				"excel_id":   testToken,
@@ -51,18 +51,30 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 				"properties": map[string]interface{}{"type": "bar"},
 			},
 		},
-		// pivot — has extra create flags
+		// pivot — has extra create flags incl. required --source
 		{
-			name:     "+pivot-create with target flags",
-			sc:       PivotCreate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--data", `{"data_range":"Sheet1!A1:F1000"}`, "--target-sheet-id", "sh2", "--target-position", "B5"},
+			name: "+pivot-create with target / source / range flags",
+			sc:   PivotCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--properties", `{"rows":[{"field":"A"}]}`,
+				"--source", "Sheet1!A1:F1000",
+				"--range", "F1",
+				"--target-sheet-id", "sh2",
+				"--target-position", "B5",
+			},
 			toolName: "manage_pivot_table_object",
 			wantInput: map[string]interface{}{
-				"excel_id":         testToken,
-				"sheet_id":         testSheetID,
-				"operation":        "create",
-				"target_sheet_id":  "sh2",
-				"target_position":  "B5",
+				"excel_id":        testToken,
+				"sheet_id":        testSheetID,
+				"operation":       "create",
+				"target_sheet_id": "sh2",
+				"target_position": "B5",
+				"properties": map[string]interface{}{
+					"rows":   []interface{}{map[string]interface{}{"field": "A"}},
+					"source": "Sheet1!A1:F1000",
+					"range":  "F1",
+				},
 			},
 		},
 		{
@@ -77,23 +89,32 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 				"pivot_table_id": "ptA",
 			},
 		},
-		// cond-format — --rule-id rename
+		// cond-format — --rule-id rename + --rule-type / --ranges hoist
 		{
-			name:     "+cond-format-update id rename",
-			sc:       CondFormatUpdate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--rule-id", "ruleA", "--data", `{"rule":{"type":"cell_value"}}`},
+			name: "+cond-format-update id rename + rule-type/ranges",
+			sc:   CondFormatUpdate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-id", "ruleA",
+				"--properties", `{"rule":{"operator":"greater_than","value":100}}`,
+				"--rule-type", "cellValue",
+				"--ranges", `["A1:A100"]`,
+			},
 			toolName: "manage_conditional_format_object",
 			wantInput: map[string]interface{}{
 				"excel_id":              testToken,
 				"sheet_id":              testSheetID,
 				"operation":             "update",
 				"conditional_format_id": "ruleA",
-				"properties":            map[string]interface{}{"rule": map[string]interface{}{"type": "cell_value"}},
+				"properties": map[string]interface{}{
+					"rule":   map[string]interface{}{"operator": "greater_than", "value": float64(100), "type": "cellValue"},
+					"ranges": []interface{}{"A1:A100"},
+				},
 			},
 		},
 		// filter — special, no id flag
 		{
-			name:     "+filter-create without --data sends properties.range only",
+			name:     "+filter-create without --properties sends properties.range only",
 			sc:       FilterCreate,
 			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:F1000"},
 			toolName: "manage_filter_object",
@@ -105,14 +126,14 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+filter-create with --data merges conditions",
+			name:     "+filter-create with --properties merges rules",
 			sc:       FilterCreate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:F1000", "--data", `{"conditions":[{"col":"B"}]}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:F1000", "--properties", `{"rules":[{"col":"B"}]}`},
 			toolName: "manage_filter_object",
 			wantInput: map[string]interface{}{
 				"properties": map[string]interface{}{
-					"range":      "A1:F1000",
-					"conditions": []interface{}{map[string]interface{}{"col": "B"}},
+					"range": "A1:F1000",
+					"rules": []interface{}{map[string]interface{}{"col": "B"}},
 				},
 			},
 		},
@@ -131,7 +152,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+filter-view-create",
 			sc:       FilterViewCreate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--data", `{"view_name":"v1","range":"A1:Z100"}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--properties", `{"view_name":"v1","range":"A1:Z100"}`},
 			toolName: "manage_filter_view_object",
 			wantInput: map[string]interface{}{
 				"excel_id":   testToken,
@@ -143,7 +164,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+filter-view-update with --view-id",
 			sc:       FilterViewUpdate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--view-id", "vABC", "--data", `{"view_name":"renamed"}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--view-id", "vABC", "--properties", `{"view_name":"renamed"}`},
 			toolName: "manage_filter_view_object",
 			wantInput: map[string]interface{}{
 				"view_id":   "vABC",
@@ -154,7 +175,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+sparkline-update --group-id → group_id",
 			sc:       SparklineUpdate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--group-id", "grpA", "--data", `{"type":"line"}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--group-id", "grpA", "--properties", `{"type":"line"}`},
 			toolName: "manage_sparkline_object",
 			wantInput: map[string]interface{}{
 				"group_id":   "grpA",
@@ -162,15 +183,28 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 				"properties": map[string]interface{}{"type": "line"},
 			},
 		},
-		// float-image
+		// float-image — fully hoisted to flat flags
 		{
-			name:     "+float-image-create",
-			sc:       FloatImageCreate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--data", `{"image_uri":"u","image_name":"x.png"}`},
+			name: "+float-image-create with image-token + position/size",
+			sc:   FloatImageCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--image-name", "logo.png",
+				"--image-token", "tok_xyz",
+				"--position-row", "2", "--position-col", "D",
+				"--size-width", "300", "--size-height", "200",
+			},
 			toolName: "manage_float_image_object",
 			wantInput: map[string]interface{}{
-				"operation":  "create",
-				"properties": map[string]interface{}{"image_uri": "u", "image_name": "x.png"},
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"operation": "create",
+				"properties": map[string]interface{}{
+					"image_name":  "logo.png",
+					"image_token": "tok_xyz",
+					"position":    map[string]interface{}{"row": float64(2), "col": "D"},
+					"size":        map[string]interface{}{"width": float64(300), "height": float64(200)},
+				},
 			},
 		},
 	}

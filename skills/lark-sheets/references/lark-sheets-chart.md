@@ -96,8 +96,6 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `get_chart_objects` | `+chart-list` | read | 对象 |
@@ -106,8 +104,6 @@
 |  | `+chart-delete` | high-risk-write | 对象 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+chart-list`
 
@@ -128,7 +124,7 @@
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--data` | 专有 | string + File + Stdin | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等），结构嵌套深，统一走 JSON 注入 |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等），结构嵌套深，统一走 JSON 注入 |
 | `--dry-run` | 系统 | bool | 否 | 零副作用，输出请求模板 |
 
 ### `+chart-update`
@@ -140,7 +136,7 @@
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--chart-id` | 专有 | string | 是 | 目标图表 reference_id |
-| `--data` | 专有 | string + File + Stdin | 是 | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch） |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch） |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+chart-delete`
@@ -159,7 +155,7 @@
 
 > 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
 
-### `+chart-create` `--data` / `+chart-update` `--data`
+### `+chart-create` `--properties` / `+chart-update` `--properties`
 
 _创建/更新的图表属性_
 
@@ -170,8 +166,6 @@ _创建/更新的图表属性_
 - `snapshot` (object?) — 图表快照配置 { data?: object, legend?: oneOf, plotArea?: object, style?: object, subTitle?: object, …共 6 项 }
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR 规则同 `+csv-get`）。
 

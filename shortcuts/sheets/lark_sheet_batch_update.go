@@ -41,21 +41,20 @@ var BatchUpdate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "data", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "batch payload JSON: { operations: [{tool, params}, ...] }"},
+		common.Flag{Name: "operations", Input: []string{common.File, common.Stdin}, Required: true,
+			Desc: "operations JSON array: [{tool, params}, ...] (or an envelope object with operations / continue_on_error)"},
 		common.Flag{Name: "continue-on-error", Type: "bool", Desc: "flip the default strict transaction off; partial success is kept on disk"},
 	),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		body, err := requireJSONObject(runtime, "data")
+		ops, err := parseBatchOperationsFlag(runtime)
 		if err != nil {
 			return err
 		}
-		ops, ok := body["operations"].([]interface{})
-		if !ok || len(ops) == 0 {
-			return common.FlagErrorf("--data.operations must be a non-empty JSON array")
+		if len(ops) == 0 {
+			return common.FlagErrorf("--operations must be a non-empty JSON array")
 		}
 		return nil
 	},
@@ -86,45 +85,83 @@ var BatchUpdate = common.Shortcut{
 }
 
 func batchUpdateRawInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
-	body, err := requireJSONObject(runtime, "data")
+	ops, err := parseBatchOperationsFlag(runtime)
 	if err != nil {
 		return nil, err
 	}
-	ops, _ := body["operations"].([]interface{})
 	input := map[string]interface{}{
 		"excel_id":   token,
 		"operations": ops,
 	}
 	if runtime.Bool("continue-on-error") {
 		input["continue_on_error"] = true
-	} else if v, ok := body["continue_on_error"].(bool); ok && v {
-		// honor an inline override from --data when the flag is unset
-		input["continue_on_error"] = true
+	} else if envelope, _ := parseJSONFlag(runtime, "operations"); envelope != nil {
+		// Honor an inline override when --operations is an envelope object
+		// rather than a bare operations array.
+		if m, ok := envelope.(map[string]interface{}); ok {
+			if v, ok := m["continue_on_error"].(bool); ok && v {
+				input["continue_on_error"] = true
+			}
+		}
 	}
 	return input, nil
 }
 
-// CellsBatchSetStyle stamps one style block across many ranges atomically.
-// --data is an array of {ranges: [...], style: {...}} entries; CLI flattens
-// each (entry × range) pair into a set_cell_range operation in the batch.
+// parseBatchOperationsFlag accepts --operations as either a JSON array (the
+// operations list directly) or an envelope object { operations, continue_on_error }
+// for back-compat with the legacy --data shape. Returns the operations array.
+func parseBatchOperationsFlag(runtime *common.RuntimeContext) ([]interface{}, error) {
+	v, err := parseJSONFlag(runtime, "operations")
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		return nil, common.FlagErrorf("--operations is required")
+	}
+	if arr, ok := v.([]interface{}); ok {
+		return arr, nil
+	}
+	if m, ok := v.(map[string]interface{}); ok {
+		if ops, ok := m["operations"].([]interface{}); ok {
+			return ops, nil
+		}
+	}
+	return nil, common.FlagErrorf("--operations must be a JSON array (or { operations: [...] } envelope)")
+}
+
+// CellsBatchSetStyle stamps one style block across many sheet-prefixed
+// ranges atomically. --ranges is a JSON array of sheet-prefixed A1
+// strings; the style is composed from the same flat flags as
+// +cells-set-style. CLI fans each range into a separate set_cell_range
+// op inside one batch_update.
 var CellsBatchSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-batch-set-style",
-	Description: "Apply styles to many sheet-prefixed ranges in one atomic batch.",
+	Description: "Apply one style block to many sheet-prefixed ranges in one atomic batch.",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "data", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "JSON array: [{ranges: [\"sheet1!A1:B2\", ...], style: {...}}, ...] (each range must carry a sheet prefix)"},
+	Flags: append(
+		append(publicTokenFlags(),
+			common.Flag{Name: "ranges", Input: []string{common.File, common.Stdin}, Required: true,
+				Desc: "JSON array of sheet-prefixed A1 ranges (e.g. [\"sheet1!A1:B2\", \"sheet1!D1:E2\"])"}),
+		styleFlatFlags()...,
 	),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		_, err := batchStyleEntries(runtime)
-		return err
+		if _, err := validateDropdownRanges(runtime); err != nil {
+			return err
+		}
+		if err := requireAnyStyleFlag(runtime); err != nil {
+			return err
+		}
+		if _, err := borderStylesFromFlag(runtime); err != nil {
+			return err
+		}
+		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
@@ -149,83 +186,43 @@ var CellsBatchSetStyle = common.Shortcut{
 	},
 }
 
-// batchStyleEntries validates --data is the expected array shape.
-func batchStyleEntries(runtime *common.RuntimeContext) ([]map[string]interface{}, error) {
-	raw, err := requireJSONArray(runtime, "data")
-	if err != nil {
-		return nil, err
-	}
-	if len(raw) == 0 {
-		return nil, common.FlagErrorf("--data must contain at least one entry")
-	}
-	out := make([]map[string]interface{}, 0, len(raw))
-	for i, v := range raw {
-		entry, ok := v.(map[string]interface{})
-		if !ok {
-			return nil, common.FlagErrorf("--data[%d] must be an object", i)
-		}
-		rangesRaw, ok := entry["ranges"].([]interface{})
-		if !ok || len(rangesRaw) == 0 {
-			return nil, common.FlagErrorf("--data[%d].ranges must be a non-empty array", i)
-		}
-		for j, r := range rangesRaw {
-			s, ok := r.(string)
-			if !ok || !strings.Contains(s, "!") {
-				return nil, common.FlagErrorf("--data[%d].ranges[%d] must be a sheet-prefixed string", i, j)
-			}
-		}
-		if _, ok := entry["style"].(map[string]interface{}); !ok {
-			return nil, common.FlagErrorf("--data[%d].style must be a JSON object", i)
-		}
-		out = append(out, entry)
-	}
-	return out, nil
-}
-
 func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
-	entries, err := batchStyleEntries(runtime)
+	ranges, err := validateDropdownRanges(runtime)
 	if err != nil {
 		return nil, err
+	}
+	cellStyle := buildCellStyleFromFlags(runtime)
+	borderStyles, err := borderStylesFromFlag(runtime)
+	if err != nil {
+		return nil, err
+	}
+	prototype := map[string]interface{}{}
+	if len(cellStyle) > 0 {
+		prototype["cell_styles"] = cellStyle
+	}
+	if borderStyles != nil {
+		prototype["border_styles"] = borderStyles
 	}
 	var ops []interface{}
-	for _, entry := range entries {
-		style := entry["style"].(map[string]interface{})
-		// Split border_styles out into its sibling field per set_cell_range's contract.
-		cellStyle := map[string]interface{}{}
-		var borderStyles interface{}
-		for k, v := range style {
-			if k == "border_styles" {
-				borderStyles = v
-				continue
-			}
-			cellStyle[k] = v
+	for _, rng := range ranges {
+		sheet, sub, err := splitSheetPrefixedRange(rng)
+		if err != nil {
+			return nil, err
 		}
-		ranges, _ := entry["ranges"].([]interface{})
-		for _, r := range ranges {
-			rng := r.(string)
-			sheet, sub, err := splitSheetPrefixedRange(rng)
-			if err != nil {
-				return nil, err
-			}
-			rows, cols, err := rangeDimensions(sub)
-			if err != nil {
-				return nil, common.FlagErrorf("range %q: %v", rng, err)
-			}
-			proto := map[string]interface{}{"cell_styles": cellStyle}
-			if borderStyles != nil {
-				proto["border_styles"] = borderStyles
-			}
-			cells := fillCellsMatrix(rows, cols, proto)
-			ops = append(ops, map[string]interface{}{
-				"tool": "set_cell_range",
-				"params": map[string]interface{}{
-					"excel_id":   token,
-					"sheet_name": sheet,
-					"range":      sub,
-					"cells":      cells,
-				},
-			})
+		rows, cols, err := rangeDimensions(sub)
+		if err != nil {
+			return nil, common.FlagErrorf("range %q: %v", rng, err)
 		}
+		cells := fillCellsMatrix(rows, cols, prototype)
+		ops = append(ops, map[string]interface{}{
+			"tool": "set_cell_range",
+			"params": map[string]interface{}{
+				"excel_id":   token,
+				"sheet_name": sheet,
+				"range":      sub,
+				"cells":      cells,
+			},
+		})
 	}
 	return map[string]interface{}{
 		"excel_id":   token,

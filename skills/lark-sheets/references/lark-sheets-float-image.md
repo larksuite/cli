@@ -36,8 +36,6 @@ reference_id 的映射规则：
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `get_float_image_objects` | `+float-image-list` | read | 对象 |
@@ -46,8 +44,6 @@ reference_id 的映射规则：
 |  | `+float-image-delete` | high-risk-write | 对象 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+float-image-list`
 
@@ -68,7 +64,16 @@ reference_id 的映射规则：
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--data` | 专有 | string + File + Stdin | 是 | JSON：`{"image_uri":"...","image_name":"foo.png","position":{"row":2,"col":"D"},"size":{"width":300,"height":200},"offset":{"x":0,"y":0}}` |
+| `--image-name` | 专有 | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
+| `--image-token` | 专有 | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
+| `--image-uri` | 专有 | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
+| `--position-row` | 专有 | int | 是 | 图片左上角所在行（0-based） |
+| `--position-col` | 专有 | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
+| `--size-width` | 专有 | int | 是 | 图片宽度（像素） |
+| `--size-height` | 专有 | int | 是 | 图片高度（像素） |
+| `--offset-row` | 专有 | int | 否 | 在 position 基础上的行内偏移（像素） |
+| `--offset-col` | 专有 | int | 否 | 在 position 基础上的列内偏移（像素） |
+| `--z-index` | 专有 | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+float-image-update`
@@ -80,7 +85,16 @@ reference_id 的映射规则：
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--float-image-id` | 专有 | string | 是 | 目标图片 id |
-| `--data` | 专有 | string + File + Stdin | 是 | 完整或足够完整的配置 JSON（先 `+float-image-list --float-image-id <id>` 回读再 patch） |
+| `--image-name` | 专有 | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
+| `--image-token` | 专有 | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
+| `--image-uri` | 专有 | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
+| `--position-row` | 专有 | int | 是 | 图片左上角所在行（0-based） |
+| `--position-col` | 专有 | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
+| `--size-width` | 专有 | int | 是 | 图片宽度（像素） |
+| `--size-height` | 专有 | int | 是 | 图片高度（像素） |
+| `--offset-row` | 专有 | int | 否 | 在 position 基础上的行内偏移（像素） |
+| `--offset-col` | 专有 | int | 否 | 在 position 基础上的列内偏移（像素） |
+| `--z-index` | 专有 | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+float-image-delete`
@@ -95,26 +109,7 @@ reference_id 的映射规则：
 | `--yes` | 系统 | bool | 是 | `high-risk-write`，删除不可逆 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
-## Schemas
-
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
-
-### `+float-image-create` `--data` / `+float-image-update` `--data`
-
-_创建/更新的浮动图片属性_
-
-**顶层字段**：
-- `image_name` (string) — 图片名称，含拓展名，create 时必填
-- `image_token` (string?) — 图片 fileToken（与 image_uri 二选一）
-- `image_uri` (string?) — 图片的 reference_id（与 image_token 二选一）
-- `offset` (object?) — 可选 { col_offset?: number, row_offset?: number }
-- `position` (object) — 必填 { col: string, row: number }
-- `size` (object) — 必填 { height: number, width: number }
-- `z_index` (number?) — 可选
-
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR）。浮动图片是 sheet 级对象——和单元格内嵌图片不同（后者走 `+cells-set`）。
 

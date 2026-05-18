@@ -29,8 +29,6 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `get_filter_objects` | `+filter-list` | read | 对象 |
@@ -39,8 +37,6 @@
 |  | `+filter-delete` | high-risk-write | 对象 |
 
 ## Flags
-
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
 
 ### `+filter-list`
 
@@ -60,8 +56,8 @@
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 筛选范围，含表头行（如 `A1:F1000`） |
-| `--data` | 专有 | string + File + Stdin | 否 | JSON：`{"conditions":[{"col":"B","filter_type":"multiValue","expected":["北京","上海"]}]}`；省略则只建空筛选 |
+| `--range` | 专有 | string | 是 | 筛选范围（A1 表示法，含表头行，如 `A1:F1000`）；不要重复写入 --data 中的 range 字段 |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 否 | +filter-create / --data: 筛选规则 JSON，含 `rules`（列级筛选规则数组，必填）和 `filtered_columns?`（激活列索引提示）。`range` 是独立 flag（不要再放此 JSON 里） |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+filter-update`
@@ -72,7 +68,8 @@
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--data` | 专有 | string + File + Stdin | 是 | JSON：可改 `range` 或追加 / 替换 `conditions[]`；先 `+filter-list` 回读再 patch |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | +filter-update / --data: 筛选规则 JSON，含 `rules` 和 `filtered_columns?`；update 是整组覆盖式（传空 `rules: []` 清空）。`range` 已拎为独立 flag |
+| `--range` | 专有 | string | 是 | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--data` 中同名字段 |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+filter-delete`
@@ -90,7 +87,7 @@
 
 > 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
 
-### `+filter-create` `--data` / `+filter-update` `--data`
+### `+filter-create` `--properties` / `+filter-update` `--properties`
 
 _创建/更新的筛选器属性_
 
@@ -100,8 +97,6 @@ _创建/更新的筛选器属性_
 - `rules` (array<object>) — 列级筛选规则列表，每一项对应一个具体列的筛选条件 each: { column_index: string, conditions: array<oneOf>, filtered_rows?: array<number> }
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR）。`filter_id` 等同于 `sheet_id`（每个工作表至多一个筛选器）。
 

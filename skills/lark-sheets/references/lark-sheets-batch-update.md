@@ -22,8 +22,6 @@
 
 ## Shortcuts
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成。CLI 的 shortcut 拆分、Risk 分级、分组、flag 表是事实源；本节不要手维护。
-
 | MCP tool | CLI shortcut | Risk | 分组 |
 | --- | --- | --- | --- |
 | `batch_update` | `+batch-update` | high-risk-write | 批量 |
@@ -33,15 +31,13 @@
 
 ## Flags
 
-> 由 [`tool-shortcut-map.json`](../../../canonical-spec/tool-shortcut-map.json) 自动生成（包含从 base shortcut-flags 子表派生的 flag 信息）。本节不要手维护——改 base 表再 `npm run sync:tool-shortcut-map`。
-
 ### `+batch-update`
 
 | Flag | 分类 | Type | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
 | `--url` | 公共 | string | XOR | spreadsheet 定位（与子操作的 sheet 定位独立） |
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet 定位（与子操作的 sheet 定位独立） |
-| `--data` | 专有 | string + File + Stdin | 是 | JSON：`{"operations":[{"tool":"set_cell_range","params":{...}}, ...]}`；按数组顺序串行执行 |
+| `--operations` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`{"operations":[{"tool":"set_cell_range","params":{...}}, ...]}`；按数组顺序串行执行 |
 | `--yes` | 系统 | bool | 是 | `high-risk-write`，必须二次确认（不带时退出码 10） |
 | `--dry-run` | 系统 | bool | 否 | 输出每个子操作的请求模板，零网络副作用 |
 
@@ -51,7 +47,18 @@
 | --- | --- | --- | --- | --- |
 | `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--data` | 专有 | string + File + Stdin | 是 | JSON 数组 `[{"ranges":["sheet1!A1:B2"],"style":{...}}]`；每个 ranges 元素必须带 sheet 前缀 |
+| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组，每项必须带 sheet 前缀（如 `["sheet1!A1:B2","sheet1!D1:D10"]`）；所有 range 应用同一组 style |
+| `--background-color` | 专有 | string | 否 | 背景颜色（十六进制，如 `#ffffff`） |
+| `--font-color` | 专有 | string | 否 | 字体颜色（十六进制，如 `#000000`） |
+| `--font-size` | 专有 | number | 否 | 字体大小（px，例：10、12、14） |
+| `--font-style` | 专有 | string + Enum | 否 | 字体样式 enum：`normal` / `italic` |
+| `--font-weight` | 专有 | string + Enum | 否 | 字重 enum：`normal` / `bold` |
+| `--font-line` | 专有 | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
+| `--horizontal-alignment` | 专有 | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
+| `--vertical-alignment` | 专有 | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
+| `--word-wrap` | 专有 | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
+| `--number-format` | 专有 | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
+| `--border-styles` | 专有 | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON（结构同 +cells-set-style） |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+dropdown-update`
@@ -60,9 +67,9 @@
 | --- | --- | --- | --- | --- |
 | `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--ranges` | 专有 | string + File + Stdin | 是 | 目标范围 JSON 数组（如 `["sheet1!A2:A100"]`），每项必须带 sheet 前缀 |
-| `--options` | 专有 | string + File + Stdin | 是 | 选项 JSON 数组 |
-| `--colors` | 专有 | string + File + Stdin | 否 | 颜色数组（与 `--options` 等长） |
+| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（如 `["sheet1!A2:A100"]`），每项必须带 sheet 前缀 |
+| `--options` | 专有 | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 |
+| `--colors` | 专有 | string + File + Stdin（简单 JSON） | 否 | 颜色数组（与 `--options` 等长） |
 | `--multiple` | 专有 | bool | 否 | 启用多选 |
 | `--highlight` | 专有 | bool | 否 | 选项配色 |
 | `--dry-run` | 系统 | bool | 否 |  |
@@ -73,7 +80,7 @@
 | --- | --- | --- | --- | --- |
 | `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--ranges` | 专有 | string + File + Stdin | 是 | 目标范围 JSON 数组（最多 100 个，每项带 sheet 前缀） |
+| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（最多 100 个，每项带 sheet 前缀） |
 | `--yes` | 系统 | bool | 是 | `high-risk-write`，必须二次确认（不带时退出码 10） |
 | `--dry-run` | 系统 | bool | 否 |  |
 
@@ -81,7 +88,7 @@
 
 > 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
 
-### `+batch-update` `--data`
+### `+batch-update` `--operations`
 
 _要批量执行的操作列表，按顺序依次执行_
 
@@ -89,21 +96,15 @@ _要批量执行的操作列表，按顺序依次执行_
 - `input` (object) — 对应工具的入参，结构与单独调用该工具时完全一致
 - `tool_name` (string) — 要执行的工具名称，如 "set_cell_range"、"clear_cell_range"、"modify_sheet_structure" 等
 
-### `+cells-batch-set-style` `--data`
+### `+cells-batch-set-style` `--border-styles`
 
-_单元格样式属性，包括字体、颜色、对齐方式和数字格式_
+_单元格边框配置，含 top/bottom/left/right 四个方向，每个方向的结构相同（见 top）_
 
 **顶层字段**：
-- `background_color` (string?) — 背景颜色（十六进制，例如 "#ffffff"）
-- `font_color` (string?) — 字体颜色（十六进制，例如 "#000000"）
-- `font_line` (enum?) — 字体线条样式 [none / underline / line-through]
-- `font_size` (number?) — 字体大小（单位：px/像素，例如 10、12、14）
-- `font_style` (enum?) — 字体样式 [normal / italic]
-- `font_weight` (enum?) — 字重 [normal / bold]
-- `horizontal_alignment` (enum?) — 水平对齐方式 [left / center / right]
-- `number_format` (string?) — 数字格式（例如：文本用 "@"、数字用 "0.00"、货币用 "$#,##0.00"、日期用 "mm/dd/yyyy"）
-- `vertical_alignment` (enum?) — 垂直对齐方式 [top / middle / bottom]
-- `word_wrap` (enum?) — 是否自动换行，默认溢出，可选自动换行或裁剪 [overflow / auto-wrap / word-clip]
+- `bottom` (object?) { color?: string, style?: enum, weight?: enum }
+- `left` (object?) { color?: string, style?: enum, weight?: enum }
+- `right` (object?) { color?: string, style?: enum, weight?: enum }
+- `top` (object?) { color?: string, style?: enum, weight?: enum }
 
 ### `+dropdown-update` `--options`
 
@@ -119,8 +120,6 @@ _数据验证配置_
 - `values` (array<oneOf>?) — 比较值（operator 为 'between'/'notBetween' 时需要两个值，其它运算符需要一个值）
 
 ## Examples
-
-> shortcut 拆分 / Risk / 分组 / flag 表都由 [`tool-shortcut-map.json`](../../tool-shortcut-map.json) 自动注入到上方 `## Shortcuts` / `## Flags` 段。本节只承载手维护补充：命令示例、Validate / DryRun / Execute 约束。
 
 公共四件套：`--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（前两者 XOR；`+batch-update` 本身不强制 sheet-id，子操作各自携带）。
 

@@ -17,7 +17,7 @@ func TestBatchUpdate_RawPassthrough(t *testing.T) {
 
 	body := parseDryRunBody(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--data", `{"operations":[{"tool":"set_cell_range","params":{"excel_id":"shtcnTOK","sheet_id":"sh1","range":"A1","cells":[[{"value":42}]]}}]}`,
+		"--operations", `[{"tool":"set_cell_range","params":{"excel_id":"shtcnTOK","sheet_id":"sh1","range":"A1","cells":[[{"value":42}]]}}]`,
 		"--continue-on-error",
 		"--yes",
 	})
@@ -35,27 +35,28 @@ func TestBatchUpdate_HighRiskWriteRequiresYes(t *testing.T) {
 	t.Parallel()
 	stdout, stderr, err := runShortcutCapturingErr(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--data", `{"operations":[{"tool":"set_cell_range","params":{}}]}`,
+		"--operations", `[{"tool":"set_cell_range","params":{}}]`,
 	})
 	if err == nil {
 		t.Fatalf("expected confirmation_required; stdout=%s stderr=%s", stdout, stderr)
 	}
 }
 
-// TestCellsBatchSetStyle_FansOutOps verifies 2 entries × multiple ranges
-// produce one set_cell_range op per (entry, range).
+// TestCellsBatchSetStyle_FansOutOps verifies multiple ranges produce one
+// set_cell_range op each, sharing the same style flags.
 func TestCellsBatchSetStyle_FansOutOps(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, CellsBatchSetStyle, []string{
 		"--url", testURL,
-		"--data", `[{"ranges":["sheet1!A1:B2","sheet1!D1:E2"],"style":{"font":{"bold":true}}},{"ranges":["sheet1!A5:A6"],"style":{"backColor":"#ff0"}}]`,
+		"--ranges", `["sheet1!A1:B2","sheet1!D1:E2","sheet1!A5:A6"]`,
+		"--font-weight", "bold",
+		"--background-color", "#ffff00",
 	})
 	input := decodeToolInput(t, body, "batch_update")
 	ops, _ := input["operations"].([]interface{})
 	if len(ops) != 3 {
-		t.Fatalf("operations length = %d, want 3 (2 ranges × entry1 + 1 range × entry2)", len(ops))
+		t.Fatalf("operations length = %d, want 3 (one per range)", len(ops))
 	}
-	// Every op should target set_cell_range with sheet_name carrying the prefix.
 	for i, raw := range ops {
 		op, _ := raw.(map[string]interface{})
 		if op["tool"] != "set_cell_range" {
@@ -64,6 +65,13 @@ func TestCellsBatchSetStyle_FansOutOps(t *testing.T) {
 		params, _ := op["params"].(map[string]interface{})
 		if params["sheet_name"] != "sheet1" {
 			t.Errorf("op[%d].sheet_name = %v, want sheet1", i, params["sheet_name"])
+		}
+		cells, _ := params["cells"].([]interface{})
+		row, _ := cells[0].([]interface{})
+		cell, _ := row[0].(map[string]interface{})
+		style, _ := cell["cell_styles"].(map[string]interface{})
+		if style["font_weight"] != "bold" || style["background_color"] != "#ffff00" {
+			t.Errorf("op[%d] cell_styles wrong: %#v", i, style)
 		}
 	}
 }
@@ -157,12 +165,23 @@ func TestBatchUpdate_ValidationGuards(t *testing.T) {
 	// batch-update with empty operations
 	stdout, stderr, err = runShortcutCapturingErr(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--data", `{"operations":[]}`,
+		"--operations", `[]`,
 		"--yes",
 		"--dry-run",
 	})
 	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "non-empty JSON array") {
 		t.Errorf("expected empty-operations guard; got=%s|%s|%v", stdout, stderr, err)
+	}
+
+	// dropdown-update with non-array --options (object instead) → array guard
+	stdout, stderr, err = runShortcutCapturingErr(t, DropdownUpdate, []string{
+		"--url", testURL,
+		"--ranges", `["sheet1!A1:A2"]`,
+		"--options", `{"not":"array"}`,
+		"--dry-run",
+	})
+	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "must be a JSON array") {
+		t.Errorf("expected JSON array guard; got=%s|%s|%v", stdout, stderr, err)
 	}
 }
 

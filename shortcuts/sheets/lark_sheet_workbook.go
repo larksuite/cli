@@ -540,7 +540,7 @@ var SheetSetTabColor = common.Shortcut{
 var WorkbookCreate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+workbook-create",
-	Description: "Create a new spreadsheet (optionally pre-filled with --headers and --data).",
+	Description: "Create a new spreadsheet (optionally pre-filled with --headers and --values).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:create", "sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -549,7 +549,7 @@ var WorkbookCreate = common.Shortcut{
 		{Name: "title", Required: true, Desc: "spreadsheet title"},
 		{Name: "folder-token", Desc: "destination folder token; omit to land at the drive root"},
 		{Name: "headers", Input: []string{common.File, common.Stdin}, Desc: "header row JSON array, e.g. [\"列A\",\"列B\"]"},
-		{Name: "data", Input: []string{common.File, common.Stdin}, Desc: "initial data JSON 2D array, e.g. [[\"alice\",95]]"},
+		{Name: "values", Input: []string{common.File, common.Stdin}, Desc: "initial data JSON 2D array, e.g. [[\"alice\",95]]"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("title")) == "" {
@@ -564,18 +564,18 @@ var WorkbookCreate = common.Shortcut{
 				return common.FlagErrorf("--headers must be a JSON array")
 			}
 		}
-		if runtime.Str("data") != "" {
-			v, err := parseJSONFlag(runtime, "data")
+		if runtime.Str("values") != "" {
+			v, err := parseJSONFlag(runtime, "values")
 			if err != nil {
 				return err
 			}
 			rows, ok := v.([]interface{})
 			if !ok {
-				return common.FlagErrorf("--data must be a JSON 2D array")
+				return common.FlagErrorf("--values must be a JSON 2D array")
 			}
 			for i, r := range rows {
 				if _, ok := r.([]interface{}); !ok {
-					return common.FlagErrorf("--data[%d] must be an array", i)
+					return common.FlagErrorf("--values[%d] must be an array", i)
 				}
 			}
 		}
@@ -590,7 +590,7 @@ var WorkbookCreate = common.Shortcut{
 			POST("/open-apis/sheets/v3/spreadsheets").
 			Desc("create spreadsheet").
 			Body(body)
-		if runtime.Str("headers") != "" || runtime.Str("data") != "" {
+		if runtime.Str("headers") != "" || runtime.Str("values") != "" {
 			fill, _ := buildInitialFillInput(runtime)
 			wireBody, _ := buildToolBody("set_cell_range", fill)
 			dry.POST("/open-apis/sheet_ai/v2/spreadsheets/<new-token>/tools/invoke_write").
@@ -619,7 +619,7 @@ var WorkbookCreate = common.Shortcut{
 
 		result := map[string]interface{}{"spreadsheet": ss}
 
-		if runtime.Str("headers") != "" || runtime.Str("data") != "" {
+		if runtime.Str("headers") != "" || runtime.Str("values") != "" {
 			fill, err := buildInitialFillInput(runtime)
 			if err != nil {
 				return err
@@ -637,11 +637,11 @@ var WorkbookCreate = common.Shortcut{
 		return nil
 	},
 	Tips: []string{
-		"--headers and --data are optional follow-up writes. They use the same set_cell_range tool as +cells-set; partial failure leaves the spreadsheet created but empty.",
+		"--headers and --values are optional follow-up writes. They use the same set_cell_range tool as +cells-set; partial failure leaves the spreadsheet created but empty.",
 	},
 }
 
-// buildInitialFillInput zips --headers + --data into a single set_cell_range
+// buildInitialFillInput zips --headers + --values into a single set_cell_range
 // payload writing to the first sheet starting at A1.
 func buildInitialFillInput(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	var rows [][]interface{}
@@ -654,8 +654,8 @@ func buildInitialFillInput(runtime *common.RuntimeContext) (map[string]interface
 		}
 		rows = append(rows, row)
 	}
-	if runtime.Str("data") != "" {
-		v, _ := parseJSONFlag(runtime, "data")
+	if runtime.Str("values") != "" {
+		v, _ := parseJSONFlag(runtime, "values")
 		dataArr, _ := v.([]interface{})
 		for _, r := range dataArr {
 			cells, _ := r.([]interface{})

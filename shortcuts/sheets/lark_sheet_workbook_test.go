@@ -303,7 +303,7 @@ func TestWorkbookCreate_DryRun(t *testing.T) {
 		calls := parseDryRunAPI(t, WorkbookCreate, []string{
 			"--title", "Sales",
 			"--headers", `["Name","Score"]`,
-			"--data", `[["alice",95],["bob",88]]`,
+			"--values", `[["alice",95],["bob",88]]`,
 		})
 		if len(calls) != 2 {
 			t.Fatalf("api calls = %d, want 2 (create + fill)", len(calls))
@@ -329,7 +329,7 @@ func TestWorkbookCreate_DataValidation(t *testing.T) {
 		want string
 	}{
 		{"headers not array", []string{"--title", "X", "--headers", `"abc"`}, "must be a JSON array"},
-		{"data not 2D", []string{"--title", "X", "--data", `["a","b"]`}, "must be an array"},
+		{"values not 2D", []string{"--title", "X", "--values", `["a","b"]`}, "must be an array"},
 	}
 	for _, tt := range cases {
 		tt := tt

@@ -116,7 +116,7 @@ func TestExecute_CellsSet(t *testing.T) {
 	out, err := runShortcutWithStubs(t, CellsSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1:B1",
-		"--data", `{"cells":[[{"value":"x"},{"value":"y"}]]}`,
+		"--cells", `{"cells":[[{"value":"x"},{"value":"y"}]]}`,
 	}, stub)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
@@ -217,7 +217,7 @@ func TestExecute_FilterCreate(t *testing.T) {
 	out, err := runShortcutWithStubs(t, FilterCreate, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1:F100",
-		"--data", `{"conditions":[{"col":"B","filter_type":"multiValue","expected":["x"]}]}`,
+		"--properties", `{"rules":[{"col":"B","filter_type":"multiValue","expected":["x"]}]}`,
 	}, stub)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
@@ -228,8 +228,8 @@ func TestExecute_FilterCreate(t *testing.T) {
 	if props["range"] != "A1:F100" {
 		t.Errorf("properties.range = %v", props["range"])
 	}
-	if props["conditions"] == nil {
-		t.Errorf("conditions missing: %#v", props)
+	if props["rules"] == nil {
+		t.Errorf("rules missing: %#v", props)
 	}
 }
 
@@ -240,7 +240,7 @@ func TestExecute_BatchUpdate_Raw(t *testing.T) {
 	stub := toolOutputStub(testToken, "write", `{"results":[{"ok":true}]}`)
 	_, err := runShortcutWithStubs(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--data", `{"operations":[{"tool":"set_cell_range","params":{"excel_id":"shtcnTestTOK","range":"A1","cells":[[{"value":1}]]}}]}`,
+		"--operations", `[{"tool":"set_cell_range","params":{"excel_id":"shtcnTestTOK","range":"A1","cells":[[{"value":1}]]}}]`,
 		"--continue-on-error",
 		"--yes",
 	}, stub)
@@ -276,7 +276,7 @@ func TestExecute_WorkbookCreate(t *testing.T) {
 	out, err := runShortcutWithStubs(t, WorkbookCreate, []string{
 		"--title", "Sales",
 		"--headers", `["Name","Score"]`,
-		"--data", `[["alice",95]]`,
+		"--values", `[["alice",95]]`,
 	}, create, fill)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
@@ -324,7 +324,7 @@ func TestExecute_ChartCreate(t *testing.T) {
 	stub := toolOutputStub(testToken, "write", `{"chart_id":"chartNEW"}`)
 	out, err := runShortcutWithStubs(t, ChartCreate, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
-		"--data", `{"type":"line"}`,
+		"--properties", `{"type":"line"}`,
 	}, stub)
 	if err != nil {
 		t.Fatalf("execute failed: %v", err)
