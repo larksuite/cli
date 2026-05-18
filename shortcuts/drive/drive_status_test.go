@@ -17,6 +17,8 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 // driveStatusScopedTokenResolver returns a token with caller-controlled scopes
@@ -802,5 +804,61 @@ func TestDriveStatusRejectsMalformedFolderToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--folder-token") {
 		t.Fatalf("error must reference --folder-token, got: %v", err)
+	}
+}
+
+func TestWalkLocalForStatusMissingRootReturnsInternalError(t *testing.T) {
+	missingRoot := filepath.Join(t.TempDir(), "does-not-exist")
+
+	_, err := walkLocalForStatus(missingRoot, t.TempDir())
+	if err == nil {
+		t.Fatal("expected walkLocalForStatus() to fail for missing root")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected structured ExitError, got %T", err)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "io" {
+		t.Fatalf("expected io error detail, got %#v", exitErr.Detail)
+	}
+	if !strings.Contains(err.Error(), "walk") {
+		t.Fatalf("expected walk-related error, got: %v", err)
+	}
+}
+
+func TestHashLocalForStatusWrapsOpenError(t *testing.T) {
+	config := driveTestConfig()
+	f, _, _, _ := cmdutil.TestFactory(t, config)
+	runtime := common.TestNewRuntimeContext(&cobra.Command{Use: "drive"}, config)
+	runtime.Factory = f
+
+	_, err := hashLocalForStatus(runtime, "missing.txt")
+	if err == nil {
+		t.Fatal("expected hashLocalForStatus() to fail for missing file")
+	}
+	if !strings.Contains(err.Error(), "missing.txt") {
+		t.Fatalf("expected error to mention the missing file, got: %v", err)
+	}
+}
+
+func TestHashRemoteForStatusReturnsNetworkErrorWhenDownloadFails(t *testing.T) {
+	config := driveTestConfig()
+	f, _, _, _ := cmdutil.TestFactory(t, config)
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), &cobra.Command{Use: "drive"}, config)
+	runtime.Factory = f
+
+	_, err := hashRemoteForStatus(context.Background(), runtime, "tok_missing")
+	if err == nil {
+		t.Fatal("expected hashRemoteForStatus() to fail when the download request has no stub")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected structured ExitError, got %T", err)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "network" {
+		t.Fatalf("expected network detail, got %#v", exitErr.Detail)
+	}
+	if !strings.Contains(err.Error(), "download") {
+		t.Fatalf("expected download-related error, got: %v", err)
 	}
 }

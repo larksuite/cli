@@ -2,8 +2,8 @@
 
 ## Metrics
 - Denominator: 29 leaf commands
-- Covered: 7
-- Coverage: 24.1%
+- Covered: 8
+- Coverage: 27.6%
 
 ## Summary
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
@@ -33,6 +33,7 @@
 | ✓ | drive +pull | shortcut | drive_pull_dryrun_test.go::TestDrive_PullDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--on-duplicate-remote=rename\|newest\|oldest`; `--delete-local --yes` guard | dry-run locks flag/validate shape; live workflow proves duplicate fail-fast and rename recovery |
 | ✓ | drive +push | shortcut | drive_push_dryrun_test.go::TestDrive_PushDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--if-exists`; `--on-duplicate-remote=newest\|oldest`; `--delete-remote --yes` | dry-run locks flag/validate shape; live workflow proves overwrite + duplicate cleanup converges status |
 | ✓ | drive +status | shortcut | drive_status_workflow_test.go::TestDrive_StatusWorkflow + drive_status_dryrun_test.go::TestDrive_StatusDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; bucketed `new_local` / `new_remote` / `modified` / `unchanged` outputs | dry-run pins request shape; live workflows cover both normal hashing buckets and duplicate-remote failure |
+| ✓ | drive +sync | shortcut | drive_sync_dryrun_test.go::TestDrive_SyncDryRun + drive_sync_workflow_test.go::TestDrive_SyncWorkflow + drive_sync_workflow_test.go::TestDrive_SyncEmptyDirWorkflow | `--local-dir`; `--folder-token`; `--on-conflict=remote-wins\|local-wins\|keep-both\|ask`; `--on-duplicate-remote=fail\|newest\|oldest`; `--quick` | dry-run validates request shape, flag acceptance, and path safety guards; live workflow proves new_remote→pull, new_local→push, remote-wins/local-wins/keep-both conflict resolution, empty directory creation, and post-sync convergence |
 | ✕ | drive +task_result | shortcut |  | none | no async task-result workflow yet |
 | ✓ | drive +upload | shortcut | drive_upload_dryrun_test.go::TestDriveUploadDryRun_WikiTarget + drive_upload_dryrun_test.go::TestDriveUploadDryRun_WithFileToken + drive_upload_workflow_test.go::TestDrive_UploadWorkflow + drive_status_workflow_test.go::TestDrive_StatusWorkflow + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--wiki-token`; `--file-token`; `parent_type=wiki`; `parent_node`; named uploads into Drive folders; in-place overwrite uploads | dry-run covers wiki-target and overwrite request shapes; live workflows assert returned file tokens, token-stable overwrite behavior, and that uploaded fixtures are consumable by downstream commands |
 | ✕ | drive file.comment.replys create | api |  | none | no reply workflow yet |
