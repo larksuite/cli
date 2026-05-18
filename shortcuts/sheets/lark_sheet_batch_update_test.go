@@ -17,7 +17,7 @@ func TestBatchUpdate_RawPassthrough(t *testing.T) {
 
 	body := parseDryRunBody(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"tool":"set_cell_range","params":{"excel_id":"shtcnTOK","sheet_id":"sh1","range":"A1","cells":[[{"value":42}]]}}]`,
+		"--operations", `[{"tool_name":"set_cell_range","input":{"excel_id":"shtcnTOK","sheet_id":"sh1","range":"A1","cells":[[{"value":42}]]}}]`,
 		"--continue-on-error",
 		"--yes",
 	})
@@ -35,7 +35,7 @@ func TestBatchUpdate_HighRiskWriteRequiresYes(t *testing.T) {
 	t.Parallel()
 	stdout, stderr, err := runShortcutCapturingErr(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"tool":"set_cell_range","params":{}}]`,
+		"--operations", `[{"tool_name":"set_cell_range","input":{}}]`,
 	})
 	if err == nil {
 		t.Fatalf("expected confirmation_required; stdout=%s stderr=%s", stdout, stderr)
@@ -59,10 +59,10 @@ func TestCellsBatchSetStyle_FansOutOps(t *testing.T) {
 	}
 	for i, raw := range ops {
 		op, _ := raw.(map[string]interface{})
-		if op["tool"] != "set_cell_range" {
-			t.Errorf("op[%d].tool = %v, want set_cell_range", i, op["tool"])
+		if op["tool_name"] != "set_cell_range" {
+			t.Errorf("op[%d].tool_name = %v, want set_cell_range", i, op["tool_name"])
 		}
-		params, _ := op["params"].(map[string]interface{})
+		params, _ := op["input"].(map[string]interface{})
 		if params["sheet_name"] != "sheet1" {
 			t.Errorf("op[%d].sheet_name = %v, want sheet1", i, params["sheet_name"])
 		}
@@ -94,7 +94,7 @@ func TestDropdownUpdate_BatchPayload(t *testing.T) {
 	}
 	for i, raw := range ops {
 		op, _ := raw.(map[string]interface{})
-		params, _ := op["params"].(map[string]interface{})
+		params, _ := op["input"].(map[string]interface{})
 		cells, _ := params["cells"].([]interface{})
 		if len(cells) != 4 {
 			t.Errorf("op[%d] cells rows = %d, want 4 (A2:A5 / C2:C5)", i, len(cells))
@@ -126,7 +126,7 @@ func TestDropdownDelete_BatchClearsValidation(t *testing.T) {
 		t.Fatalf("operations length = %d, want 1", len(ops))
 	}
 	op := ops[0].(map[string]interface{})
-	params, _ := op["params"].(map[string]interface{})
+	params, _ := op["input"].(map[string]interface{})
 	cells, _ := params["cells"].([]interface{})
 	for i, raw := range cells {
 		row, _ := raw.([]interface{})

@@ -117,18 +117,28 @@ reference_id 的映射规则：
 
 ### `+float-image-create`
 
-> `image_uri` 通常是先用 `upload_sheet_asset`（暂无 CLI shortcut，走 raw API）上传后拿到的 token，或者用 https URL（部分租户可直接引用）。
+所有字段拍平为独立 flag：`--image-name` / `--image-token` 或 `--image-uri`（XOR） / `--position-{row,col}` / `--size-{width,height}` / `--offset-{row,col}` / `--z-index`。
 
 ```bash
-lark-cli sheets +float-image-create --url "..." --sheet-id "$SID" --data @img.json
+# 用 file_token（从 +float-image-list 返回的 image_token 或独立上传得到）
+lark-cli sheets +float-image-create --url "..." --sheet-id "$SID" \
+  --image-name "logo.png" --image-token "$TOKEN" \
+  --position-row 0 --position-col A --size-width 200 --size-height 150
+
+# 用 reference_id（部分租户直接引用）
+lark-cli sheets +float-image-create --url "..." --sheet-id "$SID" \
+  --image-name "logo.png" --image-uri "<|image|>:abcdef" \
+  --position-row 2 --position-col B --size-width 300 --size-height 200 --z-index 1
 ```
 
 ### `+float-image-update`
+
+> 必须先 `+float-image-list --float-image-id <id>` 回读当前完整属性，再通过 `--image-name` / `--position-*` / `--size-*` 等独立 flag 改对应字段。
 
 ### `+float-image-delete`
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+float-image-create` 校验 `--data.image_uri` 非空、`position` / `size` 合法；`+float-image-update` 必须 `--float-image-id`；`+float-image-delete` 强制 `--yes` 或 `--dry-run`。
+- `Validate`：XOR 公共四件套；`+float-image-create` 校验 `--image-name` 非空，`--image-token` 与 `--image-uri` 互斥且至少一个非空，`--position-row/col` 与 `--size-width/height` 必填且为合法整数；`+float-image-update` 必须 `--float-image-id`；`+float-image-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 float_image 请求模板"。
 - `Execute`：写后调用 `+float-image-list --float-image-id <id>` 回读，envelope.meta.verification 给出新位置 / 尺寸对比。

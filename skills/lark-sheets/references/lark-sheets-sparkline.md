@@ -100,7 +100,7 @@ _创建/更新/部分删除的迷你图属性_
 > `data_range` 是每个迷你图的数据序列；`target_range` 是迷你图生成的目标 cells（通常每个 cell 一个迷你图）。
 
 ```bash
-lark-cli sheets +sparkline-create --url "..." --sheet-id "$SID" --data @sparkline.json
+lark-cli sheets +sparkline-create --url "..." --sheet-id "$SID" --properties @sparkline.json
 ```
 
 ### `+sparkline-update`
@@ -109,6 +109,6 @@ lark-cli sheets +sparkline-create --url "..." --sheet-id "$SID" --data @sparklin
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`--data.type` 必须命中 enum；`--data.data_range` 与 `--data.target_range` 行/列数需对齐；`+sparkline-delete` 强制 `--yes` 或 `--dry-run`。
+- `Validate`：XOR 公共四件套；`--properties.type` 必须命中 enum（`line` / `column` / `winLoss`）；`--properties.data_range` 与 `--properties.target_range` 行/列数需对齐；`+sparkline-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 sparkline group 请求模板"。
 - `Execute`：写后调用 `+sparkline-list --group-id <id>` 回读，envelope.meta.verification 给出 type / style / 生成范围对比。

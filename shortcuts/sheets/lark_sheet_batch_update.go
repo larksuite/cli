@@ -23,7 +23,7 @@ import (
 //                              (high-risk-write)
 //
 // The tool's contract:
-//   { excel_id, operations: [{tool, params}, ...], continue_on_error? }
+//   { excel_id, operations: [{tool_name, input}, ...], continue_on_error? }
 //
 // continue_on_error defaults to false (strict transaction): any failure
 // rolls back the whole batch. CLI leaves the default in place for the
@@ -42,7 +42,7 @@ var BatchUpdate = common.Shortcut{
 	HasFormat:   true,
 	Flags: append(publicTokenFlags(),
 		common.Flag{Name: "operations", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "operations JSON array: [{tool, params}, ...] (or an envelope object with operations / continue_on_error)"},
+			Desc: "operations JSON array: [{tool_name, input}, ...] (or an envelope object with operations / continue_on_error)"},
 		common.Flag{Name: "continue-on-error", Type: "bool", Desc: "flip the default strict transaction off; partial success is kept on disk"},
 	),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -215,8 +215,8 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
 		ops = append(ops, map[string]interface{}{
-			"tool": "set_cell_range",
-			"params": map[string]interface{}{
+			"tool_name": "set_cell_range",
+			"input": map[string]interface{}{
 				"excel_id":   token,
 				"sheet_name": sheet,
 				"range":      sub,
@@ -364,8 +364,8 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
 		ops = append(ops, map[string]interface{}{
-			"tool": "set_cell_range",
-			"params": map[string]interface{}{
+			"tool_name": "set_cell_range",
+			"input": map[string]interface{}{
 				"excel_id":   token,
 				"sheet_name": sheet,
 				"range":      sub,

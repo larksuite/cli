@@ -116,7 +116,7 @@ func TestExecute_CellsSet(t *testing.T) {
 	out, err := runShortcutWithStubs(t, CellsSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1:B1",
-		"--cells", `{"cells":[[{"value":"x"},{"value":"y"}]]}`,
+		"--cells", `[[{"value":"x"},{"value":"y"}]]`,
 	}, stub)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
@@ -240,7 +240,7 @@ func TestExecute_BatchUpdate_Raw(t *testing.T) {
 	stub := toolOutputStub(testToken, "write", `{"results":[{"ok":true}]}`)
 	_, err := runShortcutWithStubs(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"tool":"set_cell_range","params":{"excel_id":"shtcnTestTOK","range":"A1","cells":[[{"value":1}]]}}]`,
+		"--operations", `[{"tool_name":"set_cell_range","input":{"excel_id":"shtcnTestTOK","range":"A1","cells":[[{"value":1}]]}}]`,
 		"--continue-on-error",
 		"--yes",
 	}, stub)

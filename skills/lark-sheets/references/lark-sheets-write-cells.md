@@ -307,14 +307,38 @@ _数据验证配置_
 # 纯值（数组形态）
 lark-cli sheets +cells-set --url "https://example.feishu.cn/sheets/shtXXX" \
   --sheet-name "Sheet1" --range "A1:B2" --allow-overwrite \
-  --data '{"values":[["name","score"],["alice",95]]}'
+  --cells '[[{"value":"name"},{"value":"score"}],[{"value":"alice"},{"value":95}]]'
 
-# 富 cell（公式 + 样式）
+# 富 cell（公式 + 样式，cells 是二维矩阵每元素一个 cell schema）
 lark-cli sheets +cells-set --spreadsheet-token shtXXX --sheet-id "$SID" \
-  --range "C2:C10" --data @rich-cells.json
+  --range "C2:C10" --cells @rich-cells.json
 ```
 
-`--data` 富格式见 SKILL.md 上方"使用场景"段；值 / 公式 / 样式 / 批注 / 嵌入图片可同一次写入混合提交。
+`--cells` 富格式见 `## Schemas` 段（cells 元素含 value / formula / cell_styles / border_styles / data_validation / multiple_values / note / rich_text）；值 / 公式 / 样式 / 批注 / 嵌入图片可同一次写入混合提交。
+
+### `+cells-set-style`
+
+只改样式，不动 value / formula。10 个 cell_styles 字段拍平为独立 flag，边框走 `--border-styles` JSON。
+
+```bash
+# 加粗 + 黄底
+lark-cli sheets +cells-set-style --url "..." --sheet-name "Sheet1" \
+  --range "A1:B2" --font-weight bold --background-color "#FFFF00"
+
+# 配套边框
+lark-cli sheets +cells-set-style --url "..." --sheet-id "$SID" \
+  --range "A1:D10" --font-size 12 --horizontal-alignment center \
+  --border-styles '{"top":{"style":"solid","color":"#000","weight":"thin"},"bottom":{"style":"solid","color":"#000","weight":"thin"}}'
+```
+
+### `+cells-set-image`
+
+把单张图片嵌入 cell（必须单 cell 范围）：
+
+```bash
+lark-cli sheets +cells-set-image --url "..." --sheet-name "Sheet1" \
+  --range "A1" --image ./logo.png
+```
 
 ### `+csv-put`
 
@@ -335,6 +359,6 @@ lark-cli sheets +csv-put --spreadsheet-token shtXXX --sheet-id "$SID" \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+cells-set` 的 `--data.values` 必须矩形（每行列数相等）；`+csv-put` 的 `--csv` 必须能按 RFC 4180 解析；防爆参数上限校验。
+- `Validate`：XOR 公共四件套；`+cells-set` 的 `--cells` 必须能解析为 JSON 二维矩阵且行列数与 `--range` 完全一致；`+cells-set-style` 的样式 flag 至少一个非空（或带 `--border-styles`）；`+cells-set-image` 的 `--range` 必须是单 cell（起止 cell 相同）；`+csv-put` 的 `--csv` 必须能按 RFC 4180 解析；防爆参数上限校验。
 - `DryRun`：输出目标 range + 推断尺寸 + 是否覆盖非空 cell 警告，零网络副作用。
 - `Execute`：写后调用 `+cells-get --ranges <写入区域> --include value,formula` 抽样回读，envelope.meta.verification 给出"预期 vs 实际"对比。

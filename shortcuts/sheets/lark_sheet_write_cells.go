@@ -41,7 +41,7 @@ var CellsSet = common.Shortcut{
 	Flags: append(publicSheetFlags(),
 		common.Flag{Name: "range", Required: true, Desc: "target A1 range (e.g. A1:C10); cells dimensions must match"},
 		common.Flag{Name: "cells", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "JSON body: { \"cells\": [[{value|formula|cell_styles|...}, ...]], optional copy_to_range / resize_width / resize_height }"},
+			Desc: "JSON 2D matrix of cell objects, e.g. [[{\"value\":\"a\"},{\"value\":\"b\"}],[{\"value\":1},{\"value\":2}]]; dimensions must match --range"},
 		common.Flag{Name: "allow-overwrite", Type: "bool", Default: "true", Desc: "allow overwriting non-empty cells (default true)"},
 		common.Flag{Name: "max-cells", Type: "int", Default: "50000", Hidden: true, Desc: "anti-burst cells write cap"},
 	),
@@ -55,12 +55,8 @@ var CellsSet = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("range")) == "" {
 			return common.FlagErrorf("--range is required")
 		}
-		body, err := requireJSONObject(runtime, "cells")
-		if err != nil {
+		if _, err := requireJSONArray(runtime, "cells"); err != nil {
 			return err
-		}
-		if _, ok := body["cells"]; !ok {
-			return common.FlagErrorf("--cells must include a \"cells\" field")
 		}
 		return nil
 	},
@@ -93,24 +89,16 @@ var CellsSet = common.Shortcut{
 }
 
 func cellsSetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) (map[string]interface{}, error) {
-	body, err := requireJSONObject(runtime, "cells")
+	cells, err := requireJSONArray(runtime, "cells")
 	if err != nil {
 		return nil, err
 	}
 	input := map[string]interface{}{
 		"excel_id": token,
 		"range":    strings.TrimSpace(runtime.Str("range")),
+		"cells":    cells,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
-	// --cells fields override any of these except the core selectors.
-	for k, v := range body {
-		switch k {
-		case "excel_id", "range", "sheet_id", "sheet_name":
-			// reserved for flat flags
-		default:
-			input[k] = v
-		}
-	}
 	if !runtime.Bool("allow-overwrite") {
 		input["allow_overwrite"] = false
 	}

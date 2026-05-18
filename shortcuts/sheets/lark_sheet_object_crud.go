@@ -378,7 +378,7 @@ var sparklineSpec = objectCRUDSpec{
 	toolName:       "manage_sparkline_object",
 	idFlag:         "group-id",
 	idField:        "group_id",
-	createDataDesc: "sparkline group JSON: { type: line|column|win_loss, source_range, target_range, ... }",
+	createDataDesc: "sparkline group JSON: { type: line|column|winLoss, source_range, target_range, ... }",
 	updateDataDesc: "full or partial sparkline group JSON (`+sparkline-list --group-id <id>` first, then patch)",
 }
 var SparklineCreate = newObjectCreateShortcut(sparklineSpec)

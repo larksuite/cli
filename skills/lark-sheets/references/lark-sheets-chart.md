@@ -180,17 +180,17 @@ _创建/更新的图表属性_
 ```bash
 # 内联 JSON
 lark-cli sheets +chart-create --url "https://example.feishu.cn/sheets/shtXXX" \
-  --sheet-name "Sheet1" --data '{"position":{"row":42,"col":"A"},"data":{...}}'
+  --sheet-name "Sheet1" --properties '{"position":{"row":42,"col":"A"},"size":{"width":600,"height":400},"snapshot":{...}}'
 
 # 走文件（推荐配置较多时）
 lark-cli sheets +chart-create --url "https://example.feishu.cn/sheets/shtXXX" \
-  --sheet-name "Sheet1" --data @chart-config.json
+  --sheet-name "Sheet1" --properties @chart-config.json
 ```
 
-> **配置 JSON 关键字段**（详见上方语义内容章节）：
+> **`--properties` JSON 关键字段**（结构见上方 `## Schemas` 段；详见语义内容章节）：
 > - `position.row` / `position.col` 必须留足空间，越界会被 API 拒
-> - `data.headerMode`：默认 inline；当 refs 仅覆盖数据子集且语义表头在子集之外，必须 `detached` + `nameRef`
-> - chart 引用 pivot 输出时，`data_range` 必须排除总计 / 小计行
+> - `snapshot.data.headerMode`：默认 inline；当 refs 仅覆盖数据子集且语义表头在子集之外，必须 `detached` + `nameRef`
+> - chart 引用 pivot 输出时，`snapshot.data.data_range` 必须排除总计 / 小计行
 
 ### `+chart-update`
 
@@ -212,7 +212,7 @@ lark-cli sheets +chart-delete --url "https://example.feishu.cn/sheets/shtXXX" \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+chart-create` / `+chart-update` 的 `--data` 必须能解析为合法 JSON；`+chart-delete`（high-risk-write）校验 `--yes` 或 `--dry-run` 至少一个。
+- `Validate`：XOR 公共四件套；`+chart-create` / `+chart-update` 的 `--properties` 必须能解析为合法 JSON；`+chart-delete`（high-risk-write）校验 `--yes` 或 `--dry-run` 至少一个。
 - `DryRun`：`+chart-create` / `+chart-update` 输出"将要 POST 的 body 模板"；`+chart-delete` 输出"将要删除的 chart_id 及隶属 sheet"，零网络副作用。
 - `Execute`：写操作执行后自动调用 `+chart-list` 回读对比，记录到 `envelope.meta.verification`，便于上层根据回读结果判定是否符合预期。
 

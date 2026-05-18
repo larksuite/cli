@@ -21,12 +21,12 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 		wantInput map[string]interface{}
 	}{
 		{
-			name: "+cells-set with --data cells passthrough",
+			name: "+cells-set with --cells bare 2D array",
 			sc:   CellsSet,
 			args: []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--range", "A1:B2",
-				"--cells", `{"cells":[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]}`,
+				"--cells", `[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]`,
 			},
 			toolName: "set_cell_range",
 			wantInput: map[string]interface{}{
@@ -42,7 +42,7 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 			args: []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--range", "A1",
-				"--cells", `{"cells":[[{"value":1}]]}`,
+				"--cells", `[[{"value":1}]]`,
 				"--allow-overwrite=false",
 			},
 			toolName: "set_cell_range",
@@ -50,6 +50,7 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 				"excel_id":        testToken,
 				"sheet_id":        testSheetID,
 				"range":           "A1",
+				"cells":           []interface{}{[]interface{}{map[string]interface{}{"value": float64(1)}}},
 				"allow_overwrite": false,
 			},
 		},
@@ -169,7 +170,7 @@ func TestCellsSetStyle_RequiresAtLeastOneFlag(t *testing.T) {
 	}
 }
 
-func TestCellsSet_RequiresCellsField(t *testing.T) {
+func TestCellsSet_RequiresJSONArray(t *testing.T) {
 	t.Parallel()
 	stdout, stderr, err := runShortcutCapturingErr(t, CellsSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
@@ -178,8 +179,8 @@ func TestCellsSet_RequiresCellsField(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
 	}
-	if !strings.Contains(stdout+stderr+err.Error(), "must include a \"cells\" field") {
-		t.Errorf("expected cells-field guard; got=%s|%s|%v", stdout, stderr, err)
+	if !strings.Contains(stdout+stderr+err.Error(), "must be a JSON array") {
+		t.Errorf("expected JSON-array guard; got=%s|%s|%v", stdout, stderr, err)
 	}
 }
 

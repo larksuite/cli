@@ -154,16 +154,28 @@ _创建/更新的条件格式属性_
 
 ### `+cond-format-create`
 
+`--rule-type` / `--ranges` 是独立 flag（不要再放 `--properties`）；`style` / `attrs` 等结构走 `--properties`：
+
 ```bash
-lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" --data @rule.json
+# 重复值高亮
+lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
+  --rule-type duplicate --ranges '["A1:A100"]' \
+  --properties '{"style":{"background_color":"#FFD7D7"}}'
+
+# 数据条
+lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
+  --rule-type dataBar --ranges '["B2:B100"]' \
+  --properties @rule.json
 ```
 
 ### `+cond-format-update`
+
+整组覆盖式：先 `+cond-format-list --rule-id <id>` 拿当前完整配置，改后整组传回。
 
 ### `+cond-format-delete`
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`--data.range` 与 `--data.rule.type` 必填；按 type 检查必填子字段（`cell_value` 需 `operator` + `value`、`formula` 需 `expression`、`color_scale` 需 `min/mid/max` 配色等）；`+cond-format-delete` 强制 `--yes` 或 `--dry-run`。
+- `Validate`：XOR 公共四件套；`--rule-type` / `--ranges` 必填；`--properties` 必须能解析为合法 JSON；按 `--rule-type` 检查必填子字段（`cellValue` 需 `attrs.operator` + `attrs.value`、`formula` 需 `attrs.expression`、`colorScale` 需 `min/mid/max` 配色等）；`+cond-format-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 conditional_format 请求模板"。
 - `Execute`：写后调用 `+cond-format-list --rule-id <id>` 回读，envelope.meta.verification 给出规则 / 范围 / 样式对比。

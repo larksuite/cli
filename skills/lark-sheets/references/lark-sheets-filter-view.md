@@ -116,22 +116,19 @@ lark-cli sheets +filter-view-list --url "..." --sheet-id "$SID" --view-id vAbcde
 
 ### `+filter-view-create`
 
+`--range`（必填）/ `--view-name`（可选）是独立 flag；`rules` 走 `--properties`：
+
 ```bash
 lark-cli sheets +filter-view-create --url "..." --sheet-id "$SID" \
-  --data '{
-    "view_name": "活跃用户",
-    "range": "A1:F1000",
-    "rules": [
-      {"col": "C", "filter_type": "number", "compare": "greater", "expected": [100]}
-    ]
-  }'
+  --view-name "活跃用户" --range "A1:F1000" \
+  --properties '{"rules":[{"col":"C","filter_type":"number","compare":"greater","expected":[100]}]}'
 ```
 
-> `range` **必须覆盖表头行**（如 `A1:F1000`），不能只包含数据行；`view_name` 重名时服务端自动改名。
+> `--range` **必须覆盖表头行**（如 `A1:F1000`），不能只包含数据行；`--view-name` 重名时服务端自动改名。
 
 ### `+filter-view-update`
 
-> ⚠️ update 是 patch：传 `view_name` / `range` / `rules` 任意一个或多个；先 `+filter-view-list` 读取当前 rules 再回写差异。重复 `+filter-view-create` 不会复用 view_id，会产生新视图。
+> ⚠️ update 是 patch：`--view-name` / `--range` / `--properties.rules` 任传一个或多个；至少传一个。先 `+filter-view-list` 读取当前 rules 再回写差异。重复 `+filter-view-create` 不会复用 view_id，会产生新视图。
 
 ### `+filter-view-delete`
 
@@ -139,6 +136,6 @@ lark-cli sheets +filter-view-create --url "..." --sheet-id "$SID" \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+filter-view-create` 校验 `--data.range` 起始行为表头（第一行）；`+filter-view-update` 必须先 `+filter-view-list` 确认 view 存在；`+filter-view-delete` 强制 `--yes` 或 `--dry-run`。
+- `Validate`：XOR 公共四件套；`+filter-view-create` 校验 `--range` 起始行为表头（第一行）；`+filter-view-update` 必须先 `+filter-view-list` 确认 view 存在，且 `--view-name` / `--range` / `--properties` 至少传一个；`+filter-view-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：输出"将要 POST/PATCH/DELETE 的 view 请求模板"，零网络副作用；`--sheet-name` 在 dry-run 输出里生成为 `<resolve:Sheet1>` 占位符。
 - `Execute`：写后调用 `+filter-view-list --view-id <new>` 回读，envelope.meta.verification 给出当前 range + rules 与请求体的对比。

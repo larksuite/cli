@@ -129,19 +129,28 @@ _数据验证配置_
 
 ```bash
 lark-cli sheets +batch-update --url "https://example.feishu.cn/sheets/shtXXX" --yes \
-  --data @ops.json
+  --operations @ops.json
 
-# ops.json:
-# {
-#   "operations": [
-#     {"tool": "modify_sheet_structure", "params": {"sheet_id":"...","operation":"insert","dimension":"row","start":10,"end":12}},
-#     {"tool": "set_cell_range",          "params": {"sheet_id":"...","range":"A11:B12","values":[["a","b"],["c","d"]]}}
-#   ]
-# }
+# ops.json （array<{tool_name, input}>）:
+# [
+#   {"tool_name": "modify_sheet_structure", "input": {"sheet_id":"...","operation":"insert","dimension":"row","start":10,"end":12}},
+#   {"tool_name": "set_cell_range",         "input": {"sheet_id":"...","range":"A11:B12","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}}
+# ]
+```
+
+### `+cells-batch-set-style`
+
+多 range 应用同一组 style（服务端走 `batch_update` 原子事务）：
+
+```bash
+# 表头行 + 汇总行同时刷成蓝底白字
+lark-cli sheets +cells-batch-set-style --url "..." \
+  --ranges '["sheet1!A1:F1","sheet1!A30:F30"]' \
+  --background-color "#1E5BC6" --font-color "#FFFFFF" --font-weight bold
 ```
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：`--data` 必须合法 JSON，且 `operations` 是非空数组；逐个子操作 `tool` / `params.sheet_id` 字段必填校验；**禁止嵌套 batch_update**。
+- `Validate`：`+batch-update` 的 `--operations` 必须合法 JSON，且为非空数组；逐个子操作 `tool_name` / `input` 字段必填校验；**禁止嵌套 batch_update**。`+cells-batch-set-style` 的 `--ranges` 必须 JSON 数组、每项带 sheet 前缀；样式 flag 至少一个非空（或带 `--border-styles`）。
 - `DryRun`：按顺序输出每个子操作的目标 API + 请求 body 模板；首个失败则整批 fail-fast（不实际执行任何后续）。
 - `Execute`：按声明顺序串行执行；任一子操作失败立即中断并回滚到该子操作前状态（具体回滚能力取决于子操作类型，沿用 MCP `batch_update` 的语义）。

@@ -128,19 +128,22 @@ _创建/更新的透视表属性_
 
 ### `+pivot-create`
 
-> 数据源 `data_range` 必须从表头行开始；空行 / 汇总行会被当作数据参与聚合，需提前用 `+csv-get` 确认起止边界。
+> 数据源 `--source` 必须从表头行开始；空行 / 汇总行会被当作数据参与聚合，需提前用 `+csv-get` 确认起止边界。`--source` 和 `--range` 是独立 flag（不要再放 `--properties`）；`rows` / `columns` / `values` 等数组字段走 `--properties`。
 
 ```bash
-lark-cli sheets +pivot-create --url "..." --sheet-id "$SRC_SID" --data @pivot.json
+lark-cli sheets +pivot-create --url "..." --sheet-id "$SRC_SID" \
+  --source "Sheet1!A1:D100" --range "F1" --properties @pivot.json
 ```
 
 ### `+pivot-update`
+
+> 不允许改 `--source` / `--range`（透视表创建后位置/数据源固定）；只能用 `--properties` 改 rows / columns / values / filters 等。先 `+pivot-list --pivot-table-id <id>` 回读再 patch，避免漏字段。
 
 ### `+pivot-delete`
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+pivot-create` 的 `--data.data_range` 必须含表头行；`rows`/`columns`/`values` 至少非空之一；`+pivot-delete` 强制 `--yes` 或 `--dry-run`。
+- `Validate`：XOR 公共四件套；`+pivot-create` 的 `--source` 必填且必须含表头行；`--properties` 中 `rows` / `columns` / `values` 至少非空之一；`+pivot-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 pivot 请求模板"+ 预估输出尺寸（行数 × 列数）。
 - `Execute`：写后调用 `+pivot-list --pivot-table-id <id>` 回读 + `+csv-get` 抽样读透视产物，envelope.meta.verification 给出实际输出尺寸 + 总计行位置。
 

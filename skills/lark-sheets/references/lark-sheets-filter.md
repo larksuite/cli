@@ -104,15 +104,17 @@ _创建/更新的筛选器属性_
 
 ### `+filter-create`
 
+`--range` 是独立 flag（含表头行）；`rules` 走 `--properties`：
+
 ```bash
 lark-cli sheets +filter-create --url "..." --sheet-id "$SID" \
   --range "A1:F1000" \
-  --data '{"conditions":[{"col":"B","filter_type":"multiValue","expected":["北京","上海"]}]}'
+  --properties '{"rules":[{"col":"B","filter_type":"multiValue","expected":["北京","上海"]}]}'
 ```
 
 ### `+filter-update`
 
-> ⚠️ update 是覆盖式：传 `conditions` 会用整组新条件替换旧组。如只想加一条，要带上已有的全部条件再追加。
+> ⚠️ update 是覆盖式：`--properties` 中传新 `rules` 会替换旧组。如只想加一条，要带上已有的全部条件再追加。必填 `--range`。
 
 ### `+filter-delete`
 
