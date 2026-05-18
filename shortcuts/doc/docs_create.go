@@ -172,7 +172,7 @@ func fallbackDocURLV1(runtime *common.RuntimeContext, result map[string]interfac
 	if docID == "" {
 		return
 	}
-	if u := common.BuildResourceURL(runtime.Config.Brand, "docx", docID); u != "" {
+	if u := common.FetchTenantResourceURL(runtime, "docx", docID); u != "" {
 		result["doc_url"] = u
 	}
 }
