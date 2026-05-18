@@ -77,8 +77,8 @@ var DriveSearch = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search keyword (may be empty to browse by filter only)"},
 
-		{Name: "mine", Type: "bool", Desc: "restrict to docs I created (uses current user's open_id)"},
-		{Name: "creator-ids", Desc: "comma-separated creator open_ids; mutually exclusive with --mine"},
+		{Name: "mine", Type: "bool", Desc: "restrict to docs I own (server-side owner semantic, NOT original creator; uses current user's open_id)"},
+		{Name: "creator-ids", Desc: "comma-separated owner open_ids (API field is creator_ids but matched by owner); mutually exclusive with --mine"},
 
 		{Name: "edited-since", Desc: "start of [my edited] time window (e.g. 7d, 1m, 1y, 2026-04-01, RFC3339, unix seconds)"},
 		{Name: "edited-until", Desc: "end of [my edited] time window"},
@@ -108,7 +108,7 @@ var DriveSearch = common.Shortcut{
 	Tips: []string{
 		"Time flags accept relative (e.g. 7d, 1m, 1y), absolute (2026-04-01, RFC3339), or unix seconds.",
 		"my_edit_time and my_comment_time are hour-aggregated server-side; sub-hour inputs are snapped and a notice is printed to stderr.",
-		"Use --mine for a quick \"docs I created\" filter. For other people, use --creator-ids ou_xxx,ou_yyy.",
+		"Use --mine for a quick \"docs I own\" filter (owner semantic, not original creator). For other people, use --creator-ids ou_xxx,ou_yyy.",
 		"--folder-tokens limits to doc-only search; --space-ids limits to wiki-only. They cannot be combined.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

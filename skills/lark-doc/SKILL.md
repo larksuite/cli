@@ -38,8 +38,6 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 - 用户说"看一下文档里的图片/附件/素材""预览素材" → 用 `lark-cli docs +media-preview`
 - 用户明确说"下载素材" → 用 `lark-cli docs +media-download`
 - 如果目标是画板/whiteboard/画板缩略图 → 只能用 `lark-cli docs +media-download --type whiteboard`（不要用 `+media-preview`）
-- 用户说"找一个表格""按名称搜电子表格""找报表""最近打开的表格""最近我编辑过的 xxx" → 直接用 `lark-cli drive +search`（参考 [`lark-drive`](../lark-drive/references/lark-drive-search.md)）。**老的 `docs +search` 已进入维护期、后续会下线，不要再新增依赖。**
-- `drive +search` 结果里会直接返回 `SHEET` / `Base` / `FOLDER` 等云空间对象，是资源发现的统一入口
 - 拿到 spreadsheet URL/token 后 → 切到 `lark-sheets` 做对象内部操作
 - 用户说"给文档加评论""查看评论""回复评论""给评论加/删除表情 reaction" → 切到 `lark-drive` 处理
 - 文档内容中出现嵌入的 `<sheet>`、`<bitable>` 或 `<cite file-type="sheets|bitable">` 标签时 → **必须主动提取 token 并切到对应技能下钻读取内部数据**，不能只呈现标签本身
@@ -52,15 +50,12 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 | `<cite type="doc" file-type="bitable" token="..." table-id="...">` | 同 `<bitable>` | [`lark-base`](../lark-base/SKILL.md) |
 | `<synced_reference src-token="..." src-block-id="...">` | `src-token` -> doc_token, `src-block-id` -> block_id | 用 `docs +fetch --api-version v2` 读取 src-token 文档，定位 block |
 
-**补充：** 云空间资源发现统一走 [`drive +search`](../lark-drive/references/lark-drive-search.md)；当用户口头说"表格/报表/最近我编辑过的 xxx"时，也优先从 `drive +search` 开始。老的 `docs +search` 只在沿用 `--filter` JSON 的存量脚本里保留，后续会下线。
-
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli docs +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+search`](references/lark-doc-search.md) | ⚠️ **Deprecated — use [`drive +search`](../lark-drive/references/lark-drive-search.md)**. Search Lark docs, Wiki, and spreadsheet files (Search v2: doc_wiki/search). Kept for back-compat; new flows should use the drive-scoped command with flat flags. |
 | [`+create`](references/lark-doc-create.md) | Create a Lark document (XML / Markdown) |
 | [`+fetch`](references/lark-doc-fetch.md) | Fetch Lark document content (XML / Markdown) |
 | [`+update`](references/lark-doc-update.md) | Update a Lark document (str_replace / block_insert_after / block_replace / ...) |

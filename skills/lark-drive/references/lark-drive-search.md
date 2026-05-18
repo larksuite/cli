@@ -5,12 +5,12 @@
 
 基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，以**用户身份**统一搜索云空间对象。
 
-和老的 `docs +search` 相比：
+核心特性：
 
 - 把常用过滤条件全部**扁平化为独立 flag**（`--edited-since`、`--mine`、`--doc-types`、`--folder-tokens` 等），不再要求用户或 AI 手写嵌套 `--filter` JSON
 - 额外暴露了 4 个"我"维度：`my_edit_time`（我编辑过）、`my_comment_time`（我评论过）、`open_time`（我打开过）、`create_time`（文档创建时间）——直接对应用户自然语言里的"最近我编辑过的"、"我评论过的"等表达
 - 自动处理 `my_edit_time` / `my_comment_time` 的小时级聚合（服务端存储粒度）：亚小时输入会向整点 snap，并在 stderr 打出提示
-- `--mine` 一键从当前登录用户的 open_id 填 `creator_ids`，不必再先去查 contact
+- `--mine` 一键从当前登录用户的 open_id 填 `creator_ids`，不必再先去查 contact（注意 `creator_ids` 服务端按 **owner / 文档归属人** 语义匹配，不是“最初创建人”，详见下文「身份维度」）
 
 > **资源发现入口统一**：`drive +search` 同样返回 `SHEET` / `Base` / `FOLDER` 等全部云空间对象，不只是文档 / Wiki。用户说"找一个表格"、"找报表"、"最近打开的表格"时，也从这里开始；定位后再切到对应业务 skill（如 `lark-sheets`）做对象内部操作。
 
@@ -28,12 +28,12 @@
 | 最近一个月我编辑过的文档 | `lark-cli drive +search --query "" --edited-since 1m` |
 | 最近一个月我编辑过 且 我评论过的 | `lark-cli drive +search --query "" --edited-since 1m --commented-since 1m` |
 | 最近一周我打开过的表格 | `lark-cli drive +search --query "" --opened-since 7d --doc-types sheet` |
-| 我创建的所有文档 | `lark-cli drive +search --query "" --mine` |
-| 我 30-60 天前创建的文档（粗略"上个月"，按 30 天滑窗算） | `lark-cli drive +search --query "" --mine --created-since 2m --created-until 1m` |
-| 我 2026 年 3 月创建的文档（精确日历月） | `lark-cli drive +search --query "" --mine --created-since 2026-03-01 --created-until 2026-04-01` |
+| 我 owner 的所有文档（owner 语义，非"我最初创建"） | `lark-cli drive +search --query "" --mine` |
+| 我 owner、30-60 天前创建的文档（粗略"上个月"，按 30 天滑窗算；`--mine` 是 owner，`--created-*` 才是文档创建时间） | `lark-cli drive +search --query "" --mine --created-since 2m --created-until 1m` |
+| 我 owner、2026 年 3 月创建的文档（精确日历月；同上，owner + 创建时间窗两个维度） | `lark-cli drive +search --query "" --mine --created-since 2026-03-01 --created-until 2026-04-01` |
 | 关键词"预算"，最近一周我打开过，按编辑时间降序 | `lark-cli drive +search --query 预算 --opened-since 7d --sort edit_time` |
-| 某个 wiki space 下、我 30-60 天前创建的 | `lark-cli drive +search --query "" --mine --space-ids space_xxx --created-since 2m --created-until 1m` |
-| 张三创建的文档 | `lark-cli drive +search --query "" --creator-ids ou_zhangsan` |
+| 某个 wiki space 下、我 owner 且 30-60 天前创建的 | `lark-cli drive +search --query "" --mine --space-ids space_xxx --created-since 2m --created-until 1m` |
+| 张三 owner / 负责的文档（注意是 owner 语义，不是张三最初创建的）| `lark-cli drive +search --query "" --creator-ids ou_zhangsan` |
 | 我最近 3 个月评论过的 docx | `lark-cli drive +search --query "" --commented-since 3m --doc-types docx` |
 
 ### 更多示例
@@ -42,7 +42,7 @@
 # 纯关键词搜索
 lark-cli drive +search --query "季度总结"
 
-# 使用服务端 query 高级语法（和 docs +search 一致）
+# 使用服务端 query 高级语法
 lark-cli drive +search --query 'intitle:方案'
 lark-cli drive +search --query '"季度 总结"'
 lark-cli drive +search --query '方案 OR 草稿'
@@ -80,12 +80,14 @@ lark-cli drive +search --query 方案 --page-token '<PAGE_TOKEN>'
 | `--page-token <token>` | 否 | 上一次响应里的 `page_token`，用于翻页 |
 | `--format` | 否 | `json`（默认）/ `pretty` |
 
-### 身份（creator 维度）
+### 身份（owner 维度，API 字段名 `creator_ids`）
+
+> **语义说明（重要）**：`creator_ids`（含 `--mine` / `--creator-ids`）虽然 OpenAPI 字段名是 “creator”，但服务端实际按 **owner（文档归属人 / 负责人）** 语义匹配，**不是“最初创建人”**：我创建后转交他人的文档不会命中，他人创建后转给我（我成为 owner）的会命中。用户说“我的 / 我创建的 / 我负责的”文档都路由到 `--mine`，但要清楚它返回的是“我 owner 的”。
 
 | 参数 | 映射 | 说明 |
 |---|---|---|
-| `--mine` | `creator_ids = [当前用户 open_id]` | bool。一键"我创建的"；从当前登录用户身份（`runtime.UserOpenId()`）解析 open_id，取不到直接报错（提示运行 `lark-cli auth login`） |
-| `--creator-ids ou_x,ou_y` | `creator_ids = [...]` | 显式 open_id 列表，逗号分隔；**与 `--mine` 互斥** |
+| `--mine` | `creator_ids = [当前用户 open_id]` | bool。一键“我 owner 的”（**不是**“我最初创建的”）；从当前登录用户身份（`runtime.UserOpenId()`）解析 open_id，取不到直接报错（提示运行 `lark-cli auth login`） |
+| `--creator-ids ou_x,ou_y` | `creator_ids = [...]` | 显式 open_id 列表，逗号分隔，按 **owner** 匹配；**与 `--mine` 互斥** |
 
 ### 时间维度（每个维度一对 since/until）
 
@@ -162,8 +164,7 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
 
 ## 决策规则
 
-- **和 `docs +search` 的选择**：优先使用 `drive +search`（本指令），不要再用 `docs +search`。`docs +search` 进入维护期、后续会下线。
-- **身份快捷方式**：只要用户说"我创建的"，直接 `--mine` 即可，不需要先查 contact 拿 open_id。
+- **身份快捷方式**：用户说“我的 / 我创建的 / 我负责的”文档，直接 `--mine` 即可，不需要先查 contact 拿 open_id。注意 `--mine` 是 **owner** 语义（我归属/负责的），不是“我最初创建的”——转交出去的不算、转交给我的算。
 - **时间维度选择**：
   - "我编辑的"、"我修改的" → `--edited-since` / `--edited-until`
   - "我评论的"、"我回复过的" → `--commented-since` / `--commented-until`
@@ -173,10 +174,10 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
   - "某个文件夹下" → `--folder-tokens`（doc-only）
   - "某个 wiki 空间下" → `--space-ids`（wiki-only）
   - 两者不能同时使用，混用会报错
-- **身份 flag 互斥**：`--mine` 和 `--creator-ids` 不要同时传，会直接报错。"我和张三创建的" 用 `--creator-ids ou_me,ou_zhangsan`（需要先拿到自己 open_id，但这种场景少见）。
+- **身份 flag 互斥**：`--mine` 和 `--creator-ids` 不要同时传，会直接报错。“我和张三的”（owner）用 `--creator-ids ou_me,ou_zhangsan`（需要先拿到自己 open_id，但这种场景少见）。
 - **实体补全**：
   - 用户说"某个群里"，先用 `lark-im` 查 `chat_id`
-  - 用户说"某人创建/分享的"（非自己），先用 `lark-contact` 查 open_id，再填 `--creator-ids` / `--sharer-ids`
+  - 用户说“某人的 / 某人分享的”（非自己；`--creator-ids` 按 owner 匹配），先用 `lark-contact` 查 open_id，再填 `--creator-ids` / `--sharer-ids`
 - **查询语义下推**：`--query` 支持的服务端高级语法（`intitle:`、`""`、`OR`、`-`）优先使用，不要先模糊搜再在客户端二次过滤。
 - **时间表达**：
   - 模糊相对时间（"最近半年"、"过去 30 天"、"最近一周"）→ `--*-since 6m` / `--*-since 30d` / `--*-since 7d`，不展开成 ISO 时间
