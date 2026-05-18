@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package doc
+package drive
 
 import (
 	"context"
@@ -13,8 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-var DocsInfo = common.Shortcut{
-	Service:           "docs",
+var DriveInfo = common.Shortcut{
+	Service:           "drive",
 	Command:           "+info",
 	Description:       "Resolve a Lark document URL to its type, title, and canonical token (with wiki unwrapping)",
 	Risk:              "read",
