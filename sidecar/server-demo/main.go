@@ -75,7 +75,7 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 	}
 
 	var keyHex string
-	if existing, err := os.ReadFile(keyFile); err == nil && len(strings.TrimSpace(string(existing))) == 64 {
+	if existing, err := vfs.ReadFile(keyFile); err == nil && len(strings.TrimSpace(string(existing))) == 64 {
 		keyHex = strings.TrimSpace(string(existing))
 	} else {
 		keyBytes := make([]byte, 32)

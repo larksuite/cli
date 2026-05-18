@@ -26,6 +26,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // authBridge handles /_sidecar/auth/* management endpoints.
@@ -77,7 +78,7 @@ func (ab *authBridge) loadUserMap() {
 	if ab.mapFile == "" {
 		return
 	}
-	data, err := os.ReadFile(ab.mapFile)
+	data, err := vfs.ReadFile(ab.mapFile)
 	if err != nil {
 		return
 	}
@@ -91,8 +92,14 @@ func (ab *authBridge) saveUserMap() {
 	if ab.mapFile == "" {
 		return
 	}
-	data, _ := json.MarshalIndent(ab.userMap, "", "  ")
-	_ = os.WriteFile(ab.mapFile, data, 0600)
+	data, err := json.MarshalIndent(ab.userMap, "", "  ")
+	if err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_ERROR action=save_user_map error=%q", err.Error())
+		return
+	}
+	if err := vfs.WriteFile(ab.mapFile, data, 0600); err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_ERROR action=save_user_map error=%q", err.Error())
+	}
 }
 
 // verifyManagementHMAC checks a simplified HMAC for management endpoints.
@@ -138,7 +145,7 @@ func sha256Hex(data []byte) string {
 
 // ServeHTTP routes management API requests.
 func (ab *authBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "failed to read body")
 		return
@@ -496,7 +503,7 @@ func loadCachedScopes() string {
 		return ""
 	}
 	dir := filepath.Join(configDir, "cache", "auth_login_scopes")
-	entries, err := os.ReadDir(dir)
+	entries, err := vfs.ReadDir(dir)
 	if err != nil {
 		return ""
 	}
@@ -504,7 +511,7 @@ func loadCachedScopes() string {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := vfs.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}

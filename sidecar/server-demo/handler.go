@@ -12,7 +12,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -55,11 +55,13 @@ func (h *proxyHandler) loadClientKeys() {
 	if h.keysDir == "" {
 		return
 	}
-	entries, err := os.ReadDir(h.keysDir)
+	entries, err := vfs.ReadDir(h.keysDir)
 	if err != nil {
 		h.logger.Printf("KEYS_SCAN_ERROR dir=%s error=%q", h.keysDir, err.Error())
 		return
 	}
+
+	sharedKeyHex := string(h.key)
 
 	newKeys := make(map[string]clientKeyEntry)
 	for _, e := range entries {
@@ -71,13 +73,21 @@ func (h *proxyHandler) loadClientKeys() {
 		if clientName == "" {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(h.keysDir, name))
+		data, err := vfs.ReadFile(filepath.Join(h.keysDir, name))
 		if err != nil {
 			continue
 		}
 		keyHex := strings.TrimSpace(string(data))
 		if len(keyHex) != 64 {
 			h.logger.Printf("KEYS_SCAN_SKIP file=%s reason=\"key length %d, expected 64\"", name, len(keyHex))
+			continue
+		}
+		if keyHex == sharedKeyHex {
+			h.logger.Printf("KEYS_SCAN_SKIP file=%s reason=\"collides with shared proxy key\"", name)
+			continue
+		}
+		if existing, ok := newKeys[keyHex]; ok {
+			h.logger.Printf("KEYS_SCAN_SKIP file=%s reason=\"duplicate key, already loaded for client %s\"", name, existing.clientName)
 			continue
 		}
 		newKeys[keyHex] = clientKeyEntry{key: []byte(keyHex), clientName: clientName}
