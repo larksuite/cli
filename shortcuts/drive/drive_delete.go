@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -88,7 +89,7 @@ var DriveDelete = common.Shortcut{
 			nil,
 		)
 		if err != nil {
-			return err
+			return enrichDriveDeleteError(err)
 		}
 
 		if spec.FileType == "folder" {
@@ -138,11 +139,42 @@ func validateDriveDeleteSpec(spec driveDeleteSpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
 		return output.ErrValidation("%s", err)
 	}
+	if looksLikeWikiNodeToken(spec.FileToken) {
+		return output.ErrValidation("unsupported wiki node token for drive +delete: wiki-owned nodes cannot be deleted through the Drive files API. Move the node to an archive location with wiki +move, or delete it from Feishu Web/Desktop UI")
+	}
 	if spec.FileType == "wiki" {
-		return output.ErrValidation("unsupported file type: wiki. This shortcut only supports Drive files and folders; wiki documents are not supported")
+		return output.ErrValidation("unsupported file type: wiki. This shortcut only supports Drive files and folders; wiki-owned nodes cannot be deleted through the Drive files API. Move the node to an archive location with wiki +move, or delete it from Feishu Web/Desktop UI")
 	}
 	if !driveDeleteAllowedTypes[spec.FileType] {
 		return output.ErrValidation("unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, folder, shortcut, slides", spec.FileType)
 	}
 	return nil
+}
+
+func looksLikeWikiNodeToken(token string) bool {
+	token = strings.ToLower(strings.TrimSpace(token))
+	return strings.HasPrefix(token, "wikcn") || strings.HasPrefix(token, "wiki")
+}
+
+func enrichDriveDeleteError(err error) error {
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		return err
+	}
+	if exitErr.Detail.Code != 1061004 {
+		return err
+	}
+
+	hint := "Drive delete returned 1061004 forbidden. If this target is a wiki-owned node, it cannot be deleted through drive +delete or the Drive files API. Move it to an archive location with wiki +move when possible, or delete it from Feishu Web/Desktop UI. If it is not wiki-owned, verify the caller has delete permission and the space:document:delete scope."
+	return &output.ExitError{
+		Code: exitErr.Code,
+		Detail: &output.ErrDetail{
+			Type:    exitErr.Detail.Type,
+			Code:    exitErr.Detail.Code,
+			Message: exitErr.Detail.Message,
+			Hint:    hint,
+			Detail:  exitErr.Detail.Detail,
+		},
+		Err: err,
+	}
 }

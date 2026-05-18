@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -27,7 +29,22 @@ func TestValidateDriveDeleteSpecRejectsWiki(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected wiki type error, got nil")
 	}
-	if !strings.Contains(err.Error(), "wiki documents are not supported") {
+	if !strings.Contains(err.Error(), "wiki-owned nodes cannot be deleted") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDriveDeleteSpecRejectsWikiNodeToken(t *testing.T) {
+	t.Parallel()
+
+	err := validateDriveDeleteSpec(driveDeleteSpec{
+		FileToken: "wikcn_test_node",
+		FileType:  "docx",
+	})
+	if err == nil {
+		t.Fatal("expected wiki token error, got nil")
+	}
+	if !strings.Contains(err.Error(), "wiki-owned nodes cannot be deleted") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -122,6 +139,42 @@ func TestDriveDeleteFileSuccess(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"file_token": "file_token_test"`)) {
 		t.Fatalf("stdout missing file token: %s", stdout.String())
+	}
+}
+
+func TestDriveDeleteForbiddenAddsWikiOwnedHint(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/docx_token_test",
+		Body: map[string]interface{}{
+			"code": 1061004,
+			"msg":  "forbidden",
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveDelete, []string{
+		"+delete",
+		"--file-token", "docx_token_test",
+		"--type", "docx",
+		"--yes",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected forbidden error, got nil")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected structured exit error, got %T: %v", err, err)
+	}
+	if exitErr.Detail.Code != 1061004 {
+		t.Fatalf("error code = %d, want 1061004", exitErr.Detail.Code)
+	}
+	for _, needle := range []string{"wiki-owned node", "Drive files API", "wiki +move", "Feishu Web/Desktop UI"} {
+		if !strings.Contains(exitErr.Detail.Hint, needle) {
+			t.Fatalf("hint missing %q: %s", needle, exitErr.Detail.Hint)
+		}
 	}
 }
 
