@@ -122,7 +122,7 @@ var DriveImport = common.Shortcut{
 		if statusURL := strings.TrimSpace(status.URL); statusURL != "" {
 			out["url"] = statusURL
 		} else if status.Token != "" {
-			if u := common.BuildResourceURL(runtime.Config.Brand, normalizeDriveImportKindForURL(resultType, spec.DocType), status.Token); u != "" {
+			if u := common.FetchTenantResourceURL(runtime, normalizeDriveImportKindForURL(resultType, spec.DocType), status.Token); u != "" {
 				out["url"] = u
 			}
 		}
