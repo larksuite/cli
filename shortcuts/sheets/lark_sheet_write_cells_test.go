@@ -222,8 +222,17 @@ func TestCellsSetImage_DryRun(t *testing.T) {
 	if item["type"] != "embed-image" {
 		t.Errorf("rich_text.type = %v, want embed-image", item["type"])
 	}
-	if item["attachment_name"] != "README.md" {
-		t.Errorf("attachment_name = %v, want README.md (basename)", item["attachment_name"])
+	if item["image_token"] != "<file_token>" {
+		t.Errorf("image_token = %v, want <file_token>", item["image_token"])
+	}
+	if item["text"] != "" {
+		t.Errorf("text = %v, want empty string", item["text"])
+	}
+	if item["image_width"] != "<image_width>" {
+		t.Errorf("image_width = %v, want <image_width>", item["image_width"])
+	}
+	if item["image_height"] != "<image_height>" {
+		t.Errorf("image_height = %v, want <image_height>", item["image_height"])
 	}
 }
 
@@ -243,10 +252,10 @@ func TestCellsSetImage_RangeMustBeSingleCell(t *testing.T) {
 func TestRangeDimensions(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		in        string
-		wantRows  int
-		wantCols  int
-		wantErr   bool
+		in       string
+		wantRows int
+		wantCols int
+		wantErr  bool
 	}{
 		{"A1", 1, 1, false},
 		{"A1:B2", 2, 2, false},

@@ -6,6 +6,10 @@ package sheets
 import (
 	"context"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -589,9 +593,11 @@ var CellsSetImage = common.Shortcut{
 			"sheet_id": sheetSelectorPlaceholder(sheetID, sheetName),
 			"cells": [][]interface{}{{map[string]interface{}{
 				"rich_text": []map[string]interface{}{{
-					"type":             "embed-image",
-					"attachment_token": "<file_token>",
-					"attachment_name":  fileName,
+					"type":         "embed-image",
+					"text":         "",
+					"image_token":  "<file_token>",
+					"image_width":  "<image_width>",
+					"image_height": "<image_height>",
 				}},
 			}}},
 		})
@@ -627,6 +633,15 @@ var CellsSetImage = common.Shortcut{
 		if err != nil {
 			return common.WrapInputStatError(err)
 		}
+		imgFile, err := runtime.FileIO().Open(imgPath)
+		if err != nil {
+			return common.WrapInputStatError(err)
+		}
+		imgCfg, _, err := image.DecodeConfig(imgFile)
+		imgFile.Close()
+		if err != nil {
+			return fmt.Errorf("decode image dimensions: %w", err)
+		}
 		fileToken, err := common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   imgPath,
 			FileName:   fileName,
@@ -643,9 +658,11 @@ var CellsSetImage = common.Shortcut{
 			"range":    strings.TrimSpace(runtime.Str("range")),
 			"cells": [][]interface{}{{map[string]interface{}{
 				"rich_text": []map[string]interface{}{{
-					"type":             "embed-image",
-					"attachment_token": fileToken,
-					"attachment_name":  fileName,
+					"type":         "embed-image",
+					"text":         "",
+					"image_token":  fileToken,
+					"image_width":  imgCfg.Width,
+					"image_height": imgCfg.Height,
 				}},
 			}}},
 		}
