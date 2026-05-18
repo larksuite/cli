@@ -170,16 +170,27 @@ func (ab *authBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// parseClientID extracts the client identifier from a JSON body.
+func parseClientID(body []byte) string {
+	var raw struct {
+		ClientID string `json:"client_id"`
+	}
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &raw)
+	}
+	return raw.ClientID
+}
+
 // handleLogin initiates a device-flow OAuth login.
 func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body []byte) {
 	var req struct {
-		Scope    string   `json:"scope"`
-		Domains  []string `json:"domains"`
-		ClientID string   `json:"client_id"`
+		Scope   string   `json:"scope"`
+		Domains []string `json:"domains"`
 	}
 	if len(body) > 0 {
 		_ = json.Unmarshal(body, &req)
 	}
+	clientID := parseClientID(body)
 
 	scope := req.Scope
 	if scope == "" {
@@ -190,7 +201,7 @@ func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body [
 	}
 
 	ab.logger.Printf("AUTH_BRIDGE_LOGIN_SCOPE scope_count=%d domains=%v client=%s",
-		len(strings.Fields(scope)), req.Domains, req.ClientID)
+		len(strings.Fields(scope)), req.Domains, clientID)
 
 	authResp, err := larkauth.RequestDeviceAuthorization(
 		ab.httpCl, ab.appID, ab.appSecret, ab.brand, scope, io.Discard,
@@ -220,14 +231,12 @@ func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body [
 func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []byte) {
 	var req struct {
 		DeviceCode string `json:"device_code"`
-		ClientID   string `json:"client_id"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil || req.DeviceCode == "" {
 		jsonError(w, http.StatusBadRequest, "device_code is required")
 		return
 	}
-
-	clientID := req.ClientID
+	clientID := parseClientID(body)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
@@ -317,14 +326,9 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 }
 
 // handleStatus returns current auth status.
-// Accepts client_id in body to return client-specific mapping info.
+// Accepts client_id in body for client-specific mapping.
 func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body []byte) {
-	var req struct {
-		ClientID string `json:"client_id"`
-	}
-	if len(body) > 0 {
-		_ = json.Unmarshal(body, &req)
-	}
+	clientID := parseClientID(body)
 
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
@@ -356,12 +360,12 @@ func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body 
 		"users": users,
 	}
 
-	if req.ClientID != "" {
+	if clientID != "" {
 		ab.mu.Lock()
-		mappedOpenID := ab.userMap[req.ClientID]
+		mappedOpenID := ab.userMap[clientID]
 		ab.mu.Unlock()
 
-		resp["client_id"] = req.ClientID
+		resp["client_id"] = clientID
 		resp["mapped_open_id"] = mappedOpenID
 		if mappedOpenID != "" {
 			stored := larkauth.GetStoredToken(ab.appID, mappedOpenID)

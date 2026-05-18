@@ -41,7 +41,7 @@ type proxyHandler struct {
 	// token) to use. Protected by ckMu.
 	ckMu       sync.RWMutex
 	clientKeys map[string]clientKeyEntry
-	keysDir    string // directory to scan for client-*.key files
+	keysDir    string // directory to scan for *.key files (excluding proxy.key)
 }
 
 type clientKeyEntry struct {
@@ -49,8 +49,10 @@ type clientKeyEntry struct {
 	clientName string
 }
 
-// loadClientKeys scans keysDir for client-*.key files and populates
-// the clientKeys map. Safe to call multiple times (e.g. on cache miss).
+// loadClientKeys scans keysDir for *.key files (excluding the shared
+// proxy.key) and populates the clientKeys map. The filename stem (without
+// .key) becomes the client identity. No naming convention is enforced.
+// Safe to call multiple times (e.g. on cache miss).
 func (h *proxyHandler) loadClientKeys() {
 	if h.keysDir == "" {
 		return
@@ -66,11 +68,11 @@ func (h *proxyHandler) loadClientKeys() {
 	newKeys := make(map[string]clientKeyEntry)
 	for _, e := range entries {
 		name := e.Name()
-		if !strings.HasPrefix(name, "client-") || !strings.HasSuffix(name, ".key") {
+		if e.IsDir() || !strings.HasSuffix(name, ".key") {
 			continue
 		}
-		clientName := strings.TrimSuffix(strings.TrimPrefix(name, "client-"), ".key")
-		if clientName == "" {
+		clientName := strings.TrimSuffix(name, ".key")
+		if clientName == "" || clientName == "proxy" {
 			continue
 		}
 		data, err := vfs.ReadFile(filepath.Join(h.keysDir, name))

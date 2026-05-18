@@ -39,7 +39,7 @@ import (
 func main() {
 	listen := flag.String("listen", sidecar.DefaultListenAddr, "listen address (host:port)")
 	keyFile := flag.String("key-file", defaultKeyFile(), "path to write the HMAC key")
-	keysDir := flag.String("keys-dir", "", "directory containing client-*.key files for per-client identity isolation (defaults to key-file's parent dir)")
+	keysDir := flag.String("keys-dir", "", "directory containing per-client *.key files for identity isolation (defaults to key-file's parent dir)")
 	logFile := flag.String("log-file", "", "audit log file (stderr if empty)")
 	profile := flag.String("profile", "", "lark-cli profile name (empty = active profile)")
 	flag.Parse()
