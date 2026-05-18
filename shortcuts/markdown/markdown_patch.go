@@ -60,6 +60,7 @@ var MarkdownPatch = common.Shortcut{
 		if spec.Regex {
 			mode = markdownPatchModeRegex
 		}
+		sizeThreshold := common.FormatSize(markdownSinglePartSizeLimit)
 		return common.NewDryRunAPI().
 			Desc("Download the current Markdown file, apply the replacement locally, and overwrite the file only when matches are found").
 			GET("/open-apis/drive/v1/files/:file_token/download").
@@ -76,7 +77,7 @@ var MarkdownPatch = common.Shortcut{
 				},
 			}).
 			POST("/open-apis/drive/v1/files/upload_all").
-			Desc("[3] Overwrite the Markdown file when local replacement finds at least one match").
+			Desc("[3a] If the patched Markdown is at most "+sizeThreshold+", overwrite the file with multipart/form-data upload_all").
 			Body(map[string]interface{}{
 				"file_name":   "<existing_remote_name_or_" + spec.FileToken + ".md>",
 				"parent_type": "explorer",
@@ -85,12 +86,35 @@ var MarkdownPatch = common.Shortcut{
 				"file":        "<patched_markdown_content>",
 				"file_token":  spec.FileToken,
 			}).
+			POST("/open-apis/drive/v1/files/upload_prepare").
+			Desc("[3b] If the patched Markdown exceeds "+sizeThreshold+", initialize multipart overwrite upload").
+			Body(map[string]interface{}{
+				"file_name":   "<existing_remote_name_or_" + spec.FileToken + ".md>",
+				"parent_type": "explorer",
+				"parent_node": "",
+				"size":        "<updated_size_bytes>",
+				"file_token":  spec.FileToken,
+			}).
+			POST("/open-apis/drive/v1/files/upload_part").
+			Desc("[3c] Upload file parts (repeated) when multipart overwrite is required").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"seq":       "<chunk_index>",
+				"size":      "<chunk_size>",
+				"file":      "<chunk_binary>",
+			}).
+			POST("/open-apis/drive/v1/files/upload_finish").
+			Desc("[3d] Finalize multipart overwrite upload and return the new version").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"block_num": "<block_num>",
+			}).
 			Set("mode", mode)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := newMarkdownPatchSpec(runtime)
 
-		resp, _, err := openMarkdownDownload(ctx, runtime, spec.FileToken)
+		resp, err := openMarkdownDownload(ctx, runtime, spec.FileToken)
 		if err != nil {
 			return err
 		}
@@ -126,6 +150,11 @@ var MarkdownPatch = common.Shortcut{
 			return nil
 		}
 
+		patchedPayload := []byte(patched)
+		if err := validateNonEmptyMarkdownSize(int64(len(patchedPayload))); err != nil {
+			return err
+		}
+
 		specUpload := markdownUploadSpec{
 			FileToken: spec.FileToken,
 		}
@@ -135,14 +164,14 @@ var MarkdownPatch = common.Shortcut{
 		}
 		specUpload.FileName = fileName
 
-		result, err := uploadMarkdownContent(runtime, specUpload, []byte(patched))
+		result, err := uploadMarkdownContent(runtime, specUpload, patchedPayload)
 		if err != nil {
 			return err
 		}
 
 		out["updated"] = true
 		out["version"] = result.Version
-		out["size_bytes_after"] = len(patched)
+		out["size_bytes_after"] = len(patchedPayload)
 
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			prettyPrintMarkdownPatch(w, out)
@@ -197,10 +226,10 @@ func prettyPrintMarkdownPatch(w io.Writer, data map[string]interface{}) {
 		io.WriteString(w, "updated: false\n")
 	}
 	io.WriteString(w, "mode: "+common.GetString(data, "mode")+"\n")
-	fmt.Fprintf(w, "match_count: %d\n", int(common.GetFloat(data, "match_count")))
+	fmt.Fprintf(w, "match_count: %d\n", common.GetInt(data, "match_count"))
 	if version := common.GetString(data, "version"); version != "" {
 		io.WriteString(w, "version: "+version+"\n")
 	}
-	fmt.Fprintf(w, "size_bytes_before: %d\n", int(common.GetFloat(data, "size_bytes_before")))
-	fmt.Fprintf(w, "size_bytes_after: %d\n", int(common.GetFloat(data, "size_bytes_after")))
+	fmt.Fprintf(w, "size_bytes_before: %d\n", common.GetInt(data, "size_bytes_before"))
+	fmt.Fprintf(w, "size_bytes_after: %d\n", common.GetInt(data, "size_bytes_after"))
 }

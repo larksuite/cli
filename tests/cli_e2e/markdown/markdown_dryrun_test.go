@@ -199,6 +199,9 @@ func TestMarkdownPatchDryRun_Content(t *testing.T) {
 	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
 	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_prepare")
+	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_part")
+	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_finish")
 }
 
 func setMarkdownDryRunConfigEnv(t *testing.T) {

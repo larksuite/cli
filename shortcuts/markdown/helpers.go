@@ -131,15 +131,22 @@ func resolveMarkdownOverwriteFileName(runtime *common.RuntimeContext, spec markd
 	return fileName, nil
 }
 
-func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken string) (*http.Response, string, error) {
+func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken string) (*http.Response, error) {
 	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 		HttpMethod: http.MethodGet,
 		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
 	})
 	if err != nil {
-		return nil, "", output.ErrNetwork("download failed: %s", err)
+		return nil, output.ErrNetwork("download failed: %s", err)
 	}
-	return resp, fileNameFromDownloadHeader(resp.Header, fileToken+".md"), nil
+	return resp, nil
+}
+
+func validateNonEmptyMarkdownSize(size int64) error {
+	if size == 0 {
+		return output.ErrValidation("%s", markdownEmptyContentError)
+	}
+	return nil
 }
 
 func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec) (int64, error) {
@@ -157,8 +164,8 @@ func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec)
 		}
 		size = info.Size()
 	}
-	if size == 0 {
-		return 0, output.ErrValidation("%s", markdownEmptyContentError)
+	if err := validateNonEmptyMarkdownSize(size); err != nil {
+		return 0, err
 	}
 	return size, nil
 }

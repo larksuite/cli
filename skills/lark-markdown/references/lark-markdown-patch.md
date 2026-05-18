@@ -54,7 +54,7 @@ lark-cli markdown +patch \
 | `--file-token` | 是 | 目标 Markdown 文件 token |
 | `--pattern` | 是 | 要匹配的文本；默认按字面量处理；支持直接传字符串、`@file`、`-`（stdin） |
 | `--content` | 是 | 替换后的内容；支持直接传字符串、`@file`、`-`（stdin）；允许空字符串 `''`，表示删除匹配内容 |
-| `--regex` | 否 | 将 `--pattern` 按 Go RE2 正则解释；`--content` 支持 `$1` 这类分组替换 |
+| `--regex` | 否 | 将 `--pattern` 按 Go RE2 正则解释；`--content` 支持 `$1` 这类分组替换；如果需要字面 `$`，请写成 `$$` |
 
 ## 关键约束
 
@@ -62,14 +62,16 @@ lark-cli markdown +patch \
 - `--pattern` 必须显式传入且不能为空字符串
 - `--content` 必须显式传入，但允许为空字符串
 - 未加 `--regex` 时，行为等价于对整份 Markdown 文本执行 `strings.ReplaceAll`
-- 加了 `--regex` 时，行为等价于对整份 Markdown 文本执行 RE2 全量替换
+- 加了 `--regex` 时，行为等价于对整份 Markdown 文本执行 RE2 全量替换；`--content` 里的 `$1`、`${name}` 会按 Go regexp replacement template 解释，字面 `$` 请写成 `$$`
+- 替换后的最终 Markdown 不能为空；如果 patch 结果是空字符串，CLI 会直接报错，不会上传空文件
 - `0` 命中时命令仍然成功返回，但不会上传新版本
 
 ## 实现边界
 
 - 该命令的内部语义是：**download -> local replace -> overwrite upload**
-- 它不是服务端原子 patch
+- 它不是服务端原子 patch；如果有人在你下载后、上传前更新了同一文件，本次 patch 仍可能覆盖那次中间修改
 - 它不会返回详细匹配位置，只返回命中数量
+- `--dry-run` 会同时展示两种可能的上传路径：`upload_all`（小文件）和 `upload_prepare/upload_part/upload_finish`（大文件分片上传）
 
 ## 返回值
 

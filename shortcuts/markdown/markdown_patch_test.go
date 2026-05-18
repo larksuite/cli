@@ -5,9 +5,12 @@ package markdown
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -73,6 +76,70 @@ func TestMarkdownPatchValidation(t *testing.T) {
 	}
 }
 
+func TestMarkdownPatchDryRunLiteral(t *testing.T) {
+	dry := decodeMarkdownPatchDryRun(t, "box_md_patch", "TODO", "DONE", false)
+
+	if got := dry.Mode; got != markdownPatchModeLiteral {
+		t.Fatalf("mode = %q, want %q", got, markdownPatchModeLiteral)
+	}
+	if got := len(dry.API); got != 6 {
+		t.Fatalf("api steps = %d, want 6", got)
+	}
+	if got := dry.API[0].URL; got != "/open-apis/drive/v1/files/box_md_patch/download" {
+		t.Fatalf("download url = %q", got)
+	}
+	if got := dry.API[1].URL; got != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metas url = %q", got)
+	}
+	if got := dry.API[2].URL; got != "/open-apis/drive/v1/files/upload_all" {
+		t.Fatalf("upload_all url = %q", got)
+	}
+	if got := dry.API[3].URL; got != "/open-apis/drive/v1/files/upload_prepare" {
+		t.Fatalf("upload_prepare url = %q", got)
+	}
+	if got := dry.API[4].URL; got != "/open-apis/drive/v1/files/upload_part" {
+		t.Fatalf("upload_part url = %q", got)
+	}
+	if got := dry.API[5].URL; got != "/open-apis/drive/v1/files/upload_finish" {
+		t.Fatalf("upload_finish url = %q", got)
+	}
+	if got := dry.API[2].Body["file_token"]; got != "box_md_patch" {
+		t.Fatalf("upload_all file_token = %#v", got)
+	}
+	if got := dry.API[3].Body["file_token"]; got != "box_md_patch" {
+		t.Fatalf("upload_prepare file_token = %#v", got)
+	}
+	if got := dry.API[2].Body["file"]; got != "<patched_markdown_content>" {
+		t.Fatalf("upload_all file placeholder = %#v", got)
+	}
+}
+
+func TestMarkdownPatchDryRunRegex(t *testing.T) {
+	dry := decodeMarkdownPatchDryRun(t, "box_md_patch", `Version: ([0-9]+)`, `Version: $1`, true)
+
+	if got := dry.Mode; got != markdownPatchModeRegex {
+		t.Fatalf("mode = %q, want %q", got, markdownPatchModeRegex)
+	}
+	if got := dry.API[0].Desc; !strings.Contains(got, "Download the current Markdown content") {
+		t.Fatalf("download desc = %q", got)
+	}
+	if got := dry.API[3].Desc; !strings.Contains(got, "multipart overwrite upload") {
+		t.Fatalf("upload_prepare desc = %q", got)
+	}
+	if got := dry.API[5].Body["block_num"]; got != "<block_num>" {
+		t.Fatalf("upload_finish block_num = %#v", got)
+	}
+}
+
+func TestValidateMarkdownPatchSpecRejectsInvalidFileToken(t *testing.T) {
+	runtime := newMarkdownPatchRuntime(t, "../bad", "TODO", "DONE", false)
+
+	err := validateMarkdownPatchSpec(runtime, newMarkdownPatchSpec(runtime))
+	if err == nil || !strings.Contains(err.Error(), "--file-token must not contain '..' path traversal") {
+		t.Fatalf("expected invalid file-token error, got %v", err)
+	}
+}
+
 func TestMarkdownPatchReturnsSuccessWhenNothingMatches(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -99,20 +166,57 @@ func TestMarkdownPatchReturnsSuccessWhenNothingMatches(t *testing.T) {
 	if got := common.GetString(data, "mode"); got != markdownPatchModeLiteral {
 		t.Fatalf("mode = %q, want %q", got, markdownPatchModeLiteral)
 	}
-	if got := int(common.GetFloat(data, "match_count")); got != 0 {
+	if got := common.GetInt(data, "match_count"); got != 0 {
 		t.Fatalf("match_count = %d, want 0", got)
 	}
 	if got := common.GetString(data, "version"); got != "" {
 		t.Fatalf("version = %q, want empty", got)
 	}
-	if got := int(common.GetFloat(data, "size_bytes_before")); got != len("# hello\n") {
+	if got := common.GetInt(data, "size_bytes_before"); got != len("# hello\n") {
 		t.Fatalf("size_bytes_before = %d, want %d", got, len("# hello\n"))
 	}
-	if got := int(common.GetFloat(data, "size_bytes_after")); got != len("# hello\n") {
+	if got := common.GetInt(data, "size_bytes_after"); got != len("# hello\n") {
 		t.Fatalf("size_bytes_after = %d, want %d", got, len("# hello\n"))
 	}
 	if strings.Contains(stdout.String(), `"matches"`) {
 		t.Fatalf("stdout should not include matches field: %s", stdout.String())
+	}
+}
+
+func TestMarkdownPatchPrettyOutputWhenNothingMatches(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		Status:  200,
+		RawBody: []byte("# hello\n"),
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownPatch, []string{
+		"+patch",
+		"--file-token", "box_md_patch",
+		"--pattern", "TODO",
+		"--content", "DONE",
+		"--format", "pretty",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"updated: false",
+		"mode: literal",
+		"match_count: 0",
+		"size_bytes_before: 8",
+		"size_bytes_after: 8",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pretty output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "version:") {
+		t.Fatalf("pretty output should omit version when unchanged:\n%s", out)
 	}
 }
 
@@ -177,17 +281,78 @@ func TestMarkdownPatchLiteralOverwrite(t *testing.T) {
 	if !common.GetBool(data, "updated") {
 		t.Fatalf("updated = false, want true")
 	}
-	if got := int(common.GetFloat(data, "match_count")); got != 2 {
+	if got := common.GetInt(data, "match_count"); got != 2 {
 		t.Fatalf("match_count = %d, want 2", got)
 	}
 	if got := common.GetString(data, "version"); got != "7633658129540910626" {
 		t.Fatalf("version = %q, want 7633658129540910626", got)
 	}
-	if got := int(common.GetFloat(data, "size_bytes_before")); got != len("# TODO\nTODO\n") {
+	if got := common.GetInt(data, "size_bytes_before"); got != len("# TODO\nTODO\n") {
 		t.Fatalf("size_bytes_before = %d, want %d", got, len("# TODO\nTODO\n"))
 	}
-	if got := int(common.GetFloat(data, "size_bytes_after")); got != len("# DONE\nDONE\n") {
+	if got := common.GetInt(data, "size_bytes_after"); got != len("# DONE\nDONE\n") {
 		t.Fatalf("size_bytes_after = %d, want %d", got, len("# DONE\nDONE\n"))
+	}
+}
+
+func TestMarkdownPatchPrettyOutputWhenUpdated(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		Status:  200,
+		RawBody: []byte("# TODO\n"),
+		Headers: map[string][]string{
+			"Content-Disposition": {`attachment; filename="README.md"`},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"title": "README.md"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_patch",
+				"version":    "9001",
+			},
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownPatch, []string{
+		"+patch",
+		"--file-token", "box_md_patch",
+		"--pattern", "TODO",
+		"--content", "DONE",
+		"--format", "pretty",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"updated: true",
+		"mode: literal",
+		"match_count: 1",
+		"version: 9001",
+		"size_bytes_before: 7",
+		"size_bytes_after: 7",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pretty output missing %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -244,8 +409,19 @@ func TestMarkdownPatchRegexOverwrite(t *testing.T) {
 	if got := common.GetString(data, "mode"); got != markdownPatchModeRegex {
 		t.Fatalf("mode = %q, want %q", got, markdownPatchModeRegex)
 	}
-	if got := int(common.GetFloat(data, "match_count")); got != 2 {
+	if got := common.GetInt(data, "match_count"); got != 2 {
 		t.Fatalf("match_count = %d, want 2", got)
+	}
+}
+
+func TestApplyMarkdownPatchRejectsInvalidRegex(t *testing.T) {
+	_, _, err := applyMarkdownPatch("hello", markdownPatchSpec{
+		Pattern: "(",
+		Content: "DONE",
+		Regex:   true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid --pattern regex") {
+		t.Fatalf("expected invalid regex error, got %v", err)
 	}
 }
 
@@ -298,6 +474,26 @@ func TestMarkdownPatchAllowsEmptyReplacement(t *testing.T) {
 	}
 }
 
+func TestMarkdownPatchRejectsEmptyPatchedContent(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/box_md_patch/download",
+		Status:  200,
+		RawBody: []byte("hello\n"),
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownPatch, []string{
+		"+patch",
+		"--file-token", "box_md_patch",
+		"--pattern", "hello\n",
+		"--content", "",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "empty markdown content is not supported") {
+		t.Fatalf("expected empty content validation error, got %v", err)
+	}
+}
+
 func decodeMarkdownEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
 	t.Helper()
 
@@ -308,4 +504,61 @@ func decodeMarkdownEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]inter
 		t.Fatalf("unmarshal stdout: %v\nstdout:\n%s", err, stdout.String())
 	}
 	return envelope.Data
+}
+
+type markdownPatchDryRunOutput struct {
+	Mode string `json:"mode"`
+	API  []struct {
+		Desc string                 `json:"desc"`
+		URL  string                 `json:"url"`
+		Body map[string]interface{} `json:"body"`
+	} `json:"api"`
+}
+
+func newMarkdownPatchRuntime(t *testing.T, fileToken, pattern, content string, regex bool) *common.RuntimeContext {
+	t.Helper()
+
+	cmd := &cobra.Command{Use: "markdown +patch"}
+	cmd.Flags().String("file-token", "", "")
+	cmd.Flags().String("pattern", "", "")
+	cmd.Flags().String("content", "", "")
+	cmd.Flags().Bool("regex", false, "")
+
+	for name, value := range map[string]string{
+		"file-token": fileToken,
+		"pattern":    pattern,
+		"content":    content,
+	} {
+		if err := cmd.Flags().Set(name, value); err != nil {
+			t.Fatalf("set --%s: %v", name, err)
+		}
+	}
+	if regex {
+		if err := cmd.Flags().Set("regex", "true"); err != nil {
+			t.Fatalf("set --regex: %v", err)
+		}
+	}
+
+	return common.TestNewRuntimeContext(cmd, markdownTestConfig())
+}
+
+func decodeMarkdownPatchDryRun(t *testing.T, fileToken, pattern, content string, regex bool) markdownPatchDryRunOutput {
+	t.Helper()
+
+	runtime := newMarkdownPatchRuntime(t, fileToken, pattern, content, regex)
+	dry := MarkdownPatch.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry-run json: %v", err)
+	}
+
+	var out markdownPatchDryRunOutput
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal dry-run json: %v\njson=%s", err, string(data))
+	}
+	return out
 }

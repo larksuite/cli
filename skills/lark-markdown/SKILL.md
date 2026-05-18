@@ -32,6 +32,7 @@ metadata:
 - `markdown +patch` 的内部语义是：**先完整下载 Markdown，再本地替换，再整文件覆盖上传**
 - `markdown +patch` 不是服务端原子 patch；它是 CLI 侧编排出来的局部更新能力
 - `markdown +patch` 当前只支持**单组** `--pattern` / `--content`
+- `markdown +patch` 替换后的最终内容**不能为空**；如果替换后整篇 Markdown 变成空字符串，CLI 会直接报错，不会上传空文件
 - `--file` 只接受本地 `.md` 文件路径
 
 ## Shortcuts（推荐优先使用）

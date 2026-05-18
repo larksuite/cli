@@ -64,6 +64,32 @@ func TestGetFloat(t *testing.T) {
 	}
 }
 
+func TestGetInt(t *testing.T) {
+	m := map[string]interface{}{
+		"count":      42,
+		"json_count": 7.0,
+		"data": map[string]interface{}{
+			"score": int64(99),
+		},
+	}
+
+	if got := GetInt(m, "count"); got != 42 {
+		t.Errorf("GetInt(count) = %d, want 42", got)
+	}
+	if got := GetInt(m, "json_count"); got != 7 {
+		t.Errorf("GetInt(json_count) = %d, want 7", got)
+	}
+	if got := GetInt(m, "data", "score"); got != 99 {
+		t.Errorf("GetInt(data.score) = %d, want 99", got)
+	}
+	if got := GetInt(m, "missing"); got != 0 {
+		t.Errorf("GetInt(missing) = %d, want 0", got)
+	}
+	if got := GetInt(m); got != 0 {
+		t.Errorf("GetInt() = %d, want 0", got)
+	}
+}
+
 func TestGetBool(t *testing.T) {
 	m := map[string]interface{}{
 		"active": true,
