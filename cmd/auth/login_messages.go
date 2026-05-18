@@ -81,7 +81,7 @@ var loginMsgZh = &loginMsg{
 	ScanOrOpenLink:       "\n或打开以下链接完成授权：\n",
 	OpenLinkNonTTY:       "\n打开以下链接授权:\n\n",
 	WaitingForScanNonTTY: "等待授权...",
-	QRCodeDisplayHint:    "qr_code_base64 contains a base64-encoded PNG image. Decode it and display as an image (256x256 pixels).",
+	QRCodeDisplayHint:    "[AI Agent] 请尽可能展示 qr_code_base64 图片！qr_code_base64 包含 base64 编码的 PNG 图片，解码后以图片形式显示（256x256 像素）便于用户扫码授权。如果 agent 无法显示图片，再展示 verification_url 让用户手动打开。",
 
 	HintHeader:  "请指定要授权的权限:\n",
 	HintCommon1: "  --recommend                     授权推荐权限",
@@ -123,7 +123,7 @@ var loginMsgEn = &loginMsg{
 	ScanOrOpenLink:       "\nOr open the link below to complete authorization:\n",
 	OpenLinkNonTTY:       "\nOpen the link below to authorize:\n\n",
 	WaitingForScanNonTTY: "Waiting for authorization...",
-	QRCodeDisplayHint:    "qr_code_base64 contains a base64-encoded PNG image. Decode it and display as an image (256x256 pixels).",
+	QRCodeDisplayHint:    "[AI Agent] Please display qr_code_base64 image if at all possible! qr_code_base64 contains a base64-encoded PNG image. Decode it and display as an image (256x256 pixels) for easy QR code scanning. If your agent cannot display images, then show verification_url for users to open manually.",
 
 	HintHeader:  "Please specify the scopes to authorize:\n",
 	HintCommon1: "  --recommend                     authorize recommended scopes",
