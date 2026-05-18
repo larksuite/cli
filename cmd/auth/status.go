@@ -37,6 +37,7 @@ func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobr
 	}
 
 	cmd.Flags().BoolVar(&opts.Verify, "verify", false, "verify token against server (requires network)")
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }

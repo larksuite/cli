@@ -70,6 +70,7 @@ Exit code: 2 if any target was refused or errored, 0 otherwise.
 	cmd.Flags().BoolVar(&o.all, "all", false, "Stop all running bus daemons")
 	cmd.Flags().BoolVar(&o.force, "force", false, "Stop even with active consumers; on shutdown-timeout also SIGKILL the bus")
 	cmd.Flags().BoolVar(&o.asJSON, "json", false, "Emit results as JSON (for AI / scripts)")
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }

@@ -34,6 +34,7 @@ func NewCmdProfileList(f *cmdutil.Factory) *cobra.Command {
 			return profileListRun(f)
 		},
 	}
+	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }
 

@@ -37,6 +37,7 @@ func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit status as JSON (for AI / scripts)")
 	cmd.Flags().BoolVar(&current, "current", false, "Only show status for the current profile's app")
 	cmd.Flags().BoolVar(&failOnOrphan, "fail-on-orphan", false, "Exit 2 when any orphan bus is detected (default: always exit 0)")
+	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }
 

@@ -380,6 +380,7 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "pretty"}, cobra.ShellCompDirectiveNoFileComp
 	})
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }

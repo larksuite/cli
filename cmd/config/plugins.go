@@ -40,7 +40,7 @@ func NewCmdConfigPlugins(f *cmdutil.Factory) *cobra.Command {
 }
 
 func newCmdConfigPluginsShow(f *cmdutil.Factory) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "List successfully installed plugins, their rules, and registered hooks",
 		Long: `Print every plugin that committed during bootstrap, including:
@@ -56,6 +56,8 @@ the plugin name as the prefix at registration time, so an entry
 			return runConfigPluginsShow(f)
 		},
 	}
+	cmdutil.SetRisk(cmd, "read")
+	return cmd
 }
 
 func runConfigPluginsShow(f *cmdutil.Factory) error {

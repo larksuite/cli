@@ -33,6 +33,7 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 			return authLogoutRun(opts)
 		},
 	}
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }

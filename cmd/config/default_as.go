@@ -52,5 +52,6 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 			return nil
 		},
 	}
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }

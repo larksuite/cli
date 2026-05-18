@@ -28,7 +28,7 @@ func NewCmdConfigPolicy(f *cmdutil.Factory) *cobra.Command {
 }
 
 func newCmdConfigPolicyShow(f *cmdutil.Factory) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:    "show",
 		Hidden: true,
 		Short:  "Show the active user-layer policy (plugin / yaml / none)",
@@ -36,6 +36,8 @@ func newCmdConfigPolicyShow(f *cmdutil.Factory) *cobra.Command {
 			return runConfigPolicyShow(f)
 		},
 	}
+	cmdutil.SetRisk(cmd, "read")
+	return cmd
 }
 
 func runConfigPolicyShow(f *cmdutil.Factory) error {

@@ -62,6 +62,7 @@ browser. Run it in the background and retrieve the verification URL from its out
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
+	cmdutil.SetRisk(cmd, "write")
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")

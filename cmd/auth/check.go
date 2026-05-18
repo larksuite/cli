@@ -37,6 +37,7 @@ func NewCmdAuthCheck(f *cmdutil.Factory, runF func(*CheckOptions) error) *cobra.
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to check (space-separated)")
 	cmd.MarkFlagRequired("scope")
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }

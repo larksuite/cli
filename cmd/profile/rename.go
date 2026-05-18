@@ -24,6 +24,7 @@ func NewCmdProfileRename(f *cmdutil.Factory) *cobra.Command {
 			return profileRenameRun(f, args[0], args[1])
 		},
 	}
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }
 

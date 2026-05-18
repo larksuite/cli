@@ -70,6 +70,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 	_ = cmd.RegisterFlagCompletionFunc("as", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"user", "bot", "auto"}, cobra.ShellCompDirectiveNoFileComp
 	})
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }

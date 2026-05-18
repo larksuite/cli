@@ -80,6 +80,7 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh or en)")
 	cmd.Flags().StringVar(&opts.ProfileName, "name", "", "create or update a named profile (append instead of replace)")
 	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, "allow init inside an Agent workspace (OPENCLAW_HOME / HERMES_HOME); use config bind instead unless you really want a separate app")
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }

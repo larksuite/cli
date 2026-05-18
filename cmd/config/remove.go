@@ -32,6 +32,7 @@ func NewCmdConfigRemove(f *cmdutil.Factory, runF func(*ConfigRemoveOptions) erro
 			return configRemoveRun(opts)
 		},
 	}
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }

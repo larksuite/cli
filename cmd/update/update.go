@@ -111,6 +111,7 @@ Use --check to only check for updates without installing.`,
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "force reinstall even if already up to date")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "only check for updates, do not install")
+	cmdutil.SetRisk(cmd, "high-risk-write")
 
 	return cmd
 }
