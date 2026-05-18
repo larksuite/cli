@@ -51,6 +51,16 @@ metadata:
 
 #### 处理流程
 
+**推荐方式：使用 `drive +inspect` 自动解包**
+
+```bash
+lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
+```
+
+返回结果包含 `type`（底层文档类型）、`token`（真实 file_token）、`title`、`url` 等字段，直接用于后续操作。
+
+**手动方式：使用 `wiki.spaces.get_node` 查询节点信息**
+
 1. **使用 `wiki.spaces.get_node` 查询节点信息**
    ```bash
    lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'
@@ -259,6 +269,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+delete`](references/lark-drive-delete.md) | Delete a Drive file or folder with limited polling for folder deletes |
 | [`+push`](references/lark-drive-push.md) | File-level local → Drive mirror. Duplicate remote `rel_path` conflicts fail by default; `newest` / `oldest` only apply to duplicate files when you explicitly want to target one remote file. `--if-exists` supports `skip` / `smart` / `overwrite` (`smart` skips files whose remote `modified_time` is already up to date, but falls through to the same overwrite path when the remote is older, so it inherits overwrite's rollout caveat). `--delete-remote` requires `--yes`. `--local-dir` must stay inside cwd. |
 | [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations |
+| [`+inspect`](references/lark-drive-inspect.md) | Inspect a Lark document URL to get its type, title, and canonical token; auto-unwraps wiki URLs to the underlying document |
 | [`+apply-permission`](references/lark-drive-apply-permission.md) | Apply to the document owner for view/edit access (user-only; 5/day per document) |
 
 ## API Resources

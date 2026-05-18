@@ -40,3 +40,4 @@ app.log
 /sidecar-server-demo
 /server-demo
 .tmp/
+cover*.out

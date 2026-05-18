@@ -122,7 +122,7 @@ var DriveExport = common.Shortcut{
 			if fileName == "" {
 				// Prefer the remote title for the exported file name, but still fall
 				// back to the token if metadata is empty.
-				title, err := fetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
+				title, err := common.FetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
 				if err != nil {
 					fmt.Fprintf(runtime.IO().ErrOut, "Title lookup failed, using token as filename: %v\n", err)
 					title = spec.Token

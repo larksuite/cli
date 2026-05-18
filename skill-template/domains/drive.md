@@ -34,6 +34,16 @@
 
 #### 处理流程
 
+**推荐方式：使用 `drive +inspect` 自动解包**
+
+```bash
+lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
+```
+
+返回结果包含 `type`（底层文档类型）、`token`（真实 file_token）、`title`、`url` 等字段，直接用于后续操作。
+
+**手动方式：使用 `wiki.spaces.get_node` 查询节点信息**
+
 1. **使用 `wiki.spaces.get_node` 查询节点信息**
    ```bash
    lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'

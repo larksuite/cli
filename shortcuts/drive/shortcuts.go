@@ -29,5 +29,6 @@ func Shortcuts() []common.Shortcut {
 		DriveTaskResult,
 		DriveApplyPermission,
 		DriveSearch,
+		DriveInspect,
 	}
 }
