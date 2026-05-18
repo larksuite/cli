@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.33] - 2026-05-18
+
+### Features
+
+- **markdown**: Add `+patch` shortcut (#857)
+- **slides**: Improve slide planning and validation guidance (#847)
+- **drive**: Add `+sync` workflow for Drive directories (#873)
+- **drive**: Add drive version shortcut (#841)
+- **extension**: Plugin / Hook framework with command pruning (#910)
+
+### Bug Fixes
+
+- **sheets**: Explicitly document safe JSON unmarshal ignore in `DryRun` (#935)
+- **base**: Mark base field update high risk (#936)
+- **auth**: Guide agents to yield during auth device flow (#933)
+
+### Documentation
+
+- **lark-wiki**: Correct the `--as` default-identity claim (#919)
+
+### Tests
+
+- Drop stale e2e `--yes` flags (#920)
+
 ## [v1.0.32] - 2026-05-15
 
 ### Features
@@ -721,6 +745,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.33]: https://github.com/larksuite/cli/releases/tag/v1.0.33
 [v1.0.32]: https://github.com/larksuite/cli/releases/tag/v1.0.32
 [v1.0.31]: https://github.com/larksuite/cli/releases/tag/v1.0.31
 [v1.0.30]: https://github.com/larksuite/cli/releases/tag/v1.0.30
