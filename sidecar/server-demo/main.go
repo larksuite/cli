@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 func main() {
 	listen := flag.String("listen", sidecar.DefaultListenAddr, "listen address (host:port)")
 	keyFile := flag.String("key-file", defaultKeyFile(), "path to write the HMAC key")
+	keysDir := flag.String("keys-dir", "", "directory containing client-*.key files for per-client identity isolation (defaults to key-file's parent dir)")
 	logFile := flag.String("log-file", "", "audit log file (stderr if empty)")
 	profile := flag.String("profile", "", "lark-cli profile name (empty = active profile)")
 	flag.Parse()
@@ -45,7 +47,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if err := run(ctx, *listen, *keyFile, *logFile, *profile); err != nil {
+	if err := run(ctx, *listen, *keyFile, *keysDir, *logFile, *profile); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
@@ -58,10 +60,7 @@ func defaultKeyFile() string {
 	return "/tmp/lark-sidecar/proxy.key"
 }
 
-func run(ctx context.Context, listen, keyFile, logFile, profile string) error {
-	// Reject self-proxy: if this process inherited AUTH_PROXY, the sidecar
-	// credential provider would activate and return sentinel tokens instead
-	// of real ones, breaking the "trusted side holds real credentials" premise.
+func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string) error {
 	if v := os.Getenv(envvars.CliAuthProxy); v != "" {
 		return fmt.Errorf("%s is set in this environment (%s); unset it before starting the sidecar server", envvars.CliAuthProxy, v)
 	}
@@ -69,22 +68,32 @@ func run(ctx context.Context, listen, keyFile, logFile, profile string) error {
 		return fmt.Errorf("invalid --listen address: empty")
 	}
 
-	// Generate HMAC key (32 bytes = 256 bits) and write it to disk (0600).
-	keyBytes := make([]byte, 32)
-	if _, err := rand.Read(keyBytes); err != nil {
-		return fmt.Errorf("failed to generate HMAC key: %v", err)
-	}
-	keyHex := hex.EncodeToString(keyBytes)
-
+	// Reuse existing key if present; generate a new one only on first run.
 	keyDir := filepath.Dir(keyFile)
 	if err := vfs.MkdirAll(keyDir, 0700); err != nil {
 		return fmt.Errorf("failed to create key directory: %v", err)
 	}
-	if err := vfs.WriteFile(keyFile, []byte(keyHex), 0600); err != nil {
-		return fmt.Errorf("failed to write key file: %v", err)
+
+	var keyHex string
+	if existing, err := os.ReadFile(keyFile); err == nil && len(strings.TrimSpace(string(existing))) == 64 {
+		keyHex = strings.TrimSpace(string(existing))
+	} else {
+		keyBytes := make([]byte, 32)
+		if _, err := rand.Read(keyBytes); err != nil {
+			return fmt.Errorf("failed to generate HMAC key: %v", err)
+		}
+		keyHex = hex.EncodeToString(keyBytes)
+		if err := vfs.WriteFile(keyFile, []byte(keyHex), 0600); err != nil {
+			return fmt.Errorf("failed to write key file: %v", err)
+		}
 	}
 
-	// Audit logger: file or stderr.
+	// Default keysDir to the parent directory of keyFile
+	if keysDir == "" {
+		keysDir = keyDir
+	}
+
+	// Audit logger
 	var auditLogger *log.Logger
 	if logFile != "" {
 		f, err := vfs.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
@@ -97,8 +106,6 @@ func run(ctx context.Context, listen, keyFile, logFile, profile string) error {
 		auditLogger = log.New(os.Stderr, "[audit] ", log.LstdFlags)
 	}
 
-	// Reuse the lark-cli credential pipeline. A production implementation
-	// would likely source credentials from a secrets manager instead.
 	factory := cmdutil.NewDefault(nil, cmdutil.InvocationContext{Profile: profile})
 	cfg, err := factory.Config()
 	if err != nil {
@@ -117,6 +124,8 @@ func run(ctx context.Context, listen, keyFile, logFile, profile string) error {
 	)
 	allowedIDs := buildAllowedIdentities(cfg)
 
+	ab := newAuthBridge([]byte(keyHex), cfg.AppID, cfg.AppSecret, cfg.Brand, factory.Credential, auditLogger)
+
 	handler := &proxyHandler{
 		key:          []byte(keyHex),
 		cred:         factory.Credential,
@@ -126,7 +135,10 @@ func run(ctx context.Context, listen, keyFile, logFile, profile string) error {
 		forwardCl:    newForwardClient(),
 		allowedHosts: allowedHosts,
 		allowedIDs:   allowedIDs,
+		authBridge:   ab,
+		keysDir:      keysDir,
 	}
+	handler.loadClientKeys()
 
 	server := &http.Server{
 		Handler:           handler,
@@ -154,6 +166,7 @@ func run(ctx context.Context, listen, keyFile, logFile, profile string) error {
 	fmt.Fprintf(os.Stderr, "Auth sidecar listening on %s\n", proxyURL)
 	fmt.Fprintf(os.Stderr, "HMAC key prefix: %s\n", keyPrefix)
 	fmt.Fprintf(os.Stderr, "Full key written to %s (mode 0600)\n", keyFile)
+	fmt.Fprintf(os.Stderr, "Client keys dir: %s\n", keysDir)
 	fmt.Fprintf(os.Stderr, "\nSet in sandbox:\n")
 	fmt.Fprintf(os.Stderr, "  export %s=%q\n", envvars.CliAuthProxy, proxyURL)
 	fmt.Fprintf(os.Stderr, "  export %s=\"<read from %s>\"\n", envvars.CliProxyKey, keyFile)

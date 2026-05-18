@@ -12,6 +12,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
@@ -29,30 +33,120 @@ type proxyHandler struct {
 	forwardCl    *http.Client
 	allowedHosts map[string]bool // target host allowlist derived from brand
 	allowedIDs   map[string]bool // identity allowlist derived from strict mode
+	authBridge   *authBridge
+
+	// Per-client key isolation: keyHex → clientName.
+	// Data-plane requests are signed with a client-specific key;
+	// the matched key determines which client (and thus which user
+	// token) to use. Protected by ckMu.
+	ckMu       sync.RWMutex
+	clientKeys map[string]clientKeyEntry
+	keysDir    string // directory to scan for client-*.key files
+}
+
+type clientKeyEntry struct {
+	key        []byte
+	clientName string
+}
+
+// loadClientKeys scans keysDir for client-*.key files and populates
+// the clientKeys map. Safe to call multiple times (e.g. on cache miss).
+func (h *proxyHandler) loadClientKeys() {
+	if h.keysDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(h.keysDir)
+	if err != nil {
+		h.logger.Printf("KEYS_SCAN_ERROR dir=%s error=%q", h.keysDir, err.Error())
+		return
+	}
+
+	newKeys := make(map[string]clientKeyEntry)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "client-") || !strings.HasSuffix(name, ".key") {
+			continue
+		}
+		clientName := strings.TrimSuffix(strings.TrimPrefix(name, "client-"), ".key")
+		if clientName == "" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(h.keysDir, name))
+		if err != nil {
+			continue
+		}
+		keyHex := strings.TrimSpace(string(data))
+		if len(keyHex) != 64 {
+			h.logger.Printf("KEYS_SCAN_SKIP file=%s reason=\"key length %d, expected 64\"", name, len(keyHex))
+			continue
+		}
+		newKeys[keyHex] = clientKeyEntry{key: []byte(keyHex), clientName: clientName}
+	}
+
+	h.ckMu.Lock()
+	h.clientKeys = newKeys
+	h.ckMu.Unlock()
+
+	if len(newKeys) > 0 {
+		names := make([]string, 0, len(newKeys))
+		for _, e := range newKeys {
+			names = append(names, e.clientName)
+		}
+		h.logger.Printf("KEYS_LOADED count=%d clients=%v", len(newKeys), names)
+	}
+}
+
+// verifyWithClientKeys tries each client key to verify the HMAC.
+// Returns the client name on success, or empty string + error if none match.
+func (h *proxyHandler) verifyWithClientKeys(cr sidecar.CanonicalRequest, signature string) (string, error) {
+	h.ckMu.RLock()
+	keys := h.clientKeys
+	h.ckMu.RUnlock()
+
+	for _, entry := range keys {
+		if err := sidecar.Verify(entry.key, cr, signature); err == nil {
+			return entry.clientName, nil
+		}
+	}
+
+	// Cache miss: rescan keys directory and retry once
+	h.loadClientKeys()
+
+	h.ckMu.RLock()
+	keys = h.clientKeys
+	h.ckMu.RUnlock()
+
+	for _, entry := range keys {
+		if err := sidecar.Verify(entry.key, cr, signature); err == nil {
+			return entry.clientName, nil
+		}
+	}
+
+	return "", fmt.Errorf("no client key matched")
 }
 
 // allowedAuthHeaders lists the only header names the sidecar will inject real
-// tokens into. Limiting this prevents a compromised sandbox from signing a
-// request with X-Lark-Proxy-Auth-Header: Cookie (or User-Agent /
-// X-Forwarded-For / any X-* header) and having the real token smuggled into
-// an upstream header that Lark ignores for auth but intermediate logs may
-// capture — an indirect exfiltration path.
-//
-// These three are the only values the CLI interceptor ever emits
-// (Authorization for OpenAPI, MCP-UAT/TAT for the MCP protocol), so anything
-// else is by definition a misuse.
+// tokens into.
 var allowedAuthHeaders = map[string]bool{
 	"Authorization":      true,
-	sidecar.HeaderMCPUAT: true, // X-Lark-MCP-UAT
-	sidecar.HeaderMCPTAT: true, // X-Lark-MCP-TAT
+	sidecar.HeaderMCPUAT: true,
+	sidecar.HeaderMCPTAT: true,
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Route management endpoints to authBridge (different HMAC scheme)
+	if len(r.URL.Path) > 10 && r.URL.Path[:10] == "/_sidecar/" {
+		if h.authBridge != nil {
+			h.authBridge.ServeHTTP(w, r)
+		} else {
+			http.Error(w, "auth bridge not configured", http.StatusNotImplemented)
+		}
+		return
+	}
+
 	start := time.Now()
 
-	// 0. Check protocol version. We reject rather than default so that an
-	// old client paired with a newer server (or vice versa) fails loudly
-	// instead of silently producing mismatched signatures.
+	// 0. Check protocol version
 	version := r.Header.Get(sidecar.HeaderProxyVersion)
 	if version != sidecar.ProtocolV1 {
 		http.Error(w, "unsupported "+sidecar.HeaderProxyVersion+": "+version, http.StatusBadRequest)
@@ -86,11 +180,6 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Verify HMAC signature
-	//Enforce scheme=https and reject any path/query embedded in the target.
-	// The sandbox is untrusted: without this check it could send
-	// X-Lark-Proxy-Target: http://open.feishu.cn to force the injected real
-	// token out over cleartext HTTP, exposing it to any on-path attacker
-	// between the sidecar and upstream.
 	target := r.Header.Get(sidecar.HeaderProxyTarget)
 	if target == "" {
 		http.Error(w, "missing "+sidecar.HeaderProxyTarget, http.StatusBadRequest)
@@ -105,10 +194,6 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Identity and auth-header must be read before HMAC verification because
-	// both are covered by the canonical signing string. Defaulting either one
-	// server-side would let an attacker flip the injected token's identity or
-	// target header within the replay window without invalidating the sig.
 	identity := r.Header.Get(sidecar.HeaderProxyIdentity)
 	if identity == "" {
 		http.Error(w, "missing "+sidecar.HeaderProxyIdentity, http.StatusBadRequest)
@@ -121,7 +206,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	signature := r.Header.Get(sidecar.HeaderProxySignature)
-	if err := sidecar.Verify(h.key, sidecar.CanonicalRequest{
+	cr := sidecar.CanonicalRequest{
 		Version:      version,
 		Method:       r.Method,
 		Host:         targetHost,
@@ -130,10 +215,19 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Timestamp:    ts,
 		Identity:     identity,
 		AuthHeader:   authHeader,
-	}, signature); err != nil {
-		http.Error(w, "HMAC verification failed: "+err.Error(), http.StatusUnauthorized)
-		h.logger.Printf("REJECT method=%s path=%s reason=%q", r.Method, sanitizePath(pathAndQuery), sanitizeError(err))
-		return
+	}
+
+	// Try the primary (shared) key first, then per-client keys.
+	// matchedClient is empty when using the shared key.
+	var matchedClient string
+	if err := sidecar.Verify(h.key, cr, signature); err != nil {
+		client, clientErr := h.verifyWithClientKeys(cr, signature)
+		if clientErr != nil {
+			http.Error(w, "HMAC verification failed: "+err.Error(), http.StatusUnauthorized)
+			h.logger.Printf("REJECT method=%s path=%s reason=%q", r.Method, sanitizePath(pathAndQuery), "no key matched")
+			return
+		}
+		matchedClient = client
 	}
 
 	// 4. Validate target host against allowlist
@@ -150,9 +244,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5.5 Validate auth-header (required — the client controls this value,
-	// and without an allowlist a compromised sandbox could direct the real
-	// token into arbitrary forwarded headers).
+	// 5.5 Validate auth-header
 	if !allowedAuthHeaders[authHeader] {
 		http.Error(w, "auth-header not allowed: "+authHeader, http.StatusForbidden)
 		h.logger.Printf("REJECT method=%s path=%s reason=\"auth-header %s not in allowlist\"", r.Method, sanitizePath(pathAndQuery), authHeader)
@@ -160,27 +252,32 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 6. Resolve real token
-	var tokenType credential.TokenType
-	switch identity {
-	case sidecar.IdentityUser:
-		tokenType = credential.TokenTypeUAT
-	default:
-		tokenType = credential.TokenTypeTAT
+	// UAT (user identity): per-client isolation via matched PROXY_KEY.
+	// TAT (bot identity): shared credential provider (app-level).
+	var resolvedToken string
+	if identity == sidecar.IdentityUser && h.authBridge != nil {
+		token, err := h.authBridge.resolveUserTokenByClient(matchedClient)
+		if err != nil {
+			http.Error(w, "failed to resolve user token: "+err.Error(), http.StatusInternalServerError)
+			h.logger.Printf("TOKEN_ERROR method=%s path=%s identity=%s client=%s error=%q",
+				r.Method, sanitizePath(pathAndQuery), identity, matchedClient, sanitizeError(err))
+			return
+		}
+		resolvedToken = token
+	} else {
+		tokenResult, err := h.cred.ResolveToken(r.Context(), credential.TokenSpec{
+			Type:  credential.TokenTypeTAT,
+			AppID: h.appID,
+		})
+		if err != nil {
+			http.Error(w, "failed to resolve token: "+err.Error(), http.StatusInternalServerError)
+			h.logger.Printf("TOKEN_ERROR method=%s path=%s identity=%s error=%q", r.Method, sanitizePath(pathAndQuery), identity, sanitizeError(err))
+			return
+		}
+		resolvedToken = tokenResult.Token
 	}
 
-	tokenResult, err := h.cred.ResolveToken(r.Context(), credential.TokenSpec{
-		Type:  tokenType,
-		AppID: h.appID,
-	})
-	if err != nil {
-		http.Error(w, "failed to resolve token: "+err.Error(), http.StatusInternalServerError)
-		h.logger.Printf("TOKEN_ERROR method=%s path=%s identity=%s error=%q", r.Method, sanitizePath(pathAndQuery), identity, sanitizeError(err))
-		return
-	}
-
-	// 7. Build forwarding request. Scheme is pinned to https here (not taken
-	// from the client-supplied target) so any future change to parseTarget
-	// cannot regress the cleartext-leak protection.
+	// 7. Build forwarding request
 	forwardURL := "https://" + targetHost + pathAndQuery
 	forwardReq, err := http.NewRequestWithContext(r.Context(), r.Method, forwardURL, bytes.NewReader(body))
 	if err != nil {
@@ -188,7 +285,6 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Copy non-proxy headers
 	for k, vs := range r.Header {
 		if isProxyHeader(k) {
 			continue
@@ -198,21 +294,15 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Strip any client-supplied auth headers. The sidecar is the sole source
-	// of authentication material on the forwarded request; a client could
-	// otherwise smuggle an extra Authorization/MCP token alongside the one
-	// the sidecar injects below.
 	forwardReq.Header.Del("Authorization")
 	forwardReq.Header.Del(sidecar.HeaderMCPUAT)
 	forwardReq.Header.Del(sidecar.HeaderMCPTAT)
 
-	// 8. Inject real token into the header the client committed to in the
-	// signature. Standard OpenAPI uses "Authorization: Bearer <token>"; MCP
-	// uses "X-Lark-MCP-UAT: <token>" or "X-Lark-MCP-TAT: <token>".
+	// 8. Inject real token
 	if authHeader == "Authorization" {
-		forwardReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+		forwardReq.Header.Set("Authorization", "Bearer "+resolvedToken)
 	} else {
-		forwardReq.Header.Set(authHeader, tokenResult.Token)
+		forwardReq.Header.Set(authHeader, resolvedToken)
 	}
 
 	// 9. Forward request
@@ -234,16 +324,15 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 
 	// 11. Audit log
-	h.logger.Printf("FORWARD method=%s path=%s identity=%s status=%d duration=%s",
-		r.Method, sanitizePath(pathAndQuery), identity, resp.StatusCode, time.Since(start).Round(time.Millisecond))
+	clientTag := ""
+	if matchedClient != "" {
+		clientTag = " client=" + matchedClient
+	}
+	h.logger.Printf("FORWARD method=%s path=%s identity=%s status=%d duration=%s%s",
+		r.Method, sanitizePath(pathAndQuery), identity, resp.StatusCode, time.Since(start).Round(time.Millisecond), clientTag)
 }
 
-// parseTarget validates X-Lark-Proxy-Target and returns the host portion for
-// HMAC input and allowlist lookup. The target must be "https://<host>" with no
-// path, query, fragment, userinfo, or non-https scheme. Rejecting these shapes
-// closes a token-leak channel: a compromised sandbox holding PROXY_KEY could
-// otherwise request cleartext HTTP forwarding (or inject a path to a different
-// endpoint than the allowlist entry implies).
+// parseTarget validates X-Lark-Proxy-Target and returns the host portion.
 func parseTarget(target string) (host string, err error) {
 	u, perr := url.Parse(target)
 	if perr != nil {
