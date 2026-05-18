@@ -79,7 +79,7 @@ var MarkdownCreate = common.Shortcut{
 			"file_name":  finalMarkdownFileName(spec),
 			"size_bytes": fileSize,
 		}
-		if u := common.BuildResourceURL(runtime.Config.Brand, "file", result.FileToken); u != "" {
+		if u := common.FetchTenantResourceURL(runtime, "file", result.FileToken); u != "" {
 			out["url"] = u
 		}
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, result.FileToken, "file"); grant != nil {
