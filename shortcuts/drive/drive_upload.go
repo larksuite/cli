@@ -169,7 +169,7 @@ var DriveUpload = common.Shortcut{
 		// wiki node URL, which the upload response doesn't carry. Skip the
 		// fallback for parent_type=wiki rather than emit a link that 404s.
 		if target.ParentType == driveUploadParentTypeExplorer {
-			if u := common.BuildResourceURL(runtime.Config.Brand, "file", uploadResult.FileToken); u != "" {
+			if u := common.FetchTenantResourceURL(runtime, "file", uploadResult.FileToken); u != "" {
 				out["url"] = u
 			}
 		}
