@@ -133,6 +133,8 @@ var loginMsgEn = &loginMsg{
 	HintFooter:  "  lark-cli auth login --help",
 }
 
+// getLoginMsg returns the login message bundle for the specified language.
+// Supports "zh" for Chinese and "en" for English. Defaults to Chinese.
 func getLoginMsg(lang string) *loginMsg {
 	if lang == "en" {
 		return loginMsgEn

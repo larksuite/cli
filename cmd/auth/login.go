@@ -475,6 +475,8 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	return nil
 }
 
+// syncLoginUserToProfile updates the profile's user list to contain only the newly
+// authenticated user, removing any previously stored tokens for other users.
 func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
@@ -500,6 +502,7 @@ func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 	return nil
 }
 
+// findProfileByName locates an AppConfig by profile name from the multi-app configuration.
 func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.AppConfig {
 	for i := range multi.Apps {
 		if multi.Apps[i].ProfileName() == profileName {
@@ -692,6 +695,8 @@ func applyExcludeScopes(requested string, excludes []string) (string, []string) 
 	return joinSortedScopeSet(kept), nil
 }
 
+// generateQRCode creates both ASCII art and base64-encoded PNG versions of a QR code
+// for the given verification URL. Returns empty strings if generation fails.
 func generateQRCode(verificationURL string) (ascii string, base64Str string) {
 	if qr, err := qrcode.New(verificationURL, qrcode.Medium); err == nil {
 		ascii = qr.ToSmallString(true)
@@ -702,6 +707,8 @@ func generateQRCode(verificationURL string) (ascii string, base64Str string) {
 	return
 }
 
+// qrCodeToBase64 generates a base64-encoded PNG image of a QR code for the given URL.
+// Returns an empty string if generation fails.
 func qrCodeToBase64(url string) string {
 	if qr, err := qrcode.New(url, qrcode.Medium); err == nil {
 		if pngBytes, err := qr.PNG(256); err == nil {
