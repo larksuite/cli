@@ -266,14 +266,15 @@ func authLoginRun(opts *LoginOptions) error {
 		if err := saveLoginRequestedScope(authResp.DeviceCode, finalScope); err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to cache requested scopes: %v\n", err)
 		}
-		qrCodeBase64 := qrCodeToBase64(authResp.VerificationUriComplete)
+		qrCodeASCII, qrCodeBase64 := generateQRCode(authResp.VerificationUriComplete)
 		data := map[string]interface{}{
+			"qr_code_ascii":        qrCodeASCII,
 			"qr_code_base64":       qrCodeBase64,
 			"qr_code_display_hint": msg.QRCodeDisplayHint,
 			"verification_url":     authResp.VerificationUriComplete,
 			"device_code":          authResp.DeviceCode,
 			"expires_in":           authResp.ExpiresIn,
-			"hint":                 fmt.Sprintf("Show qr_code_base64 as an image and verification_url to the user. If your agent cannot display images, show verification_url only and instruct users to open it in a browser. Treat verification_url as opaque: do not URL-encode/decode, normalize, rewrite, add spaces/punctuation, or wrap as Markdown link text; prefer a fenced code block containing only the raw URL. For agent harnesses that only deliver final turn messages, make the image (if displayable) and verification_url the final message of the turn and return control to the user; do not block on --device-code in the same turn. After the user confirms authorization in a later step, run: lark-cli auth login --device-code %s", authResp.DeviceCode),
+			"hint":                 fmt.Sprintf("Show qr_code_base64 as an image and verification_url to the user. If your agent cannot display images, show qr_code_ascii (ASCII QR code) or verification_url instead. Treat verification_url as opaque: do not URL-encode/decode, normalize, rewrite, add spaces/punctuation, or wrap as Markdown link text; prefer a fenced code block containing only the raw URL. For agent harnesses that only deliver final turn messages, make the image (if displayable) and verification_url the final message of the turn and return control to the user; do not block on --device-code in the same turn. After the user confirms authorization in a later step, run: lark-cli auth login --device-code %s", authResp.DeviceCode),
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -289,9 +290,10 @@ func authLoginRun(opts *LoginOptions) error {
 	// stdout into a JSON parser sees it without stream-mixing surprises),
 	// text mode prints to stderr (alongside the URL prompt).
 	if opts.JSON {
-		qrCodeBase64 := qrCodeToBase64(authResp.VerificationUriComplete)
+		qrCodeASCII, qrCodeBase64 := generateQRCode(authResp.VerificationUriComplete)
 		data := map[string]interface{}{
 			"event":                     "device_authorization",
+			"qr_code_ascii":             qrCodeASCII,
 			"qr_code_base64":            qrCodeBase64,
 			"qr_code_display_hint":      msg.QRCodeDisplayHint,
 			"verification_uri":          authResp.VerificationUri,
@@ -309,16 +311,14 @@ func authLoginRun(opts *LoginOptions) error {
 		// Branch on TTY: human-friendly copy in interactive terminals,
 		// For non-TTY (AI agent callers), output text with both ASCII and base64 QR code.
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.ScanQRCode)
-		if qr, err := qrcode.New(authResp.VerificationUriComplete, qrcode.Medium); err == nil {
-			fmt.Fprint(f.IOStreams.ErrOut, qr.ToSmallString(true))
-			if !f.IOStreams.IsTerminal {
-				if pngBytes, err := qr.PNG(256); err == nil {
-					qrCodeBase64 := base64.StdEncoding.EncodeToString(pngBytes)
-					fmt.Fprintf(f.IOStreams.ErrOut, "[BASE64 QR CODE START]\n")
-					fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", qrCodeBase64)
-					fmt.Fprintf(f.IOStreams.ErrOut, "[BASE64 QR CODE END]\n")
-					fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.QRCodeDisplayHint)
-				}
+		qrCodeASCII, qrCodeBase64 := generateQRCode(authResp.VerificationUriComplete)
+		fmt.Fprint(f.IOStreams.ErrOut, qrCodeASCII)
+		if !f.IOStreams.IsTerminal {
+			if qrCodeBase64 != "" {
+				fmt.Fprintf(f.IOStreams.ErrOut, "[BASE64 QR CODE START]\n")
+				fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", qrCodeBase64)
+				fmt.Fprintf(f.IOStreams.ErrOut, "[BASE64 QR CODE END]\n")
+				fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.QRCodeDisplayHint)
 			}
 		}
 		fmt.Fprintln(f.IOStreams.ErrOut)
@@ -690,6 +690,16 @@ func applyExcludeScopes(requested string, excludes []string) (string, []string) 
 		}
 	}
 	return joinSortedScopeSet(kept), nil
+}
+
+func generateQRCode(verificationURL string) (ascii string, base64Str string) {
+	if qr, err := qrcode.New(verificationURL, qrcode.Medium); err == nil {
+		ascii = qr.ToSmallString(true)
+		if pngBytes, err := qr.PNG(256); err == nil {
+			base64Str = base64.StdEncoding.EncodeToString(pngBytes)
+		}
+	}
+	return
 }
 
 func qrCodeToBase64(url string) string {
