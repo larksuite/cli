@@ -25,14 +25,18 @@ var BaseFormQuestionsUpdate = common.Shortcut{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
-		{Name: "questions", Desc: `questions JSON array, max 10 items, each item must include "id". Supported fields: "id"(required),"title","description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown,1=vertical,2=horizontal,select only). E.g. '[{"id":"q_001","title":"Updated?","required":true}]'`, Required: true},
+		{Name: "questions", Desc: `questions JSON array, max 10 items, each item must include "id". Supported fields: "id"(required),"title","description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown,1=vertical,2=horizontal,select only),"attachment"({"file_types":["all"]},attachment only). E.g. '[{"id":"q_001","title":"Updated?","required":true}]'`, Required: true},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().
+		dr := common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").
 			Set("base_token", runtime.Str("base-token")).
 			Set("table_id", runtime.Str("table-id")).
 			Set("form_id", runtime.Str("form-id"))
+		if questions, err := parseUpdateFormQuestions(runtime.Str("questions")); err == nil {
+			dr.Body(map[string]interface{}{"questions": questions})
+		}
+		return dr
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		baseToken := runtime.Str("base-token")
@@ -40,8 +44,8 @@ var BaseFormQuestionsUpdate = common.Shortcut{
 		formId := runtime.Str("form-id")
 		questionsJSON := runtime.Str("questions")
 
-		var questions []interface{}
-		if err := json.Unmarshal([]byte(questionsJSON), &questions); err != nil {
+		questions, err := parseUpdateFormQuestions(questionsJSON)
+		if err != nil {
 			return output.Errorf(output.ExitValidation, "invalid_json", "--questions must be a valid JSON array: %s", err)
 		}
 
@@ -73,4 +77,30 @@ var BaseFormQuestionsUpdate = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func parseUpdateFormQuestions(questionsJSON string) ([]interface{}, error) {
+	var questions []interface{}
+	if err := json.Unmarshal([]byte(questionsJSON), &questions); err != nil {
+		return nil, err
+	}
+	normalizeUpdateFormQuestionAttachments(questions)
+	return questions, nil
+}
+
+func normalizeUpdateFormQuestionAttachments(questions []interface{}) {
+	for _, question := range questions {
+		q, ok := question.(map[string]interface{})
+		if !ok || q["type"] != "attachment" {
+			continue
+		}
+		attachment, ok := q["attachment"].(map[string]interface{})
+		if !ok {
+			q["attachment"] = map[string]interface{}{"file_types": []interface{}{"all"}}
+			continue
+		}
+		if fileTypes, ok := attachment["file_types"]; !ok || fileTypes == nil {
+			attachment["file_types"] = []interface{}{"all"}
+		}
+	}
 }
