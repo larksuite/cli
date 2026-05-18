@@ -118,13 +118,21 @@ func validateUpdateV1(_ context.Context, runtime *common.RuntimeContext) error {
 	}
 
 	if needsSelectionV1[mode] && selEllipsis == "" && selTitle == "" {
-		return common.FlagErrorf("--%s mode requires --selection-with-ellipsis or --selection-by-title", mode)
+		return common.FlagErrorf(selectionRequiredMessageV1(mode))
 	}
 	if err := validateSelectionByTitleV1(selTitle); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func selectionRequiredMessageV1(mode string) string {
+	msg := fmt.Sprintf("--%s mode requires --selection-with-ellipsis or --selection-by-title", mode)
+	if mode == "replace_all" {
+		msg += ". If you intended to replace the entire document body, use --mode overwrite instead."
+	}
+	return msg
 }
 
 func validateSelectionByTitleV1(title string) error {

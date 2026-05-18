@@ -4,6 +4,7 @@ package doc
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,33 @@ func TestValidCommandsV2(t *testing.T) {
 }
 
 // ── V1 tests ──
+
+func TestSelectionRequiredMessageV1ReplaceAllSuggestsOverwrite(t *testing.T) {
+	t.Parallel()
+
+	msg := selectionRequiredMessageV1("replace_all")
+	for _, needle := range []string{
+		"--replace_all mode requires --selection-with-ellipsis or --selection-by-title",
+		"replace the entire document body",
+		"--mode overwrite",
+	} {
+		if !strings.Contains(msg, needle) {
+			t.Fatalf("message missing %q: %s", needle, msg)
+		}
+	}
+}
+
+func TestSelectionRequiredMessageV1OtherModesDoNotSuggestOverwrite(t *testing.T) {
+	t.Parallel()
+
+	msg := selectionRequiredMessageV1("replace_range")
+	if strings.Contains(msg, "--mode overwrite") {
+		t.Fatalf("replace_range message should not suggest overwrite: %s", msg)
+	}
+	if !strings.Contains(msg, "--replace_range mode requires --selection-with-ellipsis or --selection-by-title") {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
 
 func TestIsWhiteboardCreateMarkdown(t *testing.T) {
 	t.Run("blank whiteboard tags", func(t *testing.T) {
