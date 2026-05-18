@@ -167,6 +167,12 @@ func TestBaseTableDeleteRisk(t *testing.T) {
 	}
 }
 
+func TestBaseFieldUpdateRisk(t *testing.T) {
+	if BaseFieldUpdate.Risk != "high-risk-write" {
+		t.Fatalf("risk=%q want=%q", BaseFieldUpdate.Risk, "high-risk-write")
+	}
+}
+
 func TestBaseDeleteShortcutsRisk(t *testing.T) {
 	cases := map[string]string{
 		BaseFieldDelete.Command:          BaseFieldDelete.Risk,

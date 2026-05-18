@@ -432,7 +432,7 @@ func TestBaseFieldExecuteUpdate(t *testing.T) {
 			"data": map[string]interface{}{"id": "fld_x", "name": "Amount", "type": "number"},
 		},
 	})
-	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`}, factory, stdout); err != nil {
+	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`, "--yes"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
 	if got := stdout.String(); !strings.Contains(got, `"updated": true`) || !strings.Contains(got, `"fld_x"`) {

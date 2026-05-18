@@ -11,13 +11,15 @@ lark-cli base +field-update \
   --base-token <base_token> \
   --table-id <table_id> \
   --field-id <field_id> \
-  --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}'
+  --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}' \
+  --yes
 
 lark-cli base +field-update \
   --base-token <base_token> \
   --table-id <table_id> \
   --field-id <field_id> \
-  --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人"}'
+  --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人"}' \
+  --yes
 ```
 
 ## 参数
@@ -28,6 +30,10 @@ lark-cli base +field-update \
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--field-id <id_or_name>` | 是 | 字段 ID 或字段名 |
 | `--json <body>` | 是 | 字段属性 JSON 对象 |
+| `--yes` | 是 | 确认执行高风险字段更新 |
+
+> 这是**高风险写入操作**。`+field-update` 使用 `PUT` 全量字段定义语义；改变字段类型或关键配置可能影响整列已有数据的解释、展示或可用性。CLI 层要求显式传 `--yes`；如果用户已经明确目标和期望更新，可直接执行并带上 `--yes`。
+
 ## API 入参详情
 
 **HTTP 方法和路径：**
@@ -154,7 +160,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 坑点
 
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
-- ⚠️ 这是写入操作，执行前必须确认。
+- ⚠️ 这是高风险写入操作，执行时必须带 `--yes`。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
 
 ## 参考

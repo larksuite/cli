@@ -10,7 +10,7 @@
 - 顶层统一使用：`type` + `name` + 类型特有字段。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
-- `+field-update` 使用同样的字段 JSON 结构，但语义是 `PUT`；建议先 `+field-get` 再按目标状态全量提交。
+- `+field-update` 使用同样的字段 JSON 结构，但语义是 `PUT`；这是高风险写入操作，建议先 `+field-get` 再按目标状态全量提交，并带 `--yes`。
 - `type=formula` 或 `type=lookup` 创建/更新前，必须先读对应 guide。
 
 推荐示例：
@@ -471,7 +471,7 @@
 ## 4. 创建与更新
 
 - `+field-create`：按目标字段配置直接构造 `--json`。
-- `+field-update`：使用同样的 JSON 结构，但语义是 `PUT`；建议先 `+field-get`，再按目标完整状态提交。
+- `+field-update`：使用同样的 JSON 结构，但语义是 `PUT`；建议先 `+field-get`，再按目标完整状态提交，并带 `--yes`。
 
 ## 5. 易错点
 
