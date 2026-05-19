@@ -1,6 +1,6 @@
 {
   "name": "@larksuite/cli",
-  "version": "1.0.33",
+  "version": "1.0.34",
   "description": "The official CLI for Lark/Feishu open platform",
   "bin": {
     "lark-cli": "scripts/run.js"

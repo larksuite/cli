@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.34] - 2026-05-19
+
+### Features
+
+- **drive**: Switch markdown export to V2 `docs_ai` fetch API (#948)
+- **drive**: Add `+inspect` shortcut for document URL inspection with wiki unwrapping (#947)
+- **wiki**: Add `+node-get` / `+node-delete` / `+space-create` shortcuts (#904)
+- **base**: Support Base attachment APIs (#887)
+- **mail**: Validate `bot` + `mailbox=me` and add dynamic `--as` help tests (#895)
+- **mail**: Expose draft priority in `--inspect` projection and document `--set-priority` (#779)
+
+### Bug Fixes
+
+- **identitydiag**: Harden verify path and tighten status semantics (#961)
+- **wiki**: Surface real node URL for `+node-create` / `+node-copy` (#960)
+- **auth**: Split bot and user identity diagnostics (#957)
+- **base**: Address Base attachment review follow-ups (#958)
+- **docs**: Clarify `replace_all` selection errors (#954)
+
+### Documentation
+
+- **drive**: Clarify add comment constraints (#967)
+- **lark-im**: Clarify message activity search (#865)
+
+### Tests
+
+- Verify e2e resource cleanup (#949)
+- **lint**: Exclude `bidichk` from test files (#959)
+
 ## [v1.0.33] - 2026-05-18
 
 ### Features
@@ -745,6 +774,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.34]: https://github.com/larksuite/cli/releases/tag/v1.0.34
 [v1.0.33]: https://github.com/larksuite/cli/releases/tag/v1.0.33
 [v1.0.32]: https://github.com/larksuite/cli/releases/tag/v1.0.32
 [v1.0.31]: https://github.com/larksuite/cli/releases/tag/v1.0.31
