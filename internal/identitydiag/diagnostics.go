@@ -27,6 +27,11 @@ const (
 	StatusVerifyFailed  = "verify_failed"
 )
 
+// verifyTimeout bounds each network call made during --verify so that a
+// hanging server cannot wedge `auth status --verify` or `doctor`. Mirrors
+// the 10s timeout used by the doctor endpoint probe.
+const verifyTimeout = 10 * time.Second
+
 // Result describes the independently usable bot and user identities.
 type Result struct {
 	Bot  Identity `json:"bot"`
@@ -104,7 +109,7 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 		return Identity{
 			Status:   status,
 			Verified: boolPtr(false),
-			Message:  "Bot identity: " + statusMessage(status) + ": " + err.Error(),
+			Message:  "Bot identity: " + StatusMessage(status) + ": " + err.Error(),
 			Hint:     "check app credentials or the active credential provider",
 		}
 	}
@@ -128,8 +133,8 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Identity {
 	if cfg == nil || cfg.AppID == "" {
 		return Identity{
-			Status:  StatusMissing,
-			Message: "User identity: missing (missing app config)",
+			Status:  StatusNotConfigured,
+			Message: "User identity: not configured (missing app config)",
 			Hint:    "run: lark-cli config --help",
 		}
 	}
@@ -174,38 +179,33 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		return id
 	}
 
-	httpClient, err := f.HttpClient()
-	if err != nil {
+	markVerifyFailed := func(reason, hint string) Identity {
 		id.Status = StatusVerifyFailed
 		id.Available = false
 		id.Verified = boolPtr(false)
-		id.Message = "User identity: verify failed: create HTTP client: " + err.Error()
+		id.Message = "User identity: verify failed: " + reason
+		if hint != "" {
+			id.Hint = hint
+		}
 		return id
+	}
+
+	httpClient, err := f.HttpClient()
+	if err != nil {
+		return markVerifyFailed("create HTTP client: "+err.Error(), "")
 	}
 	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
 	if err != nil {
-		id.Status = StatusVerifyFailed
-		id.Available = false
-		id.Verified = boolPtr(false)
-		id.Message = "User identity: verify failed: token unusable: " + err.Error()
-		id.Hint = "run: lark-cli auth login --help"
-		return id
+		return markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help")
 	}
 	sdk, err := f.LarkClient()
 	if err != nil {
-		id.Status = StatusVerifyFailed
-		id.Available = false
-		id.Verified = boolPtr(false)
-		id.Message = "User identity: verify failed: SDK init failed: " + err.Error()
-		return id
+		return markVerifyFailed("SDK init failed: "+err.Error(), "")
 	}
-	if err := larkauth.VerifyUserToken(ctx, sdk, token); err != nil {
-		id.Status = StatusVerifyFailed
-		id.Available = false
-		id.Verified = boolPtr(false)
-		id.Message = "User identity: verify failed: server rejected token: " + err.Error()
-		id.Hint = "run: lark-cli auth login --help"
-		return id
+	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
+	defer cancel()
+	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token); err != nil {
+		return markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help")
 	}
 
 	id.Verified = boolPtr(true)
@@ -241,6 +241,8 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
+	defer cancel()
 	url := strings.TrimRight(core.ResolveEndpoints(cfg.Brand).Open, "/") + "/open-apis/bot/v3/info"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -253,14 +255,8 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
+	body, _ := io.ReadAll(resp.Body)
 	var envelope struct {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
@@ -269,8 +265,19 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 			AppName string `json:"app_name"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+	parseErr := json.Unmarshal(body, &envelope)
+
+	if resp.StatusCode >= 400 {
+		// Lark error responses are usually `{code, msg}` envelopes even on
+		// non-2xx — surface them when present so callers see why bot auth
+		// was rejected, not just the bare HTTP code.
+		if parseErr == nil && envelope.Code != 0 {
+			return nil, fmt.Errorf("HTTP %d: [%d] %s", resp.StatusCode, envelope.Code, envelope.Msg)
+		}
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse response: %w", parseErr)
 	}
 	if envelope.Code != 0 {
 		return nil, fmt.Errorf("[%d] %s", envelope.Code, envelope.Msg)
@@ -296,7 +303,7 @@ func formatMillis(ms int64) string {
 	return time.UnixMilli(ms).Format(time.RFC3339)
 }
 
-func statusMessage(status string) string {
+func StatusMessage(status string) string {
 	switch status {
 	case StatusNotConfigured:
 		return "not configured"

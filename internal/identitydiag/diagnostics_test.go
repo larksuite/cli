@@ -6,6 +6,7 @@ package identitydiag
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -128,6 +129,187 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 	}
 	if got.User.OpenID != "ou_user" || got.User.UserName != "tester" {
 		t.Fatalf("user = %#v, want user identity details", got.User)
+	}
+}
+
+func TestDiagnose_VerifyBotIdentity_HTTPErrorSurfacesEnvelope(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
+	f, _, _, reg := cmdutil.TestFactory(t, cfg)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/bot/v3/info",
+		Status: http.StatusUnauthorized,
+		Body: map[string]interface{}{
+			"code": 99991663,
+			"msg":  "app ticket invalid",
+		},
+	})
+
+	got := Diagnose(context.Background(), f, cfg, true)
+	if got.Bot.Status != StatusVerifyFailed || got.Bot.Available {
+		t.Fatalf("bot = %#v, want verify_failed and unavailable", got.Bot)
+	}
+	if got.Bot.Verified == nil || *got.Bot.Verified {
+		t.Fatalf("bot verified = %v, want false", got.Bot.Verified)
+	}
+	if !strings.Contains(got.Bot.Message, "401") || !strings.Contains(got.Bot.Message, "99991663") {
+		t.Fatalf("bot message = %q, want both HTTP code and envelope code", got.Bot.Message)
+	}
+}
+
+func TestDiagnose_VerifyBotIdentity_BusinessErrorCode(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
+	f, _, _, reg := cmdutil.TestFactory(t, cfg)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 10013,
+			"msg":  "scope not granted",
+		},
+	})
+
+	got := Diagnose(context.Background(), f, cfg, true)
+	if got.Bot.Status != StatusVerifyFailed || got.Bot.Available {
+		t.Fatalf("bot = %#v, want verify_failed and unavailable", got.Bot)
+	}
+	if !strings.Contains(got.Bot.Message, "10013") || !strings.Contains(got.Bot.Message, "scope not granted") {
+		t.Fatalf("bot message = %q, want envelope code/msg", got.Bot.Message)
+	}
+}
+
+func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-reject",
+		AppSecret:  "secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_user",
+		UserName:   "tester",
+	}
+	now := time.Now()
+	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+		AppId:            cfg.AppID,
+		UserOpenId:       cfg.UserOpenId,
+		AccessToken:      "user-access-token",
+		RefreshToken:     "refresh-token",
+		ExpiresAt:        now.Add(time.Hour).UnixMilli(),
+		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
+		GrantedAt:        now.Add(-time.Hour).UnixMilli(),
+		Scope:            "offline_access",
+	}); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, cfg)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"open_id": "ou_bot", "app_name": "bot"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    larkauth.PathUserInfoV1,
+		Body: map[string]interface{}{
+			"code": 99991661,
+			"msg":  "access token invalid",
+		},
+	})
+
+	got := Diagnose(context.Background(), f, cfg, true)
+	if got.User.Status != StatusVerifyFailed || got.User.Available {
+		t.Fatalf("user = %#v, want verify_failed and unavailable", got.User)
+	}
+	if got.User.Verified == nil || *got.User.Verified {
+		t.Fatalf("user verified = %v, want false", got.User.Verified)
+	}
+	if !strings.Contains(got.User.Message, "server rejected token") {
+		t.Fatalf("user message = %q, want 'server rejected token'", got.User.Message)
+	}
+}
+
+func TestDiagnose_UserIdentityExpired(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-expired",
+		AppSecret:  "secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_expired",
+		UserName:   "tester",
+	}
+	now := time.Now()
+	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+		AppId:            cfg.AppID,
+		UserOpenId:       cfg.UserOpenId,
+		AccessToken:      "user-access-token",
+		RefreshToken:     "refresh-token",
+		ExpiresAt:        now.Add(-time.Hour).UnixMilli(),
+		RefreshExpiresAt: now.Add(-time.Minute).UnixMilli(),
+		GrantedAt:        now.Add(-24 * time.Hour).UnixMilli(),
+		Scope:            "offline_access",
+	}); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.User.Status != StatusMissing || got.User.Available {
+		t.Fatalf("user = %#v, want missing and unavailable", got.User)
+	}
+	if got.User.Hint == "" {
+		t.Fatalf("user hint is empty, want re-login hint")
+	}
+}
+
+func TestDiagnose_BotIdentityStrictUserOnly(t *testing.T) {
+	// SupportedIdentities = SupportsUser (1) only — bot path should be
+	// reported as not_configured even though an app secret is present.
+	cfg := &core.CliConfig{
+		AppID:               "test-app",
+		AppSecret:           "secret",
+		Brand:               core.BrandFeishu,
+		SupportedIdentities: 1,
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.Bot.Status != StatusNotConfigured || got.Bot.Available {
+		t.Fatalf("bot = %#v, want not_configured and unavailable", got.Bot)
+	}
+}
+
+func TestDiagnose_UserIdentityMissingAppConfig(t *testing.T) {
+	cfg := &core.CliConfig{Brand: core.BrandFeishu}
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.User.Status != StatusNotConfigured || got.User.Available {
+		t.Fatalf("user = %#v, want not_configured and unavailable", got.User)
+	}
+}
+
+func TestStatusMessage(t *testing.T) {
+	cases := map[string]string{
+		StatusReady:         StatusReady,
+		StatusNotConfigured: "not configured",
+		StatusVerifyFailed:  "verify failed",
+		StatusNeedsRefresh:  "needs refresh",
+		StatusMissing:       "missing",
+		"unknown":           "unknown",
+	}
+	for in, want := range cases {
+		if got := StatusMessage(in); got != want {
+			t.Errorf("StatusMessage(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

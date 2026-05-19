@@ -69,14 +69,20 @@ func authStatusRun(opts *StatusOptions) error {
 	return nil
 }
 
+const (
+	identityUser = "user"
+	identityBot  = "bot"
+	identityNone = "none"
+)
+
 func effectiveIdentity(d identitydiag.Result) string {
 	switch {
 	case d.User.Available:
-		return "user"
+		return identityUser
 	case d.Bot.Available:
-		return "bot"
+		return identityBot
 	default:
-		return "none"
+		return identityNone
 	}
 }
 
@@ -105,14 +111,14 @@ func addLegacyUserFields(result map[string]interface{}, user identitydiag.Identi
 
 func addEffectiveVerification(result map[string]interface{}, d identitydiag.Result) {
 	switch result["identity"] {
-	case "user":
+	case identityUser:
 		if d.User.Verified != nil {
 			result["verified"] = *d.User.Verified
 			if !*d.User.Verified {
 				result["verifyError"] = d.User.Message
 			}
 		}
-	case "bot":
+	case identityBot:
 		if d.Bot.Verified != nil {
 			result["verified"] = *d.Bot.Verified
 			if !*d.Bot.Verified {
@@ -125,7 +131,7 @@ func addEffectiveVerification(result map[string]interface{}, d identitydiag.Resu
 func addStatusNote(result map[string]interface{}, d identitydiag.Result) {
 	switch {
 	case !d.User.Available && d.Bot.Available:
-		result["note"] = "User identity is " + d.User.Status + "; bot identity is ready for bot/tenant API calls. Run `lark-cli auth login` to enable user identity."
+		result["note"] = "User identity is " + identitydiag.StatusMessage(d.User.Status) + "; bot identity is ready for bot/tenant API calls. Run `lark-cli auth login` to enable user identity."
 	case d.User.Status == identitydiag.StatusNeedsRefresh:
 		result["note"] = "User identity needs refresh and will be refreshed automatically on the next user API call."
 	case !d.User.Available && !d.Bot.Available:
