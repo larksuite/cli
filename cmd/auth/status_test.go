@@ -47,7 +47,7 @@ func TestAuthStatusRun_VerifyReportsBotIdentity(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot",
 				"app_name": "diagnostic bot",
 			},

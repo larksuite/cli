@@ -257,13 +257,15 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
+	// /open-apis/bot/v3/info returns `{code, msg, bot: {...}}` — the bot
+	// payload is under "bot", not "data" as the newer Lark API convention.
 	var envelope struct {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
 			OpenID  string `json:"open_id"`
 			AppName string `json:"app_name"`
-		} `json:"data"`
+		} `json:"bot"`
 	}
 	parseErr := json.Unmarshal(body, &envelope)
 

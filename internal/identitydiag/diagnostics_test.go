@@ -49,7 +49,7 @@ func TestDiagnose_VerifyBotIdentity(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot",
 				"app_name": "diagnostic bot",
 			},
@@ -105,7 +105,7 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot",
 				"app_name": "diagnostic bot",
 			},
@@ -210,7 +210,7 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"open_id": "ou_bot", "app_name": "bot"},
+			"bot":  map[string]interface{}{"open_id": "ou_bot", "app_name": "bot"},
 		},
 	})
 	reg.Register(&httpmock.Stub{
