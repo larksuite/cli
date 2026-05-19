@@ -150,8 +150,6 @@ lark-cli drive +add-comment \
 - `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
 - **所有 `type=text` 元素的字符总和 ≤ 10000**（按字符算，中英文 / 符号一视同仁）。超过会被 shortcut 在发送前拒绝，并指出累计超长的元素。**拆成多个 text element 不能绕过这个上限**——上限是总额，不是每元素。需要更长内容就缩短或拆成多条评论。
 - 长度限制只对 `type=text` 生效，`mention_user` / `link` 不计入。
-- 局部评论走 `locate-doc` 时，内部固定使用 `limit=10`。
-- 当 `locate-doc` 命中多处时，shortcut 会中止并提示用户继续收窄 `--selection-with-ellipsis`，不支持手动指定匹配序号。
 - 写入评论前会自动生成符合 OpenAPI 定义的请求体：
   - 统一接口：`POST /new_comments`
   - 统一字段：`file_type` + `reply_elements`
