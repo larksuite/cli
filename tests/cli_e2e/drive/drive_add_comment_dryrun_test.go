@@ -13,7 +13,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestDriveAddCommentDryRun_MarkdownFile(t *testing.T) {
+func TestDriveAddCommentDryRun_File(t *testing.T) {
 	setDriveDryRunConfigEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -45,7 +45,7 @@ func TestDriveAddCommentDryRun_MarkdownFile(t *testing.T) {
 		t.Fatalf("api.1.body.file_type=%q, want file\nstdout:\n%s", got, out)
 	}
 	if !gjson.Get(out, "api.1.body.anchor.block_id").Exists() {
-		t.Fatalf("api.1.body.anchor.block_id should exist for markdown file comment\nstdout:\n%s", out)
+		t.Fatalf("api.1.body.anchor.block_id should exist for file comment\nstdout:\n%s", out)
 	}
 	if got := gjson.Get(out, "api.1.body.anchor.block_id").String(); got != "test" {
 		t.Fatalf("api.1.body.anchor.block_id=%q, want test\nstdout:\n%s", got, out)

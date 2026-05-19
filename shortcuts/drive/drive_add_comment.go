@@ -47,10 +47,33 @@ const defaultLocateDocLimit = 10
 // with `drive file.comments create_v2` against a fresh docx.
 const maxCommentTotalRunes = 10000
 
-// The file comment API treats Markdown file comments as full-file comments in
-// the UI, but currently rejects an empty anchor.block_id for file targets.
-// Use the backend-accepted placeholder until the API supports omitting it.
-const markdownFileFullCommentAnchorBlockID = "test"
+// The file comment API treats supported Drive file comments as full-file
+// comments in the UI, but currently rejects an empty anchor.block_id for file
+// targets. TODO: remove this placeholder after the API accepts omitting
+// anchor.block_id for file full comments.
+const fileFullCommentAnchorBlockID = "test"
+
+// File comments are enabled only for extensions verified to render correctly in
+// the Lark file preview comment UI. Keep this list conservative: PDF, docx, and
+// xlsx currently accept the API request but display poorly in the page.
+var supportedFileCommentExtensions = []string{
+	".md",
+	".txt",
+	".json",
+	".csv",
+	".go",
+	".js",
+	".py",
+	".pptx",
+	".png",
+	".jpg",
+	".jpeg",
+	".zip",
+	".mp3",
+	".mp4",
+}
+
+var supportedFileCommentExtensionSet = newSupportedFileCommentExtensionSet(supportedFileCommentExtensions)
 
 type commentDocRef struct {
 	Kind  string
@@ -98,7 +121,7 @@ const (
 var DriveAddComment = common.Shortcut{
 	Service:     "drive",
 	Command:     "+add-comment",
-	Description: "Add a comment to doc/docx/file/sheet/slides; file targets are limited to Markdown (.md) full comments",
+	Description: "Add a comment to doc/docx/file/sheet/slides; file targets support selected extensions and full comments only",
 	Risk:        "write",
 	Scopes: []string{
 		"drive:drive.metadata:readonly",
@@ -151,13 +174,6 @@ var DriveAddComment = common.Shortcut{
 			}
 			return nil
 		}
-		if docRef.Kind == "file" {
-			if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" || strings.TrimSpace(runtime.Str("block-id")) != "" {
-				return output.ErrValidation("markdown file comments only support full comments; omit --block-id and --selection-with-ellipsis")
-			}
-			return nil
-		}
-
 		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
 		if strings.TrimSpace(selection) != "" && blockID != "" {
@@ -168,6 +184,9 @@ var DriveAddComment = common.Shortcut{
 		}
 
 		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
+		if docRef.Kind == "file" {
+			return validateFileCommentMode(mode, "")
+		}
 		if mode == commentModeLocal && docRef.Kind == "doc" {
 			return output.ErrValidation("local comments only support docx, sheet, and slides; old doc format only supports full comments")
 		}
@@ -231,18 +250,18 @@ var DriveAddComment = common.Shortcut{
 		}
 		if resolvedKind == "file" {
 			commentBody := buildCommentCreateV2Request("file", "", "", replyElements, nil)
-			desc := "2-step orchestration: verify .md metadata -> create markdown file comment"
+			desc := "2-step orchestration: verify supported file metadata -> create file comment"
 			verifyStep := "[1]"
 			createStep := "[2]"
 			if isWiki {
-				desc = "3-step orchestration: resolve wiki -> verify .md metadata -> create markdown file comment"
+				desc = "3-step orchestration: resolve wiki -> verify supported file metadata -> create file comment"
 				verifyStep = "[2]"
 				createStep = "[3]"
 			}
 			return common.NewDryRunAPI().
 				Desc(desc).
 				POST("/open-apis/drive/v1/metas/batch_query").
-				Desc(verifyStep+" Read file metadata and verify the title ends with .md").
+				Desc(verifyStep+" Read file metadata and verify the title extension is supported").
 				Body(map[string]interface{}{
 					"request_docs": []map[string]interface{}{
 						{
@@ -252,7 +271,7 @@ var DriveAddComment = common.Shortcut{
 					},
 				}).
 				POST("/open-apis/drive/v1/files/:file_token/new_comments").
-				Desc(createStep+" Create markdown file comment").
+				Desc(createStep+" Create file full comment").
 				Body(commentBody).
 				Set("file_token", resolvedToken)
 		}
@@ -357,7 +376,7 @@ var DriveAddComment = common.Shortcut{
 			return executeSlidesComment(runtime, commentDocRef{Kind: "slides", Token: target.FileToken})
 		}
 		if target.FileType == "file" {
-			return executeMarkdownFileComment(runtime, target)
+			return executeFileComment(runtime, target)
 		}
 
 		replyElements, err := parseCommentReplyElements(runtime.Str("content"))
@@ -502,7 +521,9 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 			case "doc":
 				return resolvedCommentTarget{}, output.ErrValidation("local comments only support docx, sheet, and slides; old doc format only supports full comments")
 			case "file":
-				return resolvedCommentTarget{}, output.ErrValidation("markdown file comments only support full comments; omit --block-id and --selection-with-ellipsis")
+				if err := validateFileCommentMode(mode, ""); err != nil {
+					return resolvedCommentTarget{}, err
+				}
 			}
 		}
 		return resolvedCommentTarget{
@@ -558,8 +579,8 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		}, nil
 	}
 	if objType == "file" {
-		if mode == commentModeLocal {
-			return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but markdown file comments only support full comments; omit --block-id and --selection-with-ellipsis", objType)
+		if err := validateFileCommentMode(mode, objType); err != nil {
+			return resolvedCommentTarget{}, err
 		}
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 		return resolvedCommentTarget{
@@ -574,7 +595,7 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but local comments only support docx, sheet, and slides; for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>", objType)
 	}
 	if mode == commentModeFull && objType != "docx" && objType != "doc" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but comments only support doc/docx/sheet/slides", objType)
+		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but comments only support doc/docx/file/sheet/slides", objType)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
@@ -783,7 +804,7 @@ func buildCommentCreateV2Request(fileType, blockID, slideBlockType string, reply
 		}
 	} else if fileType == "file" {
 		body["anchor"] = map[string]interface{}{
-			"block_id": markdownFileFullCommentAnchorBlockID,
+			"block_id": fileFullCommentAnchorBlockID,
 		}
 	} else if strings.TrimSpace(blockID) != "" {
 		body["anchor"] = map[string]interface{}{
@@ -898,32 +919,83 @@ func fetchCommentTargetFileTitle(runtime *common.RuntimeContext, fileToken strin
 	if len(metas) == 0 {
 		return "", output.Errorf(output.ExitAPI, "api_error", "drive metas.batch_query returned no metadata for file %s", common.MaskToken(fileToken))
 	}
-	meta, _ := metas[0].(map[string]interface{})
+	meta, ok := metas[0].(map[string]interface{})
+	if !ok {
+		return "", output.Errorf(output.ExitAPI, "api_error", "drive metas.batch_query returned unexpected metadata format for file %s", common.MaskToken(fileToken))
+	}
 	return common.GetString(meta, "title"), nil
 }
 
-func ensureMarkdownCommentTarget(runtime *common.RuntimeContext, fileToken string) (string, error) {
+func ensureSupportedFileCommentTarget(runtime *common.RuntimeContext, fileToken string) (string, string, error) {
 	title, err := fetchCommentTargetFileTitle(runtime, fileToken)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(title)), ".md") {
-		return title, nil
+	extension := fileCommentExtension(title)
+	if isSupportedFileCommentExtension(extension) {
+		return title, extension, nil
 	}
 	if strings.TrimSpace(title) == "" {
-		return "", output.ErrWithHint(
+		return "", "", output.ErrWithHint(
 			output.ExitValidation,
-			"unsupported_file_type",
-			"drive +add-comment only supports Markdown Drive files (.md); the file metadata did not return a title",
-			"pass a Drive file whose title ends with .md, or use doc/docx/sheet/slides for other document types",
+			"unsupported_file_comment_type",
+			"drive +add-comment does not support comments for this Drive file type yet; the file metadata did not return a title",
+			"file comments currently support full comments only for these extensions: "+supportedFileCommentExtensionsText(),
 		)
 	}
-	return "", output.ErrWithHint(
+	extensionLabel := extension
+	if extensionLabel == "" {
+		extensionLabel = "no extension"
+	}
+	return "", "", output.ErrWithHint(
 		output.ExitValidation,
-		"unsupported_file_type",
-		fmt.Sprintf("drive +add-comment only supports Markdown Drive files (.md); got %q", title),
-		"pass a Drive file whose title ends with .md, or use doc/docx/sheet/slides for other document types",
+		"unsupported_file_comment_type",
+		fmt.Sprintf("drive +add-comment does not support comments for this Drive file type yet; got %q (%s)", title, extensionLabel),
+		"file comments currently support full comments only for these extensions: "+supportedFileCommentExtensionsText(),
 	)
+}
+
+func fileCommentExtension(title string) string {
+	title = strings.TrimSpace(title)
+	idx := strings.LastIndex(title, ".")
+	if idx == 0 {
+		extension := strings.ToLower(title)
+		if isSupportedFileCommentExtension(extension) {
+			return extension
+		}
+		return ""
+	}
+	if idx < 0 || idx == len(title)-1 {
+		return ""
+	}
+	return strings.ToLower(title[idx:])
+}
+
+func isSupportedFileCommentExtension(extension string) bool {
+	_, ok := supportedFileCommentExtensionSet[strings.TrimSpace(extension)]
+	return ok
+}
+
+func supportedFileCommentExtensionsText() string {
+	return strings.Join(supportedFileCommentExtensions, ", ")
+}
+
+func newSupportedFileCommentExtensionSet(extensions []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(extensions))
+	for _, extension := range extensions {
+		set[extension] = struct{}{}
+	}
+	return set
+}
+
+func validateFileCommentMode(mode commentMode, resolvedObjType string) error {
+	if mode != commentModeLocal {
+		return nil
+	}
+	if resolvedObjType != "" {
+		return output.ErrValidation("wiki resolved to %q, but file comments only support full comments; omit --block-id and --selection-with-ellipsis", resolvedObjType)
+	}
+	return output.ErrValidation("file comments only support full comments; omit --block-id and --selection-with-ellipsis")
 }
 
 func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) error {
@@ -966,13 +1038,13 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 	return nil
 }
 
-func executeMarkdownFileComment(runtime *common.RuntimeContext, target resolvedCommentTarget) error {
+func executeFileComment(runtime *common.RuntimeContext, target resolvedCommentTarget) error {
 	replyElements, err := parseCommentReplyElements(runtime.Str("content"))
 	if err != nil {
 		return err
 	}
 
-	title, err := ensureMarkdownCommentTarget(runtime, target.FileToken)
+	title, extension, err := ensureSupportedFileCommentTarget(runtime, target.FileToken)
 	if err != nil {
 		return err
 	}
@@ -980,7 +1052,7 @@ func executeMarkdownFileComment(runtime *common.RuntimeContext, target resolvedC
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
 	requestBody := buildCommentCreateV2Request("file", "", "", replyElements, nil)
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating markdown file comment in %s\n", common.MaskToken(target.FileToken))
+	fmt.Fprintf(runtime.IO().ErrOut, "Creating file comment in %s (%s)\n", common.MaskToken(target.FileToken), extension)
 
 	data, err := runtime.CallAPI("POST", requestPath, nil, requestBody)
 	if err != nil {
@@ -988,13 +1060,14 @@ func executeMarkdownFileComment(runtime *common.RuntimeContext, target resolvedC
 	}
 
 	out := map[string]interface{}{
-		"comment_id":   data["comment_id"],
-		"doc_id":       target.DocID,
-		"file_token":   target.FileToken,
-		"file_type":    "file",
-		"file_name":    title,
-		"resolved_by":  target.ResolvedBy,
-		"comment_mode": string(commentModeFull),
+		"comment_id":     data["comment_id"],
+		"doc_id":         target.DocID,
+		"file_token":     target.FileToken,
+		"file_type":      "file",
+		"file_name":      title,
+		"file_extension": extension,
+		"resolved_by":    target.ResolvedBy,
+		"comment_mode":   string(commentModeFull),
 	}
 	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
 		out["created_at"] = createdAt

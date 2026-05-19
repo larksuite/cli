@@ -16,7 +16,7 @@ import (
 
 func TestDriveAddCommentMarkdownFileWorkflow(t *testing.T) {
 	if os.Getenv("LARK_DRIVE_MD_COMMENT_E2E") == "" {
-		t.Skip("set LARK_DRIVE_MD_COMMENT_E2E=1 after the backend enables Markdown file comments")
+		t.Skip("set LARK_DRIVE_MD_COMMENT_E2E=1 to run the supported file comment workflow")
 	}
 
 	parentT := t
@@ -54,7 +54,7 @@ func TestDriveAddCommentMarkdownFileWorkflow(t *testing.T) {
 			},
 			DefaultAs: "bot",
 		})
-		clie2e.ReportCleanupFailure(parentT, "delete markdown file "+fileToken, deleteResult, deleteErr)
+		clie2e.ReportCleanupFailure(parentT, "delete file comment target "+fileToken, deleteResult, deleteErr)
 	})
 
 	commentResult, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
@@ -77,5 +77,8 @@ func TestDriveAddCommentMarkdownFileWorkflow(t *testing.T) {
 	}
 	if got := gjson.Get(commentResult.Stdout, "data.file_name").String(); got != fileName {
 		t.Fatalf("data.file_name=%q, want %q\nstdout:\n%s", got, fileName, commentResult.Stdout)
+	}
+	if got := gjson.Get(commentResult.Stdout, "data.file_extension").String(); got != ".md" {
+		t.Fatalf("data.file_extension=%q, want .md\nstdout:\n%s", got, commentResult.Stdout)
 	}
 }

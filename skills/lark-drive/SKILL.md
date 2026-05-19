@@ -130,8 +130,8 @@ Drive Folder (云空间文件夹)
 | 操作 | 需要的 Token | 说明 |
 |------|-------------|------|
 | 读取文档内容 | `file_token` / 通过 `docs +fetch --api-version v2` 自动处理 | `docs +fetch --api-version v2` 支持直接传入 URL |
-| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`sheet` 使用 `<sheetId>!<cell>`，`slides` 使用 `<slide-block-type>!<xml-id>`，且都支持最终解析到对应类型的 wiki URL |
-| 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL |
+| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`sheet` 使用 `<sheetId>!<cell>`，`slides` 使用 `<slide-block-type>!<xml-id>`，且都支持最终解析到对应类型的 wiki URL；Drive file 不支持局部评论 |
+| 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL |
 | 下载文件 | `file_token` | 从文件 URL 中直接提取 |
 | 上传文件 | `folder_token` / `wiki_node_token` | 目标位置的 token |
 | 列出文档评论 | `file_token` | 同添加评论 |
@@ -139,15 +139,16 @@ Drive Folder (云空间文件夹)
 ### 评论能力边界（关键！）
 
 - `drive +add-comment` 支持两种模式。
-- 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
-- 局部评论：传 `--block-id` 时启用；不同文档类型的支持范围与参数格式见 [`drive +add-comment` 行为说明](references/lark-drive-add-comment.md#行为说明)。
+- 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL。
+- 局部评论：传 `--block-id` 时启用；`docx` 支持文本定位或 block id，`sheet` 支持 `<sheetId>!<cell>`，`slides` 支持 `<slide-block-type>!<xml-id>`，wiki URL 解析到这些类型时也支持对应局部评论。Drive file 本次只支持全文评论，不支持局部评论。
+- Drive file 评论仅支持白名单扩展名：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件暂不支持，CLI 会直接报错提示当前还不支持这种类型的评论。
 - Review / 审阅 / 校对 / 逐条指出问题场景优先使用局部评论，不要把多个可定位问题汇总成一条全文评论；具体参数和定位方式见 [`drive +add-comment` 行为说明](references/lark-drive-add-comment.md#行为说明)。
 - `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
 - `slides` 评论要求显式传 `--block-id <slide-block-type>!<xml-id>`；CLI 会将其拆分后写入 `anchor.block_id` 和 `anchor.slide_block_type`。其中 `<xml-id>` 是 PPT XML 协议中的元素 `id`；不支持 `--selection-with-ellipsis` 和 `--full-comment`。
 
 - 评论写入内容（添加评论、回复评论、编辑回复）里的文本不能直接出现 `<`、`>`；提交前必须先转义：`<` -> `&lt;`，`>` -> `&gt;`。
 - 使用 `drive +add-comment` 时，shortcut 会对 `type=text` 的文本元素自动做上述转义兜底；如果直接调用 `drive file.comments create_v2`、`drive file.comment.replys create`、`drive file.comment.replys update`，则需要在请求里自行传入已转义的内容。
-- 如果 wiki 解析后不是 `doc`/`docx`/`sheet`/`slides`，不要用 `+add-comment`。
+- 如果 wiki 解析后不是 `doc`/`docx`/`file`/`sheet`/`slides`，不要用 `+add-comment`。
 - 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`，局部评论传 `anchor.block_id`。
 
 ### 评论查询与统计口径（关键！）
@@ -265,7 +266,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+pull`](references/lark-drive-pull.md) | File-level Drive → local mirror. Duplicate remote `rel_path` conflicts fail by default; for duplicate files, `rename` downloads all copies with stable hashed suffixes, while `newest` / `oldest` pick one. `--if-exists` supports `overwrite` / `smart` / `skip` (`smart` is a best-effort modified-time incremental mode for repeat syncs). `--delete-local` requires `--yes`, only removes regular files, and is skipped after item failures. `--local-dir` must stay inside cwd. |
 | `+sync` | Two-way local ↔ Drive sync. Reuses `+status` diff buckets, pulls `new_remote`, pushes `new_local`, and resolves `modified` via `--on-conflict=remote-wins|local-wins|keep-both|ask`. `--quick` enables best-effort modified-time diffing (timestamp mismatches can still trigger real pull/push actions), `--on-duplicate-remote` supports `fail|newest|oldest`, and the command is intentionally non-destructive (no delete on either side). |
 | [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder |
-| [`+add-comment`](references/lark-drive-add-comment.md) | Add a comment to doc/docx/sheet/slides, also supports wiki URL resolving to doc/docx/sheet/slides |
+| [`+add-comment`](references/lark-drive-add-comment.md) | Add a comment to doc/docx/file/sheet/slides, also supports wiki URL resolving to doc/docx/file/sheet/slides; file targets support selected extensions and full comments only |
 | [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable to a local file with limited polling; supports `--file-name` for local naming |
 | [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token |
 | [`+import`](references/lark-drive-import.md) | Import a local file to Drive as a cloud document (docx, sheet, bitable) |

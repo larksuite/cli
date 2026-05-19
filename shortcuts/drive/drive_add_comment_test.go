@@ -558,7 +558,7 @@ func TestBuildCommentCreateV2RequestFull(t *testing.T) {
 	}
 }
 
-func TestBuildCommentCreateV2RequestMarkdownFile(t *testing.T) {
+func TestBuildCommentCreateV2RequestFile(t *testing.T) {
 	t.Parallel()
 
 	replyElements := []map[string]interface{}{
@@ -576,8 +576,8 @@ func TestBuildCommentCreateV2RequestMarkdownFile(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected anchor map, got %#v", got["anchor"])
 	}
-	if blockID, ok := anchor["block_id"].(string); !ok || blockID != markdownFileFullCommentAnchorBlockID {
-		t.Fatalf("expected markdown file anchor.block_id %q, got %#v", markdownFileFullCommentAnchorBlockID, anchor["block_id"])
+	if blockID, ok := anchor["block_id"].(string); !ok || blockID != fileFullCommentAnchorBlockID {
+		t.Fatalf("expected file anchor.block_id %q, got %#v", fileFullCommentAnchorBlockID, anchor["block_id"])
 	}
 }
 
@@ -951,8 +951,8 @@ func TestFileCommentValidateRejectsBlockID(t *testing.T) {
 		"--block-id", "blk_123",
 		"--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "markdown file comments only support full comments") {
-		t.Fatalf("expected markdown file local-comment rejection, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "file comments only support full comments") {
+		t.Fatalf("expected file local-comment rejection, got: %v", err)
 	}
 }
 
@@ -965,8 +965,8 @@ func TestFileCommentValidateRejectsSelectionWithEllipsis(t *testing.T) {
 		"--selection-with-ellipsis", "something",
 		"--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "markdown file comments only support full comments") {
-		t.Fatalf("expected markdown file local-comment rejection, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "file comments only support full comments") {
+		t.Fatalf("expected file local-comment rejection, got: %v", err)
 	}
 }
 
@@ -1180,7 +1180,7 @@ func TestSheetCommentViaWikiMissingBlockID(t *testing.T) {
 	}
 }
 
-func TestMarkdownFileCommentExecuteSuccess(t *testing.T) {
+func TestFileCommentExecuteSuccess(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: "/open-apis/drive/v1/metas/batch_query",
@@ -1188,7 +1188,7 @@ func TestMarkdownFileCommentExecuteSuccess(t *testing.T) {
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
 				"metas": []interface{}{
-					map[string]interface{}{"title": "README.md"},
+					map[string]interface{}{"title": "README.txt"},
 				},
 			},
 		},
@@ -1217,12 +1217,15 @@ func TestMarkdownFileCommentExecuteSuccess(t *testing.T) {
 	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "file" {
 		t.Fatalf("stdout file_type = %q, want file\nstdout:\n%s", got, stdout.String())
 	}
-	if got := mustStringField(t, data, "file_name", "data.file_name"); got != "README.md" {
-		t.Fatalf("stdout file_name = %q, want README.md\nstdout:\n%s", got, stdout.String())
+	if got := mustStringField(t, data, "file_name", "data.file_name"); got != "README.txt" {
+		t.Fatalf("stdout file_name = %q, want README.txt\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, data, "file_extension", "data.file_extension"); got != ".txt" {
+		t.Fatalf("stdout file_extension = %q, want .txt\nstdout:\n%s", got, stdout.String())
 	}
 }
 
-func TestMarkdownFileCommentExecuteRejectsNonMarkdownFile(t *testing.T) {
+func TestFileCommentExecuteRejectsUnsupportedFileType(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: "/open-apis/drive/v1/metas/batch_query",
@@ -1230,7 +1233,7 @@ func TestMarkdownFileCommentExecuteRejectsNonMarkdownFile(t *testing.T) {
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
 				"metas": []interface{}{
-					map[string]interface{}{"title": "notes.txt"},
+					map[string]interface{}{"title": "notes.pdf"},
 				},
 			},
 		},
@@ -1241,11 +1244,79 @@ func TestMarkdownFileCommentExecuteRejectsNonMarkdownFile(t *testing.T) {
 		"--content", `[{"type":"text","text":"test"}]`,
 		"--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "only supports Markdown Drive files (.md)") {
-		t.Fatalf("expected markdown-file-only error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "does not support comments for this Drive file type yet") {
+		t.Fatalf("expected unsupported file comment type error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "notes.txt") {
-		t.Fatalf("expected error to mention non-markdown title, got: %v", err)
+	if !strings.Contains(err.Error(), "notes.pdf") {
+		t.Fatalf("expected error to mention unsupported title, got: %v", err)
+	}
+}
+
+func TestFileCommentExecuteRejectsUnexpectedMetadataFormat(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"metas": []interface{}{"unexpected"},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/file/fileToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "unexpected metadata format") {
+		t.Fatalf("expected unexpected metadata format error, got: %v", err)
+	}
+}
+
+func TestFileCommentSupportedExtensions(t *testing.T) {
+	t.Parallel()
+
+	supported := []string{
+		"README.md",
+		"notes.TXT",
+		"data.json",
+		"table.csv",
+		"main.go",
+		"app.js",
+		"script.py",
+		"slides.pptx",
+		"image.png",
+		"photo.jpg",
+		"photo.jpeg",
+		".md",
+		"archive.zip",
+		"audio.mp3",
+		"video.mp4",
+	}
+	for _, title := range supported {
+		extension := fileCommentExtension(title)
+		if !isSupportedFileCommentExtension(extension) {
+			t.Fatalf("%s extension %q should be supported", title, extension)
+		}
+	}
+
+	unsupported := []string{
+		"report.pdf",
+		"word.docx",
+		"sheet.xlsx",
+		"unknown.bin",
+		"no-extension",
+		".gitignore",
+	}
+	for _, title := range unsupported {
+		extension := fileCommentExtension(title)
+		if isSupportedFileCommentExtension(extension) {
+			t.Fatalf("%s extension %q should not be supported", title, extension)
+		}
+	}
+	if extension := fileCommentExtension(".gitignore"); extension != "" {
+		t.Fatalf("dotfile extension = %q, want empty", extension)
 	}
 }
 
@@ -1479,7 +1550,7 @@ func TestDryRunDocxFullComment(t *testing.T) {
 	}
 }
 
-func TestDryRunMarkdownFileDirectURL(t *testing.T) {
+func TestDryRunFileDirectURL(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 	err := mountAndRunDrive(t, DriveAddComment, []string{
 		"+add-comment",
@@ -1490,8 +1561,8 @@ func TestDryRunMarkdownFileDirectURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "verify .md metadata") {
-		t.Fatalf("dry-run output missing markdown metadata verification step: %s", stdout.String())
+	if !strings.Contains(stdout.String(), "verify supported file metadata") {
+		t.Fatalf("dry-run output missing supported file metadata verification step: %s", stdout.String())
 	}
 	out := decodeJSONMap(t, stdout.String())
 	api := mustSliceValue(t, out["api"], "api")
@@ -1511,8 +1582,8 @@ func TestDryRunMarkdownFileDirectURL(t *testing.T) {
 		t.Fatalf("comment create file_type = %q, want file\nstdout:\n%s", got, stdout.String())
 	}
 	anchor := mustMapValue(t, createBody["anchor"], "api[1].body.anchor")
-	if got := mustStringField(t, anchor, "block_id", "api[1].body.anchor.block_id"); got != markdownFileFullCommentAnchorBlockID {
-		t.Fatalf("comment create anchor.block_id = %q, want %q\nstdout:\n%s", got, markdownFileFullCommentAnchorBlockID, stdout.String())
+	if got := mustStringField(t, anchor, "block_id", "api[1].body.anchor.block_id"); got != fileFullCommentAnchorBlockID {
+		t.Fatalf("comment create anchor.block_id = %q, want %q\nstdout:\n%s", got, fileFullCommentAnchorBlockID, stdout.String())
 	}
 }
 
@@ -1567,7 +1638,7 @@ func TestResolveWikiToUnsupportedType(t *testing.T) {
 		"--content", `[{"type":"text","text":"test"}]`,
 		"--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "only support doc/docx/sheet/slides") {
+	if err == nil || !strings.Contains(err.Error(), "only support doc/docx/file/sheet/slides") {
 		t.Fatalf("expected unsupported type error, got: %v", err)
 	}
 }
