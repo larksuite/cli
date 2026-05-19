@@ -43,8 +43,8 @@ func ReadState() (*SkillsState, bool, error) {
 	}
 
 	var state SkillsState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, false, nil
+	if json.Unmarshal(data, &state) != nil {
+		state = SkillsState{}
 	}
 	if state.SchemaVersion != stateSchemaVersion {
 		return nil, false, nil

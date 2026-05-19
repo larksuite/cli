@@ -3,6 +3,8 @@
 
 package skillscheck
 
+import "strings"
+
 // Init runs the synchronous skills version check. Stores a StaleNotice when
 // the local skills state records a version that does not match currentVersion.
 // Safe to call from cmd/root.go before rootCmd.Execute(); zero network, zero
@@ -19,7 +21,7 @@ func Init(currentVersion string) {
 	if !ok {
 		return
 	}
-	if version == currentVersion {
+	if strings.TrimPrefix(strings.TrimPrefix(version, "v"), "V") == strings.TrimPrefix(strings.TrimPrefix(currentVersion, "v"), "V") {
 		return
 	}
 	SetPending(&StaleNotice{

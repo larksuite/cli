@@ -38,6 +38,19 @@ func TestInit_ColdStart_NoNotice(t *testing.T) {
 	}
 }
 
+func TestInit_NormalizedVersion_NoNotice(t *testing.T) {
+	clearSkillsSkipEnv(t)
+	resetPending(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{Version: "1.0.21"}); err != nil {
+		t.Fatal(err)
+	}
+	Init("v1.0.21")
+	if got := GetPending(); got != nil {
+		t.Errorf("GetPending() = %+v, want nil (normalized versions are in-sync)", got)
+	}
+}
+
 func TestInit_Drift_NoticeWithStateVersion(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)

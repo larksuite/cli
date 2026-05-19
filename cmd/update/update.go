@@ -397,9 +397,9 @@ func applySkillsResult(env map[string]interface{}, r *skillscheck.SyncResult) {
 func skillsSummary(r *skillscheck.SyncResult) map[string]interface{} {
 	summary := map[string]interface{}{
 		"official":        len(r.Official),
-		"updated":         r.Updated,
-		"added":           r.Added,
-		"skipped_deleted": r.SkippedDeleted,
+		"updated":         len(r.Updated),
+		"added":           len(r.Added),
+		"skipped_deleted": len(r.SkippedDeleted),
 	}
 	if len(r.Failed) > 0 {
 		summary["failed"] = r.Failed
