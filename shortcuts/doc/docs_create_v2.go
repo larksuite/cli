@@ -45,6 +45,10 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	body := buildCreateBody(runtime)
 
+	if err := applyChunkingToBody(body, "content", runtime.Str("doc-format")); err != nil {
+		return err
+	}
+
 	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
 	if err != nil {
 		return err
