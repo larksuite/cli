@@ -115,3 +115,23 @@ func TestAppsHTMLPublishAPI_BusinessErrorHasHint(t *testing.T) {
 		t.Fatalf("missing failure message: %v", exitErr.Detail.Message)
 	}
 }
+
+func TestBuildHTMLPublishFailureHint_UnknownCodeReturnsEmpty(t *testing.T) {
+	// 默认分支：未识别的 code 返回空 hint，让 Agent 用 message 兜底。
+	if hint := buildHTMLPublishFailureHint(99999); hint != "" {
+		t.Fatalf("unknown code should return empty hint, got %q", hint)
+	}
+	if hint := buildHTMLPublishFailureHint(0); hint != "" {
+		t.Fatalf("zero code should return empty hint, got %q", hint)
+	}
+}
+
+func TestBuildHTMLPublishFailureHint_KnownCodes(t *testing.T) {
+	// 测试已知的错误码返回正确的 hint
+	if hint := buildHTMLPublishFailureHint(90001); hint == "" {
+		t.Fatalf("code 90001 should return non-empty hint")
+	}
+	if hint := buildHTMLPublishFailureHint(90002); hint == "" {
+		t.Fatalf("code 90002 should return non-empty hint")
+	}
+}
