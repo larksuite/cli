@@ -27,7 +27,7 @@ When using `--as user`, the message is sent as the authorized end user and requi
 | Send plain text exactly as written | `--text` | Wrapped directly to `{"text":"..."}`; no Markdown conversion |
 | Send simple Markdown and accept Feishu-style rendering | `--markdown` | Automatically converted to `post` JSON |
 | Precisely control the final payload | `--content` | You provide the exact JSON for `text` / `post` / `interactive` / `share_*` / media payloads |
-| Send image / file / video / audio | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads local files automatically |
+| Send image / file / video / audio | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads keys, URLs, or cwd-relative local files automatically |
 
 ### `--text` vs `--markdown`
 
@@ -144,6 +144,12 @@ lark-cli im +messages-send --chat-id oc_xxx --text "Hello" --idempotency-key my-
 lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry-run
 ```
 
+## Media Input Rules
+
+- Media flags accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
+- Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
+- Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
+
 ## Parameters
 
 | Parameter | Required | Description |
@@ -153,11 +159,11 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 | `--text <string>` | One content option | Plain text message. Best default for exact text and preserved formatting. Automatically wrapped as `{"text":"..."}` |
 | `--markdown <string>` | One content option | Convenience Markdown input. Internally converted to `post` JSON with Feishu-specific normalization; not full Markdown passthrough |
 | `--content <json>` | One content option | Exact message content JSON string; use this when you need full control over `msg_type` and payload. The JSON must match the effective `--msg-type` |
-| `--image <path\|key>` | One content option | Local image path or `image_key` (`img_xxx`). Local paths are uploaded automatically |
-| `--file <path\|key>` | One content option | Local file path or `file_key` (`file_xxx`). Local paths are uploaded automatically |
-| `--video <path\|key>` | One content option | Local video path or `file_key`. Local paths are uploaded automatically. **Must be paired with `--video-cover`** |
-| `--video-cover <path\|key>` | **Required with `--video`** | Video cover image path or `image_key` (`img_xxx`). Local paths are uploaded automatically |
-| `--audio <path\|key>` | One content option | Local audio path or `file_key`. Local paths are uploaded automatically |
+| `--image <path\|url\|key>` | One content option | Cwd-relative local image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically |
+| `--file <path\|url\|key>` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically |
+| `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key`. Local paths and URLs are uploaded automatically. **Must be paired with `--video-cover`** |
+| `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically |
+| `--audio <path\|url\|key>` | One content option | Cwd-relative local audio path, URL, or `file_key`. Local paths and URLs are uploaded automatically |
 | `--msg-type <type>` | No | Message type (default `text`). If you use `--text` / `--markdown` / media flags, the effective type is inferred automatically. Explicitly setting a conflicting `--msg-type` fails validation |
 | `--idempotency-key <key>` | No | Idempotency key; the same key sends only one message within 1 hour |
 | `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`) |
@@ -211,7 +217,7 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - `--chat-id` and `--user-id` are mutually exclusive; you must provide exactly one
 - `--content` must be valid JSON
 - When using `--content`, you are responsible for making the JSON structure match the effective `msg_type`
-- `--image`/`--file`/`--video`/`--audio` support local file paths; the shortcut uploads first and then sends the message; both the upload and send steps use the same identity (UAT when `--as user`, TAT when `--as bot`)
+- `--image`/`--file`/`--video`/`--audio` support existing keys, URLs, and cwd-relative local file paths; the shortcut uploads local paths and URLs first, then sends the message; both the upload and send steps use the same identity (UAT when `--as user`, TAT when `--as bot`)
 - If the provided media value starts with `img_` or `file_`, it is treated as an existing key and used directly
 - `--markdown` always sends `msg_type=post`, even if you do not explicitly set `--msg-type post`
 - If you explicitly set `--msg-type` and it conflicts with the chosen content flag, validation fails

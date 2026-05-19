@@ -33,11 +33,11 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
 		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
 		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
-		{Name: "image", Desc: "image_key, local file path"},
-		{Name: "file", Desc: "file_key, local file path"},
-		{Name: "video", Desc: "video file_key, local file path; must be used together with --video-cover"},
-		{Name: "video-cover", Desc: "video cover image_key, local file path; required when using --video"},
-		{Name: "audio", Desc: "audio file_key, local file path"},
+		{Name: "image", Desc: imImageFlagDesc},
+		{Name: "file", Desc: imFileFlagDesc},
+		{Name: "video", Desc: imVideoFlagDesc},
+		{Name: "video-cover", Desc: imVideoCoverFlagDesc},
+		{Name: "audio", Desc: imAudioFlagDesc},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatFlag := runtime.Str("chat-id")

@@ -34,6 +34,14 @@ var mentionFixRe = regexp.MustCompile(`<at\s+(id|open_id|user_id)=("?)([^"\s/>]+
 var threadIDRe = regexp.MustCompile(`^omt_`)
 var messageIDRe = regexp.MustCompile(`^om_`)
 
+const (
+	imImageFlagDesc      = "image_key, URL, or cwd-relative local path (absolute paths and .. are rejected)"
+	imFileFlagDesc       = "file_key, URL, or cwd-relative local path (absolute paths and .. are rejected)"
+	imVideoFlagDesc      = "video file_key, URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"
+	imVideoCoverFlagDesc = "video cover image_key, URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"
+	imAudioFlagDesc      = "audio file_key, URL, or cwd-relative local path (absolute paths and .. are rejected)"
+)
+
 func flagMessageID(rt *common.RuntimeContext) (string, error) {
 	id := strings.TrimSpace(rt.Str("message-id"))
 	if id == "" {
