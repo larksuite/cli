@@ -170,6 +170,24 @@ func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec)
 	return size, nil
 }
 
+func openMarkdownDownloadVersion(ctx context.Context, runtime *common.RuntimeContext, fileToken, version string) (*http.Response, string, error) {
+	req := &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
+	}
+	if strings.TrimSpace(version) != "" {
+		req.QueryParams = larkcore.QueryParams{
+			"version": []string{strings.TrimSpace(version)},
+		}
+	}
+
+	resp, err := runtime.DoAPIStream(ctx, req)
+	if err != nil {
+		return nil, "", output.ErrNetwork("download failed: %s", err)
+	}
+	return resp, fileNameFromDownloadHeader(resp.Header, fileToken+".md"), nil
+}
+
 func markdownDryRunFileField(spec markdownUploadSpec) string {
 	if spec.FilePath != "" {
 		return "@" + spec.FilePath

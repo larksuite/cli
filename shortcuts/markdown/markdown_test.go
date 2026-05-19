@@ -182,7 +182,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 	t.Parallel()
 
 	got := Shortcuts()
-	want := []string{"+create", "+fetch", "+patch", "+overwrite"}
+	want := []string{"+create", "+diff", "+fetch", "+patch", "+overwrite"}
 
 	if len(got) != len(want) {
 		t.Fatalf("len(Shortcuts()) = %d, want %d", len(got), len(want))

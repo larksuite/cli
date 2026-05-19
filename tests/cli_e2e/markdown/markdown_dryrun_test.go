@@ -96,6 +96,62 @@ func TestMarkdownCreateDryRun_RejectsEmptyContent(t *testing.T) {
 	assert.Contains(t, errMsg, "empty markdown content is not supported")
 }
 
+func TestMarkdownDiffDryRun_RemoteVsRemote(t *testing.T) {
+	setMarkdownDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+diff",
+			"--file-token", "boxcnMarkdownDryRun",
+			"--from-version", "7633658129540910621",
+			"--to-version", "7633658129540910628",
+			"--context-lines", "1",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, `"mode": "remote_vs_remote"`)
+	assert.Contains(t, output, `"version": "7633658129540910621"`)
+	assert.Contains(t, output, `"version": "7633658129540910628"`)
+	assert.Contains(t, output, `"context_lines": 1`)
+}
+
+func TestMarkdownDiffDryRun_RemoteVsLocal(t *testing.T) {
+	setMarkdownDryRunConfigEnv(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(dir+"/draft.md", []byte("# draft\n"), 0o644))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+diff",
+			"--file-token", "boxcnMarkdownDryRun",
+			"--file", "./draft.md",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+		WorkDir:   dir,
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, `"mode": "remote_vs_local"`)
+	assert.Contains(t, output, `"local_file": "./draft.md"`)
+}
+
 func TestMarkdownFetchDryRun_OutputFile(t *testing.T) {
 	setMarkdownDryRunConfigEnv(t)
 

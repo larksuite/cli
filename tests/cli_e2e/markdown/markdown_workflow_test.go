@@ -6,10 +6,12 @@ package markdown
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -126,4 +128,54 @@ func TestMarkdownLifecycleWorkflow(t *testing.T) {
 	fetchUpdatedResult.AssertExitCode(t, 0)
 	fetchUpdatedResult.AssertStdoutStatus(t, true)
 	require.Equal(t, updatedContent, gjson.Get(fetchUpdatedResult.Stdout, "data.content").String(), "stdout:\n%s", fetchUpdatedResult.Stdout)
+
+	historyResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+version-history",
+			"--file-token", fileToken,
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	historyResult.AssertExitCode(t, 0)
+	historyResult.AssertStdoutStatus(t, true)
+
+	latestVersion := gjson.Get(overwriteResult.Stdout, "data.version").String()
+	require.NotEmpty(t, latestVersion, "stdout:\n%s", overwriteResult.Stdout)
+
+	versions := gjson.Get(historyResult.Stdout, "data.versions").Array()
+	require.GreaterOrEqual(t, len(versions), 2, "stdout:\n%s", historyResult.Stdout)
+
+	var previousVersion string
+	for _, version := range versions {
+		candidate := version.Get("version").String()
+		if candidate != "" && candidate != latestVersion {
+			previousVersion = candidate
+			break
+		}
+	}
+	require.NotEmpty(t, previousVersion, "stdout:\n%s", historyResult.Stdout)
+
+	diffResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+diff",
+			"--file-token", fileToken,
+			"--from-version", previousVersion,
+			"--to-version", latestVersion,
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	diffResult.AssertExitCode(t, 0)
+	diffResult.AssertStdoutStatus(t, true)
+
+	assert.True(t, gjson.Get(diffResult.Stdout, "data.changed").Bool(), "stdout:\n%s", diffResult.Stdout)
+	assert.Equal(t, "remote_vs_remote", gjson.Get(diffResult.Stdout, "data.mode").String(), "stdout:\n%s", diffResult.Stdout)
+	assert.Equal(t, previousVersion, gjson.Get(diffResult.Stdout, "data.from_version").String(), "stdout:\n%s", diffResult.Stdout)
+	assert.Equal(t, latestVersion, gjson.Get(diffResult.Stdout, "data.to_version").String(), "stdout:\n%s", diffResult.Stdout)
+	assert.GreaterOrEqual(t, len(gjson.Get(diffResult.Stdout, "data.hunks").Array()), 1, "stdout:\n%s", diffResult.Stdout)
+
+	diffText := gjson.Get(diffResult.Stdout, "data.diff").String()
+	assert.True(t, strings.Contains(diffText, "-hello markdown workflow") || strings.Contains(diffText, "-# Initial"), "stdout:\n%s", diffResult.Stdout)
+	assert.True(t, strings.Contains(diffText, "+new body") || strings.Contains(diffText, "+# Updated"), "stdout:\n%s", diffResult.Stdout)
 }

@@ -16,6 +16,7 @@ func TestRegisterShortcutsMountsMarkdownCommands(t *testing.T) {
 
 	for _, path := range [][]string{
 		{"markdown", "+create"},
+		{"markdown", "+diff"},
 		{"markdown", "+fetch"},
 		{"markdown", "+overwrite"},
 	} {
