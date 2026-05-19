@@ -100,6 +100,27 @@ func TestDetectAttachmentImageDimensions(t *testing.T) {
 	}
 }
 
+func TestAttachmentImageDimensionsWarningEnabled(t *testing.T) {
+	tests := []struct {
+		mimeType string
+		want     bool
+	}{
+		{mimeType: "image/gif", want: true},
+		{mimeType: "image/jpeg", want: true},
+		{mimeType: "image/png", want: true},
+		{mimeType: "image/webp", want: false},
+		{mimeType: "application/pdf", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.mimeType, func(t *testing.T) {
+			if got := attachmentImageDimensionsWarningEnabled(tt.mimeType); got != tt.want {
+				t.Fatalf("attachmentImageDimensionsWarningEnabled(%q) = %v, want %v", tt.mimeType, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDetectAttachmentMIMETypeWrapsOpenError(t *testing.T) {
 	fio := attachmentTestFileIO{openErr: os.ErrNotExist}
 

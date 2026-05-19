@@ -499,7 +499,7 @@ func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, 
 	if width, height, ok := detectAttachmentImageDimensions(runtime.FileIO(), filePath, mimeType); ok {
 		attachment["image_width"] = width
 		attachment["image_height"] = height
-	} else if strings.HasPrefix(mimeType, "image/") {
+	} else if attachmentImageDimensionsWarningEnabled(mimeType) {
 		fmt.Fprintf(runtime.IO().ErrOut, "Warning: image dimensions unavailable for %s; attachment may display as square\n", fileName)
 	}
 	return attachment, nil
@@ -572,6 +572,15 @@ func detectAttachmentImageDimensions(fio fileio.FileIO, filePath string, mimeTyp
 		return 0, 0, false
 	}
 	return cfg.Width, cfg.Height, true
+}
+
+func attachmentImageDimensionsWarningEnabled(mimeType string) bool {
+	switch mimeType {
+	case "image/gif", "image/jpeg", "image/png":
+		return true
+	default:
+		return false
+	}
 }
 
 type baseAttachmentDownloadItem struct {
