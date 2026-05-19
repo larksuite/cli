@@ -45,6 +45,7 @@ linters:
       - path: _test\.go$
         linters:
           - bodyclose
+          - bidichk
           - gocritic
           - depguard
           - forbidigo
