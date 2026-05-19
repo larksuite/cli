@@ -30,7 +30,7 @@ support:
 
 ## Typical deployment
 
-```
+```text
                     Trusted Host
     ┌──────────────────────────────────────────────┐
     │  sidecar instance A (port 16384)             │
@@ -69,7 +69,7 @@ support:
 
 ## Architecture
 
-```
+```text
 ┌──────────────────────────────────────────────────────┐
 │                    Sidecar Server                     │
 │                                                      │
@@ -113,7 +113,7 @@ lark-cli config init --new   # set app_id / app_secret
 
 ### 2. Prepare the keys directory
 
-```
+```text
 keys/
 ├── proxy.key          # shared key (auto-generated on first run)
 ├── alice.key          # client "alice" — generate with: openssl rand -hex 32 > alice.key

@@ -32,6 +32,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -66,6 +67,20 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 	}
 	if listen == "" {
 		return fmt.Errorf("invalid --listen address: empty")
+	}
+
+	if _, err := validate.SafeInputPath(keyFile); err != nil {
+		return fmt.Errorf("invalid --key-file path: %w", err)
+	}
+	if logFile != "" {
+		if _, err := validate.SafeInputPath(logFile); err != nil {
+			return fmt.Errorf("invalid --log-file path: %w", err)
+		}
+	}
+	if keysDir != "" {
+		if _, err := validate.SafeInputPath(keysDir); err != nil {
+			return fmt.Errorf("invalid --keys-dir path: %w", err)
+		}
 	}
 
 	// Reuse existing key if present; generate a new one only on first run.

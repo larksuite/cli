@@ -372,16 +372,19 @@ func TestProxyHandler_RejectsAuthHeaderNotInAllowlist(t *testing.T) {
 }
 
 // TestProxyHandler_AcceptsAllowedAuthHeaders confirms the three protocol
-// header names remain accepted after the allowlist is enforced. Uses
-// newTestHandler which has no upstream forwarding set up, so reaching the
-// forward step is proof the auth-header check passed.
+// header names remain accepted after the allowlist is enforced. A local
+// TLS test server stands in for the upstream so the test is fully offline.
 func TestProxyHandler_AcceptsAllowedAuthHeaders(t *testing.T) {
 	key := []byte("test-key")
 
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
+
 	for _, good := range []string{"Authorization", sidecar.HeaderMCPUAT, sidecar.HeaderMCPTAT} {
 		t.Run(good, func(t *testing.T) {
-			// Use a handler with a real (fake) credential provider so we can
-			// distinguish auth-header reject (403) from later failures.
 			cred := credential.NewCredentialProvider(
 				[]extcred.Provider{&fakeExtProvider{token: "real-token"}},
 				nil, nil, nil,
@@ -391,38 +394,29 @@ func TestProxyHandler_AcceptsAllowedAuthHeaders(t *testing.T) {
 				cred:         cred,
 				appID:        "cli_test",
 				logger:       discardLogger(),
-				forwardCl:    &http.Client{},
-				allowedHosts: map[string]bool{"open.feishu.cn": true},
+				forwardCl:    upstream.Client(),
+				allowedHosts: map[string]bool{upstreamHost: true},
 				allowedIDs:   map[string]bool{sidecar.IdentityUser: true, sidecar.IdentityBot: true},
 			}
 
-			req := signedReq(t, key, "GET", "https://open.feishu.cn", "/open-apis/test", nil)
+			req := signedReq(t, key, "GET", "https://"+upstreamHost, "/open-apis/test", nil)
 			req.Header.Set(sidecar.HeaderProxyAuthHeader, good)
 			resign(t, key, req, nil)
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, req)
-			// Expect NOT 403 "auth-header not allowed" — the request will fail
-			// at forward (502 because open.feishu.cn isn't reachable without
-			// an actual upstream in tests), but it must get past our check.
-			if w.Code == http.StatusForbidden && strings.Contains(w.Body.String(), "auth-header not allowed") {
-				t.Errorf("authHeader=%q was rejected by allowlist: %s", good, w.Body.String())
+			if w.Code != http.StatusOK {
+				t.Fatalf("authHeader=%q: expected 200, got %d body=%s", good, w.Code, w.Body.String())
 			}
 		})
 	}
 }
 
 func TestRun_RejectsSelfProxy(t *testing.T) {
-	old, had := os.LookupEnv(envvars.CliAuthProxy)
-	os.Setenv(envvars.CliAuthProxy, "http://127.0.0.1:16384")
-	defer func() {
-		if had {
-			os.Setenv(envvars.CliAuthProxy, old)
-		} else {
-			os.Unsetenv(envvars.CliAuthProxy)
-		}
-	}()
+	t.Setenv(envvars.CliAuthProxy, "http://127.0.0.1:16384")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	keyPath := filepath.Join(t.TempDir(), "proxy.key")
 
-	err := run(context.Background(), "127.0.0.1:0", "/tmp/should-not-be-created.key", "", "", "")
+	err := run(context.Background(), "127.0.0.1:0", keyPath, "", "", "")
 	if err == nil {
 		t.Fatal("expected error when AUTH_PROXY is set")
 	}
@@ -751,7 +745,9 @@ func TestLoadClientKeys_SkipsProxyAndNonKeyFiles(t *testing.T) {
 	writeKeyFile(t, dir, "proxy.key", sharedKey)
 	writeKeyFile(t, dir, "alice.key", strings.Repeat("bb", 32))
 	writeKeyFile(t, dir, "notes.txt", "not a key")
-	os.MkdirAll(filepath.Join(dir, "subdir.key"), 0755) // directory named *.key
+	if err := os.MkdirAll(filepath.Join(dir, "subdir.key"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	var logBuf bytes.Buffer
 	h := &proxyHandler{
