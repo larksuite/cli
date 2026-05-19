@@ -451,6 +451,7 @@ func TestWikiNodeCreateMountedExecuteWithExplicitSpaceID(t *testing.T) {
 					"origin_node_token": "",
 					"title":             "Wiki Node",
 					"has_child":         false,
+					"url":               "https://abc.feishu.cn/wiki/wik_created_real",
 				},
 			},
 			"msg": "success",
@@ -484,8 +485,8 @@ func TestWikiNodeCreateMountedExecuteWithExplicitSpaceID(t *testing.T) {
 	if envelope.Data["node_token"] != "wik_created" {
 		t.Fatalf("node_token = %#v, want %q", envelope.Data["node_token"], "wik_created")
 	}
-	if got, want := envelope.Data["url"], "https://www.feishu.cn/wiki/wik_created"; got != want {
-		t.Fatalf("url = %#v, want %q", got, want)
+	if got, want := envelope.Data["url"], "https://abc.feishu.cn/wiki/wik_created_real"; got != want {
+		t.Fatalf("url = %#v, want %q (response url must win over synthesized fallback)", got, want)
 	}
 
 	var captured map[string]interface{}
@@ -626,5 +627,49 @@ func TestAugmentWikiNodeCreateOutputReturnsEmptyMapForNilInput(t *testing.T) {
 
 	if got := augmentWikiNodeCreateOutput(nil, &wikiNodeCreateExecution{}); len(got) != 0 {
 		t.Fatalf("augmentWikiNodeCreateOutput(nil, empty execution) = %#v, want empty map", got)
+	}
+}
+
+func TestWikiNodeURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		node *wikiNodeRecord
+		want string
+	}{
+		{
+			name: "prefers response url over synthesized fallback",
+			node: &wikiNodeRecord{NodeToken: "wik_token", URL: "https://abc.feishu.cn/wiki/wik_real"},
+			want: "https://abc.feishu.cn/wiki/wik_real",
+		},
+		{
+			name: "falls back to synthesized url when response omits it",
+			node: &wikiNodeRecord{NodeToken: "wik_token"},
+			want: "https://www.feishu.cn/wiki/wik_token",
+		},
+		{
+			name: "blank response url is treated as absent",
+			node: &wikiNodeRecord{NodeToken: "wik_token", URL: "   "},
+			want: "https://www.feishu.cn/wiki/wik_token",
+		},
+		{
+			name: "nil node yields empty string",
+			node: nil,
+			want: "",
+		},
+		{
+			name: "no token and no url yields empty string",
+			node: &wikiNodeRecord{},
+			want: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := wikiNodeURL(core.BrandFeishu, tc.node); got != tc.want {
+				t.Fatalf("wikiNodeURL() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

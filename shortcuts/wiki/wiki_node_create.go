@@ -118,6 +118,7 @@ type wikiNodeRecord struct {
 	OriginNodeToken string
 	Title           string
 	HasChild        bool
+	URL             string
 }
 
 // wikiSpaceRecord contains the response fields used when resolving spaces.
@@ -456,7 +457,22 @@ func parseWikiNodeRecord(node map[string]interface{}) (*wikiNodeRecord, error) {
 		OriginNodeToken: common.GetString(node, "origin_node_token"),
 		Title:           common.GetString(node, "title"),
 		HasChild:        common.GetBool(node, "has_child"),
+		URL:             common.GetString(node, "url"),
 	}, nil
+}
+
+// wikiNodeURL returns the user-facing link for a wiki node. The create/copy
+// OpenAPI responses carry a real `url` (undocumented in the server-docs schema
+// but present in practice); prefer it so the CLI surfaces the canonical link.
+// Fall back to BuildResourceURL synthesis only when the response omits it.
+func wikiNodeURL(brand core.LarkBrand, node *wikiNodeRecord) string {
+	if node == nil {
+		return ""
+	}
+	if u := strings.TrimSpace(node.URL); u != "" {
+		return u
+	}
+	return common.BuildResourceURL(brand, "wiki", node.NodeToken)
 }
 
 func parseWikiSpaceRecord(space map[string]interface{}) (*wikiSpaceRecord, error) {
@@ -498,7 +514,7 @@ func augmentWikiNodeCreateOutput(runtime *common.RuntimeContext, execution *wiki
 	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, execution.Node.NodeToken, "wiki"); grant != nil {
 		out["permission_grant"] = grant
 	}
-	if u := common.BuildResourceURL(runtime.Config.Brand, "wiki", execution.Node.NodeToken); u != "" {
+	if u := wikiNodeURL(runtime.Config.Brand, execution.Node); u != "" {
 		out["url"] = u
 	}
 	return out

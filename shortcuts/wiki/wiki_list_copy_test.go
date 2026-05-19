@@ -415,6 +415,7 @@ func TestWikiNodeCopyCopiesNodeToTargetSpace(t *testing.T) {
 					"node_type":         "origin",
 					"title":             "Architecture (Copy)",
 					"has_child":         false,
+					"url":               "https://abc.feishu.cn/wiki/wik_copied_real",
 				},
 			},
 			"msg": "success",
@@ -450,6 +451,9 @@ func TestWikiNodeCopyCopiesNodeToTargetSpace(t *testing.T) {
 	}
 	if envelope.Data["space_id"] != "space_dst" {
 		t.Fatalf("space_id = %v, want %q", envelope.Data["space_id"], "space_dst")
+	}
+	if got, want := envelope.Data["url"], "https://abc.feishu.cn/wiki/wik_copied_real"; got != want {
+		t.Fatalf("url = %#v, want %q (copy must surface the response url)", got, want)
 	}
 
 	var captured map[string]interface{}

@@ -89,6 +89,9 @@ var WikiNodeCopy = common.Shortcut{
 		fmt.Fprintf(runtime.IO().ErrOut, "Copied to node %s in space %s\n",
 			common.MaskToken(node.NodeToken), common.MaskToken(node.SpaceID))
 		out := wikiNodeCopyOutput(node)
+		if u := wikiNodeURL(runtime.Config.Brand, node); u != "" {
+			out["url"] = u
+		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			renderWikiNodeCopyPretty(w, out)
 		})
@@ -105,6 +108,9 @@ func renderWikiNodeCopyPretty(w io.Writer, out map[string]interface{}) {
 	fmt.Fprintf(w, "  obj_token:         %s\n", valueOrDash(out["obj_token"]))
 	if parent, _ := out["parent_node_token"].(string); parent != "" {
 		fmt.Fprintf(w, "  parent_node_token: %s\n", parent)
+	}
+	if url, _ := out["url"].(string); url != "" {
+		fmt.Fprintf(w, "  url:               %s\n", url)
 	}
 }
 
