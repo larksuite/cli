@@ -12,15 +12,15 @@ import (
 
 // ─── lark_sheet_range_operations ──────────────────────────────────────
 //
-// Four tools, eight shortcuts:
+// Four tools, nine shortcuts:
 //
 //   - clear_cell_range  → +cells-clear              (high-risk-write)
 //   - merge_cells       → +cells-merge / +cells-unmerge
-//   - resize_range      → +dim-resize
+//   - resize_range      → +rows-resize / +cols-resize
 //   - transform_range   → +range-move / +range-copy / +range-fill / +range-sort
 //
-// +dim-resize is grouped under "工作表" for CLI discoverability even though
-// the backing tool lives in this skill.
+// +rows-resize / +cols-resize are grouped under "工作表" for CLI discoverability
+// even though the backing tool lives in this skill.
 
 // CellsClear wraps clear_cell_range.
 //
@@ -178,56 +178,44 @@ func mergeInput(runtime *common.RuntimeContext, token, sheetID, sheetName, op st
 	return input
 }
 
-// DimResize wraps resize_range to set row heights or column widths. --size
-// is the target pixel count; --reset restores the sheet default.
+// resize_range now exposes two CLI shortcuts:
 //
-// The tool's resize_height / resize_width fields take an object shape; until
-// the new endpoint is observable in production we wrap the pixel value as
-// {value: <px>}. Pass --reset to send {reset: true} instead.
-var DimResize = common.Shortcut{
+//   +rows-resize / +cols-resize — set row heights / column widths. The new
+//   --type enum (pixel / standard / [auto]) replaces the old --size/--reset
+//   pair; --type pixel still takes a --size pixel value, --type standard
+//   restores the sheet default, --type auto auto-fits row heights (rows only).
+//
+// Wire shape: resize_height / resize_width carries { type, value? }, e.g.
+//   { "type": "pixel", "value": 30 }  or  { "type": "standard" }.
+//
+// Both shortcuts share the underlying resize_range tool; --end is inclusive
+// in the new CLI surface (was exclusive in the legacy +dim-resize).
+
+var rowsResizeTypeEnum = []string{"pixel", "standard", "auto"}
+var colsResizeTypeEnum = []string{"pixel", "standard"}
+
+// RowsResize wraps resize_range for row heights. --type auto enables
+// auto-fit (rows only); --type pixel requires --size.
+var RowsResize = common.Shortcut{
 	Service:     "sheets",
-	Command:     "+dim-resize",
-	Description: "Set row heights or column widths in a range (--size px or --reset to default).",
+	Command:     "+rows-resize",
+	Description: "Resize rows by pixel / standard / auto (--type pixel needs --size; --start/--end are 0-based inclusive).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "dimension", Required: true, Enum: dimEnum, Desc: "`row` or `column`"},
-		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start position (inclusive)"},
-		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end position (exclusive)"},
-		common.Flag{Name: "size", Type: "int", Default: "0", Desc: "target size in pixels"},
-		common.Flag{Name: "reset", Type: "bool", Desc: "reset to default size (mutually exclusive with --size)"},
+		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start row (inclusive)"},
+		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end row (inclusive)"},
+		common.Flag{Name: "type", Required: true, Enum: rowsResizeTypeEnum,
+			Desc: "sizing mode: `pixel` (needs --size) / `standard` (reset to default) / `auto` (auto-fit row height)"},
+		common.Flag{Name: "size", Type: "int", Default: "0", Desc: "row height in pixels (e.g. 30); required with --type pixel, ignored otherwise"},
 	),
-	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if _, err := resolveSpreadsheetToken(runtime); err != nil {
-			return err
-		}
-		if _, _, err := resolveSheetSelector(runtime); err != nil {
-			return err
-		}
-		if !runtime.Changed("dimension") {
-			return common.FlagErrorf("--dimension is required")
-		}
-		if !runtime.Changed("start") || !runtime.Changed("end") {
-			return common.FlagErrorf("--start and --end are required")
-		}
-		if runtime.Int("start") < 0 || runtime.Int("end") <= runtime.Int("start") {
-			return common.FlagErrorf("invalid range: --start (%d) must be >= 0 and --end (%d) must be greater", runtime.Int("start"), runtime.Int("end"))
-		}
-		hasSize := runtime.Changed("size") && runtime.Int("size") > 0
-		if !hasSize && !runtime.Bool("reset") {
-			return common.FlagErrorf("specify either --size <px> or --reset")
-		}
-		if hasSize && runtime.Bool("reset") {
-			return common.FlagErrorf("--size and --reset are mutually exclusive")
-		}
-		return nil
-	},
+	Validate: validateResize("row"),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		return invokeToolDryRun(token, ToolKindWrite, "resize_range", dimResizeInput(runtime, token, sheetID, sheetName))
+		return invokeToolDryRun(token, ToolKindWrite, "resize_range", resizeInput(runtime, token, sheetID, sheetName, "row"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
@@ -238,7 +226,7 @@ var DimResize = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		out, err := callTool(ctx, runtime, token, ToolKindWrite, "resize_range", dimResizeInput(runtime, token, sheetID, sheetName))
+		out, err := callTool(ctx, runtime, token, ToolKindWrite, "resize_range", resizeInput(runtime, token, sheetID, sheetName, "row"))
 		if err != nil {
 			return err
 		}
@@ -247,21 +235,106 @@ var DimResize = common.Shortcut{
 	},
 }
 
-func dimResizeInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) map[string]interface{} {
-	dim := runtime.Str("dimension")
-	rangeStr := dimRange(dim, runtime.Int("start"), runtime.Int("end"))
+// ColsResize wraps resize_range for column widths. Column widths do not
+// support auto-fit — --type only accepts pixel / standard.
+var ColsResize = common.Shortcut{
+	Service:     "sheets",
+	Command:     "+cols-resize",
+	Description: "Resize columns by pixel / standard (--type pixel needs --size; --start/--end are 0-based inclusive; no auto for cols).",
+	Risk:        "write",
+	Scopes:      []string{"sheets:spreadsheet:write_only"},
+	AuthTypes:   []string{"user", "bot"},
+	HasFormat:   true,
+	Flags: append(publicSheetFlags(),
+		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start column (inclusive)"},
+		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end column (inclusive)"},
+		common.Flag{Name: "type", Required: true, Enum: colsResizeTypeEnum,
+			Desc: "sizing mode: `pixel` (needs --size) / `standard` (reset to default); `auto` is rows-only"},
+		common.Flag{Name: "size", Type: "int", Default: "0", Desc: "column width in pixels (e.g. 120); required with --type pixel, ignored otherwise"},
+	),
+	Validate: validateResize("column"),
+	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		token, _ := resolveSpreadsheetToken(runtime)
+		sheetID, sheetName, _ := resolveSheetSelector(runtime)
+		return invokeToolDryRun(token, ToolKindWrite, "resize_range", resizeInput(runtime, token, sheetID, sheetName, "column"))
+	},
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		token, err := resolveSpreadsheetToken(runtime)
+		if err != nil {
+			return err
+		}
+		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		if err != nil {
+			return err
+		}
+		out, err := callTool(ctx, runtime, token, ToolKindWrite, "resize_range", resizeInput(runtime, token, sheetID, sheetName, "column"))
+		if err != nil {
+			return err
+		}
+		runtime.Out(out, nil)
+		return nil
+	},
+}
+
+// validateResize returns a Validate closure shared by both rows/cols shortcuts.
+// dimension is either "row" or "column"; the closure rejects --type auto on
+// columns (column widths do not support auto-fit).
+func validateResize(dimension string) func(ctx context.Context, runtime *common.RuntimeContext) error {
+	return func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if _, err := resolveSpreadsheetToken(runtime); err != nil {
+			return err
+		}
+		if _, _, err := resolveSheetSelector(runtime); err != nil {
+			return err
+		}
+		if !runtime.Changed("start") || !runtime.Changed("end") {
+			return common.FlagErrorf("--start and --end are required")
+		}
+		if runtime.Int("start") < 0 || runtime.Int("end") < runtime.Int("start") {
+			return common.FlagErrorf("invalid range: --start (%d) must be >= 0 and --end (%d) must be >= --start", runtime.Int("start"), runtime.Int("end"))
+		}
+		typ := strings.TrimSpace(runtime.Str("type"))
+		if typ == "" {
+			return common.FlagErrorf("--type is required (pixel / standard%s)", autoSuffix(dimension))
+		}
+		if dimension == "column" && typ == "auto" {
+			return common.FlagErrorf("--type auto is rows-only (column widths do not support auto-fit); use +rows-resize")
+		}
+		hasSize := runtime.Changed("size") && runtime.Int("size") > 0
+		if typ == "pixel" && !hasSize {
+			return common.FlagErrorf("--type pixel requires --size <px>")
+		}
+		if typ != "pixel" && hasSize {
+			return common.FlagErrorf("--size is only valid with --type pixel")
+		}
+		return nil
+	}
+}
+
+// autoSuffix appends " / auto" to the enum hint for rows.
+func autoSuffix(dimension string) string {
+	if dimension == "row" {
+		return " / auto"
+	}
+	return ""
+}
+
+// resizeInput builds the resize_range tool input. dimension is "row" /
+// "column"; --end is inclusive on the CLI surface, dimRange wants
+// exclusive end, so it is bumped by one here.
+func resizeInput(runtime *common.RuntimeContext, token, sheetID, sheetName, dimension string) map[string]interface{} {
+	rangeStr := dimRange(dimension, runtime.Int("start"), runtime.Int("end")+1)
 	input := map[string]interface{}{
 		"excel_id": token,
 		"range":    rangeStr,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
-	var sizeBlock interface{}
-	if runtime.Bool("reset") {
-		sizeBlock = map[string]interface{}{"reset": true}
-	} else {
-		sizeBlock = map[string]interface{}{"value": runtime.Int("size")}
+	typ := strings.TrimSpace(runtime.Str("type"))
+	sizeBlock := map[string]interface{}{"type": typ}
+	if typ == "pixel" {
+		sizeBlock["value"] = runtime.Int("size")
 	}
-	if dim == "row" {
+	if dimension == "row" {
 		input["resize_height"] = sizeBlock
 	} else {
 		input["resize_width"] = sizeBlock

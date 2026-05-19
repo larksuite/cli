@@ -248,7 +248,7 @@ func TestCellsSetImage_RangeMustBeSingleCell(t *testing.T) {
 }
 
 // TestRangeDimensions exercises the A1 parser's corner cases used by
-// cells-set-style / dropdown-set / dim-resize.
+// cells-set-style / dropdown-set / rows-resize / cols-resize.
 func TestRangeDimensions(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

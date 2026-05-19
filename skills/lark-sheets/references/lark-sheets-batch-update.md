@@ -14,7 +14,7 @@
 
 **⚠️ 何时必须使用 `+batch-update`（硬性要求）**：
 - 需要对**多个**不同区域执行 `+cells-{merge|unmerge}` 时（如按分组合并多列相同内容）
-- 需要对**多个**不同区域执行 `+dim-resize` 时（如统一调整多列列宽或多行行高）
+- 需要对**多个**不同区域执行 `+rows-resize / +cols-resize` 时（如统一调整多列列宽或多行行高）
 - 需要先插入行列再写入数据时（`+dim-{insert|delete|hide|unhide|freeze|group|ungroup}` + `+cells-set`）
 - 需要对多个区域执行不同写入操作时（多次 `+cells-set` + `+cells-clear` 等组合）
 

@@ -19,8 +19,8 @@ import (
 // end; the tool wants 1-based inclusive row numbers ("3:7") or column
 // letters ("C:F"). The conversion lives in dimRange / dimPosition below.
 //
-// +dim-resize lives in lark_sheet_range_operations (different tool); it is
-// only grouped under "工作表" for discoverability.
+// +rows-resize / +cols-resize live in lark_sheet_range_operations (different
+// tool); they are only grouped under "工作表" for discoverability.
 
 // SheetInfo wraps get_sheet_structure: row heights, column widths, hidden
 // rows/cols, merged cells, row/column groups, and freeze counts for one

@@ -67,30 +67,54 @@ func TestRangeOperationsShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+dim-resize row --size 200",
-			sc:       DimResize,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--dimension", "row", "--start", "0", "--end", "5", "--size", "200"},
+			name:     "+rows-resize --type pixel --size 200",
+			sc:       RowsResize,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "0", "--end", "4", "--type", "pixel", "--size", "200"},
 			toolName: "resize_range",
 			wantInput: map[string]interface{}{
 				"excel_id": testToken,
 				"sheet_id": testSheetID,
 				"range":    "1:5",
 				"resize_height": map[string]interface{}{
+					"type":  "pixel",
 					"value": float64(200),
 				},
 			},
 		},
 		{
-			name:     "+dim-resize column --reset",
-			sc:       DimResize,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--dimension", "column", "--start", "1", "--end", "4", "--reset"},
+			name:     "+rows-resize --type auto omits --size",
+			sc:       RowsResize,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "0", "--end", "0", "--type", "auto"},
+			toolName: "resize_range",
+			wantInput: map[string]interface{}{
+				"range":         "1",
+				"resize_height": map[string]interface{}{"type": "auto"},
+			},
+		},
+		{
+			name:     "+cols-resize --type standard (reset to default)",
+			sc:       ColsResize,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "1", "--end", "3", "--type", "standard"},
 			toolName: "resize_range",
 			wantInput: map[string]interface{}{
 				"excel_id": testToken,
 				"sheet_id": testSheetID,
 				"range":    "B:D",
 				"resize_width": map[string]interface{}{
-					"reset": true,
+					"type": "standard",
+				},
+			},
+		},
+		{
+			name:     "+cols-resize --type pixel --size 120",
+			sc:       ColsResize,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "0", "--end", "2", "--type", "pixel", "--size", "120"},
+			toolName: "resize_range",
+			wantInput: map[string]interface{}{
+				"range": "A:C",
+				"resize_width": map[string]interface{}{
+					"type":  "pixel",
+					"value": float64(120),
 				},
 			},
 		},
@@ -187,29 +211,44 @@ func TestRangeOperationsShortcuts_DryRun(t *testing.T) {
 	}
 }
 
-func TestDimResize_MutualExclusion(t *testing.T) {
+func TestResize_TypeAndSizeGuards(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
+		sc   common.Shortcut
 		args []string
 		want string
 	}{
 		{
-			name: "missing both --size and --reset",
-			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--dimension", "row", "--start", "0", "--end", "3"},
-			want: "specify either --size <px> or --reset",
+			name: "+rows-resize --type pixel without --size",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "0", "--end", "3", "--type", "pixel"},
+			want: "--type pixel requires --size",
 		},
 		{
-			name: "both --size and --reset",
-			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--dimension", "row", "--start", "0", "--end", "3", "--size", "200", "--reset"},
-			want: "mutually exclusive",
+			name: "+rows-resize --type standard with --size",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "0", "--end", "3", "--type", "standard", "--size", "30"},
+			want: "--size is only valid with --type pixel",
+		},
+		{
+			name: "+cols-resize rejects --type auto",
+			sc:   ColsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "0", "--end", "2", "--type", "auto"},
+			want: "auto", // cobra Enum gate kicks first with "valid values are: pixel, standard"
+		},
+		{
+			name: "--end < --start",
+			sc:   RowsResize,
+			args: []string{"--url", testURL, "--sheet-id", testSheetID, "--start", "5", "--end", "3", "--type", "standard"},
+			want: "must be >= --start",
 		},
 	}
 	for _, tt := range cases {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, DimResize, append(tt.args, "--dry-run"))
+			stdout, stderr, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
 			if err == nil {
 				t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
 			}
