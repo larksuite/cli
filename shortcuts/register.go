@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/shortcuts/apps"
 	"github.com/larksuite/cli/shortcuts/base"
 	"github.com/larksuite/cli/shortcuts/calendar"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -34,6 +35,7 @@ import (
 var allShortcuts []common.Shortcut
 
 func init() {
+	allShortcuts = append(allShortcuts, apps.Shortcuts()...)
 	allShortcuts = append(allShortcuts, calendar.Shortcuts()...)
 	allShortcuts = append(allShortcuts, doc.Shortcuts()...)
 	allShortcuts = append(allShortcuts, drive.Shortcuts()...)
