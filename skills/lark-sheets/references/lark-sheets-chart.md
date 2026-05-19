@@ -124,7 +124,13 @@
 | `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等），结构嵌套深，统一走 JSON 注入 |
+| `--position-col` | 专有 | string | 否 | 图表锚点列字母（如 `A`、`B`）。snapshot 内 `position.col` 的捷径 |
+| `--position-row` | 专有 | number | 否 | 图表锚点行索引（0-based）。snapshot 内 `position.row` 的捷径 |
+| `--offset-col` | 专有 | number | 否 | 锚点列方向像素偏移；默认 0 |
+| `--offset-row` | 专有 | number | 否 | 锚点行方向像素偏移；默认 0 |
+| `--size-width` | 专有 | number | 否 | 图表宽度（像素） |
+| `--size-height` | 专有 | number | 否 | 图表高度（像素） |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（结构嵌套深），含 `snapshot`（图表类型、数据范围、样式、标题、legend 等）。**位置/偏移/尺寸（position / offset / size）已拎为独立标量 flag，不要再写入这里** |
 | `--dry-run` | 系统 | bool | 否 | 零副作用，输出请求模板 |
 
 ### `+chart-update`
@@ -136,7 +142,13 @@
 | `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
 | `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
 | `--chart-id` | 专有 | string | 是 | 目标图表 reference_id |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch） |
+| `--position-col` | 专有 | string | 否 | 图表锚点列字母（如 `A`、`B`）。snapshot 内 `position.col` 的捷径 |
+| `--position-row` | 专有 | number | 否 | 图表锚点行索引（0-based）。snapshot 内 `position.row` 的捷径 |
+| `--offset-col` | 专有 | number | 否 | 锚点列方向像素偏移；默认 0 |
+| `--offset-row` | 专有 | number | 否 | 锚点行方向像素偏移；默认 0 |
+| `--size-width` | 专有 | number | 否 | 图表宽度（像素） |
+| `--size-height` | 专有 | number | 否 | 图表高度（像素） |
+| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch），仅装 `snapshot` 部分。**位置/偏移/尺寸已拎为独立标量 flag** |
 | `--dry-run` | 系统 | bool | 否 |  |
 
 ### `+chart-delete`
@@ -175,22 +187,32 @@ _创建/更新的图表属性_
 
 ### `+chart-create`
 
+> 位置、偏移、尺寸 6 个标量已拎为独立 flag：`--position-col` / `--position-row` / `--offset-col` / `--offset-row` / `--size-width` / `--size-height`。**不要再写入 `--properties` JSON**；`--properties` 只装 `snapshot`（图表类型、数据范围、样式、标题、legend 等深嵌套配置）。
+
 示例：
 
 ```bash
-# 内联 JSON
+# 常规：位置 + 尺寸用 flag，snapshot 走文件
 lark-cli sheets +chart-create --url "https://example.feishu.cn/sheets/shtXXX" \
-  --sheet-name "Sheet1" --properties '{"position":{"row":42,"col":"A"},"size":{"width":600,"height":400},"snapshot":{...}}'
+  --sheet-name "Sheet1" \
+  --position-col A --position-row 42 \
+  --size-width 600 --size-height 400 \
+  --properties @snapshot.json
 
-# 走文件（推荐配置较多时）
+# 加 offset 微调
 lark-cli sheets +chart-create --url "https://example.feishu.cn/sheets/shtXXX" \
-  --sheet-name "Sheet1" --properties @chart-config.json
+  --sheet-name "Sheet1" \
+  --position-col F --position-row 1 \
+  --offset-col 4 --offset-row 4 \
+  --size-width 480 --size-height 320 \
+  --properties @snapshot.json
 ```
 
 > **`--properties` JSON 关键字段**（结构见上方 `## Schemas` 段；详见语义内容章节）：
-> - `position.row` / `position.col` 必须留足空间，越界会被 API 拒
 > - `snapshot.data.headerMode`：默认 inline；当 refs 仅覆盖数据子集且语义表头在子集之外，必须 `detached` + `nameRef`
 > - chart 引用 pivot 输出时，`snapshot.data.data_range` 必须排除总计 / 小计行
+>
+> 位置 / 尺寸越界（落在 sheet 行列范围外）会被 API 拒，dry-run 时会校验。
 
 ### `+chart-update`
 
@@ -212,7 +234,7 @@ lark-cli sheets +chart-delete --url "https://example.feishu.cn/sheets/shtXXX" \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+chart-create` / `+chart-update` 的 `--properties` 必须能解析为合法 JSON；`+chart-delete`（high-risk-write）校验 `--yes` 或 `--dry-run` 至少一个。
+- `Validate`：XOR 公共四件套；`+chart-create` / `+chart-update` 的 `--properties` 必须能解析为合法 JSON；位置 / 尺寸标量（如 `--position-col` 等）若提供则在 sheet 行列范围内，越界 dry-run 报错；`+chart-delete`（high-risk-write）校验 `--yes` 或 `--dry-run` 至少一个。
 - `DryRun`：`+chart-create` / `+chart-update` 输出"将要 POST 的 body 模板"；`+chart-delete` 输出"将要删除的 chart_id 及隶属 sheet"，零网络副作用。
 - `Execute`：写操作执行后自动调用 `+chart-list` 回读对比，记录到 `envelope.meta.verification`，便于上层根据回读结果判定是否符合预期。
 
