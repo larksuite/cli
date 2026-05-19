@@ -2,7 +2,7 @@
 
 ## 真对象硬约束
 
-当用户要求"画个图 / 数据可视化 / 趋势图 / 对比图 / 占比图"时，**必须**通过 `+chart-{create|update|delete}` 创建真实的图表对象。**禁止**用 doubao_code_interpreter 调 matplotlib / seaborn 生成图片再插入到表格代替——静态图片无法随源数据更新，且失去交互能力。判断标准：交付后 `+chart-list` 必须能返回该对象。
+当用户要求"画个图 / 数据可视化 / 趋势图 / 对比图 / 占比图"时，**必须**通过 `+chart-{create|update|delete}` 创建真实的图表对象。**禁止**用 本地脚本 调 matplotlib / seaborn 生成图片再插入到表格代替——静态图片无法随源数据更新，且失去交互能力。判断标准：交付后 `+chart-list` 必须能返回该对象。
 
 ## 使用场景
 
@@ -34,7 +34,7 @@
   - **默认情况（inline 模式）**：`refs` 范围**应包含表头行**（首行/首列即系列名），且范围要精确覆盖目标数据，不要多选或少选。
   - **合并标题行要跳过**：如果表格在表头上方存在合并的标题行（如"员工统计表"横跨多列的大标题），`refs` 必须跳过标题行、从真正的列标题行开始。例如表头在第 3 行、数据在第 4-20 行，则 `refs` 应为 `A3:G20` 而非 `A1:G20`。包含合并标题行会导致列名识别错误、表头被当作数据参与聚合计算。
   - **数据与表头分离时必须用 detached 模式**：当 `refs` 只覆盖完整数据的一个子集（按筛选/分组只画其中一段），而真正的语义表头在该子集之外时，**必须**设置 `data.headerMode='detached'`：refs 仅传纯数据范围，维度名/系列名通过 `dim1.serie.nameRef` / `dim2.series[].nameRef` 指向真正的表头单元格。详见下文"硬性规则：数据与表头分离场景必须使用 detached 模式"。
-- **axes[].label 不接受 `format` / `number_format` 字段**：想给坐标轴数值加千分位、百分号等格式化时，不要在 `axes[i].label` 里传 `format` 或 `number_format`（schema 未定义，会报 `unexpected property "format" is not defined in schema`）。数值格式化统一在源数据单元格的 `cell_styles.number_format` 里设置（写 set_cell_range 时），图表会沿用单元格格式。
+- **axes[].label 不接受 `format` / `number_format` 字段**：想给坐标轴数值加千分位、百分号等格式化时，不要在 `axes[i].label` 里传 `format` 或 `number_format`（schema 未定义，会报 `unexpected property "format" is not defined in schema`）。数值格式化统一在源数据单元格的 `cell_styles.number_format` 里设置（写 `+cells-set` 时），图表会沿用单元格格式。
 - **创建后必须验证**：图表创建后必须调用 `+chart-list` 验证配置是否正确
 
 > **⚠️ 硬性规则：当用户通过列标题名称（而非列索引）指定横轴/纵轴系列时，必须先读取表格首行（表头）来确定列名与列索引的对应关系，再设置 `dim1`/`dim2` 的 `index`。**
@@ -71,10 +71,10 @@
 - **饼图**会多一个"总计"扇区占 33%+，真实类别的比例完全失真
 
 **正确流程**：
-1. `+pivot-create` 返回 `sheet_id` + `pivot_table_id`
+1. `+pivot-create create` 返回 `sheet_id` + `pivot_table_id`
 2. 调 `+csv-get(sheet_id, 'A1:E30')` 或 `+pivot-list` 读 pivot 产物的**实际数据范围**
 3. 识别并排除"总计"/"小计"行（通常最后一行；嵌套 pivot 还要排除中间层小计）
-4. `+chart-create` 时 `data.refs` 精确到数据行（如 pivot 占 A1:D9、总计在 row9 → chart 用 `A1:D8`）
+4. `+chart-create create` 时 `data.refs` 精确到数据行（如 pivot 占 A1:D9、总计在 row9 → chart 用 `A1:D8`）
 
 详细规则见 `lark-sheets-pivot-table` skill 第 5 节"pivot → chart 组合场景"。
 
@@ -96,12 +96,12 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_chart_objects` | `+chart-list` | read | 对象 |
-| `manage_chart_object` | `+chart-create` | write | 对象 |
-|  | `+chart-update` | write | 对象 |
-|  | `+chart-delete` | high-risk-write | 对象 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+chart-list` | read | 对象 |
+| `+chart-create` | write | 对象 |
+| `+chart-update` | write | 对象 |
+| `+chart-delete` | high-risk-write | 对象 |
 
 ## Flags
 

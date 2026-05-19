@@ -14,7 +14,7 @@
 
 **判断标准**：交付后 `+cond-format-list` 必须能返回该规则；否则视为违规。
 
-**大数据量加分项**：当数据量 > 1000 行时，条件格式是首选——它由飞书自身渲染，不会触发 doubao_code_interpreter 50 秒超时（同 R8）。
+**大数据量加分项**：当数据量 > 1000 行时，条件格式是首选——它由飞书自身渲染，不会触发 本地脚本 50 秒超时（同 R8）。
 
 ## 使用场景
 
@@ -44,11 +44,11 @@
 **正确做法（两步走）**：
 
 ```
-Step 1: set_cell_range 在新列写判断公式（形成"是/否"或布尔辅助列）
+Step 1: `+cells-set` 在新列写判断公式（形成"是/否"或布尔辅助列）
   range="H2", cells=[[{formula: "=IF(A2>B2, \"是\", \"否\")"}]], copy_to_range="H2:H100"
 
 Step 2: 基于辅助列值做条件格式（用 cellIs 或引用辅助列的 expression）
-  manage_conditional_format_object create
+  `+cond-{format-create|format-update|format-delete}` create
     rule_type: "expression"
     ranges: ["A2:H100"]  // 整行高亮
     attrs: [{formula: ["=$H2=\"是\""]}]  // 引用辅助列
@@ -58,7 +58,7 @@ Step 2: 基于辅助列值做条件格式（用 cellIs 或引用辅助列的 exp
 **错误做法（一步走绕过辅助列）**：
 
 ```
-manage_conditional_format_object create
+`+cond-{format-create|format-update|format-delete}` create
   rule_type: "expression"
   ranges: ["2:145"]
   attrs: [{formula: ["=$O2>$H2"]}]   ← 虽然逻辑等价，但产物里缺辅助列 → 扣配置需求分
@@ -68,16 +68,16 @@ manage_conditional_format_object create
 
 `expression` 单独使用的场景是：用户**没有**明确要求辅助列、只要"标红符合条件的行"时。
 
-⚠️ **创建条件格式前必须读数据行确认列对应**：仅读首行表头（`get_range_as_csv range="A1:Z1"`）不够——如果表头语义含糊（比如"时间"、"日期"这种多列同义词），formula 里引用的列字母可能张冠李戴。必须再读 3-5 行**数据样本**（如 `range="A2:Z6"`）确认：①列名对应的实际值；②字段含义匹配用户描述；③数据类型是日期/数字/文本。特别是比较类条件格式（`=$A2>$B2` 这种），列字母选错整条规则就废了。
+⚠️ **创建条件格式前必须读数据行确认列对应**：仅读首行表头（`+csv-get range="A1:Z1"`）不够——如果表头语义含糊（比如"时间"、"日期"这种多列同义词），formula 里引用的列字母可能张冠李戴。必须再读 3-5 行**数据样本**（如 `range="A2:Z6"`）确认：①列名对应的实际值；②字段含义匹配用户描述；③数据类型是日期/数字/文本。特别是比较类条件格式（`=$A2>$B2` 这种），列字母选错整条规则就废了。
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_conditional_format_objects` | `+cond-format-list` | read | 对象 |
-| `manage_conditional_format_object` | `+cond-format-create` | write | 对象 |
-|  | `+cond-format-update` | write | 对象 |
-|  | `+cond-format-delete` | high-risk-write | 对象 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+cond-format-list` | read | 对象 |
+| `+cond-format-create` | write | 对象 |
+| `+cond-format-update` | write | 对象 |
+| `+cond-format-delete` | high-risk-write | 对象 |
 
 ## Flags
 

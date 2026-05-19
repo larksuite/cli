@@ -3,7 +3,7 @@
 ## 真对象硬约束 + 数量校验
 
 1. **真对象**：当用户要求"筛选 / 只看 / 仅保留 X"时，**必须**通过 `+filter-{create|update|delete}` 创建真实的筛选器对象。**禁止**用"删除不符合条件的行" / "新建子表只放符合条件的行" / 用 `+cells-set` 覆盖原表来代替——这些做法会让原数据丢失或不可恢复。
-2. **筛选数量必校**：执行筛选后**必须**回读，断言 `len(visible_rows) == expected_count`。`expected_count` 来自先用 `doubao_code_interpreter` 在源数据上独立复现该筛选条件得到的结果数。两者不一致时禁止交付，需排查筛选条件 / 数据列类型问题。
+2. **筛选数量必校**：执行筛选后**必须**回读，断言 `len(visible_rows) == expected_count`。`expected_count` 来自先用 本地脚本 在源数据上独立复现该筛选条件得到的结果数。两者不一致时禁止交付，需排查筛选条件 / 数据列类型问题。
 3. **混合文本列禁止字面比较**：筛选 key 是公式文本（如 `1000+200=1200`）或带单位的混合文本时，先在辅助列里抽出纯数值再筛选；不能直接用文本比较。
 
 ## 使用场景
@@ -29,12 +29,12 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_filter_objects` | `+filter-list` | read | 对象 |
-| `manage_filter_object` | `+filter-create` | write | 对象 |
-|  | `+filter-update` | write | 对象 |
-|  | `+filter-delete` | high-risk-write | 对象 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+filter-list` | read | 对象 |
+| `+filter-create` | write | 对象 |
+| `+filter-update` | write | 对象 |
+| `+filter-delete` | high-risk-write | 对象 |
 
 ## Flags
 

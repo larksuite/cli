@@ -37,17 +37,17 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_sheet_structure` | `+sheet-info` | read | 工作表 |
-| `modify_sheet_structure` | `+dim-insert` | write | 工作表 |
-|  | `+dim-delete` | high-risk-write | 工作表 |
-|  | `+dim-hide` | write | 工作表 |
-|  | `+dim-unhide` | write | 工作表 |
-|  | `+dim-freeze` | write | 工作表 |
-|  | `+dim-group` | write | 工作表 |
-|  | `+dim-ungroup` | write | 工作表 |
-| `move_dimension` | `+dim-move` | write | 工作表 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+sheet-info` | read | 工作表 |
+| `+dim-insert` | write | 工作表 |
+| `+dim-delete` | high-risk-write | 工作表 |
+| `+dim-hide` | write | 工作表 |
+| `+dim-unhide` | write | 工作表 |
+| `+dim-freeze` | write | 工作表 |
+| `+dim-group` | write | 工作表 |
+| `+dim-ungroup` | write | 工作表 |
+| `+dim-move` | write | 工作表 |
 
 ## Flags
 
@@ -166,7 +166,7 @@ lark-cli sheets +dim-insert --url "https://example.feishu.cn/sheets/shtXXX" \
 
 ### `+rows-resize` / `+cols-resize`
 
-> ⚠️ 这两条 shortcut 来自 `lark_sheet_range_operations` 的 `resize_range` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `lark_sheet_range_operations/cli-shortcuts.md`。
+> ⚠️ 这两条 shortcut 来自 `lark-sheets-range-operations` 的 `+rows-resize / +cols-resize` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `lark_sheet_range_operations/cli-shortcuts.md`。
 >
 > 行 vs 列底层 schema 有差异：`+rows-resize.--type` 支持 `pixel` / `standard` / `auto`，`+cols-resize.--type` 只支持 `pixel` / `standard`（列宽不支持自动适应）。
 

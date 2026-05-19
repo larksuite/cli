@@ -1,7 +1,7 @@
 ---
 name: lark-sheets
 version: 2.0.0-draft
-description: "飞书电子表格：分析、编辑与可视化飞书在线表格。每个能力子域（read / write / chart / pivot / filter ...）有独立 reference 文档，内容与 sheet-ai-skills 对应 skill 完全一致；CLI 实现按子域提供对应 shortcut，详见各 reference。"
+description: "飞书电子表格：创建和操作电子表格。支持创建表格、管理工作表与行列结构（增删/合并/调整尺寸/隐藏/冻结）、读写单元格（值/公式/样式/批注/单元格图片）、查找替换、多操作原子批量更新，以及图表、透视表、条件格式、筛选器、迷你图、浮动图片等对象的创建与维护。当用户需要创建电子表格、管理工作表、批量读写或编辑数据、统计汇总与可视化、表格美化、公式计算（含 Excel 公式迁移）等任务时使用。若用户是想按名称或关键词搜索云空间里的表格文件，请改用 lark-doc 的 `docs +search` 先定位资源。仅针对飞书在线电子表格，不适用于本地 Excel 文件。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -13,11 +13,9 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理。**
 
-飞书电子表格：分析、编辑与可视化飞书在线表格。每个能力子域（read / write / chart / pivot / filter ...）有独立 reference 文档，内容与 sheet-ai-skills 对应 skill 完全一致；CLI 实现按子域提供对应 shortcut，详见各 reference。
-
 ## References
 
-每个 reference 内容与 `sheet-ai-skills` 中对应 skill 完全一致，按能力子域组织。CLI shortcut / API 路由的实现按这些子域提供，并在对应 reference 中描述。
+本 skill 按能力子域组织，每个子域有独立 reference。先按下表索引定位到目标子域，再进入对应 reference 查 shortcut / 调用细节。
 
 | Reference | 描述 |
 | --- | --- |
@@ -28,7 +26,7 @@ metadata:
 | [Lark Sheet Sheet Structure](references/lark-sheets-sheet-structure.md) | 管理飞书表格的子表结构与布局。适用场景：查看行高、列宽、隐藏行列、合并单元格等布局信息，以及"插入一行"、"删除这列"、"隐藏行"、"冻结表头"、行列分组（大纲折叠/展开）等操作。行列大纲仅在用户明确提到"行分组"、"列分组"、"大纲"、"outline"时才触发，"按XXX分组"等数据分组场景请使用 lark_sheet_pivot_table。如需在表尾追加数据，应先通过此 skill 插入行，再通过 lark_sheet_write_cells 写入。仅针对飞书表格。 |
 | [Lark Sheet Read Data](references/lark-sheets-read-data.md) | 读取飞书表格中的单元格数据。当用户需要"看看数据"、"分析数据"、"统计/汇总"时使用；也适用于需要查看公式、样式、批注等详细信息的场景。仅针对飞书表格。 |
 | [Lark Sheet Search & Replace](references/lark-sheets-search-replace.md) | 在飞书表格中搜索和替换文本，支持限定范围、大小写匹配、精确匹配、正则表达式。当用户需要"查找"、"搜索"、"定位"某个值，或"替换"、"批量修改文本"、"把 A 改成 B"时使用。不要用于理解表格结构（应读取数据）、不要用于数据分析（应读取数据后计算）、不要把用户操作动作中的关键词（如"汇总金额""统计数量"）当作搜索词。仅针对飞书表格。 |
-| [Lark Sheet Write Cells](references/lark-sheets-write-cells.md) | 向飞书表格的指定区域批量写入值、公式、样式、批注或单元格图片。适用场景：填写数据、设置公式、修改格式、添加批注、嵌入单元格图片（如需操作浮动图片，请使用 lark_sheet_float_image）；若只需把一块 CSV 纯值批量铺到表格上（不带公式/样式），直接使用 set_range_from_csv 更短更快。追加数据需先通过 lark_sheet_sheet_structure 插入行列。仅针对飞书表格。 |
+| [Lark Sheet Write Cells](references/lark-sheets-write-cells.md) | 向飞书表格的指定区域批量写入值、公式、样式、批注或单元格图片。适用场景：填写数据、设置公式、修改格式、添加批注、嵌入单元格图片（如需操作浮动图片，请使用 lark_sheet_float_image）；若只需把一块 CSV 纯值批量铺到表格上（不带公式/样式），直接使用 `+csv-put` 更短更快。追加数据需先通过 lark_sheet_sheet_structure 插入行列。仅针对飞书表格。 |
 | [Lark Sheet Range Operations](references/lark-sheets-range-operations.md) | 对飞书表格中指定区域执行结构性操作（不涉及写入单元格数据值）。适用场景：清除内容或格式（"清空"、"删除内容"、"去掉格式"）、合并/取消合并单元格、调整行高列宽（"加宽列"、"自适应列宽"）、移动/复制/填充/排序数据（"移动数据"、"复制到"、"自动填充"、"按某列排序"）。写入单元格数据请使用 lark_sheet_write_cells。仅针对飞书表格。 |
 | [Lark Sheet Batch Update](references/lark-sheets-batch-update.md) | 将多个飞书表格写入操作合并为一次批量执行，按顺序依次完成。适合需要连续执行多个写入操作的场景（如先修改结构再写入数据）。仅针对飞书表格。 |
 | [Lark Sheet Chart](references/lark-sheets-chart.md) | 管理飞书表格中的图表（柱形图、折线图、饼图、条形图、面积图、散点图、组合图、雷达图等）。当用户需要创建图表、修改图表样式或数据源、查看已有图表配置、删除图表时使用。也适用于用户提到"数据可视化"、"画个图"、"趋势分析"、"对比图"、"占比分析"、"做个图表"等数据可视化相关场景。仅针对飞书表格。 |

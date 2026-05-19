@@ -1,7 +1,5 @@
 # Lark Sheet Read Data
 
-> ⚠️ **沙箱类工具在 CLI 中不存在**：`export_sheet_to_sandbox` 是 sheet-ai-skills 侧（AI/MCP 消费方）的沙箱 IO 工具，本 reference 中提到它们的段落对 CLI 不适用。CLI 处理大数据请走 `+csv-get --max-rows N` 分页读取 + 本地 Python 处理；写回用 `+csv-put` 或 `+cells-set`。
-
 ## 列格式多样性预探（写公式 / 排序 / 筛选前必做）
 
 > 对应 `lark-sheets-core-operations` 的 **R3 计算复现**——本节是 R3 在 read_data 工具层的具体落地。
@@ -17,21 +15,21 @@
 
 ## 使用场景
 
-读取。从飞书表格中读取单元格数据。本 skill 包含三个工具，根据读取目的选择：
+读取。从飞书表格中读取单元格数据。本 skill 提供两个 CLI shortcut，按读取目的选择：
 
-| 读取目的 | 使用工具 | 数据去向 | 说明 |
-|---------|---------|---------|------|
-| 数据分析、清洗、可视化、大数据集 | `export_sheet_to_sandbox` | 沙箱文件系统（不进 context） | **数据分析首选**。导出为 CSV 到沙箱，模型写 Python 代码读取分析。仅文件路径和元信息占用 token |
-| 快速查看少量数据、简单问答 | `+csv-get` | 对话上下文 | 返回 CSV 文本，适合几十行以内的快速查看 |
+| 读取目的 | 用这个 shortcut | 数据去向 | 说明 |
+|---------|----------------|---------|------|
+| 快速查看纯值数据、批量处理 | `+csv-get` | 对话上下文 | 返回 CSV 文本；大表请分批读（控制 `--max-rows` / `--max-chars`） |
 | 查看公式、样式、批注、数据验证 | `+cells-get` | 对话上下文 | 返回单元格完整信息，token 开销较大 |
 
 **选择原则**：
-- 数据分析场景（统计、聚合、清洗、画图）→ 优先使用 `export_sheet_to_sandbox`，数据不进 context，在沙箱中用 pandas 处理
-- 快速查看少量数据 → 使用 `+csv-get`
-- 需要公式/样式/批注 → 使用 `+cells-get`
+- 只看值或做数据处理 → `+csv-get`；大表分批读取，避免一次拉全表撑爆上下文
+- 需要公式/样式/批注 → `+cells-get`
+
+⚠️ 超大数据请走"`+csv-get --max-rows N` 分批读到本地文件 + 本地脚本处理 + `+csv-put` 分批回写"。
 
 **`+csv-get` 返回值核心设计**：
-- `annotated_csv` — **CSV 数据唯一入口**。每一逻辑行前加 `[row=N] ` 前缀（N = 真实表格行号）。任何需要行号的下游操作（合并、写入、清空、格式化、插入/删除、条件格式、筛选、图表/透视表范围、搜索替换等），**行号一律直接从 `[row=N]` 读取**。若需要纯 CSV（如喂给 pandas 做 context 内解析），去前缀即可：`line.replace(/^\[row=\d+\] /, '')`——但大数据集走 `export_sheet_to_sandbox`，不要用本工具。
+- `annotated_csv` — **CSV 数据唯一入口**。每一逻辑行前加 `[row=N] ` 前缀（N = 真实表格行号）。任何需要行号的下游操作（合并、写入、清空、格式化、插入/删除、条件格式、筛选、图表/透视表范围、搜索替换等），**行号一律直接从 `[row=N]` 读取**。若需要纯 CSV（如喂给本地脚本做解析），去前缀即可：`line.replace(/^\[row=\d+\] /, '')`。
 - `col_indices` — **定位列字母唯一入口**。在表头中找到目标字段是第 j 个（0-based），用 `col_indices[j]` 取列字母。**禁止手数逗号**——列数超过 10 时极易 off-by-one（例如把 W 误判为 X）。
 - `row_indices` — 程序化引用的备用数组。LLM 推理请用 `annotated_csv` 的前缀，不要查这个数组里的 index（把行号当数值用容易心算出错）。
 - `current_region` — 从请求范围扩展到被空行空列包围的连续数据区域（等价于 Excel Ctrl+Shift+*），适合先读少量行探表头、同时获知整表实际范围。
@@ -42,11 +40,11 @@
 - 隐藏行列默认包含在返回结果中（`skip_hidden=false`），如需只看可见数据设为 `true`
 
 **常见配置错误（必须注意）**：
-- **全量读取导致上下文溢出（高频致命错误）**：不要对大表（数百行以上）直接用 `+csv-get` 或 `+cells-get` 读取全部数据到上下文。大表场景必须使用 `export_sheet_to_sandbox` 导出到沙箱后用 Python 处理，或分批读取：`+csv-get` 控制 `max_rows` / `max_chars`，`+cells-get` 控制 `ranges` / `cell_limit` / `max_chars`
+- **全量读取导致上下文溢出（高频致命错误）**：不要对大表（数百行以上）直接用 `+csv-get` 或 `+cells-get` 读取全部数据到上下文。大表场景必须分批读取：`+csv-get` 控制 `--max-rows` / `--max-chars`，`+cells-get` 控制 `--range` / `--cell-limit` / `--max-chars`；过大时考虑导出到本地文件后用脚本处理再分批回写
 - **了解结构 ≠ 读取全量数据**：探表不用读全表，但必须同时探两个方向的表头：
   - **横向（列头）**：先读前几行，且**列范围必须覆盖所有列**——用 `+workbook-info` 拿总列数，`range` 末列填到最后一列（例如总列数是 N，则 `range: "A1:[列N]10"`）。列范围截短会遗漏右侧字段、后续写入列定位错误。
   - **纵向（行标）**：若左侧 1-2 列是行标签（日期/类别/编号枚举每行含义，典型交叉表/透视布局），**必须再读 `A:A` 或 `A:B` 把行标列读到底**，拿全部行标。只读前几行会看不全表尾的行，导致批量写入漏改——这是"只改前 N 行、其余未更新"的主要成因。扁平列表（每行独立记录、列是字段）可跳过这一步，但仍要靠 `current_region` 兜底。
-  - 数据量大或会进入上下文上限时，直接走 `export_sheet_to_sandbox`，不要用 `+csv-get` 翻页硬塞。
+  - 数据量大或会进入上下文上限时，分批读 + 本地处理 + 分批回写，不要一口气拉全表到上下文。
 - **`+cells-get` 滥用**：当只需要数据值时，使用 `+csv-get`（token 开销约为 `+cells-get` 的 1/5）。只有确实需要公式、样式或批注时才用 `+cells-get`
 - **忽略分页标志**：读取返回 `has_more=true` 时，说明还有更多数据。如果任务需要完整数据，必须继续分页读取，不能只处理第一页就开始写入
 - **直接按 `+cells-get` 返回二维数组下标推导真实位置（高频错误）**：`ranges[n].cells[i][j]` 里的 `i/j` 只是返回数组下标，不等于真实表格行列。定位真实行号必须用 `ranges[n].row_indices[i]`，定位真实列字母必须用 `ranges[n].col_indices[j]`；若 `skip_hidden=true`、请求范围越界被裁剪，或最后一行是部分返回，错误地自己数下标会立刻错位
@@ -76,12 +74,11 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `export_sheet_to_sandbox` | _Sheet Tool 独有，CLI 不实现_ | — | — |
-| `get_cell_ranges` | `+cells-get` | read | 单元格 |
-|  | `+dropdown-get` | read | 对象 |
-| `get_range_as_csv` | `+csv-get` | read | 单元格 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+cells-get` | read | 单元格 |
+| `+dropdown-get` | read | 对象 |
+| `+csv-get` | read | 单元格 |
 
 ## Flags
 
@@ -158,5 +155,3 @@ lark-cli sheets +cells-get --url "https://example.feishu.cn/sheets/shtXXX" \
 - `Validate` 阶段只做 XOR 检查、Enum 合法性、防爆参数上限校验；**禁止**联网（如不能用 `--sheet-name` 提前去查 `sheet-id`）。
 - `DryRun` 输出请求模板：`--sheet-name` 在 dry-run 输出里生成为 `<resolve:销售明细>` 占位符，不实际解析。
 - `Execute` 阶段才进行 sheet-name → sheet-id 解析与 API 调用。
-
-> `export_sheet_to_sandbox` 是 Sheet Tool 独有的沙箱导出工具，CLI 不提供等价 shortcut（见 `## Shortcuts` 段标注）。

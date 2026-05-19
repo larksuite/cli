@@ -32,7 +32,7 @@
 写入文本 / 数值后**必须**主动检查列宽是否适配，否则会出现"内容被截断 / 长数字显示为科学计数法 / 文本溢出被相邻列遮挡"等用户感知问题：
 
 1. **写入后回读最长内容字符数**：用 `+csv-get` 读目标列的实际写入内容，统计最长单元格的字符数（`max(len(cell) for cell in col)`）。汉字按 2 字符宽度估算，半角字母数字按 1 字符。
-2. **判定阈值**：当前列宽（用 `get_sheet_structure --info_type=row_heights_column_widths` 拿）≥ 最长字符数 × 字体宽度系数 + buffer 才算适配。默认列宽 11 通常只够 11 个半角字符或 5-6 个汉字，写长文本前必扩宽。
+2. **判定阈值**：当前列宽（用 `+sheet-info --info_type=row_heights_column_widths` 拿）≥ 最长字符数 × 字体宽度系数 + buffer 才算适配。默认列宽 11 通常只够 11 个半角字符或 5-6 个汉字，写长文本前必扩宽。
 3. **修复二选一**：
    - **扩列宽**：用 `+rows-resize / +cols-resize` 把目标列宽设为 `max(表头字符数, 内容采样最长字符数) × 8 + 16` 像素（经验值）
    - **自动换行**：在 `+cells-set` 时给单元格设置 `cell_styles.word_wrap="auto-wrap"`（可选值：`overflow` / `auto-wrap` / `word-clip`），并用 `+rows-resize / +cols-resize` 调高对应行的行高
@@ -55,32 +55,7 @@
 
 **例外**：`+cells-{merge|unmerge}(operation: unmerge)` 原生支持对覆盖多个合并区域的大 range 一次性取消，应直接单次调用，**不要**拆进 `+batch-update`。
 
-示例：需要合并 A1:A3、B1:B3、C1:C3 三个区域时，应使用：
-```json
-{
-  "excel_id": "${excel_id}",
-  "operations": [
-    {"tool_name": "merge_cells", "input": {"sheet_id": "${sheet_id}", "range": "A1:A3", "operation": "merge"}},
-    {"tool_name": "merge_cells", "input": {"sheet_id": "${sheet_id}", "range": "B1:B3", "operation": "merge"}},
-    {"tool_name": "merge_cells", "input": {"sheet_id": "${sheet_id}", "range": "C1:C3", "operation": "merge"}}
-  ]
-}
-```
-而不是分三次单独调用 `+cells-{merge|unmerge}`。
-
-示例：需要将 A、B、C 三列列宽设为 120px，同时将第 1-3 行行高设为 40px 时，应使用：
-```json
-{
-  "excel_id": "${excel_id}",
-  "operations": [
-    {"tool_name": "resize_range", "input": {"sheet_id": "${sheet_id}", "range": "A:A", "resize_width": {"type": "pixel", "value": 120}}},
-    {"tool_name": "resize_range", "input": {"sheet_id": "${sheet_id}", "range": "B:B", "resize_width": {"type": "pixel", "value": 120}}},
-    {"tool_name": "resize_range", "input": {"sheet_id": "${sheet_id}", "range": "C:C", "resize_width": {"type": "pixel", "value": 120}}},
-    {"tool_name": "resize_range", "input": {"sheet_id": "${sheet_id}", "range": "1:3", "resize_height": {"type": "pixel", "value": 40}}}
-  ]
-}
-```
-而不是分四次单独调用 `+rows-resize / +cols-resize`。
+> 多操作组合示例（合并多区域、批量调整列宽行高的 `+batch-update --operations` JSON 入参格式）见 `lark-sheets-batch-update` 文档。
 
 **⚠️ sort 操作前必读：确认目标列的数据类型**
 
@@ -102,21 +77,21 @@
 2. 若是纯数字或日期 → 直接 sort。
 3. 若是带符号 / 表达式 / 单位的文本 → **不要直接排**：
    - 简单场景（货币、千分位、单位前缀）：新增辅助列，用公式提取数值（如 `=VALUE(SUBSTITUTE(SUBSTITUTE(A2,"¥",""),",",""))`），按辅助列排序，排完可按需清除辅助列。
-   - 复杂场景（多段表达式、中文单位、混合格式）：`export_sheet_to_sandbox` + `doubao_code_interpreter` 在沙箱里按数值排序后 `+cells-set` 回写。
+- 复杂场景（多段表达式、中文单位、混合格式）：分批 `+csv-get` 读到本地，按数值排序后用 `+csv-put` / `+cells-set` 分批回写。
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `clear_cell_range` | `+cells-clear` | high-risk-write | 单元格 |
-| `merge_cells` | `+cells-merge` | write | 单元格 |
-|  | `+cells-unmerge` | write | 单元格 |
-| `resize_range` | `+rows-resize` | write | 工作表 |
-|  | `+cols-resize` | write | 工作表 |
-| `transform_range` | `+range-move` | write | 区域 |
-|  | `+range-copy` | write | 区域 |
-|  | `+range-fill` | write | 区域 |
-|  | `+range-sort` | write | 区域 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+cells-clear` | high-risk-write | 单元格 |
+| `+cells-merge` | write | 单元格 |
+| `+cells-unmerge` | write | 单元格 |
+| `+rows-resize` | write | 工作表 |
+| `+cols-resize` | write | 工作表 |
+| `+range-move` | write | 区域 |
+| `+range-copy` | write | 区域 |
+| `+range-fill` | write | 区域 |
+| `+range-sort` | write | 区域 |
 
 ## Flags
 

@@ -1,12 +1,10 @@
 # Lark Sheet Write Cells
 
-> ⚠️ **沙箱类工具在 CLI 中不存在**：`import_sandbox_to_sheet` 是 sheet-ai-skills 侧（AI/MCP 消费方）的沙箱 IO 工具，本 reference 中提到它们的段落对 CLI 不适用。CLI 处理大数据请走 `+csv-get --max-rows N` 分页读取 + 本地 Python 处理；写回用 `+csv-put` 或 `+cells-set`。
-
 ## 写入边界 + 回读校验（编辑类任务必做）
 
 1. **明确写入边界**：写入前必须能回答"目标 range 的起止行列号是多少？是否落在用户授权范围内？"。除用户明示要修改的区域外，禁止扩张到原数据列以外或新建 Sheet。
 2. **完整性断言**：批量写入前先把"预期写入条数"硬编码到代码里（如要填 106 条翻译 → `expected = 106`），写完后回读断言 `actual == expected`。少于预期就继续写，禁止交付半成品。
-3. **回读抽样校验**：写完关键值 / 公式后，用 `+csv-get` 或 `+cells-get` 重新读取写入区域，至少抽样 3-5 个代表性单元格（首 / 中 / 末），核对值与预期一致（与 `doubao_code_interpreter` 计算的预期值对照）。公式特定的"先验证模板再 copy_to_range / 修完再读回"细则见下方相关章节。
+3. **回读抽样校验**：写完关键值 / 公式后，用 `+csv-get` 或 `+cells-get` 重新读取写入区域，至少抽样 3-5 个代表性单元格（首 / 中 / 末），核对值与预期一致（与 本地脚本 计算的预期值对照）。公式特定的"先验证模板再 copy_to_range / 修完再读回"细则见下方相关章节。
 
 ## 新增列 / 新增行的样式继承（防止视觉风格不一致）
 
@@ -19,7 +17,7 @@
 3. `cell_styles.number_format`（小数位 / 千分位 / 百分比 / 日期格式）—— 漏继承会导致同列数值格式混乱
 4. `cell_styles.background_color`（背景色）
 5. `border_styles`（四边框）
-6. **`merged_cells`（合并范围）**——续写场景必查（高频致命错误）：用 `get_sheet_structure --info_type=merged_cells_infos` 读原数据区域的合并信息。**原行有跨列合并**（如标题行 `A1:G1` 合并）时，新行**必须**用 `+cells-{merge|unmerge}` 工具复制相同合并模式到新行（如续写第 3 个周报块的标题行 `A23:G23` 必须合并）。仅传 cells 数组的 5 类样式不够——合并范围要单独靠 `+cells-{merge|unmerge}` 工具落地（典型反例：续写多周记录表时，新增周次的标题行未合并，视觉上与原前几周风格不一致）
+6. **`merged_cells`（合并范围）**——续写场景必查（高频致命错误）：用 `+sheet-info --info_type=merged_cells_infos` 读原数据区域的合并信息。**原行有跨列合并**（如标题行 `A1:G1` 合并）时，新行**必须**用 `+cells-{merge|unmerge}` 工具复制相同合并模式到新行（如续写第 3 个周报块的标题行 `A23:G23` 必须合并）。仅传 cells 数组的 5 类样式不够——合并范围要单独靠 `+cells-{merge|unmerge}` 工具落地（典型反例：续写多周记录表时，新增周次的标题行未合并，视觉上与原前几周风格不一致）
 
 **采样模板的正确做法**：
 - 表头新列 → 读相邻表头单元格（如新加 D1 → 读 A1/B1/C1 任一）
@@ -54,7 +52,7 @@
 
 高频模式（**必须遵守，禁止逐行写入替代**）：
 
-- 整列公式：先在 `H2` 写一个公式，再用 `copy_to_range: "H2:H100"` 或 `copy_to_range: "H:H"` 向下填充。**禁止对每一行单独调用 set_cell_range 写入相同结构的公式**
+- 整列公式：先在 `H2` 写一个公式，再用 `copy_to_range: "H2:H100"` 或 `copy_to_range: "H:H"` 向下填充。**禁止对每一行单独调用 `+cells-set` 写入相同结构的公式**
 - 整列格式：先在 `J1` 写一个带样式的模板单元格，再用 `copy_to_range: "J:J"`
 - 首行样式：先在 `A1` 写一个模板单元格，再用 `copy_to_range: "1:1"`
 - 用户说”这列 / 整列 / 这行 / 首行 / 向下复制”时，**必须**使用模板单元格 + `copy_to_range`
@@ -70,8 +68,8 @@
 
 示例：要对 A2:A100 写入数据并统一设置蓝色背景 + 边框：
 ```
-Step 1: set_cell_range — range="A2:A100", cells 只含 value（无样式，入参短）
-Step 2: set_cell_range — range="A2", cells 含 value + cell_styles + border_styles（单个模板）, copy_to_range="A2:A100"
+Step 1: `+cells-set` — range="A2:A100", cells 只含 value（无样式，入参短）
+Step 2: `+cells-set` — range="A2", cells 含 value + cell_styles + border_styles（单个模板）, copy_to_range="A2:A100"
 ```
 这比在 99 个单元格中都重复写样式 JSON 高效得多。
 
@@ -95,7 +93,7 @@ Step 2: set_cell_range — range="A2", cells 含 value + cell_styles + border_st
 3. **`copy_to_range` 扩展前先验证模板**：模板单元格公式自己都算错，`copy_to_range` 复制到 100 行就是 100 个错误
 4. **飞书不支持的函数**：`UNIQUE` / `DISTINCT` / `FILTER`（部分）—— 对应"去重"场景改用透视表（`+pivot-{create|update|delete}`，值字段聚合方式选 count）
 5. **循环引用预检（高频致命错误）**：写聚合公式（SUM / AVERAGE / COUNT 等）前必须明确**引用范围不包含目标单元格自身或其传递依赖**。典型反例：在 C3 写 `=SUMIF(B:B,LEFT(B3,9)&"*",C:C)`，B 列匹配 B3 前 9 位时 C3 自己也命中，导致 C3 自引用 → `~CIRCULAR~REF~`。修法：用辅助列 / 显式排除自身（`SUMIFS(C:C, B:B, ..., A:A, "<>"&A3)`）/ 缩小范围避开自己
-6. **REGEX 模式覆盖率验证**：公式里的 `REGEXEXTRACT` / `REGEXMATCH` / `REGEXREPLACE` 等正则模式落地前必须用 `doubao_code_interpreter` 在源列上跑一遍命中率统计（`df[col].str.contains(pattern).mean()`）；命中率 < 100% 时必须扩展 pattern 或加多分支（IFS / 多个 IFERROR 串联）兜底，**禁止**只覆盖样本前 N 行就交付（典型反例：用 `REGEXEXTRACT(D5,"长(\d+)")` 只匹配带"长"前缀的尺寸文本，对"宽×高"、"×"、"*"等其它分隔符直接漏匹配）
+6. **REGEX 模式覆盖率验证**：公式里的 `REGEXEXTRACT` / `REGEXMATCH` / `REGEXREPLACE` 等正则模式落地前必须用 本地脚本 在源列上跑一遍命中率统计（`df[col].str.contains(pattern).mean()`）；命中率 < 100% 时必须扩展 pattern 或加多分支（IFS / 多个 IFERROR 串联）兜底，**禁止**只覆盖样本前 N 行就交付（典型反例：用 `REGEXEXTRACT(D5,"长(\d+)")` 只匹配带"长"前缀的尺寸文本，对"宽×高"、"×"、"*"等其它分隔符直接漏匹配）
 7. **公式范围与用户指令字面对齐**：用户说"对 F 至 L 列求和"就必须写 `SUM(F2:L2)` 或 `F2+G2+H2+I2+J2+K2+L2`，**不能漏列、多列、错列**。写完用 `+cells-get` 拿回 `formula` 字符串，与用户原话逐字对照（参与求和的列名一致 / 起止列号一致 / 运算符一致），不一致就是违规
 
 ⚠️ **收到 `formula_errors` 反馈后不要只打补丁（高频致命错误）**：`+cells-set` 返回值里若出现 `formula_errors: [{cell, formula, error_type, detail}]`，说明某些 cell 公式编译失败（`error_type=compile_failed` 通常是函数语法错如 `SPLIT(x)[1]` 飞书不支持；`non_formula` 是 `=` 开头但解析不通过）。此时**禁止只聚焦修报错点的局部语法**（如仅把 `[1]` 换成 `INDEX(..,1)`），必须：
@@ -124,14 +122,14 @@ Step 2: set_cell_range — range="A2", cells 含 value + cell_styles + border_st
 
 ```
 Step 1: 用模板单元格 + copy_to_range 铺"完整样式"（不是只铺 border）到新区域
-  set_cell_range — range="A11", cells=[[{
+  `+cells-set` — range="A11", cells=[[{
     border_styles: {...},
     cell_styles: { /* 按行性质填充：数据行继承数据区样式；汇总行见 lark_sheet_visual_standards */ }
   }]], copy_to_range="A11:H11"
 
-Step 2: 再用 set_cell_range 单独写具体 value/formula（不再传样式，避免覆盖）
-  set_cell_range — range="A11", cells=[[{value: "平均分"}]]
-  set_cell_range — range="C11:F11", cells=[[{formula: "=AVERAGE(C2:C10)"}, {formula: "=AVERAGE(D2:D10)"}, ...]]
+Step 2: 再用 `+cells-set` 单独写具体 value/formula（不再传样式，避免覆盖）
+  `+cells-set` — range="A11", cells=[[{value: "平均分"}]]
+  `+cells-set` — range="C11:F11", cells=[[{formula: "=AVERAGE(C2:C10)"}, {formula: "=AVERAGE(D2:D10)"}, ...]]
 ```
 
 ⚠️ **Step 1 `cell_styles` 禁止留空**：只铺 border、不铺 `cell_styles`，等于新行从格式上"裸奔"——没字体、没对齐、没背景色。如果新行是汇总行，这意味着 bold 丢失，用户感受"没做样式"。Step 1 的 `cell_styles` 要么继承源区块（`+cells-get` 读相邻已有行样式后复用），要么按汇总行规范（见 `lark-sheets-visual-standards`）配齐。
@@ -139,7 +137,7 @@ Step 2: 再用 set_cell_range 单独写具体 value/formula（不再传样式，
 **做法 B：一次写入但每个 cell 都显式带样式**
 
 ```
-set_cell_range — range="A11:H11", cells=[[
+`+cells-set` — range="A11:H11", cells=[[
   {value: "平均分", cell_styles: {...}, border_styles: {...}},
   {value: "",      cell_styles: {...}, border_styles: {...}},   ← B11 不能是 {}，要显式带 border
   {formula: "=AVERAGE(C2:C10)", cell_styles: {...}, border_styles: {...}},
@@ -152,29 +150,31 @@ set_cell_range — range="A11:H11", cells=[[
 
 ## 工具选择
 
-本 skill 提供三个写入工具，按数据来源 + 内容形态选：
+本 skill 提供以下 CLI shortcut，按数据来源 + 内容形态选：
 
-| 场景 | 工具 | 原因 |
-|------|------|------|
+| 场景 | 用这个 shortcut | 原因 |
+|------|----------------|------|
 | 模型手里已经有 CSV 文本（小规模手动构造、从 `+csv-get` 取到后简单加工） | `+csv-put` | 直接传 CSV 文本 + start_cell，不用自己拼二维 cells 数组；必要时自动扩容行列 |
-| 数据已经在沙箱里（Python 清洗/聚合/筛选/合并的大块纯值） | `import_sandbox_to_sheet` | 只传 `file_uri`，CSV 不进对话上下文，最省 token |
-| 写入含公式、样式、批注、图片、数据校验等任意富写入 | `+cells-set` | 唯一支持完整字段的工具 |
-| 大量纯值 + 需要表头样式/边框 | 先用 `+csv-put` 或 `import_sandbox_to_sheet` 写值，再用 `+cells-set` 补样式 | 分工配合，入参最短 |
+| 写入含公式、样式、批注、图片、数据校验等任意富写入 | `+cells-set` | 唯一支持完整字段的 shortcut |
+| 只改已有 cell 的样式，不动 value/formula | `+cells-set-style` | 拍平 10 个样式字段为独立 flag；不触发不必要的值写入 |
+| 单 cell 嵌入图片 | `+cells-set-image` | 比 `+cells-set` 参数更简短 |
+| 大量纯值 + 需要表头样式/边框 | 先用 `+csv-put` 写值，再用 `+cells-set-style` 补样式 | 分工配合，入参最短 |
 
-**优先级**：常规规模优先 `+csv-put`（最短入参，直接传 CSV 文本）；数据已在沙箱或大数据回写场景切到 `import_sandbox_to_sheet`（CSV 不进上下文，更省 token）；含公式/样式/批注/图片才用 `+cells-set`。
+**优先级**：常规纯值写入优先 `+csv-put`（最短入参，直接传 CSV 文本）；含公式/样式/批注/图片才用 `+cells-set`。
 
-⚠️ `+csv-put` 和 `import_sandbox_to_sheet` 都只写纯值，**不会**携带公式/样式/批注/图片；公式字符串以 `=` 开头会被当作字面量文本落地。如果数据里需要公式或样式，**必须**用 `+cells-set`（或"写值 + 补样式"两步法）。
+⚠️ `+csv-put` 只写纯值，**不会**携带公式/样式/批注/图片；公式字符串以 `=` 开头会被当作字面量文本落地。如果数据里需要公式或样式，**必须**用 `+cells-set`（或"写值 + 补样式"两步法）。
+
+⚠️ 大数据回写走"`+csv-get --max-rows N` 分批读到本地 + 本地脚本处理 + `+csv-put` 分批回写"。
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `set_cell_range` | `+cells-set` | write | 单元格 |
-|  | `+cells-set-style` | write | 单元格 |
-|  | `+cells-set-image` | write | 单元格 |
-|  | `+dropdown-set` | write | 对象 |
-| `set_range_from_csv` | `+csv-put` | write | 单元格 |
-| `import_sandbox_to_sheet` | _Sheet Tool 独有，CLI 不实现_ | — | — |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+cells-set` | write | 单元格 |
+| `+cells-set-style` | write | 单元格 |
+| `+cells-set-image` | write | 单元格 |
+| `+dropdown-set` | write | 对象 |
+| `+csv-put` | write | 单元格 |
 
 ## Flags
 
@@ -314,7 +314,7 @@ lark-cli sheets +cells-set --spreadsheet-token shtXXX --sheet-id "$SID" \
 
 > 中间想跳过的 cell 用空对象 `{}` 占位（底层语义为"保留原值不变"），`--cells` 维度仍须与 `--range` 完全一致。例：`--range A1:A5 --cells '[[{"value":1}],[{}],[{}],[{}],[{"value":5}]]'` 只写 A1 和 A5。
 >
-> 跨多个不连续区域散点写入（如 `D2` + `F7` + `J15`）不属于 `+cells-set` 的能力范围——请用 `+batch-update` 把多次 `set_cell_range` 打包成单次原子请求。
+> 跨多个不连续区域散点写入（如 `D2` + `F7` + `J15`）不属于 `+cells-set` 的能力范围——请用 `+batch-update` 把多次 `+cells-set` 打包成单次原子请求。
 
 ### `+cells-set-style`
 

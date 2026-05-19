@@ -22,12 +22,12 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_sparkline_objects` | `+sparkline-list` | read | 对象 |
-| `manage_sparkline_object` | `+sparkline-create` | write | 对象 |
-|  | `+sparkline-update` | write | 对象 |
-|  | `+sparkline-delete` | high-risk-write | 对象 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+sparkline-list` | read | 对象 |
+| `+sparkline-create` | write | 对象 |
+| `+sparkline-update` | write | 对象 |
+| `+sparkline-delete` | high-risk-write | 对象 |
 
 ## Flags
 

@@ -38,12 +38,12 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_pivot_table_objects` | `+pivot-list` | read | 对象 |
-| `manage_pivot_table_object` | `+pivot-create` | write | 对象 |
-|  | `+pivot-update` | write | 对象 |
-|  | `+pivot-delete` | high-risk-write | 对象 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+pivot-list` | read | 对象 |
+| `+pivot-create` | write | 对象 |
+| `+pivot-update` | write | 对象 |
+| `+pivot-delete` | high-risk-write | 对象 |
 
 ## Flags
 
@@ -134,4 +134,4 @@ lark-cli sheets +pivot-create --url "..." --sheet-id "$SRC_SID" \
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 pivot 请求模板"+ 预估输出尺寸（行数 × 列数）。
 - `Execute`：写后调用 `+pivot-list --pivot-table-id <id>` 回读 + `+csv-get` 抽样读透视产物，envelope.meta.verification 给出实际输出尺寸 + 总计行位置。
 
-> ⚠️ pivot 输出包含总计 / 小计行；后续 chart 引用 pivot 时，`data_range` 必须排除这些行（见 `lark_sheet_chart` 决策段）。
+> ⚠️ pivot 输出包含总计 / 小计行；后续 chart 引用 pivot 时，`data_range` 必须排除这些行（见 `lark-sheets-chart` 决策段）。

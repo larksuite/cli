@@ -25,12 +25,12 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_filter_view_objects` | `+filter-view-list` | read | 对象 |
-| `manage_filter_view_object` | `+filter-view-create` | write | 对象 |
-|  | `+filter-view-update` | write | 对象 |
-|  | `+filter-view-delete` | high-risk-write | 对象 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+filter-view-list` | read | 对象 |
+| `+filter-view-create` | write | 对象 |
+| `+filter-view-update` | write | 对象 |
+| `+filter-view-delete` | high-risk-write | 对象 |
 
 ## Flags
 

@@ -30,19 +30,19 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_workbook_structure` | `+workbook-info` | read | 工作簿 |
-| `modify_workbook_structure` | `+sheet-create` | write | 工作簿 |
-|  | `+sheet-delete` | high-risk-write | 工作簿 |
-|  | `+sheet-rename` | write | 工作簿 |
-|  | `+sheet-move` | write | 工作簿 |
-|  | `+sheet-copy` | write | 工作簿 |
-|  | `+sheet-hide` | write | 工作簿 |
-|  | `+sheet-unhide` | write | 工作簿 |
-|  | `+sheet-set-tab-color` | write | 工作簿 |
-| `create_workbook` | `+workbook-create` | write | 工作簿 |
-| `export_workbook` | `+workbook-export` | read | 工作簿 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+workbook-info` | read | 工作簿 |
+| `+sheet-create` | write | 工作簿 |
+| `+sheet-delete` | high-risk-write | 工作簿 |
+| `+sheet-rename` | write | 工作簿 |
+| `+sheet-move` | write | 工作簿 |
+| `+sheet-copy` | write | 工作簿 |
+| `+sheet-hide` | write | 工作簿 |
+| `+sheet-unhide` | write | 工作簿 |
+| `+sheet-set-tab-color` | write | 工作簿 |
+| `+workbook-create` | write | 工作簿 |
+| `+workbook-export` | read | 工作簿 |
 
 ## Flags
 

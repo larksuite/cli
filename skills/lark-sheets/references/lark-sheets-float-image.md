@@ -36,12 +36,12 @@ reference_id 的映射规则：
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `get_float_image_objects` | `+float-image-list` | read | 对象 |
-| `manage_float_image_object` | `+float-image-create` | write | 对象 |
-|  | `+float-image-update` | write | 对象 |
-|  | `+float-image-delete` | high-risk-write | 对象 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+float-image-list` | read | 对象 |
+| `+float-image-create` | write | 对象 |
+| `+float-image-update` | write | 对象 |
+| `+float-image-delete` | high-risk-write | 对象 |
 
 ## Flags
 

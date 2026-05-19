@@ -24,10 +24,10 @@
 
 ## Shortcuts
 
-| MCP tool | CLI shortcut | Risk | 分组 |
-| --- | --- | --- | --- |
-| `search_data` | `+cells-search` | read | 单元格 |
-| `replace_data` | `+cells-replace` | write | 单元格 |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+cells-search` | read | 单元格 |
+| `+cells-replace` | write | 单元格 |
 
 ## Flags
 

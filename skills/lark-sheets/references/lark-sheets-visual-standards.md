@@ -142,15 +142,15 @@
 **核心思路：三步分层法**
 
 ```
-Step 1 — 格式铺开：batch_update + transform_range(copy/fill)
+Step 1 — 格式铺开：`+batch-update` + `+range-{move|copy|fill|sort}`(copy/fill)
   └── 将模板行/区域的 **全部格式**（样式、边框、数字格式、数据验证等）复制到目标区域
   └── 推荐传 paste_type: "format_only"（仅复制格式，目标值/公式保留），即"格式刷"
   └── 若需连带公式平移填充（如公式列结构一致），改用 fill(copyCells) 或 copy 默认的 paste_type: "all"
 
-Step 2 — 内容覆写：batch_update + set_cell_range（仅传 value/formula，不传任何样式）
+Step 2 — 内容覆写：`+batch-update` + `+cells-set`（仅传 value/formula，不传任何样式）
   └── 将每行的实际数据写入，cell_styles 全部省略，因为格式已在 Step 1 中就位
 
-Step 3 — 微调收尾：batch_update + resize_range / merge_cells 等
+Step 3 — 微调收尾：`+batch-update` + `+rows-resize / +cols-resize` / `+cells-{merge|unmerge}` 等
   └── 调整行高列宽、处理合并单元格、扩展条件格式范围等边缘情况
 ```
 
@@ -172,15 +172,15 @@ Step 3 — 微调收尾：batch_update + resize_range / merge_cells 等
 
 ```
 1. 探查阶段
-   ├── get_workbook_structure → 获取子表列表、行列数、冻结位置
-   ├── get_sheet_structure（info_type: merged_cells_infos）→ 获取合并区域
-   ├── get_cell_ranges（前几行 + 末尾几行，include_styles: true）→ 采样表头/数据区/汇总行样式
+   ├── `+workbook-info` → 获取子表列表、行列数、冻结位置
+   ├── `+sheet-info`（info_type: merged_cells_infos）→ 获取合并区域
+   ├── `+cells-get`（前几行 + 末尾几行，include_styles: true）→ 采样表头/数据区/汇总行样式
    └── 分析结果 → 建立区域地图（表头行号、数据起止行号、汇总行号、合并区域列表）
 
 2. 规划阶段
    ├── 判断表头行：通常第 1 行或前 2 行，特征为加粗/背景色/合并/居中
    ├── 判断汇总行：通常最后 1~2 行，特征为加粗/SUM/AVERAGE 公式/更深背景色
-   ├── 判断合并区域：从 get_cell_ranges 返回中识别（多个单元格同值且样式相同通常暗示合并）
+   ├── 判断合并区域：从 `+cells-get` 返回中识别（多个单元格同值且样式相同通常暗示合并）
    └── 制定美化方案：按区域分别设置样式
 
 3. 执行阶段（按顺序）
