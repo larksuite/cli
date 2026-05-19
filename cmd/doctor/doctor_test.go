@@ -95,3 +95,59 @@ func TestNetworkChecks_Offline(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{
+				Name:      "default",
+				AppId:     "test-app",
+				AppSecret: core.PlainSecret("secret"),
+				Brand:     core.BrandFeishu,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	err := doctorRun(&DoctorOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Offline: true,
+	})
+	if err != nil {
+		t.Fatalf("doctorRun() error = %v", err)
+	}
+
+	var got struct {
+		OK     bool          `json:"ok"`
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if !got.OK {
+		t.Fatalf("ok = false, want true; checks = %#v", got.Checks)
+	}
+	assertCheck(t, got.Checks, "bot_identity", "pass")
+	assertCheck(t, got.Checks, "user_identity", "warn")
+	assertCheck(t, got.Checks, "identity_ready", "pass")
+}
+
+func assertCheck(t *testing.T, checks []checkResult, name, status string) {
+	t.Helper()
+	for _, check := range checks {
+		if check.Name == name {
+			if check.Status != status {
+				t.Fatalf("%s status = %q, want %q", name, check.Status, status)
+			}
+			return
+		}
+	}
+	t.Fatalf("check %q not found in %#v", name, checks)
+}

@@ -14,10 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/update"
 )
@@ -51,7 +51,7 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 // checkResult represents one diagnostic check.
 type checkResult struct {
 	Name    string `json:"name"`
-	Status  string `json:"status"` // "pass", "fail", "skip"
+	Status  string `json:"status"` // "pass", "warn", "fail", "skip"
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
 }
@@ -118,57 +118,29 @@ func doctorRun(opts *DoctorOptions) error {
 
 	ep := core.ResolveEndpoints(cfg.Brand)
 
-	// ── 3. Token exists ──
-	if cfg.UserOpenId == "" {
-		checks = append(checks, fail("token_exists", "no user logged in", "run: lark-cli auth login --help"))
-		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
-		return finishDoctor(f, checks)
-	}
-	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
-	if stored == nil {
-		checks = append(checks, fail("token_exists", "no token in keychain for "+cfg.UserOpenId, "run: lark-cli auth login --help"))
-		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
-		return finishDoctor(f, checks)
-	}
-	checks = append(checks, pass("token_exists", fmt.Sprintf("token found for %s (%s)", cfg.UserName, cfg.UserOpenId)))
-
-	// ── 4. Token local validity ──
-	status := larkauth.TokenStatus(stored)
-	switch status {
-	case "valid":
-		checks = append(checks, pass("token_local", "token valid, expires "+time.UnixMilli(stored.ExpiresAt).Format(time.RFC3339)))
-	case "needs_refresh":
-		checks = append(checks, pass("token_local", "token needs refresh (will auto-refresh on next call)"))
-	default: // expired
-		checks = append(checks, fail("token_local", "token expired", "run: lark-cli auth login --help"))
-		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
-		return finishDoctor(f, checks)
-	}
-
-	// ── 5. Token server verification ──
-	if opts.Offline {
-		checks = append(checks, skip("token_verified", "skipped (--offline)"))
+	// ── 3. Identity readiness ──
+	diagnostics := identitydiag.Diagnose(opts.Ctx, f, cfg, !opts.Offline)
+	checks = append(checks,
+		identityCheck("bot_identity", diagnostics.Bot),
+		identityCheck("user_identity", diagnostics.User),
+	)
+	if diagnostics.Bot.Available || diagnostics.User.Available {
+		checks = append(checks, pass("identity_ready", "at least one identity is available"))
 	} else {
-		httpClient := mustHTTPClient(f)
-		token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
-		if err != nil {
-			checks = append(checks, fail("token_verified", "cannot obtain valid token: "+err.Error(), "run: lark-cli auth login --help"))
-		} else {
-			sdk, err := f.LarkClient()
-			if err != nil {
-				checks = append(checks, fail("token_verified", "SDK init failed: "+err.Error(), ""))
-			} else if err := larkauth.VerifyUserToken(opts.Ctx, sdk, token); err != nil {
-				checks = append(checks, fail("token_verified", "server rejected token: "+err.Error(), "run: lark-cli auth login --help"))
-			} else {
-				checks = append(checks, pass("token_verified", "server confirmed token is valid"))
-			}
-		}
+		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", "run: lark-cli auth status --verify"))
 	}
 
-	// ── 6 & 7. Endpoint reachability ──
+	// ── 4 & 5. Endpoint reachability ──
 	checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
 
 	return finishDoctor(f, checks)
+}
+
+func identityCheck(name string, id identitydiag.Identity) checkResult {
+	if id.Available {
+		return pass(name, id.Message)
+	}
+	return warn(name, id.Message, id.Hint)
 }
 
 // networkChecks probes Open API and MCP endpoints concurrently.
@@ -230,15 +202,6 @@ func probeEndpoint(ctx context.Context, client *http.Client, url string) error {
 	}
 	resp.Body.Close()
 	return nil
-}
-
-// mustHTTPClient returns f.HttpClient() or a default client.
-func mustHTTPClient(f *cmdutil.Factory) *http.Client {
-	c, err := f.HttpClient()
-	if err != nil {
-		return &http.Client{Timeout: 30 * time.Second}
-	}
-	return c
 }
 
 // checkCLIUpdate actively queries the npm registry for the latest version.
