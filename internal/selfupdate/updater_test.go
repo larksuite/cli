@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/vfs"
@@ -164,5 +165,89 @@ func TestVerifyBinaryEmptyOutput(t *testing.T) {
 
 	if err := New().VerifyBinary("2.0.0"); err == nil {
 		t.Fatal("VerifyBinary(empty output) expected error, got nil")
+	}
+}
+
+func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*Updater) *NpmResult
+		want string
+	}{
+		{
+			name: "list official primary",
+			run: func(u *Updater) *NpmResult {
+				return u.runSkillsListOfficial("https://open.feishu.cn")
+			},
+			want: "-y skills add https://open.feishu.cn --list",
+		},
+		{
+			name: "list global",
+			run: func(u *Updater) *NpmResult {
+				return u.runSkillsListGlobal()
+			},
+			want: "-y skills ls -g",
+		},
+		{
+			name: "install skill primary",
+			run: func(u *Updater) *NpmResult {
+				return u.runSkillsInstall("https://open.feishu.cn", "lark-mail")
+			},
+			want: "-y skills add https://open.feishu.cn -s lark-mail -g -y",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if runtime.GOOS == "windows" {
+				t.Skip("uses a POSIX shell script")
+			}
+			dir := t.TempDir()
+			script := filepath.Join(dir, "npx")
+			logPath := filepath.Join(dir, "npx.log")
+			if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \""+logPath+"\"\nexit 0\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+			result := tt.run(New())
+			if result.Err != nil {
+				t.Fatalf("command err = %v, want nil", result.Err)
+			}
+			raw, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.TrimSpace(string(raw)) != tt.want {
+				t.Fatalf("args = %q, want %q", strings.TrimSpace(string(raw)), tt.want)
+			}
+		})
+	}
+}
+
+func TestListOfficialSkillsFallsBack(t *testing.T) {
+	called := []string{}
+	updater := &Updater{
+		SkillsCommandOverride: func(args ...string) *NpmResult {
+			called = append(called, strings.Join(args, " "))
+			r := &NpmResult{}
+			if strings.Contains(strings.Join(args, " "), "https://open.feishu.cn") {
+				r.Err = fmt.Errorf("primary failed")
+				return r
+			}
+			r.Stdout.WriteString("lark-calendar\n")
+			return r
+		},
+	}
+
+	result := updater.ListOfficialSkills()
+	if result.Err != nil {
+		t.Fatalf("ListOfficialSkills() err = %v, want nil", result.Err)
+	}
+	if len(called) != 2 {
+		t.Fatalf("called %d commands, want 2: %#v", len(called), called)
+	}
+	if !strings.Contains(called[1], "larksuite/cli --list") {
+		t.Fatalf("fallback call = %q, want larksuite/cli --list", called[1])
 	}
 }
