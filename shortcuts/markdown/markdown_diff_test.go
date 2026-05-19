@@ -4,7 +4,9 @@
 package markdown
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -154,6 +156,79 @@ func TestMarkdownDiffRemoteVsLocalPretty(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), output.Green+"+hello new"+output.Reset) {
 		t.Fatalf("pretty output missing added line color: %q", stdout.String())
+	}
+}
+
+func TestMarkdownDiffRejectsOversizedRemoteContent(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/box_md_diff/download",
+		Status:  200,
+		RawBody: bytes.Repeat([]byte("x"), markdownDiffMaxContentBytes+1),
+	})
+
+	tmpDir := t.TempDir()
+	withMarkdownWorkingDir(t, tmpDir)
+	if err := os.WriteFile("local.md", []byte("# Title\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunMarkdown(t, MarkdownDiff, []string{
+		"+diff",
+		"--file-token", "box_md_diff",
+		"--file", "./local.md",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "remote Markdown content exceeds 10.0 MB markdown +diff content limit") {
+		t.Fatalf("expected remote content size error, got %v", err)
+	}
+}
+
+func TestMarkdownDiffRejectsOversizedLocalContent(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/box_md_diff/download",
+		Status:  200,
+		RawBody: []byte("# Title\n"),
+	})
+
+	tmpDir := t.TempDir()
+	withMarkdownWorkingDir(t, tmpDir)
+	if err := os.WriteFile("local.md", bytes.Repeat([]byte("x"), markdownDiffMaxContentBytes+1), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunMarkdown(t, MarkdownDiff, []string{
+		"+diff",
+		"--file-token", "box_md_diff",
+		"--file", "./local.md",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "local Markdown file exceeds 10.0 MB markdown +diff content limit") {
+		t.Fatalf("expected local content size error, got %v", err)
+	}
+}
+
+func TestMarkdownDownloadErrorPreservesStructuredErrors(t *testing.T) {
+	apiErr := output.ErrAPI(99991663, "permission denied", map[string]interface{}{"permission": "drive:file:download"})
+	if got := wrapMarkdownDownloadError(apiErr); got != apiErr {
+		t.Fatalf("wrapMarkdownDownloadError() = %v, want original API error", got)
+	}
+
+	got := wrapMarkdownDownloadError(errors.New("dial tcp timeout"))
+	var exitErr *output.ExitError
+	if !errors.As(got, &exitErr) {
+		t.Fatalf("wrapMarkdownDownloadError() = %T, want *output.ExitError", got)
+	}
+	if exitErr.Code != output.ExitNetwork {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitNetwork)
+	}
+	if !strings.Contains(got.Error(), "download failed: dial tcp timeout") {
+		t.Fatalf("wrapped error = %q", got.Error())
 	}
 }
 

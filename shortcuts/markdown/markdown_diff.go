@@ -5,10 +5,12 @@ package markdown
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
 
@@ -20,6 +22,8 @@ import (
 const (
 	markdownDiffModeRemoteVsRemote = "remote_vs_remote"
 	markdownDiffModeRemoteVsLocal  = "remote_vs_local"
+	markdownDiffMaxContentBytes    = 10 * 1024 * 1024
+	markdownDiffTimeout            = 30 * time.Second
 )
 
 var markdownDiffVersionRe = regexp.MustCompile(`^\d{1,19}$`)
@@ -164,9 +168,9 @@ func downloadMarkdownContent(ctx context.Context, runtime *common.RuntimeContext
 	}
 	defer resp.Body.Close()
 
-	payload, err := io.ReadAll(resp.Body)
+	payload, err := readMarkdownDiffPayload(resp.Body, "remote Markdown content")
 	if err != nil {
-		return "", "", output.ErrNetwork("download failed: %s", err)
+		return "", "", wrapMarkdownDownloadError(err)
 	}
 	return fileName, string(payload), nil
 }
@@ -178,11 +182,26 @@ func readMarkdownLocalFile(runtime *common.RuntimeContext, filePath string) (str
 	}
 	defer f.Close()
 
-	payload, err := io.ReadAll(f)
+	payload, err := readMarkdownDiffPayload(f, "local Markdown file")
 	if err != nil {
+		var exitErr *output.ExitError
+		if errors.As(err, &exitErr) {
+			return "", err
+		}
 		return "", output.ErrValidation("cannot read file: %s", err)
 	}
 	return string(payload), nil
+}
+
+func readMarkdownDiffPayload(r io.Reader, source string) ([]byte, error) {
+	payload, err := io.ReadAll(io.LimitReader(r, markdownDiffMaxContentBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > markdownDiffMaxContentBytes {
+		return nil, output.ErrValidation("%s exceeds %s markdown +diff content limit", source, common.FormatSize(markdownDiffMaxContentBytes))
+	}
+	return payload, nil
 }
 
 func splitMarkdownDiffLines(text string) []string {
@@ -198,7 +217,7 @@ func splitMarkdownDiffLines(text string) []string {
 
 func markdownDiffLineOps(fromContent, toContent string) []markdownDiffLineOp {
 	dmp := diffmatchpatch.New()
-	dmp.DiffTimeout = 0
+	dmp.DiffTimeout = markdownDiffTimeout
 	before, after, lineArray := dmp.DiffLinesToRunes(fromContent, toContent)
 	diffs := dmp.DiffMainRunes(before, after, false)
 	// Keep the diff line-based. Running cleanup after hydrating real text

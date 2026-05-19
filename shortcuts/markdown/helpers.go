@@ -137,9 +137,17 @@ func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, f
 		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
 	})
 	if err != nil {
-		return nil, output.ErrNetwork("download failed: %s", err)
+		return nil, wrapMarkdownDownloadError(err)
 	}
 	return resp, nil
+}
+
+func wrapMarkdownDownloadError(err error) error {
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) {
+		return err
+	}
+	return output.ErrNetwork("download failed: %s", err)
 }
 
 func validateNonEmptyMarkdownSize(size int64) error {
@@ -183,7 +191,7 @@ func openMarkdownDownloadVersion(ctx context.Context, runtime *common.RuntimeCon
 
 	resp, err := runtime.DoAPIStream(ctx, req)
 	if err != nil {
-		return nil, "", output.ErrNetwork("download failed: %s", err)
+		return nil, "", wrapMarkdownDownloadError(err)
 	}
 	return resp, fileNameFromDownloadHeader(resp.Header, fileToken+".md"), nil
 }
