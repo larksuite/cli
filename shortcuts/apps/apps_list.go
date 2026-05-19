@@ -18,7 +18,7 @@ var AppsList = common.Shortcut{
 	Command:     "+list",
 	Description: "List Miaoda apps owned by the calling user (cursor pagination)",
 	Risk:        "read",
-	Scopes:      []string{"miaoda:app:readonly"},
+	Scopes:      []string{"spark:app.table:write"}, // BOE 端 OAPI 当前以 spark 系列 scope 注册；待后端 miaoda:app:* 注册稳定后再切回
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{

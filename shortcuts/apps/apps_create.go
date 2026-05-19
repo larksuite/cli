@@ -19,7 +19,7 @@ var AppsCreate = common.Shortcut{
 	Command:     "+create",
 	Description: "Create a new Miaoda app",
 	Risk:        "write",
-	Scopes:      []string{"miaoda:app:write"},
+	Scopes:      []string{"spark:app.table:write"}, // BOE 端 OAPI 当前以 spark 系列 scope 注册；待后端 miaoda:app:* 注册稳定后再切回
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
