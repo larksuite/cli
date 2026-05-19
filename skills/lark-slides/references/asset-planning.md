@@ -7,7 +7,7 @@
 ## Core Rules
 
 - `asset_need` is metadata only. It can guide page design, but it must not require web search, local download, media upload, or external tools.
-- Every planned asset must include a fallback visual plan so the slide can be generated with XML shapes, text, arrows, tables, simple charts, or placeholder regions.
+- Every planned asset must include a fallback visual plan so the slide can be generated with XML shapes, text, arrows, tables, simple charts, whiteboard diagrams, or placeholder regions.
 - Asset needs must serve the page's `key_message` and `visual_focus`. Do not add decorative assets that do not clarify the page.
 - Prefer a few high-value asset plans over one asset on every page. For a 6-page technical or business deck, plan assets on at least 3 pages when the content allows.
 - If a real local asset already exists or the user provides one, it can be used through the normal media-upload workflow. Still keep `fallback_if_missing` in the plan.
@@ -22,7 +22,7 @@ Use an object for one planned asset, or an array when a page genuinely needs mul
   "asset_type": "architecture_diagram",
   "purpose": "Show how API gateway, planner, XML generator, and Slides API interact.",
   "suggested_query": "agent native slides runtime architecture diagram",
-  "fallback_if_missing": "Draw grouped boxes and arrows with XML shapes; use labels instead of an image."
+  "fallback_if_missing": "Draw grouped boxes connected by arrows with short labels."
 }
 ```
 
@@ -118,7 +118,7 @@ Business comparison page:
 When generating XML:
 
 1. If an asset exists and the workflow supports it, place it in the planned visual region.
-2. If no asset exists, immediately render `fallback_if_missing` with XML-native shapes, text, lines, arrows, tables, or chart-like elements.
+2. If no asset exists, immediately render `fallback_if_missing` with XML-native shapes, text, lines, arrows, tables, whiteboard diagrams, or chart-like elements.
 3. Size the fallback to satisfy `visual_focus`; it should be a real page element, not a tiny decoration.
 4. Keep text-density limits. Do not compensate for missing assets by adding long bullet text.
 5. After creation, fetch the presentation and verify asset pages are not blank and that each planned fallback is visible when no real asset was used.
