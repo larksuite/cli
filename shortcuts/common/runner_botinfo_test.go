@@ -57,7 +57,7 @@ func TestFetchBotInfo_Success(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot_abc123",
 				"app_name": "TestBot",
 			},
@@ -86,7 +86,7 @@ func TestFetchBotInfo_ShortcutHeaders(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot_header",
 				"app_name": "HeaderBot",
 			},
@@ -119,7 +119,7 @@ func TestFetchBotInfo_OnceSemantics(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot_once",
 				"app_name": "OnceBot",
 			},
@@ -183,7 +183,7 @@ func TestFetchBotInfo_EmptyOpenID(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "",
 				"app_name": "EmptyBot",
 			},

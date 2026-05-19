@@ -103,13 +103,15 @@ func (ctx *RuntimeContext) fetchBotInfo() (*BotInfo, error) {
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("fetch bot info: HTTP %d", resp.StatusCode)
 	}
+	// /open-apis/bot/v3/info returns `{code, msg, bot: {...}}` — the bot
+	// payload is under "bot", not "data" as the newer Lark API convention.
 	var envelope struct {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
 			OpenID  string `json:"open_id"`
 			AppName string `json:"app_name"`
-		} `json:"data"`
+		} `json:"bot"`
 	}
 	if err := json.Unmarshal(resp.RawBody, &envelope); err != nil {
 		return nil, fmt.Errorf("fetch bot info: unmarshal: %w", err)
