@@ -51,8 +51,8 @@ func TestDriveInspectValidate_NonLarkHostWithLarkPath(t *testing.T) {
 
 	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
-	if err == nil {
-		t.Fatal("expected error for non-Lark host with Lark-like path, got nil")
+	if err != nil {
+		t.Fatalf("expected no error for non-Lark host with Lark-like path (host validation removed), got %v", err)
 	}
 }
 

@@ -197,26 +197,6 @@ func TestDriveInspectValidation_InvalidType(t *testing.T) {
 		"expected invalid type validation error, stderr:\n%s", result.Stderr)
 }
 
-func TestDriveInspectValidation_NonLarkHostWithLarkPath(t *testing.T) {
-	setDriveInspectE2EEnv(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"drive", "+inspect",
-			"--url", "https://google.com/docx/doxcnLooksValid",
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 2)
-	require.Contains(t, result.Stderr, "not a recognized Lark/Feishu domain",
-		"expected non-Lark host validation error, stderr:\n%s", result.Stderr)
-}
-
 // --- Helpers ---
 
 func runInspectDryRun(t *testing.T, url string) *clie2e.Result {
