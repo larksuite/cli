@@ -25,8 +25,8 @@ lark-cli drive +export \
   --doc-type doc \
   --file-extension docx
 
-# 导出 docx 为 markdown
-# 注意：markdown 只支持 docx，底层走 /open-apis/docs/v1/content
+# 导出 docx 为 markdown（Lark-flavored Markdown）
+# 注意：markdown 只支持 docx
 lark-cli drive +export \
   --token "<DOCX_TOKEN>" \
   --doc-type docx \

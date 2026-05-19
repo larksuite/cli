@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -25,6 +26,7 @@ var DriveExport = common.Shortcut{
 	Scopes: []string{
 		"docs:document.content:read",
 		"docs:document:export",
+		"docx:document:readonly",
 		"drive:drive.metadata:readonly",
 	},
 	AuthTypes: []string{"user", "bot"},
@@ -52,16 +54,15 @@ var DriveExport = common.Shortcut{
 			FileExtension: runtime.Str("file-extension"),
 			SubID:         runtime.Str("sub-id"),
 		}
-		// Markdown export is a special case: docx markdown comes from docs content
-		// directly instead of the Drive export task API.
+		// Markdown export is a special case: docx markdown comes from the V2
+		// docs_ai fetch API directly instead of the Drive export task API.
 		if spec.FileExtension == "markdown" {
+			apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
 			dr := common.NewDryRunAPI().
 				Desc("2-step orchestration: fetch docx markdown -> write local file").
-				GET("/open-apis/docs/v1/content").
-				Params(map[string]interface{}{
-					"doc_token":    spec.Token,
-					"doc_type":     "docx",
-					"content_type": "markdown",
+				POST(apiPath).
+				Body(map[string]interface{}{
+					"format": "markdown",
 				}).
 				Set("output_dir", runtime.Str("output-dir"))
 			if name := strings.TrimSpace(runtime.Str("file-name")); name != "" {
@@ -101,21 +102,31 @@ var DriveExport = common.Shortcut{
 		overwrite := runtime.Bool("overwrite")
 
 		// Markdown export bypasses the async export task and writes the fetched
-		// markdown content directly to disk.
+		// markdown content directly to disk. Uses the V2 docs_ai fetch API for
+		// higher-quality Lark-flavored Markdown output.
 		if spec.FileExtension == "markdown" {
 			fmt.Fprintf(runtime.IO().ErrOut, "Exporting docx as markdown: %s\n", common.MaskToken(spec.Token))
-			data, err := runtime.CallAPI(
-				"GET",
-				"/open-apis/docs/v1/content",
-				map[string]interface{}{
-					"doc_token":    spec.Token,
-					"doc_type":     "docx",
-					"content_type": "markdown",
-				},
+			apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
+			data, err := runtime.DoAPIJSONWithLogID(
+				"POST",
+				apiPath,
 				nil,
+				map[string]interface{}{
+					"format": "markdown",
+				},
 			)
 			if err != nil {
 				return err
+			}
+
+			// Extract content from the V2 response: data.document.content
+			doc, ok := data["document"].(map[string]interface{})
+			if !ok {
+				return output.Errorf(output.ExitAPI, "api_error", "invalid markdown fetch response: missing document object")
+			}
+			content, ok := doc["content"].(string)
+			if !ok {
+				return output.Errorf(output.ExitAPI, "api_error", "invalid markdown fetch response: missing document.content")
 			}
 
 			fileName := preferredFileName
@@ -130,7 +141,7 @@ var DriveExport = common.Shortcut{
 				fileName = title
 			}
 			fileName = ensureExportFileExtension(sanitizeExportFileName(fileName, spec.Token), spec.FileExtension)
-			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(common.GetString(data, "content")), overwrite)
+			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(content), overwrite)
 			if err != nil {
 				return err
 			}
@@ -141,7 +152,7 @@ var DriveExport = common.Shortcut{
 				"file_extension": spec.FileExtension,
 				"file_name":      filepath.Base(savedPath),
 				"saved_path":     savedPath,
-				"size_bytes":     len([]byte(common.GetString(data, "content"))),
+				"size_bytes":     len(content),
 			}, nil)
 			return nil
 		}

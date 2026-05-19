@@ -81,16 +81,19 @@ func TestValidateDriveExportSpec(t *testing.T) {
 
 func TestDriveExportMarkdownWritesFile(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/docs/v1/content",
+	fetchStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"content": "# hello\n",
+				"document": map[string]interface{}{
+					"content": "# hello\n",
+				},
 			},
 		},
-	})
+	}
+	reg.Register(fetchStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -118,6 +121,14 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(fetchStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal docs_ai fetch body: %v", err)
+	}
+	if reqBody["format"] != "markdown" {
+		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+
 	data, err := os.ReadFile(filepath.Join(tmpDir, "Weekly Notes.md"))
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
@@ -132,16 +143,19 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 
 func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/docs/v1/content",
+	fetchStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"content": "# custom\n",
+				"document": map[string]interface{}{
+					"content": "# custom\n",
+				},
 			},
 		},
-	})
+	}
+	reg.Register(fetchStub)
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -156,6 +170,14 @@ func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(fetchStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal docs_ai fetch body: %v", err)
+	}
+	if reqBody["format"] != "markdown" {
+		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "custom-notes.md"))
@@ -179,7 +201,7 @@ func TestDriveExportDryRunIncludesLocalFileNameMetadata(t *testing.T) {
 	}{
 		{
 			name:         "markdown",
-			wantURL:      "/open-apis/docs/v1/content",
+			wantURL:      "/open-apis/docs_ai/v1/documents/docx123/fetch",
 			wantFileName: `"file_name": "notes.md"`,
 			args: []string{
 				"+export",
@@ -233,16 +255,19 @@ func TestDriveExportDryRunIncludesLocalFileNameMetadata(t *testing.T) {
 
 func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/docs/v1/content",
+	fetchStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"content": "# fallback\n",
+				"document": map[string]interface{}{
+					"content": "# fallback\n",
+				},
 			},
 		},
-	})
+	}
+	reg.Register(fetchStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -267,6 +292,14 @@ func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(fetchStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal docs_ai fetch body: %v", err)
+	}
+	if reqBody["format"] != "markdown" {
+		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+
 	data, err := os.ReadFile(filepath.Join(tmpDir, "docx123.md"))
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
@@ -276,6 +309,76 @@ func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"file_name": "docx123.md"`) {
 		t.Fatalf("stdout missing fallback file name: %s", stdout.String())
+	}
+}
+
+func TestDriveExportMarkdownRejectsMissingDocumentObject(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "markdown",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for missing document object, got nil")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected structured exit error, got %v", err)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "missing document object") {
+		t.Fatalf("error message = %q, want mention of missing document object", exitErr.Detail.Message)
+	}
+}
+
+func TestDriveExportMarkdownRejectsMissingDocumentContent(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"document": map[string]interface{}{},
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "markdown",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for missing document.content, got nil")
+	}
+
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected structured exit error, got %v", err)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "missing document.content") {
+		t.Fatalf("error message = %q, want mention of missing document.content", exitErr.Detail.Message)
 	}
 }
 
