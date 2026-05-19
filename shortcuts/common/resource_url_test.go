@@ -45,10 +45,12 @@ func TestParseResourceURL(t *testing.T) {
 		// With extra path segments after token
 		{"extra path", "https://xxx.feishu.cn/docx/doxcnABC/edit", "docx", "doxcnABC", true},
 
+		// Non-Lark host with Lark-like path (host validation is the caller's responsibility)
+		{"non-lark host with lark path", "https://google.com/docx/doxcnABC", "docx", "doxcnABC", true},
+
 		// Negative cases
 		{"unrecognized path", "https://xxx.feishu.cn/calendar/calABC", "", "", false},
-		{"non-lark host with lark-like path", "https://google.com/docx/doxcnABC", "", "", false},
-		{"non-lark host", "https://example.com/page", "", "", false},
+		{"non-lark host unrecognized path", "https://example.com/page", "", "", false},
 		{"empty input", "", "", "", false},
 		{"bare token", "doxcnABC", "", "", false},
 		{"invalid url parse", "://not-a-valid-url", "", "", false},

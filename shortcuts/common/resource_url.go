@@ -84,26 +84,6 @@ var urlPathToType = []struct {
 	{"/slides/", "slides"},
 }
 
-// larkHostSuffixes are the known Lark/Feishu host suffixes.
-// A URL whose host ends with one of these is considered a valid
-// Lark document URL; anything else is rejected to prevent
-// third-party sites from being misinterpreted.
-var larkHostSuffixes = []string{
-	".feishu.cn",
-	".larksuite.com",
-}
-
-// isLarkHost returns true if the host belongs to a known Lark/Feishu domain.
-func isLarkHost(host string) bool {
-	host = strings.ToLower(host)
-	for _, suffix := range larkHostSuffixes {
-		if strings.HasSuffix(host, suffix) {
-			return true
-		}
-	}
-	return false
-}
-
 // ParseResourceURL parses a Lark/Feishu URL and extracts the resource type
 // and token from the URL path. It is the inverse of BuildResourceURL.
 //
@@ -128,12 +108,6 @@ func ParseResourceURL(rawURL string) (ResourceRef, bool) {
 
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return ResourceRef{}, false
-	}
-
-	// Reject URLs whose host is not a known Lark/Feishu domain.
-	// This prevents https://google.com/docx/xxx from being accepted.
-	if u.Host != "" && !isLarkHost(u.Host) {
 		return ResourceRef{}, false
 	}
 

@@ -7,11 +7,32 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+// larkHostSuffixes are the known Lark/Feishu host suffixes used by +inspect
+// to reject URLs from unrelated domains (e.g. google.com/docx/TOKEN).
+// This list lives here rather than in ParseResourceURL because host validation
+// is a business decision of the +inspect command; a general-purpose URL parser
+// should not hardcode domain lists that may expand over time.
+var larkHostSuffixes = []string{
+	".feishu.cn",
+	".larksuite.com",
+}
+
+func isLarkHost(host string) bool {
+	host = strings.ToLower(host)
+	for _, suffix := range larkHostSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
 
 var DriveInspect = common.Shortcut{
 	Service:           "drive",
@@ -41,7 +62,12 @@ var DriveInspect = common.Shortcut{
 		}
 
 		_, ok := common.ParseResourceURL(raw)
-		if !ok {
+		if ok {
+			// Parsed successfully — verify the host is a known Lark/Feishu domain.
+			if u, err := url.Parse(raw); err == nil && !isLarkHost(u.Host) {
+				return output.ErrValidation("unsupported --url %q: host %q is not a recognized Lark/Feishu domain", raw, u.Host)
+			}
+		} else {
 			// Not a recognized URL pattern.
 			if strings.Contains(raw, "://") {
 				return output.ErrValidation("unsupported --url %q: use a recognized Lark document URL or a bare token with --type", raw)
