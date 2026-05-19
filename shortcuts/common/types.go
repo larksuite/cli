@@ -58,6 +58,21 @@ type Shortcut struct {
 	Validate func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
 	Execute  func(ctx context.Context, runtime *RuntimeContext) error      // main logic
 
+	// PrintFlagSchema, when non-nil, opts this shortcut into the
+	// `--print-schema --flag-name <name>` runtime introspection contract.
+	// The framework auto-injects those two system flags and short-circuits
+	// Validate/Execute when --print-schema is set, dispatching to this hook.
+	//
+	// Contract:
+	//   - flagName == ""     → list the flags this shortcut can describe
+	//                          (output is impl-defined; agents read this to
+	//                          discover which flags are introspectable).
+	//   - flagName == "...": → return the JSON Schema (or schema-like blob)
+	//                          for that flag.
+	// Return value is written to stdout verbatim; callers typically format
+	// it as JSON. Returning an error surfaces as a normal command error.
+	PrintFlagSchema func(flagName string) ([]byte, error)
+
 	// PostMount is an optional hook called after the cobra.Command is fully
 	// configured (flags registered, tips set) and after parent.AddCommand(cmd)
 	// has attached it to the parent. Use it to install custom help functions or

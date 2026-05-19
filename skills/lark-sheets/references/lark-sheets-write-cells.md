@@ -156,14 +156,14 @@ set_cell_range — range="A11:H11", cells=[[
 
 | 场景 | 工具 | 原因 |
 |------|------|------|
-| 写入含公式、样式、批注、图片、数据校验等任意富写入 | `+cells-set` | 唯一支持完整字段的工具 |
-| 数据已经在沙箱里（Python 清洗/聚合/筛选/合并的大块纯值） | `import_sandbox_to_sheet` | 只传 `file_uri`，CSV 不进对话上下文，最省 token |
 | 模型手里已经有 CSV 文本（小规模手动构造、从 `+csv-get` 取到后简单加工） | `+csv-put` | 直接传 CSV 文本 + start_cell，不用自己拼二维 cells 数组；必要时自动扩容行列 |
-| 大量纯值 + 需要表头样式/边框 | 先用 `import_sandbox_to_sheet` 或 `+csv-put` 写值，再用 `+cells-set` 补样式 | 分工配合，入参最短 |
+| 数据已经在沙箱里（Python 清洗/聚合/筛选/合并的大块纯值） | `import_sandbox_to_sheet` | 只传 `file_uri`，CSV 不进对话上下文，最省 token |
+| 写入含公式、样式、批注、图片、数据校验等任意富写入 | `+cells-set` | 唯一支持完整字段的工具 |
+| 大量纯值 + 需要表头样式/边框 | 先用 `+csv-put` 或 `import_sandbox_to_sheet` 写值，再用 `+cells-set` 补样式 | 分工配合，入参最短 |
 
-**优先级**：沙箱路径（`import_sandbox_to_sheet`）> CSV 文本（`+csv-put`）> 逐格写（`+cells-set`）。能把数据保留在沙箱里的就别让 CSV 进上下文。
+**优先级**：常规规模优先 `+csv-put`（最短入参，直接传 CSV 文本）；数据已在沙箱或大数据回写场景切到 `import_sandbox_to_sheet`（CSV 不进上下文，更省 token）；含公式/样式/批注/图片才用 `+cells-set`。
 
-⚠️ `import_sandbox_to_sheet` 和 `+csv-put` 都只写纯值，**不会**携带公式/样式/批注/图片；公式字符串以 `=` 开头会被当作字面量文本落地。如果数据里需要公式或样式，**必须**用 `+cells-set`（或"写值 + 补样式"两步法）。
+⚠️ `+csv-put` 和 `import_sandbox_to_sheet` 都只写纯值，**不会**携带公式/样式/批注/图片；公式字符串以 `=` 开头会被当作字面量文本落地。如果数据里需要公式或样式，**必须**用 `+cells-set`（或"写值 + 补样式"两步法）。
 
 ## Shortcuts
 
@@ -180,84 +180,69 @@ set_cell_range — range="A11:H11", cells=[[
 
 ### `+cells-set`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 写入区域 A1 格式 |
-| `--cells` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`{"values": [[...], ...]}`；可含 `formula` / `cell_styles` / `comments` / `embed_image` 富信息 |
-| `--allow-overwrite` | 专有 | bool | 否 | 允许覆盖非空 cell；默认 false 时遇非空 cell 报错 |
-| `--max-cells` | 专有 | int + Hidden | 否 | 防爆，默认 50000 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 写入区域 A1 格式 |
+| `--cells` | string + File + Stdin（复合 JSON） | 是 | JSON：`{"values": [[...], ...]}`；可含 `formula` / `cell_styles` / `comments` / `embed_image` 富信息 |
+| `--allow-overwrite` | bool | 否 | 允许覆盖非空 cell；默认 false 时遇非空 cell 报错 |
+| `--max-cells` | int + Hidden | 否 | 防爆，默认 50000 |
 
 ### `+cells-set-style`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 目标范围 A1 格式（如 `A1:B2`） |
-| `--background-color` | 专有 | string | 否 | 背景颜色（十六进制，如 `#ffffff`） |
-| `--font-color` | 专有 | string | 否 | 字体颜色（十六进制，如 `#000000`） |
-| `--font-size` | 专有 | number | 否 | 字体大小（px，例：10、12、14） |
-| `--font-style` | 专有 | string + Enum | 否 | 字体样式 enum：`normal` / `italic` |
-| `--font-weight` | 专有 | string + Enum | 否 | 字重 enum：`normal` / `bold` |
-| `--font-line` | 专有 | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
-| `--horizontal-alignment` | 专有 | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
-| `--vertical-alignment` | 专有 | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
-| `--word-wrap` | 专有 | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
-| `--number-format` | 专有 | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
-| `--border-styles` | 专有 | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON：`{ top: {style,color,weight}, bottom: ..., left: ..., right: ... }`；4 方向结构相同 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 目标范围 A1 格式（如 `A1:B2`） |
+| `--background-color` | string | 否 | 背景颜色（十六进制，如 `#ffffff`） |
+| `--font-color` | string | 否 | 字体颜色（十六进制，如 `#000000`） |
+| `--font-size` | number | 否 | 字体大小（px，例：10、12、14） |
+| `--font-style` | string + Enum | 否 | 字体样式 enum：`normal` / `italic` |
+| `--font-weight` | string + Enum | 否 | 字重 enum：`normal` / `bold` |
+| `--font-line` | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
+| `--horizontal-alignment` | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
+| `--vertical-alignment` | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
+| `--word-wrap` | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
+| `--number-format` | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
+| `--border-styles` | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON：`{ top: {style,color,weight}, bottom: ..., left: ..., right: ... }`；4 方向结构相同 |
 
 ### `+cells-set-image`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 目标 cell A1（必须单 cell，如 `A1`；起止 cell 须相同） |
-| `--image` | 专有 | string | 是 | 本地图片路径（支持 PNG / JPEG / JPG / GIF / BMP / JFIF / EXIF / TIFF / BPG / HEIC） |
-| `--name` | 专有 | string | 否 | 图片文件名（含扩展名）；省略时取 `--image` 的 basename |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 目标 cell A1（必须单 cell，如 `A1`；起止 cell 须相同） |
+| `--image` | string | 是 | 本地图片路径（支持 PNG / JPEG / JPG / GIF / BMP / JFIF / EXIF / TIFF / BPG / HEIC） |
+| `--name` | string | 否 | 图片文件名（含扩展名）；省略时取 `--image` 的 basename |
 
 ### `+dropdown-set`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 目标范围 A1 格式（如 `A2:A100`） |
-| `--options` | 专有 | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 `["opt1","opt2"]`；最多 500 项，每项 ≤100 字符，不含逗号 |
-| `--colors` | 专有 | string + File + Stdin（简单 JSON） | 否 | RGB hex 颜色数组（如 `["#1FB6C1","#F006C2"]`），长度必须与 `--options` 一致 |
-| `--multiple` | 专有 | bool | 否 | 启用多选；默认 `false` |
-| `--highlight` | 专有 | bool | 否 | 选项配色显示；默认 `false` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 目标范围 A1 格式（如 `A2:A100`） |
+| `--options` | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 `["opt1","opt2"]`；最多 500 项，每项 ≤100 字符，不含逗号 |
+| `--colors` | string + File + Stdin（简单 JSON） | 否 | RGB hex 颜色数组（如 `["#1FB6C1","#F006C2"]`），长度必须与 `--options` 一致 |
+| `--multiple` | bool | 否 | 启用多选；默认 `false` |
+| `--highlight` | bool | 否 | 选项配色显示；默认 `false` |
 
 ### `+csv-put`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 目标区域起点 A1（如 `Sheet1!A1`）；自动按 CSV 行列数推断终点 |
-| `--csv` | 专有 | string + File + Stdin（非 JSON 文本） | 是 | RFC 4180 CSV 文本；只写纯值，不带公式/样式/批注 |
-| `--allow-overwrite` | 专有 | bool | 否 | 允许覆盖；默认 false 时若目标非空报错 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 目标区域起点 A1（如 `Sheet1!A1`）；自动按 CSV 行列数推断终点 |
+| `--csv` | string + File + Stdin（非 JSON 文本） | 是 | RFC 4180 CSV 文本；只写纯值，不带公式/样式/批注 |
+| `--allow-overwrite` | bool | 否 | 允许覆盖；默认 false 时若目标非空报错 |
 
 ## Schemas
 
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
+> 复合 JSON flag（如 `--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>`。先 `--print-schema`（不带 `--flag-name`）会列出该 shortcut 所有可查询的 flag。
 
 ### `+cells-set` `--cells`
 
@@ -299,6 +284,17 @@ _数据验证配置_
 
 公共四件套：所有 shortcut 顶部排列 `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`（XOR）。
 
+### `+cells-set` 的拆分与转介绍
+
+"工具选择"段已讲清纯值（`+csv-put`）vs 富写入（`+cells-set`）。下表补 CLI 侧的 `+cells-set` **兄弟拆分**，以及不属于本 skill 的**跨 skill 转介绍**——避免 agent 用 `+cells-set` 硬扛所有写入场景。
+
+| 写入场景 | 用这个 | 不要用 |
+|---------|--------|--------|
+| 只改**已有 cell 的样式**，不动 value/formula | `+cells-set-style` | `+cells-set`（会触发不必要的值写入） |
+| 把**单张图片嵌入**到某个 cell | `+cells-set-image` | `+cells-set`（参数更繁琐） |
+| **插行/列 + 写入** 这种多步组合，且要原子 | `+batch-update`（跨 skill） | 多次独立 `+cells-set`（非原子；插入会扰动后续 range） |
+| 在**多个不连续 range** 上应用同一组样式 | `+cells-batch-set-style`（跨 skill） | 多次 `+cells-set-style`（非原子） |
+
 ### `+cells-set`
 
 示例：
@@ -315,6 +311,10 @@ lark-cli sheets +cells-set --spreadsheet-token shtXXX --sheet-id "$SID" \
 ```
 
 `--cells` 富格式见 `## Schemas` 段（cells 元素含 value / formula / cell_styles / border_styles / data_validation / multiple_values / note / rich_text）；值 / 公式 / 样式 / 批注 / 嵌入图片可同一次写入混合提交。
+
+> 中间想跳过的 cell 用空对象 `{}` 占位（底层语义为"保留原值不变"），`--cells` 维度仍须与 `--range` 完全一致。例：`--range A1:A5 --cells '[[{"value":1}],[{}],[{}],[{}],[{"value":5}]]'` 只写 A1 和 A5。
+>
+> 跨多个不连续区域散点写入（如 `D2` + `F7` + `J15`）不属于 `+cells-set` 的能力范围——请用 `+batch-update` 把多次 `set_cell_range` 打包成单次原子请求。
 
 ### `+cells-set-style`
 
@@ -361,4 +361,4 @@ lark-cli sheets +csv-put --spreadsheet-token shtXXX --sheet-id "$SID" \
 
 - `Validate`：XOR 公共四件套；`+cells-set` 的 `--cells` 必须能解析为 JSON 二维矩阵且行列数与 `--range` 完全一致；`+cells-set-style` 的样式 flag 至少一个非空（或带 `--border-styles`）；`+cells-set-image` 的 `--range` 必须是单 cell（起止 cell 相同）；`+csv-put` 的 `--csv` 必须能按 RFC 4180 解析；防爆参数上限校验。
 - `DryRun`：输出目标 range + 推断尺寸 + 是否覆盖非空 cell 警告，零网络副作用。
-- `Execute`：写后调用 `+cells-get --ranges <写入区域> --include value,formula` 抽样回读，envelope.meta.verification 给出"预期 vs 实际"对比。
+- `Execute`：写后调用 `+cells-get --range <写入区域> --include value,formula` 抽样回读，envelope.meta.verification 给出"预期 vs 实际"对比。

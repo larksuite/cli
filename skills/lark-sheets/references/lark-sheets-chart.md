@@ -107,53 +107,40 @@
 
 ### `+chart-list`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--chart-id` | 专有 | string | 否 | 指定单个图表 reference_id 过滤 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--chart-id` | string | 否 | 指定单个图表 reference_id 过滤 |
 
 ### `+chart-create`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等），结构嵌套深，统一走 JSON 注入 |
-| `--dry-run` | 系统 | bool | 否 | 零副作用，输出请求模板 |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等），结构嵌套深，统一走 JSON 注入 |
 
 ### `+chart-update`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--chart-id` | 专有 | string | 是 | 目标图表 reference_id |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--chart-id` | string | 是 | 目标图表 reference_id |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch） |
 
 ### `+chart-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--chart-id` | 专有 | string | 是 | 目标图表 reference_id |
-| `--yes` | 系统 | bool | 是 | 二次确认（不带时退出码 10） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--chart-id` | string | 是 | 目标图表 reference_id |
 
 ## Schemas
 
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
+> 复合 JSON flag（如 `--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>`。先 `--print-schema`（不带 `--flag-name`）会列出该 shortcut 所有可查询的 flag。
 
 ### `+chart-create` `--properties` / `+chart-update` `--properties`
 

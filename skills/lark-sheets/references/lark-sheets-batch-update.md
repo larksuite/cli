@@ -33,60 +33,54 @@
 
 ### `+batch-update`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet 定位（与子操作的 sheet 定位独立） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet 定位（与子操作的 sheet 定位独立） |
-| `--operations` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`{"operations":[{"tool":"set_cell_range","params":{...}}, ...]}`；按数组顺序串行执行 |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，必须二次确认（不带时退出码 10） |
-| `--dry-run` | 系统 | bool | 否 | 输出每个子操作的请求模板，零网络副作用 |
+_公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--operations` | string + File + Stdin（复合 JSON） | 是 | JSON：`{"operations":[{"tool":"set_cell_range","params":{...}}, ...]}`；按数组顺序串行执行 |
 
 ### `+cells-batch-set-style`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组，每项必须带 sheet 前缀（如 `["sheet1!A1:B2","sheet1!D1:D10"]`）；所有 range 应用同一组 style |
-| `--background-color` | 专有 | string | 否 | 背景颜色（十六进制，如 `#ffffff`） |
-| `--font-color` | 专有 | string | 否 | 字体颜色（十六进制，如 `#000000`） |
-| `--font-size` | 专有 | number | 否 | 字体大小（px，例：10、12、14） |
-| `--font-style` | 专有 | string + Enum | 否 | 字体样式 enum：`normal` / `italic` |
-| `--font-weight` | 专有 | string + Enum | 否 | 字重 enum：`normal` / `bold` |
-| `--font-line` | 专有 | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
-| `--horizontal-alignment` | 专有 | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
-| `--vertical-alignment` | 专有 | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
-| `--word-wrap` | 专有 | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
-| `--number-format` | 专有 | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
-| `--border-styles` | 专有 | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON（结构同 +cells-set-style） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组，每项必须带 sheet 前缀（如 `["sheet1!A1:B2","sheet1!D1:D10"]`）；所有 range 应用同一组 style |
+| `--background-color` | string | 否 | 背景颜色（十六进制，如 `#ffffff`） |
+| `--font-color` | string | 否 | 字体颜色（十六进制，如 `#000000`） |
+| `--font-size` | number | 否 | 字体大小（px，例：10、12、14） |
+| `--font-style` | string + Enum | 否 | 字体样式 enum：`normal` / `italic` |
+| `--font-weight` | string + Enum | 否 | 字重 enum：`normal` / `bold` |
+| `--font-line` | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
+| `--horizontal-alignment` | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
+| `--vertical-alignment` | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
+| `--word-wrap` | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
+| `--number-format` | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
+| `--border-styles` | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON（结构同 +cells-set-style） |
 
 ### `+dropdown-update`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（如 `["sheet1!A2:A100"]`），每项必须带 sheet 前缀 |
-| `--options` | 专有 | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 |
-| `--colors` | 专有 | string + File + Stdin（简单 JSON） | 否 | 颜色数组（与 `--options` 等长） |
-| `--multiple` | 专有 | bool | 否 | 启用多选 |
-| `--highlight` | 专有 | bool | 否 | 选项配色 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（如 `["sheet1!A2:A100"]`），每项必须带 sheet 前缀 |
+| `--options` | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 |
+| `--colors` | string + File + Stdin（简单 JSON） | 否 | 颜色数组（与 `--options` 等长） |
+| `--multiple` | bool | 否 | 启用多选 |
+| `--highlight` | bool | 否 | 选项配色 |
 
 ### `+dropdown-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（最多 100 个，每项带 sheet 前缀） |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，必须二次确认（不带时退出码 10） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（最多 100 个，每项带 sheet 前缀） |
 
 ## Schemas
 
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
+> 复合 JSON flag（如 `--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>`。先 `--print-schema`（不带 `--flag-name`）会列出该 shortcut 所有可查询的 flag。
 
 ### `+batch-update` `--operations`
 
@@ -137,6 +131,19 @@ lark-cli sheets +batch-update --url "https://example.feishu.cn/sheets/shtXXX" --
 #   {"tool_name": "set_cell_range",         "input": {"sheet_id":"...","range":"A11:B12","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}}
 # ]
 ```
+
+> **常见组合：插列 + 写表头 + 整列回填**——一次原子提交，不要拆成 N 次独立调用。批量回填同一列 **只需一次** `set_cell_range`（range 写整列范围、cells 写 N×1 矩阵），不需要逐行循环。
+>
+> ```jsonc
+> // 在 C 列前插入新列 → 写表头 C1 → 回填 C2:C100 共 99 行
+> [
+>   {"tool_name": "modify_sheet_structure",
+>    "input": {"sheet_id": "...", "operation": "insert", "dimension": "column", "start": 3, "end": 4}},
+>   {"tool_name": "set_cell_range",
+>    "input": {"sheet_id": "...", "range": "C1:C100",
+>              "cells": [[{"value":"score"}], [{"value":95}], [{"value":87}], /* ... 97 more rows ... */ ]}}
+> ]
+> ```
 
 ### `+cells-batch-set-style`
 

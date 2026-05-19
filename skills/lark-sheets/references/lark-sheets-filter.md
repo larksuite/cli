@@ -40,52 +40,37 @@
 
 ### `+filter-list`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+_仅含公共 / 系统 flag。_
 
 ### `+filter-create`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 筛选范围（A1 表示法，含表头行，如 `A1:F1000`）；不要重复写入 --data 中的 range 字段 |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 否 | +filter-create / --data: 筛选规则 JSON，含 `rules`（列级筛选规则数组，必填）和 `filtered_columns?`（激活列索引提示）。`range` 是独立 flag（不要再放此 JSON 里） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 筛选范围（A1 表示法，含表头行，如 `A1:F1000`）；不要重复写入 --data 中的 range 字段 |
+| `--properties` | string + File + Stdin（复合 JSON） | 否 | +filter-create / --data: 筛选规则 JSON，含 `rules`（列级筛选规则数组，必填）和 `filtered_columns?`（激活列索引提示）。`range` 是独立 flag（不要再放此 JSON 里） |
 
 ### `+filter-update`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | +filter-update / --data: 筛选规则 JSON，含 `rules` 和 `filtered_columns?`；update 是整组覆盖式（传空 `rules: []` 清空）。`range` 已拎为独立 flag |
-| `--range` | 专有 | string | 是 | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--data` 中同名字段 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | +filter-update / --data: 筛选规则 JSON，含 `rules` 和 `filtered_columns?`；update 是整组覆盖式（传空 `rules: []` 清空）。`range` 已拎为独立 flag |
+| `--range` | string | 是 | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--data` 中同名字段 |
 
 ### `+filter-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，删除不可逆 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+_仅含公共 / 系统 flag。_
 
 ## Schemas
 
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
+> 复合 JSON flag（如 `--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>`。先 `--print-schema`（不带 `--flag-name`）会列出该 shortcut 所有可查询的 flag。
 
 ### `+filter-create` `--properties` / `+filter-update` `--properties`
 

@@ -122,126 +122,98 @@
 
 ### `+cells-clear`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 清除范围 A1 格式 |
-| `--scope` | 专有 | string + Enum | 否 | `content` / `formats` / `all`，默认 `content`（仅清内容） |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，清除不可逆 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 清除范围 A1 格式 |
+| `--scope` | string + Enum | 否 | `content` / `formats` / `all`，默认 `content`（仅清内容） |
 
 ### `+cells-merge`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 待合并 / 取消合并的范围 |
-| `--merge-type` | 专有 | string + Enum | 否 | （仅 `+cells-merge`）`all` / `rows` / `columns`，默认 `all` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 待合并 / 取消合并的范围 |
+| `--merge-type` | string + Enum | 否 | （仅 `+cells-merge`）`all` / `rows` / `columns`，默认 `all` |
 
 ### `+cells-unmerge`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 待合并 / 取消合并的范围 |
-| `--merge-type` | 专有 | string + Enum | 否 | （仅 `+cells-merge`）`all` / `rows` / `columns`，默认 `all` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 待合并 / 取消合并的范围 |
+| `--merge-type` | string + Enum | 否 | （仅 `+cells-merge`）`all` / `rows` / `columns`，默认 `all` |
 
 ### `+rows-resize`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--start` | 专有 | int | 是 | 起始行（0-based，inclusive） |
-| `--end` | 专有 | int | 是 | 结束行（0-based，inclusive） |
-| `--type` | 专有 | string + Enum | 是 | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `--size`）/ `standard`（重置为默认标准行高）/ `auto`（自动适应内容） |
-| `--size` | 专有 | int | 否 | 行高（像素，例：30 / 40 / 60）；`--type pixel` 时必填，其它 type 忽略 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--start` | int | 是 | 起始行（0-based，inclusive） |
+| `--end` | int | 是 | 结束行（0-based，inclusive） |
+| `--type` | string + Enum | 是 | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `--size`）/ `standard`（重置为默认标准行高）/ `auto`（自动适应内容） |
+| `--size` | int | 否 | 行高（像素，例：30 / 40 / 60）；`--type pixel` 时必填，其它 type 忽略 |
 
 ### `+cols-resize`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--start` | 专有 | int | 是 | 起始列（0-based，inclusive） |
-| `--end` | 专有 | int | 是 | 结束列（0-based，inclusive） |
-| `--type` | 专有 | string + Enum | 是 | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `--size`）/ `standard`（重置为默认标准列宽） |
-| `--size` | 专有 | int | 否 | 列宽（像素，例：80 / 120 / 200）；`--type pixel` 时必填，其它 type 忽略 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--start` | int | 是 | 起始列（0-based，inclusive） |
+| `--end` | int | 是 | 结束列（0-based，inclusive） |
+| `--type` | string + Enum | 是 | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `--size`）/ `standard`（重置为默认标准列宽） |
+| `--size` | int | 否 | 列宽（像素，例：80 / 120 / 200）；`--type pixel` 时必填，其它 type 忽略 |
 
 ### `+range-move`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--source-range` | 专有 | string | 是 | 源 A1 范围 |
-| `--target-sheet-id` | 专有 | string | 否 | 目标子表；省略时同 sheet |
-| `--target-range` | 专有 | string | 是 | 目标 A1 范围（起点 cell 即可，按源尺寸自动推断） |
-| `--paste-type` | 专有 | string + Enum | 否 | （仅 `+range-copy`）`values` / `formulas` / `formats` / `all`，默认 `all` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--source-range` | string | 是 | 源 A1 范围 |
+| `--target-sheet-id` | string | 否 | 目标子表；省略时同 sheet |
+| `--target-range` | string | 是 | 目标 A1 范围（起点 cell 即可，按源尺寸自动推断） |
+| `--paste-type` | string + Enum | 否 | （仅 `+range-copy`）`values` / `formulas` / `formats` / `all`，默认 `all` |
 
 ### `+range-copy`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--source-range` | 专有 | string | 是 | 源 A1 范围 |
-| `--target-sheet-id` | 专有 | string | 否 | 目标子表；省略时同 sheet |
-| `--target-range` | 专有 | string | 是 | 目标 A1 范围（起点 cell 即可，按源尺寸自动推断） |
-| `--paste-type` | 专有 | string + Enum | 否 | （仅 `+range-copy`）`values` / `formulas` / `formats` / `all`，默认 `all` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--source-range` | string | 是 | 源 A1 范围 |
+| `--target-sheet-id` | string | 否 | 目标子表；省略时同 sheet |
+| `--target-range` | string | 是 | 目标 A1 范围（起点 cell 即可，按源尺寸自动推断） |
+| `--paste-type` | string + Enum | 否 | （仅 `+range-copy`）`values` / `formulas` / `formats` / `all`，默认 `all` |
 
 ### `+range-fill`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--source-range` | 专有 | string | 是 | 填充模板范围（系列起始 cells） |
-| `--target-range` | 专有 | string | 是 | 目标填充范围 |
-| `--series-type` | 专有 | string + Enum | 否 | `auto` / `linear` / `growth` / `date` / `copy`，默认 `auto` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--source-range` | string | 是 | 填充模板范围（系列起始 cells） |
+| `--target-range` | string | 是 | 目标填充范围 |
+| `--series-type` | string + Enum | 否 | `auto` / `linear` / `growth` / `date` / `copy`，默认 `auto` |
 
 ### `+range-sort`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--range` | 专有 | string | 是 | 排序范围（含或不含表头由 `--has-header` 决定） |
-| `--sort-keys` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`[{"col":"B","order":"asc"},{"col":"D","order":"desc"}]` |
-| `--has-header` | 专有 | bool | 否 | 第一行是表头不参与排序，默认 false |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | 是 | 排序范围（含或不含表头由 `--has-header` 决定） |
+| `--sort-keys` | string + File + Stdin（复合 JSON） | 是 | JSON：`[{"col":"B","order":"asc"},{"col":"D","order":"desc"}]` |
+| `--has-header` | bool | 否 | 第一行是表头不参与排序，默认 false |
 
 ## Schemas
 
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
+> 复合 JSON flag（如 `--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>`。先 `--print-schema`（不带 `--flag-name`）会列出该 shortcut 所有可查询的 flag。
 
 ### `+range-sort` `--sort-keys`
 
@@ -300,4 +272,4 @@ lark-cli sheets +cols-resize --url "..." --sheet-id "$SID" --start 0 --end 5 --t
 
 - `Validate`：XOR 公共四件套；`+cells-clear` 强制 `--yes` 或 `--dry-run`；`+range-*` 校验源 / 目标 range 在同一 spreadsheet；`+range-sort` 的 `--sort-keys` 必须合法 JSON 数组且 col 都在 `--range` 内；`+rows-resize` / `+cols-resize` 的 `--type` 必填，`--type pixel` 时 `--size` 必填、其它 type 时 `--size` 应省略；`+cols-resize.--type` 不接受 `auto`（只行高支持自适应）。
 - `DryRun`：所有写操作输出"将要 PATCH 的 range + 受影响 cell 数估算"。
-- `Execute`：写后调用 `+cells-get --ranges <影响范围>` 抽样回读对比，envelope.meta.verification 沉淀对比结果。
+- `Execute`：写后调用 `+cells-get --range <影响范围>` 抽样回读对比，envelope.meta.verification 沉淀对比结果。

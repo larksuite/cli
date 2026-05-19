@@ -38,3 +38,34 @@ metadata:
 | [Lark Sheet Filter View](references/lark-sheets-filter-view.md) | 管理飞书表格中的筛选视图（filter view）。当用户需要"建一个 XX 视图"、"保存这个筛选状态"、"切换不同筛选"、维护一个 sheet 上多份独立筛选配置时使用。视图与筛选器（filter）相互独立，可在同一 sheet 共存；视图的隐藏行仅在用户进入该视图时本地生效，不影响其他协作者。仅针对飞书表格。 |
 | [Lark Sheet Sparkline](references/lark-sheets-sparkline.md) | 管理飞书表格中的迷你图（折线迷你图、柱形迷你图、胜负迷你图）。当用户需要在单元格内嵌入小型图表来展示数据趋势时使用。也适用于"趋势线"、"单元格内图表"、"迷你图"等场景。注意：不等同于被禁用的 SPARKLINE() 公式函数。仅针对飞书表格。 |
 | [Lark Sheet Float Image](references/lark-sheets-float-image.md) | 管理飞书表格中的浮动图片。当用户需要在表格中插入浮动图片、调整图片位置和大小、查看已有浮动图片、删除图片时使用。也适用于"插入图片"、"添加 logo"、"放一张图"等场景。注意：如果用户需要将图片嵌入到某个单元格内部（单元格图片），请阅读 lark_sheet_write_cells Skill。仅针对飞书表格。 |
+
+## 公共 flag 速查
+
+各 reference 的每个 shortcut 标题下用一行徽章标注该 shortcut 支持的公共 / 系统 flag，例如：
+
+- `_公共四件套 · 系统：--dry-run_` — URL/token + sheet 定位全 4 个公共 flag，加 `--dry-run`
+- `_公共：URL/token（无 sheet 定位） · 系统：--yes、--dry-run_` — 只接 URL/token，常见于 `+batch-update` 等不强制 sheet 定位的 shortcut
+
+徽章里只列名字。type / 必填 / 描述都在本段统一声明：
+
+### 公共 flag（定位资源）
+
+**公共四件套** = `--url` / `--spreadsheet-token` / `--sheet-id` / `--sheet-name`。前两者 XOR 互斥（spreadsheet 定位），后两者 XOR 互斥（sheet 定位）。
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--url` | string | XOR | spreadsheet URL；与 `--spreadsheet-token` 二选一 |
+| `--spreadsheet-token` | string | XOR | spreadsheet token；与 `--url` 二选一 |
+| `--sheet-id` | string | XOR | 工作表 reference_id；与 `--sheet-name` 二选一 |
+| `--sheet-name` | string | XOR | 工作表名称；与 `--sheet-id` 二选一 |
+
+### 系统 flag
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dry-run` | bool | 否 | 零副作用：仅打印请求路径与参数模板，不发起调用；多步操作会输出每个子操作的请求模板 |
+| `--yes` | bool | 是（仅 `high-risk-write`） | 二次确认；不带时退出码 10。详见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 高风险审批协议 |
+| `--print-schema` | bool | 否 | 本地打印复合 JSON flag 的 JSON Schema 并退出，不发起任何调用、不需要其它 required flag。与 `--flag-name <name>` 搭配指定要查哪个 flag；省略 `--flag-name` 时列出该 shortcut 所有可查询的 flag。仅在 shortcut 含复合 JSON flag 时有效。 |
+| `--flag-name` | string | 否 | 配合 `--print-schema` 使用，指定要打印 JSON Schema 的 flag 名（不带 `--` 前缀，如 `cells` / `properties` / `operations`）。 |
+
+**Agent 使用提示**：写复合 JSON flag（`--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys` 等）时，如果对结构不确定，先跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>` 把完整 JSON Schema 读出来再构造 payload，比靠 reference 的速查表更精确，也避免因为字段拼写或缺失被服务端拒绝。reference 的 `## Schemas` 段只给一层结构，深层只能靠 `--print-schema` 或 `## Examples` 的真实示例。

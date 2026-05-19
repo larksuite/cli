@@ -48,122 +48,95 @@
 
 ### `+workbook-info`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet 定位 |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet 定位 |
-| `--include-properties` | 专有 | bool | 否 | 是否返回每个 sheet 的扩展属性（默认 true） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--include-properties` | bool | 否 | 是否返回每个 sheet 的扩展属性（默认 true） |
 
 ### `+sheet-create`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--title` | 专有 | string | 是 | 新工作表名称 |
-| `--index` | 专有 | int | 否 | 插入位置；省略时附加到末尾 |
-| `--row-count` | 专有 | int | 否 | 初始行数，默认 100 |
-| `--col-count` | 专有 | int | 否 | 初始列数，默认 26 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--title` | string | 是 | 新工作表名称 |
+| `--index` | int | 否 | 插入位置；省略时附加到末尾 |
+| `--row-count` | int | 否 | 初始行数，默认 100 |
+| `--col-count` | int | 否 | 初始列数，默认 26 |
 
 ### `+sheet-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，必须二次确认（不带时退出码 10） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+_仅含公共 / 系统 flag。_
 
 ### `+sheet-rename`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--title` | 专有 | string | 是 | 新名称 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--title` | string | 是 | 新名称 |
 
 ### `+sheet-move`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--index` | 专有 | int | 是 | 目标位置（0-based） |
-| `--source-index` | 专有 | int | 否 | 源位置（0-based）；可选，未传时由 CLI runtime 根据 --sheet-id / --sheet-name 当前在工作簿中的 index 自动派生 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--index` | int | 是 | 目标位置（0-based） |
+| `--source-index` | int | 否 | 源位置（0-based）；可选，未传时由 CLI runtime 根据 --sheet-id / --sheet-name 当前在工作簿中的 index 自动派生 |
 
 ### `+sheet-copy`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--title` | 专有 | string | 否 | 副本名称；省略时由服务端生成 |
-| `--index` | 专有 | int | 否 | 副本插入位置 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--title` | string | 否 | 副本名称；省略时由服务端生成 |
+| `--index` | int | 否 | 副本插入位置 |
 
 ### `+sheet-hide`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+_仅含公共 / 系统 flag。_
 
 ### `+sheet-unhide`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+_仅含公共 / 系统 flag。_
 
 ### `+sheet-set-tab-color`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--color` | 专有 | string | 是 | Hex 色值如 `#FF0000`，传空 `""` 清除 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--color` | string | 是 | Hex 色值如 `#FF0000`，传空 `""` 清除 |
 
 ### `+workbook-create`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--title` | 专有 | string | 是 | 新 spreadsheet 标题 |
-| `--folder-token` | 专有 | string | 否 | 目标文件夹 token；省略放根目录 |
-| `--headers` | 专有 | string + File + Stdin（简单 JSON） | 否 | 表头行 JSON 数组：`["列A","列B"]` |
-| `--values` | 专有 | string + File + Stdin（简单 JSON） | 否 | 初始数据 JSON 二维数组：`[["alice",95]]` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--title` | string | 是 | 新 spreadsheet 标题 |
+| `--folder-token` | string | 否 | 目标文件夹 token；省略放根目录 |
+| `--headers` | string + File + Stdin（简单 JSON） | 否 | 表头行 JSON 数组：`["列A","列B"]` |
+| `--values` | string + File + Stdin（简单 JSON） | 否 | 初始数据 JSON 二维数组：`[["alice",95]]` |
 
 ### `+workbook-export`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--file-extension` | 专有 | string + Enum | 否 | `xlsx` / `csv`，默认 `xlsx`；csv 模式必须配 `--sheet-id` |
-| `--sheet-id` | 专有 | string | 否 | 仅 csv 模式必填：指定要导出的 sheet reference_id |
-| `--output-path` | 专有 | string | 否 | 本地保存路径；省略只触发导出不下载 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--file-extension` | string + Enum | 否 | `xlsx` / `csv`，默认 `xlsx`；csv 模式必须配 `--sheet-id` |
+| `--sheet-id` | string | 否 | 仅 csv 模式必填：指定要导出的 sheet reference_id |
+| `--output-path` | string | 否 | 本地保存路径；省略只触发导出不下载 |
 
 ## Examples
 

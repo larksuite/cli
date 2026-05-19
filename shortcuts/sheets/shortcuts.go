@@ -8,7 +8,22 @@ import "github.com/larksuite/cli/shortcuts/common"
 // Shortcuts returns all lark-sheets shortcuts. The list is grouped by
 // canonical skill to mirror the sheet-skill-spec layout
 // (lark_sheet_workbook → lark_sheet_float_image).
+//
+// Any shortcut whose command is registered in data/flag-schemas.json gets a
+// PrintFlagSchema closure attached, so the framework can serve
+// `--print-schema --flag-name <name>` locally.
 func Shortcuts() []common.Shortcut {
+	all := shortcutList()
+	withSchema := commandsWithFlagSchema()
+	for i := range all {
+		if _, ok := withSchema[all[i].Command]; ok {
+			all[i].PrintFlagSchema = printFlagSchemaFor(all[i].Command)
+		}
+	}
+	return all
+}
+
+func shortcutList() []common.Shortcut {
 	return []common.Shortcut{
 		// lark_sheet_workbook
 		WorkbookInfo,

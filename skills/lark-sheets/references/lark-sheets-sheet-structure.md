@@ -53,122 +53,94 @@
 
 ### `+sheet-info`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--include` | 专有 | string_slice + Enum | 否 | `merges` / `row_heights` / `col_widths` / `hidden_rows` / `hidden_cols` / `groups` / `frozen`，逗号拆分 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--include` | string_slice + Enum | 否 | `merges` / `row_heights` / `col_widths` / `hidden_rows` / `hidden_cols` / `groups` / `frozen`，逗号拆分 |
 
 ### `+dim-insert`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--start` | 专有 | int | 是 | 插入起始位置（0-based） |
-| `--end` | 专有 | int | 是 | 插入结束位置（exclusive） |
-| `--inherit-style` | 专有 | string + Enum | 否 | `before` / `after` / `none`；默认 `none` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--start` | int | 是 | 插入起始位置（0-based） |
+| `--end` | int | 是 | 插入结束位置（exclusive） |
+| `--inherit-style` | string + Enum | 否 | `before` / `after` / `none`；默认 `none` |
 
 ### `+dim-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--start` | 专有 | int | 是 | 起始（0-based） |
-| `--end` | 专有 | int | 是 | 结束（exclusive） |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，删除行/列不可逆 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--start` | int | 是 | 起始（0-based） |
+| `--end` | int | 是 | 结束（exclusive） |
 
 ### `+dim-hide`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--start` | 专有 | int | 是 | 范围 |
-| `--end` | 专有 | int | 是 | 范围 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--start` | int | 是 | 范围 |
+| `--end` | int | 是 | 范围 |
 
 ### `+dim-unhide`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--start` | 专有 | int | 是 | 范围 |
-| `--end` | 专有 | int | 是 | 范围 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--start` | int | 是 | 范围 |
+| `--end` | int | 是 | 范围 |
 
 ### `+dim-freeze`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--count` | 专有 | int | 是 | 冻结前 N 行/列；传 0 解除冻结 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--count` | int | 是 | 冻结前 N 行/列；传 0 解除冻结 |
 
 ### `+dim-group`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--start` | 专有 | int | 是 | 范围 |
-| `--end` | 专有 | int | 是 | 范围 |
-| `--depth` | 专有 | int | 否 | 嵌套层级（`+dim-group` 用），默认 1 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--start` | int | 是 | 范围 |
+| `--end` | int | 是 | 范围 |
+| `--depth` | int | 否 | 嵌套层级（`+dim-group` 用），默认 1 |
 
 ### `+dim-ungroup`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--start` | 专有 | int | 是 | 范围 |
-| `--end` | 专有 | int | 是 | 范围 |
-| `--depth` | 专有 | int | 否 | 嵌套层级（`+dim-group` 用），默认 1 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--start` | int | 是 | 范围 |
+| `--end` | int | 是 | 范围 |
+| `--depth` | int | 否 | 嵌套层级（`+dim-group` 用），默认 1 |
 
 ### `+dim-move`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--dimension` | 专有 | string + Enum | 是 | `row` / `column` |
-| `--start` | 专有 | int | 是 | 源起始位置（0-indexed，inclusive） |
-| `--end` | 专有 | int | 是 | 源结束位置（0-indexed，inclusive） |
-| `--target` | 专有 | int | 是 | 目标位置（move 到该 index 前面，0-indexed） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--dimension` | string + Enum | 是 | `row` / `column` |
+| `--start` | int | 是 | 源起始位置（0-indexed，inclusive） |
+| `--end` | int | 是 | 源结束位置（0-indexed，inclusive） |
+| `--target` | int | 是 | 目标位置（move 到该 index 前面，0-indexed） |
 
 ## Examples
 

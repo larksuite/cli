@@ -27,6 +27,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // RuntimeContext provides helpers for shortcut execution.
@@ -730,6 +731,22 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
+	if shortcut.PrintFlagSchema != nil {
+		// --print-schema is pure local introspection; relax cobra's
+		// required-flag gate so callers don't need to fill in unrelated
+		// flags just to ask for a schema. ValidateRequiredFlags runs
+		// after PreRunE in cobra, so clearing the annotation here is the
+		// supported way to opt out.
+		cmd.PreRunE = func(c *cobra.Command, _ []string) error {
+			if want, _ := c.Flags().GetBool("print-schema"); !want {
+				return nil
+			}
+			c.Flags().VisitAll(func(fl *pflag.Flag) {
+				delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
+			})
+			return nil
+		}
+	}
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
@@ -743,6 +760,24 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 // runShortcut is the execution pipeline for a declarative shortcut.
 // Each step is a clear phase: identity → config → scopes → context → validate → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
+	// --print-schema short-circuits everything below: it's pure local
+	// introspection, no identity / scope / network needed. The flag is
+	// only registered when the shortcut opts in via PrintFlagSchema.
+	if s.PrintFlagSchema != nil {
+		if want, _ := cmd.Flags().GetBool("print-schema"); want {
+			flagName, _ := cmd.Flags().GetString("flag-name")
+			out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
+			if err != nil {
+				return err
+			}
+			if len(out) == 0 {
+				return nil
+			}
+			fmt.Fprintln(f.IOStreams.Out, string(out))
+			return nil
+		}
+	}
+
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -1011,6 +1046,10 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 	}
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
+	}
+	if s.PrintFlagSchema != nil {
+		cmd.Flags().Bool("print-schema", false, "print JSON Schema for a composite flag instead of executing")
+		cmd.Flags().String("flag-name", "", "flag whose schema to print (omit to list introspectable flags); used with --print-schema")
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)

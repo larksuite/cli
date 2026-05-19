@@ -49,57 +49,44 @@
 
 ### `+pivot-list`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--pivot-table-id` | 专有 | string | 否 | 按 id 过滤 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--pivot-table-id` | string | 否 | 按 id 过滤 |
 
 ### `+pivot-create`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | JSON：`{"data_range":"Sheet1!A1:F1000","rows":[...],"columns":[...],"values":[...],"filters":[...],"show_row_grand_total":true,"show_col_grand_total":true}` |
-| `--target-sheet-id` | 专有 | string | 否 | 透视表落点子表 id；省略时自动新建子表（推荐） |
-| `--target-position` | 专有 | string | 否 | 落点起始 cell（如 `A1`），默认 `A1` |
-| `--source` | 专有 | string | 是 | 透视表源数据区域（A1 表示法，格式 `SheetName!StartCell:EndCell`，如 `Sheet1!A1:D100`） |
-| `--range` | 专有 | string | 否 | 透视表放置位置（左上角 A1 单值，如 `F1`）；省略时放在新建子表的左上角 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | JSON：`{"data_range":"Sheet1!A1:F1000","rows":[...],"columns":[...],"values":[...],"filters":[...],"show_row_grand_total":true,"show_col_grand_total":true}` |
+| `--target-sheet-id` | string | 否 | 透视表落点子表 id；省略时自动新建子表（推荐） |
+| `--target-position` | string | 否 | 落点起始 cell（如 `A1`），默认 `A1` |
+| `--source` | string | 是 | 透视表源数据区域（A1 表示法，格式 `SheetName!StartCell:EndCell`，如 `Sheet1!A1:D100`） |
+| `--range` | string | 否 | 透视表放置位置（左上角 A1 单值，如 `F1`）；省略时放在新建子表的左上角 |
 
 ### `+pivot-update`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--pivot-table-id` | 专有 | string | 是 | 目标透视表 id |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的配置（先 `+pivot-list --pivot-table-id <id>` 回读再 patch） |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--pivot-table-id` | string | 是 | 目标透视表 id |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的配置（先 `+pivot-list --pivot-table-id <id>` 回读再 patch） |
 
 ### `+pivot-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--pivot-table-id` | 专有 | string | 是 | 目标透视表 id |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，删除不可逆 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--pivot-table-id` | string | 是 | 目标透视表 id |
 
 ## Schemas
 
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
+> 复合 JSON flag（如 `--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>`。先 `--print-schema`（不带 `--flag-name`）会列出该 shortcut 所有可查询的 flag。
 
 ### `+pivot-create` `--properties` / `+pivot-update` `--properties`
 

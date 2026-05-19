@@ -33,37 +33,31 @@
 
 ### `+cells-search`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--find` | 专有 | string | 是 | 待查找文本（与 `--regex` 配合时是正则） |
-| `--range` | 专有 | string | 否 | A1 格式查找范围；省略时整表 |
-| `--match-case` | 专有 | bool | 否 | 大小写敏感 |
-| `--match-entire-cell` | 专有 | bool | 否 | 完全匹配整个单元格 |
-| `--regex` | 专有 | bool | 否 | `--find` 当正则解释 |
-| `--include-formulas` | 专有 | bool | 否 | 也在公式文本中搜索 |
-| `--max-matches` | 专有 | int + Hidden | 否 | 防爆，默认 5000 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--find` | string | 是 | 待查找文本（与 `--regex` 配合时是正则） |
+| `--range` | string | 否 | A1 格式查找范围；省略时整表 |
+| `--match-case` | bool | 否 | 大小写敏感 |
+| `--match-entire-cell` | bool | 否 | 完全匹配整个单元格 |
+| `--regex` | bool | 否 | `--find` 当正则解释 |
+| `--include-formulas` | bool | 否 | 也在公式文本中搜索 |
+| `--max-matches` | int + Hidden | 否 | 防爆，默认 5000 |
 
 ### `+cells-replace`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--find` | 专有 | string | 是 | 待替换文本 |
-| `--replacement` | 专有 | string | 是 | 替换为；传 `""` 等价于"删除内容" |
-| `--range` | 专有 | string | 否 | 范围；省略时整表 |
-| `--match-case` | 专有 | bool | 否 | 同 `+cells-search` |
-| `--match-entire-cell` | 专有 | bool | 否 | 同 `+cells-search` |
-| `--regex` | 专有 | bool | 否 | 同 `+cells-search` |
-| `--include-formulas` | 专有 | bool | 否 | 同 `+cells-search` |
-| `--dry-run` | 系统 | bool | 否 | 必跑：输出 `would_replace_count` 让用户先确认 |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--find` | string | 是 | 待替换文本 |
+| `--replacement` | string | 是 | 替换为；传 `""` 等价于"删除内容" |
+| `--range` | string | 否 | 范围；省略时整表 |
+| `--match-case` | bool | 否 | 同 `+cells-search` |
+| `--match-entire-cell` | bool | 否 | 同 `+cells-search` |
+| `--regex` | bool | 否 | 同 `+cells-search` |
+| `--include-formulas` | bool | 否 | 同 `+cells-search` |
 
 ## Examples
 

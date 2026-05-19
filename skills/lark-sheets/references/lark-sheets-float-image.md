@@ -47,67 +47,54 @@ reference_id 的映射规则：
 
 ### `+float-image-list`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--float-image-id` | 专有 | string | 否 | 按 id 过滤；省略时列工作表全部 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--float-image-id` | string | 否 | 按 id 过滤；省略时列工作表全部 |
 
 ### `+float-image-create`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--image-name` | 专有 | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
-| `--image-token` | 专有 | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | 专有 | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
-| `--position-row` | 专有 | int | 是 | 图片左上角所在行（0-based） |
-| `--position-col` | 专有 | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
-| `--size-width` | 专有 | int | 是 | 图片宽度（像素） |
-| `--size-height` | 专有 | int | 是 | 图片高度（像素） |
-| `--offset-row` | 专有 | int | 否 | 在 position 基础上的行内偏移（像素） |
-| `--offset-col` | 专有 | int | 否 | 在 position 基础上的列内偏移（像素） |
-| `--z-index` | 专有 | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--image-name` | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
+| `--image-token` | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
+| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
+| `--position-row` | int | 是 | 图片左上角所在行（0-based） |
+| `--position-col` | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
+| `--size-width` | int | 是 | 图片宽度（像素） |
+| `--size-height` | int | 是 | 图片高度（像素） |
+| `--offset-row` | int | 否 | 在 position 基础上的行内偏移（像素） |
+| `--offset-col` | int | 否 | 在 position 基础上的列内偏移（像素） |
+| `--z-index` | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
 
 ### `+float-image-update`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--float-image-id` | 专有 | string | 是 | 目标图片 id |
-| `--image-name` | 专有 | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
-| `--image-token` | 专有 | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | 专有 | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
-| `--position-row` | 专有 | int | 是 | 图片左上角所在行（0-based） |
-| `--position-col` | 专有 | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
-| `--size-width` | 专有 | int | 是 | 图片宽度（像素） |
-| `--size-height` | 专有 | int | 是 | 图片高度（像素） |
-| `--offset-row` | 专有 | int | 否 | 在 position 基础上的行内偏移（像素） |
-| `--offset-col` | 专有 | int | 否 | 在 position 基础上的列内偏移（像素） |
-| `--z-index` | 专有 | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--float-image-id` | string | 是 | 目标图片 id |
+| `--image-name` | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
+| `--image-token` | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
+| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
+| `--position-row` | int | 是 | 图片左上角所在行（0-based） |
+| `--position-col` | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
+| `--size-width` | int | 是 | 图片宽度（像素） |
+| `--size-height` | int | 是 | 图片高度（像素） |
+| `--offset-row` | int | 否 | 在 position 基础上的行内偏移（像素） |
+| `--offset-col` | int | 否 | 在 position 基础上的列内偏移（像素） |
+| `--z-index` | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
 
 ### `+float-image-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--float-image-id` | 专有 | string | 是 | 目标图片 id |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，删除不可逆 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--float-image-id` | string | 是 | 目标图片 id |
 
 ## Examples
 

@@ -83,57 +83,44 @@ manage_conditional_format_object create
 
 ### `+cond-format-list`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--rule-id` | 专有 | string | 否 | 按规则 id 过滤 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--rule-id` | string | 否 | 按规则 id 过滤 |
 
 ### `+cond-format-create`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | +cond-format-create / --data: 规则配置 JSON，含 `style`（命中样式，必填）和 `attrs?`（规则参数列表，因 rule_type 不同结构而异）/ `has_ref?`。`rule_type` 和 `ranges` 已拎为独立 flag |
-| `--rule-type` | 专有 | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
-| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | +cond-format-create / --data: 规则配置 JSON，含 `style`（命中样式，必填）和 `attrs?`（规则参数列表，因 rule_type 不同结构而异）/ `has_ref?`。`rule_type` 和 `ranges` 已拎为独立 flag |
+| `--rule-type` | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
 
 ### `+cond-format-update`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--rule-id` | 专有 | string | 是 | 目标规则 id |
-| `--properties` | 专有 | string + File + Stdin（复合 JSON） | 是 | +cond-format-update / --data: 同 +cond-format-create；update 是整组覆盖式 |
-| `--rule-type` | 专有 | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
-| `--ranges` | 专有 | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--rule-id` | string | 是 | 目标规则 id |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | +cond-format-update / --data: 同 +cond-format-create；update 是整组覆盖式 |
+| `--rule-type` | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
 
 ### `+cond-format-delete`
 
-| Flag | 分类 | Type | 必填 | 说明 |
-| --- | --- | --- | --- | --- |
-| `--url` | 公共 | string | XOR | spreadsheet URL（与 `--spreadsheet-token` 二选一） |
-| `--spreadsheet-token` | 公共 | string | XOR | spreadsheet token（与 `--url` 二选一） |
-| `--sheet-id` | 公共 | string | XOR | 工作表 reference_id（与 `--sheet-name` 二选一） |
-| `--sheet-name` | 公共 | string | XOR | 工作表名称（与 `--sheet-id` 二选一） |
-| `--rule-id` | 专有 | string | 是 | 目标规则 id |
-| `--yes` | 系统 | bool | 是 | `high-risk-write`，删除不可逆 |
-| `--dry-run` | 系统 | bool | 否 |  |
+_公共四件套 · 系统：`--yes`、`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--rule-id` | string | 是 | 目标规则 id |
 
 ## Schemas
 
-> 复合 JSON flag（`--data` / `--style` / `--options` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag <name>`（runtime introspection，待落地）。
+> 复合 JSON flag（如 `--cells` / `--properties` / `--operations` / `--border-styles` / `--sort-keys`）的字段速查：只列顶层字段 + 一层嵌套结构。深层结构看 `## Examples` 段的真实示例；要拿完整 JSON Schema 跑 `lark-cli sheets <shortcut> --print-schema --flag-name <name>`。先 `--print-schema`（不带 `--flag-name`）会列出该 shortcut 所有可查询的 flag。
 
 ### `+cond-format-create` `--properties` / `+cond-format-update` `--properties`
 
