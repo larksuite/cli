@@ -150,7 +150,7 @@ lark-cli drive +add-comment \
 - **局部评论需要先获取 block ID**：先调用 `docs +fetch --api-version v2 --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
 - **Review 场景优先局部评论**：审阅、校对、逐条指出问题时，必须先尝试定位到具体 block / 单元格 / slide 元素，并逐问题创建局部评论；不要把所有问题合并成一条全文评论。
 - 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL，以及最终可解析为 `doc`/`docx` 的 wiki URL。
-- **Markdown file 评论**：仅支持 Drive 原生 `.md` 文件。CLI 会先调用 `POST /open-apis/drive/v1/metas/batch_query` 读取 file 元信息，并检查标题是否以 `.md` 结尾；不是 `.md` 会直接报错。Markdown file 只支持**全文评论**，不支持 `--block-id` 或 `--selection-with-ellipsis`。
+- **Markdown file 评论**：仅支持 Drive 原生 `.md` 文件。CLI 会先调用 `POST /open-apis/drive/v1/metas/batch_query` 读取 file 元信息，并检查标题是否以 `.md` 结尾；不是 `.md` 会直接报错。Markdown file 只支持**全文评论**，不支持 `--block-id` 或 `--selection-with-ellipsis`。由于当前 OpenAPI 要求 file 评论传入非空 `anchor.block_id`，CLI 会固定传占位值 `test`，UI 上仍表现为 Markdown 文件全文评论。
 - 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。
 - **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。CLI 会将其拆分映射到 `anchor.block_id` / `anchor.slide_block_type`。此时 `--full-comment` 和 `--selection-with-ellipsis` 不可用。

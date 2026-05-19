@@ -47,7 +47,7 @@ func TestDriveAddCommentDryRun_MarkdownFile(t *testing.T) {
 	if !gjson.Get(out, "api.1.body.anchor.block_id").Exists() {
 		t.Fatalf("api.1.body.anchor.block_id should exist for markdown file comment\nstdout:\n%s", out)
 	}
-	if got := gjson.Get(out, "api.1.body.anchor.block_id").String(); got != "" {
-		t.Fatalf("api.1.body.anchor.block_id=%q, want empty string\nstdout:\n%s", got, out)
+	if got := gjson.Get(out, "api.1.body.anchor.block_id").String(); got != "test" {
+		t.Fatalf("api.1.body.anchor.block_id=%q, want test\nstdout:\n%s", got, out)
 	}
 }

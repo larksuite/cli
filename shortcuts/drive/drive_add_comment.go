@@ -47,6 +47,11 @@ const defaultLocateDocLimit = 10
 // with `drive file.comments create_v2` against a fresh docx.
 const maxCommentTotalRunes = 10000
 
+// The file comment API treats Markdown file comments as full-file comments in
+// the UI, but currently rejects an empty anchor.block_id for file targets.
+// Use the backend-accepted placeholder until the API supports omitting it.
+const markdownFileFullCommentAnchorBlockID = "test"
+
 type commentDocRef struct {
 	Kind  string
 	Token string
@@ -778,7 +783,7 @@ func buildCommentCreateV2Request(fileType, blockID, slideBlockType string, reply
 		}
 	} else if fileType == "file" {
 		body["anchor"] = map[string]interface{}{
-			"block_id": strings.TrimSpace(blockID),
+			"block_id": markdownFileFullCommentAnchorBlockID,
 		}
 	} else if strings.TrimSpace(blockID) != "" {
 		body["anchor"] = map[string]interface{}{

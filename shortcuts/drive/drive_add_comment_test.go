@@ -576,8 +576,8 @@ func TestBuildCommentCreateV2RequestMarkdownFile(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected anchor map, got %#v", got["anchor"])
 	}
-	if blockID, ok := anchor["block_id"].(string); !ok || blockID != "" {
-		t.Fatalf("expected empty anchor.block_id for markdown file comment, got %#v", anchor["block_id"])
+	if blockID, ok := anchor["block_id"].(string); !ok || blockID != markdownFileFullCommentAnchorBlockID {
+		t.Fatalf("expected markdown file anchor.block_id %q, got %#v", markdownFileFullCommentAnchorBlockID, anchor["block_id"])
 	}
 }
 
@@ -1511,8 +1511,8 @@ func TestDryRunMarkdownFileDirectURL(t *testing.T) {
 		t.Fatalf("comment create file_type = %q, want file\nstdout:\n%s", got, stdout.String())
 	}
 	anchor := mustMapValue(t, createBody["anchor"], "api[1].body.anchor")
-	if got := mustStringField(t, anchor, "block_id", "api[1].body.anchor.block_id"); got != "" {
-		t.Fatalf("comment create anchor.block_id = %q, want empty string\nstdout:\n%s", got, stdout.String())
+	if got := mustStringField(t, anchor, "block_id", "api[1].body.anchor.block_id"); got != markdownFileFullCommentAnchorBlockID {
+		t.Fatalf("comment create anchor.block_id = %q, want %q\nstdout:\n%s", got, markdownFileFullCommentAnchorBlockID, stdout.String())
 	}
 }
 
