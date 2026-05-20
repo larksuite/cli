@@ -396,7 +396,7 @@ func colorizeUnifiedDiff(diffText string) string {
 			b.WriteString(output.Cyan)
 			b.WriteString(trimmed)
 			b.WriteString(output.Reset)
-		case strings.HasPrefix(trimmed, "+++"), strings.HasPrefix(trimmed, "---"), strings.HasPrefix(trimmed, "diff --git"), strings.HasPrefix(trimmed, "index "):
+		case strings.HasPrefix(trimmed, "+++"), strings.HasPrefix(trimmed, "---"):
 			b.WriteString(output.Bold)
 			b.WriteString(trimmed)
 			b.WriteString(output.Reset)

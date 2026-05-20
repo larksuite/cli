@@ -147,6 +147,8 @@ func TestMarkdownLifecycleWorkflow(t *testing.T) {
 	require.GreaterOrEqual(t, len(versions), 2, "stdout:\n%s", historyResult.Stdout)
 
 	var previousVersion string
+	// version-history returns versions in descending chronological order;
+	// pick the first non-latest as the previous version.
 	for _, version := range versions {
 		candidate := version.Get("version").String()
 		if candidate != "" && candidate != latestVersion {
