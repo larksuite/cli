@@ -137,6 +137,7 @@ lark-cli drive +add-comment \
 ## 行为说明
 
 - **局部评论需要先获取 block ID**：先调用 `docs +fetch --api-version v2 --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
+- **Review 场景优先局部评论**：审阅、校对、逐条指出问题时，必须先尝试定位到具体 block / 单元格 / slide 元素，并逐问题创建局部评论；不要把所有问题合并成一条全文评论。
 - 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL，以及最终可解析为 `doc`/`docx` 的 wiki URL。
 - 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`slides`，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。

@@ -139,7 +139,8 @@ Drive Folder (云空间文件夹)
 
 - `drive +add-comment` 支持两种模式。
 - 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
-- 局部评论：传 `--block-id` 时启用；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL。block ID 可通过 `docs +fetch --api-version v2 --detail with-ids` 获取。
+- 局部评论：传 `--block-id` 时启用；不同文档类型的支持范围与参数格式见 [`drive +add-comment` 行为说明](references/lark-drive-add-comment.md#行为说明)。
+- Review / 审阅 / 校对 / 逐条指出问题场景优先使用局部评论，不要把多个可定位问题汇总成一条全文评论；具体参数和定位方式见 [`drive +add-comment` 行为说明](references/lark-drive-add-comment.md#行为说明)。
 - `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
 - `slides` 评论要求显式传 `--block-id <slide-block-type>!<xml-id>`；CLI 会将其拆分后写入 `anchor.block_id` 和 `anchor.slide_block_type`。其中 `<xml-id>` 是 PPT XML 协议中的元素 `id`；不支持 `--selection-with-ellipsis` 和 `--full-comment`。
 
@@ -181,6 +182,12 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 - 如果某个 `item.has_more=true`，说明该评论卡片下还有更多回复未包含在当前返回中；此时需要继续调用 `drive file.comment.replys list` 拉全后，再做全量回复数 / 总互动数统计。
 
 ### 评论业务特性与引导（关键！）
+
+#### Review 场景评论落点
+- 默认策略是“能局部就局部”：用户说 review、审阅、检查文档、标注问题、给修改建议、逐条评论时，优先创建局部评论。
+- 多个独立问题应分别创建多条局部评论；不要为了省调用次数把 review 发现的问题合并到全文评论。
+- 只有在用户明确要求全文/总体评论、评论内容确实是文档级总结、目标类型不支持局部评论，或无法稳定定位到具体位置时，才退回全文评论。
+- 具体参数、定位方式和不同文档类型的约束见 [`drive +add-comment` 行为说明](references/lark-drive-add-comment.md#行为说明)。
 
 #### 评论排序引导
 - 一个文档通常有多个评论，评论按 `create_time`（创建时间）排序。
