@@ -42,13 +42,7 @@ var CellsSet = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "target A1 range (e.g. A1:C10); cells dimensions must match"},
-		common.Flag{Name: "cells", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "JSON 2D matrix of cell objects, e.g. [[{\"value\":\"a\"},{\"value\":\"b\"}],[{\"value\":1},{\"value\":2}]]; dimensions must match --range"},
-		common.Flag{Name: "allow-overwrite", Type: "bool", Default: "true", Desc: "allow overwriting non-empty cells (default true)"},
-		common.Flag{Name: "max-cells", Type: "int", Default: "50000", Hidden: true, Desc: "anti-burst cells write cap"},
-	),
+	Flags:       flagsFor("+cells-set"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -123,11 +117,7 @@ var CellsSetStyle = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(
-		append(publicSheetFlags(),
-			common.Flag{Name: "range", Required: true, Desc: "target A1 range (e.g. A1:B2)"}),
-		styleFlatFlags()...,
-	),
+	Flags:       flagsFor("+cells-set-style"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -223,13 +213,7 @@ var CsvPut = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "csv", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "CSV text (RFC 4180); supports @file or stdin via -"},
-		common.Flag{Name: "start-cell", Default: "A1", Required: true, Desc: "single A1 anchor cell, e.g. A1 / B5"},
-		common.Flag{Name: "allow-overwrite", Type: "bool", Default: "true",
-			Desc: "allow overwriting non-empty cells (default true); false errors if any target cell is non-empty"},
-	),
+	Flags:       flagsFor("+csv-put"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -300,15 +284,7 @@ var DropdownSet = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "target A1 range (e.g. A2:A100)"},
-		common.Flag{Name: "options", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "options JSON array (e.g. [\"opt1\",\"opt2\"]); ≤500 items, ≤100 chars each, no commas"},
-		common.Flag{Name: "colors", Input: []string{common.File, common.Stdin},
-			Desc: "optional RGB hex array (e.g. [\"#1FB6C1\",\"#F006C2\"]); length must equal --options"},
-		common.Flag{Name: "multiple", Type: "bool", Desc: "enable multi-select; default false"},
-		common.Flag{Name: "highlight", Type: "bool", Desc: "color-highlight options; default false"},
-	),
+	Flags:       flagsFor("+dropdown-set"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -551,11 +527,7 @@ var CellsSetImage = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only", "drive:file:upload"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "single target cell (e.g. A1; start/end must equal)"},
-		common.Flag{Name: "image", Required: true, Desc: "local image path (PNG/JPEG/JPG/GIF/BMP/JFIF/EXIF/TIFF/BPG/HEIC)"},
-		common.Flag{Name: "name", Desc: "uploaded file name (with extension); defaults to basename(--image)"},
-	),
+	Flags:       flagsFor("+cells-set-image"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

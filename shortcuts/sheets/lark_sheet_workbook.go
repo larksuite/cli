@@ -46,7 +46,7 @@ var WorkbookInfo = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags:       publicTokenFlags(),
+	Flags:       flagsFor("+workbook-info"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := resolveSpreadsheetToken(runtime)
 		return err
@@ -88,12 +88,7 @@ var SheetCreate = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "title", Desc: "new sheet title", Required: true},
-		common.Flag{Name: "index", Type: "int", Default: "-1", Desc: "insertion position (0-based); omit to append"},
-		common.Flag{Name: "row-count", Type: "int", Default: "0", Desc: "initial row count; omit for tool default (200)"},
-		common.Flag{Name: "col-count", Type: "int", Default: "0", Desc: "initial column count; omit for tool default (20)"},
-	),
+	Flags:       flagsFor("+sheet-create"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -155,7 +150,7 @@ var SheetDelete = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags:       publicSheetFlags(),
+	Flags:       flagsFor("+sheet-delete"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -202,9 +197,7 @@ var SheetRename = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "title", Desc: "new sheet title", Required: true},
-	),
+	Flags:       flagsFor("+sheet-rename"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -269,10 +262,7 @@ var SheetMove = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read", "sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "index", Type: "int", Required: true, Desc: "target position (0-based)"},
-		common.Flag{Name: "source-index", Type: "int", Default: "-1", Desc: "source position (0-based); omitted → auto-derived from --sheet-id/--sheet-name's current workbook position"},
-	),
+	Flags:       flagsFor("+sheet-move"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -367,10 +357,7 @@ var SheetCopy = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "title", Desc: "title for the duplicated sheet (server-generated when omitted)"},
-		common.Flag{Name: "index", Type: "int", Default: "-1", Desc: "insertion position for the copy (0-based); omit to append"},
-	),
+	Flags:       flagsFor("+sheet-copy"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -432,7 +419,7 @@ func newSheetVisibilityShortcut(command, desc, op string) common.Shortcut {
 		Scopes:      []string{"sheets:spreadsheet:write_only"},
 		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,
-		Flags:       publicSheetFlags(),
+		Flags:       flagsFor(command),
 		Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			if _, err := resolveSpreadsheetToken(runtime); err != nil {
 				return err
@@ -477,9 +464,7 @@ var SheetSetTabColor = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "color", Desc: "hex color like #FF0000; pass empty string to clear"},
-	),
+	Flags:       flagsFor("+sheet-set-tab-color"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -545,12 +530,7 @@ var WorkbookCreate = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:create", "sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: []common.Flag{
-		{Name: "title", Required: true, Desc: "spreadsheet title"},
-		{Name: "folder-token", Desc: "destination folder token; omit to land at the drive root"},
-		{Name: "headers", Input: []string{common.File, common.Stdin}, Desc: "header row JSON array, e.g. [\"列A\",\"列B\"]"},
-		{Name: "values", Input: []string{common.File, common.Stdin}, Desc: "initial data JSON 2D array, e.g. [[\"alice\",95]]"},
-	},
+	Flags:       flagsFor("+workbook-create"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("title")) == "" {
 			return common.FlagErrorf("--title is required")
@@ -707,11 +687,7 @@ var WorkbookExport = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read", "docs:document:export", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "file-extension", Enum: []string{"xlsx", "csv"}, Default: "xlsx", Desc: "xlsx (whole workbook) or csv (one sheet via --sheet-id)"},
-		common.Flag{Name: "sheet-id", Desc: "csv mode only: target sheet reference_id to export"},
-		common.Flag{Name: "output-path", Desc: "local file path to save into; omit to just trigger and report the file_token"},
-	),
+	Flags:       flagsFor("+workbook-export"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

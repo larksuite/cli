@@ -50,8 +50,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 筛选范围（A1 表示法，含表头行，如 `A1:F1000`）；不要重复写入 `--properties` 中的 range 字段 |
-| `--properties` | string + File + Stdin（复合 JSON） | 否 | 筛选规则 JSON，含 `rules`（列级筛选规则数组，必填）和 `filtered_columns?`（激活列索引提示）。`range` 是独立 flag（不要再放此 JSON 里） |
+| `--range` | string | required | 筛选范围（A1 表示法，含表头行，如 `A1:F1000`）；不要重复写入 `--properties` 中的 range 字段 |
+| `--properties` | string + File + Stdin（复合 JSON） | optional | 筛选规则 JSON，含 `rules`（列级筛选规则数组，必填）和 `filtered_columns?`（激活列索引提示）。`range` 是独立 flag（不要再放此 JSON 里） |
 
 ### `+filter-update`
 
@@ -59,8 +59,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | 筛选规则 JSON，含 `rules` 和 `filtered_columns?`；update 是整组覆盖式（传空 `rules: []` 清空）。`range` 已拎为独立 flag |
-| `--range` | string | 是 | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--properties` 中同名字段 |
+| `--properties` | string + File + Stdin（复合 JSON） | required | 筛选规则 JSON，含 `rules` 和 `filtered_columns?`；update 是整组覆盖式（传空 `rules: []` 清空）。`range` 已拎为独立 flag |
+| `--range` | string | required | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--properties` 中同名字段 |
 
 ### `+filter-delete`
 
@@ -94,7 +94,7 @@ _创建/更新的筛选器属性_
 ```bash
 lark-cli sheets +filter-create --url "..." --sheet-id "$SID" \
   --range "A1:F1000" \
-  --properties '{"rules":[{"col":"B","filter_type":"multiValue","expected":["北京","上海"]}]}'
+  --properties '{"rules":[{"column_index":"B","conditions":[{"type":"multiValue","compare_type":"equal","values":["北京","上海"]}]}]}'
 ```
 
 ### `+filter-update`

@@ -40,11 +40,7 @@ var BatchUpdate = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "operations", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "operations JSON array: [{tool_name, input}, ...] (or an envelope object with operations / continue_on_error)"},
-		common.Flag{Name: "continue-on-error", Type: "bool", Desc: "flip the default strict transaction off; partial success is kept on disk"},
-	),
+	Flags:       flagsFor("+batch-update"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -142,12 +138,7 @@ var CellsBatchSetStyle = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(
-		append(publicTokenFlags(),
-			common.Flag{Name: "ranges", Input: []string{common.File, common.Stdin}, Required: true,
-				Desc: "JSON array of sheet-prefixed A1 ranges (e.g. [\"sheet1!A1:B2\", \"sheet1!D1:E2\"])"}),
-		styleFlatFlags()...,
-	),
+	Flags:       flagsFor("+cells-batch-set-style"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -240,16 +231,7 @@ var DropdownUpdate = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "ranges", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "JSON array of sheet-prefixed A1 ranges (e.g. [\"sheet1!A2:A100\"])"},
-		common.Flag{Name: "options", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "options JSON array (e.g. [\"alpha\",\"beta\"])"},
-		common.Flag{Name: "colors", Input: []string{common.File, common.Stdin},
-			Desc: "optional RGB hex color array (must equal --options length)"},
-		common.Flag{Name: "multiple", Type: "bool", Desc: "enable multi-select"},
-		common.Flag{Name: "highlight", Type: "bool", Desc: "color-highlight options"},
-	),
+	Flags:       flagsFor("+dropdown-update"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -294,10 +276,7 @@ var DropdownDelete = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "ranges", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "JSON array of sheet-prefixed A1 ranges (max 100)"},
-	),
+	Flags:       flagsFor("+dropdown-delete"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

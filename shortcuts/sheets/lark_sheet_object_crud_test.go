@@ -152,7 +152,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+filter-view-create",
 			sc:       FilterViewCreate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--properties", `{"view_name":"v1","range":"A1:Z100"}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:Z100", "--properties", `{"view_name":"v1"}`},
 			toolName: "manage_filter_view_object",
 			wantInput: map[string]interface{}{
 				"excel_id":   testToken,

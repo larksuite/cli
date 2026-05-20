@@ -33,15 +33,7 @@ var SheetInfo = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Desc: "optional A1-style range to scope the query (e.g. A1:C20 / 3:6 / C:E); omit for whole sheet"},
-		common.Flag{
-			Name: "include",
-			Type: "string_slice",
-			Enum: []string{"merges", "row_heights", "col_widths", "hidden_rows", "hidden_cols", "groups", "frozen"},
-			Desc: "filter returned categories (comma-separated). Omit for all.",
-		},
-	),
+	Flags:       flagsFor("+sheet-info"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -121,9 +113,6 @@ func infoTypeFromInclude(include []string) string {
 
 // ─── +dim-* (modify_sheet_structure) ──────────────────────────────────
 
-// dimEnum bounds the allowed values for --dimension across every +dim-* shortcut.
-var dimEnum = []string{"row", "column"}
-
 // DimInsert inserts blank rows / columns and optionally inherits style from
 // the adjacent dimension.
 var DimInsert = common.Shortcut{
@@ -134,13 +123,8 @@ var DimInsert = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "dimension", Required: true, Enum: dimEnum, Desc: "`row` or `column`"},
-		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start position (inclusive)"},
-		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end position (exclusive)"},
-		common.Flag{Name: "inherit-style", Enum: []string{"before", "after", "none"}, Default: "none", Desc: "inherit cell style from the row/column before, after, or neither"},
-	),
-	Validate: validateDimRange,
+	Flags:       flagsFor("+dim-insert"),
+	Validate:    validateDimRange,
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -193,12 +177,8 @@ var DimDelete = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "dimension", Required: true, Enum: dimEnum, Desc: "`row` or `column`"},
-		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start position (inclusive)"},
-		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end position (exclusive)"},
-	),
-	Validate: validateDimRange,
+	Flags:       flagsFor("+dim-delete"),
+	Validate:    validateDimRange,
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -251,10 +231,7 @@ var DimFreeze = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "dimension", Required: true, Enum: dimEnum, Desc: "`row` or `column`"},
-		common.Flag{Name: "count", Type: "int", Required: true, Desc: "number of leading rows/columns to freeze; 0 unfreezes the chosen dimension"},
-	),
+	Flags:       flagsFor("+dim-freeze"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -363,12 +340,8 @@ func newDimRangeOpShortcut(command, desc, op, risk string) common.Shortcut {
 		Scopes:      []string{"sheets:spreadsheet:write_only"},
 		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,
-		Flags: append(publicSheetFlags(),
-			common.Flag{Name: "dimension", Required: true, Enum: dimEnum, Desc: "`row` or `column`"},
-			common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start position (inclusive)"},
-			common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end position (exclusive)"},
-		),
-		Validate: validateDimRange,
+		Flags:       flagsFor(command),
+		Validate:    validateDimRange,
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -397,17 +370,7 @@ func newDimRangeOpShortcut(command, desc, op, risk string) common.Shortcut {
 // --depth (currently unused server-side — accepted for forward-compat per
 // the canonical spec) and --group-state (group only, defaults to expand).
 func newDimGroupShortcut(command, desc, op string) common.Shortcut {
-	flags := append(publicSheetFlags(),
-		common.Flag{Name: "dimension", Required: true, Enum: dimEnum, Desc: "`row` or `column`"},
-		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start position (inclusive)"},
-		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end position (exclusive)"},
-		common.Flag{Name: "depth", Type: "int", Default: "1", Desc: "nesting level (currently honored only when the server-side endpoint supports it)"},
-	)
-	if op == "group" {
-		flags = append(flags,
-			common.Flag{Name: "group-state", Enum: []string{"expand", "fold"}, Default: "expand", Desc: "initial state of the new group"},
-		)
-	}
+	flags := flagsFor(command)
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     command,
@@ -512,12 +475,7 @@ var DimMove = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "dimension", Required: true, Enum: dimEnum, Desc: "`row` or `column`"},
-		common.Flag{Name: "start", Type: "int", Required: true, Desc: "source start (0-indexed, inclusive)"},
-		common.Flag{Name: "end", Type: "int", Required: true, Desc: "source end (0-indexed, inclusive)"},
-		common.Flag{Name: "target", Type: "int", Required: true, Desc: "destination index (0-indexed); rows/cols move to land BEFORE this index"},
-	),
+	Flags:       flagsFor("+dim-move"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

@@ -27,16 +27,7 @@ var CellsSearch = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "find", Required: true, Desc: "text to search for (regex when --regex is set)"},
-		common.Flag{Name: "range", Desc: "optional A1 range to scope the search"},
-		common.Flag{Name: "match-case", Type: "bool", Desc: "case-sensitive match"},
-		common.Flag{Name: "match-entire-cell", Type: "bool", Desc: "match the entire cell content only"},
-		common.Flag{Name: "regex", Type: "bool", Desc: "treat --find as a regular expression"},
-		common.Flag{Name: "include-formulas", Type: "bool", Desc: "also search inside formula text"},
-		common.Flag{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset (use next_offset from previous page)"},
-		common.Flag{Name: "max-matches", Type: "int", Default: "5000", Hidden: true, Desc: "anti-burst match cap"},
-	),
+	Flags:       flagsFor("+cells-search"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -122,15 +113,7 @@ var CellsReplace = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "find", Required: true, Desc: "text to find (regex when --regex is set)"},
-		common.Flag{Name: "replacement", Required: true, Desc: "replacement text (empty string deletes the match)"},
-		common.Flag{Name: "range", Desc: "optional A1 range to scope the replace"},
-		common.Flag{Name: "match-case", Type: "bool", Desc: "case-sensitive match"},
-		common.Flag{Name: "match-entire-cell", Type: "bool", Desc: "match the entire cell content only"},
-		common.Flag{Name: "regex", Type: "bool", Desc: "treat --find as a regular expression"},
-		common.Flag{Name: "include-formulas", Type: "bool", Desc: "also replace inside formula text"},
-	),
+	Flags:       flagsFor("+cells-replace"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

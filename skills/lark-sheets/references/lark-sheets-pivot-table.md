@@ -53,7 +53,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--pivot-table-id` | string | 否 | 按 id 过滤 |
+| `--pivot-table-id` | string | optional | 按 id 过滤 |
 
 ### `+pivot-create`
 
@@ -61,11 +61,11 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | JSON：`{"data_range":"Sheet1!A1:F1000","rows":[...],"columns":[...],"values":[...],"filters":[...],"show_row_grand_total":true,"show_col_grand_total":true}` |
-| `--target-sheet-id` | string | 否 | 透视表落点子表 id；省略时自动新建子表（推荐） |
-| `--target-position` | string | 否 | 落点起始 cell（A1 格式，如 `A1`），默认 `A1` |
-| `--source` | string | 是 | 透视表源数据区域（A1 表示法，格式 `SheetName!StartCell:EndCell`，如 `Sheet1!A1:D100`） |
-| `--range` | string | 否 | 透视表放置位置（左上角 A1 单值，如 `F1`）；省略时放在新建子表的左上角 |
+| `--properties` | string + File + Stdin（复合 JSON） | required | JSON：`{"data_range":"Sheet1!A1:F1000","rows":[...],"columns":[...],"values":[...],"filters":[...],"show_row_grand_total":true,"show_col_grand_total":true}` |
+| `--target-sheet-id` | string | optional | 透视表落点子表 id；省略时自动新建子表（推荐） |
+| `--target-position` | string | optional | 落点起始 cell（A1 格式，如 `A1`），默认 `A1` |
+| `--source` | string | required | 透视表源数据区域（A1 表示法，格式 `SheetName!StartCell:EndCell`，如 `Sheet1!A1:D100`） |
+| `--range` | string | optional | 透视表放置位置（左上角 A1 单值，如 `F1`）；省略时放在新建子表的左上角 |
 
 ### `+pivot-update`
 
@@ -73,8 +73,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--pivot-table-id` | string | 是 | 目标透视表 id |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的配置（先 `+pivot-list --pivot-table-id <id>` 回读再 patch） |
+| `--pivot-table-id` | string | required | 目标透视表 id |
+| `--properties` | string + File + Stdin（复合 JSON） | required | 完整或足够完整的配置（先 `+pivot-list --pivot-table-id <id>` 回读再 patch） |
 
 ### `+pivot-delete`
 
@@ -82,7 +82,7 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--pivot-table-id` | string | 是 | 目标透视表 id |
+| `--pivot-table-id` | string | required | 目标透视表 id |
 
 ## Schemas
 

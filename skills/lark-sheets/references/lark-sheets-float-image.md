@@ -51,7 +51,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--float-image-id` | string | 否 | 按 id 过滤；省略时列工作表全部 |
+| `--float-image-id` | string | optional | 按 id 过滤；省略时列工作表全部 |
 
 ### `+float-image-create`
 
@@ -59,16 +59,16 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--image-name` | string | 是 | 图片名称，含扩展名（如 `logo.png`） |
-| `--image-token` | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串 |
-| `--position-row` | int | 是 | 图片左上角所在行（0-based） |
-| `--position-col` | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
-| `--size-width` | int | 是 | 图片宽度（像素） |
-| `--size-height` | int | 是 | 图片高度（像素） |
-| `--offset-row` | int | 否 | 在 `--position-row` 基础上的行内偏移（像素） |
-| `--offset-col` | int | 否 | 在 `--position-col` 基础上的列内偏移（像素） |
-| `--z-index` | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
+| `--image-name` | string | required | 图片名称，含扩展名（如 `logo.png`） |
+| `--image-token` | string | xor | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
+| `--image-uri` | string | xor | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串 |
+| `--position-row` | int | required | 图片左上角所在行（0-based） |
+| `--position-col` | string | required | 图片左上角所在列（列字母，如 `A` / `B`） |
+| `--size-width` | int | required | 图片宽度（像素） |
+| `--size-height` | int | required | 图片高度（像素） |
+| `--offset-row` | int | optional | 在 `--position-row` 基础上的行内偏移（像素） |
+| `--offset-col` | int | optional | 在 `--position-col` 基础上的列内偏移（像素） |
+| `--z-index` | int | optional | 图片 Z 轴层级，控制重叠顺序 |
 
 ### `+float-image-update`
 
@@ -76,17 +76,17 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--float-image-id` | string | 是 | 目标图片 id |
-| `--image-name` | string | 是 | 图片名称，含扩展名（如 `logo.png`） |
-| `--image-token` | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串 |
-| `--position-row` | int | 是 | 图片左上角所在行（0-based） |
-| `--position-col` | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
-| `--size-width` | int | 是 | 图片宽度（像素） |
-| `--size-height` | int | 是 | 图片高度（像素） |
-| `--offset-row` | int | 否 | 在 `--position-row` 基础上的行内偏移（像素） |
-| `--offset-col` | int | 否 | 在 `--position-col` 基础上的列内偏移（像素） |
-| `--z-index` | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
+| `--float-image-id` | string | required | 目标图片 id |
+| `--image-name` | string | required | 图片名称，含扩展名（如 `logo.png`） |
+| `--image-token` | string | xor | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
+| `--image-uri` | string | xor | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串 |
+| `--position-row` | int | required | 图片左上角所在行（0-based） |
+| `--position-col` | string | required | 图片左上角所在列（列字母，如 `A` / `B`） |
+| `--size-width` | int | required | 图片宽度（像素） |
+| `--size-height` | int | required | 图片高度（像素） |
+| `--offset-row` | int | optional | 在 `--position-row` 基础上的行内偏移（像素） |
+| `--offset-col` | int | optional | 在 `--position-col` 基础上的列内偏移（像素） |
+| `--z-index` | int | optional | 图片 Z 轴层级，控制重叠顺序 |
 
 ### `+float-image-delete`
 
@@ -94,7 +94,7 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--float-image-id` | string | 是 | 目标图片 id |
+| `--float-image-id` | string | required | 目标图片 id |
 
 ## Examples
 
@@ -120,12 +120,24 @@ lark-cli sheets +float-image-create --url "..." --sheet-id "$SID" \
 
 ### `+float-image-update`
 
-> 必须先 `+float-image-list --float-image-id <id>` 回读当前完整属性，再通过 `--image-name` / `--position-*` / `--size-*` 等独立 flag 改对应字段。
+> **patch 模式**：除了 `--float-image-id`（必填，定位目标图片）外，其它字段都可选——只传你需要改的那几个，未传的字段保持原值不变。至少传一个改动字段。
+>
+> 推荐流程：先 `+float-image-list --float-image-id <id>` 回读当前完整属性，再针对要改的字段调一次 `+float-image-update`。
+
+```bash
+# 只改位置，保留其它属性
+lark-cli sheets +float-image-update --url "..." --sheet-id "$SID" \
+  --float-image-id "$IMG_ID" --position-row 5 --position-col C
+
+# 只换图，位置/尺寸不变
+lark-cli sheets +float-image-update --url "..." --sheet-id "$SID" \
+  --float-image-id "$IMG_ID" --image-name "new-logo.png" --image-token "$NEW_TOKEN"
+```
 
 ### `+float-image-delete`
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+float-image-create` 校验 `--image-name` 非空，`--image-token` 与 `--image-uri` 互斥且至少一个非空，`--position-row/col` 与 `--size-width/height` 必填且为合法整数；`+float-image-update` 必须 `--float-image-id`；`+float-image-delete` 强制 `--yes` 或 `--dry-run`。
+- `Validate`：XOR 公共四件套；`+float-image-create` 校验 `--image-name` 非空，`--image-token` 与 `--image-uri` 互斥且至少一个非空，`--position-row/col` 与 `--size-width/height` 必填且为合法整数；`+float-image-update` 必须 `--float-image-id`，其余 `--image-name` / `--image-token` / `--image-uri` / `--position-*` / `--size-*` / `--offset-*` / `--z-index` 至少传 1 个（patch 模式：未传字段保持原值）；`+float-image-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 float_image 请求模板"。
 - `Execute`：写后调用 `+float-image-list --float-image-id <id>` 回读，envelope.meta.verification 给出新位置 / 尺寸对比。

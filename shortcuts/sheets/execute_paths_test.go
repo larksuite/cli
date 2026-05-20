@@ -99,7 +99,7 @@ func TestExecute_CellsGet(t *testing.T) {
 	t.Parallel()
 	stub := toolOutputStub(testToken, "read", `{"ranges":[{"range":"A1:B2","cells":[[{"value":1}]]}]}`)
 	out, err := runShortcutWithStubs(t, CellsGet,
-		[]string{"--url", testURL, "--sheet-id", testSheetID, "--ranges", "A1:B2"}, stub)
+		[]string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2"}, stub)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
 	}

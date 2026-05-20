@@ -96,9 +96,9 @@ func printFlagSchemaFor(command string) func(flagName string) ([]byte, error) {
 			}
 			sort.Strings(flags)
 			return json.MarshalIndent(map[string]interface{}{
-				"shortcut":              command,
-				"introspectable_flags":  flags,
-				"hint":                  "run again with --flag-name <name> to dump the JSON Schema for that flag",
+				"shortcut":             command,
+				"introspectable_flags": flags,
+				"hint":                 "run again with --flag-name <name> to dump the JSON Schema for that flag",
 			}, "", "  ")
 		}
 		schema, ok := entry[flagName]

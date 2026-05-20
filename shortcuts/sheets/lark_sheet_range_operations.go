@@ -35,11 +35,7 @@ var CellsClear = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "A1 range to clear (e.g. A1:C10 / D3:D / 3:3)"},
-		common.Flag{Name: "scope", Enum: []string{"content", "formats", "all"}, Default: "content",
-			Desc: "what to clear: content (values+formulas only, default) / formats / all"},
-	),
+	Flags:       flagsFor("+cells-clear"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -107,15 +103,7 @@ var CellsUnmerge = newMergeShortcut(
 )
 
 func newMergeShortcut(command, desc, op string, withMergeType bool) common.Shortcut {
-	flags := append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "A1 range to merge / unmerge (e.g. A1:C3)"},
-	)
-	if withMergeType {
-		flags = append(flags, common.Flag{
-			Name: "merge-type", Enum: []string{"all", "rows", "columns"}, Default: "all",
-			Desc: "merge strategy: all (one cell) / rows / columns",
-		})
-	}
+	flags := flagsFor(command)
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     command,
@@ -191,9 +179,6 @@ func mergeInput(runtime *common.RuntimeContext, token, sheetID, sheetName, op st
 // Both shortcuts share the underlying resize_range tool; --end is inclusive
 // in the new CLI surface (was exclusive in the legacy +dim-resize).
 
-var rowsResizeTypeEnum = []string{"pixel", "standard", "auto"}
-var colsResizeTypeEnum = []string{"pixel", "standard"}
-
 // RowsResize wraps resize_range for row heights. --type auto enables
 // auto-fit (rows only); --type pixel requires --size.
 var RowsResize = common.Shortcut{
@@ -204,14 +189,8 @@ var RowsResize = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start row (inclusive)"},
-		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end row (inclusive)"},
-		common.Flag{Name: "type", Required: true, Enum: rowsResizeTypeEnum,
-			Desc: "sizing mode: `pixel` (needs --size) / `standard` (reset to default) / `auto` (auto-fit row height)"},
-		common.Flag{Name: "size", Type: "int", Default: "0", Desc: "row height in pixels (e.g. 30); required with --type pixel, ignored otherwise"},
-	),
-	Validate: validateResize("row"),
+	Flags:       flagsFor("+rows-resize"),
+	Validate:    validateResize("row"),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -245,14 +224,8 @@ var ColsResize = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "start", Type: "int", Required: true, Desc: "0-based start column (inclusive)"},
-		common.Flag{Name: "end", Type: "int", Required: true, Desc: "0-based end column (inclusive)"},
-		common.Flag{Name: "type", Required: true, Enum: colsResizeTypeEnum,
-			Desc: "sizing mode: `pixel` (needs --size) / `standard` (reset to default); `auto` is rows-only"},
-		common.Flag{Name: "size", Type: "int", Default: "0", Desc: "column width in pixels (e.g. 120); required with --type pixel, ignored otherwise"},
-	),
-	Validate: validateResize("column"),
+	Flags:       flagsFor("+cols-resize"),
+	Validate:    validateResize("column"),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -358,11 +331,7 @@ var RangeMove = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "source-range", Required: true, Desc: "source A1 range (e.g. A1:C5)"},
-		common.Flag{Name: "target-range", Required: true, Desc: "target A1 starting cell (size derived from source)"},
-		common.Flag{Name: "target-sheet-id", Desc: "destination sheet id (cross-sheet); omit for same sheet"},
-	),
+	Flags:       flagsFor("+range-move"),
 	Validate:    validateRangeMoveOrCopy,
 	DryRun:      transformDryRunFn("move", false, false),
 	Execute:     transformExecuteFn("move", false, false),
@@ -378,13 +347,7 @@ var RangeCopy = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "source-range", Required: true, Desc: "source A1 range"},
-		common.Flag{Name: "target-range", Required: true, Desc: "target A1 starting cell"},
-		common.Flag{Name: "target-sheet-id", Desc: "destination sheet id (cross-sheet); omit for same sheet"},
-		common.Flag{Name: "paste-type", Enum: []string{"values", "formulas", "formats", "all"}, Default: "all",
-			Desc: "what to copy: values / formulas / formats / all (default)"},
-	),
+	Flags:       flagsFor("+range-copy"),
 	Validate:    validateRangeMoveOrCopy,
 	DryRun:      transformDryRunFn("copy", true, false),
 	Execute:     transformExecuteFn("copy", true, false),
@@ -402,12 +365,7 @@ var RangeFill = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "source-range", Required: true, Desc: "template A1 range with seed cells"},
-		common.Flag{Name: "target-range", Required: true, Desc: "target fill range (must be disjoint from source)"},
-		common.Flag{Name: "series-type", Enum: []string{"auto", "linear", "growth", "date", "copy"}, Default: "auto",
-			Desc: "auto / linear / growth / date → tool fillSeries; copy → tool copyCells"},
-	),
+	Flags:       flagsFor("+range-fill"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -455,12 +413,7 @@ var RangeSort = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "A1 range to sort"},
-		common.Flag{Name: "sort-keys", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "sort keys JSON, e.g. [{\"col\":\"B\",\"order\":\"asc\"},{\"col\":\"D\",\"order\":\"desc\"}]"},
-		common.Flag{Name: "has-header", Type: "bool", Desc: "treat first row as header (excluded from sort); default false"},
-	),
+	Flags:       flagsFor("+range-sort"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -613,10 +566,10 @@ func rangeSortInput(runtime *common.RuntimeContext, token, sheetID, sheetName st
 		return nil, err
 	}
 	input := map[string]interface{}{
-		"excel_id":         token,
-		"operation":        "sort",
-		"range":            strings.TrimSpace(runtime.Str("range")),
-		"sort_conditions":  keys,
+		"excel_id":        token,
+		"operation":       "sort",
+		"range":           strings.TrimSpace(runtime.Str("range")),
+		"sort_conditions": keys,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if runtime.Bool("has-header") {

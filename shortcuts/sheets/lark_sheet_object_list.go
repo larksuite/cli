@@ -31,17 +31,10 @@ type objectListSpec struct {
 	// Optional id filter. Empty filterFlag → no filter flag exposed.
 	filterFlag  string // CLI flag name (without leading --), e.g. "chart-id"
 	filterField string // tool input key, e.g. "chart_id"
-	filterDesc  string // flag help text
 }
 
 func newObjectListShortcut(spec objectListSpec) common.Shortcut {
-	flags := publicSheetFlags()
-	if spec.filterFlag != "" {
-		flags = append(flags, common.Flag{
-			Name: spec.filterFlag,
-			Desc: spec.filterDesc,
-		})
-	}
+	flags := flagsFor(spec.command)
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     spec.command,
@@ -102,7 +95,6 @@ var ChartList = newObjectListShortcut(objectListSpec{
 	toolName:    "get_chart_objects",
 	filterFlag:  "chart-id",
 	filterField: "chart_id",
-	filterDesc:  "optional chart reference_id; returns just that chart when set",
 })
 
 // PivotList — list pivot tables on a sheet.
@@ -112,7 +104,6 @@ var PivotList = newObjectListShortcut(objectListSpec{
 	toolName:    "get_pivot_table_objects",
 	filterFlag:  "pivot-table-id",
 	filterField: "pivot_table_id",
-	filterDesc:  "optional pivot table reference_id; returns just that pivot when set",
 })
 
 // CondFormatList — list conditional format rules. CLI's --rule-id maps to
@@ -123,7 +114,6 @@ var CondFormatList = newObjectListShortcut(objectListSpec{
 	toolName:    "get_conditional_format_objects",
 	filterFlag:  "rule-id",
 	filterField: "conditional_format_id",
-	filterDesc:  "optional rule reference_id (maps to conditional_format_id server-side)",
 })
 
 // FilterList — list active sheet-level filters. No id filter because each
@@ -143,7 +133,6 @@ var FilterViewList = newObjectListShortcut(objectListSpec{
 	toolName:    "get_filter_view_objects",
 	filterFlag:  "view-id",
 	filterField: "view_id",
-	filterDesc:  "optional filter-view reference_id; returns just that view when set",
 })
 
 // SparklineList — list sparkline groups on a sheet. The tool also accepts
@@ -155,7 +144,6 @@ var SparklineList = newObjectListShortcut(objectListSpec{
 	toolName:    "get_sparkline_objects",
 	filterFlag:  "group-id",
 	filterField: "group_id",
-	filterDesc:  "optional sparkline group reference_id; returns all sparklines in that group",
 })
 
 // FloatImageList — list floating images on a sheet (vs. embedded
@@ -166,5 +154,4 @@ var FloatImageList = newObjectListShortcut(objectListSpec{
 	toolName:    "get_float_image_objects",
 	filterFlag:  "float-image-id",
 	filterField: "float_image_id",
-	filterDesc:  "optional floating-image reference_id; returns just that image when set",
 })

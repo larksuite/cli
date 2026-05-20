@@ -23,7 +23,7 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+cells-get multi-range + include=style,formula",
 			sc:       CellsGet,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--ranges", "A1:B2", "--ranges", "D1:E5", "--include", "style,formula"},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--range", "D1:E5", "--include", "style,formula"},
 			toolName: "get_cell_ranges",
 			wantInput: map[string]interface{}{
 				"excel_id":            testToken,

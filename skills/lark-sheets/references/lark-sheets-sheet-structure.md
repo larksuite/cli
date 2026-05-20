@@ -57,7 +57,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--include` | string_slice + Enum | 否 | `merges` / `row_heights` / `col_widths` / `hidden_rows` / `hidden_cols` / `groups` / `frozen`，逗号分隔 |
+| `--include` | string_slice | optional | 要返回的结构信息类别，逗号分隔多个（可选值：`merges` / `row_heights` / `col_widths` / `hidden_rows` / `hidden_cols` / `groups` / `frozen`） |
+| `--range` | string | optional | 限定只返回该 A1 范围的结构信息；省略时返回整表 |
 
 ### `+dim-insert`
 
@@ -65,10 +66,10 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--start` | int | 是 | 插入起始位置（0-based） |
-| `--end` | int | 是 | 插入结束位置（exclusive） |
-| `--inherit-style` | string + Enum | 否 | 新行/列样式继承策略 enum：`before`（继承前一行/列）/ `after`（继承后一行/列）/ `none`（默认） |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--start` | int | required | 插入起始位置（0-based） |
+| `--end` | int | required | 插入结束位置（exclusive） |
+| `--inherit-style` | string | optional | 新行/列样式继承策略 enum：`before`（继承前一行/列）/ `after`（继承后一行/列）/ `none`（默认）（可选值：`before` / `after` / `none`） |
 
 ### `+dim-delete`
 
@@ -76,9 +77,9 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--start` | int | 是 | 起始位置（0-based） |
-| `--end` | int | 是 | 结束位置（exclusive） |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--start` | int | required | 起始位置（0-based） |
+| `--end` | int | required | 结束位置（exclusive） |
 
 ### `+dim-hide`
 
@@ -86,9 +87,9 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--start` | int | 是 | 结束位置（0-based, inclusive） |
-| `--end` | int | 是 | 结束位置（0-based, inclusive） |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--start` | int | required | 起始位置（0-based, inclusive） |
+| `--end` | int | required | 结束位置（0-based, inclusive） |
 
 ### `+dim-unhide`
 
@@ -96,9 +97,9 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--start` | int | 是 | 结束位置（0-based, inclusive） |
-| `--end` | int | 是 | 结束位置（0-based, inclusive） |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--start` | int | required | 起始位置（0-based, inclusive） |
+| `--end` | int | required | 结束位置（0-based, inclusive） |
 
 ### `+dim-freeze`
 
@@ -106,8 +107,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--count` | int | 是 | 冻结前 N 行/列；传 0 解除冻结 |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--count` | int | required | 冻结前 N 行/列；传 0 解除冻结 |
 
 ### `+dim-group`
 
@@ -115,10 +116,11 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--start` | int | 是 | 结束位置（0-based, inclusive） |
-| `--end` | int | 是 | 结束位置（0-based, inclusive） |
-| `--depth` | int | 否 | 嵌套层级（`+dim-group` 用），默认 1 |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--start` | int | required | 起始位置（0-based, inclusive） |
+| `--end` | int | required | 结束位置（0-based, inclusive） |
+| `--depth` | int | optional | 嵌套层级（`+dim-group` 用），默认 1 |
+| `--group-state` | string | optional | 分组初始展开状态（可选值：`expand` / `fold`） |
 
 ### `+dim-ungroup`
 
@@ -126,10 +128,10 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--start` | int | 是 | 结束位置（0-based, inclusive） |
-| `--end` | int | 是 | 结束位置（0-based, inclusive） |
-| `--depth` | int | 否 | 嵌套层级（`+dim-group` 用），默认 1 |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--start` | int | required | 起始位置（0-based, inclusive） |
+| `--end` | int | required | 结束位置（0-based, inclusive） |
+| `--depth` | int | optional | 嵌套层级（`+dim-group` 用），默认 1 |
 
 ### `+dim-move`
 
@@ -137,10 +139,10 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string + Enum | 是 | `row` / `column` |
-| `--start` | int | 是 | 源起止区间的起始位置（0-based, inclusive） |
-| `--end` | int | 是 | 源起止区间的结束位置（0-based, inclusive） |
-| `--target` | int | 是 | 目标位置（move 到该 index 之前；0-based） |
+| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
+| `--start` | int | required | 源起止区间的起始位置（0-based, inclusive） |
+| `--end` | int | required | 源起止区间的结束位置（0-based, inclusive） |
+| `--target` | int | required | 目标位置（move 到该 index 之前；0-based） |
 
 ## Examples
 

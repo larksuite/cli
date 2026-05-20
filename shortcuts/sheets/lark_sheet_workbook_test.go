@@ -159,10 +159,10 @@ func TestSheetMove_DryRunResolvePlaceholders(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name           string
-		args           []string
-		wantSheetID    string
-		wantSourceIdx  interface{}
+		name          string
+		args          []string
+		wantSheetID   string
+		wantSourceIdx interface{}
 	}{
 		{
 			name:          "id only, no source-index → both literal + placeholder",

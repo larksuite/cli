@@ -57,26 +57,6 @@ func extractSpreadsheetToken(input string) string {
 	return input
 }
 
-// publicTokenFlags is the leading pair of every canonical sheets shortcut.
-// Shortcuts targeting a single sheet append the public sheet-id / sheet-name
-// XOR pair on top of this; workbook-level shortcuts use this pair only.
-func publicTokenFlags() []common.Flag {
-	return []common.Flag{
-		{Name: "url", Desc: "spreadsheet URL (XOR --spreadsheet-token)"},
-		{Name: "spreadsheet-token", Desc: "spreadsheet token (XOR --url)"},
-	}
-}
-
-// publicSheetFlags extends publicTokenFlags with the sheet selector pair.
-// Use for any +sheet-* / +cells-* / +dim-* / object shortcut that operates
-// on an existing single sub-sheet.
-func publicSheetFlags() []common.Flag {
-	return append(publicTokenFlags(),
-		common.Flag{Name: "sheet-id", Desc: "sheet reference_id (XOR --sheet-name)"},
-		common.Flag{Name: "sheet-name", Desc: "sheet title (XOR --sheet-id)"},
-	)
-}
-
 // resolveSheetSelector validates the --sheet-id / --sheet-name XOR and
 // returns whichever was supplied. Network-free.
 //
@@ -169,35 +149,6 @@ func requireJSONArray(runtime *common.RuntimeContext, name string) ([]interface{
 
 // ─── style flags (shared by +cells-set-style and +cells-batch-set-style) ─
 
-var (
-	fontStyleEnum  = []string{"normal", "italic"}
-	fontWeightEnum = []string{"normal", "bold"}
-	fontLineEnum   = []string{"none", "underline", "line-through"}
-	hAlignEnum     = []string{"left", "center", "right"}
-	vAlignEnum     = []string{"top", "middle", "bottom"}
-	wordWrapEnum   = []string{"overflow", "auto-wrap", "word-clip"}
-)
-
-// styleFlatFlags returns the 11 flat style flags + --border-styles that both
-// +cells-set-style and +cells-batch-set-style expose. Keeping them in one
-// place stops the two shortcuts from drifting apart.
-func styleFlatFlags() []common.Flag {
-	return []common.Flag{
-		{Name: "background-color", Desc: "hex background color (e.g. #ffffff)"},
-		{Name: "font-color", Desc: "hex font color (e.g. #000000)"},
-		{Name: "font-size", Type: "int", Desc: "font size in pixels (e.g. 10, 12, 14)"},
-		{Name: "font-style", Enum: fontStyleEnum, Desc: "normal / italic"},
-		{Name: "font-weight", Enum: fontWeightEnum, Desc: "normal / bold"},
-		{Name: "font-line", Enum: fontLineEnum, Desc: "none / underline / line-through"},
-		{Name: "horizontal-alignment", Enum: hAlignEnum, Desc: "left / center / right"},
-		{Name: "vertical-alignment", Enum: vAlignEnum, Desc: "top / middle / bottom"},
-		{Name: "word-wrap", Enum: wordWrapEnum, Desc: "overflow (default) / auto-wrap / word-clip"},
-		{Name: "number-format", Desc: "number format string (e.g. @, 0.00, $#,##0.00, mm/dd/yyyy)"},
-		{Name: "border-styles", Input: []string{common.File, common.Stdin},
-			Desc: "border JSON: { top, bottom, left, right } each = { color, style, weight }"},
-	}
-}
-
 // buildCellStyleFromFlags reads the 11 flat style flags and returns the
 // cell_styles map expected by set_cell_range. Skips any flag the user
 // didn't set so partial styles work.
@@ -209,8 +160,8 @@ func buildCellStyleFromFlags(runtime *common.RuntimeContext) map[string]interfac
 	if v := runtime.Str("font-color"); v != "" {
 		style["font_color"] = v
 	}
-	if runtime.Changed("font-size") && runtime.Int("font-size") > 0 {
-		style["font_size"] = runtime.Int("font-size")
+	if runtime.Changed("font-size") && runtime.Float64("font-size") > 0 {
+		style["font_size"] = runtime.Float64("font-size")
 	}
 	if v := runtime.Str("font-style"); v != "" {
 		style["font_style"] = v

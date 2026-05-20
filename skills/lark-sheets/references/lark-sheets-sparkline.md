@@ -37,7 +37,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--group-id` | string | 否 | 按 group_id 过滤 |
+| `--group-id` | string | optional | 按 group_id 过滤 |
 
 ### `+sparkline-create`
 
@@ -45,7 +45,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | JSON：`{"type":"line\|column\|winLoss","data_range":"A2:F10","target_range":"G2:G10","style":{...},"special_points":{...}}`；type 三种 enum；data_range 与 target_range 行/列数需对齐 |
+| `--properties` | string + File + Stdin（复合 JSON） | required | JSON：`{config（共享样式配置）, sparklines（迷你图数组）}`；完整字段结构跑 `--print-schema` |
 
 ### `+sparkline-update`
 
@@ -53,8 +53,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--group-id` | string | 是 | 目标组 id |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的配置（先 `+sparkline-list --group-id <id>` 回读再 patch）；可改 `type` / `data_range` / `target_range` / `style` / `special_points` 等字段 |
+| `--group-id` | string | required | 目标组 id |
+| `--properties` | string + File + Stdin（复合 JSON） | required | JSON：`{config, sparklines}`；先 `+sparkline-list --group-id <id>` 回读再 patch；完整字段结构跑 `--print-schema` |
 
 ### `+sparkline-delete`
 
@@ -62,7 +62,7 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--group-id` | string | 是 | 目标组 id |
+| `--group-id` | string | required | 目标组 id |
 
 ## Schemas
 

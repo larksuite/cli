@@ -14,7 +14,6 @@ import "github.com/larksuite/cli/shortcuts/common"
 // `--print-schema --flag-name <name>` locally.
 func Shortcuts() []common.Shortcut {
 	all := shortcutList()
-	applyFlagDescs(all)
 	withSchema := commandsWithFlagSchema()
 	for i := range all {
 		if _, ok := withSchema[all[i].Command]; ok {

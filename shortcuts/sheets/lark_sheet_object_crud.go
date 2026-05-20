@@ -33,14 +33,10 @@ import (
 // idFlag / idField empty → no per-object id flag (only filter uses that
 // today, and it has its own bespoke shortcuts further down).
 type objectCRUDSpec struct {
-	commandPrefix    string // e.g. "+chart" → +chart-create / -update / -delete
-	toolName         string // e.g. "manage_chart_object"
-	idFlag           string // e.g. "chart-id"
-	idField          string // e.g. "chart_id"
-	createDataDesc   string // help text for --properties on create
-	updateDataDesc   string // help text for --properties on update
-	createExtraFlags []common.Flag
-	updateExtraFlags []common.Flag
+	commandPrefix string // e.g. "+chart" → +chart-create / -update / -delete
+	toolName      string // e.g. "manage_chart_object"
+	idFlag        string // e.g. "chart-id"
+	idField       string // e.g. "chart_id"
 	// enhanceCreateInput / enhanceUpdateInput, when set, mutate the tool
 	// input after the standard fields are written. Used to inject
 	// shortcut-specific flat flags into the input (typically into the
@@ -51,10 +47,7 @@ type objectCRUDSpec struct {
 }
 
 func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
-	flags := append(publicSheetFlags(),
-		common.Flag{Name: "properties", Input: []string{common.File, common.Stdin}, Required: true, Desc: spec.createDataDesc},
-	)
-	flags = append(flags, spec.createExtraFlags...)
+	flags := flagsFor(spec.commandPrefix + "-create")
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     spec.commandPrefix + "-create",
@@ -121,18 +114,7 @@ func objectCreateInput(runtime *common.RuntimeContext, token, sheetID, sheetName
 }
 
 func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
-	flags := publicSheetFlags()
-	if spec.idFlag != "" {
-		flags = append(flags, common.Flag{
-			Name: spec.idFlag, Required: true,
-			Desc: "target object reference_id (maps to " + spec.idField + " on the wire)",
-		})
-	}
-	flags = append(flags, common.Flag{
-		Name: "properties", Input: []string{common.File, common.Stdin}, Required: true,
-		Desc: spec.updateDataDesc,
-	})
-	flags = append(flags, spec.updateExtraFlags...)
+	flags := flagsFor(spec.commandPrefix + "-update")
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     spec.commandPrefix + "-update",
@@ -205,13 +187,7 @@ func objectUpdateInput(runtime *common.RuntimeContext, token, sheetID, sheetName
 }
 
 func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
-	flags := publicSheetFlags()
-	if spec.idFlag != "" {
-		flags = append(flags, common.Flag{
-			Name: spec.idFlag, Required: true,
-			Desc: "target object reference_id (maps to " + spec.idField + " on the wire)",
-		})
-	}
+	flags := flagsFor(spec.commandPrefix + "-delete")
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     spec.commandPrefix + "-delete",
@@ -273,12 +249,10 @@ func objectDeleteInput(runtime *common.RuntimeContext, token, sheetID, sheetName
 
 // chart
 var chartSpec = objectCRUDSpec{
-	commandPrefix:  "+chart",
-	toolName:       "manage_chart_object",
-	idFlag:         "chart-id",
-	idField:        "chart_id",
-	createDataDesc: "chart properties JSON (position / data / properties etc.); see lark-sheets-chart.md for the shape",
-	updateDataDesc: "full or partial chart properties JSON (`+chart-list --chart-id <id>` first, then patch)",
+	commandPrefix: "+chart",
+	toolName:      "manage_chart_object",
+	idFlag:        "chart-id",
+	idField:       "chart_id",
 }
 var ChartCreate = newObjectCreateShortcut(chartSpec)
 var ChartUpdate = newObjectUpdateShortcut(chartSpec)
@@ -287,18 +261,10 @@ var ChartDelete = newObjectDeleteShortcut(chartSpec)
 // pivot — create exposes --target-sheet-id / --target-position (top-level
 // of the tool input) plus --source / --range hoisted from properties.
 var pivotSpec = objectCRUDSpec{
-	commandPrefix:  "+pivot",
-	toolName:       "manage_pivot_table_object",
-	idFlag:         "pivot-table-id",
-	idField:        "pivot_table_id",
-	createDataDesc: "pivot table properties JSON: { rows, columns, values, filters, show_row_grand_total, ... }; --source / --range cover the common scalar fields",
-	updateDataDesc: "full or partial pivot properties JSON (`+pivot-list --pivot-table-id <id>` first, then patch)",
-	createExtraFlags: []common.Flag{
-		{Name: "target-sheet-id", Desc: "destination sheet id for the pivot table; omit to auto-create a fresh sheet (recommended)"},
-		{Name: "target-position", Default: "A1", Desc: "destination start cell, default A1"},
-		{Name: "source", Required: true, Desc: "pivot source range, e.g. Sheet1!A1:D100 (--source overrides any properties.source)"},
-		{Name: "range", Desc: "destination top-left A1 cell, e.g. F1 (--range overrides any properties.range)"},
-	},
+	commandPrefix: "+pivot",
+	toolName:      "manage_pivot_table_object",
+	idFlag:        "pivot-table-id",
+	idField:       "pivot_table_id",
 	enhanceCreateInput: func(rt *common.RuntimeContext, input map[string]interface{}) {
 		if v := strings.TrimSpace(rt.Str("target-sheet-id")); v != "" {
 			input["target_sheet_id"] = v
@@ -325,17 +291,6 @@ var PivotDelete = newObjectDeleteShortcut(pivotSpec)
 // conditional format — CLI surface uses --rule-id (short), wired to the
 // tool's conditional_format_id on the wire. --rule-type and --ranges are
 // hoisted out of properties (both required, set on every CRUD write).
-var condFormatRuleTypeEnum = []string{
-	"cellValue", "formula", "duplicate", "unique",
-	"topBottom", "aboveBelowAverage", "dataBar", "colorScale",
-	"iconSet", "textContains", "dateOccurring", "blankCell", "errorCell",
-}
-var condFormatExtraFlags = []common.Flag{
-	{Name: "rule-type", Required: true, Enum: condFormatRuleTypeEnum,
-		Desc: "rule type enum (cellValue / formula / duplicate / ...); merged into properties.rule.type"},
-	{Name: "ranges", Input: []string{common.File, common.Stdin}, Required: true,
-		Desc: "A1 ranges JSON array (e.g. [\"A1:A100\",\"C2:C50\"]); merged into properties.ranges"},
-}
 var condFormatEnhance = func(rt *common.RuntimeContext, input map[string]interface{}) {
 	props, _ := input["properties"].(map[string]interface{})
 	if props == nil {
@@ -361,10 +316,6 @@ var condFormatSpec = objectCRUDSpec{
 	toolName:           "manage_conditional_format_object",
 	idFlag:             "rule-id",
 	idField:            "conditional_format_id",
-	createDataDesc:     "rule JSON: { rule: { operator, value, style, ... }, ... }; --rule-type and --ranges cover the common scalar fields",
-	updateDataDesc:     "full or partial rule JSON (`+cond-format-list --rule-id <id>` first, then patch); --rule-type and --ranges still required",
-	createExtraFlags:   condFormatExtraFlags,
-	updateExtraFlags:   condFormatExtraFlags,
 	enhanceCreateInput: condFormatEnhance,
 	enhanceUpdateInput: condFormatEnhance,
 }
@@ -374,12 +325,10 @@ var CondFormatDelete = newObjectDeleteShortcut(condFormatSpec)
 
 // sparkline — CLI uses --group-id (higher level) as the object selector.
 var sparklineSpec = objectCRUDSpec{
-	commandPrefix:  "+sparkline",
-	toolName:       "manage_sparkline_object",
-	idFlag:         "group-id",
-	idField:        "group_id",
-	createDataDesc: "sparkline group JSON: { type: line|column|winLoss, source_range, target_range, ... }",
-	updateDataDesc: "full or partial sparkline group JSON (`+sparkline-list --group-id <id>` first, then patch)",
+	commandPrefix: "+sparkline",
+	toolName:      "manage_sparkline_object",
+	idFlag:        "group-id",
+	idField:       "group_id",
 }
 var SparklineCreate = newObjectCreateShortcut(sparklineSpec)
 var SparklineUpdate = newObjectUpdateShortcut(sparklineSpec)
@@ -388,19 +337,6 @@ var SparklineDelete = newObjectDeleteShortcut(sparklineSpec)
 // float image — fully hoisted to 10 flat flags. No --properties flag;
 // the tool's properties is composed entirely from the position / size /
 // offset / image_token / image_uri / z_index flat flags.
-
-var floatImageFlatFlags = []common.Flag{
-	{Name: "image-name", Required: true, Desc: "image file name with extension (e.g. logo.png)"},
-	{Name: "image-token", Desc: "image file_token (XOR --image-uri); commonly returned by +float-image-list"},
-	{Name: "image-uri", Desc: "image reference_id (XOR --image-token); upstream-supplied like \"<|image|>:abcdef\""},
-	{Name: "position-row", Type: "int", Required: true, Desc: "top-left row index (0-based)"},
-	{Name: "position-col", Required: true, Desc: "top-left column letter (e.g. A, B)"},
-	{Name: "size-width", Type: "int", Required: true, Desc: "image width in pixels"},
-	{Name: "size-height", Type: "int", Required: true, Desc: "image height in pixels"},
-	{Name: "offset-row", Type: "int", Desc: "in-cell row offset in pixels (optional)"},
-	{Name: "offset-col", Type: "int", Desc: "in-cell column offset in pixels (optional)"},
-	{Name: "z-index", Type: "int", Desc: "z-order layer for overlapping images (optional)"},
-}
 
 // floatImageProperties assembles the tool's properties object from the
 // 10 flat flags. Caller is responsible for marking required flags via
@@ -452,11 +388,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 	if isHighRisk {
 		risk = "high-risk-write"
 	}
-	flags := publicSheetFlags()
-	if withIDFlag {
-		flags = append(flags, common.Flag{Name: "float-image-id", Required: true, Desc: "target image reference_id"})
-	}
-	flags = append(flags, floatImageFlatFlags...)
+	flags := flagsFor(command)
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     command,
@@ -550,10 +482,6 @@ var FloatImageDelete = newObjectDeleteShortcut(floatImageDeleteSpec)
 // it dispatches via the same One-OpenAPI endpoint as every other shortcut.
 // --view-name and --range are hoisted out of properties (optional on both
 // create and update; they always win over properties.{view_name, range}).
-var filterViewExtraFlags = []common.Flag{
-	{Name: "range", Desc: "filter view range (A1 covering the header, e.g. A1:F1000); overrides properties.range"},
-	{Name: "view-name", Desc: "view title; create omits → server-generated, update omits → keep current. Overrides properties.view_name"},
-}
 var filterViewEnhance = func(rt *common.RuntimeContext, input map[string]interface{}) {
 	props, _ := input["properties"].(map[string]interface{})
 	if props == nil {
@@ -572,10 +500,6 @@ var filterViewSpec = objectCRUDSpec{
 	toolName:           "manage_filter_view_object",
 	idFlag:             "view-id",
 	idField:            "view_id",
-	createDataDesc:     "filter view JSON: { rules?: [...] , filtered_columns?: [...] }; --range / --view-name cover the scalar fields",
-	updateDataDesc:     "partial update JSON: any of { rules, filtered_columns }; `+filter-view-list --view-id <id>` first",
-	createExtraFlags:   filterViewExtraFlags,
-	updateExtraFlags:   filterViewExtraFlags,
 	enhanceCreateInput: filterViewEnhance,
 	enhanceUpdateInput: filterViewEnhance,
 }
@@ -600,11 +524,7 @@ var FilterCreate = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "filter range including the header row (e.g. A1:F1000)"},
-		common.Flag{Name: "properties", Input: []string{common.File, common.Stdin},
-			Desc: "optional rules JSON: { rules: [...], filtered_columns?: [...] }; empty filter when omitted"},
-	),
+	Flags:       flagsFor("+filter-create"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -686,11 +606,7 @@ var FilterUpdate = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "properties", Input: []string{common.File, common.Stdin}, Required: true,
-			Desc: "patch JSON: { rules: [...], filtered_columns?: [...] } — read with +filter-list first"},
-		common.Flag{Name: "range", Required: true, Desc: "filter range A1 (e.g. A1:F1000); overrides properties.range"},
-	),
+	Flags:       flagsFor("+filter-update"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -757,7 +673,7 @@ var FilterDelete = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags:       publicSheetFlags(),
+	Flags:       flagsFor("+filter-delete"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

@@ -1,0 +1,4598 @@
+{
+  "+workbook-info": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "New sheet title"
+      },
+      {
+        "name": "index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Insert position; appended to the end when omitted",
+        "default": "-1"
+      },
+      {
+        "name": "row-count",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Initial row count (default 200, max 50000)",
+        "default": "200"
+      },
+      {
+        "name": "col-count",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Initial column count (default 20, max 200)",
+        "default": "20"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm high-risk write (exit code 10 without this flag)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-rename": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "New title"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-move": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "index",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Target position (0-based)"
+      },
+      {
+        "name": "source-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Source position (0-based); optional. If omitted, the CLI runtime derives it from the current workbook index of `--sheet-id` / `--sheet-name`",
+        "default": "-1"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-copy": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Copy title; auto-generated by the server when omitted"
+      },
+      {
+        "name": "index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Insert position for the copy (0-based); appended to the end when omitted",
+        "default": "-1"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-hide": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-unhide": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-set-tab-color": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "color",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Hex color like `#FF0000`; pass empty string `\"\"` to clear"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+workbook-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Spreadsheet title"
+      },
+      {
+        "name": "folder-token",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Target folder token; placed at the drive root when omitted"
+      },
+      {
+        "name": "headers",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Header row as a JSON array: `[\"Col A\",\"Col B\"]`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "values",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Initial data as a 2D JSON array: `[[\"alice\",95]]`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+workbook-export": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "file-extension",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Export file format; `csv` mode requires `--sheet-id`",
+        "default": "xlsx",
+        "enum": [
+          "xlsx",
+          "csv"
+        ]
+      },
+      {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Required only in csv mode: the sheet reference_id to export"
+      },
+      {
+        "name": "output-path",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Local save path; export is triggered but not downloaded when omitted"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-info": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "include",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Comma-separated structure info categories to return",
+        "enum": [
+          "merges",
+          "row_heights",
+          "col_widths",
+          "hidden_rows",
+          "hidden_cols",
+          "groups",
+          "frozen"
+        ]
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Limit structure info to this A1 range; whole sheet when omitted"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-insert": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Insert start position (0-based)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Insert end position (exclusive)"
+      },
+      {
+        "name": "inherit-style",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Style inheritance for the new row/column: `before` (from preceding) / `after` (from following) / `none` (default)",
+        "default": "none",
+        "enum": [
+          "before",
+          "after",
+          "none"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start position (0-based)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "End position (exclusive)"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag); row/column deletion is irreversible"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-hide": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start position (0-based, inclusive)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "End position (0-based, inclusive)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-unhide": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start position (0-based, inclusive)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "End position (0-based, inclusive)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-freeze": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "count",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Freeze the first N rows/columns; pass 0 to unfreeze"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-group": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start position (0-based, inclusive)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "End position (0-based, inclusive)"
+      },
+      {
+        "name": "depth",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Nesting level (used by `+dim-group`); default 1",
+        "default": "1"
+      },
+      {
+        "name": "group-state",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Initial group expand state",
+        "default": "expand",
+        "enum": [
+          "expand",
+          "fold"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-ungroup": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start position (0-based, inclusive)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "End position (0-based, inclusive)"
+      },
+      {
+        "name": "depth",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Nesting level (used by `+dim-group`); default 1",
+        "default": "1"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dim-move": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dimension",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Dimension (row or column)",
+        "enum": [
+          "row",
+          "column"
+        ]
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Source range start position (0-based, inclusive)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Source range end position (0-based, inclusive)"
+      },
+      {
+        "name": "target",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Destination position (move target inserts before this index; 0-based)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cells-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string_array",
+        "required": "required",
+        "desc": "A1 range, e.g. `Sheet1!A1:F10`"
+      },
+      {
+        "name": "include",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Comma-separated info categories to include",
+        "enum": [
+          "value",
+          "formula",
+          "style",
+          "comment",
+          "data_validation"
+        ]
+      },
+      {
+        "name": "cell-limit",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Safety cap; default 5000",
+        "default": "5000",
+        "hidden": true
+      },
+      {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Safety cap; default 200000",
+        "default": "200000",
+        "hidden": true
+      },
+      {
+        "name": "skip-hidden",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Skip hidden rows and columns; default `false`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dropdown-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target range (A1 notation; must include the sheet prefix, e.g. `sheet1!A2:A100`)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+csv-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "A1 range; reads the whole sheet's `current_region` when omitted"
+      },
+      {
+        "name": "value-render-option",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Cell value render mode",
+        "default": "formatted_value",
+        "enum": [
+          "formatted_value",
+          "raw_value",
+          "formula"
+        ]
+      },
+      {
+        "name": "max-rows",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Safety cap; default 100000",
+        "default": "100000",
+        "hidden": true
+      },
+      {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Safety cap; default 200000",
+        "default": "200000",
+        "hidden": true
+      },
+      {
+        "name": "include-row-prefix",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Whether to prefix each row with `[row=N]`; default `true`",
+        "default": "true"
+      },
+      {
+        "name": "skip-hidden",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Skip hidden rows and columns; default `false`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request path and parameters without executing"
+      }
+    ]
+  },
+  "+cells-search": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "find",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Text to find (interpreted as regex when `--regex` is set)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Search range (A1 notation); whole sheet when omitted"
+      },
+      {
+        "name": "match-case",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Case-sensitive match"
+      },
+      {
+        "name": "match-entire-cell",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Match the entire cell content"
+      },
+      {
+        "name": "regex",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Interpret `--find` as a regex pattern"
+      },
+      {
+        "name": "include-formulas",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Also search within formula text"
+      },
+      {
+        "name": "max-matches",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Safety cap; default 5000",
+        "default": "5000",
+        "hidden": true
+      },
+      {
+        "name": "offset",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Skip the first N matches (for pagination); default 0",
+        "default": "0"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cells-replace": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "find",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Text to find for replacement"
+      },
+      {
+        "name": "replacement",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Replacement text; pass empty string `\"\"` to delete matched content"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Replace range (A1 notation); whole sheet when omitted"
+      },
+      {
+        "name": "match-case",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Case-sensitive match"
+      },
+      {
+        "name": "match-entire-cell",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Match the entire cell content"
+      },
+      {
+        "name": "regex",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Interpret `--find` as a regex pattern"
+      },
+      {
+        "name": "include-formulas",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Also replace within formula text"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Required preflight: outputs `would_replace_count` for user confirmation before the actual replace"
+      }
+    ]
+  },
+  "+cells-set": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Write range (A1 notation)"
+      },
+      {
+        "name": "cells",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image); run `--print-schema` for full fields",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "allow-overwrite",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Allow overwriting non-empty cells (default true); set false to error if any target cell is non-empty",
+        "default": "true"
+      },
+      {
+        "name": "max-cells",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Safety cap; default 50000",
+        "default": "50000",
+        "hidden": true
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cells-set-style": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target range (A1 notation, e.g. `A1:B2`)"
+      },
+      {
+        "name": "background-color",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Background color (hex, e.g. `#ffffff`)"
+      },
+      {
+        "name": "font-color",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font color (hex, e.g. `#000000`)"
+      },
+      {
+        "name": "font-size",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Font size in px (e.g. 10, 12, 14)"
+      },
+      {
+        "name": "font-style",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font style",
+        "enum": [
+          "normal",
+          "italic"
+        ]
+      },
+      {
+        "name": "font-weight",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font weight",
+        "enum": [
+          "normal",
+          "bold"
+        ]
+      },
+      {
+        "name": "font-line",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font line style",
+        "enum": [
+          "none",
+          "underline",
+          "line-through"
+        ]
+      },
+      {
+        "name": "horizontal-alignment",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Horizontal alignment",
+        "enum": [
+          "left",
+          "center",
+          "right"
+        ]
+      },
+      {
+        "name": "vertical-alignment",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Vertical alignment",
+        "enum": [
+          "top",
+          "middle",
+          "bottom"
+        ]
+      },
+      {
+        "name": "word-wrap",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Word-wrap strategy",
+        "enum": [
+          "overflow",
+          "auto-wrap",
+          "word-clip"
+        ]
+      },
+      {
+        "name": "number-format",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Number format pattern (e.g. text `@`, number `0.00`, currency `$#,##0.00`, date `mm/dd/yyyy`)"
+      },
+      {
+        "name": "border-styles",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Border config JSON: `{ top: {style,color,weight}, bottom: ..., left: ..., right: ... }`; same shape for all 4 sides",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cells-set-image": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target cell (A1 notation; must be a single cell, e.g. `A1`; start and end must be identical)"
+      },
+      {
+        "name": "image",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Local image path (PNG / JPEG / JPG / GIF / BMP / JFIF / EXIF / TIFF / BPG / HEIC)"
+      },
+      {
+        "name": "name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Image file name (with extension); defaults to the basename of `--image`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dropdown-set": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target range (A1 notation, e.g. `A2:A100`)"
+      },
+      {
+        "name": "options",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Options as a JSON array, e.g. `[\"opt1\",\"opt2\"]`; up to 500 items, each ≤100 chars, no commas",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "colors",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "RGB hex color array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`); length must equal `--options`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "multiple",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Enable multi-select; default `false`"
+      },
+      {
+        "name": "highlight",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Color-highlight options; default `false`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+csv-put": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "start-cell",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Top-left A1 anchor (e.g. `Sheet1!A1`); the bottom-right is inferred from CSV row/column counts",
+        "default": "A1"
+      },
+      {
+        "name": "csv",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "RFC 4180 CSV text; plain values only (no formulas / styles / comments)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "allow-overwrite",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Allow overwriting (default true); set false to error if any target cell is non-empty",
+        "default": "true"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cells-clear": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Range to clear (A1 notation)"
+      },
+      {
+        "name": "scope",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Clear scope: `content` (default, values only) / `formats` (formats only) / `all` (values and formats)",
+        "default": "content",
+        "enum": [
+          "content",
+          "formats",
+          "all"
+        ]
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag); clear is irreversible"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cells-merge": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Range to merge / unmerge (A1 notation)"
+      },
+      {
+        "name": "merge-type",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Merge direction (`+cells-merge` only)",
+        "default": "all",
+        "enum": [
+          "all",
+          "rows",
+          "columns"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cells-unmerge": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Range to merge / unmerge (A1 notation)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+rows-resize": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start row (0-based, inclusive)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "End row (0-based, inclusive)"
+      },
+      {
+        "name": "type",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Sizing mode: `pixel` (explicit px value, requires `--size`) / `standard` (reset to default row height) / `auto` (fit content)",
+        "enum": [
+          "pixel",
+          "standard",
+          "auto"
+        ]
+      },
+      {
+        "name": "size",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Row height in pixels (e.g. 30 / 40 / 60); required when `--type pixel`, ignored otherwise",
+        "default": "0"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cols-resize": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "start",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start column (0-based, inclusive)"
+      },
+      {
+        "name": "end",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "End column (0-based, inclusive)"
+      },
+      {
+        "name": "type",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Sizing mode: `pixel` (explicit px value, requires `--size`) / `standard` (reset to default column width)",
+        "enum": [
+          "pixel",
+          "standard"
+        ]
+      },
+      {
+        "name": "size",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Column width in pixels (e.g. 80 / 120 / 200); required when `--type pixel`, ignored otherwise",
+        "default": "0"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+range-move": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "source-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Source A1 range"
+      },
+      {
+        "name": "target-sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Destination sub-sheet id; defaults to the same sheet as the source"
+      },
+      {
+        "name": "target-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Destination A1 range (anchor cell is enough; size inferred from the source)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+range-copy": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "source-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Source A1 range"
+      },
+      {
+        "name": "target-sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Destination sub-sheet id; defaults to the same sheet as the source"
+      },
+      {
+        "name": "target-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Destination A1 range (anchor cell is enough; size inferred from the source)"
+      },
+      {
+        "name": "paste-type",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Paste content type (`+range-copy` only)",
+        "default": "all",
+        "enum": [
+          "values",
+          "formulas",
+          "formats",
+          "all"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+range-fill": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "source-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Fill template range (seed cells for the series)"
+      },
+      {
+        "name": "target-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Destination fill range (A1 notation)"
+      },
+      {
+        "name": "series-type",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Fill series type",
+        "default": "auto",
+        "enum": [
+          "auto",
+          "linear",
+          "growth",
+          "date",
+          "copy"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+range-sort": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Sort range (A1 notation; whether the header is included depends on `--has-header`)"
+      },
+      {
+        "name": "sort-keys",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "JSON array: `[{\"column\":\"<col letter>\",\"ascending\":<bool>}, ...]`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "has-header",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Treat the first row as a header and exclude from sort; default `false`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+batch-update": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator (independent from per-operation sheet locator)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator (independent from per-operation sheet locator)"
+      },
+      {
+        "name": "operations",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "JSON array: `[{\"tool_name\":\"set_cell_range\",\"input\":{...}}, ...]`, executed serially; `tool_name` is the underlying tool name (e.g. `set_cell_range` / `clear_cell_range` / `modify_sheet_structure`)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "continue-on-error",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Continue with remaining operations when a sub-operation fails; default false (abort on first failure)"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm high-risk write (exit code 10 without this flag)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template for each sub-operation; no network side effects"
+      }
+    ]
+  },
+  "+cells-batch-set-style": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "ranges",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target ranges as a JSON array (e.g. `[\"sheet1!A1:B2\",\"sheet1!D1:D10\"]`); each item must include the sheet prefix; the same style is applied to all ranges",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "background-color",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Background color (hex, e.g. `#ffffff`)"
+      },
+      {
+        "name": "font-color",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font color (hex, e.g. `#000000`)"
+      },
+      {
+        "name": "font-size",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Font size in px (e.g. 10, 12, 14)"
+      },
+      {
+        "name": "font-style",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font style",
+        "enum": [
+          "normal",
+          "italic"
+        ]
+      },
+      {
+        "name": "font-weight",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font weight",
+        "enum": [
+          "normal",
+          "bold"
+        ]
+      },
+      {
+        "name": "font-line",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font line style",
+        "enum": [
+          "none",
+          "underline",
+          "line-through"
+        ]
+      },
+      {
+        "name": "horizontal-alignment",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Horizontal alignment",
+        "enum": [
+          "left",
+          "center",
+          "right"
+        ]
+      },
+      {
+        "name": "vertical-alignment",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Vertical alignment",
+        "enum": [
+          "top",
+          "middle",
+          "bottom"
+        ]
+      },
+      {
+        "name": "word-wrap",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Word-wrap strategy",
+        "enum": [
+          "overflow",
+          "auto-wrap",
+          "word-clip"
+        ]
+      },
+      {
+        "name": "number-format",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Number format pattern (e.g. text `@`, number `0.00`, currency `$#,##0.00`, date `mm/dd/yyyy`)"
+      },
+      {
+        "name": "border-styles",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Border config JSON (same shape as in +cells-set-style)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dropdown-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "ranges",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target ranges as a JSON array (e.g. `[\"sheet1!A2:A100\"]`); each item must include the sheet prefix",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "options",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Options as a JSON array (e.g. `[\"opt1\",\"opt2\"]`)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "colors",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Color array (same length as `--options`)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "multiple",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Enable multi-select"
+      },
+      {
+        "name": "highlight",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Color-highlight options"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+dropdown-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "ranges",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target ranges as a JSON array (up to 100 items; each must include the sheet prefix)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm high-risk write (exit code 10 without this flag)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+chart-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "chart-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter to a single chart reference_id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+chart-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Full chart config JSON (`position` / `data` / `properties` etc.); deeply nested, must be passed as JSON",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template; no side effects"
+      }
+    ]
+  },
+  "+chart-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "chart-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target chart reference_id"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Full or sufficiently complete chart config JSON (read back with `+chart-list` first, then patch)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+chart-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "chart-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target chart reference_id"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+pivot-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "pivot-table-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter by id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+pivot-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "JSON: `{\"data_range\":\"Sheet1!A1:F1000\",\"rows\":[...],\"columns\":[...],\"values\":[...],\"filters\":[...],\"show_row_grand_total\":true,\"show_col_grand_total\":true}`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "target-sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Destination sub-sheet id for the pivot table; auto-creates a new sub-sheet when omitted (recommended)"
+      },
+      {
+        "name": "target-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Destination anchor cell (A1 notation, e.g. `A1`); default `A1`",
+        "default": "A1"
+      },
+      {
+        "name": "source",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Pivot table source range (A1 notation; format `SheetName!StartCell:EndCell`, e.g. `Sheet1!A1:D100`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Pivot table placement (single A1 anchor for the top-left, e.g. `F1`); placed at the top-left of a newly created sub-sheet when omitted"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+pivot-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "pivot-table-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target pivot table id"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Full or sufficiently complete pivot config (read back with `+pivot-list --pivot-table-id <id>` first, then patch)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+pivot-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "pivot-table-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target pivot table id"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag); delete is irreversible"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "rule-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter by rule id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Rule config JSON: `style` (required, applied on match), `attrs?` (rule-type-dependent params), `has_ref?`. `rule_type` and `ranges` are separate flags",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "rule-type",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Conditional format rule type; takes precedence over the same-named field inside `--properties`",
+        "enum": [
+          "cellValue",
+          "formula",
+          "duplicate",
+          "unique",
+          "topBottom",
+          "aboveBelowAverage",
+          "dataBar",
+          "colorScale",
+          "iconSet",
+          "textContains",
+          "dateOccurring",
+          "blankCell",
+          "errorCell"
+        ]
+      },
+      {
+        "name": "ranges",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "A1 ranges where the conditional format applies, as a JSON array (e.g. `[\"A1:A100\",\"C2:C50\"]`); takes precedence over the same-named field inside `--properties`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "rule-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target rule id"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Rule config JSON, same shape as `+cond-format-create --properties`; update overwrites the entire rule",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "rule-type",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Conditional format rule type; takes precedence over the same-named field inside `--properties`",
+        "enum": [
+          "cellValue",
+          "formula",
+          "duplicate",
+          "unique",
+          "topBottom",
+          "aboveBelowAverage",
+          "dataBar",
+          "colorScale",
+          "iconSet",
+          "textContains",
+          "dateOccurring",
+          "blankCell",
+          "errorCell"
+        ]
+      },
+      {
+        "name": "ranges",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "A1 ranges where the conditional format applies, as a JSON array (e.g. `[\"A1:A100\",\"C2:C50\"]`); takes precedence over the same-named field inside `--properties`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "rule-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target rule id"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag); delete is irreversible"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Filter range (A1 notation, including header row, e.g. `A1:F1000`); do not duplicate the range field inside `--properties`"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter rule JSON: `rules` (required, per-column rule array), `filtered_columns?` (active column index hint). `range` is a separate flag (do not duplicate inside this JSON)",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Filter rule JSON: `rules` and `filtered_columns?`; update overwrites the entire rule set (pass `rules: []` to clear). `range` is a separate flag",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Range the filter applies to (A1 notation, e.g. `A1:F1000`); takes precedence over the same-named field inside `--properties`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag); delete is irreversible"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-view-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "view-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter by filter-view reference_id (returns the matching single view)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-view-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Filter-view rule JSON: `rules?` (per-column rule array), `filtered_columns?`. `range` and `view_name` are separate flags",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Range the filter view applies to (A1 notation, e.g. `A1:F1000`); takes precedence over the same-named field inside `--properties`; required on create and must cover the header row"
+      },
+      {
+        "name": "view-name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter-view name; auto-assigned by the server when omitted on create, kept unchanged when omitted on update; takes precedence over the same-named field inside `--properties`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-view-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "view-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target filter-view reference_id"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Filter-view rule JSON: `rules?`, `filtered_columns?`. `range` and `view_name` are separate flags; pass at least one of `--properties.rules` / `--range` / `--view-name`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Range the filter view applies to (A1 notation, e.g. `A1:F1000`); takes precedence over the same-named field inside `--properties`; omit to keep the current range on update"
+      },
+      {
+        "name": "view-name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter-view name; auto-assigned by the server when omitted on create, kept unchanged when omitted on update; takes precedence over the same-named field inside `--properties`"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+filter-view-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "view-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target filter-view reference_id"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm high-risk write (exit code 10 without this flag)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sparkline-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "group-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter by group_id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sparkline-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "JSON: `{config (shared style), sparklines (array of mini-charts)}`; run `--print-schema` for the full structure",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sparkline-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "group-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target group id"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "JSON: `{config, sparklines}`; read back with `+sparkline-list --group-id <id>` first, then patch; run `--print-schema` for the full structure",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sparkline-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "group-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target group id"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag); delete is irreversible"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+float-image-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "float-image-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter by id; lists all float images on the sheet when omitted"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+float-image-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "image-name",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Image name, including extension (e.g. `logo.png`)"
+      },
+      {
+        "name": "image-token",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Image file_token (XOR with `--image-uri`). Common source: `image_token` returned by `+float-image-list`"
+      },
+      {
+        "name": "image-uri",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Image reference_id (XOR with `--image-token`); a prefixed string like `<|image|>:abcdef`"
+      },
+      {
+        "name": "position-row",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Row anchor of the image's top-left corner (0-based)"
+      },
+      {
+        "name": "position-col",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Column anchor of the image's top-left corner (column letter, e.g. `A` / `B`)"
+      },
+      {
+        "name": "size-width",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Image width in pixels"
+      },
+      {
+        "name": "size-height",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Image height in pixels"
+      },
+      {
+        "name": "offset-row",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Pixel offset within the anchor row, on top of `--position-row`"
+      },
+      {
+        "name": "offset-col",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Pixel offset within the anchor column, on top of `--position-col`"
+      },
+      {
+        "name": "z-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Image z-index controlling stacking order"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+float-image-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "float-image-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target float image id"
+      },
+      {
+        "name": "image-name",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Image name, including extension (e.g. `logo.png`)"
+      },
+      {
+        "name": "image-token",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Image file_token (XOR with `--image-uri`). Common source: `image_token` returned by `+float-image-list`"
+      },
+      {
+        "name": "image-uri",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Image reference_id (XOR with `--image-token`); a prefixed string like `<|image|>:abcdef`"
+      },
+      {
+        "name": "position-row",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Row anchor of the image's top-left corner (0-based)"
+      },
+      {
+        "name": "position-col",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Column anchor of the image's top-left corner (column letter, e.g. `A` / `B`)"
+      },
+      {
+        "name": "size-width",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Image width in pixels"
+      },
+      {
+        "name": "size-height",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Image height in pixels"
+      },
+      {
+        "name": "offset-row",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Pixel offset within the anchor row, on top of `--position-row`"
+      },
+      {
+        "name": "offset-col",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Pixel offset within the anchor column, on top of `--position-col`"
+      },
+      {
+        "name": "z-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Image z-index controlling stacking order"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+float-image-delete": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "float-image-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target float image id"
+      },
+      {
+        "name": "yes",
+        "kind": "system",
+        "type": "bool",
+        "required": "required",
+        "desc": "Confirm destructive write (exit code 10 without this flag); delete is irreversible"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  }
+}

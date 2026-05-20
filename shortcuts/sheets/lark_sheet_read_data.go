@@ -19,8 +19,6 @@ import (
 // The sandbox tool (export_sheet_to_sandbox) is Sheet-Tool-only and has no
 // CLI surface here.
 
-var cellsGetIncludeEnum = []string{"value", "formula", "style", "comment", "data_validation"}
-
 // CellsGet wraps get_cell_ranges: read multiple A1 ranges and return per-cell
 // values, formulas, styles, and other metadata as requested via --include.
 var CellsGet = common.Shortcut{
@@ -31,13 +29,7 @@ var CellsGet = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "ranges", Type: "string_array", Required: true, Desc: "A1 ranges (repeat: --ranges A1:B2 --ranges D1:E5)"},
-		common.Flag{Name: "include", Type: "string_slice", Enum: cellsGetIncludeEnum, Desc: "categories to include (default: value+style). value|formula|style|comment|data_validation"},
-		common.Flag{Name: "skip-hidden", Type: "bool", Desc: "skip hidden rows/cols"},
-		common.Flag{Name: "cell-limit", Type: "int", Default: "5000", Hidden: true, Desc: "anti-burst cell scan cap"},
-		common.Flag{Name: "max-chars", Type: "int", Default: "200000", Hidden: true, Desc: "anti-burst response char cap"},
-	),
+	Flags:       flagsFor("+cells-get"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -45,8 +37,8 @@ var CellsGet = common.Shortcut{
 		if _, _, err := resolveSheetSelector(runtime); err != nil {
 			return err
 		}
-		if len(runtime.StrArray("ranges")) == 0 {
-			return common.FlagErrorf("--ranges is required")
+		if len(runtime.StrArray("range")) == 0 {
+			return common.FlagErrorf("--range is required")
 		}
 		return nil
 	},
@@ -76,7 +68,7 @@ var CellsGet = common.Shortcut{
 func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) map[string]interface{} {
 	input := map[string]interface{}{
 		"excel_id": token,
-		"ranges":   runtime.StrArray("ranges"),
+		"ranges":   runtime.StrArray("range"),
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	applyIncludeToCellsGet(input, runtime.StrSlice("include"))
@@ -129,17 +121,7 @@ var CsvGet = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicSheetFlags(),
-		common.Flag{Name: "range", Desc: "A1 range; omit for the sheet's current_region"},
-		common.Flag{
-			Name: "value-render-option", Enum: []string{"formatted_value", "raw_value", "formula"},
-			Desc: "value rendering: formatted_value (default) / raw_value / formula",
-		},
-		common.Flag{Name: "include-row-prefix", Type: "bool", Default: "true", Desc: "keep [row=N] line prefix; pass --include-row-prefix=false to strip"},
-		common.Flag{Name: "skip-hidden", Type: "bool", Desc: "skip hidden rows/cols"},
-		common.Flag{Name: "max-rows", Type: "int", Default: "100000", Hidden: true, Desc: "anti-burst row cap"},
-		common.Flag{Name: "max-chars", Type: "int", Default: "200000", Hidden: true, Desc: "anti-burst char cap"},
-	),
+	Flags:       flagsFor("+csv-get"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
@@ -228,9 +210,7 @@ var DropdownGet = common.Shortcut{
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: append(publicTokenFlags(),
-		common.Flag{Name: "range", Required: true, Desc: "A1 range with sheet prefix (e.g. sheet1!A2:A100)"},
-	),
+	Flags:       flagsFor("+dropdown-get"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

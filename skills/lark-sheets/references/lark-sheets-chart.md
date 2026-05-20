@@ -111,7 +111,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--chart-id` | string | 否 | 指定单个图表 reference_id 过滤 |
+| `--chart-id` | string | optional | 指定单个图表 reference_id 过滤 |
 
 ### `+chart-create`
 
@@ -119,7 +119,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等）；结构嵌套深，统一走 JSON 注入 |
+| `--properties` | string + File + Stdin（复合 JSON） | required | 图表完整配置 JSON（`position` / `data` / `properties` 等）；结构嵌套深，统一走 JSON 注入 |
 
 ### `+chart-update`
 
@@ -127,8 +127,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--chart-id` | string | 是 | 目标图表 reference_id |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch） |
+| `--chart-id` | string | required | 目标图表 reference_id |
+| `--properties` | string + File + Stdin（复合 JSON） | required | 完整或足够完整的图表配置 JSON（先 `+chart-list` 回读再 patch） |
 
 ### `+chart-delete`
 
@@ -136,7 +136,7 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--chart-id` | string | 是 | 目标图表 reference_id |
+| `--chart-id` | string | required | 目标图表 reference_id |
 
 ## Schemas
 
