@@ -68,7 +68,11 @@ func isRestrictedDownloadIP(ip net.IP) bool {
 }
 
 // ValidateDownloadSourceURL validates a download URL and blocks local/internal targets.
+// IP-based restriction is enforced at the transport layer (see validateConnRemoteIP),
+// which provides defense-in-depth against DNS rebinding that a pre-connect DNS lookup
+// cannot catch.
 func ValidateDownloadSourceURL(ctx context.Context, rawURL string) error {
+	_ = ctx
 	u, err := url.Parse(rawURL)
 	if err != nil || u == nil {
 		return fmt.Errorf("invalid URL")
@@ -84,19 +88,6 @@ func ValidateDownloadSourceURL(ctx context.Context, rawURL string) error {
 		return fmt.Errorf("local/internal host is not allowed")
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		if isRestrictedDownloadIP(ip) {
-			return fmt.Errorf("local/internal host is not allowed")
-		}
-		return nil
-	}
-	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-	if err != nil {
-		return fmt.Errorf("failed to resolve host")
-	}
-	if len(ips) == 0 {
-		return fmt.Errorf("failed to resolve host")
-	}
-	for _, ip := range ips {
 		if isRestrictedDownloadIP(ip) {
 			return fmt.Errorf("local/internal host is not allowed")
 		}
