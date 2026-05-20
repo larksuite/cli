@@ -89,21 +89,19 @@ type appsHTMLPublishSpec struct {
 // 用 var 而非 const，允许单测临时调小做拦截验证。
 var maxHTMLPublishTarballBytes int64 = 20 * 1024 * 1024
 
-// ensureIndexHTMLForDir 检查目录形态的 --path 根目录下必须含 index.html
-// （妙搭以 index.html 作为应用入口）。--path 是单文件时不做此校验。
-func ensureIndexHTMLForDir(path string, candidates []htmlPublishCandidate) error {
-	stat, err := os.Stat(path)
-	if err != nil || !stat.IsDir() {
-		return nil
-	}
+// ensureIndexHTML 要求 walker 抓到的 candidates 里必须含 index.html。
+// 目录形态：根目录下必须有 index.html。
+// 单文件形态：文件名必须就是 index.html。
+// 妙搭服务端用 index.html 作为应用入口。
+func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 	for _, c := range candidates {
 		if c.RelPath == "index.html" {
 			return nil
 		}
 	}
 	return output.ErrWithHint(output.ExitAPI, "validation",
-		"--path 目录下缺少 index.html",
-		"妙搭以根目录的 index.html 作为应用入口；请把首页文件命名为 index.html 并放在 --path 的根目录下")
+		"--path 中缺少 index.html",
+		"妙搭以 index.html 作为应用入口；目录形态把首页放在根目录命名 index.html，单文件形态把文件命名为 index.html")
 }
 
 func runHTMLPublish(ctx context.Context, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
@@ -111,7 +109,7 @@ func runHTMLPublish(ctx context.Context, client appsHTMLPublishClient, spec apps
 	if err != nil {
 		return nil, fmt.Errorf("scan --path %s: %w", spec.Path, err)
 	}
-	if err := ensureIndexHTMLForDir(spec.Path, candidates); err != nil {
+	if err := ensureIndexHTML(candidates); err != nil {
 		return nil, err
 	}
 	tarball, err := buildHTMLPublishTarball(candidates)

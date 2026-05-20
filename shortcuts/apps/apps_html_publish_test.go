@@ -135,17 +135,36 @@ func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
 	}
 }
 
-func TestRunHTMLPublish_SingleFileSkipsIndexCheck(t *testing.T) {
-	// 单文件形态：即使文件名不是 index.html 也允许（用户已明示入口）
+func TestRunHTMLPublish_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
+	// 单文件形态：文件名不是 index.html 也要拦
 	dir := t.TempDir()
 	single := filepath.Join(dir, "foo.html")
 	_ = os.WriteFile(single, []byte("<html></html>"), 0o644)
+	fake := &fakeAppsHTMLPublishClient{}
+	_, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single})
+	if err == nil {
+		t.Fatalf("single-file path 'foo.html' should be rejected (not named index.html)")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "validation" {
+		t.Fatalf("expected ExitError type=validation, got %v", err)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("client must not be called when index.html missing")
+	}
+}
+
+func TestRunHTMLPublish_SingleFileNamedIndexPasses(t *testing.T) {
+	// 单文件形态：文件名恰好就是 index.html → 放行
+	dir := t.TempDir()
+	single := filepath.Join(dir, "index.html")
+	_ = os.WriteFile(single, []byte("<html></html>"), 0o644)
 	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
 	if _, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single}); err != nil {
-		t.Fatalf("single-file case should not require index.html, got err=%v", err)
+		t.Fatalf("err=%v", err)
 	}
 	if len(fake.calls) != 1 {
-		t.Fatalf("client should be called for single-file path")
+		t.Fatalf("client should be called for single index.html")
 	}
 }
 
