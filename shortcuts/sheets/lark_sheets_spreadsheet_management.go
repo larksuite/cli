@@ -22,9 +22,9 @@ import (
 var SheetInfo = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+info",
-	Description: "View spreadsheet and sheet information",
+	Description: "View spreadsheet metadata and sheet information",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet.meta:read", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
