@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.35] - 2026-05-20
+
+### Features
+
+- **markdown**: Support wiki node target in `+create` (#883)
+- **markdown**: Add `+diff` shortcut (#876)
+- **base**: Add form `+detail` / `+submit` shortcuts (#759)
+- **skills**: Add incremental skills sync (#965)
+- **doc**: Warn before overwrite when document contains whiteboard or file blocks (#825)
+
+### Documentation
+
+- **im**: Clarify media key formats for message media flags (#991)
+- **im**: Add media-preview reference (#990)
+- **drive**: Migrate `docs +search` to `drive +search` and fix `creator_ids` owner semantic (#951)
+- **drive**: Prefer local comments for drive reviews (#981)
+- **wiki**: Add wiki base fast path (#982)
+
 ## [v1.0.34] - 2026-05-19
 
 ### Features
@@ -774,6 +792,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.35]: https://github.com/larksuite/cli/releases/tag/v1.0.35
 [v1.0.34]: https://github.com/larksuite/cli/releases/tag/v1.0.34
 [v1.0.33]: https://github.com/larksuite/cli/releases/tag/v1.0.33
 [v1.0.32]: https://github.com/larksuite/cli/releases/tag/v1.0.32
