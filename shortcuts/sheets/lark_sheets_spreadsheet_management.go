@@ -24,7 +24,7 @@ var SheetInfo = common.Shortcut{
 	Command:     "+info",
 	Description: "View spreadsheet and sheet information",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},

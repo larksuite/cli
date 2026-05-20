@@ -16,7 +16,7 @@ var SheetAddDimension = common.Shortcut{
 	Command:     "+add-dimension",
 	Description: "Add rows or columns at the end of a sheet",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -75,7 +75,7 @@ var SheetInsertDimension = common.Shortcut{
 	Command:     "+insert-dimension",
 	Description: "Insert rows or columns at a specified position",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -148,7 +148,7 @@ var SheetUpdateDimension = common.Shortcut{
 	Command:     "+update-dimension",
 	Description: "Update row or column properties (visibility, size)",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -237,7 +237,7 @@ var SheetMoveDimension = common.Shortcut{
 	Command:     "+move-dimension",
 	Description: "Move rows or columns to a new position",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -309,7 +309,7 @@ var SheetDeleteDimension = common.Shortcut{
 	Command:     "+delete-dimension",
 	Description: "Delete rows or columns",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},

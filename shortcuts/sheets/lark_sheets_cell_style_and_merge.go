@@ -59,7 +59,7 @@ var SheetSetStyle = common.Shortcut{
 	Command:     "+set-style",
 	Description: "Set cell style for a range",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -141,7 +141,7 @@ var SheetBatchSetStyle = common.Shortcut{
 	Command:     "+batch-set-style",
 	Description: "Batch set cell styles for multiple ranges",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -227,7 +227,7 @@ var SheetMergeCells = common.Shortcut{
 	Command:     "+merge-cells",
 	Description: "Merge cells in a spreadsheet",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -292,7 +292,7 @@ var SheetUnmergeCells = common.Shortcut{
 	Command:     "+unmerge-cells",
 	Description: "Unmerge (split) cells in a spreadsheet",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},

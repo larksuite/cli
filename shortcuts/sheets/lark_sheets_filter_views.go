@@ -43,7 +43,7 @@ var SheetCreateFilterView = common.Shortcut{
 	Command:     "+create-filter-view",
 	Description: "Create a filter view",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -98,7 +98,7 @@ var SheetUpdateFilterView = common.Shortcut{
 	Command:     "+update-filter-view",
 	Description: "Update a filter view",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -154,7 +154,7 @@ var SheetListFilterViews = common.Shortcut{
 	Command:     "+list-filter-views",
 	Description: "List all filter views in a sheet",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -187,7 +187,7 @@ var SheetGetFilterView = common.Shortcut{
 	Command:     "+get-filter-view",
 	Description: "Get a filter view by ID",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -221,7 +221,7 @@ var SheetDeleteFilterView = common.Shortcut{
 	Command:     "+delete-filter-view",
 	Description: "Delete a filter view",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -255,7 +255,7 @@ var SheetCreateFilterViewCondition = common.Shortcut{
 	Command:     "+create-filter-view-condition",
 	Description: "Create a filter condition on a filter view",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -297,7 +297,7 @@ var SheetUpdateFilterViewCondition = common.Shortcut{
 	Command:     "+update-filter-view-condition",
 	Description: "Update a filter condition on a filter view",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -350,7 +350,7 @@ var SheetListFilterViewConditions = common.Shortcut{
 	Command:     "+list-filter-view-conditions",
 	Description: "List all filter conditions of a filter view",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -386,7 +386,7 @@ var SheetGetFilterViewCondition = common.Shortcut{
 	Command:     "+get-filter-view-condition",
 	Description: "Get a filter condition by column",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},
@@ -424,7 +424,7 @@ var SheetDeleteFilterViewCondition = common.Shortcut{
 	Command:     "+delete-filter-view-condition",
 	Description: "Delete a filter condition from a filter view",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL (required if --spreadsheet-token is not set)"},

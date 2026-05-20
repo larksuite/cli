@@ -107,7 +107,7 @@ var SheetSetDropdown = common.Shortcut{
 	Command:     "+set-dropdown",
 	Description: "Set dropdown list on a cell range",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -168,7 +168,7 @@ var SheetUpdateDropdown = common.Shortcut{
 	Command:     "+update-dropdown",
 	Description: "Update dropdown list settings",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -235,7 +235,7 @@ var SheetGetDropdown = common.Shortcut{
 	Command:     "+get-dropdown",
 	Description: "Get dropdown list settings for a range",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -279,7 +279,7 @@ var SheetDeleteDropdown = common.Shortcut{
 	Command:     "+delete-dropdown",
 	Description: "Delete dropdown list from cell ranges",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},

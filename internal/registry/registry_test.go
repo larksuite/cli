@@ -237,8 +237,8 @@ func TestLoadAutoApproveSet(t *testing.T) {
 	}
 
 	// Verify allow list entries are present
-	if !aaSet["sheets:spreadsheet:readonly"] {
-		t.Error("expected sheets:spreadsheet:readonly in auto-approve set (from allow list)")
+	if !aaSet["sheets:spreadsheet:read"] {
+		t.Error("expected sheets:spreadsheet:read in auto-approve set (from allow list)")
 	}
 
 	t.Logf("Auto-approve set has %d scopes", len(aaSet))
@@ -292,7 +292,7 @@ func TestFilterAutoApproveScopes(t *testing.T) {
 	scopes := []string{
 		"calendar:calendar.event:create", // auto-approve (in allow list)
 		"zzz:unknown:scope",              // not in auto-approve
-		"sheets:spreadsheet:readonly",        // auto-approve (in allow list)
+		"sheets:spreadsheet:read",        // auto-approve (in allow list)
 	}
 
 	result := FilterAutoApproveScopes(scopes)
