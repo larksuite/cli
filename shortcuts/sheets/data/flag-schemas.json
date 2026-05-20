@@ -3,25 +3,77 @@
   "flags": {
     "+batch-update": {
       "operations": {
-        "description": "要批量执行的操作列表，按顺序依次执行。每个操作包含工具名称和对应的入参。",
+        "type": "array",
+        "description": "要批量执行的 CLI shortcut 操作列表，按声明顺序串行执行；任一失败立即中断。",
         "items": {
-          "properties": {
-            "input": {
-              "description": "对应工具的入参，结构与单独调用该工具时完全一致",
-              "type": "object"
-            },
-            "tool_name": {
-              "description": "要执行的工具名称，如 \"set_cell_range\"、\"clear_cell_range\"、\"modify_sheet_structure\" 等。不支持 \"batch_update\" 嵌套。",
-              "type": "string"
-            }
-          },
+          "type": "object",
+          "additionalProperties": false,
           "required": [
-            "tool_name",
+            "shortcut",
             "input"
           ],
-          "type": "object"
-        },
-        "type": "array"
+          "properties": {
+            "shortcut": {
+              "type": "string",
+              "enum": [
+                "+cells-set",
+                "+cells-clear",
+                "+cells-merge",
+                "+cells-unmerge",
+                "+cells-replace",
+                "+csv-put",
+                "+dim-insert",
+                "+dim-delete",
+                "+dim-hide",
+                "+dim-unhide",
+                "+dim-freeze",
+                "+dim-group",
+                "+dim-ungroup",
+                "+dim-move",
+                "+rows-resize",
+                "+cols-resize",
+                "+range-move",
+                "+range-copy",
+                "+range-fill",
+                "+range-sort",
+                "+sheet-create",
+                "+sheet-delete",
+                "+sheet-rename",
+                "+sheet-move",
+                "+sheet-copy",
+                "+sheet-hide",
+                "+sheet-unhide",
+                "+sheet-set-tab-color",
+                "+chart-create",
+                "+chart-update",
+                "+chart-delete",
+                "+pivot-create",
+                "+pivot-update",
+                "+pivot-delete",
+                "+cond-format-create",
+                "+cond-format-update",
+                "+cond-format-delete",
+                "+filter-create",
+                "+filter-update",
+                "+filter-delete",
+                "+filter-view-create",
+                "+filter-view-update",
+                "+filter-view-delete",
+                "+sparkline-create",
+                "+sparkline-update",
+                "+sparkline-delete",
+                "+float-image-create",
+                "+float-image-update",
+                "+float-image-delete"
+              ],
+              "description": "CLI shortcut 名（不是底层 MCP tool 名）"
+            },
+            "input": {
+              "type": "object",
+              "description": "该 shortcut 的入参集（不含 spreadsheet 定位）；基础 flag 跑 `lark-cli sheets <shortcut> --help`，复合 JSON flag 跑 `--print-schema --flag-name <flag>`。不要手填 `operation`（动作由 shortcut 名表达）。"
+            }
+          }
+        }
       }
     },
     "+cells-batch-set-style": {
@@ -3495,142 +3547,20 @@
     },
     "+dropdown-set": {
       "options": {
-        "description": "数据验证配置。设为 null 可清除已有的数据验证。",
-        "properties": {
-          "help_text": {
-            "description": "验证失败时显示的提示文本",
-            "type": "string"
-          },
-          "items": {
-            "description": "列表选项（type='list' 时必填）",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "operator": {
-            "description": "比较运算符（type='number'/'date'/'textLength' 时必填）",
-            "enum": [
-              "equal",
-              "notEqual",
-              "greaterThan",
-              "greaterThanOrEqual",
-              "lessThan",
-              "lessThanOrEqual",
-              "between",
-              "notBetween"
-            ],
-            "type": "string"
-          },
-          "range": {
-            "description": "源数据区域（type='listFromRange' 时必填，格式：'SheetName!A1:A10'）",
-            "type": "string"
-          },
-          "support_multiple_values": {
-            "description": "列表验证是否支持多选（type='list'/'listFromRange' 时可选，默认 false）",
-            "type": "boolean"
-          },
-          "type": {
-            "description": "数据验证类型：list（下拉列表）、listFromRange（引用范围下拉列表）、number（数字）、date（日期）、textLength（文本长度）、checkbox（复选框）",
-            "enum": [
-              "list",
-              "listFromRange",
-              "number",
-              "date",
-              "textLength",
-              "checkbox"
-            ],
-            "type": "string"
-          },
-          "values": {
-            "description": "比较值（operator 为 'between'/'notBetween' 时需要两个值，其它运算符需要一个值）",
-            "items": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            },
-            "type": "array"
-          }
+        "description": "列表选项（type='list' 时必填）",
+        "items": {
+          "type": "string"
         },
-        "required": [
-          "type"
-        ],
-        "type": "object"
+        "type": "array"
       }
     },
     "+dropdown-update": {
       "options": {
-        "description": "数据验证配置。设为 null 可清除已有的数据验证。",
-        "properties": {
-          "help_text": {
-            "description": "验证失败时显示的提示文本",
-            "type": "string"
-          },
-          "items": {
-            "description": "列表选项（type='list' 时必填）",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "operator": {
-            "description": "比较运算符（type='number'/'date'/'textLength' 时必填）",
-            "enum": [
-              "equal",
-              "notEqual",
-              "greaterThan",
-              "greaterThanOrEqual",
-              "lessThan",
-              "lessThanOrEqual",
-              "between",
-              "notBetween"
-            ],
-            "type": "string"
-          },
-          "range": {
-            "description": "源数据区域（type='listFromRange' 时必填，格式：'SheetName!A1:A10'）",
-            "type": "string"
-          },
-          "support_multiple_values": {
-            "description": "列表验证是否支持多选（type='list'/'listFromRange' 时可选，默认 false）",
-            "type": "boolean"
-          },
-          "type": {
-            "description": "数据验证类型：list（下拉列表）、listFromRange（引用范围下拉列表）、number（数字）、date（日期）、textLength（文本长度）、checkbox（复选框）",
-            "enum": [
-              "list",
-              "listFromRange",
-              "number",
-              "date",
-              "textLength",
-              "checkbox"
-            ],
-            "type": "string"
-          },
-          "values": {
-            "description": "比较值（operator 为 'between'/'notBetween' 时需要两个值，其它运算符需要一个值）",
-            "items": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            },
-            "type": "array"
-          }
+        "description": "列表选项（type='list' 时必填）",
+        "items": {
+          "type": "string"
         },
-        "required": [
-          "type"
-        ],
-        "type": "object"
+        "type": "array"
       }
     },
     "+filter-create": {

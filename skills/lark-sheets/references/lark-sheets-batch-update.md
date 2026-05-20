@@ -37,7 +37,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--operations` | string + File + Stdin（复合 JSON） | required | JSON 数组：`[{"tool_name":"`+cells-set`","input":{...}}, ...]`，按声明顺序串行执行；`tool_name` 为底层工具名（如 `+cells-set` / `+cells-clear` / `+dim-{insert|delete|hide|unhide|freeze|group|ungroup}`），`input` 结构与单独调用该工具一致 |
+| `--operations` | string + File + Stdin（复合 JSON） | required | JSON 数组：[{"shortcut":"+xxx-yyy","input":{...}}, ...]。shortcut 用 CLI 名；input 是该 shortcut 的入参集（不含 spreadsheet 定位），基础 flag 查 --help，复合 JSON flag 查 --print-schema --flag-name <flag>；禁手填 operation。默认严格事务，传 --continue-on-error 翻软批；不支持嵌套；按数组顺序串行执行 |
 | `--continue-on-error` | bool | optional | 遇子操作失败时继续执行剩余操作；默认 false（首个失败即整批中断） |
 
 ### `+cells-batch-set-style`
@@ -85,11 +85,11 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 
 ### `+batch-update` `--operations`
 
-_要批量执行的操作列表，按顺序依次执行_
+_要批量执行的 CLI shortcut 操作列表，按声明顺序串行执行；任一失败立即中断_
 
 **数组项**（类型 object）：
-- `input` (object) — 对应工具的入参，结构与单独调用该工具时完全一致
-- `tool_name` (string) — 要执行的工具名称，如 "`+cells-set`"、"`+cells-clear`"、"`+dim-{insert|delete|hide|unhide|freeze|group|ungroup}`" 等
+- `shortcut` (enum) — CLI shortcut 名（不是底层 MCP tool 名） [+cells-set / +cells-clear / +cells-merge / +cells-unmerge / +cells-replace / +csv-put / +dim-insert / +dim-delete / …共 49 项]
+- `input` (object) — 该 shortcut 的入参集（不含 spreadsheet 定位）；基础 flag 跑 `lark-cli sheets <shortcut> --help…
 
 ### `+cells-batch-set-style` `--border-styles`
 
@@ -120,10 +120,10 @@ _列表选项（type='list' 时必填）_
 lark-cli sheets +batch-update --url "https://example.feishu.cn/sheets/shtXXX" --yes \
   --operations @ops.json
 
-# ops.json （array<{tool_name, input}>，tool_name 是 CLI shortcut 名）:
+# ops.json （array<{shortcut, input}>，shortcut 用 CLI 名）:
 # [
-#   {"tool_name": "+dim-insert", "input": {"sheet_id":"...","dimension":"row","start":10,"end":12}},
-#   {"tool_name": "+cells-set",  "input": {"sheet_id":"...","range":"A11:B12","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}}
+#   {"shortcut": "+dim-insert", "input": {"sheet_id":"...","dimension":"row","start":10,"end":12}},
+#   {"shortcut": "+cells-set",  "input": {"sheet_id":"...","range":"A11:B12","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}}
 # ]
 ```
 
@@ -132,9 +132,9 @@ lark-cli sheets +batch-update --url "https://example.feishu.cn/sheets/shtXXX" --
 > ```jsonc
 > // 在 C 列前插入新列 → 写表头 C1 → 回填 C2:C100 共 99 行
 > [
->   {"tool_name": "+dim-insert",
+>   {"shortcut": "+dim-insert",
 >    "input": {"sheet_id": "...", "dimension": "column", "start": 3, "end": 4}},
->   {"tool_name": "+cells-set",
+>   {"shortcut": "+cells-set",
 >    "input": {"sheet_id": "...", "range": "C1:C100",
 >              "cells": [[{"value":"score"}], [{"value":95}], [{"value":87}], /* ... 97 more rows ... */ ]}}
 > ]
@@ -153,6 +153,6 @@ lark-cli sheets +cells-batch-set-style --url "..." \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：`+batch-update` 的 `--operations` 必须合法 JSON，且为非空数组；逐个子操作 `tool_name` / `input` 字段必填校验；**禁止嵌套 `+batch-update`**。`+cells-batch-set-style` 的 `--ranges` 必须 JSON 数组、每项带 sheet 前缀；样式 flag 至少一个非空（或带 `--border-styles`）。
+- `Validate`：`+batch-update` 的 `--operations` 必须合法 JSON，且为非空数组；逐个子操作 `shortcut` / `input` 字段必填校验；**禁止嵌套 `+batch-update`**。`+cells-batch-set-style` 的 `--ranges` 必须 JSON 数组、每项带 sheet 前缀；样式 flag 至少一个非空（或带 `--border-styles`）。
 - `DryRun`：按顺序输出每个子操作的目标 API + 请求 body 模板；首个失败则整批 fail-fast（不实际执行任何后续）。
 - `Execute`：按声明顺序串行执行；任一子操作失败立即中断并回滚到该子操作前状态（具体回滚能力取决于子操作类型，沿用 MCP `+batch-update` 的语义）。

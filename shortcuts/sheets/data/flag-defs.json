@@ -2599,7 +2599,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "JSON array: `[{\"tool_name\":\"set_cell_range\",\"input\":{...}}, ...]`, executed serially; `tool_name` is the underlying tool name (e.g. `set_cell_range` / `clear_cell_range` / `modify_sheet_structure`)",
+        "desc": "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is the shortcut's flag set minus the spreadsheet locator. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Strict transaction by default, pass --continue-on-error for soft batch; no nesting; executed serially.",
         "input": [
           "file",
           "stdin"
