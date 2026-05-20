@@ -5,6 +5,7 @@ package common
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -103,6 +104,44 @@ func TestFetchDriveMetaTitle(t *testing.T) {
 			t.Fatal("FetchDriveMetaTitle() expected error, got nil")
 		}
 	})
+}
+
+func TestFetchDriveMetaURL(t *testing.T) {
+	runtime, reg := newDriveMetaTestRuntime(t)
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{
+						"doc_token": "boxcnABC",
+						"doc_type":  "file",
+						"title":     "report.pdf",
+						"url":       "https://tenant.example.com/file/boxcnABC",
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	got, err := FetchDriveMetaURL(runtime, "boxcnABC", "file")
+	if err != nil {
+		t.Fatalf("FetchDriveMetaURL() error: %v", err)
+	}
+	if got != "https://tenant.example.com/file/boxcnABC" {
+		t.Fatalf("url = %q, want tenant URL", got)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode captured body: %v", err)
+	}
+	if body["with_url"] != true {
+		t.Fatalf("with_url = %#v, want true", body["with_url"])
+	}
 }
 
 func newDriveMetaTestRuntime(t *testing.T) (*RuntimeContext, *httpmock.Registry) {

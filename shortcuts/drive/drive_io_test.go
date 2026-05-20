@@ -604,9 +604,9 @@ func TestDriveUploadSmallFileToWiki(t *testing.T) {
 	}
 }
 
-func TestDriveUploadFallbackURLForExplorerParent(t *testing.T) {
+func TestDriveUploadUsesMetaURLForExplorerParent(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-explorer-fallback-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		AppID: "drive-upload-explorer-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -615,10 +615,19 @@ func TestDriveUploadFallbackURLForExplorerParent(t *testing.T) {
 		URL:    "/open-apis/drive/v1/files/upload_all",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			// upload_all only ever returns file_token; url is never present —
-			// this exercises the fallback path unconditionally for explorer
-			// parents.
 			"data": map[string]interface{}{"file_token": "file_explorer_small"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "file_explorer_small", "doc_type": "file", "url": "https://tenant.example.com/file/file_explorer_small"},
+				},
+			},
 		},
 	})
 
@@ -641,14 +650,14 @@ func TestDriveUploadFallbackURLForExplorerParent(t *testing.T) {
 	}
 
 	data := decodeDriveEnvelope(t, stdout)
-	if got, want := data["url"], "https://www.feishu.cn/file/file_explorer_small"; got != want {
-		t.Fatalf("data.url = %#v, want %q (brand-standard fallback)", got, want)
+	if got, want := data["url"], "https://tenant.example.com/file/file_explorer_small"; got != want {
+		t.Fatalf("data.url = %#v, want %q (metadata URL)", got, want)
 	}
 }
 
-func TestDriveUploadOmitsURLForWikiParent(t *testing.T) {
+func TestDriveUploadUsesMetaURLForWikiParent(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-wiki-no-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		AppID: "drive-upload-wiki-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -658,6 +667,18 @@ func TestDriveUploadOmitsURLForWikiParent(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{"file_token": "file_wiki_small"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "file_wiki_small", "doc_type": "file", "url": "https://tenant.example.com/file/file_wiki_small"},
+				},
+			},
 		},
 	})
 
@@ -677,8 +698,8 @@ func TestDriveUploadOmitsURLForWikiParent(t *testing.T) {
 	}
 
 	data := decodeDriveEnvelope(t, stdout)
-	if _, ok := data["url"]; ok {
-		t.Fatalf("data.url should be omitted for wiki-hosted files (no standalone URL); got %#v", data["url"])
+	if got, want := data["url"], "https://tenant.example.com/file/file_wiki_small"; got != want {
+		t.Fatalf("data.url = %#v, want %q (metadata URL)", got, want)
 	}
 }
 
@@ -1078,20 +1099,27 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 
 	var got struct {
 		API []struct {
+			URL  string                 `json:"url"`
 			Body map[string]interface{} `json:"body"`
 		} `json:"api"`
 	}
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 1 {
-		t.Fatalf("expected 1 API call, got %d", len(got.API))
+	if len(got.API) != 2 {
+		t.Fatalf("expected 2 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["parent_type"] != driveUploadParentTypeWiki {
 		t.Fatalf("parent_type = %#v, want %q", got.API[0].Body["parent_type"], driveUploadParentTypeWiki)
 	}
 	if got.API[0].Body["parent_node"] != "wikcn_dryrun_upload_target" {
 		t.Fatalf("parent_node = %#v, want %q", got.API[0].Body["parent_node"], "wikcn_dryrun_upload_target")
+	}
+	if got.API[1].URL != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[1].URL)
+	}
+	if got.API[1].Body["with_url"] != true {
+		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
 	}
 }
 
@@ -1168,17 +1196,24 @@ func TestDriveUploadDryRunIncludesFileToken(t *testing.T) {
 
 	var got struct {
 		API []struct {
+			URL  string                 `json:"url"`
 			Body map[string]interface{} `json:"body"`
 		} `json:"api"`
 	}
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 1 {
-		t.Fatalf("expected 1 API call, got %d", len(got.API))
+	if len(got.API) != 2 {
+		t.Fatalf("expected 2 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
 		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")
+	}
+	if got.API[1].URL != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[1].URL)
+	}
+	if got.API[1].Body["with_url"] != true {
+		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
 	}
 }
 
@@ -1222,8 +1257,8 @@ func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 1 {
-		t.Fatalf("expected 1 API call, got %d", len(got.API))
+	if len(got.API) != 2 {
+		t.Fatalf("expected 2 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
 		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")

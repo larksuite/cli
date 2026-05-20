@@ -217,7 +217,7 @@ func TestMarkdownCreateWorkflow_WikiParent(t *testing.T) {
 
 	fileToken := gjson.Get(createResult.Stdout, "data.file_token").String()
 	require.NotEmpty(t, fileToken, "stdout:\n%s", createResult.Stdout)
-	require.False(t, gjson.Get(createResult.Stdout, "data.url").Exists(), "stdout:\n%s", createResult.Stdout)
+	require.NotEmpty(t, gjson.Get(createResult.Stdout, "data.url").String(), "stdout:\n%s", createResult.Stdout)
 
 	parentT.Cleanup(func() {
 		requireDeleteWikiHostedMarkdownFile(parentT, fileToken)

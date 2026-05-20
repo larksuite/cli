@@ -403,6 +403,9 @@ func TestMarkdownCreateDryRunWithInlineContent(t *testing.T) {
 	if !strings.Contains(out, "/open-apis/drive/v1/files/upload_all") {
 		t.Fatalf("dry-run missing upload_all: %s", out)
 	}
+	if !strings.Contains(out, "/open-apis/drive/v1/metas/batch_query") || !strings.Contains(out, `"with_url": true`) {
+		t.Fatalf("dry-run missing metadata URL lookup: %s", out)
+	}
 	if !strings.Contains(out, "markdown content") {
 		t.Fatalf("dry-run missing content marker: %s", out)
 	}
@@ -428,6 +431,9 @@ func TestMarkdownCreateDryRunWithWikiToken(t *testing.T) {
 	}
 	if !strings.Contains(out, `"parent_node": "wikcn_markdown_dryrun_target"`) {
 		t.Fatalf("dry-run missing wiki parent_node: %s", out)
+	}
+	if !strings.Contains(out, "/open-apis/drive/v1/metas/batch_query") || !strings.Contains(out, `"with_url": true`) {
+		t.Fatalf("dry-run missing metadata URL lookup: %s", out)
 	}
 }
 
@@ -470,6 +476,9 @@ func TestMarkdownCreateDryRunWithFileUsesStatOnly(t *testing.T) {
 	if !strings.Contains(out, "/open-apis/drive/v1/files/upload_prepare") {
 		t.Fatalf("dry-run missing multipart prepare step: %s", out)
 	}
+	if !strings.Contains(out, "/open-apis/drive/v1/metas/batch_query") || !strings.Contains(out, `"with_url": true`) {
+		t.Fatalf("dry-run missing metadata URL lookup: %s", out)
+	}
 	if strings.Contains(out, "open should not be called in dry-run") {
 		t.Fatalf("dry-run unexpectedly tried to open the source file: %s", out)
 	}
@@ -489,6 +498,18 @@ func TestMarkdownCreateSuccessUploadAll(t *testing.T) {
 		},
 	}
 	reg.Register(uploadStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_create", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_create"},
+				},
+			},
+		},
+	})
 
 	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
 		"+create",
@@ -521,12 +542,12 @@ func TestMarkdownCreateSuccessUploadAll(t *testing.T) {
 	if !strings.Contains(stdout.String(), `"file_name": "README.md"`) {
 		t.Fatalf("stdout missing file_name: %s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), `"url": "https://www.feishu.cn/file/box_md_create"`) {
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_create"`) {
 		t.Fatalf("stdout missing url: %s", stdout.String())
 	}
 }
 
-func TestMarkdownCreateSuccessUploadAllToWikiOmitsURL(t *testing.T) {
+func TestMarkdownCreateSuccessUploadAllToWikiReturnsMetaURL(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	uploadStub := &httpmock.Stub{
 		Method: "POST",
@@ -540,6 +561,18 @@ func TestMarkdownCreateSuccessUploadAllToWikiOmitsURL(t *testing.T) {
 		},
 	}
 	reg.Register(uploadStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_create_wiki", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_create_wiki"},
+				},
+			},
+		},
+	})
 
 	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
 		"+create",
@@ -558,8 +591,8 @@ func TestMarkdownCreateSuccessUploadAllToWikiOmitsURL(t *testing.T) {
 	if got := body.Fields["parent_node"]; got != "wikcn_markdown_create_target" {
 		t.Fatalf("parent_node = %q, want %q", got, "wikcn_markdown_create_target")
 	}
-	if strings.Contains(stdout.String(), `"url":`) {
-		t.Fatalf("stdout should omit url for wiki-hosted markdown files: %s", stdout.String())
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_create_wiki"`) {
+		t.Fatalf("stdout missing metadata url for wiki-hosted markdown file: %s", stdout.String())
 	}
 }
 
@@ -572,6 +605,18 @@ func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 			"code": 0,
 			"data": map[string]interface{}{
 				"file_token": "box_md_create_pretty",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_create_pretty", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_create_pretty"},
+				},
 			},
 		},
 	})
@@ -591,7 +636,7 @@ func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 	if !strings.Contains(out, "file_token: box_md_create_pretty") {
 		t.Fatalf("pretty output missing file_token: %s", out)
 	}
-	if !strings.Contains(out, "url: https://www.feishu.cn/file/box_md_create_pretty") {
+	if !strings.Contains(out, "url: https://tenant.example.com/file/box_md_create_pretty") {
 		t.Fatalf("pretty output missing url: %s", out)
 	}
 	if !strings.Contains(out, "permission_grant.status: skipped") {
@@ -649,6 +694,18 @@ func TestMarkdownCreateMultipartUploadSuccess(t *testing.T) {
 			},
 		},
 	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_multipart", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_multipart"},
+				},
+			},
+		},
+	})
 
 	tmpDir := t.TempDir()
 	withMarkdownWorkingDir(t, tmpDir)
@@ -676,6 +733,9 @@ func TestMarkdownCreateMultipartUploadSuccess(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"file_token": "box_md_multipart"`) {
 		t.Fatalf("stdout missing multipart file_token: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_multipart"`) {
+		t.Fatalf("stdout missing multipart metadata url: %s", stdout.String())
 	}
 }
 
@@ -715,6 +775,18 @@ func TestMarkdownCreateMultipartUploadToWikiUsesWikiParent(t *testing.T) {
 			},
 		},
 	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_multipart_wiki", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_multipart_wiki"},
+				},
+			},
+		},
+	})
 
 	tmpDir := t.TempDir()
 	withMarkdownWorkingDir(t, tmpDir)
@@ -749,8 +821,8 @@ func TestMarkdownCreateMultipartUploadToWikiUsesWikiParent(t *testing.T) {
 	if got := body["parent_node"]; got != "wikcn_markdown_multipart_target" {
 		t.Fatalf("parent_node = %#v, want %q", got, "wikcn_markdown_multipart_target")
 	}
-	if strings.Contains(stdout.String(), `"url":`) {
-		t.Fatalf("stdout should omit url for wiki-hosted multipart markdown files: %s", stdout.String())
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_multipart_wiki"`) {
+		t.Fatalf("stdout missing metadata url for wiki-hosted multipart markdown file: %s", stdout.String())
 	}
 }
 

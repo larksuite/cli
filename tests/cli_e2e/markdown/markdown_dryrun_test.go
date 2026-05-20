@@ -37,6 +37,8 @@ func TestMarkdownCreateDryRun_Content(t *testing.T) {
 
 	output := strings.TrimSpace(result.Stdout)
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
+	assert.Contains(t, output, `"with_url": true`)
 	assert.Contains(t, output, `"file_name": "README.md"`)
 	assert.Contains(t, output, `"parent_node": "fldcnMarkdownDryRun"`)
 	assert.Contains(t, output, `"parent_type": "explorer"`)
@@ -64,6 +66,8 @@ func TestMarkdownCreateDryRun_WikiTarget(t *testing.T) {
 
 	output := strings.TrimSpace(result.Stdout)
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
+	assert.Contains(t, output, `"with_url": true`)
 	assert.Contains(t, output, `"file_name": "README.md"`)
 	assert.Contains(t, output, `"parent_node": "wikcnMarkdownDryRun"`)
 	assert.Contains(t, output, `"parent_type": "wiki"`)
@@ -94,6 +98,8 @@ func TestMarkdownCreateDryRun_FileShowsConcreteSize(t *testing.T) {
 
 	output := strings.TrimSpace(result.Stdout)
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
+	assert.Contains(t, output, `"with_url": true`)
 	assert.Contains(t, output, `"file": "@note.md"`)
 	assert.Contains(t, output, `"size": 5`)
 }
