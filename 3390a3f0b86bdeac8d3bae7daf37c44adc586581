@@ -1,0 +1,69 @@
+cmd/auth/qrcode.go
+  f0c3e8c60d474faa 59,80,95 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c57b21b3cde019b04de48","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":59},{"Single":80},{"Single":95}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "3390a3f0b86bdeac8d3bae7daf37c44adc586581",
+  "prompts": {
+    "f0c3e8c60d474faa": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a0b20b01b3cde019b04d56e",
+        "model": "glm-5.1__dev"
+      },
+      "human_author": "zhaojunchang <zhaojunchang@bytedance.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    "cmd/auth/qrcode.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 59
+          },
+          {
+            "Single": 80
+          },
+          {
+            "Single": 95
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c57b21b3cde019b04de48",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 59
+              },
+              {
+                "Single": 80
+              },
+              {
+                "Single": 95
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "f0c3e8c60d474faa": {
+      "tool": "trae",
+      "conversation_id": "6a0b20b01b3cde019b04d56e",
+      "session_id": "6a0b20b01b3cde019b04d56e",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
