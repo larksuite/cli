@@ -24,12 +24,20 @@ var AppsCreate = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "name", Desc: "app display name", Required: true},
+		{Name: "app-type", Desc: "app type (currently only: HTML)", Required: true},
 		{Name: "description", Desc: "app description"},
 		{Name: "icon-url", Desc: "app icon URL (server uses default if omitted)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("name")) == "" {
 			return output.ErrValidation("--name is required")
+		}
+		appType := strings.TrimSpace(rctx.Str("app-type"))
+		if appType == "" {
+			return output.ErrValidation("--app-type is required")
+		}
+		if !validAppTypes[appType] {
+			return output.ErrValidation(fmt.Sprintf("--app-type %q is not supported (allowed: HTML)", appType))
 		}
 		return nil
 	},
@@ -51,9 +59,15 @@ var AppsCreate = common.Shortcut{
 	},
 }
 
+// 应用类型枚举。当前只有 HTML，未来会扩展（SPA、NATIVE、...）。
+var validAppTypes = map[string]bool{
+	"HTML": true,
+}
+
 func buildAppsCreateBody(rctx *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"name": strings.TrimSpace(rctx.Str("name")),
+		"name":     strings.TrimSpace(rctx.Str("name")),
+		"app_type": strings.TrimSpace(rctx.Str("app-type")),
 	}
 	if desc := strings.TrimSpace(rctx.Str("description")); desc != "" {
 		body["description"] = desc

@@ -65,7 +65,7 @@ func TestAppsCreate_Success(t *testing.T) {
 	reg.Register(stub)
 
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--description", "d", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--description", "d", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -79,6 +79,9 @@ func TestAppsCreate_Success(t *testing.T) {
 	}
 	if sent["name"] != "Demo" {
 		t.Fatalf("body.name = %v", sent["name"])
+	}
+	if sent["app_type"] != "HTML" {
+		t.Fatalf("body.app_type = %v (want HTML)", sent["app_type"])
 	}
 	if sent["description"] != "d" {
 		t.Fatalf("body.description = %v", sent["description"])
@@ -100,7 +103,7 @@ func TestAppsCreate_WithIconURL(t *testing.T) {
 	})
 
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--icon-url", "https://example.com/icon.svg", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--icon-url", "https://example.com/icon.svg", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -108,16 +111,35 @@ func TestAppsCreate_WithIconURL(t *testing.T) {
 
 func TestAppsCreate_RequiresName(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsCreate, []string{"+create", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsCreate, []string{"+create", "--app-type", "HTML", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "name") {
 		t.Fatalf("expected name required error, got %v", err)
+	}
+}
+
+func TestAppsCreate_RequiresAppType(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsCreate,
+		[]string{"+create", "--name", "Demo", "--as", "user"}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "app-type") {
+		t.Fatalf("expected --app-type required error, got %v", err)
+	}
+}
+
+func TestAppsCreate_RejectsInvalidAppType(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsCreate,
+		[]string{"+create", "--name", "Demo", "--app-type", "spa", "--as", "user"},
+		factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("expected unsupported app-type error, got %v", err)
 	}
 }
 
 func TestAppsCreate_DryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--dry-run", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -127,5 +149,8 @@ func TestAppsCreate_DryRun(t *testing.T) {
 	}
 	if !strings.Contains(got, `"name": "Demo"`) {
 		t.Fatalf("dry-run missing body: %s", got)
+	}
+	if !strings.Contains(got, `"app_type": "HTML"`) {
+		t.Fatalf("dry-run missing app_type: %s", got)
 	}
 }

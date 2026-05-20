@@ -36,9 +36,9 @@ func TestAppsAccessScopeSet_Specific(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	// 新协议：scope 是 int (specific=3)，targets 拆成 users/departments/chats
-	if got, _ := sent["scope"].(float64); got != 3 {
-		t.Fatalf("scope = %v, want 3 (Range)", sent["scope"])
+	// 新协议：scope 是 string 枚举 (specific=Range)，targets 拆成 users/departments/chats
+	if got, _ := sent["scope"].(string); got != "Range" {
+		t.Fatalf("scope = %v, want %q", sent["scope"], "Range")
 	}
 	if _, present := sent["targets"]; present {
 		t.Fatalf("legacy 'targets' field should not be sent: %v", sent)

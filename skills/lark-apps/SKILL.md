@@ -11,7 +11,7 @@ metadata:
 
 ```bash
 # 常用示例
-lark-cli apps +create           --name "客户调研问卷"
+lark-cli apps +create           --name "客户调研问卷" --app-type HTML
 lark-cli apps +list             --page-size 50
 lark-cli apps +html-publish     --app-id app_xxx --path ./dist
 lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
@@ -42,7 +42,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 
 | 步骤 | 命令 | 说明 |
 |------|------|------|
-| 1. 新建应用 | `apps +create --name "<根据内容主题起的应用名>"` → 从响应里拿 `app_id` | 默认都走新建，**不要先 `+list` 找复用**（除非用户明确说"用我现有的应用 X"） |
+| 1. 新建应用 | `apps +create --name "<根据内容主题起的应用名>" --app-type HTML` → 从响应里拿 `app_id` | 默认都走新建，**不要先 `+list` 找复用**（除非用户明确说"用我现有的应用 X"）；`--app-type` 必填，当前只支持 `HTML`（区分大小写），未来扩展 |
 | 2. 发布 HTML | `apps +html-publish --app-id <id> --path <文件或目录>` | 必走 |
 | 3. 设置可用范围（可选） | `apps +access-scope-set --app-id <id> --scope tenant\|public\|specific ...` | 用户说"公开 / 全员可见 / 让 Alice 看 / 互联网可分享"等 |
 
@@ -59,7 +59,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 - 用户说"把应用 X 开放给全员 / 全公司" → `--scope tenant`，不要再传别的 flag
 - 用户说"公开 / 让任何人都能访问 / 互联网可见" → `--scope public --require-login=<bool>`，二选一
 - 用户说"只让 Alice / 某部门 / 某群访问" → `--scope specific --targets <JSON>`；姓名先用 `contact +search-user` 换 `ou_id`，群名先用 `im +chat-search` 换 `chat_id`
-- 用户没给 app_id → **默认 `apps +create --name "<根据内容主题起的名字>"` 新建一个**，不要去 `+list` 翻库找复用；仅当用户明确说"用我现有的应用 X / 部署到 app_xxx"时才走 `apps +list -q '.data.items[] | select(.name=="X") | .app_id'` 反查（第一页没命中且 `has_more=true` 用 `--page-token` 翻页继续找）
+- 用户没给 app_id → **默认 `apps +create --name "<根据内容主题起的名字>" --app-type HTML` 新建一个**，不要去 `+list` 翻库找复用；仅当用户明确说"用我现有的应用 X / 部署到 app_xxx"时才走 `apps +list -q '.data.items[] | select(.name=="X") | .app_id'` 反查（第一页没命中且 `has_more=true` 用 `--page-token` 翻页继续找）
 - `--path` 既可传单个 HTML 文件也可传目录；目录会**递归打包成 tar.gz 不做过滤**，要提醒用户传干净的产物目录（如 `./dist`），避免把 `.git` / `node_modules` 一起打进去
 - `apps +update` 只更新传入字段，未传字段保持不变；`--name` / `--description` 至少传一个，否则 Validate 阶段直接拦截
 - `apps +access-scope-set` 三种 scope **互斥**：specific 必传 `--targets`、不允许 `--require-login`；public 必传 `--require-login`、不允许 `--targets` / `--apply-enabled` / `--approver`；tenant 不允许任何其他 flag

@@ -125,22 +125,22 @@ func validateTargetsJSON(targetsJSON string) error {
 	return nil
 }
 
-// scopeStringToCode 把 CLI 友好的 scope 字符串映射成后端枚举数字。
-// CLI 用户 / Agent 仍然写 specific / public / tenant，body 里发数字。
-// 后端语义：1=All(互联网公开) / 2=Tenant(组织内) / 3=Range(部分人员)。
-var scopeStringToCode = map[string]int{
-	"public":   1,
-	"tenant":   2,
-	"specific": 3,
+// scopeStringToServerEnum 把 CLI 友好的 scope 字符串映射成后端字符串枚举。
+// CLI 用户 / Agent 仍然写 specific / public / tenant，body 里发后端枚举名。
+// 后端语义：All=互联网公开 / Tenant=组织内 / Range=部分人员。
+var scopeStringToServerEnum = map[string]string{
+	"public":   "All",
+	"tenant":   "Tenant",
+	"specific": "Range",
 }
 
 func buildAccessScopeBody(rctx *common.RuntimeContext) (map[string]interface{}, error) {
 	scope := rctx.Str("scope")
-	code, ok := scopeStringToCode[scope]
+	enum, ok := scopeStringToServerEnum[scope]
 	if !ok {
 		return nil, output.ErrValidation("--scope must be specific / public / tenant, got %q", scope)
 	}
-	body := map[string]interface{}{"scope": code}
+	body := map[string]interface{}{"scope": enum}
 
 	switch scope {
 	case "specific":

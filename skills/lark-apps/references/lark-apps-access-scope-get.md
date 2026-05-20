@@ -2,7 +2,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
 
-获取应用当前的可用范围配置。一次 `GET /apps/{appId}/access-scope` 调用，响应原样透传服务端契约（数字 scope + 拆分数组）。
+获取应用当前的可用范围配置。一次 `GET /apps/{appId}/access-scope` 调用，响应原样透传服务端契约（字符串 scope 枚举 + 拆分数组）。
 
 ## 命令
 
@@ -24,7 +24,7 @@ lark-cli apps +access-scope-get --app-id app_xxx
 {
   "ok": true,
   "data": {
-    "scope": 3,
+    "scope": "Range",
     "users": ["ou_xxx", "ou_yyy"],
     "departments": ["od_xxx"],
     "chats": ["oc_xxx"],
@@ -39,13 +39,13 @@ lark-cli apps +access-scope-get --app-id app_xxx
 **成功（public + 免登）：**
 
 ```json
-{ "ok": true, "data": { "scope": 1, "require_login": false } }
+{ "ok": true, "data": { "scope": "All", "require_login": false } }
 ```
 
 **成功（tenant）：**
 
 ```json
-{ "ok": true, "data": { "scope": 2 } }
+{ "ok": true, "data": { "scope": "Tenant" } }
 ```
 
 **失败：**
@@ -56,13 +56,13 @@ lark-cli apps +access-scope-get --app-id app_xxx
 
 ## 字段语义
 
-- `scope` 是**数字枚举**（不是字符串）：
-  - `1` = All（互联网公开） — 对应 `apps +access-scope-set --scope public`
-  - `2` = Tenant（组织内）— 对应 `--scope tenant`
-  - `3` = Range（部分人员）— 对应 `--scope specific`
-- `users` / `departments` / `chats` 三个数组（仅 `scope=3` 时）：服务端拆分形态，CLI 不合并回统一 targets
-- `apply_config`（可选，仅 `scope=3` 且申请开启时）：含 `enabled` 和 `approvers`（只允许一个 user open_id）
-- `require_login`（仅 `scope=1` 时）：bool
+- `scope` 是**字符串枚举**：
+  - `"All"` = 互联网公开 — 对应 `apps +access-scope-set --scope public`
+  - `"Tenant"` = 组织内 — 对应 `--scope tenant`
+  - `"Range"` = 部分人员 — 对应 `--scope specific`
+- `users` / `departments` / `chats` 三个数组（仅 `scope="Range"` 时）：服务端拆分形态，CLI 不合并回统一 targets
+- `apply_config`（可选，仅 `scope="Range"` 且申请开启时）：含 `enabled` 和 `approvers`（只允许一个 user open_id）
+- `require_login`（仅 `scope="All"` 时）：bool
 
 ## 典型场景
 
@@ -73,9 +73,9 @@ lark-cli apps +access-scope-get --app-id app_xxx
 ```
 
 按 `scope` 值组装报告：
-- `scope=1` → "应用 `{app_id}` 当前互联网公开（require_login={require_login}）"
-- `scope=2` → "应用 `{app_id}` 当前对企业全员可见"
-- `scope=3` → "应用 `{app_id}` 当前指定可见，包含 N 个用户 / M 个部门 / K 个群"
+- `scope="All"` → "应用 `{app_id}` 当前互联网公开（require_login={require_login}）"
+- `scope="Tenant"` → "应用 `{app_id}` 当前对企业全员可见"
+- `scope="Range"` → "应用 `{app_id}` 当前指定可见，包含 N 个用户 / M 个部门 / K 个群"
 
 ### 场景 2：把 GET 响应拼回 `+access-scope-set` 命令（复制 / 备份可用范围）
 
