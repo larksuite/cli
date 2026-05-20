@@ -189,6 +189,18 @@ func (ctx *RuntimeContext) Int(name string) int {
 	return v
 }
 
+// Int64 returns an int64 flag value.
+func (ctx *RuntimeContext) Int64(name string) int64 {
+	v, _ := ctx.Cmd.Flags().GetInt64(name)
+	return v
+}
+
+// Float64 returns a float64 flag value (non-integer numbers).
+func (ctx *RuntimeContext) Float64(name string) float64 {
+	v, _ := ctx.Cmd.Flags().GetFloat64(name)
+	return v
+}
+
 // StrArray returns a string-array flag value (repeated flag, no CSV splitting).
 func (ctx *RuntimeContext) StrArray(name string) []string {
 	v, _ := ctx.Cmd.Flags().GetStringArray(name)
@@ -1019,6 +1031,14 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 			var d int
 			fmt.Sscanf(fl.Default, "%d", &d)
 			cmd.Flags().Int(fl.Name, d, desc)
+		case "int64":
+			var d int64
+			fmt.Sscanf(fl.Default, "%d", &d)
+			cmd.Flags().Int64(fl.Name, d, desc)
+		case "float64":
+			var d float64
+			fmt.Sscanf(fl.Default, "%g", &d)
+			cmd.Flags().Float64(fl.Name, d, desc)
 		case "string_array":
 			cmd.Flags().StringArray(fl.Name, nil, desc)
 		case "string_slice":
