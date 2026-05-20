@@ -27,7 +27,7 @@ var AppsAccessScopeSet = common.Shortcut{
 	Command:     "+access-scope-set",
 	Description: "Set Miaoda app access scope (specific / public / tenant)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app.table:write"}, // BOE 端 OAPI 当前以 spark 系列 scope 注册；待后端 miaoda:app:* 注册稳定后再切回
+	Scopes:      []string{"spark:app.access_scope:write"}, // 对齐 BOE 后端 scope 命名 (spark 命名空间)
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{

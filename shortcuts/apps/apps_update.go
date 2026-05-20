@@ -20,7 +20,7 @@ var AppsUpdate = common.Shortcut{
 	Command:     "+update",
 	Description: "Partially update a Miaoda app (only provided fields are sent)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app.table:write"}, // BOE 端 OAPI 当前以 spark 系列 scope 注册；待后端 miaoda:app:* 注册稳定后再切回
+	Scopes:      []string{"spark:app:write"}, // 对齐 BOE 后端 scope 命名 (spark 命名空间)
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
