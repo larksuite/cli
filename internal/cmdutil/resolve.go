@@ -86,16 +86,20 @@ func ReadInputFile(fileIO fileio.FileIO, path string) ([]byte, error) {
 	}
 	// For absolute paths, use os.Open directly after safety validation.
 	// This allows agents and scripts to use /tmp/ and other absolute paths.
+	// Only bypass fileIO when the active provider is the default localfileio;
+	// custom providers handle abs paths through their own Open() method.
 	if filepath.IsAbs(path) {
-		safePath, err := localfileio.SafeAbsoluteInputPath(path)
-		if err != nil {
-			return nil, wrapInputFileError(path, err)
+		if _, ok := fileIO.(*localfileio.LocalFileIO); ok {
+			safePath, err := localfileio.SafeAbsoluteInputPath(path)
+			if err != nil {
+				return nil, wrapInputFileError(path, err)
+			}
+			data, err := vfs.ReadFile(safePath)
+			if err != nil {
+				return nil, wrapInputFileError(path, err)
+			}
+			return data, nil
 		}
-		data, err := vfs.ReadFile(safePath)
-		if err != nil {
-			return nil, wrapInputFileError(path, err)
-		}
-		return data, nil
 	}
 	f, err := fileIO.Open(path)
 	if err != nil {

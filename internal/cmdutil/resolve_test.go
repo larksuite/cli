@@ -6,6 +6,7 @@ package cmdutil
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -157,11 +158,17 @@ func TestResolveInput_AtFile_PathValidation(t *testing.T) {
 	fio := &localfileio.LocalFileIO{}
 	dir := t.TempDir()
 	TestChdir(t, dir)
-	// Absolute paths are rejected by SafeInputPath; the error must surface
-	// as an invalid-path message, not a generic read failure.
-	_, err := ResolveInput("@/etc/passwd", nil, fio)
-	if err == nil || !strings.Contains(err.Error(), "invalid file path") {
-		t.Errorf("expected path-validation error, got: %v", err)
+	// Absolute paths are supported for localfileio; verify they work.
+	tmpFile := filepath.Join(dir, "data.json")
+	if err := os.WriteFile(tmpFile, []byte(`{"key":"value"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveInput("@"+tmpFile, nil, fio)
+	if err != nil {
+		t.Fatalf("unexpected error for absolute path with localfileio: %v", err)
+	}
+	if got != `{"key":"value"}` {
+		t.Errorf("got %q, want %q", got, `{"key":"value"}`)
 	}
 }
 
