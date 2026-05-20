@@ -12,6 +12,7 @@ func Shortcuts() []common.Shortcut {
 		AppsUpdate,
 		AppsList,
 		AppsAccessScopeSet,
+		AppsAccessScopeGet,
 		AppsHTMLPublish,
 	}
 }
