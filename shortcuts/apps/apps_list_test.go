@@ -14,7 +14,7 @@ func TestAppsList_FirstPage(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/miaoda/v1/apps?page_size=20",
+		URL:    "/open-apis/spark/v1/apps?page_size=20",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -45,7 +45,7 @@ func TestAppsList_WithPageToken(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/miaoda/v1/apps?page_size=50&page_token=cursor_abc",
+		URL:    "/open-apis/spark/v1/apps?page_size=50&page_token=cursor_abc",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -71,7 +71,7 @@ func TestAppsList_DryRun(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	got := stdout.String()
-	if !strings.Contains(got, "/open-apis/miaoda/v1/apps") {
+	if !strings.Contains(got, "/open-apis/spark/v1/apps") {
 		t.Fatalf("dry-run missing endpoint: %s", got)
 	}
 	if !strings.Contains(got, "page_size") {

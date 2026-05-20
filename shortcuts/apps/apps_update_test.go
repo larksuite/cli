@@ -15,7 +15,7 @@ func TestAppsUpdate_PartialFields(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/open-apis/miaoda/v1/apps/app_x",
+		URL:    "/open-apis/spark/v1/apps/app_x",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{

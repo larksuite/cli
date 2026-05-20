@@ -15,7 +15,7 @@ func TestAppsAccessScopeSet_Specific(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
 		Method: "PUT",
-		URL:    "/open-apis/miaoda/v1/apps/app_x/access-scope",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
 		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
 	}
 	reg.Register(stub)
@@ -36,12 +36,23 @@ func TestAppsAccessScopeSet_Specific(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if sent["scope"] != "specific" {
-		t.Fatalf("scope = %v", sent["scope"])
+	// 新协议：scope 是 int (specific=3)，targets 拆成 users/departments/chats
+	if got, _ := sent["scope"].(float64); got != 3 {
+		t.Fatalf("scope = %v, want 3 (Range)", sent["scope"])
 	}
-	targets, ok := sent["targets"].([]interface{})
-	if !ok || len(targets) != 2 {
-		t.Fatalf("targets = %v", sent["targets"])
+	if _, present := sent["targets"]; present {
+		t.Fatalf("legacy 'targets' field should not be sent: %v", sent)
+	}
+	users, _ := sent["users"].([]interface{})
+	if len(users) != 1 || users[0] != "ou_xxx" {
+		t.Fatalf("users = %v, want [ou_xxx]", sent["users"])
+	}
+	chats, _ := sent["chats"].([]interface{})
+	if len(chats) != 1 || chats[0] != "oc_xxx" {
+		t.Fatalf("chats = %v, want [oc_xxx]", sent["chats"])
+	}
+	if _, present := sent["departments"]; present {
+		t.Fatalf("departments should be omitted when empty: %v", sent)
 	}
 }
 
@@ -49,7 +60,7 @@ func TestAppsAccessScopeSet_Public(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
-		URL:    "/open-apis/miaoda/v1/apps/app_x/access-scope",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
 		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
 	})
 
@@ -68,7 +79,7 @@ func TestAppsAccessScopeSet_Tenant(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
-		URL:    "/open-apis/miaoda/v1/apps/app_x/access-scope",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
 		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
 	})
 

@@ -51,7 +51,7 @@ func TestAppsCreate_Success(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/miaoda/v1/apps",
+		URL:    "/open-apis/spark/v1/apps",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -92,7 +92,7 @@ func TestAppsCreate_WithIconURL(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/miaoda/v1/apps",
+		URL:    "/open-apis/spark/v1/apps",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"app_id": "app_x", "name": "Demo"},
@@ -122,7 +122,7 @@ func TestAppsCreate_DryRun(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	got := stdout.String()
-	if !strings.Contains(got, "/open-apis/miaoda/v1/apps") {
+	if !strings.Contains(got, "/open-apis/spark/v1/apps") {
 		t.Fatalf("dry-run missing endpoint: %s", got)
 	}
 	if !strings.Contains(got, `"name": "Demo"`) {

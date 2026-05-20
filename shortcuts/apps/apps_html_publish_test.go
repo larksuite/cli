@@ -174,7 +174,7 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	got := stdout.String()
-	if !strings.Contains(got, "/open-apis/miaoda/v1/apps/app_x/upload_and_release_html_code") {
+	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code") {
 		t.Fatalf("dry-run missing endpoint: %s", got)
 	}
 	if !strings.Contains(got, "index.html") {

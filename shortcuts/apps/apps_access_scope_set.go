@@ -125,17 +125,40 @@ func validateTargetsJSON(targetsJSON string) error {
 	return nil
 }
 
+// scopeStringToCode 把 CLI 友好的 scope 字符串映射成后端枚举数字。
+// CLI 用户 / Agent 仍然写 specific / public / tenant，body 里发数字。
+// 后端语义：1=All(互联网公开) / 2=Tenant(组织内) / 3=Range(部分人员)。
+var scopeStringToCode = map[string]int{
+	"public":   1,
+	"tenant":   2,
+	"specific": 3,
+}
+
 func buildAccessScopeBody(rctx *common.RuntimeContext) (map[string]interface{}, error) {
 	scope := rctx.Str("scope")
-	body := map[string]interface{}{"scope": scope}
+	code, ok := scopeStringToCode[scope]
+	if !ok {
+		return nil, output.ErrValidation("--scope must be specific / public / tenant, got %q", scope)
+	}
+	body := map[string]interface{}{"scope": code}
 
 	switch scope {
 	case "specific":
+		// 用户传统一格式 [{type:user|department|chat, id:...}]，body 里拆 3 个并列数组发后端。
 		var targets []map[string]interface{}
 		if err := json.Unmarshal([]byte(rctx.Str("targets")), &targets); err != nil {
 			return nil, output.ErrValidation("--targets is not valid JSON: %v", err)
 		}
-		body["targets"] = targets
+		users, departments, chats := splitAccessScopeTargets(targets)
+		if len(users) > 0 {
+			body["users"] = users
+		}
+		if len(departments) > 0 {
+			body["departments"] = departments
+		}
+		if len(chats) > 0 {
+			body["chats"] = chats
+		}
 		if rctx.Bool("apply-enabled") {
 			applyConfig := map[string]interface{}{"enabled": true}
 			if approver := strings.TrimSpace(rctx.Str("approver")); approver != "" {
@@ -147,4 +170,25 @@ func buildAccessScopeBody(rctx *common.RuntimeContext) (map[string]interface{}, 
 		body["require_login"] = rctx.Bool("require-login")
 	}
 	return body, nil
+}
+
+// splitAccessScopeTargets 把统一 [{type,id}] 形态拆成后端要求的 users/departments/chats 三个数组。
+func splitAccessScopeTargets(targets []map[string]interface{}) (users, departments, chats []string) {
+	for _, t := range targets {
+		typ, _ := t["type"].(string)
+		id, _ := t["id"].(string)
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		switch typ {
+		case "user":
+			users = append(users, id)
+		case "department":
+			departments = append(departments, id)
+		case "chat":
+			chats = append(chats, id)
+		}
+	}
+	return
 }

@@ -42,7 +42,7 @@ func TestAppsHTMLPublishAPI_Success(t *testing.T) {
 	rctx, reg := newAppsClientRuntime(t)
 	stub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/miaoda/v1/apps/app_x/upload_and_release_html_code",
+		URL:    "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -92,7 +92,7 @@ func TestAppsHTMLPublishAPI_BusinessErrorHasHint(t *testing.T) {
 	rctx, reg := newAppsClientRuntime(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/miaoda/v1/apps/app_x/upload_and_release_html_code",
+		URL:    "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code",
 		Body: map[string]interface{}{
 			"code": 90001,
 			"msg":  "build failed: dependency conflict",
