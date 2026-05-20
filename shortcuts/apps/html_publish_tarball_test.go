@@ -5,6 +5,7 @@ package apps
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"os"
@@ -19,29 +20,24 @@ func TestBuildHTMLPublishTarball_RoundTrip(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	candidates, err := walkHTMLPublishCandidates(dir)
+	fio := newTestFIO()
+	candidates, err := walkHTMLPublishCandidates(fio, dir)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
-	tarball, err := buildHTMLPublishTarball(candidates)
+	tarball, err := buildHTMLPublishTarball(fio, candidates)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Remove(tarball.Path) })
 
 	if len(tarball.SHA256) != 64 {
 		t.Fatalf("SHA256 wrong len: %d", len(tarball.SHA256))
 	}
-	if tarball.Size <= 0 {
-		t.Fatalf("size=%d", tarball.Size)
+	if tarball.Size <= 0 || int64(len(tarball.Body)) != tarball.Size {
+		t.Fatalf("size=%d body=%d", tarball.Size, len(tarball.Body))
 	}
 
-	f, err := os.Open(tarball.Path)
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer f.Close()
-	gz, err := gzip.NewReader(f)
+	gz, err := gzip.NewReader(bytes.NewReader(tarball.Body))
 	if err != nil {
 		t.Fatalf("gzip: %v", err)
 	}
@@ -60,16 +56,16 @@ func TestBuildHTMLPublishTarball_RoundTrip(t *testing.T) {
 }
 
 func TestBuildHTMLPublishTarball_EmptyCandidates(t *testing.T) {
-	if _, err := buildHTMLPublishTarball(nil); err == nil {
+	if _, err := buildHTMLPublishTarball(newTestFIO(), nil); err == nil {
 		t.Fatalf("expected error")
 	}
 }
 
 func TestWriteHTMLPublishTarEntry_OpenFailure(t *testing.T) {
-	// candidate 指向不存在文件 → os.Open 失败 → 错误返回
+	// candidate 指向不存在文件 → fio.Open 失败 → 错误返回
 	tw := tar.NewWriter(io.Discard)
 	defer tw.Close()
-	err := writeHTMLPublishTarEntry(tw, htmlPublishCandidate{
+	err := writeHTMLPublishTarEntry(newTestFIO(), tw, htmlPublishCandidate{
 		RelPath: "x.html",
 		AbsPath: "/nonexistent-path-for-test/x.html",
 		Size:    0,
@@ -93,7 +89,7 @@ func TestWriteHTMLPublishTarEntry_WriteHeaderFailure(t *testing.T) {
 	tw := tar.NewWriter(io.Discard)
 	_ = tw.Close() // 先 close，下次 WriteHeader 必失败
 
-	err := writeHTMLPublishTarEntry(tw, htmlPublishCandidate{
+	err := writeHTMLPublishTarEntry(newTestFIO(), tw, htmlPublishCandidate{
 		RelPath: "x.html",
 		AbsPath: file,
 		Size:    1,
@@ -107,22 +103,19 @@ func TestWriteHTMLPublishTarEntry_WriteHeaderFailure(t *testing.T) {
 }
 
 func TestWriteHTMLPublishTarEntry_CopyFailure(t *testing.T) {
-	// 文件在 Open 时存在，但写到 tar 时中断（类似 io.Reader 在读取时失败）
-	// 这里我们用一个特殊的错误 Reader 来模拟
+	// 文件在 Open 时存在，但读取时失败（chmod 0 模拟权限错）
 	dir := t.TempDir()
 	file := filepath.Join(dir, "x.html")
 	if err := os.WriteFile(file, []byte("content"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-
-	// 创建一个会在读取时失败的 Reader（改变权限使其无法读）
 	_ = os.Chmod(file, 0o000)
-	defer os.Chmod(file, 0o644) // 恢复权限便于清理
+	defer os.Chmod(file, 0o644)
 
 	tw := tar.NewWriter(io.Discard)
 	defer tw.Close()
 
-	err := writeHTMLPublishTarEntry(tw, htmlPublishCandidate{
+	err := writeHTMLPublishTarEntry(newTestFIO(), tw, htmlPublishCandidate{
 		RelPath: "x.html",
 		AbsPath: file,
 		Size:    7,
@@ -135,27 +128,19 @@ func TestWriteHTMLPublishTarEntry_CopyFailure(t *testing.T) {
 	}
 }
 
-func TestBuildHTMLPublishTarball_EntryWriteFailureCleansUp(t *testing.T) {
+func TestBuildHTMLPublishTarball_EntryWriteFailureReturnsError(t *testing.T) {
 	// candidate 指向不存在文件 → writeHTMLPublishTarEntry 失败
-	// → buildHTMLPublishTarball 走错误清理路径（tw.Close / gz.Close / tmp.Close / defer os.Remove）
+	// → buildHTMLPublishTarball 返回 nil tarball + error。
+	// 内存打包不再创建临时文件，无清理路径需要验证。
 	candidates := []htmlPublishCandidate{
 		{RelPath: "x.html", AbsPath: "/nonexistent-path-for-test/x.html", Size: 0},
 	}
 
-	pattern := filepath.Join(os.TempDir(), "apps-html-publish-*.tar.gz")
-	before, _ := filepath.Glob(pattern)
-
-	tarball, err := buildHTMLPublishTarball(candidates)
+	tarball, err := buildHTMLPublishTarball(newTestFIO(), candidates)
 	if err == nil {
 		t.Fatalf("expected error, got tarball=%+v", tarball)
 	}
 	if tarball != nil {
 		t.Fatalf("expected nil tarball on error, got %+v", tarball)
-	}
-
-	// 验证错误回退路径仍清理了临时文件（没有 leak）
-	after, _ := filepath.Glob(pattern)
-	if len(after) > len(before) {
-		t.Fatalf("error path leaked tarball: before=%d after=%d", len(before), len(after))
 	}
 }

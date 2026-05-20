@@ -4,11 +4,29 @@
 package apps
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
+
+	"github.com/larksuite/cli/extension/fileio"
 )
+
+// permissiveFIO is a test-only fileio that delegates to os without
+// SafeInputPath validation. Unit tests use it so we can drive the walker
+// and tarball algorithms with absolute t.TempDir paths; production code
+// goes through LocalFileIO which is cwd-bounded.
+type permissiveFIO struct{}
+
+func (permissiveFIO) Open(name string) (fileio.File, error)     { return os.Open(name) }
+func (permissiveFIO) Stat(name string) (fileio.FileInfo, error) { return os.Stat(name) }
+func (permissiveFIO) ResolvePath(p string) (string, error)      { return p, nil }
+func (permissiveFIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
+	panic("Save not used in apps unit tests")
+}
+
+func newTestFIO() fileio.FileIO { return permissiveFIO{} }
 
 func TestWalkHTMLPublishCandidates_SingleFile(t *testing.T) {
 	dir := t.TempDir()
@@ -17,7 +35,7 @@ func TestWalkHTMLPublishCandidates_SingleFile(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	got, err := walkHTMLPublishCandidates(file)
+	got, err := walkHTMLPublishCandidates(newTestFIO(), file)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -43,7 +61,7 @@ func TestWalkHTMLPublishCandidates_Directory(t *testing.T) {
 		}
 	}
 
-	got, err := walkHTMLPublishCandidates(dir)
+	got, err := walkHTMLPublishCandidates(newTestFIO(), dir)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -64,7 +82,7 @@ func TestWalkHTMLPublishCandidates_Directory(t *testing.T) {
 }
 
 func TestWalkHTMLPublishCandidates_NotFound(t *testing.T) {
-	if _, err := walkHTMLPublishCandidates("/nonexistent/xyz"); err == nil {
+	if _, err := walkHTMLPublishCandidates(newTestFIO(), "/nonexistent/xyz"); err == nil {
 		t.Fatalf("expected error")
 	}
 }
@@ -79,13 +97,12 @@ func TestWalkHTMLPublishCandidates_Symlink(t *testing.T) {
 	if err := os.Symlink(filepath.Join(dir, "real.html"), filepath.Join(dir, "link.html")); err != nil {
 		t.Skipf("symlink not supported on this filesystem: %v", err)
 	}
-	got, err := walkHTMLPublishCandidates(dir)
+	got, err := walkHTMLPublishCandidates(newTestFIO(), dir)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
 	// 我们仍然会列出 link.html（它是文件入口），但 WalkDir 不会沿着链接进入目标目录递归。
-	// 这里关键是：不能 panic、不能死循环、不能跨链接复制内容。Size 0 表示 symlink 自身长度（Info().Size 对 symlink 报符号长度），
-	// 这里不严格断言 size — 只断言操作不报错且包含 link.html 名字。
+	// 这里关键是：不能 panic、不能死循环、不能跨链接复制内容。
 	found := false
 	for _, c := range got {
 		if c.RelPath == "link.html" {

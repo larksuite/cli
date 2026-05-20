@@ -17,10 +17,14 @@ import (
 )
 
 // TestAppsHTMLPublishDryRun exercises the walker / manifest layer without
-// packing or uploading. Hidden files are intentionally included — the walker
-// is deliberately not filtering, so the manifest must reflect everything the
-// user pointed --path at. Users are documented to pass clean build output
-// directories (e.g. ./dist), not source trees.
+// packing or uploading. --path goes through LocalFileIO which bounds reads to
+// the runtime cwd, so each sub-test seeds fixtures in a t.TempDir and runs
+// the binary with WorkDir set to that dir + relative --path.
+//
+// Hidden files are intentionally included — the walker is deliberately not
+// filtering, so the manifest must reflect everything the user pointed --path
+// at. Users are documented to pass clean build output directories (e.g.
+// ./dist), not source trees.
 func TestAppsHTMLPublishDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
@@ -36,10 +40,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", dir,
+				"--path", ".",
 				"--dry-run",
 			},
 			DefaultAs: "user",
+			WorkDir:   dir,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -59,8 +64,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 
 	t.Run("SingleFile_OneEntry", func(t *testing.T) {
 		dir := t.TempDir()
-		page := filepath.Join(dir, "page.html")
-		require.NoError(t, os.WriteFile(page, []byte("<html></html>"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "page.html"), []byte("<html></html>"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
@@ -69,10 +73,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", page,
+				"--path", "page.html",
 				"--dry-run",
 			},
 			DefaultAs: "user",
+			WorkDir:   dir,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -97,10 +102,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", dir,
+				"--path", ".",
 				"--dry-run",
 			},
 			DefaultAs: "user",
+			WorkDir:   dir,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -120,10 +126,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", dir,
+				"--path", ".",
 				"--dry-run",
 			},
 			DefaultAs: "user",
+			WorkDir:   dir,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -144,10 +151,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", dir,
+				"--path", ".",
 				"--dry-run",
 			},
 			DefaultAs: "user",
+			WorkDir:   dir,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -165,10 +173,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
 				"apps", "+html-publish",
-				"--path", dir,
+				"--path", ".",
 				"--dry-run",
 			},
 			DefaultAs: "user",
+			WorkDir:   dir,
 		})
 		require.NoError(t, err)
 		assert.NotEqual(t, 0, result.ExitCode)

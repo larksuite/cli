@@ -6,8 +6,9 @@ package apps
 import (
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
+
+	"github.com/larksuite/cli/extension/fileio"
 )
 
 type htmlPublishCandidate struct {
@@ -16,8 +17,12 @@ type htmlPublishCandidate struct {
 	Size    int64
 }
 
-func walkHTMLPublishCandidates(rootPath string) ([]htmlPublishCandidate, error) {
-	stat, err := os.Stat(rootPath)
+// walkHTMLPublishCandidates walks rootPath and returns each regular file as a
+// candidate. Stat goes through fileio so SafeInputPath validation runs on the
+// root; the directory walk itself uses filepath.WalkDir because runtime.FileIO
+// has no WalkDir equivalent today.
+func walkHTMLPublishCandidates(fio fileio.FileIO, rootPath string) ([]htmlPublishCandidate, error) {
+	stat, err := fio.Stat(rootPath)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", rootPath, err)
 	}
@@ -30,6 +35,7 @@ func walkHTMLPublishCandidates(rootPath string) ([]htmlPublishCandidate, error) 
 	}
 
 	var out []htmlPublishCandidate
+	//nolint:forbidigo // fileio has no WalkDir; rootPath is already validated above via fio.Stat -> SafeInputPath.
 	err = filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr

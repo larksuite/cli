@@ -9,8 +9,6 @@ import (
 	"errors"
 	"mime"
 	"mime/multipart"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -35,10 +33,6 @@ func newAppsClientRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Regis
 }
 
 func TestAppsHTMLPublishAPI_Success(t *testing.T) {
-	dir := t.TempDir()
-	tarPath := filepath.Join(dir, "pkg.tar.gz")
-	_ = os.WriteFile(tarPath, []byte("fake"), 0o644)
-
 	rctx, reg := newAppsClientRuntime(t)
 	stub := &httpmock.Stub{
 		Method: "POST",
@@ -54,7 +48,7 @@ func TestAppsHTMLPublishAPI_Success(t *testing.T) {
 	reg.Register(stub)
 
 	api := appsHTMLPublishAPI{runtime: rctx}
-	tarball := &htmlPublishTarball{Path: tarPath, Size: 4, SHA256: "abc"}
+	tarball := &htmlPublishTarball{Body: []byte("fake"), Size: 4, SHA256: "abc"}
 	resp, err := api.HTMLPublish(context.Background(), "app_x", tarball)
 	if err != nil {
 		t.Fatalf("err=%v", err)
@@ -85,10 +79,6 @@ func TestAppsHTMLPublishAPI_Success(t *testing.T) {
 }
 
 func TestAppsHTMLPublishAPI_BusinessErrorHasHint(t *testing.T) {
-	dir := t.TempDir()
-	tarPath := filepath.Join(dir, "pkg.tar.gz")
-	_ = os.WriteFile(tarPath, []byte("fake"), 0o644)
-
 	rctx, reg := newAppsClientRuntime(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -100,7 +90,7 @@ func TestAppsHTMLPublishAPI_BusinessErrorHasHint(t *testing.T) {
 	})
 
 	api := appsHTMLPublishAPI{runtime: rctx}
-	_, err := api.HTMLPublish(context.Background(), "app_x", &htmlPublishTarball{Path: tarPath})
+	_, err := api.HTMLPublish(context.Background(), "app_x", &htmlPublishTarball{Body: []byte("fake")})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -127,7 +117,6 @@ func TestBuildHTMLPublishFailureHint_UnknownCodeReturnsEmpty(t *testing.T) {
 }
 
 func TestBuildHTMLPublishFailureHint_KnownCodes(t *testing.T) {
-	// 测试已知的错误码返回正确的 hint
 	if hint := buildHTMLPublishFailureHint(90001); hint == "" {
 		t.Fatalf("code 90001 should return non-empty hint")
 	}

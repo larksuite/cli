@@ -5,79 +5,61 @@ package apps
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"os"
+
+	"github.com/larksuite/cli/extension/fileio"
 )
 
+// htmlPublishTarball is the in-memory packed tar.gz ready for multipart upload.
+// Body is bounded by maxHTMLPublishTarballBytes (20MiB) — see runHTMLPublish.
 type htmlPublishTarball struct {
-	Path   string
+	Body   []byte
 	Size   int64
 	SHA256 string
 }
 
-func buildHTMLPublishTarball(candidates []htmlPublishCandidate) (*htmlPublishTarball, error) {
+func buildHTMLPublishTarball(fio fileio.FileIO, candidates []htmlPublishCandidate) (*htmlPublishTarball, error) {
 	if len(candidates) == 0 {
 		return nil, errors.New("no files to pack")
 	}
 
-	tmp, err := os.CreateTemp("", "apps-html-publish-*.tar.gz")
-	if err != nil {
-		return nil, fmt.Errorf("create temp: %w", err)
-	}
-	cleanupOnError := true
-	defer func() {
-		if cleanupOnError {
-			_ = os.Remove(tmp.Name())
-		}
-	}()
-
+	var buf bytes.Buffer
 	hasher := sha256.New()
-	multi := io.MultiWriter(tmp, hasher)
+	multi := io.MultiWriter(&buf, hasher)
 	gz := gzip.NewWriter(multi)
 	tw := tar.NewWriter(gz)
 
 	for _, c := range candidates {
-		if err := writeHTMLPublishTarEntry(tw, c); err != nil {
+		if err := writeHTMLPublishTarEntry(fio, tw, c); err != nil {
 			_ = tw.Close()
 			_ = gz.Close()
-			_ = tmp.Close()
 			return nil, err
 		}
 	}
 
 	if err := tw.Close(); err != nil {
 		_ = gz.Close()
-		_ = tmp.Close()
 		return nil, fmt.Errorf("tar close: %w", err)
 	}
 	if err := gz.Close(); err != nil {
-		_ = tmp.Close()
 		return nil, fmt.Errorf("gzip close: %w", err)
 	}
-	info, err := tmp.Stat()
-	if err != nil {
-		_ = tmp.Close()
-		return nil, fmt.Errorf("stat: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return nil, fmt.Errorf("close: %w", err)
-	}
 
-	cleanupOnError = false
 	return &htmlPublishTarball{
-		Path:   tmp.Name(),
-		Size:   info.Size(),
+		Body:   buf.Bytes(),
+		Size:   int64(buf.Len()),
 		SHA256: hex.EncodeToString(hasher.Sum(nil)),
 	}, nil
 }
 
-func writeHTMLPublishTarEntry(tw *tar.Writer, c htmlPublishCandidate) error {
-	src, err := os.Open(c.AbsPath)
+func writeHTMLPublishTarEntry(fio fileio.FileIO, tw *tar.Writer, c htmlPublishCandidate) error {
+	src, err := fio.Open(c.AbsPath)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", c.AbsPath, err)
 	}

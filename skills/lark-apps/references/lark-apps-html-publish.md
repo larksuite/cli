@@ -120,7 +120,7 @@ lark-cli apps +html-publish --app-id "$APP" --path ./dist
 
 ## 提示
 
-- `--path` 可以传相对路径
+- `--path` **必须**是 cwd 内的相对路径（如 `./dist`、`./index.html`）；绝对路径或越界路径（`../`、`/Users/...`）CLI 会直接拒绝。需要发布 cwd 外的目录时，先切到 agent 工作目录再调，**不要**私自 `cd` 绕过
 - 目录打包成 tar.gz 时**不做过滤**（`.git` / `node_modules` 等会一并打包），让用户传干净的产物目录（如 `./dist`）
 - **不要**原样把 envelope JSON 转述给用户
 

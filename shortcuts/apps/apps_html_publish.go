@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -45,7 +45,7 @@ var AppsHTMLPublish = common.Shortcut{
 		dry.POST(fmt.Sprintf("%s/apps/%s/upload_and_release_html_code", apiBasePath, validate.EncodePathSegment(appID))).
 			Set("content_type", "multipart/form-data")
 
-		candidates, err := walkHTMLPublishCandidates(path)
+		candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), path)
 		if err != nil {
 			dry.Set("path_error", err.Error())
 			return dry
@@ -67,7 +67,7 @@ var AppsHTMLPublish = common.Shortcut{
 			Path:  strings.TrimSpace(rctx.Str("path")),
 		}
 		client := appsHTMLPublishAPI{runtime: rctx}
-		out, err := runHTMLPublish(ctx, client, spec)
+		out, err := runHTMLPublish(ctx, rctx.FileIO(), client, spec)
 		if err != nil {
 			return err
 		}
@@ -104,19 +104,18 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 		"妙搭以 index.html 作为应用入口；目录形态把首页放在根目录命名 index.html，单文件形态把文件命名为 index.html")
 }
 
-func runHTMLPublish(ctx context.Context, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
-	candidates, err := walkHTMLPublishCandidates(spec.Path)
+func runHTMLPublish(ctx context.Context, fio fileio.FileIO, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
+	candidates, err := walkHTMLPublishCandidates(fio, spec.Path)
 	if err != nil {
-		return nil, fmt.Errorf("scan --path %s: %w", spec.Path, err)
+		return nil, output.Errorf(output.ExitAPI, "io", "scan --path %s: %v", spec.Path, err)
 	}
 	if err := ensureIndexHTML(candidates); err != nil {
 		return nil, err
 	}
-	tarball, err := buildHTMLPublishTarball(candidates)
+	tarball, err := buildHTMLPublishTarball(fio, candidates)
 	if err != nil {
-		return nil, fmt.Errorf("pack: %w", err)
+		return nil, output.Errorf(output.ExitAPI, "io", "pack: %v", err)
 	}
-	defer os.Remove(tarball.Path)
 
 	if tarball.Size > maxHTMLPublishTarballBytes {
 		return nil, output.ErrWithHint(output.ExitAPI, "validation",

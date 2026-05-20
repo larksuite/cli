@@ -40,7 +40,7 @@ func TestRunHTMLPublish_HappyPath(t *testing.T) {
 	fake := &fakeAppsHTMLPublishClient{
 		resp: &htmlPublishResponse{URL: "https://miaoda/app_x"},
 	}
-	out, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
+	out, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -59,7 +59,7 @@ func TestRunHTMLPublish_OnlyURLInEnvelope(t *testing.T) {
 	fake := &fakeAppsHTMLPublishClient{
 		resp: &htmlPublishResponse{URL: "https://miaoda/app_x"},
 	}
-	out, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
+	out, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -75,7 +75,7 @@ func TestRunHTMLPublish_ClientErrorPropagated(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	wantErr := errors.New("server timeout")
 	fake := &fakeAppsHTMLPublishClient{err: wantErr}
-	_, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err=%v", err)
 	}
@@ -83,7 +83,7 @@ func TestRunHTMLPublish_ClientErrorPropagated(t *testing.T) {
 
 func TestRunHTMLPublish_PathNotFound(t *testing.T) {
 	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: "/nonexistent"})
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: "/nonexistent"})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -99,7 +99,7 @@ func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
 	if err == nil {
 		t.Fatalf("expected error for missing index.html")
 	}
@@ -127,7 +127,7 @@ func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "extra.html"), []byte("<html></html>"), 0o644)
 	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
 		t.Fatalf("err=%v", err)
 	}
 	if len(fake.calls) != 1 {
@@ -141,7 +141,7 @@ func TestRunHTMLPublish_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
 	single := filepath.Join(dir, "foo.html")
 	_ = os.WriteFile(single, []byte("<html></html>"), 0o644)
 	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single})
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single})
 	if err == nil {
 		t.Fatalf("single-file path 'foo.html' should be rejected (not named index.html)")
 	}
@@ -160,7 +160,7 @@ func TestRunHTMLPublish_SingleFileNamedIndexPasses(t *testing.T) {
 	single := filepath.Join(dir, "index.html")
 	_ = os.WriteFile(single, []byte("<html></html>"), 0o644)
 	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single}); err != nil {
+	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single}); err != nil {
 		t.Fatalf("err=%v", err)
 	}
 	if len(fake.calls) != 1 {
@@ -184,12 +184,8 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	// 记录走 reject 前的残留 tarball 数；走完应该不增加。
-	tarballPattern := filepath.Join(os.TempDir(), "apps-html-publish-*.tar.gz")
-	before, _ := filepath.Glob(tarballPattern)
-
 	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
 	if err == nil {
 		t.Fatalf("expected oversize error")
 	}
@@ -208,12 +204,6 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 	}
 	if len(fake.calls) != 0 {
 		t.Fatalf("client should not be called when tarball oversize")
-	}
-
-	// 验证 reject 路径仍然清理临时文件
-	after, _ := filepath.Glob(tarballPattern)
-	if len(after) > len(before) {
-		t.Fatalf("oversize reject path leaked tarball: before=%d after=%d", len(before), len(after))
 	}
 }
 
@@ -245,10 +235,24 @@ func TestAppsHTMLPublish_RequiresPath(t *testing.T) {
 }
 
 func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
-	site := writeAppsSampleSite(t)
+	// 这个用例走真实 shortcut → 真实 LocalFileIO（cwd-bounded）。
+	// 必须 chdir 进 tmp 用相对路径，否则 SafeInputPath 会拒绝绝对 --path。
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.WriteFile("index.html", []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsHTMLPublish,
-		[]string{"+html-publish", "--app-id", "app_x", "--path", site, "--dry-run", "--as", "user"},
+		[]string{"+html-publish", "--app-id", "app_x", "--path", ".", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}

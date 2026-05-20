@@ -4,11 +4,11 @@
 package apps
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -30,14 +30,8 @@ type appsHTMLPublishAPI struct {
 }
 
 func (api appsHTMLPublishAPI) HTMLPublish(ctx context.Context, appID string, tarball *htmlPublishTarball) (*htmlPublishResponse, error) {
-	f, err := os.Open(tarball.Path)
-	if err != nil {
-		return nil, fmt.Errorf("open tarball: %w", err)
-	}
-	defer f.Close()
-
 	fd := larkcore.NewFormdata()
-	fd.AddFile("file", f)
+	fd.AddFile("file", bytes.NewReader(tarball.Body))
 
 	apiResp, err := api.runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
