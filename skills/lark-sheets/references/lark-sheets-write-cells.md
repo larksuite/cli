@@ -184,7 +184,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 写入区域 A1 格式 |
+| `--range` | string | 是 | 写入区域（A1 格式） |
 | `--cells` | string + File + Stdin（复合 JSON） | 是 | JSON：`{"values": [[...], ...]}`；可含 `formula` / `cell_styles` / `comments` / `embed_image` 富信息 |
 | `--allow-overwrite` | bool | 否 | 允许覆盖非空 cell；默认 false 时遇非空 cell 报错 |
 | `--max-cells` | int + Hidden | 否 | 防爆，默认 50000 |
@@ -195,7 +195,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 目标范围 A1 格式（如 `A1:B2`） |
+| `--range` | string | 是 | 目标范围（A1 格式，如 `A1:B2`） |
 | `--background-color` | string | 否 | 背景颜色（十六进制，如 `#ffffff`） |
 | `--font-color` | string | 否 | 字体颜色（十六进制，如 `#000000`） |
 | `--font-size` | number | 否 | 字体大小（px，例：10、12、14） |
@@ -204,7 +204,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--font-line` | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
 | `--horizontal-alignment` | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
 | `--vertical-alignment` | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
-| `--word-wrap` | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
+| `--word-wrap` | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`，默认 `overflow` |
 | `--number-format` | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
 | `--border-styles` | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON：`{ top: {style,color,weight}, bottom: ..., left: ..., right: ... }`；4 方向结构相同 |
 
@@ -214,7 +214,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 目标 cell A1（必须单 cell，如 `A1`；起止 cell 须相同） |
+| `--range` | string | 是 | 目标单元格（A1 格式，必须单 cell，如 `A1`；起止 cell 须相同） |
 | `--image` | string | 是 | 本地图片路径（支持 PNG / JPEG / JPG / GIF / BMP / JFIF / EXIF / TIFF / BPG / HEIC） |
 | `--name` | string | 否 | 图片文件名（含扩展名）；省略时取 `--image` 的 basename |
 
@@ -224,7 +224,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 目标范围 A1 格式（如 `A2:A100`） |
+| `--range` | string | 是 | 目标范围（A1 格式，如 `A2:A100`） |
 | `--options` | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 `["opt1","opt2"]`；最多 500 项，每项 ≤100 字符，不含逗号 |
 | `--colors` | string + File + Stdin（简单 JSON） | 否 | RGB hex 颜色数组（如 `["#1FB6C1","#F006C2"]`），长度必须与 `--options` 一致 |
 | `--multiple` | bool | 否 | 启用多选；默认 `false` |
@@ -236,7 +236,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 目标区域起点 A1（如 `Sheet1!A1`）；自动按 CSV 行列数推断终点 |
+| `--range` | string | 是 | 目标区域起点 A1（如 `Sheet1!A1`）；终点按 CSV 实际行列数自动推断 |
 | `--csv` | string + File + Stdin（非 JSON 文本） | 是 | RFC 4180 CSV 文本；只写纯值，不带公式/样式/批注 |
 | `--allow-overwrite` | bool | 否 | 允许覆盖；默认 false 时若目标非空报错 |
 

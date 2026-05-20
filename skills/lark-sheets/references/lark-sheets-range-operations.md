@@ -101,8 +101,8 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 清除范围 A1 格式 |
-| `--scope` | string + Enum | 否 | `content` / `formats` / `all`，默认 `content`（仅清内容） |
+| `--range` | string | 是 | 清除范围（A1 格式） |
+| `--scope` | string + Enum | 否 | 清除范围 enum：`content`（默认，仅清内容）/ `formats`（仅清格式）/ `all`（清内容 + 格式） |
 
 ### `+cells-merge`
 
@@ -110,8 +110,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 待合并 / 取消合并的范围 |
-| `--merge-type` | string + Enum | 否 | （仅 `+cells-merge`）`all` / `rows` / `columns`，默认 `all` |
+| `--range` | string | 是 | 待合并 / 取消合并的范围（A1 格式） |
+| `--merge-type` | string + Enum | 否 | 合并方向 enum（仅 `+cells-merge`）：`all` / `rows` / `columns`，默认 `all` |
 
 ### `+cells-unmerge`
 
@@ -119,8 +119,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 待合并 / 取消合并的范围 |
-| `--merge-type` | string + Enum | 否 | （仅 `+cells-merge`）`all` / `rows` / `columns`，默认 `all` |
+| `--range` | string | 是 | 待合并 / 取消合并的范围（A1 格式） |
+| `--merge-type` | string + Enum | 否 | 合并方向 enum（仅 `+cells-merge`）：`all` / `rows` / `columns`，默认 `all` |
 
 ### `+rows-resize`
 
@@ -128,8 +128,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--start` | int | 是 | 起始行（0-based，inclusive） |
-| `--end` | int | 是 | 结束行（0-based，inclusive） |
+| `--start` | int | 是 | 起始行（0-based, inclusive） |
+| `--end` | int | 是 | 结束行（0-based, inclusive） |
 | `--type` | string + Enum | 是 | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `--size`）/ `standard`（重置为默认标准行高）/ `auto`（自动适应内容） |
 | `--size` | int | 否 | 行高（像素，例：30 / 40 / 60）；`--type pixel` 时必填，其它 type 忽略 |
 
@@ -139,8 +139,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--start` | int | 是 | 起始列（0-based，inclusive） |
-| `--end` | int | 是 | 结束列（0-based，inclusive） |
+| `--start` | int | 是 | 起始列（0-based, inclusive） |
+| `--end` | int | 是 | 结束列（0-based, inclusive） |
 | `--type` | string + Enum | 是 | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `--size`）/ `standard`（重置为默认标准列宽） |
 | `--size` | int | 否 | 列宽（像素，例：80 / 120 / 200）；`--type pixel` 时必填，其它 type 忽略 |
 
@@ -151,9 +151,9 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--source-range` | string | 是 | 源 A1 范围 |
-| `--target-sheet-id` | string | 否 | 目标子表；省略时同 sheet |
-| `--target-range` | string | 是 | 目标 A1 范围（起点 cell 即可，按源尺寸自动推断） |
-| `--paste-type` | string + Enum | 否 | （仅 `+range-copy`）`values` / `formulas` / `formats` / `all`，默认 `all` |
+| `--target-sheet-id` | string | 否 | 目标子表 id；省略时同源 sheet |
+| `--target-range` | string | 是 | 目标 A1 范围（传起点 cell 即可，按源尺寸自动推断） |
+| `--paste-type` | string + Enum | 否 | 粘贴内容 enum（仅 `+range-copy`）：`values` / `formulas` / `formats` / `all`，默认 `all` |
 
 ### `+range-copy`
 
@@ -162,9 +162,9 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--source-range` | string | 是 | 源 A1 范围 |
-| `--target-sheet-id` | string | 否 | 目标子表；省略时同 sheet |
-| `--target-range` | string | 是 | 目标 A1 范围（起点 cell 即可，按源尺寸自动推断） |
-| `--paste-type` | string + Enum | 否 | （仅 `+range-copy`）`values` / `formulas` / `formats` / `all`，默认 `all` |
+| `--target-sheet-id` | string | 否 | 目标子表 id；省略时同源 sheet |
+| `--target-range` | string | 是 | 目标 A1 范围（传起点 cell 即可，按源尺寸自动推断） |
+| `--paste-type` | string + Enum | 否 | 粘贴内容 enum（仅 `+range-copy`）：`values` / `formulas` / `formats` / `all`，默认 `all` |
 
 ### `+range-fill`
 
@@ -173,8 +173,8 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--source-range` | string | 是 | 填充模板范围（系列起始 cells） |
-| `--target-range` | string | 是 | 目标填充范围 |
-| `--series-type` | string + Enum | 否 | `auto` / `linear` / `growth` / `date` / `copy`，默认 `auto` |
+| `--target-range` | string | 是 | 目标填充范围（A1 格式） |
+| `--series-type` | string + Enum | 否 | 填充序列类型 enum：`auto` / `linear` / `growth` / `date` / `copy`，默认 `auto` |
 
 ### `+range-sort`
 
@@ -182,7 +182,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 排序范围（含或不含表头由 `--has-header` 决定） |
+| `--range` | string | 是 | 排序范围（A1 格式；含或不含表头由 `--has-header` 决定） |
 | `--sort-keys` | string + File + Stdin（复合 JSON） | 是 | JSON：`[{"col":"B","order":"asc"},{"col":"D","order":"desc"}]` |
 | `--has-header` | bool | 否 | 第一行是表头不参与排序，默认 false |
 

@@ -54,7 +54,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--group-id` | string | 是 | 目标组 id |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的配置（先 `+sparkline-list --group-id <id>` 回读再 patch）；可改 type / data_range / target_range / style / special_points 等字段 |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 完整或足够完整的配置（先 `+sparkline-list --group-id <id>` 回读再 patch）；可改 `type` / `data_range` / `target_range` / `style` / `special_points` 等字段 |
 
 ### `+sparkline-delete`
 

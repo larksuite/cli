@@ -37,11 +37,11 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--find` | string | 是 | 待查找文本（与 `--regex` 配合时是正则） |
-| `--range` | string | 否 | A1 格式查找范围；省略时整表 |
+| `--find` | string | 是 | 待查找文本（与 `--regex` 配合时按正则解释） |
+| `--range` | string | 否 | 查找范围（A1 格式）；省略时整表 |
 | `--match-case` | bool | 否 | 大小写敏感 |
 | `--match-entire-cell` | bool | 否 | 完全匹配整个单元格 |
-| `--regex` | bool | 否 | `--find` 当正则解释 |
+| `--regex` | bool | 否 | 把 `--find` 按正则解释 |
 | `--include-formulas` | bool | 否 | 也在公式文本中搜索 |
 | `--max-matches` | int + Hidden | 否 | 防爆，默认 5000 |
 
@@ -52,12 +52,12 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--find` | string | 是 | 待替换文本 |
-| `--replacement` | string | 是 | 替换为；传 `""` 等价于"删除内容" |
-| `--range` | string | 否 | 范围；省略时整表 |
-| `--match-case` | bool | 否 | 同 `+cells-search` |
-| `--match-entire-cell` | bool | 否 | 同 `+cells-search` |
-| `--regex` | bool | 否 | 同 `+cells-search` |
-| `--include-formulas` | bool | 否 | 同 `+cells-search` |
+| `--replacement` | string | 是 | 替换为；传空字符串 `""` 等价于「删除内容」 |
+| `--range` | string | 否 | 替换范围（A1 格式）；省略时整表 |
+| `--match-case` | bool | 否 | 也在公式文本中替换 |
+| `--match-entire-cell` | bool | 否 | 也在公式文本中替换 |
+| `--regex` | bool | 否 | 也在公式文本中替换 |
+| `--include-formulas` | bool | 否 | 也在公式文本中替换 |
 
 ## Examples
 

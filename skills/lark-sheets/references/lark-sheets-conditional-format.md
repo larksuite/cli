@@ -95,9 +95,9 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | +cond-format-create / --data: 规则配置 JSON，含 `style`（命中样式，必填）和 `attrs?`（规则参数列表，因 rule_type 不同结构而异）/ `has_ref?`。`rule_type` 和 `ranges` 已拎为独立 flag |
-| `--rule-type` | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
-| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 规则配置 JSON，含 `style`（命中样式，必填）和 `attrs?`（规则参数列表，因 `rule_type` 不同结构而异）/ `has_ref?`。`rule_type` 和 `ranges` 已拎为独立 flag |
+| `--rule-type` | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--properties` 中同名字段 |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--properties` 中同名字段 |
 
 ### `+cond-format-update`
 
@@ -106,9 +106,9 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--rule-id` | string | 是 | 目标规则 id |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | +cond-format-update / --data: 同 +cond-format-create；update 是整组覆盖式 |
-| `--rule-type` | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--data` |
-| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--data` |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 规则配置 JSON，结构同 `+cond-format-create` 的 `--properties`；update 是整组覆盖式 |
+| `--rule-type` | string + Enum | 是 | 条件格式规则类型 enum：`cellValue` / `formula` / `duplicate` / `unique` / `topBottom` / `aboveBelowAverage` / `dataBar` / `colorScale` / `iconSet` / `textContains` / `dateOccurring` / `blankCell` / `errorCell`（共 13 项）；优先级高于 `--properties` 中同名字段 |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 应用条件格式的 A1 范围 JSON 数组（如 `["A1:A100","C2:C50"]`）；优先级高于 `--properties` 中同名字段 |
 
 ### `+cond-format-delete`
 

@@ -86,7 +86,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--index` | int | 是 | 目标位置（0-based） |
-| `--source-index` | int | 否 | 源位置（0-based）；可选，未传时由 CLI runtime 根据 --sheet-id / --sheet-name 当前在工作簿中的 index 自动派生 |
+| `--source-index` | int | 否 | 源位置（0-based）；可选，未传时由 CLI runtime 根据 `--sheet-id` / `--sheet-name` 当前在工作簿中的 index 自动派生 |
 
 ### `+sheet-copy`
 
@@ -95,7 +95,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--title` | string | 否 | 副本名称；省略时由服务端生成 |
-| `--index` | int | 否 | 副本插入位置 |
+| `--index` | int | 否 | 副本插入位置（0-based）；省略时附加到末尾 |
 
 ### `+sheet-hide`
 
@@ -124,7 +124,7 @@ _系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--title` | string | 是 | 新 spreadsheet 标题 |
-| `--folder-token` | string | 否 | 目标文件夹 token；省略放根目录 |
+| `--folder-token` | string | 否 | 目标文件夹 token；省略时放在云空间根目录 |
 | `--headers` | string + File + Stdin（简单 JSON） | 否 | 表头行 JSON 数组：`["列A","列B"]` |
 | `--values` | string + File + Stdin（简单 JSON） | 否 | 初始数据 JSON 二维数组：`[["alice",95]]` |
 
@@ -136,7 +136,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--file-extension` | string + Enum | 否 | `xlsx` / `csv`，默认 `xlsx`；csv 模式必须配 `--sheet-id` |
 | `--sheet-id` | string | 否 | 仅 csv 模式必填：指定要导出的 sheet reference_id |
-| `--output-path` | string | 否 | 本地保存路径；省略只触发导出不下载 |
+| `--output-path` | string | 否 | 本地保存路径；省略时只触发导出不下载 |
 
 ## Examples
 

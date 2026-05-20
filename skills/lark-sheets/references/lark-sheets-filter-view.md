@@ -48,9 +48,9 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | +filter-view-create / --data: 视图规则 JSON，含 `rules?`（列级筛选规则数组）和 `filtered_columns?`。`range` 和 `view_name` 已拎为独立 flag |
-| `--range` | string | 是 | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--data` 中同名字段（create 必填，必须覆盖表头行） |
-| `--view-name` | string | 否 | 视图名称；create 不传时系统自动分配，update 不传时保留原名。优先级高于 `--data` 中同名字段 |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 筛选视图规则 JSON，含 `rules?`（列级筛选规则数组）和 `filtered_columns?`。`range` 和 `view_name` 是独立 flag |
+| `--range` | string | 是 | 筛选视图作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--properties` 中同名字段；create 必填，必须覆盖表头行 |
+| `--view-name` | string | 否 | 筛选视图名称；create 不传时系统自动分配，update 不传时保留原名；优先级高于 `--properties` 中同名字段 |
 
 ### `+filter-view-update`
 
@@ -58,10 +58,10 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--view-id` | string | 是 | 目标视图 reference_id |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | +filter-view-update / --data: 视图规则 JSON，含 `rules?` 和 `filtered_columns?`。`range` 和 `view_name` 已拎为独立 flag；至少传 `--data.rules` / `--range` / `--view-name` 之一 |
-| `--range` | string | 否 | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--data` 中同名字段（update 时省略表示保留当前 range） |
-| `--view-name` | string | 否 | 视图名称；create 不传时系统自动分配，update 不传时保留原名。优先级高于 `--data` 中同名字段 |
+| `--view-id` | string | 是 | 目标筛选视图 reference_id |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 筛选视图规则 JSON，含 `rules?` 和 `filtered_columns?`。`range` 和 `view_name` 是独立 flag；至少传 `--properties.rules` / `--range` / `--view-name` 之一 |
+| `--range` | string | 否 | 筛选视图作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--properties` 中同名字段；update 时省略表示保留当前 range |
+| `--view-name` | string | 否 | 筛选视图名称；create 不传时系统自动分配，update 不传时保留原名；优先级高于 `--properties` 中同名字段 |
 
 ### `+filter-view-delete`
 
@@ -69,7 +69,7 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--view-id` | string | 是 | 目标视图 reference_id |
+| `--view-id` | string | 是 | 目标筛选视图 reference_id |
 
 ## Schemas
 

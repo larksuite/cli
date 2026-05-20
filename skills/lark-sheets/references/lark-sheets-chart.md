@@ -119,7 +119,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等），结构嵌套深，统一走 JSON 注入 |
+| `--properties` | string + File + Stdin（复合 JSON） | 是 | 图表完整配置 JSON（`position` / `data` / `properties` 等）；结构嵌套深，统一走 JSON 注入 |
 
 ### `+chart-update`
 

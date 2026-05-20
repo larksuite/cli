@@ -88,11 +88,11 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | A1 范围，如 `Sheet1!A1:F10`；与 `+cells-set` 等写入 shortcut 保持一致 |
-| `--include` | string_slice + Enum | 否 | `value` / `formula` / `style` / `comment` / `data_validation`，逗号拆分 |
+| `--range` | string | 是 | A1 范围，如 `Sheet1!A1:F10` |
+| `--include` | string_slice + Enum | 否 | `value` / `formula` / `style` / `comment` / `data_validation`，逗号分隔 |
 | `--cell-limit` | int + Hidden | 否 | 防爆，默认 5000 |
 | `--max-chars` | int + Hidden | 否 | 防爆，默认 200000 |
-| `--skip-hidden` | bool | 否 | 同上 |
+| `--skip-hidden` | bool | 否 | 跳过隐藏行列，默认 `false` |
 
 ### `+dropdown-get`
 
@@ -100,7 +100,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 是 | 目标范围 A1 格式（含 sheet 前缀，如 `sheet1!A2:A100`） |
+| `--range` | string | 是 | 目标范围（A1 格式，必须带 sheet 前缀，如 `sheet1!A2:A100`） |
 
 ### `+csv-get`
 
@@ -108,8 +108,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | 否 | A1 格式范围；省略时读整表的 `current_region` |
-| `--value-render-option` | string + Enum | 否 | `ToString` / `FormattedValue` / `Formula` / `UnformattedValue` |
+| `--range` | string | 否 | A1 范围；省略时读整表的 `current_region` |
+| `--value-render-option` | string + Enum | 否 | 单元格取值模式 enum：`ToString` / `FormattedValue` / `Formula` / `UnformattedValue` |
 | `--max-rows` | int + Hidden | 否 | 防爆，默认 100000 |
 | `--max-chars` | int + Hidden | 否 | 防爆，默认 200000 |
 | `--include-row-prefix` | bool | 否 | 是否在每行前加 `[row=N]` 前缀，默认 `true` |

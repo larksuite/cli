@@ -59,15 +59,15 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--image-name` | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
+| `--image-name` | string | 是 | 图片名称，含扩展名（如 `logo.png`） |
 | `--image-token` | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
+| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串 |
 | `--position-row` | int | 是 | 图片左上角所在行（0-based） |
 | `--position-col` | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
 | `--size-width` | int | 是 | 图片宽度（像素） |
 | `--size-height` | int | 是 | 图片高度（像素） |
-| `--offset-row` | int | 否 | 在 position 基础上的行内偏移（像素） |
-| `--offset-col` | int | 否 | 在 position 基础上的列内偏移（像素） |
+| `--offset-row` | int | 否 | 在 `--position-row` 基础上的行内偏移（像素） |
+| `--offset-col` | int | 否 | 在 `--position-col` 基础上的列内偏移（像素） |
 | `--z-index` | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
 
 ### `+float-image-update`
@@ -77,15 +77,15 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--float-image-id` | string | 是 | 目标图片 id |
-| `--image-name` | string | 是 | 图片名称，含拓展名（如 `logo.png`） |
+| `--image-name` | string | 是 | 图片名称，含扩展名（如 `logo.png`） |
 | `--image-token` | string | XOR | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
-| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串，从上游 SKILL.md 的素材引用约定取 |
+| `--image-uri` | string | XOR | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串 |
 | `--position-row` | int | 是 | 图片左上角所在行（0-based） |
 | `--position-col` | string | 是 | 图片左上角所在列（列字母，如 `A` / `B`） |
 | `--size-width` | int | 是 | 图片宽度（像素） |
 | `--size-height` | int | 是 | 图片高度（像素） |
-| `--offset-row` | int | 否 | 在 position 基础上的行内偏移（像素） |
-| `--offset-col` | int | 否 | 在 position 基础上的列内偏移（像素） |
+| `--offset-row` | int | 否 | 在 `--position-row` 基础上的行内偏移（像素） |
+| `--offset-col` | int | 否 | 在 `--position-col` 基础上的列内偏移（像素） |
 | `--z-index` | int | 否 | 图片 Z 轴层级，控制重叠顺序 |
 
 ### `+float-image-delete`

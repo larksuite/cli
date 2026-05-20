@@ -54,7 +54,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | `--font-line` | string + Enum | 否 | 字体线条样式 enum：`none` / `underline` / `line-through` |
 | `--horizontal-alignment` | string + Enum | 否 | 水平对齐 enum：`left` / `center` / `right` |
 | `--vertical-alignment` | string + Enum | 否 | 垂直对齐 enum：`top` / `middle` / `bottom` |
-| `--word-wrap` | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`（默认 `overflow`） |
+| `--word-wrap` | string + Enum | 否 | 换行策略 enum：`overflow` / `auto-wrap` / `word-clip`，默认 `overflow` |
 | `--number-format` | string | 否 | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
 | `--border-styles` | string + File + Stdin（复合 JSON） | 否 | 边框配置 JSON（结构同 +cells-set-style） |
 
@@ -65,7 +65,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--ranges` | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（如 `["sheet1!A2:A100"]`），每项必须带 sheet 前缀 |
-| `--options` | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组 |
+| `--options` | string + File + Stdin（复合 JSON） | 是 | 选项 JSON 数组（如 `["opt1","opt2"]`） |
 | `--colors` | string + File + Stdin（简单 JSON） | 否 | 颜色数组（与 `--options` 等长） |
 | `--multiple` | bool | 否 | 启用多选 |
 | `--highlight` | bool | 否 | 选项配色 |
@@ -76,7 +76,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（最多 100 个，每项带 sheet 前缀） |
+| `--ranges` | string + File + Stdin（简单 JSON） | 是 | 目标范围 JSON 数组（最多 100 个，每项必须带 sheet 前缀） |
 
 ## Schemas
 
