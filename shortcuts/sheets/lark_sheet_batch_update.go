@@ -14,15 +14,19 @@ import (
 //
 // One tool (batch_update), four shortcuts:
 //
-//   - +batch-update            raw passthrough of an operations array
-//                              (high-risk-write — anything can be inside)
+//   - +batch-update            user supplies a CLI-shape operations array
+//                              [{shortcut, input}, ...]; CLI translates to
+//                              MCP shape {tool_name, input(+operation)} via
+//                              batchOpDispatch before invoking the tool
+//                              (high-risk-write — anything in batchOpDispatch
+//                              can be inside)
 //   - +cells-batch-set-style   fan a single style across many ranges
 //   - +dropdown-update         install/replace the same dropdown across
 //                              many ranges in one atomic batch
 //   - +dropdown-delete         clear data_validation across many ranges
 //                              (high-risk-write)
 //
-// The tool's contract:
+// The tool's contract (post-translation):
 //   { excel_id, operations: [{tool_name, input}, ...], continue_on_error? }
 //
 // continue_on_error defaults to false (strict transaction): any failure
@@ -30,33 +34,36 @@ import (
 // three "fan-out" shortcuts since they're meant to be all-or-nothing;
 // only +batch-update lets callers flip it via --continue-on-error.
 
-// BatchUpdate is the raw passthrough — caller hands in the operations
-// array as --data. high-risk-write because it can wrap anything.
+// BatchUpdate accepts a CLI-shape operations array (each item
+// {shortcut, input}); on Validate / DryRun / Execute we translate each
+// sub-op via batchOpDispatch (see batch_op_dispatch.go) into the MCP
+// {tool_name, input(+operation)} form before calling the underlying
+// batch_update tool.
 var BatchUpdate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+batch-update",
-	Description: "Execute a batch of write tools as a single atomic request (rolls back on failure by default).",
+	Description: "Execute a batch of write shortcuts as a single atomic request (rolls back on failure by default).",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+batch-update"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if _, err := resolveSpreadsheetToken(runtime); err != nil {
-			return err
-		}
-		ops, err := parseBatchOperationsFlag(runtime)
+		token, err := resolveSpreadsheetToken(runtime)
 		if err != nil {
 			return err
 		}
-		if len(ops) == 0 {
-			return common.FlagErrorf("--operations must be a non-empty JSON array")
+		// Run the full translation in Validate so shape errors surface before
+		// DryRun / Execute. Translator is pure (no network), so re-running it
+		// in DryRun / Execute below is fine.
+		if _, err := batchUpdateInput(runtime, token); err != nil {
+			return err
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		input, _ := batchUpdateRawInput(runtime, token)
+		input, _ := batchUpdateInput(runtime, token)
 		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -64,7 +71,7 @@ var BatchUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		input, err := batchUpdateRawInput(runtime, token)
+		input, err := batchUpdateInput(runtime, token)
 		if err != nil {
 			return err
 		}
@@ -77,17 +84,25 @@ var BatchUpdate = common.Shortcut{
 	},
 	Tips: []string{
 		"Default is strict transaction — any sub-tool failure rolls the whole batch back. Pass --continue-on-error to keep partial successes.",
+		"Each sub-op is {shortcut, input}. Do NOT pass input.operation (implied by shortcut name) or input.excel_id / input.url (set at the +batch-update top level).",
 	},
 }
 
-func batchUpdateRawInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
-	ops, err := parseBatchOperationsFlag(runtime)
+// batchUpdateInput translates the user-supplied CLI-shape operations array
+// into the MCP batch_update payload. Returns FlagErrorf-typed errors on
+// any per-op shape problem (translator validates each entry).
+func batchUpdateInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
+	rawOps, err := parseBatchOperationsFlag(runtime)
+	if err != nil {
+		return nil, err
+	}
+	translated, err := translateBatchOperations(rawOps, token)
 	if err != nil {
 		return nil, err
 	}
 	input := map[string]interface{}{
 		"excel_id":   token,
-		"operations": ops,
+		"operations": translated,
 	}
 	if runtime.Bool("continue-on-error") {
 		input["continue_on_error"] = true

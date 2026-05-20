@@ -17,11 +17,13 @@
               "type": "string",
               "enum": [
                 "+cells-set",
+                "+cells-set-style",
                 "+cells-clear",
                 "+cells-merge",
                 "+cells-unmerge",
                 "+cells-replace",
                 "+csv-put",
+                "+dropdown-set",
                 "+dim-insert",
                 "+dim-delete",
                 "+dim-hide",
@@ -29,7 +31,6 @@
                 "+dim-freeze",
                 "+dim-group",
                 "+dim-ungroup",
-                "+dim-move",
                 "+rows-resize",
                 "+cols-resize",
                 "+range-move",
@@ -66,7 +67,7 @@
                 "+float-image-update",
                 "+float-image-delete"
               ],
-              "description": "CLI shortcut 名（不是底层 MCP tool 名）"
+              "description": "CLI shortcut 名（不是底层 MCP tool 名）。+dim-move 不在表中——它走 legacy v2 endpoint，无法批；+cells-set-image / +workbook-create 也不在——前者含多步图片上传，后者是新建工作簿，都不属于 atomic batch 范畴；所有读操作、fan-out wrapper（+batch-update 自身 / +cells-batch-set-style / +dropdown-{update,delete}）一律禁。"
             },
             "input": {
               "type": "object",

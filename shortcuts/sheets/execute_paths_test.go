@@ -233,14 +233,16 @@ func TestExecute_FilterCreate(t *testing.T) {
 	}
 }
 
-// TestExecute_BatchUpdate_Raw covers the raw passthrough including
-// continue_on_error.
-func TestExecute_BatchUpdate_Raw(t *testing.T) {
+// TestExecute_BatchUpdate_Translated covers the CLI-shape → MCP-shape
+// translation: user passes {shortcut, input}, batchOpDispatch maps it to
+// {tool_name, input(+operation, +excel_id)} before the tool call. Also
+// verifies --continue-on-error.
+func TestExecute_BatchUpdate_Translated(t *testing.T) {
 	t.Parallel()
 	stub := toolOutputStub(testToken, "write", `{"results":[{"ok":true}]}`)
 	_, err := runShortcutWithStubs(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"tool_name":"set_cell_range","input":{"excel_id":"shtcnTestTOK","range":"A1","cells":[[{"value":1}]]}}]`,
+		"--operations", `[{"shortcut":"+cells-set","input":{"range":"A1","cells":[[{"value":1}]]}}]`,
 		"--continue-on-error",
 		"--yes",
 	}, stub)
@@ -251,6 +253,21 @@ func TestExecute_BatchUpdate_Raw(t *testing.T) {
 	input := decodeToolInput(t, body, "batch_update")
 	if input["continue_on_error"] != true {
 		t.Errorf("continue_on_error not propagated: %#v", input)
+	}
+	ops, _ := input["operations"].([]interface{})
+	if len(ops) != 1 {
+		t.Fatalf("operations length = %d, want 1", len(ops))
+	}
+	op := ops[0].(map[string]interface{})
+	if op["tool_name"] != "set_cell_range" {
+		t.Errorf("op.tool_name = %v, want set_cell_range (translated from +cells-set)", op["tool_name"])
+	}
+	subInput, _ := op["input"].(map[string]interface{})
+	if subInput["excel_id"] != testToken {
+		t.Errorf("op.input.excel_id = %v, want %s (translator should inject)", subInput["excel_id"], testToken)
+	}
+	if _, has := subInput["operation"]; has {
+		t.Errorf("op.input.operation present but +cells-set should not inject one: %#v", subInput)
 	}
 }
 

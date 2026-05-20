@@ -88,7 +88,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 _要批量执行的 CLI shortcut 操作列表，按声明顺序串行执行；任一失败立即中断_
 
 **数组项**（类型 object）：
-- `shortcut` (enum) — CLI shortcut 名（不是底层 MCP tool 名） [+cells-set / +cells-clear / +cells-merge / +cells-unmerge / +cells-replace / +csv-put / +dim-insert / +dim-delete / …共 49 项]
+- `shortcut` (enum) — CLI shortcut 名（不是底层 MCP tool 名） [+cells-set / +cells-set-style / +cells-clear / +cells-merge / +cells-unmerge / +cells-replace / +csv-put / +dropdown-set / …共 50 项]
 - `input` (object) — 该 shortcut 的入参集（不含 spreadsheet 定位）；基础 flag 跑 `lark-cli sheets <shortcut> --help…
 
 ### `+cells-batch-set-style` `--border-styles`

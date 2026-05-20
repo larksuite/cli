@@ -9,25 +9,52 @@ import (
 	"testing"
 )
 
-// TestBatchUpdate_RawPassthrough verifies +batch-update threads
-// --data.operations into the tool input as-is and honors
-// --continue-on-error.
-func TestBatchUpdate_RawPassthrough(t *testing.T) {
+// TestBatchUpdate_TranslatesShortcutToToolName verifies +batch-update
+// translates each CLI-shape sub-op ({shortcut, input}) to the MCP-shape
+// ({tool_name, input(+operation, +excel_id)}) before threading into
+// the underlying batch_update tool. Covers continue_on_error too.
+func TestBatchUpdate_TranslatesShortcutToToolName(t *testing.T) {
 	t.Parallel()
 
 	body := parseDryRunBody(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"tool_name":"set_cell_range","input":{"excel_id":"shtcnTOK","sheet_id":"sh1","range":"A1","cells":[[{"value":42}]]}}]`,
+		"--operations", `[
+		  {"shortcut":"+cells-set","input":{"sheet_id":"sh1","range":"A1","cells":[[{"value":42}]]}},
+		  {"shortcut":"+dim-insert","input":{"sheet_id":"sh1","range":"1:3"}}
+		]`,
 		"--continue-on-error",
 		"--yes",
 	})
 	input := decodeToolInput(t, body, "batch_update")
 	ops, _ := input["operations"].([]interface{})
-	if len(ops) != 1 {
-		t.Fatalf("operations length = %d, want 1", len(ops))
+	if len(ops) != 2 {
+		t.Fatalf("operations length = %d, want 2", len(ops))
 	}
 	if input["continue_on_error"] != true {
 		t.Errorf("continue_on_error = %v, want true", input["continue_on_error"])
+	}
+
+	// op[0]: +cells-set → set_cell_range, no operation field
+	op0 := ops[0].(map[string]interface{})
+	if op0["tool_name"] != "set_cell_range" {
+		t.Errorf("op[0].tool_name = %v, want set_cell_range", op0["tool_name"])
+	}
+	in0, _ := op0["input"].(map[string]interface{})
+	if in0["excel_id"] == nil {
+		t.Errorf("op[0].input.excel_id missing (translator should inject)")
+	}
+	if _, has := in0["operation"]; has {
+		t.Errorf("op[0].input.operation present, +cells-set should not inject one: %#v", in0)
+	}
+
+	// op[1]: +dim-insert → modify_sheet_structure + operation:"insert"
+	op1 := ops[1].(map[string]interface{})
+	if op1["tool_name"] != "modify_sheet_structure" {
+		t.Errorf("op[1].tool_name = %v, want modify_sheet_structure", op1["tool_name"])
+	}
+	in1, _ := op1["input"].(map[string]interface{})
+	if in1["operation"] != "insert" {
+		t.Errorf("op[1].input.operation = %v, want \"insert\"", in1["operation"])
 	}
 }
 
@@ -35,7 +62,7 @@ func TestBatchUpdate_HighRiskWriteRequiresYes(t *testing.T) {
 	t.Parallel()
 	stdout, stderr, err := runShortcutCapturingErr(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"tool_name":"set_cell_range","input":{}}]`,
+		"--operations", `[{"shortcut":"+cells-set","input":{}}]`,
 	})
 	if err == nil {
 		t.Fatalf("expected confirmation_required; stdout=%s stderr=%s", stdout, stderr)
@@ -143,13 +170,6 @@ func TestDropdownDelete_BatchClearsValidation(t *testing.T) {
 
 func TestBatchUpdate_ValidationGuards(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name string
-		sc   interface{ shortcut() }
-		args []string
-		want string
-	}{}
-	_ = cases
 
 	// dropdown-update with sheetless range
 	stdout, stderr, err := runShortcutCapturingErr(t, DropdownUpdate, []string{
@@ -182,6 +202,144 @@ func TestBatchUpdate_ValidationGuards(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "must be a JSON array") {
 		t.Errorf("expected JSON array guard; got=%s|%s|%v", stdout, stderr, err)
+	}
+}
+
+// TestBatchUpdate_TranslatorRejects covers per-op shape errors caught by
+// translateBatchOp: unknown shortcut, missing shortcut, banned (read /
+// fan-out / legacy v2) shortcuts, hand-filled reserved keys, etc.
+func TestBatchUpdate_TranslatorRejects(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		opsJSON   string
+		wantMatch string
+	}{
+		{
+			name:      "missing shortcut field",
+			opsJSON:   `[{"input":{"range":"A1"}}]`,
+			wantMatch: "'shortcut' field is required",
+		},
+		{
+			name:      "empty shortcut string",
+			opsJSON:   `[{"shortcut":"","input":{}}]`,
+			wantMatch: "'shortcut' must be a non-empty string",
+		},
+		{
+			name:      "unknown shortcut",
+			opsJSON:   `[{"shortcut":"+cells-set-magic","input":{}}]`,
+			wantMatch: "not allowed in +batch-update",
+		},
+		{
+			name:      "read op rejected",
+			opsJSON:   `[{"shortcut":"+cells-get","input":{}}]`,
+			wantMatch: "not allowed in +batch-update",
+		},
+		{
+			name:      "nested batch-update rejected",
+			opsJSON:   `[{"shortcut":"+batch-update","input":{}}]`,
+			wantMatch: "not allowed in +batch-update",
+		},
+		{
+			name:      "fan-out wrapper rejected",
+			opsJSON:   `[{"shortcut":"+cells-batch-set-style","input":{}}]`,
+			wantMatch: "not allowed in +batch-update",
+		},
+		{
+			name:      "legacy v2 +dim-move rejected",
+			opsJSON:   `[{"shortcut":"+dim-move","input":{}}]`,
+			wantMatch: "not allowed in +batch-update",
+		},
+		{
+			name:      "user filled operation manually",
+			opsJSON:   `[{"shortcut":"+dim-insert","input":{"operation":"delete","range":"1:1"}}]`,
+			wantMatch: "do not pass input.operation",
+		},
+		{
+			name:      "user filled excel_id",
+			opsJSON:   `[{"shortcut":"+cells-set","input":{"excel_id":"shtcnX","range":"A1"}}]`,
+			wantMatch: "do not pass input.excel_id",
+		},
+		{
+			name:      "user filled url",
+			opsJSON:   `[{"shortcut":"+cells-set","input":{"url":"https://x.feishu.cn/sheets/sh","range":"A1"}}]`,
+			wantMatch: "do not pass input.url",
+		},
+		{
+			name:      "extra top-level key",
+			opsJSON:   `[{"shortcut":"+cells-set","input":{"range":"A1"},"tool_name":"oops"}]`,
+			wantMatch: "unknown top-level key",
+		},
+		{
+			name:      "sub-op not an object",
+			opsJSON:   `["not-an-object"]`,
+			wantMatch: "must be a JSON object",
+		},
+		{
+			name:      "input not an object",
+			opsJSON:   `[{"shortcut":"+cells-set","input":"not-an-object"}]`,
+			wantMatch: "'input' must be a JSON object",
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, err := runShortcutCapturingErr(t, BatchUpdate, []string{
+				"--url", testURL,
+				"--operations", tc.opsJSON,
+				"--yes",
+				"--dry-run",
+			})
+			if err == nil {
+				t.Fatalf("expected error containing %q; got stdout=%s stderr=%s", tc.wantMatch, stdout, stderr)
+			}
+			if !strings.Contains(stdout+stderr+err.Error(), tc.wantMatch) {
+				t.Errorf("expected error containing %q; got: %s | %s | %v", tc.wantMatch, stdout, stderr, err)
+			}
+		})
+	}
+}
+
+// TestBatchUpdate_DimFreezeInjectsFreeze covers the static-freeze-only
+// path: +dim-freeze always injects operation=freeze (count==0 unfreeze
+// path of the single shortcut is intentionally not supported in batch).
+func TestBatchUpdate_DimFreezeInjectsFreeze(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+dim-freeze","input":{"sheet_id":"sh1","freeze_rows":2}}]`,
+		"--yes",
+	})
+	input := decodeToolInput(t, body, "batch_update")
+	ops, _ := input["operations"].([]interface{})
+	op := ops[0].(map[string]interface{})
+	if op["tool_name"] != "modify_sheet_structure" {
+		t.Errorf("tool_name = %v, want modify_sheet_structure", op["tool_name"])
+	}
+	in, _ := op["input"].(map[string]interface{})
+	if in["operation"] != "freeze" {
+		t.Errorf("operation = %v, want \"freeze\"", in["operation"])
+	}
+}
+
+// TestBatchUpdate_ResizeNoOperationField covers the resize_range dispatch:
+// mapping has no operationField, so input.operation must NOT be injected.
+func TestBatchUpdate_ResizeNoOperationField(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+rows-resize","input":{"sheet_id":"sh1","range":"1:3","resize_height":{"type":"pixel","value":30}}}]`,
+		"--yes",
+	})
+	input := decodeToolInput(t, body, "batch_update")
+	op := input["operations"].([]interface{})[0].(map[string]interface{})
+	if op["tool_name"] != "resize_range" {
+		t.Errorf("tool_name = %v, want resize_range", op["tool_name"])
+	}
+	in, _ := op["input"].(map[string]interface{})
+	if _, has := in["operation"]; has {
+		t.Errorf("operation should NOT be injected for resize_range; got %#v", in)
 	}
 }
 
