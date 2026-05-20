@@ -20,7 +20,7 @@ var SheetWriteImage = common.Shortcut{
 	Command:     "+write-image",
 	Description: "Write an image into a spreadsheet cell",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},

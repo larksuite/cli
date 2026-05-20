@@ -497,7 +497,7 @@ var SheetCreateSheet = common.Shortcut{
 	Command:     "+create-sheet",
 	Description: "Create a sheet in an existing spreadsheet",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -548,7 +548,7 @@ var SheetCopySheet = common.Shortcut{
 	Command:     "+copy-sheet",
 	Description: "Copy a sheet within a spreadsheet",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -622,7 +622,7 @@ var SheetDeleteSheet = common.Shortcut{
 	Command:     "+delete-sheet",
 	Description: "Delete a sheet from a spreadsheet",
 	Risk:        "high-risk-write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -662,7 +662,7 @@ var SheetUpdateSheet = common.Shortcut{
 	Command:     "+update-sheet",
 	Description: "Update sheet properties",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},

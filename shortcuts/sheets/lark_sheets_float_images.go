@@ -367,7 +367,7 @@ var SheetGetFloatImage = common.Shortcut{
 	Command:     "+get-float-image",
 	Description: "Get a floating image by ID",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
@@ -401,7 +401,7 @@ var SheetListFloatImages = common.Shortcut{
 	Command:     "+list-float-images",
 	Description: "List all floating images in a sheet",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:read"},
+	Scopes:      []string{"sheets:spreadsheet:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},

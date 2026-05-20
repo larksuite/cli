@@ -85,7 +85,7 @@
     "recommend": "true"
   },
   {
-    "scope_name": "sheets:spreadsheet:read",
+    "scope_name": "sheets:spreadsheet:readonly",
     "final_score": "65.0000",
     "recommend": "true"
   },
