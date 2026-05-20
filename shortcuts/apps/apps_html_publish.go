@@ -89,10 +89,30 @@ type appsHTMLPublishSpec struct {
 // 用 var 而非 const，允许单测临时调小做拦截验证。
 var maxHTMLPublishTarballBytes int64 = 20 * 1024 * 1024
 
+// ensureIndexHTMLForDir 检查目录形态的 --path 根目录下必须含 index.html
+// （妙搭以 index.html 作为应用入口）。--path 是单文件时不做此校验。
+func ensureIndexHTMLForDir(path string, candidates []htmlPublishCandidate) error {
+	stat, err := os.Stat(path)
+	if err != nil || !stat.IsDir() {
+		return nil
+	}
+	for _, c := range candidates {
+		if c.RelPath == "index.html" {
+			return nil
+		}
+	}
+	return output.ErrWithHint(output.ExitAPI, "validation",
+		"--path 目录下缺少 index.html",
+		"妙搭以根目录的 index.html 作为应用入口；请把首页文件命名为 index.html 并放在 --path 的根目录下")
+}
+
 func runHTMLPublish(ctx context.Context, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
 	candidates, err := walkHTMLPublishCandidates(spec.Path)
 	if err != nil {
 		return nil, fmt.Errorf("scan --path %s: %w", spec.Path, err)
+	}
+	if err := ensureIndexHTMLForDir(spec.Path, candidates); err != nil {
+		return nil, err
 	}
 	tarball, err := buildHTMLPublishTarball(candidates)
 	if err != nil {

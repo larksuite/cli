@@ -92,6 +92,63 @@ func TestRunHTMLPublish_PathNotFound(t *testing.T) {
 	}
 }
 
+func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
+	// 目录形态：缺 index.html 应该被拦
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "foo.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fake := &fakeAppsHTMLPublishClient{}
+	_, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	if err == nil {
+		t.Fatalf("expected error for missing index.html")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError with detail, got %v", err)
+	}
+	if exitErr.Detail.Type != "validation" {
+		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "index.html") {
+		t.Fatalf("message missing 'index.html': %v", exitErr.Detail.Message)
+	}
+	if exitErr.Detail.Hint == "" {
+		t.Fatalf("expected non-empty hint")
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("client should not be called when index.html missing")
+	}
+}
+
+func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
+	// 目录含 index.html 应该正常走完
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "extra.html"), []byte("<html></html>"), 0o644)
+	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
+	if _, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if len(fake.calls) != 1 {
+		t.Fatalf("client should be called when index.html present")
+	}
+}
+
+func TestRunHTMLPublish_SingleFileSkipsIndexCheck(t *testing.T) {
+	// 单文件形态：即使文件名不是 index.html 也允许（用户已明示入口）
+	dir := t.TempDir()
+	single := filepath.Join(dir, "foo.html")
+	_ = os.WriteFile(single, []byte("<html></html>"), 0o644)
+	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
+	if _, err := runHTMLPublish(context.Background(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single}); err != nil {
+		t.Fatalf("single-file case should not require index.html, got err=%v", err)
+	}
+	if len(fake.calls) != 1 {
+		t.Fatalf("client should be called for single-file path")
+	}
+}
+
 func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 	// 临时把上限调到 100 字节验证拦截，恢复原值避免污染其它测试。
 	orig := maxHTMLPublishTarballBytes
@@ -99,7 +156,10 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 	defer func() { maxHTMLPublishTarballBytes = orig }()
 
 	dir := t.TempDir()
-	// 写约 4KB 内容，远超 100 字节上限。
+	// 写 index.html（满足新加的 index 校验）+ 大文件超 100 字节上限。
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "big.html"),
 		[]byte(strings.Repeat("x", 4096)), 0o644); err != nil {
 		t.Fatalf("write: %v", err)

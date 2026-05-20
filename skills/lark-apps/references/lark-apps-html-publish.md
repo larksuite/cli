@@ -22,7 +22,7 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist --dry-run
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `--app-id <id>` | ✅ | 应用 ID（从 `apps +create` 或 `apps +list` 拿） |
-| `--path <path>` | ✅ | 本地文件或目录路径；目录会递归打包成 tar.gz |
+| `--path <path>` | ✅ | 本地文件或目录路径；目录会递归打包成 tar.gz。**目录形态时根目录必须含 `index.html`**（妙搭以它作为应用入口）；单文件形态时文件名无强制要求 |
 
 ## 返回值
 
