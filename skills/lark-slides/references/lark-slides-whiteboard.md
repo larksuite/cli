@@ -1,6 +1,6 @@
 # Whiteboard 画板元素
 
-`<whiteboard>` 放在 `<data>` 内，内部可放 **SVG** 或 **Mermaid**，用于绘制流程图、时序图、架构图、散点图、漏斗图、装饰图案等 `<chart>` 和 `<shape>` 难以覆盖的视觉内容。
+`<whiteboard>` 放在 `<data>` 内，内部可放 **SVG** 或 **Mermaid**，用于绘制流程图、时序图、架构图、散点图、漏斗图、自定义图标、装饰图案等 `<chart>` 和 `<shape>` 难以覆盖的视觉内容。
 
 > 前置条件：使用本文档前先阅读 [lark-slides SKILL.md](../SKILL.md)。
 
@@ -15,6 +15,7 @@
 | 有结构化数据序列的柱/条/折线/面积/雷达/饼/组合图 | `<chart>` — 原生渲染，支持 legend / tooltip / 系列配色 |
 | 散点图、漏斗图（`<chart>` 不支持） | `<whiteboard>` SVG |
 | 流程图、时序图、架构图、类图、ER 图等拓扑图 | `<whiteboard>` Mermaid 或 SVG |
+| 自定义图标、徽标、示意性图形（需要 path/polygon 精确控制） | `<whiteboard>` SVG |
 | 进度条、波浪背景、装饰图案、像素级自定义可视化 | `<whiteboard>` SVG |
 
 > 适合 `<chart>` 的内容就用 `<chart>`，不要用 SVG 手绘——原生渲染更省力且质量更高。
