@@ -171,3 +171,16 @@ func TestAppsAccessScopeSet_PublicRequiresExplicitRequireLogin(t *testing.T) {
 		t.Fatalf("expected --require-login required for public, got %v", err)
 	}
 }
+
+func TestAppsAccessScopeSet_SpecificRejectsEmptyTargets(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "specific",
+		"--targets", "[]",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--targets must contain at least one entry") {
+		t.Fatalf("expected empty --targets rejected, got %v", err)
+	}
+}

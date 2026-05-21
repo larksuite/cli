@@ -117,6 +117,9 @@ func validateTargetsJSON(targetsJSON string) error {
 	if err := json.Unmarshal([]byte(targetsJSON), &items); err != nil {
 		return output.ErrValidation("--targets is not valid JSON: %v", err)
 	}
+	if len(items) == 0 {
+		return output.ErrValidation("--targets must contain at least one entry; specific scope requires concrete user/department/chat ids")
+	}
 	for i, t := range items {
 		typ, _ := t["type"].(string)
 		if !allowedAccessTargetTypes[typ] {
