@@ -1,5 +1,11 @@
 # apps +list
 
+> **⚠️ Hidden 命令（`Hidden: true`）—— 不对 Agent 暴露**：本命令从 `--help` / tab completion / SKILL.md 的 Shortcuts 表中隐去，**Agent 不应主动调用**。
+>
+> 需要拿现有应用的 `app_id` 时让用户提供 **妙搭应用链接**（如 `https://miaoda.feishu.cn/app/app_xxxxxxxxxxxxx`）然后从 URL 中提取，或者让用户直接给 `app_id` 字符串。详见 [`../SKILL.md`](../SKILL.md) "用户没给 app_id" 一节。
+>
+> 本文件保留是因为命令仍然功能可用（手动调用），下面内容仅供人类参考。
+
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
 
 列出当前用户名下的妙搭应用。**cursor 分页**：默认拉一页（`--page-size 20`），通过 `--page-token` 拉下一页。

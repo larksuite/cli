@@ -96,7 +96,7 @@ lark-cli apps +access-scope-get --app-id app_src -q '
 | 场景 | 命令 |
 |---|---|
 | 设置可用范围 | `apps +access-scope-set` |
-| 拿 app_id | `apps +list` |
+| 拿 app_id | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
 
 ## 参考
 

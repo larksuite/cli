@@ -4,7 +4,7 @@ description: "飞书妙搭应用（lark-cli apps）：把本地 HTML 文件或�
 metadata:
   requires:
     bins: ["lark-cli"]
-  cliHelp: "lark-cli apps --help; lark-cli apps +create --help; lark-cli apps +html-publish --help; lark-cli apps +access-scope-set --help"
+  cliHelp: "lark-cli apps --help; lark-cli apps +create --help; lark-cli apps +html-publish --help; lark-cli apps +access-scope-set --help; lark-cli apps +update --help"
 ---
 
 # apps (v1)
@@ -12,7 +12,6 @@ metadata:
 ```bash
 # 常用示例
 lark-cli apps +create           --name "客户调研问卷" --app-type HTML
-lark-cli apps +list             --page-size 50
 lark-cli apps +html-publish     --app-id app_xxx --path ./dist
 lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 ```
@@ -23,9 +22,8 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 1. [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) — 认证、权限处理、全局参数（所有操作通用）
 2. **创建应用（`apps +create`）** → 必读 [`lark-apps-create.md`](references/lark-apps-create.md)
 3. **更新应用元信息（`apps +update`）** → 必读 [`lark-apps-update.md`](references/lark-apps-update.md)（部分更新，未传字段不变）
-4. **列出应用 / 反查 app_id（`apps +list`）** → 必读 [`lark-apps-list.md`](references/lark-apps-list.md)（cursor 分页、`-q` 按 name 提取 app_id）
-5. **发布 HTML / PPT / 静态网站（`apps +html-publish`）** → 必读 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)（`--path` 文件 vs 目录、tar.gz 打包不做过滤）
-6. **设置可用范围（`apps +access-scope-set`）** → 必读 [`lark-apps-access-scope-set.md`](references/lark-apps-access-scope-set.md)（specific / public / tenant 三态互斥校验、targets JSON 结构）
+4. **发布 HTML / PPT / 静态网站（`apps +html-publish`）** → 必读 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)（`--path` 文件 vs 目录、tar.gz 打包不做过滤）
+5. **设置可用范围（`apps +access-scope-set`）** → 必读 [`lark-apps-access-scope-set.md`](references/lark-apps-access-scope-set.md)（specific / public / tenant 三态互斥校验、targets JSON 结构）
 
 **未读完以上文件就执行相应操作会导致参数选择错误、互斥违反或文件被错误打包。**
 
@@ -42,7 +40,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 
 | 步骤 | 命令 | 说明 |
 |------|------|------|
-| 1. 新建应用 | `apps +create --name "<根据内容主题起的应用名>" --app-type HTML` → 从响应里拿 `app_id` | 默认都走新建，**不要先 `+list` 找复用**（除非用户明确说"用我现有的应用 X"）；`--app-type` 必填，当前只支持 `HTML`（区分大小写），未来扩展 |
+| 1. 新建应用 | `apps +create --name "<根据内容主题起的应用名>" --app-type HTML` → 从响应里拿 `app_id` | 默认都走新建（**不要尝试搜索 / 枚举已有应用**）。用户明确要复用现有应用时让他提供 **妙搭应用链接** 或 **app_id 字符串**（详见下方"快速决策"）；`--app-type` 必填，当前只支持 `HTML`（区分大小写），未来扩展 |
 | 2. 发布 HTML | `apps +html-publish --app-id <id> --path <文件或目录>` | 必走 |
 | 3. 设置可用范围（可选） | `apps +access-scope-set --app-id <id> --scope tenant\|public\|specific ...` | 用户说"公开 / 全员可见 / 让 Alice 看 / 互联网可分享"等 |
 
@@ -59,7 +57,9 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 - 用户说"把应用 X 开放给全员 / 全公司" → `--scope tenant`，不要再传别的 flag
 - 用户说"公开 / 让任何人都能访问 / 互联网可见" → `--scope public --require-login=<bool>`，二选一
 - 用户说"只让 Alice / 某部门 / 某群访问" → `--scope specific --targets <JSON>`；姓名先用 `contact +search-user` 换 `ou_id`，群名先用 `im +chat-search` 换 `chat_id`
-- 用户没给 app_id → **默认 `apps +create --name "<根据内容主题起的名字>" --app-type HTML` 新建一个**，不要去 `+list` 翻库找复用；仅当用户明确说"用我现有的应用 X / 部署到 app_xxx"时才走 `apps +list -q '.data.items[] | select(.name=="X") | .app_id'` 反查（第一页没命中且 `has_more=true` 用 `--page-token` 翻页继续找）
+- 用户没给 app_id → **默认 `apps +create --name "<根据内容主题起的名字>" --app-type HTML` 新建一个**。**不要尝试搜索 / 枚举已有应用** —— 列举应用的命令对 Agent 不可见，强行调用也只会浪费一次 OAPI 请求。如果用户明确要复用现有应用，**让他提供下列任一种**：
+  - **妙搭应用链接**：形如 `https://miaoda.feishu.cn/app/app_xxxxxxxxxxxxx`（或带尾斜杠 `/app/app_xxx/`）—— `app_id` 是 `/app/` 后面的 path segment（以 `app_` 开头）。从 URL 中提取的简单办法：`APP_ID=$(echo "$URL" | sed -E 's|.*/app/([^/?#]+).*|\1|')`
+  - **app_id 字符串**：用户直接给的 `app_xxxxxxxxxxxxx`，不需要再做处理
 - `--path` 既可传单个 HTML 文件也可传目录；目录会**递归打包成 tar.gz 不做过滤**，要提醒用户传干净的产物目录（如 `./dist`），避免把 `.git` / `node_modules` 一起打进去
 - `apps +update` 只更新传入字段，未传字段保持不变；`--name` / `--description` 至少传一个，否则 Validate 阶段直接拦截
 - `apps +access-scope-set` 三种 scope **互斥**：specific 必传 `--targets`、不允许 `--require-login`；public 必传 `--require-login`、不允许 `--targets` / `--apply-enabled` / `--approver`；tenant 不允许任何其他 flag
@@ -73,6 +73,5 @@ Shortcut 是对常用操作的高级封装（`lark-cli apps +<verb> [flags]`）�
 |----------|------|
 | [`+create`](references/lark-apps-create.md) | 创建妙搭应用（name / description / icon-url） |
 | [`+update`](references/lark-apps-update.md) | 部分更新应用名 / 描述（只发传入字段） |
-| [`+list`](references/lark-apps-list.md) | 列出当前用户的妙搭应用（cursor 分页，可用 `-q` 按 name 反查 app_id） |
 | [`+access-scope-set`](references/lark-apps-access-scope-set.md) | 设置应用可用范围（specific / public / tenant，三态互斥校验） |
 | [`+html-publish`](references/lark-apps-html-publish.md) | **把本地 HTML 文件 / 目录 / PPT / 静态网站部署为可分享的妙搭应用，返回访问 URL**（用户明示部署 / 分享时直接调；仅说"可演示"时先问用户是否要部署再调） |

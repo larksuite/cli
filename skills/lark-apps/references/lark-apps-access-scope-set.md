@@ -116,7 +116,7 @@ lark-cli apps +access-scope-set --app-id app_xxx \
 
 | 场景 | 命令 |
 |---|---|
-| 拿 app_id | `apps +list` |
+| 拿 app_id | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
 | 把人名转 ou_id | `lark-cli contact +search-user --query <name>` |
 | 把群名转 chat_id | `lark-cli im +chat-search --query <群名>` |
 

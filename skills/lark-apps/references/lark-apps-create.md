@@ -102,9 +102,9 @@ lark-cli apps +create --name "Q4 调研" --app-type HTML --description "..."
 
 | 场景 | 命令 |
 |---|---|
-| 查询现有应用 | `apps +list` |
 | 修改应用名 / 描述 | `apps +update` |
 | 发布 HTML | `apps +html-publish` |
+| 拿现有应用 ID | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
 
 ## 参考
 

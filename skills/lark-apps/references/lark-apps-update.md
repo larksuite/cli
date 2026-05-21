@@ -77,7 +77,7 @@ Validate 直接拦截，提示用户加 flag。
 
 | 场景 | 命令 |
 |---|---|
-| 找 app_id | `apps +list` |
+| 找 app_id | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
 | 创建新应用 | `apps +create` |
 
 ## 参考

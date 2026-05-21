@@ -21,7 +21,7 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist --dry-run
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `--app-id <id>` | ✅ | 应用 ID（从 `apps +create` 或 `apps +list` 拿） |
+| `--app-id <id>` | ✅ | 应用 ID。从 `apps +create` 响应里拿；或者从用户给的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取（详见 `../SKILL.md` "用户没给 app_id" 一节） |
 | `--path <path>` | ✅ | 本地文件或目录路径；目录会递归打包成 tar.gz。**必须含 `index.html`**：目录形态时根目录下，单文件形态时文件名必须就是 `index.html`（妙搭统一以 `index.html` 作为应用入口） |
 
 ## 返回值
@@ -110,7 +110,7 @@ lark-cli apps +html-publish --app-id "$APP" --path ./dist
 
 ### 场景 4：应用不存在（code=90002）
 
-> hint："应用不存在或无权访问；用 `lark-cli apps +list` 确认 app_id"
+> hint："应用不存在或无权访问；请用户确认妙搭应用链接 / app_id 是否正确（从 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面取）"
 
 转述给用户。
 
