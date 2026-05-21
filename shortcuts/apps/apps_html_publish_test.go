@@ -279,6 +279,40 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 	}
 }
 
+func TestRunHTMLPublish_RejectsOversizeRawCandidates(t *testing.T) {
+	orig := maxHTMLPublishRawBytes
+	maxHTMLPublishRawBytes = 100
+	defer func() { maxHTMLPublishRawBytes = orig }()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "big.html"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	fake := &fakeAppsHTMLPublishClient{}
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake,
+		appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	if err == nil {
+		t.Fatalf("expected raw-size cap to fire")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError with detail, got %v", err)
+	}
+	if exitErr.Detail.Type != "validation" {
+		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "raw") || !strings.Contains(exitErr.Detail.Message, "bytes") {
+		t.Fatalf("expected message to explain raw-byte cap, got %q", exitErr.Detail.Message)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("client must not be called when raw cap hit")
+	}
+}
+
 func TestRunHTMLPublish_RejectsCurrentDirectoryPath(t *testing.T) {
 	// Publishing the entire current working directory is the canonical
 	// secrets-exfiltration footgun (.git/.env/node_modules all end up in the

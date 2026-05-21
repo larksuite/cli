@@ -114,6 +114,15 @@ type appsHTMLPublishSpec struct {
 // 用 var 而非 const，便于单测调小覆盖拦截路径。
 var maxHTMLPublishTarballBytes int64 = 20 * 1024 * 1024
 
+// maxHTMLPublishRawBytes caps the total UNCOMPRESSED candidate size before
+// tar+gzip writes them into the in-memory buffer. Defends against
+// highly-compressible "decompression bomb" inputs (e.g. 50GB of zeros)
+// that would balloon process memory before the gzip-after check fires.
+// 200MB is much higher than any plausible legitimate HTML/static-site
+// payload but low enough to stay well under typical container memory.
+// Mutable for tests.
+var maxHTMLPublishRawBytes int64 = 200 * 1024 * 1024
+
 // ensureIndexHTML 要求 walker 抓到的 candidates 里必须含 index.html。
 // 目录形态：根目录下必须有 index.html。
 // 单文件形态：文件名必须就是 index.html。
@@ -143,6 +152,15 @@ func runHTMLPublish(ctx context.Context, fio fileio.FileIO, client appsHTMLPubli
 	}
 	if err := ensureIndexHTML(candidates); err != nil {
 		return nil, err
+	}
+	var rawTotal int64
+	for _, c := range candidates {
+		rawTotal += c.Size
+	}
+	if rawTotal > maxHTMLPublishRawBytes {
+		return nil, output.ErrWithHint(output.ExitAPI, "validation",
+			fmt.Sprintf("--path total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)", rawTotal, maxHTMLPublishRawBytes),
+			"在 tar+gzip 进入内存前拦截，避免 OOM；精简 --path 内容或选择更小的子目录")
 	}
 	tarball, err := buildHTMLPublishTarball(fio, candidates)
 	if err != nil {
