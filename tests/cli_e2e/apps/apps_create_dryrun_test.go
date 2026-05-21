@@ -16,8 +16,8 @@ import (
 )
 
 // TestAppsCreateDryRun pins the request shape and Validate behavior for
-// `apps +create`. The shortcut is UAT-only and currently posts to the BOE
-// /spark/v1 namespace; both are checked here.
+// `apps +create`. The shortcut is UAT-only and posts to the registered
+// /open-apis/spark/v1 namespace; both are checked here.
 func TestAppsCreateDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 

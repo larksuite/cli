@@ -19,7 +19,7 @@ var AppsCreate = common.Shortcut{
 	Command:     "+create",
 	Description: "Create a new Miaoda app",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"}, // 对齐 BOE 后端 scope 命名 (spark 命名空间)
+	Scopes:      []string{"spark:app:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{

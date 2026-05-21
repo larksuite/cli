@@ -21,7 +21,7 @@ var AppsHTMLPublish = common.Shortcut{
 	Command:     "+html-publish",
 	Description: "Publish HTML to a Miaoda app (single multipart POST returns the access URL)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:publish"}, // 对齐 BOE 后端 scope 命名 (spark 命名空间)
+	Scopes:      []string{"spark:app:publish"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{

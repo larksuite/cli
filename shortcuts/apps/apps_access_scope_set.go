@@ -27,7 +27,7 @@ var AppsAccessScopeSet = common.Shortcut{
 	Command:     "+access-scope-set",
 	Description: "Set Miaoda app access scope (specific / public / tenant)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app.access_scope:write"}, // 对齐 BOE 后端 scope 命名 (spark 命名空间)
+	Scopes:      []string{"spark:app.access_scope:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
@@ -99,8 +99,6 @@ func validateAccessScopeFlags(rctx *common.RuntimeContext) error {
 		if approver != "" {
 			return output.ErrValidation("--approver is not allowed when --scope=public")
 		}
-		// H3 待对齐: bare --scope public without --require-login is currently accepted (sends require_login=false).
-		// Concept design §5.1 says require-login should be required; revisit after BOE verification.
 	case "tenant":
 		if targets != "" || applyEnabled || approver != "" || requireLogin {
 			return output.ErrValidation("no extra flags allowed when --scope=tenant")
