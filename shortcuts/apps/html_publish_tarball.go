@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
 )
@@ -59,6 +60,15 @@ func buildHTMLPublishTarball(fio fileio.FileIO, candidates []htmlPublishCandidat
 }
 
 func writeHTMLPublishTarEntry(fio fileio.FileIO, tw *tar.Writer, c htmlPublishCandidate) error {
+	if strings.HasPrefix(c.RelPath, "/") ||
+		c.RelPath == ".." ||
+		strings.HasPrefix(c.RelPath, "../") ||
+		strings.Contains(c.RelPath, "/../") ||
+		strings.HasSuffix(c.RelPath, "/..") ||
+		strings.ContainsRune(c.RelPath, 0) {
+		return fmt.Errorf("invalid tar entry name %q", c.RelPath)
+	}
+
 	src, err := fio.Open(c.AbsPath)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", c.AbsPath, err)

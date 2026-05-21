@@ -161,3 +161,33 @@ func TestBuildHTMLPublishTarball_EntryWriteFailureReturnsError(t *testing.T) {
 		t.Fatalf("expected nil tarball on error, got %+v", tarball)
 	}
 }
+
+func TestWriteHTMLPublishTarEntry_RejectsPathTraversal(t *testing.T) {
+	tw := tar.NewWriter(io.Discard)
+	defer tw.Close()
+
+	cases := []struct {
+		name string
+		rel  string
+	}{
+		{"parent traversal", "../etc/passwd"},
+		{"absolute path", "/etc/passwd"},
+		{"embedded traversal", "a/../../etc/passwd"},
+		{"null byte", "evil\x00.html"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := writeHTMLPublishTarEntry(newTestFIO(), tw, htmlPublishCandidate{
+				RelPath: c.rel,
+				AbsPath: "fixtures/whatever",
+				Size:    0,
+			})
+			if err == nil {
+				t.Fatalf("expected error for RelPath=%q", c.rel)
+			}
+			if !strings.Contains(err.Error(), "invalid tar entry name") {
+				t.Fatalf("expected 'invalid tar entry name' error, got %v", err)
+			}
+		})
+	}
+}
