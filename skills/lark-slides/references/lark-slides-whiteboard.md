@@ -2,17 +2,22 @@
 
 `<whiteboard>` 放在 `<data>` 内，内部可放 **SVG** 或 **Mermaid** 图表，用于绘制数据图表、流程图、时序图、架构图及装饰性图案等 `<shape>` / `<line>` 难以覆盖的视觉内容。
 
+> 前置条件：使用本文档前先阅读 [lark-slides SKILL.md](../SKILL.md)。
+
 ---
 
-## ⚠️ 设计品质要求（必读）
+## whiteboard 公共属性
 
-在 slide 里嵌入 `<whiteboard>` 的目的是**提升视觉质量**，不是把数字堆进去。
+| 属性 | 必需 | 说明 |
+|------|------|------|
+| `topLeftX` | 是 | 左上角 X 坐标（slide 坐标系，slide 默认宽 960） |
+| `topLeftY` | 是 | 左上角 Y 坐标（slide 坐标系，slide 默认高 540） |
+| `width` | 是 | 画板宽度（像素） |
+| `height` | 是 | 画板高度（像素） |
 
-- **不要只用矩形加文字应付**：通篇纯白底色 + 方块 + 黑字等于白做，这是不及格输出
-- **数据图表必须有坐标系**：坐标轴、网格线、数值标注缺一不可，不要只画柱子或点
-- **字号必须有层级**：标题 ≠ 标签 ≠ 数值，混用同一字号会消灭视觉焦点
-- **配色要与 slide 主题呼应**：深色 slide 背景下图表用透明底或深色卡片；浅色背景下避免再加纯白底块
-- **每个 whiteboard 都是设计机会**：主动用圆角、半透明填充、折线面积、点装饰等细节拉开与默认模板的差距
+> SVG 模式需在 `<svg>` 上设置 `width`、`height`、`viewBox`、`xmlns`；`width`/`height` 通常与 whiteboard 相同，但可以不同——`viewBox` 控制内容坐标系，SVG 会自动缩放以适应 whiteboard 区域。Mermaid 模式不需要额外属性。
+
+SVG 内的坐标相对于 whiteboard 自身左上角（0,0），与 slide 坐标系无关。
 
 ---
 
@@ -50,6 +55,16 @@
 
 ## 模式一：SVG
 
+### ⚠️ 设计品质要求
+
+在 slide 里嵌入 `<whiteboard>` 的目的是**提升视觉质量**，不是把数字堆进去。
+
+- **不要只用矩形加文字应付**：通篇纯白底色 + 方块 + 黑字等于白做，这是不及格输出
+- **数据图表必须有坐标系**：坐标轴、网格线、数值标注缺一不可，不要只画柱子或点
+- **字号必须有层级**：标题 ≠ 标签 ≠ 数值，混用同一字号会消灭视觉焦点
+- **配色要与 slide 主题呼应**：深色 slide 背景下图表用透明底或深色卡片；浅色背景下避免再加纯白底块
+- **每个 whiteboard 都是设计机会**：主动用圆角、半透明填充、折线面积、点装饰等细节拉开与默认模板的差距
+
 ### 语法
 
 ```xml
@@ -83,9 +98,43 @@
 **虚线：** `stroke-dasharray="4,4"` 用于网格线 / 坐标轴。  
 **变换：** `transform="translate(x,y)"` / `rotate(deg cx cy)` / `scale(n)` 均支持。
 
+---
+### 元素计算
+
+SVG 中只要涉及批量定位、等间距排布或数据映射，**建议额外运行一个 Python 脚本把坐标算出来再填入 SVG**，而不是手动估值。适用范围不限于数据图表——装饰性点阵、等间距圆、重复图案同样适用。
+
+> **主动去算**：写 SVG 之前先运行脚本，把输出当注释贴在 `<svg>` 开头，再照着填坐标。估值几乎每次都需要反复调整，跳过这步反而更慢。
+
+**数据图表（柱状图范式）**
+
+```python
+W, H = 360, 260
+origin_x, origin_y = 50, 216  # 左下角，SVG Y 轴向下
+cw, ch = 290, 184
+
+data, y_max = [120, 160, 90], 200
+bar_w = int(cw / len(data) * 0.62)
+for i, v in enumerate(data):
+    cx = round(origin_x + (i + 0.5) * cw / len(data))
+    y  = round(origin_y - v / y_max * ch)
+    print(f"bar-{i}: x={cx - bar_w//2} y={y} w={bar_w} h={round(origin_y - y)}")
+```
+
+折线图：`x = origin_x + i/(n-1)*cw`，`y = origin_y - (v-y_min)/(y_max-y_min)*ch`。
+
+**装饰性元素（等间距范式）**
+
+```python
+n, total_w, cy, r = 8, 340, 40, 4
+step = total_w / (n - 1)
+for i in range(n):
+    print(f"circle-{i}: cx={round(i * step)} cy={cy} r={r}")
+```
+
+---
 ### 布局模式
 
-**全屏装饰层（置于 shape 之前 → 在下层）**
+**全屏装饰层（必须放在所有 shape 之前，否则会遮挡文字内容）**
 ```xml
 <whiteboard width="960" height="540" topLeftX="0" topLeftY="0">
   <svg width="960" height="540" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
@@ -132,32 +181,6 @@
 
 ---
 
-### 坐标计算
-
-含数据映射的图表（柱状图、折线图等），坐标值用脚本计算后再填入 SVG，**禁止直接拍像素**。
-
-```js
-// node calc_coords.js  ← 运行后把输出粘贴到 SVG 注释，再写元素
-const W = 360, H = 260
-// 自行决定图表区域起点和尺寸（为轴标签、标题留出空间）
-const originX = 50, originY = 216   // 图表左下角
-const cW = 290, cH = 184            // 图表宽高
-
-const data = [120, 160, 90], yMax = 200
-const svgY = v => originY - (v / yMax) * cH
-const barW = Math.floor(cW / data.length * 0.62)
-
-data.forEach((v, i) => {
-  const cx = Math.round(originX + (i + 0.5) * cW / data.length)
-  const y  = Math.round(svgY(v))
-  const h  = Math.round(svgY(0) - y)
-  console.log(`bar-${i}(${v}): x=${cx - barW/2 | 0} y=${y} w=${barW} h=${h}`)
-})
-```
-
-折线图点坐标：`svgX(i) = originX + i/(n-1)*cW`，`svgY(v) = originY - (v-yMin)/(yMax-yMin)*cH`。
-
----
 
 ## 模式二：Mermaid
 
@@ -197,64 +220,6 @@ data.forEach((v, i) => {
 | 思维导图 | `mindmap` | 主题梳理、知识架构 |
 | 用户旅程 | `journey` | 用户体验路径 |
 
-### 常用 Mermaid 示例
-
-**从左到右的流程图**
-```mermaid
-flowchart LR
-    A[开始] --> B{判断条件}
-    B -- 是 --> C[执行操作]
-    B -- 否 --> D[跳过]
-    C --> E[结束]
-    D --> E
-```
-
-**时序图**
-```mermaid
-sequenceDiagram
-    participant 用户
-    participant 前端
-    participant 后端
-    用户->>前端: 提交表单
-    前端->>后端: POST /api/submit
-    后端-->>前端: 返回结果
-    前端-->>用户: 显示成功
-```
-
-**饼图**
-```mermaid
-pie title 用户来源分布
-    "直接访问" : 42
-    "搜索引擎" : 28
-    "社交媒体" : 18
-    "其他" : 12
-```
-
-**甘特图**
-```mermaid
-gantt
-    title 项目计划
-    dateFormat YYYY-MM-DD
-    section 设计
-    需求分析 :a1, 2024-01-01, 7d
-    UI设计   :a2, after a1, 10d
-    section 开发
-    前端开发 :b1, after a2, 14d
-    后端开发 :b2, after a2, 14d
-```
-
-**思维导图**
-```mermaid
-mindmap
-  root((核心主题))
-    子主题A
-      细节1
-      细节2
-    子主题B
-      细节3
-    子主题C
-```
-
 ### Mermaid 布局建议
 
 Mermaid 图表会自动撑满 whiteboard 区域。建议：
@@ -272,19 +237,6 @@ Mermaid 图表会自动撑满 whiteboard 区域。建议：
 
 ---
 
-## whiteboard 公共属性
-
-| 属性 | 必需 | 说明 |
-|------|------|------|
-| `topLeftX` | 是 | 左上角 X 坐标（slide 坐标系，slide 默认宽 960） |
-| `topLeftY` | 是 | 左上角 Y 坐标（slide 坐标系，slide 默认高 540） |
-| `width` | 是 | 画板宽度（像素） |
-| `height` | 是 | 画板高度（像素） |
-
-> SVG 模式需在 `<svg>` 上设置 `width`、`height`、`viewBox`、`xmlns`；`width`/`height` 通常与 whiteboard 相同，但可以不同——`viewBox` 控制内容坐标系，SVG 会自动缩放以适应 whiteboard 区域。Mermaid 模式不需要额外属性。
-
----
-
 ## 注意事项 & 已知问题
 
 ### z-order（SVG 模式）
@@ -294,10 +246,6 @@ whiteboard 在 XML 中的位置决定渲染层级：在 shape 前 → 在下层�
 ### Mermaid CDATA 必要性
 
 Mermaid 语法包含 `[`、`>`、`-->`，不用 CDATA 直接写会破坏 XML 解析。始终使用 `<![CDATA[ ... ]]>`。
-
-### 坐标系独立
-
-SVG 内的坐标相对于 whiteboard 自身左上角（0,0），不是 slide 的坐标系。
 
 ---
 
@@ -326,3 +274,9 @@ SVG 内的坐标相对于 whiteboard 自身左上角（0,0），不是 slide 的
 **通用：**
 - [ ] XML 标签全部闭合，属性引号完整
 - [ ] 如果失败，检查是否是偶发 5001000，重试一次
+
+---
+
+## 参考
+
+- [lark-slides SKILL.md](../SKILL.md)

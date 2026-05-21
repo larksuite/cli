@@ -19,7 +19,7 @@ metadata:
 | 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `slides +replace-slide`、`lark-slides-replace-slide.md` |
 | 读取或分析已有 PPT | 解析 slides/wiki token，回读全文或单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `xml_presentations.get`、`xml_presentation.slide.get` |
 | 上传或使用图片 | 先上传为 `file_token`，禁止直接写 http(s) 外链 | `slides +media-upload`，或 `+create --slides` 的 `@./path` 占位符 |
-| 在 slide 中绘制图表、流程图、时序图、架构图或装饰图案 | 用 `<whiteboard>` 元素；SVG 或 Mermaid 的选择取决于图表类型和当前模型身份，详见参考文档 | [`lark-slides-whiteboard.md`](references/lark-slides-whiteboard.md) |
+| 在 slide 中绘制图表、流程图、时序图、架构图或装饰图案 | 必须先用 Read 工具读取参考文档，按文档指引选择 SVG 或 Mermaid 路径，再生成 `<whiteboard>` 元素 | [`lark-slides-whiteboard.md`](references/lark-slides-whiteboard.md) |
 | 用户提到模板、主题、版式 | 先检索模板，再摘要，必要时裁切骨架 | `template_tool.py search → summarize → extract` |
 | 创建失败、空白页、3350001、布局异常 | 先回读状态，再按排障清单修复，不假设原操作原子成功 | `troubleshooting.md`、`validation-checklist.md` |
 
