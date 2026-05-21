@@ -45,18 +45,25 @@ var AppsAccessScopeSet = common.Shortcut{
 		return validateAccessScopeFlags(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		body, _ := buildAccessScopeBody(rctx)
-		return common.NewDryRunAPI().
-			PUT(fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(rctx.Str("app-id")))).
-			Desc("Set Miaoda app access scope").
-			Body(body)
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		dry := common.NewDryRunAPI().
+			PUT(fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))).
+			Desc("Set Miaoda app access scope")
+		body, bodyErr := buildAccessScopeBody(rctx)
+		if bodyErr != nil {
+			dry.Set("body_error", bodyErr.Error())
+		} else {
+			dry.Body(body)
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		body, err := buildAccessScopeBody(rctx)
 		if err != nil {
 			return err
 		}
-		path := fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(rctx.Str("app-id")))
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		path := fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPI("PUT", path, nil, body)
 		if err != nil {
 			return err

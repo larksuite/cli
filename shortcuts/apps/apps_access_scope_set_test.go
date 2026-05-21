@@ -184,3 +184,20 @@ func TestAppsAccessScopeSet_SpecificRejectsEmptyTargets(t *testing.T) {
 		t.Fatalf("expected empty --targets rejected, got %v", err)
 	}
 }
+
+func TestAppsAccessScopeSet_TrimsAppIDInPath(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	})
+
+	if err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "  app_x  ",
+		"--scope", "tenant",
+		"--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}
