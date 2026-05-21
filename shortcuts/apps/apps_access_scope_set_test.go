@@ -156,3 +156,18 @@ func TestAppsAccessScopeSet_PublicRejectsApprover(t *testing.T) {
 		t.Fatalf("expected --approver rejected for scope=public, got %v", err)
 	}
 }
+
+func TestAppsAccessScopeSet_PublicRequiresExplicitRequireLogin(t *testing.T) {
+	// bare --scope public without --require-login defaults silently to
+	// require_login=false (Internet-public + no auth). Reject so the caller
+	// has to make an explicit choice; matches SKILL.md "public 必传 --require-login".
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "public",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--require-login is required when --scope=public") {
+		t.Fatalf("expected --require-login required for public, got %v", err)
+	}
+}

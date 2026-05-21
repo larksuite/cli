@@ -99,6 +99,9 @@ func validateAccessScopeFlags(rctx *common.RuntimeContext) error {
 		if approver != "" {
 			return output.ErrValidation("--approver is not allowed when --scope=public")
 		}
+		if !rctx.Cmd.Flags().Changed("require-login") {
+			return output.ErrValidation("--require-login is required when --scope=public (pass true or false explicitly; do not rely on the default)")
+		}
 	case "tenant":
 		if targets != "" || applyEnabled || approver != "" || requireLogin {
 			return output.ErrValidation("no extra flags allowed when --scope=tenant")
