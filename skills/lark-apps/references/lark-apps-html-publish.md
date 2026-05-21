@@ -120,6 +120,7 @@ lark-cli apps +html-publish --app-id "$APP" --path ./dist
 
 ## 提示
 
+- `--path` **不能等于 cwd**（`.` 或 cwd 等价写法均拒）。原因：递归打包 + 互联网公开的组合下，cwd 根的项目级文件（`.git/` / `.env` / `node_modules` / `.aws/credentials`）会被一并打包并通过 share URL 公开访问。强制指定具体子目录或文件，如 `./dist` / `./public/` / `./index.html`
 - `--path` **必须**是 cwd 内的相对路径（如 `./dist`、`./index.html`）；绝对路径或越界路径（`../`、`/Users/...`）CLI 会直接拒绝。需要发布 cwd 外的目录时，先切到 agent 工作目录再调，**不要**私自 `cd` 绕过
 - 目录打包成 tar.gz 时**不做过滤**（`.git` / `node_modules` 等会一并打包），让用户传干净的产物目录（如 `./dist`）
 - **不要**原样把 envelope JSON 转述给用户

@@ -30,8 +30,9 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 
 	t.Run("Directory_ReportsManifest", func(t *testing.T) {
 		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html><body>hi</body></html>"), 0o644))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "logo.svg"), []byte("<svg/>"), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html><body>hi</body></html>"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "logo.svg"), []byte("<svg/>"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
@@ -40,7 +41,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", ".",
+				"--path", "./dist",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -90,10 +91,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		// Walker MUST NOT silently filter .git / .DS_Store — that's an explicit
 		// design decision so users pass clean ./dist trees, not source repos.
 		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html/>"), 0o644))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, ".DS_Store"), []byte("noise"), 0o644))
-		require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html/>"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", ".DS_Store"), []byte("noise"), 0o644))
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "dist", ".git"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
@@ -102,7 +104,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", ".",
+				"--path", "./dist",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -119,6 +121,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		// without erroring. The index.html / no-files check fires in Execute,
 		// after the tarball stage — out of dry-run's scope.
 		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
 
@@ -126,7 +129,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", ".",
+				"--path", "./dist",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -142,7 +145,8 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		// Same as EmptyDir: index.html requirement is enforced in Execute, not
 		// at dry-run. Dry-run reports the manifest as-is.
 		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "page.html"), []byte("<html/>"), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "page.html"), []byte("<html/>"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
@@ -151,7 +155,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+html-publish",
 				"--app-id", "app_x",
-				"--path", ".",
+				"--path", "./dist",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -165,7 +169,8 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 
 	t.Run("RejectsMissingAppID", func(t *testing.T) {
 		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html/>"), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html/>"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
@@ -173,7 +178,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
 				"apps", "+html-publish",
-				"--path", ".",
+				"--path", "./dist",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -199,5 +204,30 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 1)
 		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "path" not set`)
+	})
+
+	t.Run("RejectsPathEqualsCWD", func(t *testing.T) {
+		// Even with valid index.html in cwd, --path "." must be rejected at
+		// Validate (so dry-run also rejects) to prevent accidental
+		// whole-project secrets exfiltration.
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html/>"), 0o644))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+html-publish",
+				"--app-id", "app_x",
+				"--path", ".",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+			WorkDir:   dir,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "当前工作目录")
 	})
 }

@@ -247,6 +247,7 @@ func TestAppsHTMLPublish_RequiresPath(t *testing.T) {
 func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 	// 这个用例走真实 shortcut → 真实 LocalFileIO（cwd-bounded）。
 	// 必须 chdir 进 tmp 用相对路径，否则 SafeInputPath 会拒绝绝对 --path。
+	// --path "." 被 Validate 拒绝，因此改为在 tmp 下建 dist 子目录并传 ./dist。
 	dir := t.TempDir()
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -256,13 +257,16 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 		t.Fatalf("chdir: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
-	if err := os.WriteFile("index.html", []byte("<html></html>"), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "dist"), 0o755); err != nil {
+		t.Fatalf("mkdir dist: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsHTMLPublish,
-		[]string{"+html-publish", "--app-id", "app_x", "--path", ".", "--dry-run", "--as", "user"},
+		[]string{"+html-publish", "--app-id", "app_x", "--path", "./dist", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -272,5 +276,29 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 	}
 	if !strings.Contains(got, "index.html") {
 		t.Fatalf("dry-run missing file list: %s", got)
+	}
+}
+
+func TestRunHTMLPublish_RejectsCurrentDirectoryPath(t *testing.T) {
+	// Publishing the entire current working directory is the canonical
+	// secrets-exfiltration footgun (.git/.env/node_modules all end up in the
+	// tarball). Reject --path "." (and Clean equivalents) at runHTMLPublish
+	// entry so any direct caller cannot accidentally trigger it. (Validate
+	// also rejects at flag layer; this is defense in depth.)
+	fake := &fakeAppsHTMLPublishClient{}
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake,
+		appsHTMLPublishSpec{AppID: "app_x", Path: "."})
+	if err == nil {
+		t.Fatalf("expected --path '.' to be rejected")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "validation" {
+		t.Fatalf("expected ExitError type=validation, got %v", err)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "当前工作目录") {
+		t.Fatalf("error message should explain cwd is forbidden, got %q", exitErr.Detail.Message)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("client must not be called when --path is cwd")
 	}
 }

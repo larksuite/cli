@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
@@ -32,8 +33,18 @@ var AppsHTMLPublish = common.Shortcut{
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
 			return output.ErrValidation("--app-id is required")
 		}
-		if strings.TrimSpace(rctx.Str("path")) == "" {
+		path := strings.TrimSpace(rctx.Str("path"))
+		if path == "" {
 			return output.ErrValidation("--path is required")
+		}
+		// Reject --path equal to the current working directory. Publishing
+		// cwd recursively packs .git/ / .env / node_modules / .aws/credentials
+		// alongside the intended HTML, and combined with --scope public puts
+		// those on an internet-reachable URL.
+		if filepath.Clean(path) == "." {
+			return output.ErrWithHint(output.ExitValidation, "validation",
+				"--path 不能指向当前工作目录（避免误把整个工程一并发布出去）",
+				"改成具体的子目录或文件，如 './dist' / './public' / './index.html'")
 		}
 		return nil
 	},
@@ -105,6 +116,13 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 }
 
 func runHTMLPublish(ctx context.Context, fio fileio.FileIO, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
+	// Defense in depth: callers reaching runHTMLPublish bypass the shortcut's
+	// Validate closure. Re-check that --path is not cwd before walking.
+	if filepath.Clean(spec.Path) == "." {
+		return nil, output.ErrWithHint(output.ExitValidation, "validation",
+			"--path 不能指向当前工作目录（避免误把整个工程一并发布出去）",
+			"改成具体的子目录或文件，如 './dist' / './public' / './index.html'")
+	}
 	candidates, err := walkHTMLPublishCandidates(fio, spec.Path)
 	if err != nil {
 		return nil, output.Errorf(output.ExitAPI, "io", "scan --path %s: %v", spec.Path, err)
