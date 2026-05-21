@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -50,10 +51,26 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 
+	// Post-execution: check server response for silent failures.
+	warnDocsCreateV2Response(runtime, data)
+
 	augmentDocsCreatePermission(runtime, data)
 	fallbackDocsCreateURLV2(runtime, data)
 	runtime.OutRaw(data, nil)
 	return nil
+}
+
+// warnDocsCreateV2Response inspects the server response for create operations
+// and emits warnings when the result indicates a silent failure — e.g. the
+// server reported "success" but created zero blocks, which typically means the
+// content format did not match --doc-format.
+func warnDocsCreateV2Response(runtime *common.RuntimeContext, data map[string]interface{}) {
+	result := common.GetString(data, "result")
+	if result == "failed" {
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"warning: server reported result=%q — the document creation failed. "+
+				"Check that --doc-format matches your content format.\n", result)
+	}
 }
 
 func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {

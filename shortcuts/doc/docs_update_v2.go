@@ -129,8 +129,45 @@ func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 
+	// Post-execution: check server response for silent failures.
+	warnDocsUpdateV2Response(runtime, data)
+
 	runtime.OutRaw(data, nil)
 	return nil
+}
+
+// warnDocsUpdateV2Response inspects the server response for update operations
+// and emits warnings when the result indicates a silent failure — e.g. the
+// server reported "success" but updated zero blocks, which typically means the
+// content format did not match --doc-format.
+func warnDocsUpdateV2Response(runtime *common.RuntimeContext, data map[string]interface{}) {
+	result := common.GetString(data, "result")
+	updatedCount := common.GetInt(data, "updated_blocks_count")
+
+	switch result {
+	case "failed":
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"warning: server reported result=%q — the update failed entirely. "+
+				"Check that --doc-format matches your content format.\n", result)
+	case "partial_success":
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"warning: server reported result=%q with updated_blocks_count=%d — "+
+				"some blocks were not updated.\n", result, updatedCount)
+	case "success":
+		if updatedCount == 0 {
+			fmt.Fprintf(runtime.IO().ErrOut,
+				"warning: server reported result=%q but updated_blocks_count=0 — "+
+					"no blocks were updated. This usually means --doc-format does not "+
+					"match the content format (e.g. Markdown content sent as XML). "+
+					"Try adding --doc-format markdown.\n", result)
+		}
+	case "":
+		// No result field — older API version or unexpected response; skip.
+	default:
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"warning: server reported unexpected result=%q with updated_blocks_count=%d\n",
+			result, updatedCount)
+	}
 }
 
 func buildUpdateBody(runtime *common.RuntimeContext) map[string]interface{} {
