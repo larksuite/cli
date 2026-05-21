@@ -87,6 +87,32 @@ func TestWalkHTMLPublishCandidates_NotFound(t *testing.T) {
 	}
 }
 
+func TestIsUnsafeRelPath(t *testing.T) {
+	cases := []struct {
+		rel  string
+		want bool
+	}{
+		{"index.html", false},
+		{"assets/logo.svg", false},
+		{"deep/nested/path/file.html", false},
+		{"archive.tar..bak", false},
+		{"version.1..2.html", false},
+		{"..config", false},
+		{"", false},
+		{"/etc/passwd", true},
+		{"..", true},
+		{"../etc/passwd", true},
+		{"a/../../etc/passwd", true},
+		{"a/..", true},
+		{"evil\x00.html", true},
+	}
+	for _, c := range cases {
+		if got := isUnsafeRelPath(c.rel); got != c.want {
+			t.Errorf("isUnsafeRelPath(%q) = %v, want %v", c.rel, got, c.want)
+		}
+	}
+}
+
 func TestWalkHTMLPublishCandidates_SymlinkSkipped(t *testing.T) {
 	// Walker 只接受 regular file —— symlink 跳过（避免 loop + out-of-root 引用，
 	// 且 fio.Open 对 symlink 行为不一致）。real.html 仍然被收，link.html 不在结果里。

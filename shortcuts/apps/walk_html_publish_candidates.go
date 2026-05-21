@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
 )
@@ -15,6 +16,21 @@ type htmlPublishCandidate struct {
 	RelPath string
 	AbsPath string
 	Size    int64
+}
+
+// isUnsafeRelPath reports whether a forward-slash relative path contains
+// anything that should never be written into a tar header or treated as
+// inside-root: leading slash (absolute), .. as a path component (start /
+// middle / end / whole), or an embedded null byte. Component-aware so it
+// does not false-positive on legitimate filenames that contain ".." as a
+// substring (e.g. "archive.tar..bak").
+func isUnsafeRelPath(rel string) bool {
+	return strings.HasPrefix(rel, "/") ||
+		rel == ".." ||
+		strings.HasPrefix(rel, "../") ||
+		strings.Contains(rel, "/../") ||
+		strings.HasSuffix(rel, "/..") ||
+		strings.ContainsRune(rel, 0)
 }
 
 // walkHTMLPublishCandidates walks rootPath and returns each regular file as a
@@ -56,8 +72,16 @@ func walkHTMLPublishCandidates(fio fileio.FileIO, rootPath string) ([]htmlPublis
 		if err != nil {
 			return err
 		}
+		relSlash := filepath.ToSlash(rel)
+		// Defense in depth: WalkDir + Rel inside rootPath should never yield a
+		// path with .. components, but a future logic change or unusual
+		// filesystem layout shouldn't be able to inject one into RelPath.
+		// Mirrors the same guard at tar entry write time.
+		if isUnsafeRelPath(relSlash) {
+			return fmt.Errorf("walker produced unsafe relative path %q for %s", relSlash, path)
+		}
 		out = append(out, htmlPublishCandidate{
-			RelPath: filepath.ToSlash(rel),
+			RelPath: relSlash,
 			AbsPath: path,
 			Size:    info.Size(),
 		})
