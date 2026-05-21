@@ -216,6 +216,27 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 				"properties": map[string]interface{}{"type": "line"},
 			},
 		},
+		{
+			// happy path for the new sparkline_id check: each
+			// properties.sparklines[i] carries sparkline_id, so the
+			// validator passes through cleanly.
+			name: "+sparkline-update properties.sparklines[] with sparkline_id passes",
+			sc:   SparklineUpdate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID, "--group-id", "grpA",
+				"--properties", `{"sparklines":[{"sparkline_id":"sl1","source":"Sheet1!A1:A10"}]}`,
+			},
+			toolName: "manage_sparkline_object",
+			wantInput: map[string]interface{}{
+				"group_id":  "grpA",
+				"operation": "update",
+				"properties": map[string]interface{}{
+					"sparklines": []interface{}{
+						map[string]interface{}{"sparkline_id": "sl1", "source": "Sheet1!A1:A10"},
+					},
+				},
+			},
+		},
 		// float-image — fully hoisted to flat flags
 		{
 			name: "+float-image-create with image-token + position/size",
@@ -249,6 +270,28 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 			got := decodeToolInput(t, body, tt.toolName)
 			assertInputEquals(t, got, tt.wantInput)
 		})
+	}
+}
+
+// TestSparklineUpdate_MissingSparklineID confirms the standalone-path
+// pre-check fires: +sparkline-update with properties.sparklines[] but no
+// per-item sparkline_id must fail CLI-side with a pointer to
+// +sparkline-list, before any server call goes out.
+func TestSparklineUpdate_MissingSparklineID(t *testing.T) {
+	t.Parallel()
+	_, stderr, err := runShortcutCapturingErr(t, SparklineUpdate, []string{
+		"--url", testURL, "--sheet-id", testSheetID, "--group-id", "grpA",
+		"--properties", `{"sparklines":[{"source":"Sheet1!A1:A10"}]}`,
+	})
+	if err == nil {
+		t.Fatalf("expected CLI to reject missing sparkline_id; stderr=%s", stderr)
+	}
+	combined := stderr + err.Error()
+	if !strings.Contains(combined, "missing sparkline_id") {
+		t.Errorf("expected error to mention missing sparkline_id; got=%s|%v", stderr, err)
+	}
+	if !strings.Contains(combined, "+sparkline-list") {
+		t.Errorf("expected error to point at +sparkline-list; got=%s|%v", stderr, err)
 	}
 }
 

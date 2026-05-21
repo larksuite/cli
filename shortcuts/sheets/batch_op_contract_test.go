@@ -531,6 +531,16 @@ func TestBatchOp_RejectsBadSubOpInput(t *testing.T) {
 			`{"sheet-name":"Sheet1"}`,
 			"+filter-delete requires --sheet-id",
 		},
+		// +sparkline-update requires sparkline_id on every
+		// properties.sparklines[i] (server contract). CLI surfaces this
+		// with a pointer to +sparkline-list so the agent doesn't have to
+		// guess the id from an opaque server-side rejection.
+		{
+			"+sparkline-update item missing sparkline_id",
+			"+sparkline-update",
+			`{"sheet-id":"sh1","group-id":"g1","properties":{"sparklines":[{"position":{"row":0,"col":"A"}}]}}`,
+			"missing sparkline_id",
+		},
 	}
 
 	for _, tc := range cases {

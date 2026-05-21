@@ -44,6 +44,13 @@ type objectCRUDSpec struct {
 	// right nesting level.
 	enhanceCreateInput func(rt flagView, input map[string]interface{})
 	enhanceUpdateInput func(rt flagView, input map[string]interface{})
+	// validateUpdateInput, when set, runs after enhanceUpdateInput to
+	// enforce constraints that span across input fields (e.g. sparkline
+	// requires properties.sparklines[i] to carry sparkline_id on update —
+	// a server contract the CLI now surfaces with a pointer to
+	// +sparkline-list instead of letting the caller hit an opaque
+	// server-side rejection).
+	validateUpdateInput func(input map[string]interface{}) error
 }
 
 func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
@@ -188,6 +195,11 @@ func objectUpdateInput(runtime flagView, token, sheetID, sheetName string, spec 
 	}
 	if spec.enhanceUpdateInput != nil {
 		spec.enhanceUpdateInput(runtime, input)
+	}
+	if spec.validateUpdateInput != nil {
+		if err := spec.validateUpdateInput(input); err != nil {
+			return nil, err
+		}
 	}
 	return input, nil
 }
@@ -342,11 +354,51 @@ var CondFormatUpdate = newObjectUpdateShortcut(condFormatSpec)
 var CondFormatDelete = newObjectDeleteShortcut(condFormatSpec)
 
 // sparkline — CLI uses --group-id (higher level) as the object selector.
+// Two-layer ID model: --group-id picks the sparkline group; individual
+// items inside properties.sparklines[] are addressed by sparkline_id.
+// On update the server requires sparkline_id on every item (it's how
+// the server maps each entry back to an existing sparkline);
+// validateSparklineUpdateItems surfaces that requirement CLI-side with
+// a pointer to +sparkline-list instead of letting the caller hit a
+// server-side rejection that doesn't mention sparkline_id at all.
+//
+// (sparkline-delete is intentionally not pre-checked here:
+// objectDeleteInput doesn't pass properties through, so the partial-
+// delete branch — properties.sparklines: [{sparkline_id}] — silently
+// degrades to whole-group delete today. Surfacing that gap is a
+// separate fix; this validator stays scoped to update.)
+func validateSparklineUpdateItems(input map[string]interface{}) error {
+	props, _ := input["properties"].(map[string]interface{})
+	if props == nil {
+		return nil
+	}
+	raw, ok := props["sparklines"]
+	if !ok {
+		return nil // config-only update — fine
+	}
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return common.FlagErrorf("+sparkline-update properties.sparklines must be an array")
+	}
+	for i, item := range arr {
+		m, _ := item.(map[string]interface{})
+		if m == nil {
+			return common.FlagErrorf("+sparkline-update properties.sparklines[%d] must be an object", i)
+		}
+		id, _ := m["sparkline_id"].(string)
+		if strings.TrimSpace(id) == "" {
+			return common.FlagErrorf("+sparkline-update properties.sparklines[%d] missing sparkline_id (run `+sparkline-list --group-id <id>` first to read sparkline_id for each item, then echo each id back on the corresponding update entry)", i)
+		}
+	}
+	return nil
+}
+
 var sparklineSpec = objectCRUDSpec{
-	commandPrefix: "+sparkline",
-	toolName:      "manage_sparkline_object",
-	idFlag:        "group-id",
-	idField:       "group_id",
+	commandPrefix:       "+sparkline",
+	toolName:            "manage_sparkline_object",
+	idFlag:              "group-id",
+	idField:             "group_id",
+	validateUpdateInput: validateSparklineUpdateItems,
 }
 var SparklineCreate = newObjectCreateShortcut(sparklineSpec)
 var SparklineUpdate = newObjectUpdateShortcut(sparklineSpec)
