@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.36] - 2026-05-21
+
+### Features
+
+- **drive/markdown**: Return real tenant URLs for `drive +upload` and `markdown +create` (#992)
+
+### Bug Fixes
+
+- **auth**: Return validation error when `--scope` is empty in `auth check` (#999)
+
+### Documentation
+
+- **lark-drive**: Improve search evidence guidance (#864)
+
 ## [v1.0.35] - 2026-05-20
 
 ### Features
