@@ -124,3 +124,16 @@ func TestBuildHTMLPublishFailureHint_KnownCodes(t *testing.T) {
 		t.Fatalf("code 90002 should return non-empty hint")
 	}
 }
+
+func TestBuildHTMLPublishFailureHint_NotFoundHintNoLongerMentionsList(t *testing.T) {
+	hint := buildHTMLPublishFailureHint(90002)
+	if hint == "" {
+		t.Fatalf("code 90002 should return non-empty hint")
+	}
+	if strings.Contains(hint, "+list") {
+		t.Fatalf("hint must not point at hidden +list command, got: %q", hint)
+	}
+	if !strings.Contains(hint, "app_id") {
+		t.Fatalf("hint should reference app_id, got: %q", hint)
+	}
+}

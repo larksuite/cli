@@ -68,7 +68,7 @@ func buildHTMLPublishFailureHint(code int) string {
 	case 90001:
 		return "构建失败：用 `lark-cli apps +html-publish --path <path> --dry-run` 检查打包文件清单"
 	case 90002:
-		return "应用不存在或无权访问；用 `lark-cli apps +list` 确认 app_id"
+		return "应用不存在或无权访问；请用户确认 app_id（从妙搭应用链接 https://miaoda.feishu.cn/app/app_xxx 的 /app/ 后面提取，或直接给 app_xxx 字符串）"
 	default:
 		return ""
 	}
