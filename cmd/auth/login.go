@@ -68,7 +68,13 @@ run --device-code in a later step after the user confirms authorization.`,
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
-	available := sortedKnownDomains()
+	var helpBrand core.LarkBrand
+	if f != nil && f.Config != nil {
+		if cfg, err := f.Config(); err == nil && cfg != nil {
+			helpBrand = cfg.Brand
+		}
+	}
+	available := sortedKnownDomains(helpBrand)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
@@ -139,14 +145,14 @@ func authLoginRun(opts *LoginOptions) error {
 	// Expand --domain all to all available domains (from_meta projects + shortcut services)
 	for _, d := range selectedDomains {
 		if strings.EqualFold(d, "all") {
-			selectedDomains = sortedKnownDomains()
+			selectedDomains = sortedKnownDomains(config.Brand)
 			break
 		}
 	}
 
 	// Validate domain names and suggest corrections for unknown ones
 	if len(selectedDomains) > 0 {
-		knownDomains := allKnownDomains()
+		knownDomains := allKnownDomains(config.Brand)
 		for _, d := range selectedDomains {
 			if !knownDomains[d] {
 				if suggestion := suggestDomain(d, knownDomains); suggestion != "" {
@@ -170,7 +176,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLogin(f.IOStreams, lang, msg)
+			result, err := runInteractiveLogin(f.IOStreams, lang, msg, config.Brand)
 			if err != nil {
 				return err
 			}
@@ -208,10 +214,10 @@ func authLoginRun(opts *LoginOptions) error {
 	if len(selectedDomains) > 0 || opts.Recommend {
 		var candidateScopes []string
 		if len(selectedDomains) > 0 {
-			candidateScopes = collectScopesForDomains(selectedDomains, "user")
+			candidateScopes = collectScopesForDomains(selectedDomains, "user", config.Brand)
 		} else {
 			// --recommend without --domain: all domains
-			candidateScopes = collectScopesForDomains(sortedKnownDomains(), "user")
+			candidateScopes = collectScopesForDomains(sortedKnownDomains(config.Brand), "user", config.Brand)
 		}
 
 		// Filter to auto-approve scopes if --recommend or interactive "common"
@@ -490,7 +496,7 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 // shortcut scopes for the given domain names.
 // Domains with auth_domain children are automatically expanded to include
 // their children's scopes.
-func collectScopesForDomains(domains []string, identity string) []string {
+func collectScopesForDomains(domains []string, identity string, brand core.LarkBrand) []string {
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
@@ -509,6 +515,9 @@ func collectScopesForDomains(domains []string, identity string) []string {
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
 	for _, sc := range shortcuts.AllShortcuts() {
+		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
+			continue
+		}
 		if domainSet[sc.Service] && shortcutSupportsIdentity(sc, identity) {
 			for _, s := range sc.DeclaredScopesForIdentity(identity) {
 				scopeSet[s] = true
@@ -528,7 +537,7 @@ func collectScopesForDomains(domains []string, identity string) []string {
 // allKnownDomains returns all valid auth domain names (from_meta projects +
 // shortcut services), excluding domains that have auth_domain set (they are
 // folded into their parent domain).
-func allKnownDomains() map[string]bool {
+func allKnownDomains(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
 		if !registry.HasAuthDomain(p) {
@@ -536,6 +545,9 @@ func allKnownDomains() map[string]bool {
 		}
 	}
 	for _, sc := range shortcuts.AllShortcuts() {
+		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
+			continue
+		}
 		if !registry.HasAuthDomain(sc.Service) {
 			domains[sc.Service] = true
 		}
@@ -544,8 +556,8 @@ func allKnownDomains() map[string]bool {
 }
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
-func sortedKnownDomains() []string {
-	m := allKnownDomains()
+func sortedKnownDomains(brand core.LarkBrand) []string {
+	m := allKnownDomains(brand)
 	domains := make([]string, 0, len(m))
 	for d := range m {
 		domains = append(domains, d)

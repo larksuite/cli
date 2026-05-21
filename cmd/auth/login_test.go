@@ -171,7 +171,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 }
 
 func TestAllKnownDomains(t *testing.T) {
-	domains := allKnownDomains()
+	domains := allKnownDomains("")
 	if len(domains) == 0 {
 		t.Fatal("expected non-empty known domains")
 	}
@@ -185,7 +185,7 @@ func TestAllKnownDomains(t *testing.T) {
 }
 
 func TestSortedKnownDomains(t *testing.T) {
-	sorted := sortedKnownDomains()
+	sorted := sortedKnownDomains("")
 	if len(sorted) == 0 {
 		t.Fatal("expected non-empty sorted domains")
 	}
@@ -195,7 +195,7 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 
 	// Should match allKnownDomains
-	known := allKnownDomains()
+	known := allKnownDomains("")
 	if len(sorted) != len(known) {
 		t.Errorf("sorted (%d) and known (%d) length mismatch", len(sorted), len(known))
 	}
@@ -220,7 +220,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 		t.Skip("no from_meta data available")
 	}
 
-	scopes := collectScopesForDomains([]string{"calendar"}, "user")
+	scopes := collectScopesForDomains([]string{"calendar"}, "user", "")
 	if len(scopes) == 0 {
 		t.Fatal("expected non-empty scopes for calendar domain")
 	}
@@ -247,7 +247,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user")
+	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user", "")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent domain, got %d", len(scopes))
 	}
@@ -1077,7 +1077,7 @@ func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
 }
 
 func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
-	domains := allKnownDomains()
+	domains := allKnownDomains("")
 	if domains["whiteboard"] {
 		t.Error("whiteboard should not appear in known auth domains (it has auth_domain=docs)")
 	}
@@ -1087,7 +1087,7 @@ func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"docs"}, "user")
+	scopes := collectScopesForDomains([]string{"docs"}, "user", "")
 	// docs domain should include whiteboard shortcut scopes (board:whiteboard:*)
 	found := false
 	for _, s := range scopes {
