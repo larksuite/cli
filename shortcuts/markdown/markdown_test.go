@@ -33,6 +33,13 @@ func markdownTestConfig() *core.CliConfig {
 	}
 }
 
+func markdownPermissionTestConfig(userOpenID string) *core.CliConfig {
+	return &core.CliConfig{
+		AppID: "markdown-perm-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		UserOpenId: userOpenID,
+	}
+}
+
 func mountAndRunMarkdown(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
 	parent := &cobra.Command{Use: "markdown"}
@@ -644,6 +651,114 @@ func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 	}
 	if !strings.Contains(out, "permission_grant.perm: full_access") {
 		t.Fatalf("pretty output missing permission_grant.perm: %s", out)
+	}
+}
+
+func TestMarkdownCreateBotAutoGrantSkippedNoUser(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownPermissionTestConfig(""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_skipped",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_skipped", "doc_type": "file", "url": "https://example.feishu.cn/file/box_md_skipped"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello\n",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	grant, _ := envelope.Data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantSkipped {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
+		t.Fatalf("hint = %#v, want string containing 'auth login'", grant["hint"])
+	}
+}
+
+func TestMarkdownCreateBotAutoGrantFailed(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownPermissionTestConfig("ou_current_user"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_grant_fail",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_grant_fail", "doc_type": "file", "url": "https://example.feishu.cn/file/box_md_grant_fail"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/box_md_grant_fail/members",
+		Body: map[string]interface{}{
+			"code": 230001,
+			"msg":  "no permission",
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello\n",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	grant, _ := envelope.Data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantFailed {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "Retry later") {
+		t.Fatalf("hint = %#v, want string containing 'Retry later'", grant["hint"])
 	}
 }
 

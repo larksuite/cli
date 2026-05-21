@@ -80,7 +80,7 @@ func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 func TestDocsCreateV2BotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
 	t.Parallel()
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
 	registerDocsCreateAPIStub(reg, map[string]interface{}{
 		"document": map[string]interface{}{
 			"document_id": "doxcn_new_doc",
@@ -106,6 +106,9 @@ func TestDocsCreateV2BotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
 	}
 	if _, ok := grant["user_open_id"]; ok {
 		t.Fatalf("did not expect user_open_id when current user is missing: %#v", grant)
+	}
+	if !strings.Contains(stderr.String(), "auto-grant was skipped") {
+		t.Fatalf("stderr missing auto-grant skipped warning; got:\n%s", stderr.String())
 	}
 }
 
@@ -140,7 +143,7 @@ func TestDocsCreateV2UserSkipsPermissionGrantAugmentation(t *testing.T) {
 func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	t.Parallel()
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
 	registerDocsCreateAPIStub(reg, map[string]interface{}{
 		"document": map[string]interface{}{
 			"document_id": "doxcn_new_doc",
@@ -179,6 +182,9 @@ func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	}
 	if !strings.Contains(grant["message"].(string), "retry later") {
 		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
+	}
+	if !strings.Contains(stderr.String(), "auto-grant failed") {
+		t.Fatalf("stderr missing auto-grant failed warning; got:\n%s", stderr.String())
 	}
 }
 

@@ -577,6 +577,105 @@ func TestWikiNodeCreateBotAutoGrantSuccess(t *testing.T) {
 	}
 }
 
+func TestWikiNodeCreateBotAutoGrantSkippedNoUser(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiPermissionTestConfig(""))
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"space_id":   "space_123",
+					"node_token": "wik_skipped",
+					"obj_token":  "docx_skipped",
+					"obj_type":   "docx",
+					"node_type":  "origin",
+					"title":      "Wiki Skipped",
+					"has_child":  false,
+				},
+			},
+			"msg": "success",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiNodeCreate, []string{
+		"+node-create",
+		"--space-id", "space_123",
+		"--title", "Wiki Skipped",
+		"--as", "bot",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("mountAndRunWiki() error = %v", err)
+	}
+
+	data := decodeWikiEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantSkipped {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
+		t.Fatalf("hint = %#v, want string containing 'auth login'", grant["hint"])
+	}
+}
+
+func TestWikiNodeCreateBotAutoGrantFailed(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiPermissionTestConfig("ou_current_user"))
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"space_id":   "space_123",
+					"node_token": "wik_grant_fail",
+					"obj_token":  "docx_grant_fail",
+					"obj_type":   "docx",
+					"node_type":  "origin",
+					"title":      "Wiki Fail",
+					"has_child":  false,
+				},
+			},
+			"msg": "success",
+		},
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/wik_grant_fail/members",
+		Body: map[string]interface{}{
+			"code": 230001,
+			"msg":  "no permission",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiNodeCreate, []string{
+		"+node-create",
+		"--space-id", "space_123",
+		"--title", "Wiki Fail",
+		"--as", "bot",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("mountAndRunWiki() error = %v", err)
+	}
+
+	data := decodeWikiEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantFailed {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "Retry later") {
+		t.Fatalf("hint = %#v, want string containing 'Retry later'", grant["hint"])
+	}
+}
+
 func TestWikiNodeCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 

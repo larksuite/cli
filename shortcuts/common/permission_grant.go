@@ -34,6 +34,7 @@ func AutoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 			PermissionGrantSkipped,
 			"",
 			fmt.Sprintf("The operation did not return a permission target (missing token/type), so current user %s was not granted. You can retry later or continue using bot identity.", permissionGrantPermMessage()),
+			"No permission target (missing token or type) returned by the operation.",
 		)
 	}
 
@@ -43,11 +44,14 @@ func AutoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourceType string) map[string]interface{} {
 	userOpenID := strings.TrimSpace(runtime.UserOpenId())
 	if userOpenID == "" {
-		return buildPermissionGrantResult(
+		result := buildPermissionGrantResult(
 			PermissionGrantSkipped,
 			"",
 			fmt.Sprintf("Resource was created with bot identity, but no current CLI user open_id is configured, so current user %s was not granted. You can retry later or continue using bot identity.", permissionGrantPermMessage()),
+			"No current user identity (not logged in or session expired).",
 		)
+		fmt.Fprintf(runtime.IO().ErrOut, "Warning: resource was created with bot identity, but no current user open_id is configured, so auto-grant was skipped. Run `lark-cli auth login` and retry, or grant permission manually.\n")
+		return result
 	}
 
 	body := map[string]interface{}{
@@ -70,21 +74,26 @@ func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 		body,
 	)
 	if err != nil {
-		return buildPermissionGrantResult(
+		errMsg := compactPermissionGrantError(err)
+		result := buildPermissionGrantResult(
 			PermissionGrantFailed,
 			userOpenID,
-			fmt.Sprintf("Resource was created, but granting current user %s failed: %s. You can retry later or continue using bot identity.", permissionGrantPermMessage(), compactPermissionGrantError(err)),
+			fmt.Sprintf("Resource was created, but granting current user %s failed: %s. You can retry later or continue using bot identity.", permissionGrantPermMessage(), errMsg),
+			fmt.Sprintf("Auto-grant failed: %s. The app may lack the required scope or the resource restricts permission changes.", errMsg),
 		)
+		fmt.Fprintf(runtime.IO().ErrOut, "Warning: resource was created, but auto-grant failed: %s. Retry later or grant permission manually.\n", errMsg)
+		return result
 	}
 
 	return buildPermissionGrantResult(
 		PermissionGrantGranted,
 		userOpenID,
 		fmt.Sprintf("Granted the current CLI user %s on the new %s.", permissionGrantPermMessage(), permissionTargetLabel(resourceType)),
+		"",
 	)
 }
 
-func buildPermissionGrantResult(status, userOpenID, message string) map[string]interface{} {
+func buildPermissionGrantResult(status, userOpenID, message, reason string) map[string]interface{} {
 	result := map[string]interface{}{
 		"status":  status,
 		"perm":    permissionGrantPerm,
@@ -93,6 +102,11 @@ func buildPermissionGrantResult(status, userOpenID, message string) map[string]i
 	if userOpenID != "" {
 		result["user_open_id"] = userOpenID
 		result["member_type"] = "openid"
+	}
+	if status == PermissionGrantSkipped {
+		result["hint"] = reason + " Run `lark-cli auth login` and retry, or grant permission manually via the Lark document UI."
+	} else if status == PermissionGrantFailed {
+		result["hint"] = reason + " Retry later or grant permission manually via the Lark document UI."
 	}
 	return result
 }
