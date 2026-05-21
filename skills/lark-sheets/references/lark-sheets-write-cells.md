@@ -341,15 +341,24 @@ lark-cli sheets +cells-set-image --url "..." --sheet-name "Sheet1" \
 ```bash
 # 内联 CSV
 lark-cli sheets +csv-put --url "https://example.feishu.cn/sheets/shtXXX" \
-  --sheet-name "Sheet1" --range "A1" --allow-overwrite \
+  --sheet-name "Sheet1" --start-cell "A1" \
   --csv $'name,score\nalice,95\nbob,87'
 
 # 从文件
 lark-cli sheets +csv-put --spreadsheet-token shtXXX --sheet-id "$SID" \
-  --range "A1" --csv @data.csv --allow-overwrite
+  --start-cell "A1" --csv @data.csv
 ```
 
 > `+csv-put` 比 `+cells-set` 短得多——只想批量灌纯值时优先用它。需要公式/样式才换 `+cells-set`。
+>
+> ⚠️ `=` 开头的字符串会被当字面量写入（**不会变公式**）：
+>
+> ```bash
+> lark-cli sheets +csv-put --url "..." --sheet-name "Sheet1" \
+>   --start-cell "A1" \
+>   --csv $'name,score\nalice,=SUM(B2:B10)'
+> # ↑ A2 实际写入字符串 "=SUM(B2:B10)"，**不是公式**。需要写公式请用 +cells-set。
+> ```
 
 ### Validate / DryRun / Execute 约束
 

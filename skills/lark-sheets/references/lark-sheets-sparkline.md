@@ -152,7 +152,7 @@ lark-cli sheets +sparkline-delete --url "..." --sheet-id "$SID" --group-id "grpA
   - XOR 公共四件套；`+sparkline-{update,delete}` 必须 `--group-id`。
   - **`+sparkline-update`**：当 `properties.sparklines` 非空时，每一项必须含 `sparkline_id`（CLI 预检，错误信息会指回 `+sparkline-list`，避免命中服务端的不可读拒绝）；只传 `properties.config`（config-only update）合法、不触发 sparkline_id 检查。
   - **`+sparkline-delete`**：不传 `--properties` = 删整组（合法路径，不需要 sparkline_id）；传 `properties.sparklines` 时每项必须含 `sparkline_id`（server contract；CLI 本地暂未预检 delete 的 partial-item 分支，缺 id 会到 server 端才被拒）。
-  - `--properties.type`（仅 create / 整组改样式时）必须命中 enum（`line` / `column` / `winLoss`）；`--properties.data_range` 与 `--properties.target_range` 行/列数需对齐。
+  - `--properties` 顶层只接 `config`（同组共享样式）和 `sparklines`（迷你图项数组）；`+sparkline-create` 要求每个 `sparklines[i]` 含 `position` 与 `source`（或 `source_range`，二选一）。
   - `+sparkline-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 sparkline group 请求模板"。
-- `Execute`：写后调用 `+sparkline-list --group-id <id>` 回读，envelope.meta.verification 给出 type / style / 生成范围对比。
+- `Execute`：写后调用 `+sparkline-list --group-id <id>` 回读，envelope.meta.verification 给出 `config` / `sparklines` 字段级对比。

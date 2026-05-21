@@ -77,13 +77,13 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--float-image-id` | string | required | 目标图片 id |
-| `--image-name` | string | required | 图片名称，含扩展名（如 `logo.png`） |
+| `--image-name` | string | optional | 图片名称，含扩展名（如 `logo.png`） |
 | `--image-token` | string | xor | 图片 file_token（与 `--image-uri` 二选一）。常见来源：`+float-image-list` 返回的 `image_token` |
 | `--image-uri` | string | xor | 图片 reference_id（与 `--image-token` 二选一）；形如 `<\|image\|>:abcdef` 这种带前缀的字符串 |
-| `--position-row` | int | required | 图片左上角所在行（0-based） |
-| `--position-col` | string | required | 图片左上角所在列（列字母，如 `A` / `B`） |
-| `--size-width` | int | required | 图片宽度（像素） |
-| `--size-height` | int | required | 图片高度（像素） |
+| `--position-row` | int | optional | 图片左上角所在行（0-based） |
+| `--position-col` | string | optional | 图片左上角所在列（列字母，如 `A` / `B`） |
+| `--size-width` | int | optional | 图片宽度（像素） |
+| `--size-height` | int | optional | 图片高度（像素） |
 | `--offset-row` | int | optional | 在 `--position-row` 基础上的行内偏移（像素） |
 | `--offset-col` | int | optional | 在 `--position-col` 基础上的列内偏移（像素） |
 | `--z-index` | int | optional | 图片 Z 轴层级，控制重叠顺序 |

@@ -140,8 +140,8 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
-| `--start` | int | required | 源起止区间的起始位置（0-based, inclusive） |
-| `--end` | int | required | 源起止区间的结束位置（0-based, inclusive） |
+| `--start` | int | required | 源起止区间的起始位置（0-based） |
+| `--end` | int | required | 源起止区间的结束位置（inclusive） |
 | `--target` | int | required | 目标位置（move 到该 index 之前；0-based） |
 
 ## Examples
@@ -168,7 +168,7 @@ lark-cli sheets +dim-insert --url "https://example.feishu.cn/sheets/shtXXX" \
 
 ### `+rows-resize` / `+cols-resize`
 
-> ⚠️ 这两条 shortcut 来自 `lark-sheets-range-operations` 的 `+rows-resize / +cols-resize` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `lark_sheet_range_operations/cli-shortcuts.md`。
+> ⚠️ 这两条 shortcut 来自 `lark-sheets-range-operations` 的 `+rows-resize / +cols-resize` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `lark-sheets-range-operations.md`。
 >
 > 行 vs 列底层 schema 有差异：`+rows-resize.--type` 支持 `pixel` / `standard` / `auto`，`+cols-resize.--type` 只支持 `pixel` / `standard`（列宽不支持自动适应）。
 
@@ -180,6 +180,6 @@ lark-cli sheets +dim-insert --url "https://example.feishu.cn/sheets/shtXXX" \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`--start ≤ --end`；`+dim-delete` 强制 `--yes` 或 `--dry-run`；`+rows-resize` / `+cols-resize` 的 `--type` 必填，`--type pixel` 时 `--size` 必填、其它 type 时 `--size` 应省略；`+cols-resize.--type` 不接受 `auto`（详见 `lark_sheet_range_operations/cli-shortcuts.md`）。
+- `Validate`：XOR 公共四件套；`--start ≤ --end`；`+dim-delete` 强制 `--yes` 或 `--dry-run`；`+rows-resize` / `+cols-resize` 的 `--type` 必填，`--type pixel` 时 `--size` 必填、其它 type 时 `--size` 应省略；`+rows-resize` / `+cols-resize` 的行 vs 列 `--type` 差异详见 `lark-sheets-range-operations.md`。
 - `DryRun`：写操作输出"将要 PATCH 的 dimension 区间 + 目标参数"。
 - `Execute`：写后自动调用 `+sheet-info --include row_heights,col_widths,hidden_rows,hidden_cols,groups,frozen` 回读对比，envelope.meta.verification 给出受影响的范围。

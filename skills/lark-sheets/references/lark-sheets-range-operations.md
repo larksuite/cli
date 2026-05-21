@@ -233,7 +233,7 @@ lark-cli sheets +rows-resize --url "..." --sheet-id "$SID" --start 0 --end 0 --t
 lark-cli sheets +cols-resize --url "..." --sheet-id "$SID" --start 0 --end 5 --type standard
 ```
 
-> 同时出现在 `lark_sheet_sheet_structure/cli-shortcuts.md` —— 行高 / 列宽调整也算行列结构层动作。
+> 同时出现在 `lark-sheets-sheet-structure.md` —— 行高 / 列宽调整也算行列结构层动作。
 
 ### `+range-move` / `+range-copy`
 

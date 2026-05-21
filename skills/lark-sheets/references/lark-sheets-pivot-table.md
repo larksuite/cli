@@ -61,7 +61,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | required | JSON：{"rows":[...],"columns":[...],"values":[...],"filters":[...],"show_row_grand_total":true,"show_col_grand_total":true}（数据源走 --source，不要再放进 properties.data_range） |
+| `--properties` | string + File + Stdin（复合 JSON） | required | JSON：{"rows":[...],"columns":[...],"values":[...],"filters":[...],"show_row_grand_total":true,"show_col_grand_total":true}（数据源走 --source，不要再放进 properties.source） |
 | `--target-sheet-id` | string | optional | 透视表落点子表 id；省略时自动新建子表（推荐） |
 | `--target-position` | string | optional | 落点起始 cell（A1 格式，如 `A1`），默认 `A1` |
 | `--source` | string | required | 透视表源数据区域（A1 表示法，格式 `SheetName!StartCell:EndCell`，如 `Sheet1!A1:D100`） |

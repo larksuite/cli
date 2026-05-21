@@ -1119,14 +1119,14 @@
         "kind": "own",
         "type": "int",
         "required": "required",
-        "desc": "Source range start position (0-based, inclusive)"
+        "desc": "Source range start position (0-based)"
       },
       {
         "name": "end",
         "kind": "own",
         "type": "int",
         "required": "required",
-        "desc": "Source range end position (0-based, inclusive)"
+        "desc": "Source range end position (inclusive)"
       },
       {
         "name": "target",
@@ -3241,7 +3241,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "JSON: {\"rows\":[...],\"columns\":[...],\"values\":[...],\"filters\":[...],\"show_row_grand_total\":true,\"show_col_grand_total\":true} (data source goes through --source; do not put data_range here)",
+        "desc": "JSON: {\"rows\":[...],\"columns\":[...],\"values\":[...],\"filters\":[...],\"show_row_grand_total\":true,\"show_col_grand_total\":true} (data source goes through --source; do not put source here)",
         "input": [
           "file",
           "stdin"
@@ -4523,7 +4523,7 @@
         "name": "image-name",
         "kind": "own",
         "type": "string",
-        "required": "required",
+        "required": "optional",
         "desc": "Image name, including extension (e.g. `logo.png`)"
       },
       {
@@ -4544,28 +4544,28 @@
         "name": "position-row",
         "kind": "own",
         "type": "int",
-        "required": "required",
+        "required": "optional",
         "desc": "Row anchor of the image's top-left corner (0-based)"
       },
       {
         "name": "position-col",
         "kind": "own",
         "type": "string",
-        "required": "required",
+        "required": "optional",
         "desc": "Column anchor of the image's top-left corner (column letter, e.g. `A` / `B`)"
       },
       {
         "name": "size-width",
         "kind": "own",
         "type": "int",
-        "required": "required",
+        "required": "optional",
         "desc": "Image width in pixels"
       },
       {
         "name": "size-height",
         "kind": "own",
         "type": "int",
-        "required": "required",
+        "required": "optional",
         "desc": "Image height in pixels"
       },
       {

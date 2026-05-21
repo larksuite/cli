@@ -146,7 +146,7 @@ _创建/更新的条件格式属性_
 ```bash
 # 重复值高亮
 lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
-  --rule-type duplicate --ranges '["A1:A100"]' \
+  --rule-type duplicateValues --ranges '["A1:A100"]' \
   --properties '{"style":{"back_color":"#FFD7D7"}}'
 
 # 数据条
@@ -163,6 +163,6 @@ lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`--rule-type` / `--ranges` 必填；`--properties` 必须能解析为合法 JSON；按 `--rule-type` 检查必填子字段（`cellValue` 需 `attrs.operator` + `attrs.value`、`formula` 需 `attrs.expression`、`colorScale` 需 `min/mid/max` 配色等）；`+cond-format-delete` 强制 `--yes` 或 `--dry-run`。
+- `Validate`：XOR 公共四件套；`--rule-type` / `--ranges` 必填；`--properties` 必须能解析为合法 JSON；按 `--rule-type` 检查必填子字段（`cellIs` 需 `attrs.operator` + `attrs.value`、`expression` 需 `attrs.formula`、`colorScale` 需 `min/mid/max` 配色等）；`+cond-format-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 conditional_format 请求模板"。
 - `Execute`：写后调用 `+cond-format-list --rule-id <id>` 回读，envelope.meta.verification 给出规则 / 范围 / 样式对比。
