@@ -42,7 +42,7 @@ func (r *consumeRuntime) CallAPI(ctx context.Context, method, path string, body 
 	if err != nil {
 		return nil, err
 	}
-	if apiErr := client.CheckLarkResponse(result); apiErr != nil {
+	if apiErr := r.client.CheckResponse(result, r.accessIdentity); apiErr != nil {
 		return json.RawMessage(resp.RawBody), apiErr
 	}
 	return json.RawMessage(resp.RawBody), nil

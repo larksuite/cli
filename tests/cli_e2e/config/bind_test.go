@@ -283,7 +283,13 @@ func TestBind_ConfigShow_UnboundWorkspace(t *testing.T) {
 		Args: []string{"config", "show"},
 	})
 	require.NoError(t, err)
-	assertStderrError(t, result, 2, "openclaw",
+	// Stage-1 wire shape: legacy *output.ExitError envelope (free-string Type
+	// from ws.Display()). Exit code 3 — config errors share the auth slot per
+	// ExitCodeForCategory (pre-PR was 2, corrected as part of this PR's
+	// taxonomy semantics; the per-domain typed migration in stage 2+ will
+	// land the wire-type rename ("openclaw" → "config") alongside the typed
+	// envelope shape (subtype, etc.).
+	assertStderrError(t, result, 3, "openclaw",
 		"openclaw context detected but lark-cli is not bound to it",
 		"read `lark-cli config bind --help`, then ask the user to confirm intent and identity preset (bot-only or user-default); only after both are confirmed, run `lark-cli config bind`")
 }

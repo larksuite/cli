@@ -236,7 +236,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	app := raw.CurrentAppConfig(profileOverride)
 	if app == nil {
 		return nil, &ConfigError{
-			Code:    2,
+			Code:    3,
 			Type:    "config",
 			Message: fmt.Sprintf("profile %q not found", profileOverride),
 			Hint:    fmt.Sprintf("available profiles: %s", formatProfileNames(raw.ProfileNames())),
@@ -244,20 +244,19 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	}
 
 	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
-		return nil, &ConfigError{Code: 2, Type: "config",
+		return nil, &ConfigError{Code: 3, Type: "config",
 			Message: "appId and appSecret keychain key are out of sync",
 			Hint:    err.Error()}
 	}
 
 	secret, err := ResolveSecretInput(app.AppSecret, kc)
 	if err != nil {
-		// If the error comes from the keychain, it will already be wrapped as an ExitError.
-		// For other errors (e.g. file read errors, unknown sources), wrap them as ConfigError.
+		// Deprecated: legacy *output.ExitError passthrough; removed after typed migration.
 		var exitErr *output.ExitError
 		if errors.As(err, &exitErr) {
 			return nil, exitErr
 		}
-		return nil, &ConfigError{Code: 2, Type: "config", Message: err.Error()}
+		return nil, &ConfigError{Code: 3, Type: "config", Message: err.Error()}
 	}
 	cfg := &CliConfig{
 		ProfileName: app.ProfileName(),

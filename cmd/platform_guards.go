@@ -36,6 +36,13 @@ import (
 // makeErr is called for every guarded dispatch; it must return a fresh
 // *output.ExitError each time (the envelope writer mutates a few fields
 // as it serialises).
+// Deprecated: installFatalGuard accepts a *output.ExitError-producing lambda,
+// which is part of the legacy error surface that predates the typed error
+// contract introduced by errs/. New code MUST NOT add new callers — the
+// platform-extension fatal-guard plumbing will switch to typed errs.* errors
+// when the platform-extension framework migrates. This wrapper is retained
+// only for the existing in-tree call sites; it will be removed once they
+// have moved to the typed surface.
 func installFatalGuard(rootCmd *cobra.Command, makeErr func() *output.ExitError) {
 	// Two cobra subcommands are injected lazily at Execute() time and
 	// would otherwise slip past walkGuard. We pre-register both so
@@ -75,6 +82,12 @@ func installFatalGuard(rootCmd *cobra.Command, makeErr func() *output.ExitError)
 // installPluginInstallErrorGuard surfaces a FailClosed plugin install
 // failure as a structured plugin_install envelope before any command
 // runs.
+// Deprecated: installPluginInstallErrorGuard produces a legacy
+// *output.ExitError via its internal makeErr lambda. New code MUST NOT add
+// such producers — plugin install failures should surface as a typed
+// *errs.XxxError once the platform-extension framework migrates. This
+// helper is retained only while existing call sites are migrated; it will
+// be removed once they have moved to the typed surface.
 func installPluginInstallErrorGuard(rootCmd *cobra.Command, installErr error) {
 	makeErr := func() *output.ExitError {
 		var pi *internalplatform.PluginInstallError
@@ -116,6 +129,12 @@ func installPluginInstallErrorGuard(rootCmd *cobra.Command, installErr error) {
 //   - "plugin_conflict" with reason_code "multiple_restrict_plugins" - multi
 //
 // Either way the CLI must NOT silently continue with a broken policy.
+// Deprecated: installPluginConflictGuard produces a legacy *output.ExitError
+// via its internal makeErr lambda. New code MUST NOT add such producers —
+// plugin conflict failures should surface as a typed *errs.XxxError once the
+// platform-extension framework migrates. This helper is retained only while
+// existing call sites are migrated; it will be removed once they have moved
+// to the typed surface.
 func installPluginConflictGuard(rootCmd *cobra.Command, err error) {
 	makeErr := func() *output.ExitError {
 		envelopeType := "plugin_install"
@@ -143,6 +162,12 @@ func installPluginConflictGuard(rootCmd *cobra.Command, err error) {
 // failure as a plugin_lifecycle envelope. The reason_code splits
 // returned-error vs panic so consumers (audit / on-call) can tell the
 // two failure modes apart.
+// Deprecated: installPluginLifecycleErrorGuard produces a legacy
+// *output.ExitError via its internal makeErr lambda. New code MUST NOT add
+// such producers — plugin lifecycle failures should surface as a typed
+// *errs.XxxError once the platform-extension framework migrates. This
+// helper is retained only while existing call sites are migrated; it will
+// be removed once they have moved to the typed surface.
 func installPluginLifecycleErrorGuard(rootCmd *cobra.Command, err error) {
 	makeErr := func() *output.ExitError {
 		reasonCode := "lifecycle_failed"
@@ -194,6 +219,13 @@ func installPluginLifecycleErrorGuard(rootCmd *cobra.Command, err error) {
 //
 // This way the very first non-nil step in cobra's chain is always our
 // guard, regardless of which leaf the user invoked.
+// Deprecated: walkGuard accepts a *output.ExitError-producing lambda, part
+// of the legacy error surface that predates the typed error contract
+// introduced by errs/. New code MUST NOT add new callers — the platform-
+// extension guard plumbing will switch to typed errs.* errors when the
+// platform-extension framework migrates. This wrapper is retained only for
+// the existing in-tree call sites; it will be removed once they have moved
+// to the typed surface.
 func walkGuard(cmd *cobra.Command, makeErr func() *output.ExitError) {
 	if cmd == nil {
 		return

@@ -4,19 +4,23 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/schema"
+	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
-	"github.com/spf13/cobra"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -65,273 +69,6 @@ func TestPersistentPreRunE_ConfigSubcommands(t *testing.T) {
 		if !cmdutil.IsAuthCheckDisabled(sub) {
 			t.Errorf("expected config subcommand %q to inherit disabled auth check", sub.Name())
 		}
-	}
-}
-
-func TestHandleRootError_RawError_SkipsEnrichmentButWritesEnvelope(t *testing.T) {
-	f, _, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
-	})
-
-	// Create a permission error (would normally be enriched) and mark it Raw
-	err := output.ErrAPI(output.LarkErrAppScopeNotEnabled, "API error: [99991672] scope not enabled", map[string]interface{}{
-		"permission_violations": []interface{}{
-			map[string]interface{}{"subject": "calendar:calendar:readonly"},
-		},
-	})
-	err.Raw = true
-
-	code := handleRootError(f, err)
-	if code != output.ExitAPI {
-		t.Errorf("expected exit code %d, got %d", output.ExitAPI, code)
-	}
-	// stderr should contain the error envelope
-	if stderr.Len() == 0 {
-		t.Error("expected non-empty stderr for Raw error — WriteErrorEnvelope should always run")
-	}
-	// The message should NOT have been enriched by enrichPermissionError
-	// (ErrAPI sets "Permission denied [code]" but enrichment would replace it with "App scope not enabled: ...")
-	if strings.Contains(err.Error(), "App scope not enabled") {
-		t.Errorf("expected message not enriched, got: %s", err.Error())
-	}
-	// Detail.Detail should be preserved (enrichPermissionError clears it to nil)
-	if err.Detail != nil && err.Detail.Detail == nil {
-		t.Error("expected Detail.Detail to be preserved, but it was cleared")
-	}
-}
-
-func TestHandleRootError_NonRawError_EnrichesAndWritesEnvelope(t *testing.T) {
-	f, _, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
-	})
-
-	// Create a permission error without Raw — should be enriched
-	err := output.ErrAPI(output.LarkErrAppScopeNotEnabled, "API error: [99991672] scope not enabled", map[string]interface{}{
-		"permission_violations": []interface{}{
-			map[string]interface{}{"subject": "calendar:calendar:readonly"},
-		},
-	})
-
-	code := handleRootError(f, err)
-	if code != output.ExitAPI {
-		t.Errorf("expected exit code %d, got %d", output.ExitAPI, code)
-	}
-	// stderr should contain the error envelope
-	if stderr.Len() == 0 {
-		t.Error("expected non-empty stderr for non-Raw error")
-	}
-	// The message should have been enriched
-	if !strings.Contains(err.Error(), "App scope not enabled") {
-		t.Errorf("expected enriched message, got: %s", err.Error())
-	}
-}
-
-func TestEnrichPermissionError_SpecialCharsEscaped(t *testing.T) {
-	tests := []struct {
-		name      string
-		appID     string
-		scope     string
-		wantInURL string // substring that must appear in console_url
-		denyInURL string // substring that must NOT appear raw in console_url
-	}{
-		{
-			name:      "ampersand in scope",
-			appID:     "cli_good",
-			scope:     "scope&evil=injected",
-			wantInURL: "scopes=scope%26evil%3Dinjected",
-			denyInURL: "scopes=scope&evil=injected",
-		},
-		{
-			name:      "hash in scope",
-			appID:     "cli_good",
-			scope:     "scope#fragment",
-			wantInURL: "scopes=scope%23fragment",
-			denyInURL: "scopes=scope#fragment",
-		},
-		{
-			name:      "space in scope",
-			appID:     "cli_good",
-			scope:     "scope with spaces",
-			wantInURL: "scopes=scope+with+spaces",
-		},
-		{
-			name:      "special chars in appID",
-			appID:     "app&id=bad",
-			scope:     "calendar:calendar:readonly",
-			wantInURL: "clientID=app%26id%3Dbad",
-			denyInURL: "clientID=app&id=bad",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-				AppID: tt.appID, AppSecret: "test-secret", Brand: core.BrandFeishu,
-			})
-
-			exitErr := output.ErrAPI(output.LarkErrAppScopeNotEnabled, "scope not enabled", map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": tt.scope},
-				},
-			})
-
-			handleRootError(f, exitErr)
-
-			consoleURL := exitErr.Detail.ConsoleURL
-			if consoleURL == "" {
-				t.Fatal("expected console_url to be set")
-			}
-			if !strings.Contains(consoleURL, tt.wantInURL) {
-				t.Errorf("console_url missing expected escaped value\n  want substring: %s\n  got url:        %s", tt.wantInURL, consoleURL)
-			}
-			if tt.denyInURL != "" && strings.Contains(consoleURL, tt.denyInURL) {
-				t.Errorf("console_url contains unescaped dangerous value\n  deny substring: %s\n  got url:        %s", tt.denyInURL, consoleURL)
-			}
-		})
-	}
-}
-
-func TestEnrichMissingScopeError_ServiceMethodUsesLocalScopesWhenNoUAT(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
-	})
-	f.ResolvedIdentity = core.AsUser
-
-	var target registry.CommandEntry
-	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
-		if len(entry.Scopes) == 1 && entry.Scopes[0] == "calendar:calendar.event:create" {
-			target = entry
-			break
-		}
-	}
-	if target.Command == "" {
-		t.Fatal("failed to locate a calendar create command in local registry metadata")
-	}
-	parts := strings.Split(target.Command, " ")
-	if len(parts) != 2 {
-		t.Fatalf("expected resource/method command, got %q", target.Command)
-	}
-
-	root := &cobra.Command{Use: "lark-cli"}
-	serviceCmd := &cobra.Command{Use: "calendar"}
-	resourceCmd := &cobra.Command{Use: parts[0]}
-	methodCmd := &cobra.Command{Use: parts[1]}
-	root.AddCommand(serviceCmd)
-	serviceCmd.AddCommand(resourceCmd)
-	resourceCmd.AddCommand(methodCmd)
-	f.CurrentCommand = methodCmd
-
-	exitErr := output.Errorf(output.ExitAPI, "api_error", "API call failed: %s", &internalauth.NeedAuthorizationError{})
-	enrichMissingScopeError(f, exitErr)
-
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected exit code %d, got %d", output.ExitAPI, exitErr.Code)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "api_error" {
-		t.Fatalf("expected api_error detail, got %+v", exitErr.Detail)
-	}
-	if !strings.Contains(exitErr.Detail.Message, "need_user_authorization") {
-		t.Fatalf("expected original need_user_authorization message, got %q", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "current command requires scope(s): calendar:calendar.event:create") {
-		t.Fatalf("expected scope guidance in hint, got %q", exitErr.Detail.Hint)
-	}
-	if strings.Contains(exitErr.Detail.Hint, "lark-cli auth login --scope") {
-		t.Fatalf("expected hint without auth login command, got %q", exitErr.Detail.Hint)
-	}
-	if exitErr.Detail.Detail != nil {
-		t.Fatalf("expected detail to remain nil, got %#v", exitErr.Detail.Detail)
-	}
-}
-
-func TestEnrichMissingScopeError_ShortcutUsesDeclaredScopesWhenNoUAT(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
-	})
-	f.ResolvedIdentity = core.AsUser
-
-	root := &cobra.Command{Use: "lark-cli"}
-	serviceCmd := &cobra.Command{Use: "docs"}
-	shortcutCmd := &cobra.Command{Use: "+create"}
-	root.AddCommand(serviceCmd)
-	serviceCmd.AddCommand(shortcutCmd)
-	f.CurrentCommand = shortcutCmd
-
-	exitErr := output.ErrNetwork("API call failed: %s", &internalauth.NeedAuthorizationError{})
-	enrichMissingScopeError(f, exitErr)
-
-	if exitErr.Code != output.ExitNetwork {
-		t.Fatalf("expected exit code %d, got %d", output.ExitNetwork, exitErr.Code)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "network" {
-		t.Fatalf("expected network detail, got %+v", exitErr.Detail)
-	}
-	if !strings.Contains(exitErr.Detail.Message, "need_user_authorization") {
-		t.Fatalf("expected original need_user_authorization message, got %q", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "current command requires scope(s): docx:document:create") {
-		t.Fatalf("expected shortcut scope hint, got %q", exitErr.Detail.Hint)
-	}
-	if strings.Contains(exitErr.Detail.Hint, "lark-cli auth login --scope") {
-		t.Fatalf("expected hint without auth login command, got %q", exitErr.Detail.Hint)
-	}
-	if exitErr.Detail.Detail != nil {
-		t.Fatalf("expected detail to remain nil, got %#v", exitErr.Detail.Detail)
-	}
-}
-
-func TestEnrichMissingScopeError_ShortcutIncludesConditionalScopes(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
-	})
-	f.ResolvedIdentity = core.AsUser
-
-	root := &cobra.Command{Use: "lark-cli"}
-	serviceCmd := &cobra.Command{Use: "drive"}
-	shortcutCmd := &cobra.Command{Use: "+status"}
-	root.AddCommand(serviceCmd)
-	serviceCmd.AddCommand(shortcutCmd)
-	f.CurrentCommand = shortcutCmd
-
-	exitErr := output.ErrNetwork("API call failed: %s", &internalauth.NeedAuthorizationError{})
-	enrichMissingScopeError(f, exitErr)
-
-	if exitErr.Detail == nil {
-		t.Fatal("expected error detail")
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
-		t.Fatalf("expected conditional scope hint for drive +status, got %q", exitErr.Detail.Hint)
-	}
-}
-
-func TestEnrichMissingScopeError_AppendsExistingHint(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
-	})
-	f.ResolvedIdentity = core.AsUser
-
-	root := &cobra.Command{Use: "lark-cli"}
-	serviceCmd := &cobra.Command{Use: "docs"}
-	shortcutCmd := &cobra.Command{Use: "+create"}
-	root.AddCommand(serviceCmd)
-	serviceCmd.AddCommand(shortcutCmd)
-	f.CurrentCommand = shortcutCmd
-
-	exitErr := output.ErrNetwork("API call failed: %s", &internalauth.NeedAuthorizationError{})
-	exitErr.Detail.Hint = "existing hint"
-	enrichMissingScopeError(f, exitErr)
-
-	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
-	if exitErr.Detail.Hint != want {
-		t.Fatalf("expected appended hint %q, got %q", want, exitErr.Detail.Hint)
 	}
 }
 
@@ -394,5 +131,229 @@ func TestIsCompletionCommand(t *testing.T) {
 				t.Fatalf("isCompletionCommand(%v) = %v, want %v", tc.args, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestPromoteConfigError_* lives with the implementation in
+// internal/errcompat/promote_test.go.
+
+// TestHandleRootError_SecurityPolicyKeepsLegacyEnvelope pins the carve-out
+// for *errs.SecurityPolicyError: it does NOT go through the typed envelope
+// writer. Downstream OAuth/policy consumers parse a wire format that
+// predates the typed taxonomy and depend on:
+//   - error.type == "auth_error" (not the Category literal "policy")
+//   - error.code is a string ("challenge_required" / "access_denied"), not a number
+//   - error.retryable is present at the top of the error object
+//   - exit code 1 (not ExitContentSafety 6)
+//
+// Migration of this category to the typed envelope is deferred to a later PR.
+func TestHandleRootError_SecurityPolicyKeepsLegacyEnvelope(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	cases := []struct {
+		name     string
+		subtype  errs.Subtype
+		code     int
+		wantCode string
+	}{
+		{"challenge_required", errs.SubtypeChallengeRequired, 21000, "challenge_required"},
+		{"access_denied", errs.SubtypeAccessDenied, 21001, "access_denied"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			errOut := &bytes.Buffer{}
+			f.IOStreams.ErrOut = errOut
+
+			spErr := &errs.SecurityPolicyError{
+				Problem: errs.Problem{
+					Category: errs.CategoryPolicy,
+					Subtype:  tc.subtype,
+					Code:     tc.code,
+					Message:  "blocked by access policy",
+					Hint:     "complete challenge in your browser",
+				},
+				ChallengeURL: "https://example.com/challenge",
+			}
+
+			gotExit := handleRootError(f, spErr)
+			if gotExit != 1 {
+				t.Errorf("exit code = %d, want 1 (legacy carve-out)", gotExit)
+			}
+
+			var env map[string]any
+			if err := json.Unmarshal(errOut.Bytes(), &env); err != nil {
+				t.Fatalf("envelope is not valid JSON: %v\n%s", err, errOut.String())
+			}
+			errObj, ok := env["error"].(map[string]any)
+			if !ok {
+				t.Fatalf("envelope missing top-level error object: %s", errOut.String())
+			}
+			if got := errObj["type"]; got != "auth_error" {
+				t.Errorf("error.type = %v, want %q", got, "auth_error")
+			}
+			if got := errObj["code"]; got != tc.wantCode {
+				t.Errorf("error.code = %v (%T), want %q (string)", got, got, tc.wantCode)
+			}
+			if got, ok := errObj["retryable"].(bool); !ok || got {
+				t.Errorf("error.retryable = %v (%T), want false (bool)", errObj["retryable"], errObj["retryable"])
+			}
+			if got := errObj["challenge_url"]; got != "https://example.com/challenge" {
+				t.Errorf("error.challenge_url = %v, want challenge url", got)
+			}
+			if got := errObj["hint"]; got != "complete challenge in your browser" {
+				t.Errorf("error.hint = %v, want hint message", got)
+			}
+			// And the typed-only fields must NOT appear on this envelope.
+			for _, leaked := range []string{"subtype", "missing_scopes", "console_url"} {
+				if _, exists := errObj[leaked]; exists {
+					t.Errorf("error.%s leaked into legacy security envelope: %v", leaked, errObj[leaked])
+				}
+			}
+		})
+	}
+}
+
+// newAuthErrorWithNeedAuthMarker builds a typed *errs.AuthenticationError whose Message
+// contains the need_user_authorization marker — the same shape that
+// resolveAccessToken now produces when the credential chain returns
+// *internalauth.NeedAuthorizationError.
+func newAuthErrorWithNeedAuthMarker() *errs.AuthenticationError {
+	cause := &internalauth.NeedAuthorizationError{UserOpenId: "u_xxx"}
+	return &errs.AuthenticationError{
+		Problem: errs.Problem{
+			Category: errs.CategoryAuthentication,
+			Subtype:  errs.SubtypeUnknown,
+			Message:  fmt.Sprintf("API call failed: %s", cause),
+		},
+		Cause: cause,
+	}
+}
+
+// TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT pins
+// that a typed AuthenticationError carrying the need_user_authorization marker gets a
+// declared-scopes Hint appended when the current command is a registered
+// service method.
+func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	var target registry.CommandEntry
+	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
+		if len(entry.Scopes) == 1 && entry.Scopes[0] == "calendar:calendar.event:create" {
+			target = entry
+			break
+		}
+	}
+	if target.Command == "" {
+		t.Fatal("failed to locate a calendar create command in local registry metadata")
+	}
+	parts := strings.Split(target.Command, " ")
+	if len(parts) != 2 {
+		t.Fatalf("expected resource/method command, got %q", target.Command)
+	}
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "calendar"}
+	resourceCmd := &cobra.Command{Use: parts[0]}
+	methodCmd := &cobra.Command{Use: parts[1]}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(resourceCmd)
+	resourceCmd.AddCommand(methodCmd)
+	f.CurrentCommand = methodCmd
+
+	authErr := newAuthErrorWithNeedAuthMarker()
+	applyNeedAuthorizationHint(f, authErr)
+
+	if authErr.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want authentication", authErr.Category)
+	}
+	if !strings.Contains(authErr.Message, "need_user_authorization") {
+		t.Errorf("Message should preserve need_user_authorization marker; got %q", authErr.Message)
+	}
+	if !strings.Contains(authErr.Hint, "current command requires scope(s): calendar:calendar.event:create") {
+		t.Errorf("expected declared-scope hint, got %q", authErr.Hint)
+	}
+}
+
+// TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT pins the
+// same hint behavior for mounted shortcut commands.
+func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "docs"}
+	shortcutCmd := &cobra.Command{Use: "+create"}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(shortcutCmd)
+	f.CurrentCommand = shortcutCmd
+
+	authErr := newAuthErrorWithNeedAuthMarker()
+	applyNeedAuthorizationHint(f, authErr)
+
+	if !strings.Contains(authErr.Hint, "current command requires scope(s): docx:document:create") {
+		t.Errorf("expected shortcut scope hint, got %q", authErr.Hint)
+	}
+}
+
+// TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes pins that
+// conditional scopes declared on a shortcut surface in the hint.
+func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "drive"}
+	shortcutCmd := &cobra.Command{Use: "+status"}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(shortcutCmd)
+	f.CurrentCommand = shortcutCmd
+
+	authErr := newAuthErrorWithNeedAuthMarker()
+	applyNeedAuthorizationHint(f, authErr)
+
+	if !strings.Contains(authErr.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
+		t.Errorf("expected conditional scope hint for drive +status, got %q", authErr.Hint)
+	}
+}
+
+// TestApplyNeedAuthorizationHint_AppendsExistingHint pins that the
+// declared-scopes guidance is appended (separated by newline) when the typed
+// AuthenticationError already carries a Hint from elsewhere.
+func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	root := &cobra.Command{Use: "lark-cli"}
+	serviceCmd := &cobra.Command{Use: "docs"}
+	shortcutCmd := &cobra.Command{Use: "+create"}
+	root.AddCommand(serviceCmd)
+	serviceCmd.AddCommand(shortcutCmd)
+	f.CurrentCommand = shortcutCmd
+
+	authErr := newAuthErrorWithNeedAuthMarker()
+	authErr.Hint = "existing hint"
+	applyNeedAuthorizationHint(f, authErr)
+
+	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
+	if authErr.Hint != want {
+		t.Errorf("expected appended hint %q, got %q", want, authErr.Hint)
 	}
 }

@@ -105,6 +105,10 @@ func strictModeStubFrom(child *cobra.Command, mode core.StrictMode) *cobra.Comma
 		},
 		RunE: func(c *cobra.Command, _ []string) error {
 			cd := cmdpolicy.CommandDeniedFromDenial(cmdpolicy.CanonicalPath(c), denial)
+			// Legacy *output.ExitError producer: this literal predates the
+			// typed error contract introduced by errs/. New denial sites MUST
+			// NOT construct *output.ExitError directly — they should return a
+			// typed *errs.XxxError once the cmdpolicy framework migrates.
 			return &output.ExitError{
 				Code: output.ExitValidation,
 				Detail: &output.ErrDetail{

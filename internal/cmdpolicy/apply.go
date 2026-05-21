@@ -130,6 +130,13 @@ func DenialDetailMap(cd *platform.CommandDeniedError) map[string]any {
 // Message comes from CommandDeniedError.Error(), no Hint. Callers that
 // need a custom Message or an independent Hint (strict-mode) should
 // compose CommandDeniedFromDenial + DenialDetailMap themselves.
+//
+// Deprecated: BuildDenialError produces a legacy *output.ExitError that
+// predates the typed error contract introduced by errs/. New code MUST NOT
+// use it — denial signals should move to a typed *errs.XxxError (a dedicated
+// typed Error for policy denial is tracked for the cmdpolicy migration PR).
+// This helper is retained only while existing call sites are migrated; it
+// will be removed once they have moved to the typed surface.
 func BuildDenialError(path string, d Denial) *output.ExitError {
 	cd := CommandDeniedFromDenial(path, d)
 	return &output.ExitError{

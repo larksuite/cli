@@ -13,6 +13,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -149,8 +150,13 @@ func ParseDriveMediaMultipartUploadSession(data map[string]interface{}) (DriveMe
 }
 
 func WrapDriveMediaUploadRequestError(err error, action string) error {
+	// Preserve any already-classified error: legacy *output.ExitError or any
+	// typed errs.* error. Only un-classified errors get wrapped as network.
 	var exitErr *output.ExitError
 	if errors.As(err, &exitErr) {
+		return err
+	}
+	if _, ok := errs.ProblemOf(err); ok {
 		return err
 	}
 	return output.ErrNetwork("%s: %v", action, err)

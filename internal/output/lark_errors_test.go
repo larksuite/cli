@@ -30,7 +30,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "cross tenant unit",
 			code:         LarkErrDriveCrossTenantUnit,
 			wantExitCode: ExitAPI,
-			wantType:     "cross_tenant_unit",
+			wantType:     "cross_tenant",
 			wantHint:     "same tenant and region/unit",
 		},
 		{
@@ -44,7 +44,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "sheets float image invalid dims",
 			code:         LarkErrSheetsFloatImageInvalidDims,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "--width / --height / --offset-x / --offset-y",
 		},
 		{
@@ -58,7 +58,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "drive permission apply not applicable",
 			code:         LarkErrDrivePermApplyNotApplicable,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "does not accept a permission-apply request",
 		},
 		{

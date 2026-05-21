@@ -16,6 +16,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -190,8 +191,13 @@ func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, f
 }
 
 func wrapMarkdownDownloadError(err error) error {
+	// Preserve any already-classified error: legacy *output.ExitError or any
+	// typed errs.* error. Only un-classified errors get wrapped as network.
 	var exitErr *output.ExitError
 	if errors.As(err, &exitErr) {
+		return err
+	}
+	if _, ok := errs.ProblemOf(err); ok {
 		return err
 	}
 	return output.ErrNetwork("download failed: %s", err)

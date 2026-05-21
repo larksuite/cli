@@ -643,7 +643,6 @@ func enrichDriveSearchError(err error) error {
 		Code:   exitErr.Code,
 		Detail: &detail,
 		Err:    exitErr.Err,
-		Raw:    exitErr.Raw,
 	}
 }
 

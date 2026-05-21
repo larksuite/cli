@@ -273,7 +273,7 @@ func TestDriveCreateShortcutClassifiesKnownAPIConstraints(t *testing.T) {
 			name:        "cross tenant and unit",
 			code:        output.LarkErrDriveCrossTenantUnit,
 			msg:         "cross tenant and unit not support",
-			wantType:    "cross_tenant_unit",
+			wantType:    "cross_tenant",
 			wantHint:    "same tenant and region/unit",
 			wantMsgPart: "cross tenant and unit not support",
 		},

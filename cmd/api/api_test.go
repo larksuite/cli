@@ -4,7 +4,6 @@
 package api
 
 import (
-	"errors"
 	"os"
 	"sort"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -396,154 +394,6 @@ func TestNormalisePath_StripsQueryAndFragment(t *testing.T) {
 				t.Errorf("normalisePath(%q) = %q, want %q", tt.raw, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestApiCmd_APIError_IsRaw(t *testing.T) {
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-raw", AppSecret: "test-secret-raw", Brand: core.BrandFeishu,
-	})
-
-	// Return a permission error from the API
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/test/perm",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled for this app",
-			"error": map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": "calendar:calendar:readonly"},
-				},
-			},
-		},
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/perm", "--as", "bot"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for permission denied API response")
-	}
-
-	// Error should be marked Raw
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if !exitErr.Raw {
-		t.Error("expected API error from api command to be marked Raw")
-	}
-
-	// Note: stderr envelope output is tested at the root level (TestHandleRootError_*)
-	// since WriteErrorEnvelope is called by handleRootError, not by cobra's Execute.
-	_ = stderr
-}
-
-func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-origmsg", AppSecret: "test-secret-origmsg", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/test/origmsg",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled for this app",
-			"error": map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": "im:message:readonly"},
-				},
-			},
-		},
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/origmsg", "--as", "bot"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	// The message should NOT have been enriched (no "App scope not enabled" replacement)
-	if strings.Contains(exitErr.Error(), "App scope not enabled") {
-		t.Error("expected original message, not enriched message")
-	}
-	// Detail should still contain the raw API error detail
-	if exitErr.Detail == nil {
-		t.Fatal("expected non-nil Detail")
-	}
-	if exitErr.Detail.Detail == nil {
-		t.Error("expected raw Detail.Detail to be preserved (not cleared by enrichment)")
-	}
-}
-
-func TestApiCmd_InvalidJSONResponse_ShowsDiagnostic(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-invalidjson", AppSecret: "test-secret-invalidjson", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL:         "/open-apis/test/invalidjson",
-		RawBody:     []byte{},
-		ContentType: "application/json",
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/invalidjson", "--as", "bot"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI, got %d", exitErr.Code)
-	}
-	if exitErr.Detail == nil {
-		t.Fatal("expected detail on exit error")
-	}
-	if !strings.Contains(exitErr.Detail.Message, "invalid JSON response") &&
-		!strings.Contains(exitErr.Detail.Message, "empty JSON response body") {
-		t.Fatalf("expected JSON diagnostic, got %q", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "--output") {
-		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)
-	}
-}
-
-func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-rawpage", AppSecret: "test-secret-rawpage", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/test/rawpage",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled",
-		},
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/rawpage", "--as", "bot", "--page-all"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if !exitErr.Raw {
-		t.Error("expected paginated API error to be marked Raw")
 	}
 }
 
