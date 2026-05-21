@@ -45,6 +45,12 @@ var AppsList = common.Shortcut{
 		}
 		items, _ := data["items"].([]interface{})
 		rctx.OutFormat(data, nil, func(w io.Writer) {
+			// Table view (--format table) intentionally shows only the columns
+			// most useful for visual scanning: app_id (to copy-paste downstream),
+			// name (to match what the user sees in the UI), and updated_at (to
+			// pick the most recent variant). description / icon_url / created_at
+			// stay in the underlying JSON (--format json) but would make the
+			// table too wide for a terminal.
 			rows := make([]map[string]interface{}, 0, len(items))
 			for _, item := range items {
 				m, ok := item.(map[string]interface{})
