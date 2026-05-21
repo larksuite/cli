@@ -10,8 +10,6 @@ const p = require("@clack/prompts");
 const PKG = "@larksuite/cli";
 const SKILLS_REPO = "https://open.feishu.cn";
 const SKILLS_REPO_FALLBACK = "larksuite/cli";
-const CONFIG_DIR = process.env.LARKSUITE_CLI_CONFIG_DIR || path.join(process.env.HOME || process.env.USERPROFILE || "", ".lark-cli");
-const SKILLS_STATE_FILE = path.join(CONFIG_DIR, "skills-state.json");
 const isWindows = process.platform === "win32";
 
 // ---------------------------------------------------------------------------
@@ -238,7 +236,7 @@ async function stepInstallGlobally(msg) {
 
   if (installedVer && !needsUpgrade) {
     p.log.info(fmt(msg.step1Skip, installedVer));
-    return installedVer;
+    return false;
   }
 
   const s = p.spinner();
@@ -250,111 +248,41 @@ async function stepInstallGlobally(msg) {
   try {
     await runSilentAsync("npm", ["install", "-g", PKG], { timeout: 120000 });
     s.stop(needsUpgrade ? fmt(msg.step1Upgraded, latestVer) : msg.step1Done);
-    return latestVer || getGloballyInstalledVersion() || installedVer || null;
+    return needsUpgrade;
   } catch (_) {
     s.stop(fmt(msg.step1Fail, PKG));
     process.exit(1);
   }
 }
 
-function parseSkillsList(text) {
-  const seen = new Set();
-  for (const rawLine of text.split("\n")) {
-    let token = rawLine.trim();
-    if (token.startsWith("-")) token = token.slice(1).trim();
-    if (!token || token.includes(" ") || token.endsWith(":")) continue;
-    if (!/^[A-Za-z0-9][A-Za-z0-9_:-]*(?:@\S+)?$/.test(token)) continue;
-    const at = token.indexOf("@");
-    if (at > 0) token = token.slice(0, at);
-    seen.add(token);
-  }
-  return [...seen].sort();
-}
-
-function readSkillsState() {
+async function skillsAlreadyInstalled() {
   try {
-    const state = JSON.parse(fs.readFileSync(SKILLS_STATE_FILE, "utf8"));
-    if (state.schema_version !== 1 || !Array.isArray(state.official_skills)) return null;
-    return state;
+    const out = await runSilentAsync("npx", ["-y", "skills", "ls", "-g"], {
+      timeout: 120000,
+    });
+    return /^lark-/m.test(out.toString());
   } catch (_) {
-    return null;
+    return false;
   }
 }
 
-function writeSkillsState(version, official, updated, added, skipped) {
-  if (!CONFIG_DIR) return;
-  fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(SKILLS_STATE_FILE, JSON.stringify({
-    schema_version: 1,
-    version,
-    official_skills: official,
-    updated_skills: updated,
-    added_skills: added,
-    skipped_deleted_skills: skipped,
-    updated_at: new Date().toISOString(),
-  }, null, 2) + "\n");
-}
-
-async function listOfficialSkills() {
-  try {
-    return parseSkillsList(await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO, "--list"], { timeout: 120000 }));
-  } catch (_) {
-    return parseSkillsList(await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO_FALLBACK, "--list"], { timeout: 120000 }));
-  }
-}
-
-async function listGlobalSkills() {
-  return parseSkillsList(await runSilentAsync("npx", ["-y", "skills", "ls", "-g"], { timeout: 120000 }));
-}
-
-function planSkillsSync(version, official, local, previousState) {
-  const officialSet = new Set(official);
-  const previousSet = new Set(previousState ? previousState.official_skills : []);
-  const localOfficial = local.filter((skill) => officialSet.has(skill));
-  const added = official.filter((skill) => !previousSet.has(skill));
-  const updateSet = new Set([...localOfficial, ...added]);
-  const updated = official.filter((skill) => updateSet.has(skill));
-  return {
-    version,
-    official,
-    updated,
-    added,
-    skipped: official.filter((skill) => !updateSet.has(skill)),
-  };
-}
-
-async function installSkill(name) {
-  try {
-    await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO, "-s", name, "-g", "-y"], { timeout: 120000 });
-  } catch (_) {
-    await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO_FALLBACK, "-s", name, "-g", "-y"], { timeout: 120000 });
-  }
-}
-
-async function stepInstallSkills(msg, cliVersion) {
+async function stepInstallSkills(msg) {
   const s = p.spinner();
   s.start(msg.step2Spinner);
   try {
-    const official = await listOfficialSkills();
-    const local = await listGlobalSkills();
-    const plan = planSkillsSync(cliVersion || "unknown", official, local, readSkillsState());
-    if (plan.updated.length === 0) {
-      writeSkillsState(plan.version, plan.official, plan.updated, plan.added, plan.skipped);
+    if (await skillsAlreadyInstalled()) {
       s.stop(msg.step2Skip);
       return;
     }
-    const failed = [];
-    for (const skill of plan.updated) {
-      try {
-        await installSkill(skill);
-      } catch (_) {
-        failed.push(skill);
-      }
+    try {
+      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO, "-y", "-g"], {
+        timeout: 120000,
+      });
+    } catch (_) {
+      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO_FALLBACK, "-y", "-g"], {
+        timeout: 120000,
+      });
     }
-    if (failed.length > 0) {
-      throw new Error(`${failed.length} skill(s) failed: ${failed.join(", ")}`);
-    }
-    writeSkillsState(plan.version, plan.official, plan.updated, plan.added, plan.skipped);
     s.stop(msg.step2Done);
   } catch (_) {
     s.stop(fmt(msg.step2Fail, SKILLS_REPO_FALLBACK));
@@ -433,15 +361,15 @@ async function main() {
 
   if (isInteractive) {
     p.intro(msg.setup);
-    const cliVersion = await stepInstallGlobally(msg);
-    await stepInstallSkills(msg, cliVersion);
+    await stepInstallGlobally(msg);
+    await stepInstallSkills(msg);
     await stepConfigInit(msg, lang);
     await stepAuthLogin(msg);
     p.outro(msg.done);
   } else {
     console.log(msg.setup);
-    const cliVersion = await stepInstallGlobally(msg);
-    await stepInstallSkills(msg, cliVersion);
+    await stepInstallGlobally(msg);
+    await stepInstallSkills(msg);
     console.log(msg.nonTtyHint);
   }
 }

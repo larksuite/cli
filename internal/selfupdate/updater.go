@@ -84,7 +84,6 @@ type Updater struct {
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
 	SkillsUpdateOverride     func() *NpmResult
-	SkillsCommandOverride    func(args ...string) *NpmResult
 	VerifyOverride           func(expectedVersion string) error
 	RestoreAvailableOverride func() bool
 
@@ -167,46 +166,7 @@ func (u *Updater) RunSkillsUpdate() *NpmResult {
 	return r
 }
 
-func (u *Updater) ListOfficialSkills() *NpmResult {
-	r := u.runSkillsListOfficial("https://open.feishu.cn")
-	if r.Err != nil {
-		r = u.runSkillsListOfficial("larksuite/cli")
-	}
-	return r
-}
-
-func (u *Updater) ListGlobalSkills() *NpmResult {
-	return u.runSkillsListGlobal()
-}
-
-func (u *Updater) InstallSkill(name string) *NpmResult {
-	r := u.runSkillsInstall("https://open.feishu.cn", name)
-	if r.Err != nil {
-		r = u.runSkillsInstall("larksuite/cli", name)
-	}
-	return r
-}
-
 func (u *Updater) runSkillsAdd(source string) *NpmResult {
-	return u.runSkillsCommand("-y", "skills", "add", source, "-g", "-y")
-}
-
-func (u *Updater) runSkillsListOfficial(source string) *NpmResult {
-	return u.runSkillsCommand("-y", "skills", "add", source, "--list")
-}
-
-func (u *Updater) runSkillsListGlobal() *NpmResult {
-	return u.runSkillsCommand("-y", "skills", "ls", "-g")
-}
-
-func (u *Updater) runSkillsInstall(source string, name string) *NpmResult {
-	return u.runSkillsCommand("-y", "skills", "add", source, "-s", name, "-g", "-y")
-}
-
-func (u *Updater) runSkillsCommand(args ...string) *NpmResult {
-	if u.SkillsCommandOverride != nil {
-		return u.SkillsCommandOverride(args...)
-	}
 	r := &NpmResult{}
 	npxPath, err := exec.LookPath("npx")
 	if err != nil {
@@ -215,7 +175,7 @@ func (u *Updater) runSkillsCommand(args ...string) *NpmResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, args...)
+	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", source, "-g", "-y")
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()

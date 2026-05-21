@@ -18,8 +18,9 @@ func resetPending(t *testing.T) {
 func TestInit_InSync_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	if err := WriteState(SkillsState{Version: "1.0.21"}); err != nil {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := WriteStamp("1.0.21"); err != nil {
 		t.Fatal(err)
 	}
 	Init("1.0.21")
@@ -38,24 +39,12 @@ func TestInit_ColdStart_NoNotice(t *testing.T) {
 	}
 }
 
-func TestInit_NormalizedVersion_NoNotice(t *testing.T) {
+func TestInit_Drift_NoticeWithStampVersion(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	if err := WriteState(SkillsState{Version: "1.0.21"}); err != nil {
-		t.Fatal(err)
-	}
-	Init("v1.0.21")
-	if got := GetPending(); got != nil {
-		t.Errorf("GetPending() = %+v, want nil (normalized versions are in-sync)", got)
-	}
-}
-
-func TestInit_Drift_NoticeWithStateVersion(t *testing.T) {
-	clearSkillsSkipEnv(t)
-	resetPending(t)
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	if err := WriteState(SkillsState{Version: "1.0.20"}); err != nil {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := WriteStamp("1.0.20"); err != nil {
 		t.Fatal(err)
 	}
 	Init("1.0.21")
@@ -72,18 +61,22 @@ func TestInit_Skipped_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	// Even with an empty config dir (no stamp), DEV version should skip
+	// the check entirely and never emit a notice.
 	Init("DEV")
 	if got := GetPending(); got != nil {
 		t.Errorf("GetPending() = %+v, want nil (skip rules met)", got)
 	}
 }
 
-func TestInit_ReadStateError_FailsClosed(t *testing.T) {
+func TestInit_ReadStampError_FailsClosed(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	if err := os.MkdirAll(filepath.Join(dir, "skills-state.json"), 0o755); err != nil {
+	// Make the stamp path a directory so vfs.ReadFile returns a
+	// non-ENOENT I/O error.
+	if err := os.MkdirAll(filepath.Join(dir, "skills.stamp"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	Init("1.0.21")
