@@ -9,6 +9,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -612,6 +613,113 @@ func TestAddDriveSearchIsoTimeFields(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestBuildDriveSearchEvidenceTopResults(t *testing.T) {
+	t.Parallel()
+
+	t.Run("normalizes stable evidence fields", func(t *testing.T) {
+		t.Parallel()
+		items := addDriveSearchIsoTimeFields([]interface{}{
+			map[string]interface{}{
+				"title_highlighted":   "<h>Auto</h> plan",
+				"summary_highlighted": "Owner transfer <hb>notes</hb>",
+				"entity_type":         "DOC",
+				"result_meta": map[string]interface{}{
+					"doc_types":   []interface{}{"DOCX"},
+					"url":         "https://example.feishu.cn/docx/doxcnEvidence123",
+					"update_time": json.Number("1745193600"),
+				},
+			},
+		})
+
+		got := buildDriveSearchEvidenceTopResults(items)
+		if len(got) != 1 {
+			t.Fatalf("len=%d, want 1", len(got))
+		}
+		row := got[0]
+		if row["rank"] != 1 {
+			t.Fatalf("rank=%v, want 1", row["rank"])
+		}
+		if row["title"] != "Auto plan" {
+			t.Fatalf("title=%v, want stripped title", row["title"])
+		}
+		if row["summary"] != "Owner transfer notes" {
+			t.Fatalf("summary=%v, want stripped summary", row["summary"])
+		}
+		if row["token"] != "doxcnEvidence123" || row["token_type"] != "docx" {
+			t.Fatalf("token fields = (%v, %v), want parsed docx token", row["token"], row["token_type"])
+		}
+		if row["time_iso"] == "" || row["update_time_iso"] == "" {
+			t.Fatalf("expected ISO time aliases, got: %v", row)
+		}
+		docTypes, ok := row["doc_types"].([]string)
+		if !ok || len(docTypes) != 1 || docTypes[0] != "DOCX" {
+			t.Fatalf("doc_types=%#v, want [DOCX]", row["doc_types"])
+		}
+	})
+
+	t.Run("limits to top five", func(t *testing.T) {
+		t.Parallel()
+		items := make([]interface{}, 7)
+		for i := range items {
+			items[i] = map[string]interface{}{"title": strconv.Itoa(i)}
+		}
+
+		got := buildDriveSearchEvidenceTopResults(items)
+		if len(got) != driveSearchEvidenceTopLimit {
+			t.Fatalf("len=%d, want %d", len(got), driveSearchEvidenceTopLimit)
+		}
+		if got[4]["rank"] != 5 {
+			t.Fatalf("fifth rank=%v, want 5", got[4]["rank"])
+		}
+	})
+}
+
+func TestDriveSearchTokenFromURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		rawURL    string
+		wantToken string
+		wantType  string
+	}{
+		{
+			name:      "docx",
+			rawURL:    "https://example.feishu.cn/docx/doxcn123?from=copy",
+			wantToken: "doxcn123",
+			wantType:  "docx",
+		},
+		{
+			name:      "folder",
+			rawURL:    "https://example.feishu.cn/drive/folder/fldcn456",
+			wantToken: "fldcn456",
+			wantType:  "folder",
+		},
+		{
+			name:      "sheet",
+			rawURL:    "https://example.feishu.cn/sheets/shtcn789",
+			wantToken: "shtcn789",
+			wantType:  "sheet",
+		},
+		{
+			name:      "unknown",
+			rawURL:    "https://example.feishu.cn/unknown/path",
+			wantToken: "",
+			wantType:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotToken, gotType := driveSearchTokenFromURL(tt.rawURL)
+			if gotToken != tt.wantToken || gotType != tt.wantType {
+				t.Fatalf("driveSearchTokenFromURL() = (%q, %q), want (%q, %q)", gotToken, gotType, tt.wantToken, tt.wantType)
+			}
+		})
+	}
 }
 
 func TestEnrichDriveSearchError(t *testing.T) {

@@ -156,7 +156,8 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
 
 ## 输出
 
-- `--format json`（默认）：`{ total, has_more, page_token, results: [...] }`；所有 `*_time` 字段递归补 `*_time_iso`
+- `--format json`（默认）：`{ total, has_more, page_token, results: [...], evidence_top_results: [...] }`；所有 `*_time` 字段递归补 `*_time_iso`
+- `evidence_top_results` 是前 5 条结果的稳定摘要，包含可用的 `rank`、`title`、`entity_type`、`doc_types`、`id`、`token` / `token_type`、`url`、`time` / `time_iso` 和 `summary`。需要判断是否命中目标资源时，优先看这里的标题、token/URL、时间和摘要；需要完整原始字段时再看 `results`
 - `--format pretty`：4 列 table —— `type | title | edit_time | url`
 - `title_highlighted` / `summary_highlighted` 可能包含 `<h>` / `<hb>` 高亮标签，客户端对比前需先剥离
 
