@@ -27,6 +27,16 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 
 **未读完以上文件就执行相应操作会导致参数选择错误、互斥违反或文件被错误打包。**
 
+## 身份与一次性授权
+
+妙搭应用是用户的个人资产，**统一使用 `--as user`**（CLI 默认 `--as auto` 会按 shortcut 声明自动落到 user）。
+
+**首次操作前一次性把本域 scope 全拿到，避免每条命令首次跑都触发新一轮授权**：
+
+```bash
+lark-cli auth login --domain apps
+```
+
 ## 端到端流程（HTML / PPT / 静态网站发布）
 
 **第一步：判断用户意图是「明示部署」还是「仅演示」**：
