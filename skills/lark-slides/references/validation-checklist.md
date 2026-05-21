@@ -76,6 +76,14 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 - 大量形状坐标完全相同，导致主体内容重叠。
 - 渐变背景回退成空白或白底，导致文字不可读。
 
+## Whiteboard Elements
+
+`slide.get` 回读 XML 时，`<whiteboard>` 块只返回位置属性（`topLeftX`、`topLeftY`、`width`、`height`），SVG / Mermaid 内容**不随 XML 返回**。
+
+- whiteboard 验证只能核对坐标是否越界：`topLeftX + width ≤ 960`，`topLeftY + height ≤ 540`。
+- SVG 和 Mermaid 内容的正确性无法通过回读 XML 验证，需要人工视觉验收。
+- 不要在验证记录中声称 whiteboard 内容已验证，除非用户确认了视觉效果。
+
 ## Layout And Overflow Risk
 
 优先修复这些明显风险：

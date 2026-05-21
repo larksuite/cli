@@ -1,6 +1,6 @@
 # Asset Planning
 
-新建演示文稿或大幅改写页面时，在写入 `slide_plan.json` 前后都可以参考本文件。目标是让 agent 主动识别有价值的图、图标、图表、截图或示意图需求，同时保持 deck 在没有真实素材时也能完整执行。
+新建演示文稿或大幅改写页面时，在写入 `slide_plan.json` 前后都可以参考本文件。目标是让 agent 主动识别有价值的图、图标、图表、流程图、时序图、架构图、装饰图案、截图或示意图需求，同时保持 deck 在没有真实素材时也能完整执行。
 
 本文件只定义轻量资产规划。不要把它理解成素材采集流程。
 
@@ -43,7 +43,7 @@ For a page without a meaningful asset need, use:
 - `architecture_diagram`: system components, data flow, dependency map, or model structure.
 - `icon`: small semantic symbol for a concept, step, role, or status.
 - `logo`: brand, product, team, or customer mark.
-- `chart`: line, bar, pie, funnel, scatter, or chart-like data visual.
+- `chart`: line, bar, pie, radar, area, or combo data visual. Note: `<chart>` does not support funnel or scatter — map those to `<whiteboard>` SVG at generation time.
 - `infographic`: composed visual explanation, usually combining labels, numbers, and simple shapes.
 - `screenshot`: product UI, terminal output, workflow state, or page capture.
 - `flow_diagram`: process, sequence, decision tree, or mechanism diagram.

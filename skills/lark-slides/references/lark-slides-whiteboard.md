@@ -1,8 +1,23 @@
 # Whiteboard 画板元素
 
-`<whiteboard>` 放在 `<data>` 内，内部可放 **SVG** 或 **Mermaid** 图表，用于绘制数据图表、流程图、时序图、架构图及装饰性图案等 `<shape>` / `<line>` 难以覆盖的视觉内容。
+`<whiteboard>` 放在 `<data>` 内，内部可放 **SVG** 或 **Mermaid**，用于绘制流程图、时序图、架构图、散点图、漏斗图、装饰图案等 `<chart>` 和 `<shape>` 难以覆盖的视觉内容。
 
 > 前置条件：使用本文档前先阅读 [lark-slides SKILL.md](../SKILL.md)。
+
+---
+
+## `<chart>` 还是 `<whiteboard>`？
+
+**先判断内容类型，再进入本文档：**
+
+| 场景 | 推荐元素 |
+|------|---------|
+| 有结构化数据序列的柱/条/折线/面积/雷达/饼/组合图 | `<chart>` — 原生渲染，支持 legend / tooltip / 系列配色 |
+| 散点图、漏斗图（`<chart>` 不支持） | `<whiteboard>` SVG |
+| 流程图、时序图、架构图、类图、ER 图等拓扑图 | `<whiteboard>` Mermaid 或 SVG |
+| 进度条、波浪背景、装饰图案、像素级自定义可视化 | `<whiteboard>` SVG |
+
+> 适合 `<chart>` 的内容就用 `<chart>`，不要用 SVG 手绘——原生渲染更省力且质量更高。
 
 ---
 
@@ -42,7 +57,7 @@ SVG 内的坐标相对于 whiteboard 自身左上角（0,0），与 slide 坐标
 
 ### 第二步：数据图表与装饰元素按模型身份选路径
 
-上表以外的场景（柱图、折线图、进度条、时间线、波浪背景、星点纹理等）需要精确控制坐标和配色，SVG 表达力更强，但各模型生成 SVG 的能力有差异：
+上表以外的场景（散点图、漏斗图、进度条、时间线、波浪背景、星点纹理等）需要精确控制坐标和配色，SVG 表达力更强，但各模型生成 SVG 的能力有差异：
 
 | 模型身份 | 路径 |
 |----------|------|
@@ -134,7 +149,7 @@ for i in range(n):
 ---
 ### 布局模式
 
-**全屏装饰层（必须放在所有 shape 之前，否则会遮挡文字内容）**
+**全屏装饰层**
 ```xml
 <whiteboard width="960" height="540" topLeftX="0" topLeftY="0">
   <svg width="960" height="540" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
@@ -142,6 +157,8 @@ for i in range(n):
   </svg>
 </whiteboard>
 ```
+
+> ⚠️ 全屏装饰 whiteboard 必须放在所有 `<shape>` / `<img>` / `<table>` 之前，否则会遮挡文字内容。XML 中元素位置越靠后，渲染层级越高。
 
 **侧栏图表（与文字 shape 并排）**
 ```xml
