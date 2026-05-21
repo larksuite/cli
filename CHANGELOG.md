@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.37] - 2026-05-21
+
+### Features
+
+- **apps**: Add miaoda apps domain with 6 shortcuts covering `+create` / `+update` / `+list` / `+access-scope-get` / `+access-scope-set` / `+html-publish` (#1002)
+
+### Bug Fixes
+
+- **permission**: Surface auto-grant skipped/failed cases via stderr warnings and a `hint` field in the `permission_grant` JSON output (#1015)
+- **sheets**: Use `FileIO` for `+write-image` input so stdin / `-` works consistently (#996)
+
 ## [v1.0.36] - 2026-05-21
 
 ### Features
@@ -806,6 +817,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.37]: https://github.com/larksuite/cli/releases/tag/v1.0.37
+[v1.0.36]: https://github.com/larksuite/cli/releases/tag/v1.0.36
 [v1.0.35]: https://github.com/larksuite/cli/releases/tag/v1.0.35
 [v1.0.34]: https://github.com/larksuite/cli/releases/tag/v1.0.34
 [v1.0.33]: https://github.com/larksuite/cli/releases/tag/v1.0.33
