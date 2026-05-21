@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.38] - 2026-05-22
+
+### Features
+
+- **apps**: Gate the Miaoda apps domain off on the Lark brand — the `apps` shortcut subtree returns a structured brand-restriction error, `auth login --domain apps` is rejected, `--domain all` skips it, and `spark:*` scopes are no longer requested (#1025)
+
 ## [v1.0.37] - 2026-05-21
 
 ### Features
@@ -817,6 +823,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.38]: https://github.com/larksuite/cli/releases/tag/v1.0.38
 [v1.0.37]: https://github.com/larksuite/cli/releases/tag/v1.0.37
 [v1.0.36]: https://github.com/larksuite/cli/releases/tag/v1.0.36
 [v1.0.35]: https://github.com/larksuite/cli/releases/tag/v1.0.35
