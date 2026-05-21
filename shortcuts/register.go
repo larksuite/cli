@@ -161,7 +161,7 @@ func installBrandRestrictionGuard(svc *cobra.Command, service string, brand core
 	stub := func(c *cobra.Command, _ []string) error {
 		c.SilenceUsage = true
 		return output.ErrValidation(
-			"the %q domain is not currently available on the %s brand",
+			"the %q feature is not yet supported on the %s brand",
 			service, brand,
 		)
 	}
@@ -187,5 +187,5 @@ func installBrandRestrictionGuard(svc *cobra.Command, service string, brand core
 	walk(svc)
 
 	// --help bypasses RunE, so surface the restriction in Long too.
-	svc.Long = fmt.Sprintf("The %q domain is not currently available on the %s brand.", service, brand)
+	svc.Long = fmt.Sprintf("The %q feature is not yet supported on the %s brand.", service, brand)
 }
