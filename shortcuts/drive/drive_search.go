@@ -34,6 +34,8 @@ const (
 	driveSearchMaxOpenedSpanDays = 365 // hard cap: reject --opened-* spans beyond ~1 year
 )
 
+const driveSearchEvidenceTopResultsLimit = 5
+
 var driveSearchSortValues = []string{
 	"default",
 	"edit_time",
@@ -46,6 +48,8 @@ var driveSearchDocTypeSet = map[string]struct{}{
 	"DOC": {}, "SHEET": {}, "BITABLE": {}, "MINDNOTE": {}, "FILE": {},
 	"WIKI": {}, "DOCX": {}, "FOLDER": {}, "CATALOG": {}, "SLIDES": {}, "SHORTCUT": {},
 }
+
+var driveSearchHighlightTagRe = regexp.MustCompile(`</?hb?>`)
 
 // driveSearchHourAggregatedFields lists filter keys the server aggregates at
 // hour granularity. We pre-snap start/end and emit a stderr notice so callers
@@ -142,10 +146,11 @@ var DriveSearch = common.Shortcut{
 		normalizedItems := addDriveSearchIsoTimeFields(items)
 
 		resultData := map[string]interface{}{
-			"total":      data["total"],
-			"has_more":   data["has_more"],
-			"page_token": data["page_token"],
-			"results":    normalizedItems,
+			"total":                data["total"],
+			"has_more":             data["has_more"],
+			"page_token":           data["page_token"],
+			"results":              normalizedItems,
+			"evidence_top_results": buildDriveSearchEvidenceTopResults(normalizedItems),
 		}
 
 		runtime.OutFormat(resultData, &output.Meta{Count: len(normalizedItems)}, func(w io.Writer) {
@@ -663,7 +668,6 @@ func renderDriveSearchTable(w io.Writer, data map[string]interface{}, items []in
 		return
 	}
 
-	htmlTagRe := regexp.MustCompile(`</?hb?>`)
 	var rows []map[string]interface{}
 	for _, item := range items {
 		u, _ := item.(map[string]interface{})
@@ -676,7 +680,7 @@ func renderDriveSearchTable(w io.Writer, data map[string]interface{}, items []in
 		} else if s, ok := u["title"].(string); ok {
 			rawTitle = s
 		}
-		title := common.TruncateStr(htmlTagRe.ReplaceAllString(rawTitle, ""), 50)
+		title := common.TruncateStr(cleanDriveSearchText(rawTitle), 50)
 
 		resultMeta, _ := u["result_meta"].(map[string]interface{})
 		docTypes := ""
@@ -717,6 +721,132 @@ func renderDriveSearchTable(w io.Writer, data map[string]interface{}, items []in
 		moreHint = " (more available, use --format json to get page_token, then --page-token to paginate)"
 	}
 	fmt.Fprintf(w, "\n%d result(s)%s\n", len(rows), moreHint)
+}
+
+func buildDriveSearchEvidenceTopResults(items []interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, min(len(items), driveSearchEvidenceTopResultsLimit))
+	for _, item := range items {
+		if len(out) >= driveSearchEvidenceTopResultsLimit {
+			break
+		}
+		u, _ := item.(map[string]interface{})
+		if u == nil {
+			continue
+		}
+		out = append(out, buildDriveSearchEvidenceResult(len(out)+1, u))
+	}
+	return out
+}
+
+func buildDriveSearchEvidenceResult(rank int, item map[string]interface{}) map[string]interface{} {
+	resultMeta, _ := item["result_meta"].(map[string]interface{})
+	itemFirst := []map[string]interface{}{item, resultMeta}
+	metaFirst := []map[string]interface{}{resultMeta, item}
+
+	url := driveSearchFirstString(metaFirst, "url", "app_link", "link")
+	token := driveSearchFirstString(metaFirst,
+		"token",
+		"doc_token",
+		"wiki_token",
+		"obj_token",
+		"file_token",
+		"sheet_token",
+		"bitable_token",
+		"node_token",
+		"resource_token",
+	)
+	resultType := driveSearchFirstString(metaFirst, "doc_types", "doc_type", "type")
+	if resultType == "" {
+		resultType = driveSearchFirstString(itemFirst, "entity_type")
+	}
+	if ref, ok := common.ParseResourceURL(url); ok {
+		if token == "" {
+			token = ref.Token
+		}
+		if resultType == "" {
+			resultType = ref.Type
+		}
+	}
+
+	id := driveSearchFirstString(metaFirst, "id", "doc_id", "object_id", "entity_id", "resource_id")
+	if id == "" {
+		id = token
+	}
+
+	return map[string]interface{}{
+		"rank":            rank,
+		"title":           cleanDriveSearchText(driveSearchFirstString(itemFirst, "title", "title_highlighted", "name")),
+		"id":              id,
+		"token":           token,
+		"type":            resultType,
+		"url":             url,
+		"create_time_iso": driveSearchFirstString(metaFirst, "create_time_iso", "created_time_iso"),
+		"update_time_iso": driveSearchFirstString(metaFirst, "update_time_iso", "edit_time_iso", "modified_time_iso"),
+		"open_time_iso":   driveSearchFirstString(metaFirst, "open_time_iso"),
+		"summary":         cleanDriveSearchText(driveSearchFirstString(itemFirst, "summary", "summary_highlighted", "snippet")),
+	}
+}
+
+func cleanDriveSearchText(s string) string {
+	s = driveSearchHighlightTagRe.ReplaceAllString(s, "")
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func driveSearchFirstString(maps []map[string]interface{}, keys ...string) string {
+	for _, m := range maps {
+		if m == nil {
+			continue
+		}
+		for _, key := range keys {
+			if s := driveSearchStringValue(m[key]); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func driveSearchStringValue(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return strings.TrimSpace(val)
+	case json.Number:
+		return strings.TrimSpace(val.String())
+	case int:
+		return strconv.Itoa(val)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case float64:
+		if math.IsInf(val, 0) || math.IsNaN(val) {
+			return ""
+		}
+		if val == math.Trunc(val) {
+			return strconv.FormatInt(int64(val), 10)
+		}
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case []string:
+		return strings.Join(nonEmptyDriveSearchStrings(val), ",")
+	case []interface{}:
+		parts := make([]string, 0, len(val))
+		for _, item := range val {
+			if s := driveSearchStringValue(item); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, ",")
+	default:
+		return ""
+	}
+}
+
+func nonEmptyDriveSearchStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if s := strings.TrimSpace(value); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // addDriveSearchIsoTimeFields recursively annotates every `*_time` numeric

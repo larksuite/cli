@@ -156,7 +156,9 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
 
 ## 输出
 
-- `--format json`（默认）：`{ total, has_more, page_token, results: [...] }`；所有 `*_time` 字段递归补 `*_time_iso`
+- `--format json`（默认）：`{ total, has_more, page_token, results: [...], evidence_top_results: [...] }`；所有 `*_time` 字段递归补 `*_time_iso`
+- `evidence_top_results`：第一页前 5 个结果的稳定摘要，包含 `rank`、`title`、`id`、`token`、`type`、`url`、`create_time_iso`、`update_time_iso`、`open_time_iso`、`summary`；标题和摘要已剥离 `<h>` / `<hb>` 高亮标签，适合快速判断候选是否值得继续 `drive +inspect` / 业务域读取
+- `results`：完整原始结果结构，保留服务端返回的高亮、嵌套 `result_meta` 和其他字段；需要排查字段缺失或做深度解析时看这里
 - `--format pretty`：4 列 table —— `type | title | edit_time | url`
 - `title_highlighted` / `summary_highlighted` 可能包含 `<h>` / `<hb>` 高亮标签，客户端对比前需先剥离
 

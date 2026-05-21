@@ -960,3 +960,78 @@ func TestRenderDriveSearchTable(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildDriveSearchEvidenceTopResults(t *testing.T) {
+	t.Parallel()
+
+	t.Run("projects stable fields for evidence use", func(t *testing.T) {
+		t.Parallel()
+		items := addDriveSearchIsoTimeFields([]interface{}{
+			map[string]interface{}{
+				"title_highlighted":   "<h>Automation</h> Doc",
+				"summary_highlighted": "contains <hb>key</hb>\ncontent",
+				"entity_type":         "DOC",
+				"result_meta": map[string]interface{}{
+					"url":         "https://example.feishu.cn/docx/doxcnABC",
+					"update_time": int64(1745193600),
+					"create_time": json.Number("1745107200"),
+					"doc_types":   []interface{}{"DOCX"},
+				},
+			},
+		})
+
+		got := buildDriveSearchEvidenceTopResults(items)
+		if len(got) != 1 {
+			t.Fatalf("len(got)=%d, want 1", len(got))
+		}
+		row := got[0]
+		if row["rank"] != 1 {
+			t.Fatalf("rank=%v, want 1", row["rank"])
+		}
+		if row["title"] != "Automation Doc" {
+			t.Fatalf("title=%q", row["title"])
+		}
+		if row["summary"] != "contains key content" {
+			t.Fatalf("summary=%q", row["summary"])
+		}
+		if row["token"] != "doxcnABC" || row["id"] != "doxcnABC" {
+			t.Fatalf("token/id not derived from url: %#v", row)
+		}
+		if row["type"] != "DOCX" {
+			t.Fatalf("type=%v, want DOCX", row["type"])
+		}
+		if row["url"] != "https://example.feishu.cn/docx/doxcnABC" {
+			t.Fatalf("url=%v", row["url"])
+		}
+		if row["update_time_iso"] == "" || row["create_time_iso"] == "" {
+			t.Fatalf("iso times should be projected, got %#v", row)
+		}
+	})
+
+	t.Run("caps to top five valid results with sequential ranks", func(t *testing.T) {
+		t.Parallel()
+		items := []interface{}{"skip-me"}
+		for i := 0; i < driveSearchEvidenceTopResultsLimit+1; i++ {
+			items = append(items, map[string]interface{}{"title": "doc"})
+		}
+
+		got := buildDriveSearchEvidenceTopResults(items)
+		if len(got) != driveSearchEvidenceTopResultsLimit {
+			t.Fatalf("len(got)=%d, want %d", len(got), driveSearchEvidenceTopResultsLimit)
+		}
+		if got[0]["rank"] != 1 || got[len(got)-1]["rank"] != driveSearchEvidenceTopResultsLimit {
+			t.Fatalf("ranks should be sequential after skipping invalid items: %#v", got)
+		}
+	})
+
+	t.Run("empty output remains an array", func(t *testing.T) {
+		t.Parallel()
+		got := buildDriveSearchEvidenceTopResults(nil)
+		if got == nil {
+			t.Fatal("empty evidence output should be a non-nil slice so JSON renders []")
+		}
+		if len(got) != 0 {
+			t.Fatalf("len(got)=%d, want 0", len(got))
+		}
+	})
+}
