@@ -49,8 +49,8 @@ var AppsHTMLPublish = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		appID := rctx.Str("app-id")
-		path := rctx.Str("path")
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		path := strings.TrimSpace(rctx.Str("path"))
 		dry := common.NewDryRunAPI()
 		dry.Desc("Upload tar.gz + publish HTML (multipart, returns url)")
 		dry.POST(fmt.Sprintf("%s/apps/%s/upload_and_release_html_code", apiBasePath, validate.EncodePathSegment(appID))).

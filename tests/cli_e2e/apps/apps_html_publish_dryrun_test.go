@@ -261,4 +261,30 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		result.AssertExitCode(t, 2)
 		assert.Contains(t, validateErrorMessage(result), "当前工作目录")
 	})
+
+	t.Run("TrimsAppIDAndPath", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html/>"), 0o644))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+html-publish",
+				"--app-id", "  app_x  ",
+				"--path", "  ./dist  ",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+			WorkDir:   dir,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code",
+			gjson.Get(result.Stdout, "api.0.url").String())
+		assert.Equal(t, int64(1), gjson.Get(result.Stdout, "file_count").Int(),
+			"path trimming must produce the same manifest as untrimmed input")
+	})
 }
