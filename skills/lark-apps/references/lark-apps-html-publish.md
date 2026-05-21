@@ -118,6 +118,19 @@ lark-cli apps +html-publish --app-id "$APP" --path ./dist
 
 > 服务暂时不可用，建议稍后重试。
 
+## 敏感文件警告
+
+dry-run 输出会扫描 manifest 里的相对路径，命中以下任一模式时把它们列入 envelope 的 `warnings` 字段（advisory，不阻断 dry-run）：
+
+- `.git/`（任意 SCM 内部文件）
+- `.env` 或 `.env.*`（环境变量 / API key）
+- `.npmrc` / `.netrc`（HTTP 凭据）
+- `.ssh/id_rsa*` / `.ssh/id_ed25519*` / `.ssh/id_ecdsa*` / `.ssh/id_dsa*`
+- `.aws/credentials` / `.aws/config` / `.docker/config.json` / `.gcloud/...` / `.kube/...`
+- `*.pem` / `*.key`（私钥）
+
+**Agent 行为契约**：dry-run 看到 `warnings` 非空，**必须停下来向用户报告并询问是否继续**；用户确认后才能调真实的 `apps +html-publish`（去掉 `--dry-run`）。
+
 ## 提示
 
 - `--path` **不能等于 cwd**（`.` 或 cwd 等价写法均拒）。原因：递归打包 + 互联网公开的组合下，cwd 根的项目级文件（`.git/` / `.env` / `node_modules` / `.aws/credentials`）会被一并打包并通过 share URL 公开访问。强制指定具体子目录或文件，如 `./dist` / `./public/` / `./index.html`

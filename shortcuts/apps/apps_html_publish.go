@@ -70,6 +70,20 @@ var AppsHTMLPublish = common.Shortcut{
 		}
 		dry.Set("total_size_bytes", totalSize)
 		dry.Set("files", names)
+		// Advisory scan: surface paths matching well-known secret / credential
+		// patterns so the caller can review before going public. Dry-run still
+		// exits 0; this is non-blocking by design (legit doc sites may ship
+		// example .env files).
+		var warnings []string
+		for _, c := range candidates {
+			if isSensitiveRelPath(c.RelPath) {
+				warnings = append(warnings, c.RelPath)
+			}
+		}
+		if len(warnings) > 0 {
+			dry.Set("warnings", warnings)
+			dry.Set("warning_summary", fmt.Sprintf("manifest contains %d sensitive path(s); review before publishing", len(warnings)))
+		}
 		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {

@@ -206,6 +206,39 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "path" not set`)
 	})
 
+	t.Run("WarningsForSensitivePaths", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html/>"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", ".env"), []byte("SECRET=xxx\n"), 0o644))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+html-publish",
+				"--app-id", "app_x",
+				"--path", "./dist",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+			WorkDir:   dir,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		warnings := gjson.Get(result.Stdout, "warnings").Array()
+		require.NotEmpty(t, warnings, "expected non-empty warnings for .env: %s", result.Stdout)
+		var found bool
+		for _, w := range warnings {
+			if w.String() == ".env" {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "warnings should list .env, got %v", warnings)
+	})
+
 	t.Run("RejectsPathEqualsCWD", func(t *testing.T) {
 		// Even with valid index.html in cwd, --path "." must be rejected at
 		// Validate (so dry-run also rejects) to prevent accidental

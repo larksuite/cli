@@ -41,6 +41,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 | 步骤 | 命令 | 说明 |
 |------|------|------|
 | 1. 新建应用 | `apps +create --name "<根据内容主题起的应用名>" --app-type HTML` → 从响应里拿 `app_id` | 默认都走新建（**不要尝试搜索 / 枚举已有应用**）。用户明确要复用现有应用时让他提供 **妙搭应用链接** 或 **app_id 字符串**（详见下方"快速决策"）；`--app-type` 必填，当前只支持 `HTML`（区分大小写），未来扩展 |
+| 1.5 预检 | `apps +html-publish --app-id <id> --path <path> --dry-run` 看 `warnings` 字段 | 命中 `.git` / `.env*` / `*.pem` / `*.key` 等敏感文件时**停下来**，把 warnings 列给用户看，确认要继续才走 step 2；用户没确认前不要去掉 `--dry-run` 真发 |
 | 2. 发布 HTML | `apps +html-publish --app-id <id> --path <文件或目录>` | 必走 |
 | 3. 设置可用范围（可选） | `apps +access-scope-set --app-id <id> --scope tenant\|public\|specific ...` | 用户说"公开 / 全员可见 / 让 Alice 看 / 互联网可分享"等 |
 
