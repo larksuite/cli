@@ -51,7 +51,10 @@ func TestAppsAccessScopeGetDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		assert.Contains(t, result.Stderr, `required flag(s) "app-id" not set`)
+		// cobra Required failures exit with code 1 (distinct from output.ErrValidation
+		// at code 2). Message goes to stderr as plain text, but we read combined output
+		// to stay robust to future runner changes.
+		result.AssertExitCode(t, 1)
+		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "app-id" not set`)
 	})
 }

@@ -180,8 +180,8 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			WorkDir:   dir,
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		assert.Contains(t, result.Stderr, `required flag(s) "app-id" not set`)
+		result.AssertExitCode(t, 1)
+		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "app-id" not set`)
 	})
 
 	t.Run("RejectsMissingPath", func(t *testing.T) {
@@ -197,7 +197,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		assert.Contains(t, result.Stderr, `required flag(s) "path" not set`)
+		result.AssertExitCode(t, 1)
+		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "path" not set`)
 	})
 }
