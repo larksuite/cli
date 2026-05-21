@@ -111,7 +111,7 @@ type appsHTMLPublishSpec struct {
 }
 
 // maxHTMLPublishTarballBytes 是 client 端 tar.gz 包体上限，对齐 OAPI 设计 20MB 约束。
-// 用 var 而非 const，允许单测临时调小做拦截验证。
+// 用 var 而非 const，便于单测调小覆盖拦截路径。
 var maxHTMLPublishTarballBytes int64 = 20 * 1024 * 1024
 
 // ensureIndexHTML 要求 walker 抓到的 candidates 里必须含 index.html。

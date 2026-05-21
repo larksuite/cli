@@ -149,7 +149,6 @@ func TestWriteHTMLPublishTarEntry_CopyFailure(t *testing.T) {
 func TestBuildHTMLPublishTarball_EntryWriteFailureReturnsError(t *testing.T) {
 	// candidate 指向不存在文件 → writeHTMLPublishTarEntry 失败
 	// → buildHTMLPublishTarball 返回 nil tarball + error。
-	// 内存打包不再创建临时文件，无清理路径需要验证。
 	candidates := []htmlPublishCandidate{
 		{RelPath: "x.html", AbsPath: "/nonexistent-path-for-test/x.html", Size: 0},
 	}

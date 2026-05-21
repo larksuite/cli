@@ -179,7 +179,7 @@ func TestRunHTMLPublish_SingleFileNamedIndexPasses(t *testing.T) {
 }
 
 func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
-	// 临时把上限调到 100 字节验证拦截，恢复原值避免污染其它测试。
+	// 把上限调到 100 字节验证拦截，defer 恢复原值避免污染其它测试。
 	orig := maxHTMLPublishTarballBytes
 	maxHTMLPublishTarballBytes = 100
 	defer func() { maxHTMLPublishTarballBytes = orig }()
