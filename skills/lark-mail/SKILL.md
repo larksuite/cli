@@ -564,8 +564,8 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `create` — 创建收信规则
   - `delete` — 删除收信规则
   - `list` — 列出收信规则
-  - `reorder` — 
-  - `update` — 
+  - `reorder` — 重新排列指定用户邮箱下收信规则的执行顺序。请求时需传入完整的有序 rule_id 列表，未包含的规则保持原顺序；规则按列表顺序自上而下依次匹配并执行。
+  - `update` — 全量更新指定 rule_id 的收信规则。请求时需传入完整的规则对象（含名称、匹配条件、动作等），未携带的字段将被清空。如仅修改部分字段，请先调用「列出收信规则」获取规则详情后再回传，避免漏传导致数据丢失。
 
 ### user_mailbox.sent_messages
 
