@@ -78,33 +78,9 @@ lark-cli apps +list -q '.data.items[] | select(.name=="客户调研问卷") | .a
 - `data.has_more=true` 表示还有下一页；用 `data.page_token` 作为下次 `--page-token` 传入
 - `data.has_more=false` 且 `data.page_token` 为空 / 缺省表示已经到末尾
 
-## 典型场景
+## 用途
 
-### 场景 1：用户说"列出我的应用"
-
-```bash
-lark-cli apps +list
-```
-
-> 你有 N 个妙搭应用：
-> - 客户调研问卷 (`app_4k5jepcbjmv6m`)
-> - Demo (`app_xxx`)
-
-如果 `has_more=true`：
-
-> 还有更多应用未列出，用 `apps +list --page-token "{page_token}"` 拉下一页。
-
-### 场景 2：列表为空
-
-> 当前没有妙搭应用。可以用 `apps +create --name "..."` 新建一个。
-
-### 场景 3：按名字找 app_id（Agent 内部）
-
-```bash
-lark-cli apps +list -q '.data.items[] | select(.name=="客户调研问卷") | .app_id'
-```
-
-如果第一页没找到 + `has_more=true`，按 `--page-token` 翻页继续找。直接拿 `app_id`，不用向用户展示。
+本命令保留可供人类操作员手动调用（例如运维 / 调试场景，按 `name` 搜应用 ID）。**Agent 不应主动调用**：默认行为是 `apps +create` 新建；要复用现有应用，**让用户给妙搭应用链接或 app_id**，详见 [`../SKILL.md`](../SKILL.md) "用户没给 app_id" 一节。
 
 ## 协同命令
 
