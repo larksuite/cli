@@ -147,7 +147,7 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 ```xml
 <!-- SVG 模式：数据图表、装饰元素 -->
 <whiteboard topLeftX="580" topLeftY="120" width="340" height="280">
-  <svg width="340" height="280" viewBox="0 0 340 280" xmlns="http://www.w3.org/2000/svg">
+  <svg xmlns="http://www.w3.org/2000/svg">
     <rect x="60" y="80" width="40" height="140" rx="3" fill="rgba(59,130,246,0.85)"/>
     <text x="80" y="238" text-anchor="middle" font-size="11" fill="rgba(100,116,139,1)">ABC</text>
   </svg>
@@ -166,7 +166,7 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 </whiteboard>
 ```
 
-SVG 模式：`<svg>` 需设置 `width`、`height`、`viewBox`、`xmlns`（`http://www.w3.org/2000/svg`）；`width`/`height` 通常与 whiteboard 相同，但可以不同，`viewBox` 控制内容坐标系，SVG 会缩放以适应 whiteboard 区域。\
+SVG 模式：`<svg>` 需声明 `xmlns="http://www.w3.org/2000/svg"`，内容大小由子元素包围盒决定；`width`/`height`/`viewBox` 不影响渲染，仅当元素使用百分比属性值时需声明 `viewBox`。\
 Mermaid 模式：内容用 `<![CDATA[...]]>` 包裹，避免 `[`、`>`、`-->` 等字符破坏 XML 解析。\
 详细用法见 [lark-slides-whiteboard.md](lark-slides-whiteboard.md)。
 

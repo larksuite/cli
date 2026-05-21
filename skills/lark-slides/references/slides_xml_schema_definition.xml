@@ -3021,10 +3021,10 @@
             适用场景: 流程图、时序图、思维导图、类图、甘特图、饼图等结构化图表
             特点: 用简短的文本声明描述图表逻辑, 由渲染引擎自动布局, 无需手动计算坐标
             示例: &lt;mermaid&gt;&lt;![CDATA[flowchart TD\n  A[开始] --&gt; B[结束]]]&gt;&lt;/mermaid&gt;
-          - svg: SVG 命名空间(http://www.w3.org/2000/svg)下的完整 SVG 内容
-            适用场景: 需要精确控制布局、样式、渐变、动画等视觉细节的自定义图形
-            特点: 像素级精确定位, 支持渐变/阴影/路径/滤镜等丰富视觉效果, 但需手动计算所有坐标
-            示例: &lt;svg width="960" height="540" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg"&gt;...&lt;/svg&gt;
+          - svg: SVG 内容
+            适用场景: 需要精确控制坐标、配色、路径的自定义图形
+            特点: 像素级精确定位，支持 rect/circle/path/text/polygon/g/linearGradient 等元素；radialGradient/filter/clipPath/mask/pattern 不支持，需手动计算所有坐标
+            示例: &lt;svg xmlns="http://www.w3.org/2000/svg"&gt;...&lt;/svg&gt;（xmlns 必填；width/height/viewBox 不影响渲染，仅百分比属性值场景需声明 viewBox）
           - border: 边框样式, 可选, 无border标签代表无边框, 空border标签代表使用默认样式
         </xs:documentation>
       </xs:annotation>

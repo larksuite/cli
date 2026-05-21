@@ -31,7 +31,7 @@
 | `width` | 是 | 画板宽度（像素） |
 | `height` | 是 | 画板高度（像素） |
 
-> SVG 模式需在 `<svg>` 上设置 `width`、`height`、`viewBox`、`xmlns`；`width`/`height` 通常与 whiteboard 相同，但可以不同——`viewBox` 控制内容坐标系，SVG 会自动缩放以适应 whiteboard 区域。Mermaid 模式不需要额外属性。
+> SVG 模式下 `<svg>` 需声明 `xmlns="http://www.w3.org/2000/svg"`；内容大小由子元素包围盒决定，`width`/`height`/`viewBox` 不影响渲染（仅当元素属性使用百分比值时需要 `viewBox` 提供计算基准）。Mermaid 模式不需要额外属性。
 
 SVG 内的坐标相对于 whiteboard 自身左上角（0,0），与 slide 坐标系无关。
 
@@ -80,24 +80,27 @@ SVG 内的坐标相对于 whiteboard 自身左上角（0,0），与 slide 坐标
 - **字号必须有层级**：标题 ≠ 标签 ≠ 数值，混用同一字号会消灭视觉焦点
 - **配色要与 slide 主题呼应**：深色 slide 背景下图表用透明底或深色卡片；浅色背景下避免再加纯白底块
 - **每个 whiteboard 都是设计机会**：主动用圆角、半透明填充、折线面积、点装饰等细节拉开与默认模板的差距
-- **写 SVG 前先判断背景亮度**：背景亮度 < 30% 时，装饰元素"对比不足"比"过强"危害更大，宁重勿轻；无法确定背景色时按深色处理。
+- **写 SVG 前先判断背景亮度**：背景亮度 < 30% 时，装饰元素"对比不足"比"过强"危害更大，宁重勿轻；
 - **装饰层次用亮度跳跃，不用线性叠透明度**：`α=0.04→0.08→0.12` 的等差递增在深色底上几乎看不出差异（相邻层亮度差 ≈20）；正确做法是非线性跳跃如 `0.10→0.40→0.70→1.0`，相邻层亮度差 ≥60。
 
 ### 语法
 
 ```xml
 <whiteboard width="400" height="300" topLeftX="500" topLeftY="120">
-  <svg width="400" height="300" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+  <svg xmlns="http://www.w3.org/2000/svg">
     <rect x="50" y="50" width="80" height="200" rx="4" fill="rgba(59,130,246,0.85)"/>
     <text x="90" y="270" text-anchor="middle" font-size="12" fill="rgba(100,116,139,1)">ABC</text>
   </svg>
 </whiteboard>
 ```
 
-**SVG 属性要求：**
-- `width` / `height`：SVG 自身的渲染尺寸，通常与 whiteboard 相同，但可以不同（`viewBox` 控制内容缩放）
-- `viewBox`：定义 SVG 内坐标系范围，如 `0 0 400 300`；与 `width`/`height` 不同时，内容会等比缩放
-- `xmlns`：`http://www.w3.org/2000/svg`
+`<svg>` 需声明 `xmlns="http://www.w3.org/2000/svg"`；`width`/`height`/`viewBox` 无需填写，若元素属性使用百分比值则需额外声明 `viewBox`。
+
+### ⚠️ 渲染包围盒规则
+
+whiteboard 渲染时以**所有子元素的几何包围盒合并结果**为内容区域，自适应缩放到容器。
+
+`<svg>` 上的 `width`、`height`、`viewBox` 不影响内容区域的计算，但 `viewBox` 有一个实际用途：**为百分比属性提供计算基准**。若元素使用 `width="50%"` 等百分比值，必须声明 `viewBox` 才能正确解析；绝对坐标元素则无需关心。推荐统一使用绝对坐标，避免引入百分比依赖。
 
 ### 支持的 SVG 元素
 
@@ -111,6 +114,7 @@ SVG 内的坐标相对于 whiteboard 自身左上角（0,0），与 slide 坐标
 | `<text>` | 文本，支持中文 | 标签、数值 |
 | `<polygon>` | 多边形 | 箭头、星形、面积填充 |
 | `<g>` | 分组 | 批量变换、语义分组 |
+| `<linearGradient>` | 线性渐变定义，配合 `fill="url(#id)"` 使用 | 渐变背景、渐变填充 |
 
 **颜色：** 统一用 `rgba(R,G,B,A)`，对深浅背景都友好。  
 **虚线：** `stroke-dasharray="4,4"` 用于网格线 / 坐标轴。  
@@ -149,13 +153,38 @@ for i in range(n):
     print(f"circle-{i}: cx={round(i * step)} cy={cy} r={r}")
 ```
 
+**最大包围盒 → whiteboard 尺寸**
+
+所有元素坐标算完后，汇总出整体包围盒，直接作为 whiteboard 的 `width`/`height`：
+
+```python
+# 每个元素登记 (x, y, w, h)，含 stroke 外扩
+elements = [
+    (10, 20, 80, 160),   # bar-0
+    (107, 10, 80, 170),  # bar-1
+    (204, 40, 80, 140),  # bar-2
+    (0, 0, 300, 1),      # x-axis
+]
+
+xs = [x for x, y, w, h in elements]
+ys = [y for x, y, w, h in elements]
+x2 = [x + w for x, y, w, h in elements]
+y2 = [y + h for x, y, w, h in elements]
+
+wb_w = max(x2) - min(xs)
+wb_h = max(y2) - min(ys)
+print(f"whiteboard width={wb_w} height={wb_h}")
+```
+
+输出即 `<whiteboard width=... height=...>` 的值，无需手动估算。
+
 ---
 ### 布局模式
 
 **全屏装饰层**
 ```xml
 <whiteboard width="960" height="540" topLeftX="0" topLeftY="0">
-  <svg width="960" height="540" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
+  <svg xmlns="http://www.w3.org/2000/svg">
     ...
   </svg>
 </whiteboard>
@@ -169,7 +198,7 @@ for i in range(n):
 <shape type="text" topLeftX="60" topLeftY="120" width="500" height="340">...</shape>
 <!-- 右侧图表 -->
 <whiteboard width="340" height="340" topLeftX="580" topLeftY="120">
-  <svg width="340" height="340" viewBox="0 0 340 340" xmlns="http://www.w3.org/2000/svg">
+  <svg xmlns="http://www.w3.org/2000/svg">
     ...
   </svg>
 </whiteboard>
@@ -178,8 +207,8 @@ for i in range(n):
 **底部装饰条**
 ```xml
 <whiteboard width="960" height="100" topLeftX="0" topLeftY="440">
-  <svg width="960" height="100" viewBox="0 0 960 100" xmlns="http://www.w3.org/2000/svg">
-   ...
+  <svg xmlns="http://www.w3.org/2000/svg">
+    ...
   </svg>
 </whiteboard>
 ```
@@ -192,7 +221,7 @@ for i in range(n):
 
 | 禁止 | 原因 | 替代方案 |
 |------|------|---------|
-| `<radialGradient>` / `<linearGradient>` | 渲染失败 | 用 `rgba()` 透明度模拟深浅层次 |
+| `<radialGradient>` | 渲染失败 | 用 `<linearGradient>` 或 `rgba()` 透明度模拟深浅层次 |
 | `<filter>`（阴影、模糊等） | 渲染失败 | 用半透明 `<rect>` 叠加模拟阴影 |
 | `<clipPath>` / `<mask>` | 渲染失败 | 调整元素坐标和尺寸自然裁切 |
 | `<pattern>` | 渲染失败 | 手动铺 `<circle>` / `<rect>` 点阵 |
@@ -223,8 +252,7 @@ for i in range(n):
 
 **关键点：**
 - 内容用 `<![CDATA[...]]>` 包裹——Mermaid 语法里的 `[`、`>`、`-->` 是 XML 特殊字符，CDATA 避免转义问题
-- whiteboard 只需 `topLeftX`、`topLeftY`、`width`、`height`，无需 SVG 相关属性
-- `<mermaid>` 内不加 `xmlns`
+- whiteboard 只需 `topLeftX`、`topLeftY`、`width`、`height`
 
 ### 支持的 Mermaid 图表类型
 
@@ -272,17 +300,17 @@ Mermaid 语法包含 `[`、`>`、`-->`，不用 CDATA 直接写会破坏 XML 解
 ## 快速自检清单
 
 **SVG 模式——结构检查：**
-- [ ] `<svg>` 设置了 `width`、`height`、`viewBox`、`xmlns`
+- [ ] `<svg>` 声明了 `xmlns="http://www.w3.org/2000/svg"`
+- [ ] whiteboard 的 `width`/`height` 由所有元素的最大包围盒（含 stroke 外扩）计算得出，不手动估值
 - [ ] `topLeftX + width ≤ 960`，`topLeftY + height ≤ 540`
-- [ ] 所有 SVG 元素坐标 + 尺寸在 viewBox 范围内（无溢出）
-- [ ] 所有颜色用 `rgba()` 格式，无 `<linearGradient>` / `<filter>` / `<clipPath>`
+- [ ] 无 `<radialGradient>` / `<filter>` / `<clipPath>`
 - [ ] 文字 `y` 坐标为 baseline 位置，最小值 ≥ font-size（避免被裁切）
 
 **SVG 模式——视觉品质检查：**
 - [ ] 坐标轴、网格线、数值标注齐全，没有"裸柱子"或"裸折线"
 - [ ] 字号有层级：标题 > 数值 > 轴标签，非全部相同
 - [ ] 单一数据系列用同一颜色，多系列用不同颜色且对比充足
-- [ ] 图表元素不超出 viewBox 边界，轴标签有足够空间
+- [ ] 轴标签与图表元素互不遮挡，留有足够空间
 - [ ] 坐标推导有注释（写明 originX/Y、chartW/H、数据映射公式）
 
 **Mermaid 模式：**
