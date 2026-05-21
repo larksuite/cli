@@ -117,9 +117,6 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 	})
 
 	t.Run("EmptyDir_ManifestEmpty", func(t *testing.T) {
-		// Dry-run only builds the manifest; an empty dir produces file_count=0
-		// without erroring. The index.html / no-files check fires in Execute,
-		// after the tarball stage — out of dry-run's scope.
 		dir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -139,11 +136,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		assert.Equal(t, int64(0), gjson.Get(result.Stdout, "file_count").Int())
 		assert.Equal(t, int64(0), gjson.Get(result.Stdout, "total_size_bytes").Int())
+		assert.Contains(t, gjson.Get(result.Stdout, "validation_error").String(), "index.html",
+			"empty dir should report index.html validation_error: %s", result.Stdout)
 	})
 
-	t.Run("MissingIndexHTML_PassesDryRun", func(t *testing.T) {
-		// Same as EmptyDir: index.html requirement is enforced in Execute, not
-		// at dry-run. Dry-run reports the manifest as-is.
+	t.Run("MissingIndexHTML_SurfacesValidationError", func(t *testing.T) {
 		dir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "page.html"), []byte("<html/>"), 0o644))
@@ -165,6 +162,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		assert.Equal(t, int64(1), gjson.Get(result.Stdout, "file_count").Int())
 		assert.Equal(t, "page.html", gjson.Get(result.Stdout, "files.0").String())
+		assert.Contains(t, gjson.Get(result.Stdout, "validation_error").String(), "index.html")
 	})
 
 	t.Run("RejectsMissingAppID", func(t *testing.T) {

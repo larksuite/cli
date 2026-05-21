@@ -11,7 +11,7 @@
 - `TestAppsListDryRun`: default `page_size=20`; empty `--page-token` omitted; negative size passed through to server (no client-side bound check).
 - `TestAppsAccessScopeSetDryRun`: CLI input `specific`/`public`/`tenant` -> server enum `Range`/`All`/`Tenant`; `apply_config.approvers` shape; four mutex rejection paths.
 - `TestAppsAccessScopeGetDryRun`: URL shape; no body/params on GET; `--app-id` required.
-- `TestAppsHTMLPublishDryRun`: walker manifest for directory + single file; hidden files intentionally included (design decision); empty dir / missing `index.html` rejection; both required-flag rejections.
+- `TestAppsHTMLPublishDryRun`: walker manifest for directory + single file; hidden files intentionally included (design decision); empty dir / missing `index.html` produce envelope `validation_error` field (dry-run exits 0 advisory, not blocking); both required-flag rejections.
 
 Blocked: Live E2E intentionally not implemented yet. Apps has no `+delete` endpoint (OAPI doc explicitly defers archive/delete), so a create-and-cleanup workflow would leak tenant state. Revisit when the server exposes `DELETE /apps/{appId}`.
 

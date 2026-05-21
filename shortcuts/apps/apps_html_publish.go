@@ -61,6 +61,12 @@ var AppsHTMLPublish = common.Shortcut{
 			dry.Set("path_error", err.Error())
 			return dry
 		}
+		if err := ensureIndexHTML(candidates); err != nil {
+			// Surface the same failure Execute would hit, but as a structured
+			// envelope field so dry-run still exits 0 (matches repo convention
+			// for dry-run "advisory preview" semantics).
+			dry.Set("validation_error", err.Error())
+		}
 		dry.Set("file_count", len(candidates))
 		var totalSize int64
 		names := make([]string, 0, len(candidates))
