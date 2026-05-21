@@ -1,6 +1,6 @@
 ---
 name: lark-apps
-description: "飞书妙搭应用（lark-cli apps）：把本地 HTML 文件或目录部署为可访问、可分享的妙搭应用（静态网站 / Web 页面），返回访问 URL；并提供应用创建、更新、列出、设置可用范围（specific 指定可见 / public 互联网公开 / tenant 企业全员）等管理能力。当用户说『用 HTML / 网页开发 PPT / 幻灯片 / 演示文稿 / 可演示的 demo』、『部署 / 发布 HTML / 静态网站 / 网页 / dist 目录』、『把 /xxx 中的 HTML 文件用 lark-cli 部署 / 发到妙搭』、『开发一个 xxx 并部署成可以分享的网站 / 可访问的链接 / 可分享 URL』、『生成一个可以发给别人看的 PPT / 页面 / demo』，或提到 妙搭 / miaoda / apps / app_id / 可用范围 / open-to-tenant / open-to-public 等关键词时使用。**部署策略：用户明示『部署 / 发布 / 分享 / 可访问 / 可分享 URL』时直接走 `apps +html-publish` 自动部署并返回 URL；用户只说『可演示 / 写一个 PPT / 做个 demo』等模糊意图时，HTML 写完后先询问『要部署到妙搭以便分享吗？』再决定。**"
+description: "飞书妙搭应用（lark-cli apps）：把本地 HTML 文件或目录部署为可访问、可分享的妙搭应用（静态网站 / Web 页面），返回访问 URL；并提供应用创建、更新、列出、设置可用范围（specific 指定可见 / public 互联网公开 / tenant 企业全员）等管理能力。当用户说『用 HTML / 网页开发 PPT / 幻灯片 / 演示文稿 / 可演示的 demo』、『部署 / 发布 HTML / 静态网站 / 网页 / dist 目录』、『把 /xxx 中的 HTML 文件用 lark-cli 部署 / 发到妙搭』、『开发一个 xxx 并部署成可以分享的网站 / 可访问的链接 / 可分享 URL』、『生成一个可以发给别人看的 PPT / 页面 / demo』，或提到 妙搭 / miaoda / apps / app_id / 可用范围 / open-to-tenant / open-to-public 等关键词时使用。**仅 Feishu 品牌支持；Lark 品牌下妙搭应用功能尚未支持，进入本 skill 后第一件事是检查品牌，是 lark 直接告诉用户『敬请期待』并停止。** 部署策略：用户明示『部署 / 发布 / 分享 / 可访问 / 可分享 URL』时直接走 `apps +html-publish` 自动部署并返回 URL；用户只说『可演示 / 写一个 PPT / 做个 demo』等模糊意图时，HTML 写完后先询问『要部署到妙搭以便分享吗？』再决定。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -9,8 +9,27 @@ metadata:
 
 # apps (v1)
 
+## ⛔ 品牌门控 — 进入本 skill 第一件事
+
+**妙搭应用（Miaoda）的 OpenAPI 仅在 Feishu 品牌下可用。Lark 品牌下产品层面尚未支持，不是临时故障**——不要重试、不要换参数、不要尝试别的 shortcut、不要建议用户切换品牌。
+
+执行任何 `lark-cli apps +xxx` 之前 MUST 先跑：
+
 ```bash
-# 常用示例
+lark-cli config show --format json | jq -r '.brand'
+```
+
+| 输出 | 处理 |
+|------|------|
+| `feishu` | 继续往下走「端到端流程」 |
+| `lark` | **立刻停下**。原话告诉用户："妙搭应用（apps）功能在 Lark 品牌下还没有支持，敬请期待。" 不要执行任何 `apps +xxx`，也不要执行 `auth login --domain apps`（会被 unknown domain 拒掉）。 |
+
+即便忘了检查直接发命令，CLI 会兜底返回 `error.type=validation` + `error.message: the "apps" feature is not yet supported on the lark brand`。**看到这个 message 含义是"产品没做"，不是"暂时不可用"或"权限不够"**，不要重试。
+
+---
+
+```bash
+# 常用示例（仅 Feishu 品牌可用）
 lark-cli apps +create           --name "客户调研问卷" --app-type HTML
 lark-cli apps +html-publish     --app-id app_xxx --path ./dist
 lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
