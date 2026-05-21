@@ -27,7 +27,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 |---|---|---|
 | `--app-id <id>` | ✅ | 应用 ID |
 | `--scope <enum>` | ✅ | `specific` / `public` / `tenant` |
-| `--targets <json>` | scope=specific 必填 | targets JSON 数组，每项 `{"type":"user|department|chat", "id":"<id>"}` |
+| `--targets <json>` | scope=specific 必填 | targets JSON 数组，每项 `{"type":"user\|department\|chat", "id":"<id>"}` |
 | `--apply-enabled` | scope=specific 可选 | 是否允许申请访问 |
 | `--approver <ou_xxx>` | `--apply-enabled` 必填 | 申请审批人（**只能传一个 user open_id**，服务端限制） |
 | `--require-login` | scope=public 必填 | 是否要求登录 |

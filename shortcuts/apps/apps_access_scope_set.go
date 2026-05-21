@@ -96,6 +96,9 @@ func validateAccessScopeFlags(rctx *common.RuntimeContext) error {
 		if applyEnabled {
 			return output.ErrValidation("--apply-enabled is not allowed when --scope=public")
 		}
+		if approver != "" {
+			return output.ErrValidation("--approver is not allowed when --scope=public")
+		}
 		// H3 待对齐: bare --scope public without --require-login is currently accepted (sends require_login=false).
 		// Concept design §5.1 says require-login should be required; revisit after BOE verification.
 	case "tenant":

@@ -87,9 +87,9 @@ func TestWalkHTMLPublishCandidates_NotFound(t *testing.T) {
 	}
 }
 
-func TestWalkHTMLPublishCandidates_Symlink(t *testing.T) {
-	// 验证 filepath.WalkDir 默认行为：不跟随符号链接。
-	// 这是设计决策——避免 symlink loop / out-of-root 引用。
+func TestWalkHTMLPublishCandidates_SymlinkSkipped(t *testing.T) {
+	// Walker 只接受 regular file —— symlink 跳过（避免 loop + out-of-root 引用，
+	// 且 fio.Open 对 symlink 行为不一致）。real.html 仍然被收，link.html 不在结果里。
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "real.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
@@ -101,16 +101,14 @@ func TestWalkHTMLPublishCandidates_Symlink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	// 我们仍然会列出 link.html（它是文件入口），但 WalkDir 不会沿着链接进入目标目录递归。
-	// 这里关键是：不能 panic、不能死循环、不能跨链接复制内容。
-	found := false
+	rels := make(map[string]bool)
 	for _, c := range got {
-		if c.RelPath == "link.html" {
-			found = true
-			break
-		}
+		rels[c.RelPath] = true
 	}
-	if !found {
-		t.Fatalf("expected link.html in candidates, got %+v", got)
+	if !rels["real.html"] {
+		t.Fatalf("expected real.html (regular file) in candidates, got %+v", got)
+	}
+	if rels["link.html"] {
+		t.Fatalf("symlink link.html should NOT appear in candidates, got %+v", got)
 	}
 }

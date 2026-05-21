@@ -63,3 +63,24 @@ func TestAppsUpdate_RequiresAtLeastOneField(t *testing.T) {
 		t.Fatalf("expected error when no field provided")
 	}
 }
+
+func TestAppsUpdate_TrimsAppIDInPath(t *testing.T) {
+	// 钉死 --app-id 在拼进 URL 前要先 TrimSpace —— 与 create / access-scope-* 等保持一致，
+	// 避免 " app_x " 这种取值被原样 EncodePathSegment 编进 path 出现空格转义。
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/spark/v1/apps/app_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_id": "app_x"},
+		},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsUpdate,
+		[]string{"+update", "--app-id", "  app_x  ", "--name", "renamed", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}

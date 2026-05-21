@@ -16,6 +16,7 @@
 Blocked: Live E2E intentionally not implemented yet. Apps has no `+delete` endpoint (OAPI doc explicitly defers archive/delete), so a create-and-cleanup workflow would leak tenant state. Revisit when the server exposes `DELETE /apps/{appId}`.
 
 ## Command Table
+
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
 | ✓ | apps +create | shortcut | apps_create_dryrun_test.go::TestAppsCreateDryRun | `--name`, `--app-type` (required, case-sensitive, `HTML` only), `--description`, `--icon-url` | live blocked: no +delete to clean up |
@@ -24,3 +25,4 @@ Blocked: Live E2E intentionally not implemented yet. Apps has no `+delete` endpo
 | ✓ | apps +access-scope-set | shortcut | apps_access_scope_set_dryrun_test.go::TestAppsAccessScopeSetDryRun | `--scope specific/public/tenant`; `--targets` JSON; `--apply-enabled --approver`; `--require-login` | live blocked: needs real open_ids |
 | ✓ | apps +access-scope-get | shortcut | apps_access_scope_get_dryrun_test.go::TestAppsAccessScopeGetDryRun | `--app-id` | live blocked: depends on +access-scope-set state |
 | ✓ | apps +html-publish | shortcut | apps_html_publish_dryrun_test.go::TestAppsHTMLPublishDryRun | `--app-id`, `--path` (file or directory containing `index.html`) | live blocked: real upload has side effects; no rollback API |
+

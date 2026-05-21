@@ -7,12 +7,36 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/extension/fileio"
 )
+
+// readFailingFIO opens a File whose Read always returns the configured error,
+// letting tests exercise the io.Copy failure branch without filesystem games.
+type readFailingFIO struct{ readErr error }
+
+func (f readFailingFIO) Open(string) (fileio.File, error) {
+	return &readFailingFile{err: f.readErr}, nil
+}
+func (f readFailingFIO) Stat(string) (fileio.FileInfo, error) {
+	return nil, errors.New("Stat not used")
+}
+func (readFailingFIO) ResolvePath(p string) (string, error) { return p, nil }
+func (readFailingFIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
+	return nil, errors.New("Save not used")
+}
+
+type readFailingFile struct{ err error }
+
+func (f *readFailingFile) Read([]byte) (int, error)          { return 0, f.err }
+func (f *readFailingFile) ReadAt([]byte, int64) (int, error) { return 0, f.err }
+func (f *readFailingFile) Close() error                      { return nil }
 
 func TestBuildHTMLPublishTarball_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
@@ -103,28 +127,22 @@ func TestWriteHTMLPublishTarEntry_WriteHeaderFailure(t *testing.T) {
 }
 
 func TestWriteHTMLPublishTarEntry_CopyFailure(t *testing.T) {
-	// 文件在 Open 时存在，但读取时失败（chmod 0 模拟权限错）
-	dir := t.TempDir()
-	file := filepath.Join(dir, "x.html")
-	if err := os.WriteFile(file, []byte("content"), 0o644); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-	_ = os.Chmod(file, 0o000)
-	defer os.Chmod(file, 0o644)
-
+	// 注入一个 Read 必失败的 fileio.File，让 io.Copy 在 tar 写入阶段出错。
+	// 避免 chmod 0o000 的跨平台 / root 用户 flake。
+	fio := readFailingFIO{readErr: errors.New("synthetic read failure")}
 	tw := tar.NewWriter(io.Discard)
 	defer tw.Close()
 
-	err := writeHTMLPublishTarEntry(newTestFIO(), tw, htmlPublishCandidate{
+	err := writeHTMLPublishTarEntry(fio, tw, htmlPublishCandidate{
 		RelPath: "x.html",
-		AbsPath: file,
+		AbsPath: "fixtures/x.html", // 任意路径，Open 由 stub 接管
 		Size:    7,
 	})
 	if err == nil {
-		t.Fatalf("expected error for permission denied file")
+		t.Fatalf("expected error when underlying Read fails")
 	}
-	if !strings.Contains(err.Error(), "open") {
-		t.Fatalf("expected open/permission error, got %v", err)
+	if !strings.Contains(err.Error(), "copy") {
+		t.Fatalf("expected copy-stage error, got %v", err)
 	}
 }
 

@@ -47,6 +47,11 @@ func walkHTMLPublishCandidates(fio fileio.FileIO, rootPath string) ([]htmlPublis
 		if err != nil {
 			return err
 		}
+		// 只接受 regular file —— symlink / device / pipe / socket 都跳过。
+		// symlink 不跟随是设计决策（避免 loop + out-of-root 引用），且 fio.Open 也会拒非 regular。
+		if !info.Mode().IsRegular() {
+			return nil
+		}
 		rel, err := filepath.Rel(rootPath, path)
 		if err != nil {
 			return err

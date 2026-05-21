@@ -106,7 +106,7 @@ lark-cli apps +html-publish --app-id "$APP" --path ./dist
 
 转述 hint：
 
-> 构建失败，建议用 `lark-cli apps +html-publish --path ./dist --dry-run` 看一下打包文件清单是否完整。
+> 构建失败，建议用 `lark-cli apps +html-publish --app-id <your-app-id> --path ./dist --dry-run` 看一下打包文件清单是否完整。
 
 ### 场景 4：应用不存在（code=90002）
 

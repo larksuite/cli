@@ -140,3 +140,19 @@ func TestAppsAccessScopeSet_ApproverRequiresApplyEnabled(t *testing.T) {
 		t.Fatalf("expected --approver requires --apply-enabled, got %v", err)
 	}
 }
+
+func TestAppsAccessScopeSet_PublicRejectsApprover(t *testing.T) {
+	// --approver 只在 specific + apply 流程下有意义；public 模式带它当前会被静默丢弃，
+	// 是真实用户语义 bug。这条测试钉死 Validate 阶段拦截。
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "public",
+		"--require-login=false",
+		"--approver", "ou_y",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--approver is not allowed when --scope=public") {
+		t.Fatalf("expected --approver rejected for scope=public, got %v", err)
+	}
+}

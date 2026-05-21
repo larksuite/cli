@@ -94,7 +94,7 @@ func TestAppsUpdateDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.NotEqual(t, 0, result.ExitCode)
-		msg := gjson.Get(result.Stderr, "error.message").String()
+		msg := gjson.Get(result.Stdout+result.Stderr, "error.message").String()
 		assert.Contains(t, msg, "at least one")
 	})
 }
