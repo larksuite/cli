@@ -102,8 +102,8 @@ func TestAppsCreateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		msg := gjson.Get(result.Stdout+result.Stderr, "error.message").String()
+		result.AssertExitCode(t, 2)
+		msg := validateErrorMessage(result)
 		assert.Contains(t, msg, "--name is required")
 	})
 
@@ -138,8 +138,8 @@ func TestAppsCreateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		msg := gjson.Get(result.Stdout+result.Stderr, "error.message").String()
+		result.AssertExitCode(t, 2)
+		msg := validateErrorMessage(result)
 		assert.Contains(t, msg, "not supported")
 		assert.Contains(t, msg, "HTML")
 	})
@@ -160,8 +160,8 @@ func TestAppsCreateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		msg := gjson.Get(result.Stdout+result.Stderr, "error.message").String()
+		result.AssertExitCode(t, 2)
+		msg := validateErrorMessage(result)
 		assert.True(t, strings.Contains(msg, `"html"`) && strings.Contains(msg, "not supported"),
 			"expected case-sensitive rejection, got: %s", msg)
 	})

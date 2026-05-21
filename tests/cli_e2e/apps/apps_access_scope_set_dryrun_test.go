@@ -129,8 +129,8 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		assert.Contains(t, gjson.Get(result.Stdout+result.Stderr, "error.message").String(), "--targets is required")
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "--targets is required")
 	})
 
 	t.Run("RejectsTenantWithExtraFlags", func(t *testing.T) {
@@ -148,8 +148,8 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		assert.Contains(t, gjson.Get(result.Stdout+result.Stderr, "error.message").String(), "no extra flags allowed")
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "no extra flags allowed")
 	})
 
 	t.Run("RejectsBadTargetType", func(t *testing.T) {
@@ -167,8 +167,8 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		assert.Contains(t, gjson.Get(result.Stdout+result.Stderr, "error.message").String(), "must be one of")
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "must be one of")
 	})
 
 	t.Run("RejectsApproverWithoutApplyEnabled", func(t *testing.T) {
@@ -187,7 +187,7 @@ func TestAppsAccessScopeSetDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		assert.NotEqual(t, 0, result.ExitCode)
-		assert.Contains(t, gjson.Get(result.Stdout+result.Stderr, "error.message").String(), "--apply-enabled")
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "--apply-enabled")
 	})
 }

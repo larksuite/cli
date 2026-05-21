@@ -34,12 +34,14 @@ var AppsAccessScopeGet = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
-			GET(fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(rctx.Str("app-id")))).
+			GET(fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))).
 			Desc("Get Miaoda app access scope")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		path := fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(rctx.Str("app-id")))
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		path := fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPI("GET", path, nil, nil)
 		if err != nil {
 			return err

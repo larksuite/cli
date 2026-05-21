@@ -31,7 +31,9 @@ func (f *fakeAppsHTMLPublishClient) HTMLPublish(ctx context.Context, appID strin
 func writeAppsSampleSite(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	return dir
 }
 
@@ -124,8 +126,12 @@ func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
 func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
 	// 目录含 index.html 应该正常走完
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644)
-	_ = os.WriteFile(filepath.Join(dir, "extra.html"), []byte("<html></html>"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "extra.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
 	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
 		t.Fatalf("err=%v", err)
@@ -139,7 +145,9 @@ func TestRunHTMLPublish_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
 	// 单文件形态：文件名不是 index.html 也要拦
 	dir := t.TempDir()
 	single := filepath.Join(dir, "foo.html")
-	_ = os.WriteFile(single, []byte("<html></html>"), 0o644)
+	if err := os.WriteFile(single, []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	fake := &fakeAppsHTMLPublishClient{}
 	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single})
 	if err == nil {
@@ -158,7 +166,9 @@ func TestRunHTMLPublish_SingleFileNamedIndexPasses(t *testing.T) {
 	// 单文件形态：文件名恰好就是 index.html → 放行
 	dir := t.TempDir()
 	single := filepath.Join(dir, "index.html")
-	_ = os.WriteFile(single, []byte("<html></html>"), 0o644)
+	if err := os.WriteFile(single, []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
 	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single}); err != nil {
 		t.Fatalf("err=%v", err)

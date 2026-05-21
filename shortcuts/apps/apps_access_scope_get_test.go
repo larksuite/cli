@@ -101,3 +101,23 @@ func TestAppsAccessScopeGet_RequiresAppID(t *testing.T) {
 		t.Fatalf("expected --app-id required, got %v", err)
 	}
 }
+
+func TestAppsAccessScopeGet_TrimsAppIDInPath(t *testing.T) {
+	// 与 +update 的 D1.2 修复对称：URL 拼接前必须 TrimSpace(app-id)，
+	// 否则 " app_x " 会被 EncodePathSegment 编码进 path segment 出现空格转义。
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"scope": "Tenant"},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsAccessScopeGet,
+		[]string{"+access-scope-get", "--app-id", "  app_x  ", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}
