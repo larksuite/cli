@@ -63,11 +63,19 @@ func parseHTMLPublishResponse(raw []byte) (*htmlPublishResponse, error) {
 	return &htmlPublishResponse{URL: envelope.Data.URL}, nil
 }
 
+// OAPI business error codes returned by the Miaoda
+// /apps/{id}/upload_and_release_html_code endpoint. Owned by the backend
+// service; update when new codes are documented in the OAPI spec.
+const (
+	errCodeBuildFailed = 90001 // tar.gz uploaded but server-side build failed
+	errCodeAppNotFound = 90002 // app_id unknown or caller lacks permission
+)
+
 func buildHTMLPublishFailureHint(code int) string {
 	switch code {
-	case 90001:
-		return "构建失败：用 `lark-cli apps +html-publish --path <path> --dry-run` 检查打包文件清单"
-	case 90002:
+	case errCodeBuildFailed:
+		return "构建失败：用 `lark-cli apps +html-publish --app-id <your-app-id> --path <path> --dry-run` 检查打包文件清单"
+	case errCodeAppNotFound:
 		return "应用不存在或无权访问；请用户确认 app_id（从妙搭应用链接 https://miaoda.feishu.cn/app/app_xxx 的 /app/ 后面提取，或直接给 app_xxx 字符串）"
 	default:
 		return ""
