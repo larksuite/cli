@@ -5,6 +5,7 @@ package schema
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"sort"
 	"strconv"
@@ -12,6 +13,9 @@ import (
 
 	"github.com/larksuite/cli/internal/registry"
 )
+
+//go:embed annotations/*
+var annotationsFS embed.FS
 
 // MethodKeyOrder records the natural meta_data.json key order for one method's
 // parameters / requestBody / responseBody. Nested object key orders are stored
@@ -389,10 +393,13 @@ func buildOrderedProps(raw map[string]interface{}, nestedPath string) *OrderedPr
 var currentMethodOrder *MethodKeyOrder
 
 // loadAffordance loads a hand-written affordance overlay for the given dotted
-// command path. Reserved for future PRs; PR-1 always returns nil.
-// Task 7 will wire in the annotations/ go:embed filesystem.
+// command path. In PR-1 the annotations directory is empty and this function
+// always returns nil. Future PRs may add YAML files under
+// annotations/<service>/<resource>.<method>.yaml.
 func loadAffordance(dotted string) *Affordance {
+	// Reserved for future PRs. annotations/ is empty in PR-1.
 	_ = dotted
+	_ = annotationsFS
 	return nil
 }
 

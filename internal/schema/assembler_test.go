@@ -450,6 +450,22 @@ func TestBuildMeta_RequiredScopesPresent(t *testing.T) {
 	}
 }
 
+func TestLoadAffordance_AlwaysNilInPR1(t *testing.T) {
+	cases := []string{
+		"im.images.create",
+		"im.reactions.list",
+		"nonexistent.foo.bar",
+		"",
+	}
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			if got := loadAffordance(c); got != nil {
+				t.Errorf("loadAffordance(%q) = %+v, want nil (PR-1 has no overlays)", c, got)
+			}
+		})
+	}
+}
+
 func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
 	method := map[string]interface{}{
 		"scopes":       []interface{}{"x"},
