@@ -332,6 +332,49 @@ func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
 	}
 }
 
+func TestBuildOutputSchema_ReactionsList(t *testing.T) {
+	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
+	currentMethodOrder = mko
+	defer func() { currentMethodOrder = nil }()
+
+	os := buildOutputSchema(method)
+
+	if os.Type != "object" {
+		t.Errorf("Type = %q, want \"object\"", os.Type)
+	}
+	// Top-level response: has_more, page_token, items
+	if _, ok := os.Properties.Map["items"]; !ok {
+		t.Fatal("items not found in outputSchema")
+	}
+	items := os.Properties.Map["items"]
+	if items.Type != "array" {
+		t.Errorf("items.Type = %q, want \"array\"", items.Type)
+	}
+	if items.Items == nil {
+		t.Fatal("items.Items is nil (array unfold failed)")
+	}
+	if items.Items.Type != "object" {
+		t.Errorf("items.Items.Type = %q, want \"object\"", items.Items.Type)
+	}
+}
+
+func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
+	// 装配器对空 responseBody 应生成 properties = {} （不 nil）
+	method := map[string]interface{}{}
+	currentMethodOrder = nil
+	os := buildOutputSchema(method)
+	if os.Type != "object" {
+		t.Errorf("Type = %q, want \"object\"", os.Type)
+	}
+	if os.Properties == nil {
+		t.Fatal("Properties is nil, want empty OrderedProps")
+	}
+	if len(os.Properties.Order) != 0 {
+		t.Errorf("Properties.Order should be empty, got %v", os.Properties.Order)
+	}
+}
+
 // loadMethodFromRegistry is a test helper that pulls one method's spec from the
 // real embedded meta_data.json via the registry package.
 func loadMethodFromRegistry(t *testing.T, service string, resourcePath []string, methodName string) map[string]interface{} {

@@ -440,6 +440,21 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 	return is
 }
 
+// buildOutputSchema produces the outputSchema for one API method.
+func buildOutputSchema(method map[string]interface{}) *OutputSchema {
+	os := &OutputSchema{
+		Type:       "object",
+		Properties: &OrderedProps{Map: make(map[string]Property)},
+	}
+	respRaw, _ := method["responseBody"].(map[string]interface{})
+	for _, k := range orderedKeys(respRaw, "responseBody") {
+		field, _ := respRaw[k].(map[string]interface{})
+		os.Properties.Order = append(os.Properties.Order, k)
+		os.Properties.Map[k] = convertProperty(field, "responseBody."+k+".properties")
+	}
+	return os
+}
+
 // orderedKeys returns the keys of raw in their meta_data natural order if
 // the current per-method key-order context has them recorded; otherwise
 // alphabetical fallback.
