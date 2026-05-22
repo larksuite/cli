@@ -14,7 +14,7 @@ import (
 	"github.com/larksuite/cli/internal/registry"
 )
 
-//go:embed annotations/*
+//go:embed all:annotations
 var annotationsFS embed.FS
 
 // MethodKeyOrder records the natural meta_data.json key order for one method's
