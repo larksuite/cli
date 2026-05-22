@@ -22,6 +22,13 @@ var registryFS embed.FS
 // embeddedMetaJSON is set by loader_embedded.go when meta_data.json is compiled in.
 var embeddedMetaJSON []byte
 
+// EmbeddedMetaJSON returns the raw embedded meta_data.json bytes for callers
+// that need to parse key order or other JSON-level structure not exposed by
+// LoadFromMeta (which loses map insertion order).
+func EmbeddedMetaJSON() []byte {
+	return embeddedMetaJSON
+}
+
 var (
 	mergedServices    = make(map[string]map[string]interface{}) // project name → parsed spec
 	mergedProjectList []string                                  // sorted project names
