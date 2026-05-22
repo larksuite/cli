@@ -133,6 +133,7 @@ func TestViewSetVisibleFieldsValidateHook(t *testing.T) {
 func TestShortcutsCatalog(t *testing.T) {
 	shortcuts := Shortcuts()
 	want := []string{
+		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
@@ -188,6 +189,7 @@ func TestBaseDeleteShortcutsRisk(t *testing.T) {
 		BaseFormQuestionsDelete.Command:    BaseFormQuestionsDelete.Risk,
 		BaseDashboardDelete.Command:        BaseDashboardDelete.Risk,
 		BaseDashboardBlockDelete.Command:   BaseDashboardBlockDelete.Risk,
+		BaseBaseBlockDelete.Command:        BaseBaseBlockDelete.Risk,
 		BaseRoleDelete.Command:             BaseRoleDelete.Risk,
 	}
 
@@ -238,6 +240,30 @@ func TestBaseFieldUpdateHelpHidesReadGuideFlag(t *testing.T) {
 	}
 	if strings.Contains(cmd.Flags().FlagUsages(), "--i-have-read-guide") {
 		t.Fatalf("help should not include --i-have-read-guide")
+	}
+}
+
+func TestBaseBlockMoveRejectsBeforeAndAfter(t *testing.T) {
+	runtime := newBaseTestRuntime(
+		map[string]string{"before-id": "blk_before", "after-id": "blk_after"},
+		nil,
+		nil,
+	)
+	err := validateBaseBlockMove(runtime)
+	if err == nil || !strings.Contains(err.Error(), "--before-id and --after-id are mutually exclusive") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestBaseBlockCreateAndRenameRequireName(t *testing.T) {
+	createRT := newBaseTestRuntime(map[string]string{"type": "folder", "name": "   "}, nil, nil)
+	if err := validateBaseBlockCreate(createRT); err == nil || !strings.Contains(err.Error(), "--name must not be blank") {
+		t.Fatalf("create err=%v", err)
+	}
+
+	renameRT := newBaseTestRuntime(map[string]string{"name": "   "}, nil, nil)
+	if err := validateBaseBlockRename(renameRT); err == nil || !strings.Contains(err.Error(), "--name must not be blank") {
+		t.Fatalf("rename err=%v", err)
 	}
 }
 

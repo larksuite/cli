@@ -8,6 +8,11 @@ import "github.com/larksuite/cli/shortcuts/common"
 // Shortcuts returns all base shortcuts.
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
+		BaseBaseBlockList,
+		BaseBaseBlockCreate,
+		BaseBaseBlockMove,
+		BaseBaseBlockRename,
+		BaseBaseBlockDelete,
 		BaseTableList,
 		BaseTableGet,
 		BaseTableCreate,

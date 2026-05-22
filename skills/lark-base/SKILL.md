@@ -55,6 +55,7 @@ metadata:
 | 表单提交 | `+form-submit` | 先读 `lark-base-form-detail.md` 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 `lark-base-form-submit.md` |
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读对应 form-questions reference |
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 `lark-base-form-detail.md`；删除前确认目标表单 |
+| Base 容器 block | `+base-block-list/create/move/rename/delete` | 管理 Base 侧边栏里的 folder/table/docx/dashboard/workflow 入口；参数和 fewshot 看各命令 `--help`；整体关系读 `lark-base-base-block.md` |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 `lark-base-dashboard.md`；组件 `data_config` 读 `dashboard-block-data-config.md`；读取图表计算结果用 `+dashboard-block-get-data` |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 `lark-base-workflow-guide.md` 和 steps JSON SSOT `lark-base-workflow-schema.md`；list/get/enable/disable 只处理 workflow ID 与启停状态 |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 `lark-base-role-guide.md`；角色 create/update 或解读完整配置再读权限 JSON SSOT `role-config.md`；系统角色不可删除；关闭高级权限会影响自定义角色 |
@@ -62,6 +63,7 @@ metadata:
 ## Base 心智模型
 
 - Base 曾用名 Bitable；返回字段、错误或旧文档里的 `bitable` 多为历史兼容，不代表应改走裸 API 或另一套命令。
+- `base-block` 是 Base 侧边栏里的容器入口；table/dashboard/workflow 的 block `id` 可作为对应资源 ID 使用，docx 内容操作使用返回的 `docx_token`。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
 - 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
 - 一次性统计、筛选、TopN 优先用 `+data-query` 或临时视图；需要长期显示在表中时，才新增 `formula` / `lookup` 字段。
@@ -155,6 +157,7 @@ metadata:
 - `lark-base-record-upsert.md` / `lark-base-record-batch-create.md` / `lark-base-record-batch-update.md` / `lark-base-record-history-list.md`：记录写入 JSON 与历史返回解释
 - `lark-base-view-set-filter.md`：视图筛选 JSON
 - `lark-base-form-detail.md` / `lark-base-form-submit.md` / `lark-base-form-questions-create.md` / `lark-base-form-questions-update.md`：表单详情、提交和复杂 JSON
+- `lark-base-base-block.md`：Base 容器 block 心智模型，以及和 table/dashboard/workflow/docx 命令的关系
 - `lark-base-dashboard.md` / `dashboard-block-data-config.md` / `lark-base-dashboard-block-get-data.md`：仪表盘、组件配置与图表结果协议
 - `lark-base-workflow-guide.md` / `lark-base-workflow-schema.md`：workflow 入口与 steps JSON SSOT
 - `lark-base-role-guide.md` / `role-config.md`：角色入口与权限 JSON SSOT
