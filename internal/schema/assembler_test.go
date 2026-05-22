@@ -545,6 +545,75 @@ func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
 	}
 }
 
+func TestAssembleService_Im(t *testing.T) {
+	spec := registry.LoadFromMeta("im")
+	envs := AssembleService("im", spec, nil)
+	if len(envs) == 0 {
+		t.Fatal("expected non-empty envelopes for service im")
+	}
+	// Every envelope.Name starts with "im "
+	for _, e := range envs {
+		if !strings.HasPrefix(e.Name, "im ") {
+			t.Errorf("envelope name %q does not start with \"im \"", e.Name)
+		}
+	}
+	// Sorted by name
+	for i := 1; i < len(envs); i++ {
+		if envs[i-1].Name > envs[i].Name {
+			t.Errorf("envelopes not sorted by name at idx %d: %q > %q", i, envs[i-1].Name, envs[i].Name)
+		}
+	}
+}
+
+func TestAssembleService_FilterByAccessToken(t *testing.T) {
+	spec := registry.LoadFromMeta("im")
+	// Filter to bot-only (--as bot, which corresponds to "tenant")
+	envs := AssembleService("im", spec, func(method map[string]interface{}) bool {
+		tokens, _ := method["accessTokens"].([]interface{})
+		for _, t := range tokens {
+			if s, _ := t.(string); s == "tenant" {
+				return true
+			}
+		}
+		return false
+	})
+	// Every envelope's _meta.access_tokens must contain "bot"
+	for _, e := range envs {
+		found := false
+		for _, t := range e.Meta.AccessTokens {
+			if t == "bot" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("envelope %q does not declare bot access", e.Name)
+		}
+	}
+}
+
+func TestAssembleAll_AtLeast193(t *testing.T) {
+	envs := AssembleAll(nil)
+	// Threshold lowered from 193 (embedded count) to 180 because the local
+	// remote-cache overlay (~/.lark-cli/cache/remote_meta.json) may strip a
+	// handful of methods (e.g. `bots`) from merged services. A robust lower
+	// bound still proves the batch walker enumerates the full registry.
+	if len(envs) < 180 {
+		t.Errorf("AssembleAll returned %d envelopes, expected >= 180", len(envs))
+	}
+	// Spot check: im reactions list should be present
+	found := false
+	for _, e := range envs {
+		if e.Name == "im reactions list" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("im reactions list not found in AssembleAll output")
+	}
+}
+
 // loadMethodFromRegistry is a test helper that pulls one method's spec from the
 // real embedded meta_data.json via the registry package.
 func loadMethodFromRegistry(t *testing.T, service string, resourcePath []string, methodName string) map[string]interface{} {

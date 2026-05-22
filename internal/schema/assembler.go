@@ -570,6 +570,64 @@ func AssembleEnvelope(serviceName string, resourcePath []string, methodName stri
 	}
 }
 
+// MethodFilter is an optional predicate used by AssembleService and
+// AssembleAll to filter methods (e.g. by access token for strict mode).
+// Pass nil to include all methods.
+type MethodFilter func(method map[string]interface{}) bool
+
+// AssembleService assembles all methods under one service into a sorted
+// envelope slice (sorted by Envelope.Name ascending).
+func AssembleService(serviceName string, spec map[string]interface{}, filter MethodFilter) []Envelope {
+	if spec == nil {
+		return nil
+	}
+	resources, _ := spec["resources"].(map[string]interface{})
+	var out []Envelope
+	walkMethods(resources, nil, func(resourcePath []string, methodName string, method map[string]interface{}) {
+		if filter != nil && !filter(method) {
+			return
+		}
+		out = append(out, AssembleEnvelope(serviceName, resourcePath, methodName, method))
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// AssembleAll assembles every embedded service into one big sorted slice.
+func AssembleAll(filter MethodFilter) []Envelope {
+	var out []Envelope
+	for _, svc := range registry.ListFromMetaProjects() {
+		spec := registry.LoadFromMeta(svc)
+		out = append(out, AssembleService(svc, spec, filter)...)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// walkMethods recursively walks resources -> methods, calling visit for each
+// terminal method. It supports nested resources via the optional "resources"
+// key inside a resource value (matches meta_data.json structure).
+func walkMethods(resources map[string]interface{}, parentPath []string,
+	visit func(resourcePath []string, methodName string, method map[string]interface{})) {
+	for resName, resRaw := range resources {
+		resMap, ok := resRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		curPath := append(append([]string(nil), parentPath...), resName)
+		if methods, ok := resMap["methods"].(map[string]interface{}); ok {
+			for mName, mRaw := range methods {
+				if m, ok := mRaw.(map[string]interface{}); ok {
+					visit(curPath, mName, m)
+				}
+			}
+		}
+		if nested, ok := resMap["resources"].(map[string]interface{}); ok {
+			walkMethods(nested, curPath, visit)
+		}
+	}
+}
+
 // orderedKeys returns the keys of raw in their meta_data natural order if
 // the current per-method key-order context has them recorded; otherwise
 // alphabetical fallback.
