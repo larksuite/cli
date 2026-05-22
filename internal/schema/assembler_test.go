@@ -4,6 +4,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -356,6 +357,114 @@ func TestBuildOutputSchema_ReactionsList(t *testing.T) {
 	}
 	if items.Items.Type != "object" {
 		t.Errorf("items.Items.Type = %q, want \"object\"", items.Items.Type)
+	}
+}
+
+func TestConvertAccessTokens(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []interface{}
+		want  []string
+	}{
+		{"tenant only", []interface{}{"tenant"}, []string{"bot"}},
+		{"user only", []interface{}{"user"}, []string{"user"}},
+		{"tenant then user", []interface{}{"tenant", "user"}, []string{"bot", "user"}},
+		{"user then tenant", []interface{}{"user", "tenant"}, []string{"bot", "user"}},
+		{"deduped", []interface{}{"tenant", "tenant", "user"}, []string{"bot", "user"}},
+		{"empty", []interface{}{}, []string{}},
+		{"nil", nil, []string{}},
+		{"unknown skipped", []interface{}{"user", "admin"}, []string{"user"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := convertAccessTokens(tt.input)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildMeta_FullFields(t *testing.T) {
+	// Synthesized method to avoid runtime variance from remote-cache overlay
+	// (which strips `risk` from merged services). All other field semantics
+	// match the real im.images.create entry in meta_data.json.
+	method := map[string]interface{}{
+		"risk":   "write",
+		"danger": true,
+		"scopes": []interface{}{
+			"im:resource:upload",
+			"im:resource",
+		},
+		"accessTokens": []interface{}{"tenant"},
+		"docUrl":       "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create",
+	}
+	m := buildMeta(method, "im", []string{"images"}, "create")
+
+	if m.EnvelopeVersion != "1.0" {
+		t.Errorf("EnvelopeVersion = %q", m.EnvelopeVersion)
+	}
+	if m.Risk != "write" {
+		t.Errorf("Risk = %q, want \"write\"", m.Risk)
+	}
+	if !m.Danger {
+		t.Errorf("Danger = false, want true")
+	}
+	if !reflect.DeepEqual(m.AccessTokens, []string{"bot"}) {
+		t.Errorf("AccessTokens = %v, want [bot]", m.AccessTokens)
+	}
+	if m.DocURL == "" {
+		t.Errorf("DocURL should be present for im.images.create")
+	}
+	if !reflect.DeepEqual(m.Scopes, []string{"im:resource:upload", "im:resource"}) {
+		t.Errorf("Scopes = %v, want [im:resource:upload, im:resource] (meta_data natural order)", m.Scopes)
+	}
+	if m.RequiredScopes == nil {
+		t.Errorf("RequiredScopes should be empty slice, not nil")
+	}
+	if len(m.RequiredScopes) != 0 {
+		t.Errorf("RequiredScopes should be empty for this method, got %v", m.RequiredScopes)
+	}
+	if m.Affordance != nil {
+		t.Errorf("Affordance must be nil in PR-1")
+	}
+}
+
+func TestBuildMeta_MissingRiskDefaultsToRead(t *testing.T) {
+	method := map[string]interface{}{
+		"scopes":       []interface{}{"x"},
+		"accessTokens": []interface{}{"user"},
+		// no risk field
+	}
+	m := buildMeta(method, "svc", []string{"res"}, "method")
+	if m.Risk != "read" {
+		t.Errorf("Risk = %q, want \"read\" (default for missing risk)", m.Risk)
+	}
+}
+
+func TestBuildMeta_RequiredScopesPresent(t *testing.T) {
+	method := loadMethodFromRegistry(t, "mail", []string{"user_mailbox", "messages"}, "get")
+	m := buildMeta(method, "mail", []string{"user_mailbox", "messages"}, "get")
+	if len(m.RequiredScopes) == 0 {
+		t.Errorf("RequiredScopes should be non-empty for mail.user_mailbox.messages.get")
+	}
+}
+
+func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
+	method := map[string]interface{}{
+		"scopes":       []interface{}{"x"},
+		"accessTokens": []interface{}{"user"},
+		"risk":         "read",
+		// no docUrl
+	}
+	m := buildMeta(method, "svc", []string{"res"}, "method")
+	if m.DocURL != "" {
+		t.Errorf("DocURL = %q, want empty (will be omitempty)", m.DocURL)
+	}
+	// Verify JSON serialization omits doc_url
+	b, _ := json.Marshal(m)
+	if strings.Contains(string(b), "doc_url") {
+		t.Errorf("doc_url should be omitted from JSON, got: %s", b)
 	}
 }
 

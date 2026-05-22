@@ -388,6 +388,80 @@ func buildOrderedProps(raw map[string]interface{}, nestedPath string) *OrderedPr
 // It is set inside AssembleEnvelope (under assembleMu) and reset on return.
 var currentMethodOrder *MethodKeyOrder
 
+// loadAffordance loads a hand-written affordance overlay for the given dotted
+// command path. Reserved for future PRs; PR-1 always returns nil.
+// Task 7 will wire in the annotations/ go:embed filesystem.
+func loadAffordance(dotted string) *Affordance {
+	_ = dotted
+	return nil
+}
+
+// convertAccessTokens translates from_meta accessTokens (uses "tenant") into
+// CLI --as form (uses "bot"). The result is deduped and sorted alphabetically.
+// Unknown tokens are dropped. Returns an empty slice for nil/empty input.
+func convertAccessTokens(raw []interface{}) []string {
+	seen := make(map[string]bool)
+	for _, t := range raw {
+		s, ok := t.(string)
+		if !ok {
+			continue
+		}
+		switch s {
+		case "tenant":
+			seen["bot"] = true
+		case "user":
+			seen["user"] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// buildMeta produces the _meta extension namespace.
+func buildMeta(method map[string]interface{}, service string, resourcePath []string, methodName string) *Meta {
+	m := &Meta{
+		EnvelopeVersion: "1.0",
+		RequiredScopes:  []string{}, // never nil for stable JSON
+	}
+
+	if scopesRaw, ok := method["scopes"].([]interface{}); ok {
+		for _, s := range scopesRaw {
+			if str, ok := s.(string); ok {
+				m.Scopes = append(m.Scopes, str)
+			}
+		}
+	}
+	if rsRaw, ok := method["requiredScopes"].([]interface{}); ok {
+		for _, s := range rsRaw {
+			if str, ok := s.(string); ok {
+				m.RequiredScopes = append(m.RequiredScopes, str)
+			}
+		}
+	}
+
+	atRaw, _ := method["accessTokens"].([]interface{})
+	m.AccessTokens = convertAccessTokens(atRaw)
+
+	m.Danger, _ = method["danger"].(bool)
+
+	if risk, _ := method["risk"].(string); risk != "" {
+		m.Risk = risk
+	} else {
+		m.Risk = "read"
+	}
+
+	if docURL, _ := method["docUrl"].(string); docURL != "" {
+		m.DocURL = docURL
+	}
+
+	m.Affordance = loadAffordance(dottedPath(service, resourcePath, methodName))
+	return m
+}
+
 // buildInputSchema produces the inputSchema for one API method.
 // Caller must set currentMethodOrder for property-order preservation.
 func buildInputSchema(method map[string]interface{}) *InputSchema {
