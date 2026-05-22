@@ -131,7 +131,7 @@ var DriveAddComment = common.Shortcut{
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "doc", Desc: "document URL/token, file URL/token, sheet/slides/base(bitable) URL, or wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", Required: true},
+		{Name: "doc", Desc: "document URL/token, file URL/token, sheet/slides/base/bitable URL, or wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", Required: true},
 		{Name: "type", Desc: "document type: doc, docx, file, sheet, slides, bitable, base (required when --doc is a bare token; auto-detected for URLs; use bitable as the wire value, base is accepted as a compatibility alias)", Enum: []string{"doc", "docx", "file", "sheet", "slides", "bitable", "base"}},
 		{Name: "content", Desc: "reply_elements JSON string", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "full-comment", Type: "bool", Desc: "create a full-document comment; also the default when no location is provided"},
@@ -149,6 +149,12 @@ var DriveAddComment = common.Shortcut{
 		}
 
 		if docRef.Kind == "base" {
+			if runtime.Bool("full-comment") {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>").WithParam("--full-comment")
+			}
+			if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>").WithParam("--selection-with-ellipsis")
+			}
 			_, err := parseBaseCommentAnchor(runtime)
 			return err
 		}
@@ -193,7 +199,7 @@ var DriveAddComment = common.Shortcut{
 			return validateFileCommentMode(mode, "")
 		}
 		if mode == commentModeLocal && docRef.Kind == "doc" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, and slides; old doc format only supports full comments")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, slides, and base(bitable); old doc format only supports full comments")
 		}
 
 		return nil
@@ -534,7 +540,7 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 		return commentDocRef{Kind: "doc", Token: token}, nil
 	}
 	if strings.Contains(raw, "://") {
-		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a doc/docx/file/sheet/slides/base(bitable) URL, a token with --type, or a wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", raw).WithParam("--doc")
+		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a doc/docx/file/sheet/slides/base/bitable URL, a token with --type, or a wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", raw).WithParam("--doc")
 	}
 	if strings.ContainsAny(raw, "/?#") {
 		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a token with --type, or a wiki URL", raw).WithParam("--doc")
@@ -561,7 +567,7 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		if mode == commentModeLocal {
 			switch docRef.Kind {
 			case "doc":
-				return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, and slides; old doc format only supports full comments")
+				return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, slides, and base(bitable); old doc format only supports full comments")
 			case "file":
 				if err := validateFileCommentMode(mode, ""); err != nil {
 					return resolvedCommentTarget{}, err
@@ -599,7 +605,7 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	if objType == "slides" && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>", objType)
 	}
-	if objType == "bitable" {
+	if objType == "bitable" || objType == "base" {
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to base: %s\n", common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
@@ -644,10 +650,10 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		}, nil
 	}
 	if mode == commentModeLocal && objType != "docx" {
-		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but local comments only support docx, sheet, and slides; for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but local comments only support docx, sheet, slides, and base(bitable); for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>, for base use --block-id <table-id>!<record-id>!<view-id>", objType)
 	}
 	if mode == commentModeFull && objType != "docx" && objType != "doc" {
-		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but comments only support doc/docx/file/sheet/slides/base", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but comments only support doc/docx/file/sheet/slides/base(bitable)", objType)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))

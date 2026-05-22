@@ -1076,6 +1076,42 @@ func TestBaseCommentValidateMalformedBlockID(t *testing.T) {
 	}
 }
 
+func TestBaseCommentValidateRejectsIncompatibleFlags(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "full comment",
+			args:    []string{"--full-comment"},
+			wantErr: "--full-comment is not applicable for base(bitable) comments",
+		},
+		{
+			name:    "selection",
+			args:    []string{"--selection-with-ellipsis", "some text"},
+			wantErr: "--selection-with-ellipsis is not applicable for base(bitable) comments",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+			args := []string{
+				"+add-comment",
+				"--doc", "https://example.larksuite.com/base/baseToken",
+				"--content", `[{"type":"text","text":"test"}]`,
+				"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
+				"--as", "user",
+			}
+			args = append(args, tc.args...)
+			err := mountAndRunDrive(t, DriveAddComment, args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected %q error, got: %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
 // ── Slides comment execute tests ────────────────────────────────────────────
 
 func TestSlidesCommentExecuteSuccess(t *testing.T) {
@@ -1843,43 +1879,47 @@ func TestResolveWikiToDocxFullComment(t *testing.T) {
 }
 
 func TestResolveWikiToBaseComment(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"node": map[string]interface{}{"obj_type": "bitable", "obj_token": "bitToken"},
-			},
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/drive/v1/files/bitToken/new_comments",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "success",
-			"data": map[string]interface{}{"comment_id": "wikiBaseComment", "reply_id": "wikiBaseReply"},
-		},
-	})
-	err := mountAndRunDrive(t, DriveAddComment, []string{
-		"+add-comment",
-		"--doc", "https://example.larksuite.com/wiki/wikiToken",
-		"--content", `[{"type":"text","text":"test"}]`,
-		"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
-		"--as", "user",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(stdout.String(), "wikiBaseComment") {
-		t.Fatalf("stdout missing comment_id: %s", stdout.String())
-	}
-	out := decodeJSONMap(t, stdout.String())
-	data := mustMapValue(t, out["data"], "data")
-	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "bitable" {
-		t.Fatalf("stdout file_type = %q, want bitable\nstdout:\n%s", got, stdout.String())
-	}
-	if got := mustStringField(t, data, "wiki_token", "data.wiki_token"); got != "wikiToken" {
-		t.Fatalf("stdout wiki_token = %q, want wikiToken\nstdout:\n%s", got, stdout.String())
+	for _, objType := range []string{"bitable", "base"} {
+		t.Run(objType, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "success",
+					"data": map[string]interface{}{
+						"node": map[string]interface{}{"obj_type": objType, "obj_token": "bitToken"},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: "/open-apis/drive/v1/files/bitToken/new_comments",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "success",
+					"data": map[string]interface{}{"comment_id": "wikiBaseComment", "reply_id": "wikiBaseReply"},
+				},
+			})
+			err := mountAndRunDrive(t, DriveAddComment, []string{
+				"+add-comment",
+				"--doc", "https://example.larksuite.com/wiki/wikiToken",
+				"--content", `[{"type":"text","text":"test"}]`,
+				"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
+				"--as", "user",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(stdout.String(), "wikiBaseComment") {
+				t.Fatalf("stdout missing comment_id: %s", stdout.String())
+			}
+			out := decodeJSONMap(t, stdout.String())
+			data := mustMapValue(t, out["data"], "data")
+			if got := mustStringField(t, data, "file_type", "data.file_type"); got != "bitable" {
+				t.Fatalf("stdout file_type = %q, want bitable\nstdout:\n%s", got, stdout.String())
+			}
+			if got := mustStringField(t, data, "wiki_token", "data.wiki_token"); got != "wikiToken" {
+				t.Fatalf("stdout wiki_token = %q, want wikiToken\nstdout:\n%s", got, stdout.String())
+			}
+		})
 	}
 }
 
@@ -1960,7 +2000,7 @@ func TestDocOldFormatLocalCommentRejected(t *testing.T) {
 		"--block-id", "blk_123",
 		"--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "only support docx, sheet, and slides") {
+	if err == nil || !strings.Contains(err.Error(), "only support docx, sheet, slides, and base(bitable)") {
 		t.Fatalf("expected local comment rejection for old doc, got: %v", err)
 	}
 }

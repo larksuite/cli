@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-给文档、受支持的 Drive 普通文件、电子表格、飞书幻灯片或 Base 添加评论。未指定位置时创建全文评论；指定 `--block-id` 时创建局部评论，不同类型的 `--block-id` 格式见下文。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、Drive file URL/token（**仅支持白名单扩展名，且只支持全文评论**）、sheet URL、slides URL、base(bitable) URL，也支持传最终可解析为 doc/docx/file/sheet/slides/base(bitable) 的 wiki URL。
+给文档、受支持的 Drive 普通文件、电子表格、飞书幻灯片或 Base 添加评论。未指定位置时创建全文评论，但仅适用于 doc/docx、白名单 Drive file，以及解析为这些类型的 wiki；sheet、slides、Base(bitable) 必须指定 `--block-id`。不同类型的 `--block-id` 格式见下文。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、Drive file URL/token（**仅支持白名单扩展名，且只支持全文评论**）、sheet URL、slides URL、base/bitable URL，也支持传最终可解析为 doc/docx/file/sheet/slides/base(bitable) 的 wiki URL。
 
 ## 命令
 
@@ -133,6 +133,12 @@ lark-cli drive +add-comment \
   --block-id "<TABLE_ID>!<RECORD_ID>!<VIEW_ID>" \
   --content '[{"type":"text","text":"Base record-local comment"}]'
 
+# `base` 也可作为裸 token 类型别名；/base/ 与 /bitable/ URL 都会自动识别为 Base。
+lark-cli drive +add-comment \
+  --doc "<BASE_TOKEN>" --type base \
+  --block-id "<TABLE_ID>!<RECORD_ID>!<VIEW_ID>" \
+  --content '[{"type":"text","text":"Base alias comment"}]'
+
 # 预览底层调用链
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/docx/<DOC_ID>" \
@@ -145,10 +151,10 @@ lark-cli drive +add-comment \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--doc` | 是 | 文档 URL / token、file / sheet / slides / base(bitable) URL，或可解析到 `doc`/`docx`/`file`/`sheet`/`slides`/`base(bitable)` 的 wiki URL |
+| `--doc` | 是 | 文档 URL / token、file / sheet / slides / base / bitable URL，或可解析到 `doc`/`docx`/`file`/`sheet`/`slides`/`base(bitable)` 的 wiki URL |
 | `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`file`、`sheet`、`slides`、`bitable`、`base`；评论 Base 文档推荐传 `bitable`，`base` 仅作为兼容别名兜底。URL 输入时自动识别，无需传 |
 | `--content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'` |
-| `--full-comment` | 否 | 显式指定创建全文评论；未传 `--block-id` 时也会默认走全文评论（不适用于 sheet） |
+| `--full-comment` | 否 | 显式指定创建全文评论；未传 `--block-id` 时也会默认走全文评论（仅适用于 doc/docx、白名单 Drive file，以及解析为这些类型的 wiki；不适用于 sheet、slides、Base / bitable） |
 | `--block-id` | 局部评论时必填 | 目标块 ID，可通过 `docs +fetch --api-version v2 --detail with-ids` 获取；sheet 用 `<sheetId>!<cell>`，slides 用 `<slide-block-type>!<xml-id>`，Base 用 `<table-id>!<record-id>!<view-id>` |
 
 ## 行为说明
@@ -159,7 +165,7 @@ lark-cli drive +add-comment \
 - **Drive file 评论**：仅支持白名单扩展名的普通文件。当前支持：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。
 - **Drive file 暂不支持**：`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件会被 CLI 拒绝，并提示“当前还不支持这种类型的评论”。这些类型虽然可能接受 OpenAPI 请求，但在页面评论展示上存在问题。
 - **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `--block-id` 或 `--selection-with-ellipsis`。
-- 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`，以及最终可解析为这些类型的 wiki URL。
+- 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`、Base / bitable，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。
 - **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。此时 `--full-comment` 和 `--selection-with-ellipsis` 不可用。
 - **Base 记录局部评论**：Base 不支持全局评论，所有评论都挂在记录上；裸 token 可传 `--type bitable` 或 `--type base`，推荐 `bitable`。定位信息必须是 file token（base token）+ `--block-id "<table-id>!<record-id>!<view-id>"`，其中 table/record/view ID 通常分别以 `tbl`/`rec`/`vew` 开头；view_id 只决定被提及时点击通知打开哪个视图，不影响评论挂载点，但必须传。ID 获取参考 [`lark-base`](../../lark-base/SKILL.md)。
