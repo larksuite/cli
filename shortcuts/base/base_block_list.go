@@ -14,7 +14,7 @@ var BaseBaseBlockList = common.Shortcut{
 	Command:     "+base-block-list",
 	Description: "List base blocks in a base",
 	Risk:        "read",
-	Scopes:      []string{"base:app:read"},
+	Scopes:      []string{"base:block:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),

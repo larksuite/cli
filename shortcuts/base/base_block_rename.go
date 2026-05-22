@@ -14,7 +14,7 @@ var BaseBaseBlockRename = common.Shortcut{
 	Command:     "+base-block-rename",
 	Description: "Rename a base block",
 	Risk:        "write",
-	Scopes:      []string{"base:app:update"},
+	Scopes:      []string{"base:block:write"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
