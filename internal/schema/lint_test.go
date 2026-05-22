@@ -301,6 +301,12 @@ func isKnownDataInconsistency(msg string) bool {
 	case strings.Contains(msg, `L3: _meta.danger=true inconsistent with risk="read"`):
 		// Overlay strips `risk` to default "read" but keeps `danger=true`.
 		return true
+	case strings.Contains(msg, `L3: _meta.danger=false inconsistent with risk="write"`):
+		// Embedded meta_data has ~7 envelopes (e.g. attendance.user_tasks.query,
+		// drive.user.subscription, mail.user_mailbox.event.subscribe) where
+		// `risk="write"` but `danger` is missing (defaults to false). Needs a
+		// meta_data fix to set danger=true on these write methods.
+		return true
 	case strings.Contains(msg, "L1: array property") && strings.Contains(msg, "missing items"):
 		// Embedded meta_data has arrays without element schema (e.g. arrays of
 		// option_guid strings). Needs a meta_data fix to add items info.
