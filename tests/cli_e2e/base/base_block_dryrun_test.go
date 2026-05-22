@@ -42,6 +42,7 @@ func TestBaseBlockDryRun(t *testing.T) {
 				"base", "+base-block-list",
 				"--base-token", "app_x",
 				"--parent-id", "blk_folder",
+				"--type", "docx",
 				"--dry-run",
 			},
 			DefaultAs: "bot",
@@ -51,6 +52,7 @@ func TestBaseBlockDryRun(t *testing.T) {
 		out := result.Stdout
 		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/list", gjson.Get(out, "api.0.url").String(), out)
 		require.Equal(t, "blk_folder", gjson.Get(out, "api.0.body.parent_id").String(), out)
+		require.False(t, gjson.Get(out, "api.0.body.type").Exists(), out)
 	})
 
 	t.Run("create", func(t *testing.T) {

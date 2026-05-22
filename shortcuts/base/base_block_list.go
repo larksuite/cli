@@ -18,11 +18,13 @@ var BaseBaseBlockList = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
+		{Name: "type", Desc: "filter by resource type", Enum: baseBlockTypeEnums},
 		{Name: "parent-id", Desc: "folder block id; when omitted, list all blocks"},
 	},
 	Tips: []string{
 		"Blocks are entries in the base sidebar, such as folder, table, docx, dashboard, and workflow.",
 		"This command returns the full backend list. It intentionally does not expose limit or offset.",
+		"Pass --type to list only one resource type.",
 		"Pass --parent-id to list only direct children of a folder.",
 		"Dashboard blocks are chart/widget blocks inside a dashboard; use +dashboard-block-* for those.",
 	},

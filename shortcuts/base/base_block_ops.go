@@ -82,6 +82,7 @@ func executeBaseBlockList(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	filterBaseBlockListData(data, strings.TrimSpace(runtime.Str("type")))
 	runtime.Out(data, nil)
 	return nil
 }
@@ -130,6 +131,26 @@ func buildBaseBlockListBody(runtime *common.RuntimeContext) map[string]interface
 		body["parent_id"] = parentID
 	}
 	return body
+}
+
+func filterBaseBlockListData(data map[string]interface{}, blockType string) {
+	if blockType == "" {
+		return
+	}
+	blocks, ok := data["blocks"].([]interface{})
+	if !ok {
+		return
+	}
+	filtered := make([]interface{}, 0, len(blocks))
+	for _, block := range blocks {
+		blockMap, ok := block.(map[string]interface{})
+		if !ok || blockMap["type"] != blockType {
+			continue
+		}
+		filtered = append(filtered, block)
+	}
+	data["blocks"] = filtered
+	data["total"] = len(filtered)
 }
 
 func buildBaseBlockCreateBody(runtime *common.RuntimeContext) map[string]interface{} {

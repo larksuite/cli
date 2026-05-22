@@ -418,7 +418,13 @@ func TestBaseBlockExecuteShortcuts(t *testing.T) {
 		URL:    "/open-apis/base/v3/bases/app_x/blocks/list",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"items": []interface{}{}, "total": 0},
+			"data": map[string]interface{}{
+				"blocks": []interface{}{
+					map[string]interface{}{"id": "blk_doc", "type": "docx", "name": "Spec"},
+					map[string]interface{}{"id": "blk_folder", "type": "folder", "name": "Folder"},
+				},
+				"total": 2,
+			},
 		},
 	}
 	createStub := &httpmock.Stub{
@@ -457,13 +463,13 @@ func TestBaseBlockExecuteShortcuts(t *testing.T) {
 		reg.Register(stub)
 	}
 
-	if err := runShortcut(t, BaseBaseBlockList, []string{"+base-block-list", "--base-token", "app_x", "--parent-id", "bfl_1"}, factory, stdout); err != nil {
+	if err := runShortcut(t, BaseBaseBlockList, []string{"+base-block-list", "--base-token", "app_x", "--parent-id", "bfl_1", "--type", "docx"}, factory, stdout); err != nil {
 		t.Fatalf("list err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"total": 0`) {
+	if got := stdout.String(); !strings.Contains(got, `"total": 1`) || !strings.Contains(got, `"blk_doc"`) || strings.Contains(got, `"blk_folder"`) {
 		t.Fatalf("list stdout=%s", got)
 	}
-	if body := decodeCapturedJSONBody(t, listStub); body["parent_id"] != "bfl_1" {
+	if body := decodeCapturedJSONBody(t, listStub); body["parent_id"] != "bfl_1" || body["type"] != nil {
 		t.Fatalf("list body=%#v", body)
 	}
 

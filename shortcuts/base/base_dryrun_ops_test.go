@@ -38,7 +38,7 @@ func TestDryRunBaseBlockOps(t *testing.T) {
 	listRT := newBaseTestRuntime(map[string]string{"base-token": "app_x"}, nil, nil)
 	assertDryRunContains(t, dryRunBaseBlockList(ctx, listRT), "POST /open-apis/base/v3/bases/app_x/blocks/list")
 
-	listFolderRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "parent-id": "bfl_1"}, nil, nil)
+	listFolderRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "parent-id": "bfl_1", "type": "docx"}, nil, nil)
 	assertDryRunContains(t, dryRunBaseBlockList(ctx, listFolderRT), "POST /open-apis/base/v3/bases/app_x/blocks/list", `"parent_id":"bfl_1"`)
 
 	createRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "type": "docx", "name": "Spec", "parent-id": "bfl_1"}, nil, nil)
