@@ -20,9 +20,9 @@ import (
 )
 
 // driveSearchErrUserNotVisible is the Lark service code returned by
-// doc_wiki/search when an open_id referenced in --creator-ids / --sharer-ids
-// falls outside the app's user-visibility scope (different from the
-// search:docs:read API scope).
+// doc_wiki/search when an open_id referenced in an identity filter falls
+// outside the app's user-visibility scope (different from the search:docs:read
+// API scope).
 const driveSearchErrUserNotVisible = 99992351
 
 // open_time has a server-side cap of 3 months per request. Rather than
@@ -79,6 +79,8 @@ var DriveSearch = common.Shortcut{
 
 		{Name: "mine", Type: "bool", Desc: "restrict to docs I own (server-side owner semantic, NOT original creator; uses current user's open_id)"},
 		{Name: "creator-ids", Desc: "comma-separated owner open_ids (API field is creator_ids but matched by owner); mutually exclusive with --mine"},
+		{Name: "created-by-me", Type: "bool", Desc: "restrict to docs originally created by me (uses current user's open_id as original_creator_ids)"},
+		{Name: "original-creator-ids", Desc: "comma-separated original creator open_ids; mutually exclusive with --created-by-me"},
 
 		{Name: "edited-since", Desc: "start of [my edited] time window (e.g. 7d, 1m, 1y, 2026-04-01, RFC3339, unix seconds)"},
 		{Name: "edited-until", Desc: "end of [my edited] time window"},
@@ -108,7 +110,7 @@ var DriveSearch = common.Shortcut{
 	Tips: []string{
 		"Time flags accept relative (e.g. 7d, 1m, 1y), absolute (2026-04-01, RFC3339), or unix seconds.",
 		"my_edit_time and my_comment_time are hour-aggregated server-side; sub-hour inputs are snapped and a notice is printed to stderr.",
-		"Use --mine for a quick \"docs I own\" filter (owner semantic, not original creator). For other people, use --creator-ids ou_xxx,ou_yyy.",
+		"Use --created-by-me for \"docs I created\". Use --mine for \"docs I own\" (owner semantic).",
 		"--folder-tokens limits to doc-only search; --space-ids limits to wiki-only. They cannot be combined.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -164,6 +166,9 @@ type driveSearchSpec struct {
 	Mine       bool
 	CreatorIDs []string
 
+	CreatedByMe        bool
+	OriginalCreatorIDs []string
+
 	EditedSince    string
 	EditedUntil    string
 	CommentedSince string
@@ -193,6 +198,9 @@ func readDriveSearchSpec(runtime *common.RuntimeContext) driveSearchSpec {
 		Mine:       runtime.Bool("mine"),
 		CreatorIDs: common.SplitCSV(runtime.Str("creator-ids")),
 
+		CreatedByMe:        runtime.Bool("created-by-me"),
+		OriginalCreatorIDs: common.SplitCSV(runtime.Str("original-creator-ids")),
+
 		EditedSince:    runtime.Str("edited-since"),
 		EditedUntil:    runtime.Str("edited-until"),
 		CommentedSince: runtime.Str("commented-since"),
@@ -221,11 +229,17 @@ func buildDriveSearchRequest(spec driveSearchSpec, userOpenID string, now time.T
 	if spec.Mine && len(spec.CreatorIDs) > 0 {
 		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot combine --mine and --creator-ids")
 	}
+	if spec.CreatedByMe && len(spec.OriginalCreatorIDs) > 0 {
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot combine --created-by-me and --original-creator-ids")
+	}
 	if len(spec.FolderTokens) > 0 && len(spec.SpaceIDs) > 0 {
 		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot combine --folder-tokens and --space-ids; doc and wiki scoped search cannot be combined")
 	}
 	if spec.Mine && userOpenID == "" {
 		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--mine requires a logged-in user open_id, but none is configured; run `lark-cli auth login` or set user open_id in config").WithParam("--mine")
+	}
+	if spec.CreatedByMe && userOpenID == "" {
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--created-by-me requires a logged-in user open_id, but none is configured; run `lark-cli auth login` or set user open_id in config").WithParam("--created-by-me")
 	}
 
 	if err := validateDocTypes(spec.DocTypes); err != nil {
@@ -256,12 +270,19 @@ func buildDriveSearchRequest(spec driveSearchSpec, userOpenID string, now time.T
 		notices = append(notices, n)
 	}
 
-	// Creator identity.
+	// Identity filters. creator_ids is owner; original_creator_ids is the
+	// immutable document creator.
 	switch {
 	case spec.Mine:
 		filter["creator_ids"] = []string{userOpenID}
 	case len(spec.CreatorIDs) > 0:
 		filter["creator_ids"] = spec.CreatorIDs
+	}
+	switch {
+	case spec.CreatedByMe:
+		filter["original_creator_ids"] = []string{userOpenID}
+	case len(spec.OriginalCreatorIDs) > 0:
+		filter["original_creator_ids"] = spec.OriginalCreatorIDs
 	}
 
 	// Time dimensions — each fills at most one filter key; hour-aggregated ones
@@ -356,6 +377,11 @@ func validateDriveSearchIDs(spec driveSearchSpec) error {
 	for _, id := range spec.CreatorIDs {
 		if _, err := common.ValidateUserIDTyped("--creator-ids", id); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--creator-ids %q: %s", id, err).WithParam("--creator-ids")
+		}
+	}
+	for _, id := range spec.OriginalCreatorIDs {
+		if _, err := common.ValidateUserIDTyped("--original-creator-ids", id); err != nil {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--original-creator-ids %q: %s", id, err).WithParam("--original-creator-ids")
 		}
 	}
 	if n := len(spec.ChatIDs); n > driveSearchMaxChatIDs {
@@ -635,7 +661,7 @@ func enrichDriveSearchError(err error) error {
 	if !ok || p.Code != driveSearchErrUserNotVisible {
 		return err
 	}
-	p.Hint = "one or more open_ids in --creator-ids / --sharer-ids are outside this app's user-visibility scope (this is the app's contact visibility, not the search:docs:read API scope); ask an admin to grant the app visibility to those users in the developer console, or drop the unreachable open_ids"
+	p.Hint = "one or more open_ids in --creator-ids / --original-creator-ids / --sharer-ids are outside this app's user-visibility scope (this is the app's contact visibility, not the search:docs:read API scope); ask an admin to grant the app visibility to those users in the developer console, or drop the unreachable open_ids"
 	return err
 }
 
