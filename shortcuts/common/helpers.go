@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"io"
 	"mime/multipart"
-	"net/textproto"
 )
 
-// MultipartWriter wraps multipart.Writer for file uploads.
+// MultipartWriter wraps multipart.Writer for file uploads. CreateFormFile is
+// promoted from the embedded *multipart.Writer so that special characters in
+// the filename (`"`, `\`, CR, LF) are properly escaped per the stdlib's
+// quoteEscaper — otherwise filenames like `report "draft".pdf` would produce
+// a malformed Content-Disposition header.
 type MultipartWriter struct {
 	*multipart.Writer
 }
@@ -18,14 +21,6 @@ type MultipartWriter struct {
 // NewMultipartWriter creates a new MultipartWriter.
 func NewMultipartWriter(w io.Writer) *MultipartWriter {
 	return &MultipartWriter{multipart.NewWriter(w)}
-}
-
-// CreateFormFile creates a form file with the given field name and file name.
-func (mw *MultipartWriter) CreateFormFile(fieldname, filename string) (io.Writer, error) {
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", `form-data; name="`+fieldname+`"; filename="`+filename+`"`)
-	h.Set("Content-Type", "application/octet-stream")
-	return mw.Writer.CreatePart(h)
 }
 
 // ParseJSON unmarshals JSON data into v.
