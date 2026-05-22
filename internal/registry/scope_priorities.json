@@ -5568,5 +5568,115 @@
     "scope_name": "speech_to_text:speech",
     "final_score": "70.8755",
     "recommend": "true"
+  },
+  {
+    "scope_name": "spark:app:publish",
+    "final_score": "75.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "spark:app.access_scope:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "spark:app.access_scope:write",
+    "final_score": "83.6587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "spark:app:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "spark:app:write",
+    "final_score": "76.7173",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "docs:secure_label:write_only",
+    "final_score": "75.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "corehr:job_change_v2:read",
+    "final_score": "75.9982",
+    "recommend": "false"
+  },
+  {
+    "scope_name": "corehr:pre_hire.contract_file_id:read",
+    "final_score": "80.0587",
+    "recommend": "false"
+  },
+  {
+    "scope_name": "im:chat.user_setting:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "minutes:minutes.upload:write",
+    "final_score": "83.6587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "im:feed.flag:write",
+    "final_score": "79.5982",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "im:feed.flag:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "search:bot",
+    "final_score": "67.0587",
+    "recommend": "false"
+  },
+  {
+    "scope_name": "application:bot.basic_info:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "drive:quota_detail:read_one",
+    "final_score": "75.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "docs:permission.member:apply",
+    "final_score": "83.6587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "corehr:employment.custom_field:write",
+    "final_score": "75.6587",
+    "recommend": "false"
+  },
+  {
+    "scope_name": "im:message.group_at_msg.include_bot:readonly",
+    "final_score": "88.9982",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "okr:okr.setting:read",
+    "final_score": "80.0587",
+    "recommend": "false"
+  },
+  {
+    "scope_name": "directory:employee.base.leader_id:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "directory:employee.base.dotted_line_leaders:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "directory:employee.base.active_status:read",
+    "final_score": "80.0587",
+    "recommend": "false"
   }
 ]
