@@ -6,6 +6,8 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/larksuite/cli/internal/registry"
@@ -283,4 +285,142 @@ func skipValueAfterToken(dec *json.Decoder, tok json.Token) {
 			}
 		}
 	}
+}
+
+// convertProperty recursively converts one meta_data field map into a Property.
+// nestedPath is the dotted lookup key into the current method's NestedKeys map
+// (e.g. "responseBody.items.properties"). Empty path = top-level, no nested
+// lookup needed.
+func convertProperty(field map[string]interface{}, nestedPath string) Property {
+	var p Property
+
+	rawType, _ := field["type"].(string)
+	switch rawType {
+	case "file":
+		p.Type = "string"
+		p.Format = "binary"
+	default:
+		p.Type = rawType
+	}
+
+	if s, ok := field["description"].(string); ok {
+		p.Description = s
+	}
+	if v, ok := field["default"]; ok {
+		p.Default = v
+	}
+	if v, ok := field["example"]; ok {
+		p.Example = v
+	}
+
+	// min / max are stored as strings in meta_data; parse on best-effort.
+	if minStr, ok := field["min"].(string); ok && minStr != "" {
+		if v, err := strconv.ParseFloat(minStr, 64); err == nil {
+			p.Minimum = &v
+		}
+	}
+	if maxStr, ok := field["max"].(string); ok && maxStr != "" {
+		if v, err := strconv.ParseFloat(maxStr, 64); err == nil {
+			p.Maximum = &v
+		}
+	}
+
+	// enum: prefer existing "enum" array; else extract from options[].value
+	if enumRaw, ok := field["enum"].([]interface{}); ok && len(enumRaw) > 0 {
+		for _, e := range enumRaw {
+			if s, ok := e.(string); ok {
+				p.Enum = append(p.Enum, s)
+			}
+		}
+	} else if optsRaw, ok := field["options"].([]interface{}); ok && len(optsRaw) > 0 {
+		seen := make(map[string]bool)
+		for _, o := range optsRaw {
+			om, ok := o.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if v, ok := om["value"].(string); ok && !seen[v] {
+				seen[v] = true
+				p.Enum = append(p.Enum, v)
+			}
+		}
+		sort.Strings(p.Enum)
+	}
+
+	// nested properties: recurse
+	if propsRaw, ok := field["properties"].(map[string]interface{}); ok && len(propsRaw) > 0 {
+		nested := buildOrderedProps(propsRaw, nestedPath)
+		if rawType == "array" {
+			// meta_data quirk: array element schema is wrapped in "properties".
+			// Unfold into Items: { type: "object", properties: <nested> }
+			p.Items = &Property{
+				Type:       "object",
+				Properties: nested,
+			}
+			// Property.Properties stays nil for arrays
+		} else {
+			if p.Type == "" {
+				p.Type = "object" // infer
+			}
+			p.Properties = nested
+		}
+	}
+
+	return p
+}
+
+// buildOrderedProps converts a map[string]interface{} of field specs into an
+// OrderedProps, using the key-order index for the given nested path if
+// available; otherwise falls back to alphabetical order.
+func buildOrderedProps(raw map[string]interface{}, nestedPath string) *OrderedProps {
+	op := &OrderedProps{Map: make(map[string]Property, len(raw))}
+
+	keys := orderedKeys(raw, nestedPath)
+	for _, k := range keys {
+		fieldRaw, _ := raw[k].(map[string]interface{})
+		op.Order = append(op.Order, k)
+		op.Map[k] = convertProperty(fieldRaw, nestedPath+"."+k+".properties")
+	}
+	return op
+}
+
+// currentMethodOrder is the per-method key-order context used by orderedKeys.
+// It is set inside AssembleEnvelope (under assembleMu) and reset on return.
+var currentMethodOrder *MethodKeyOrder
+
+// orderedKeys returns the keys of raw in their meta_data natural order if
+// the current per-method key-order context has them recorded; otherwise
+// alphabetical fallback.
+func orderedKeys(raw map[string]interface{}, nestedPath string) []string {
+	if currentMethodOrder != nil && nestedPath != "" {
+		if order, ok := currentMethodOrder.NestedKeys[nestedPath]; ok {
+			// Filter to keys that actually exist in raw (defensive)
+			out := make([]string, 0, len(order))
+			seen := make(map[string]bool)
+			for _, k := range order {
+				if _, ok := raw[k]; ok {
+					out = append(out, k)
+					seen[k] = true
+				}
+			}
+			// Append any keys present in raw but missing from order (defensive),
+			// alphabetically for determinism.
+			var extra []string
+			for k := range raw {
+				if !seen[k] {
+					extra = append(extra, k)
+				}
+			}
+			sort.Strings(extra)
+			out = append(out, extra...)
+			return out
+		}
+	}
+	// Fallback: alphabetical
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
