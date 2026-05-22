@@ -164,3 +164,51 @@ func contains(slice []string, s string) bool {
 	}
 	return false
 }
+
+// coverageBaseline is the per-metric warn threshold for L4 coverage checks.
+// If the measured rate drops below the baseline, t.Logf emits a warning but
+// does NOT fail the test. Adjust these constants upward as meta_data quality
+// improves over time.
+var coverageBaseline = map[string]float64{
+	"description": 0.99,
+	"scopes":      1.00,
+	"doc_url":     0.98,
+	"risk":        0.96,
+}
+
+// measureCoverage returns the non-empty rate for each tracked metric.
+func measureCoverage(envs []Envelope) map[string]float64 {
+	if len(envs) == 0 {
+		return map[string]float64{
+			"description": 0,
+			"scopes":      0,
+			"doc_url":     0,
+			"risk":        0,
+		}
+	}
+	total := float64(len(envs))
+	var descNonEmpty, scopesNonEmpty, docURLNonEmpty, riskNonEmpty float64
+	for _, e := range envs {
+		if e.Description != "" {
+			descNonEmpty++
+		}
+		if e.Meta == nil {
+			continue
+		}
+		if len(e.Meta.Scopes) > 0 {
+			scopesNonEmpty++
+		}
+		if e.Meta.DocURL != "" {
+			docURLNonEmpty++
+		}
+		if e.Meta.Risk != "" {
+			riskNonEmpty++
+		}
+	}
+	return map[string]float64{
+		"description": descNonEmpty / total,
+		"scopes":      scopesNonEmpty / total,
+		"doc_url":     docURLNonEmpty / total,
+		"risk":        riskNonEmpty / total,
+	}
+}
