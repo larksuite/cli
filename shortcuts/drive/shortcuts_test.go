@@ -15,6 +15,8 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+create-folder",
 		"+create-shortcut",
 		"+download",
+		"+preview",
+		"+cover",
 		"+version-history",
 		"+version-get",
 		"+version-revert",
