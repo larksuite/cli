@@ -536,6 +536,40 @@ func buildOutputSchema(method map[string]interface{}) *OutputSchema {
 	return os
 }
 
+// assembleMu serializes AssembleEnvelope calls so that the package-level
+// currentMethodOrder pointer is safe for concurrent callers.
+var assembleMu sync.Mutex
+
+// AssembleEnvelope is the main entry point: takes a service / resource path /
+// method name plus its meta_data spec, and produces a fully assembled MCP
+// envelope. Stateless — safe to call concurrently as long as the
+// currentMethodOrder mutex (handled internally) is respected.
+//
+// Concurrency note: convertProperty reads currentMethodOrder via package
+// variable for simplicity. We serialize access with a mutex.
+func AssembleEnvelope(serviceName string, resourcePath []string, methodName string, method map[string]interface{}) Envelope {
+	assembleMu.Lock()
+	defer assembleMu.Unlock()
+	currentMethodOrder = lookupKeyOrder(serviceName, resourcePath, methodName)
+	defer func() { currentMethodOrder = nil }()
+
+	name := serviceName
+	for _, r := range resourcePath {
+		name += " " + r
+	}
+	name += " " + methodName
+
+	desc, _ := method["description"].(string)
+
+	return Envelope{
+		Name:         name,
+		Description:  desc,
+		InputSchema:  buildInputSchema(method),
+		OutputSchema: buildOutputSchema(method),
+		Meta:         buildMeta(method, serviceName, resourcePath, methodName),
+	}
+}
+
 // orderedKeys returns the keys of raw in their meta_data natural order if
 // the current per-method key-order context has them recorded; otherwise
 // alphabetical fallback.

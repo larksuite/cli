@@ -500,6 +500,51 @@ func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
 	}
 }
 
+func TestAssembleEnvelope_ReactionsList_FullStructure(t *testing.T) {
+	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	env := AssembleEnvelope("im", []string{"reactions"}, "list", method)
+
+	if env.Name != "im reactions list" {
+		t.Errorf("Name = %q, want \"im reactions list\"", env.Name)
+	}
+	if env.Description == "" {
+		t.Errorf("Description should not be empty for im.reactions.list")
+	}
+	if env.InputSchema == nil || env.OutputSchema == nil || env.Meta == nil {
+		t.Fatal("InputSchema/OutputSchema/Meta must all be non-nil")
+	}
+	if env.Meta.EnvelopeVersion != "1.0" {
+		t.Errorf("Meta.EnvelopeVersion = %q", env.Meta.EnvelopeVersion)
+	}
+}
+
+func TestAssembleEnvelope_NestedResource_NameJoinedWithSpaces(t *testing.T) {
+	// im.chat.members.create — resource path is one element "chat.members" with
+	// an internal dot. Substituted from plan's `bots` because remote-cache
+	// overlay strips `bots` from the loaded method map on this environment;
+	// the assertion is about name joining, not method specifics.
+	method := loadMethodFromRegistry(t, "im", []string{"chat.members"}, "create")
+	env := AssembleEnvelope("im", []string{"chat.members"}, "create", method)
+	// chat.members resourcePath stays as one element in the slice with a dot;
+	// name should split it to "im chat.members create" — we keep the dot as-is
+	// inside the resource segment to round-trip with completion logic.
+	if env.Name != "im chat.members create" {
+		t.Errorf("Name = %q, want \"im chat.members create\"", env.Name)
+	}
+}
+
+func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
+	// Assemble twice; JSON output must be byte-identical (determinism).
+	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	a := AssembleEnvelope("im", []string{"reactions"}, "list", method)
+	b := AssembleEnvelope("im", []string{"reactions"}, "list", method)
+	ja, _ := json.MarshalIndent(a, "", "  ")
+	jb, _ := json.MarshalIndent(b, "", "  ")
+	if string(ja) != string(jb) {
+		t.Errorf("envelope assembly is non-deterministic:\nfirst:\n%s\nsecond:\n%s", ja, jb)
+	}
+}
+
 // loadMethodFromRegistry is a test helper that pulls one method's spec from the
 // real embedded meta_data.json via the registry package.
 func loadMethodFromRegistry(t *testing.T, service string, resourcePath []string, methodName string) map[string]interface{} {
