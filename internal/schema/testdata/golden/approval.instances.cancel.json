@@ -1,0 +1,40 @@
+{
+  "name": "approval instances cancel",
+  "description": "撤回审批实例",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "instance_code"
+    ],
+    "properties": {
+      "instance_code": {
+        "type": "string",
+        "description": "审批实例 Code",
+        "example": "81D31358-93AF-92D6-7425-01A5D67C4E71",
+        "x-in": "body"
+      },
+      "yes": {
+        "type": "boolean",
+        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
+        "default": false
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {}
+  },
+  "_meta": {
+    "envelope_version": "1.0",
+    "scopes": [
+      "approval:instance:write"
+    ],
+    "required_scopes": [],
+    "access_tokens": [
+      "user"
+    ],
+    "danger": true,
+    "risk": "high-risk-write",
+    "doc_url": "https://open.feishu.cn/api-explorer?from=op_doc_tab\u0026apiName=recall\u0026project=approval\u0026resource=instance\u0026version=v4"
+  }
+}

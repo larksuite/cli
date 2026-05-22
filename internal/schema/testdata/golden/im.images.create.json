@@ -1,0 +1,54 @@
+{
+  "name": "im images create",
+  "description": "上传图片。Identity: `bot` only (`tenant_access_token`).",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "image",
+      "image_type"
+    ],
+    "properties": {
+      "image_type": {
+        "type": "string",
+        "description": "图片类型",
+        "enum": [
+          "message",
+          "avatar"
+        ],
+        "example": "message",
+        "x-in": "body"
+      },
+      "image": {
+        "type": "string",
+        "description": "图片内容。传值方式可以参考请求体示例。;;**注意**：;;- 上传的图片大小不能超过 10 MB，也不能上传大小为 0 的图片。;- 分辨率限制：;\t- GIF 图片分辨率不能超过 2000 x 2000，其他图片分辨率不能超过 12000 x 12000。;\t- 用于设置头像的图片分辨率不能超过 4096 x 4096。",
+        "example": "二进制文件",
+        "format": "binary",
+        "x-in": "body"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "image_key": {
+        "type": "string",
+        "description": "图片的 Key",
+        "example": "img_8d5181ca-0aed-40f0-b0d1-b1452132afbg"
+      }
+    }
+  },
+  "_meta": {
+    "envelope_version": "1.0",
+    "scopes": [
+      "im:resource:upload",
+      "im:resource"
+    ],
+    "required_scopes": [],
+    "access_tokens": [
+      "bot"
+    ],
+    "danger": true,
+    "risk": "write",
+    "doc_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create"
+  }
+}

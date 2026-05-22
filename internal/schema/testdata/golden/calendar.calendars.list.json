@@ -1,0 +1,148 @@
+{
+  "name": "calendar calendars list",
+  "description": "查询日历列表",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "page_size": {
+        "type": "integer",
+        "description": "一次请求要求返回的最大日历数量。实际返回的日历数量可能小于该值，也可能为空，可以根据响应体里的has_more字段来判断是否还有更多日历。",
+        "default": "500",
+        "example": "`50`",
+        "minimum": 50,
+        "maximum": 1000,
+        "x-in": "query"
+      },
+      "page_token": {
+        "type": "string",
+        "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+        "default": "",
+        "example": "ListCalendarsPageToken_xxx",
+        "x-in": "query"
+      },
+      "sync_token": {
+        "type": "string",
+        "description": "增量同步标记，第一次请求不填。当分页查询结束（page_token 返回值为空）时，接口会返回 sync_token 字段，下次调用可使用该 sync_token 增量获取日历变更数据。;;**默认值**：空",
+        "default": "",
+        "example": "ListCalendarsSyncToken_xxx",
+        "x-in": "query"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "page_token": {
+        "type": "string",
+        "description": "分页标记，当 has_more 为 true 时，会同时返回新的 page_token，否则不返回 page_token",
+        "example": "ListCalendarsPageToken_xxx"
+      },
+      "sync_token": {
+        "type": "string",
+        "description": "增量同步标记。当 has_more 为 false 时，会同步返回新的 sync_token，下次请求需要带上 sync_token 增量获取日历变更数据。;;**注意**：返回的 sync_token 在 90 天内有效。",
+        "example": "ListCalendarsSyncToken_xxx"
+      },
+      "calendar_list": {
+        "type": "array",
+        "description": "分页加载的日历数据列表。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "is_third_party": {
+              "type": "boolean",
+              "description": "当前日历是否是第三方数据。三方日历及日程只支持读，不支持写入。",
+              "example": "false"
+            },
+            "role": {
+              "type": "string",
+              "description": "当前身份对于该日历的访问权限。",
+              "enum": [
+                "unknown",
+                "free_busy_reader",
+                "reader",
+                "writer",
+                "owner"
+              ],
+              "example": "owner"
+            },
+            "calendar_id": {
+              "type": "string",
+              "description": "日历 ID。后续可以通过该 ID 查询、更新或删除日历信息。更多信息参见[日历 ID 字段说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/introduction)。",
+              "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
+            },
+            "permissions": {
+              "type": "string",
+              "description": "日历公开范围。",
+              "enum": [
+                "private",
+                "show_only_free_busy",
+                "public"
+              ],
+              "example": "private"
+            },
+            "summary_alias": {
+              "type": "string",
+              "description": "日历备注名，仅对当前身份生效。",
+              "example": "日历备注名"
+            },
+            "is_deleted": {
+              "type": "boolean",
+              "description": "对于当前身份，日历是否已经被标记为删除。",
+              "example": "false"
+            },
+            "summary": {
+              "type": "string",
+              "description": "日历标题。",
+              "example": "测试日历"
+            },
+            "description": {
+              "type": "string",
+              "description": "日历描述。",
+              "example": "使用开放接口创建日历"
+            },
+            "color": {
+              "type": "integer",
+              "description": "日历颜色，由颜色 RGB 值的 int32 表示。实际在客户端展示时会映射到色板上最接近的一种颜色，且该字段仅对当前身份生效。",
+              "example": "-1"
+            },
+            "type": {
+              "type": "string",
+              "description": "日历类型。",
+              "enum": [
+                "unknown",
+                "primary",
+                "shared",
+                "google",
+                "resource",
+                "exchange"
+              ],
+              "example": "shared"
+            }
+          }
+        }
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "是否还有更多项",
+        "example": "false"
+      }
+    }
+  },
+  "_meta": {
+    "envelope_version": "1.0",
+    "scopes": [
+      "calendar:calendar:readonly",
+      "calendar:calendar",
+      "calendar:calendar.calendar:readonly",
+      "calendar:calendar:read"
+    ],
+    "required_scopes": [],
+    "access_tokens": [
+      "bot",
+      "user"
+    ],
+    "danger": false,
+    "risk": "read",
+    "doc_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list"
+  }
+}

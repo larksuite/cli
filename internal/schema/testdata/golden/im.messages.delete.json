@@ -1,0 +1,43 @@
+{
+  "name": "im messages delete",
+  "description": "撤回消息。Identity: supports `user` and `bot`; for `bot` calls, the bot must be in the chat to revoke group messages; to revoke another user's group message, the bot must be the owner, an admin, or the creator; for user P2P recalls, the target user must be within the bot's availability.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "message_id"
+    ],
+    "properties": {
+      "message_id": {
+        "type": "string",
+        "description": "待撤回的消息 ID。;;ID 获取方式：;  ;- 调用[发送消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create)接口后，从响应结果的 `message_id` 参数获取。;- 监听[接收消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive)事件，当触发该事件后可以从事件体内获取消息的 `message_id`。;- 调用[获取会话历史消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list)接口，从响应结果的 `message_id` 参数获取。",
+        "example": "om_dc13264520392913993dd051dba21dcf",
+        "x-in": "path"
+      },
+      "yes": {
+        "type": "boolean",
+        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
+        "default": false
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {}
+  },
+  "_meta": {
+    "envelope_version": "1.0",
+    "scopes": [
+      "im:message:recall",
+      "im:message",
+      "im:message:send_as_bot"
+    ],
+    "required_scopes": [],
+    "access_tokens": [
+      "bot",
+      "user"
+    ],
+    "danger": true,
+    "risk": "high-risk-write",
+    "doc_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/delete"
+  }
+}

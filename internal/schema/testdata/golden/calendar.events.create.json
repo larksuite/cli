@@ -1,0 +1,812 @@
+{
+  "name": "calendar events create",
+  "description": "创建日程",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "calendar_id",
+      "end_time",
+      "start_time"
+    ],
+    "properties": {
+      "idempotency_key": {
+        "type": "string",
+        "description": "创建日程的幂等 key，该 key 在应用和日历维度下唯一，用于避免重复创建资源。建议按照示例值的格式进行取值。",
+        "default": "",
+        "example": "25fdf41b-8c80-2ce1-e94c-de8b5e7aa7e6",
+        "x-in": "query"
+      },
+      "user_id_type": {
+        "type": "string",
+        "description": "此次调用中使用的用户ID的类型",
+        "enum": [
+          "open_id",
+          "union_id",
+          "user_id"
+        ],
+        "default": "",
+        "x-in": "query"
+      },
+      "calendar_id": {
+        "type": "string",
+        "description": "日历 ID。;;创建共享日历时会返回日历 ID。你也可以调用以下接口获取某一日历的 ID。;- [查询主日历信息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/primary);- [查询日历列表](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list);- [搜索日历](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/search)",
+        "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn",
+        "x-in": "path"
+      },
+      "description": {
+        "type": "string",
+        "description": "日程描述。支持解析Html标签。;;**注意**：可以通过Html标签来实现部分富文本格式，但是客户端生成的富文本格式并不是通过Html标签实现，如果通过客户端生成富文本描述后，再通过API更新描述，会导致客户端原来的富文本格式丢失。",
+        "example": "日程描述",
+        "x-in": "body"
+      },
+      "visibility": {
+        "type": "string",
+        "description": "日程公开范围，新建日程默认为 `default`。;;**注意**：该参数仅在新建日程时，对所有参与人生效。如果后续更新日程修改了该参数值，则仅对当前身份生效。",
+        "enum": [
+          "default",
+          "public",
+          "private"
+        ],
+        "example": "default",
+        "x-in": "body"
+      },
+      "free_busy_status": {
+        "type": "string",
+        "description": "日程占用的忙闲状态，新建日程默认为 `busy`。;;**注意**：该参数仅在新建日程时，对所有参与人生效。如果后续更新日程时修改了该参数值，则仅对当前身份生效。",
+        "enum": [
+          "busy",
+          "free"
+        ],
+        "example": "busy",
+        "x-in": "body"
+      },
+      "location": {
+        "type": "object",
+        "description": "日程地点，不传值则默认为空。",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "地点地址。",
+            "example": "地点地址"
+          },
+          "latitude": {
+            "type": "number",
+            "description": "地点坐标纬度信息。;- 对于国内的地点，采用 GCJ-02 标准。;- 对于海外的地点，采用 WGS84 标准。",
+            "example": "1.100000023841858"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "地点坐标经度信息。;- 对于国内的地点，采用 GCJ-02 标准。;- 对于海外的地点，采用 WGS84 标准。",
+            "example": "2.200000047683716"
+          },
+          "name": {
+            "type": "string",
+            "description": "地点名称。",
+            "example": "地点名称"
+          }
+        },
+        "x-in": "body"
+      },
+      "event_check_in": {
+        "type": "object",
+        "description": "日程签到设置，为空则不进行日程签到设置。",
+        "properties": {
+          "enable_check_in": {
+            "type": "boolean",
+            "description": "是否启用日程签到。",
+            "example": "true"
+          },
+          "check_in_start_time": {
+            "type": "object",
+            "description": "日程签到开始时间。;;**注意**：签到开始时间不能大于或者等于签到结束时间。",
+            "properties": {
+              "time_type": {
+                "type": "string",
+                "description": "偏移量(分钟)相对于的日程时间节点类型。",
+                "enum": [
+                  "before_event_start",
+                  "after_event_start",
+                  "after_event_end"
+                ]
+              },
+              "duration": {
+                "type": "integer",
+                "description": "相对于日程开始或者结束的偏移量(分钟)。;- 目前取值只能为列表[0, 5, 15, 30, 60]之一，0表示立即开始。;- 当time_type为before_event_start，duration不能取0",
+                "example": "0",
+                "minimum": 0,
+                "maximum": 60
+              }
+            }
+          },
+          "check_in_end_time": {
+            "type": "object",
+            "description": "日程签到结束时间。;;**注意**：签到开始时间不能大于或者等于签到结束时间。",
+            "properties": {
+              "time_type": {
+                "type": "string",
+                "description": "偏移量(分钟)相对于的日程时间节点类型。",
+                "enum": [
+                  "before_event_start",
+                  "after_event_start",
+                  "after_event_end"
+                ]
+              },
+              "duration": {
+                "type": "integer",
+                "description": "相对于日程开始或者结束的偏移量(分钟)。;- 目前取值只能为列表[0, 5, 15, 30, 60]之一，0表示立即开始。;- 当time_type为before_event_start，duration不能取0",
+                "example": "0",
+                "minimum": 0,
+                "maximum": 60
+              }
+            }
+          },
+          "need_notify_attendees": {
+            "type": "boolean",
+            "description": "签到开始时是否自动发送签到通知给参与者"
+          }
+        },
+        "x-in": "body"
+      },
+      "need_notification": {
+        "type": "boolean",
+        "description": "更新日程时，是否给日程参与人发送 Bot 通知。;;**可选值有**：;- true：发送通知;- false：不发送通知;;**默认值**：true",
+        "example": "false",
+        "x-in": "body"
+      },
+      "attendee_ability": {
+        "type": "string",
+        "description": "参与人权限。;;**默认值**：none",
+        "enum": [
+          "none",
+          "can_see_others",
+          "can_invite_others",
+          "can_modify_event"
+        ],
+        "example": "can_see_others",
+        "x-in": "body"
+      },
+      "source": {
+        "type": "string",
+        "description": "日程source",
+        "example": "source",
+        "x-in": "body"
+      },
+      "start_time": {
+        "type": "object",
+        "description": "日程开始时间。",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "开始时间，仅全天日程使用该字段，[RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) 格式，例如，2018-09-01。;;**注意**：该参数不能与 `timestamp` 同时指定。",
+            "example": "2018-09-01"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "秒级时间戳，用于设置具体的开始时间。例如，1602504000 表示 2020/10/12 20:00:00（UTC +8 时区）。;;**注意**：该参数不能与 `date` 同时指定。",
+            "example": "1602504000"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "时区。使用 IANA Time Zone Database 标准，例如 Asia/Shanghai。;;- 全天日程时区固定为UTC +0;- 非全天日程时区默认为 Asia/Shanghai",
+            "example": "Asia/Shanghai"
+          }
+        },
+        "x-in": "body"
+      },
+      "vchat": {
+        "type": "object",
+        "description": "视频会议信息。",
+        "properties": {
+          "meeting_url": {
+            "type": "string",
+            "description": "视频会议 URL。",
+            "example": "https://example.com"
+          },
+          "live_link": {
+            "type": "string",
+            "description": "VC视频会议转直播URL，当vc_type=vc时有值。",
+            "example": "https://meetings.feishu.cn/s/1iof4hpw6i51w"
+          },
+          "vc_info": {
+            "type": "object",
+            "description": "VC视频会议原生信息。",
+            "properties": {
+              "unique_id": {
+                "type": "string",
+                "description": "会议唯一ID",
+                "example": "7226647229510582291"
+              },
+              "meeting_no": {
+                "type": "string",
+                "description": "会议号",
+                "example": "808056935"
+              }
+            }
+          },
+          "meeting_settings": {
+            "type": "object",
+            "description": "飞书视频会议（VC）的会前设置，需满足以下全部条件：;- 当 `vc_type` 为 `vc` 时生效。;- 需要有日程的编辑权限。",
+            "properties": {
+              "allow_attendees_start": {
+                "type": "boolean",
+                "description": "是否允许日程参与者发起会议。;;**可选值有**：;- true（默认值）：允许;- false：不允许;;**注意**：应用日历上操作日程时，该字段必须为 true，否则没有人能发起会议。",
+                "example": "true"
+              },
+              "owner_id": {
+                "type": "string",
+                "description": "设置会议 owner 的用户 ID，ID 类型需和 user_id;_type 保持一致。;;该参数需满足以下全部条件才会生效：;-  应用身份（tenant_access_token）请求，且在应用日历上操作日程。;- 首次将日程设置为 VC 会议时，才能设置owner。;- owner 不能为非用户身份。;- owner 不能为外部租户用户身份。",
+                "example": "ou_7d8a6e6df7621556ce0d21922b676706ccs"
+              },
+              "join_meeting_permission": {
+                "type": "string",
+                "description": "设置入会范围。;;**默认值**：anyone_can_join",
+                "enum": [
+                  "anyone_can_join",
+                  "only_organization_employees",
+                  "only_event_attendees"
+                ],
+                "example": "only_organization_employees"
+              },
+              "password": {
+                "type": "string",
+                "description": "（灰度中，仅部分租户可见）设置会议密码，仅支持 4-9 位数字",
+                "example": "971024"
+              },
+              "assign_hosts": {
+                "type": "array",
+                "description": "通过用户 ID 指定主持人，ID 类型需和 user_id;_type 保持一致。;;**注意**：;- 仅日程组织者可以指定主持人。;- 主持人不能是非用户身份。;- 主持人不能是外部租户用户身份。;- 在应用日历上操作日程时，不允许指定主持人。"
+              },
+              "auto_record": {
+                "type": "boolean",
+                "description": "是否开启自动录制。;;**可选值有**：;- true：开启;- false（默认值）：不开启",
+                "example": "false"
+              },
+              "open_lobby": {
+                "type": "boolean",
+                "description": "是否开启等候室。;;**可选值有**：;- true（默认值）：开启;- false：不开启",
+                "example": "true"
+              }
+            }
+          },
+          "third_party_meeting_settings": {
+            "type": "object",
+            "description": "三方会议设置",
+            "properties": {
+              "meeting_type": {
+                "type": "string",
+                "description": "三方会议类型",
+                "example": "julinker"
+              },
+              "meeting_id": {
+                "type": "string",
+                "description": "会议ID",
+                "example": "123"
+              },
+              "meeting_no": {
+                "type": "string",
+                "description": "会议号",
+                "example": "123"
+              },
+              "password": {
+                "type": "string",
+                "description": "密码",
+                "example": "123"
+              },
+              "meeting_descriptions": {
+                "type": "array",
+                "description": "多语言会议描述"
+              }
+            }
+          },
+          "vc_type": {
+            "type": "string",
+            "description": "视频会议类型。如果无需视频会议，则必须传入 `no_meeting`。;;**默认值**：空，表示在首次添加日程参与人时，会自动生成飞书视频会议 URL。",
+            "enum": [
+              "vc",
+              "third_party",
+              "no_meeting",
+              "lark_live",
+              "unknown",
+              "third_party_meeting"
+            ],
+            "example": "third_party"
+          },
+          "icon_type": {
+            "type": "string",
+            "description": "第三方视频会议的 icon 类型。;;**默认值**：default",
+            "enum": [
+              "vc",
+              "live",
+              "default"
+            ],
+            "example": "vc"
+          },
+          "description": {
+            "type": "string",
+            "description": "第三方视频会议文案。;;**默认值**：空，为空展示默认文案。",
+            "example": "发起视频会议"
+          }
+        },
+        "x-in": "body"
+      },
+      "color": {
+        "type": "integer",
+        "description": "日程颜色，取值通过颜色 RGB 值的 int32 表示。;;**注意**：;- 该参数仅对当前身份生效。;- 客户端展示时会映射到色板上最接近的一种颜色。;- 取值为 0 或 -1 时，默认跟随日历颜色。",
+        "example": "-1",
+        "x-in": "body"
+      },
+      "schemas": {
+        "type": "array",
+        "description": "日程自定义信息，控制日程详情页的 UI 展示。不传值则默认为空。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ui_name": {
+              "type": "string",
+              "description": "UI 名称。;;**可选值有**： ;- ForwardIcon：日程转发按钮 ;- MeetingChatIcon：会议群聊按钮 ;- MeetingMinutesIcon：会议纪要按钮 ;- MeetingVideo：视频会议区域 ;- RSVP：接受、拒绝、待定区域 ;- Attendee：参与者区域 ;- OrganizerOrCreator：组织者或创建者区域",
+              "example": "ForwardIcon"
+            },
+            "ui_status": {
+              "type": "string",
+              "description": "UI 项的状态。目前只支持选择 `hide`。",
+              "enum": [
+                "hide",
+                "readonly",
+                "editable",
+                "unknown"
+              ],
+              "example": "hide"
+            },
+            "app_link": {
+              "type": "string",
+              "description": "按钮点击后跳转的链接。;;**注意**：兼容性参数，只读，因此暂不支持传入该请求参数。",
+              "example": "https://applink.feishu.cn/client/calendar/event/detail?calendarId=xxxxxx\u0026key=xxxxxx\u0026originalTime=xxxxxx\u0026startTime=xxxxxx"
+            }
+          }
+        },
+        "x-in": "body"
+      },
+      "summary": {
+        "type": "string",
+        "description": "日程标题。;;**注意**：为确保数据安全，系统会自动检测日程标题内容，当包含 **晋升、绩效、述职、调薪、调级、复议、申诉、校准、答辩** 中任一关键词时，该日程不会生成会议纪要。",
+        "example": "日程标题",
+        "x-in": "body"
+      },
+      "end_time": {
+        "type": "object",
+        "description": "日程结束时间。",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "description": "秒级时间戳，用于设置具体的结束时间。例如，1602504000 表示 2020/10/12 20:00:00（UTC +8 时区）。;;**注意**：该参数不能与 `date` 同时指定。",
+            "example": "1602504000"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "时区。使用 IANA Time Zone Database 标准，例如 Asia/Shanghai。;;- 全天日程时区固定为UTC +0;- 非全天日程时区默认为 Asia/Shanghai",
+            "example": "Asia/Shanghai"
+          },
+          "date": {
+            "type": "string",
+            "description": "结束时间，仅全天日程使用该字段，[RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) 格式，例如，2018-09-01。;;**注意**：该参数不能与 `timestamp` 同时指定。",
+            "example": "2018-09-01"
+          }
+        },
+        "x-in": "body"
+      },
+      "reminders": {
+        "type": "array",
+        "description": "日程提醒列表。不传值则默认为空。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "minutes": {
+              "type": "integer",
+              "description": "日程提醒时间的偏移量。;- 正数时表示在日程开始前 X 分钟提醒。;- 负数时表示在日程开始后 X 分钟提醒。;;**注意**：新建或更新日程时传入该字段，仅对当前身份生效，不会对日程的其他参与人生效。",
+              "example": "5",
+              "minimum": -20160,
+              "maximum": 20160
+            }
+          }
+        },
+        "x-in": "body"
+      },
+      "recurrence": {
+        "type": "string",
+        "description": "重复日程的重复性规则，规则设置方式参考[rfc5545](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.10)。;;**默认值**：空，表示当前日程不是重复日程。;;**注意**：;- COUNT 和 ; UNTIL 不支持同时出现。;- 预定会议室重复日程长度不得超过两年。",
+        "example": "FREQ=DAILY;INTERVAL=1",
+        "x-in": "body"
+      },
+      "attachments": {
+        "type": "array",
+        "description": "日程附件。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "file_token": {
+              "type": "string",
+              "description": "附件 Token。调用[上传素材](https://open.larkoffice.com/document/server-docs/docs/drive-v1/media/upload_all)接口，获取附件的 file_token。在调用上传素材接口时需要注意：;;- `parent_type` 需传入固定值 `calendar`。;- `parent_node` 需传入与当前接口一致的日历 ID。;;**附件校验规则**：附件总大小不超过 25 MB。",
+              "example": "xAAAAA"
+            }
+          }
+        },
+        "x-in": "body"
+      },
+      "yes": {
+        "type": "boolean",
+        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
+        "default": false
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "event": {
+        "type": "object",
+        "description": "新创建的日程实体信息。",
+        "properties": {
+          "end_time": {
+            "type": "object",
+            "description": "日程结束时间。",
+            "properties": {
+              "date": {
+                "type": "string",
+                "description": "结束时间，仅全天日程使用该字段，[RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) 格式，例如，2018-09-01。",
+                "example": "2018-09-01"
+              },
+              "timestamp": {
+                "type": "string",
+                "description": "秒级时间戳，指日程具体的结束时间。例如，1602504000 表示 2020/10/12 20:00:00（UTC +8 时区）。",
+                "example": "1602504000"
+              },
+              "timezone": {
+                "type": "string",
+                "description": "时区。使用 IANA Time Zone Database 标准。",
+                "example": "Asia/Shanghai"
+              }
+            }
+          },
+          "vchat": {
+            "type": "object",
+            "description": "视频会议信息。",
+            "properties": {
+              "vc_type": {
+                "type": "string",
+                "description": "视频会议类型，可以为空，表示在首次添加日程参与人时，会自动生成飞书视频会议 URL。",
+                "enum": [
+                  "vc",
+                  "third_party",
+                  "no_meeting",
+                  "lark_live",
+                  "unknown",
+                  "third_party_meeting"
+                ],
+                "example": "third_party"
+              },
+              "icon_type": {
+                "type": "string",
+                "description": "第三方视频会议 icon 类型，可以为空，表示展示默认 icon。",
+                "enum": [
+                  "vc",
+                  "live",
+                  "default"
+                ],
+                "example": "vc"
+              },
+              "description": {
+                "type": "string",
+                "description": "第三方视频会议文案。",
+                "example": "发起视频会议"
+              },
+              "meeting_url": {
+                "type": "string",
+                "description": "视频会议 URL。",
+                "example": "https://example.com"
+              },
+              "live_link": {
+                "type": "string",
+                "description": "VC视频会议转直播URL，当vc_type=vc时有值。",
+                "example": "https://meetings.feishu.cn/s/1iof4hpw6i51w"
+              },
+              "vc_info": {
+                "type": "object",
+                "description": "VC视频会议原生信息。"
+              },
+              "meeting_settings": {
+                "type": "object",
+                "description": "飞书视频会议（VC）的会前设置。"
+              },
+              "third_party_meeting_settings": {
+                "type": "object",
+                "description": "三方会议设置"
+              }
+            }
+          },
+          "attendee_ability": {
+            "type": "string",
+            "description": "参与人权限。",
+            "enum": [
+              "none",
+              "can_see_others",
+              "can_invite_others",
+              "can_modify_event"
+            ],
+            "example": "can_see_others"
+          },
+          "location": {
+            "type": "object",
+            "description": "日程地点。",
+            "properties": {
+              "longitude": {
+                "type": "number",
+                "description": "地点坐标经度信息。;- 对于国内的地点，采用 GCJ-02 标准;- 对于海外的地点，采用 WGS84 标准",
+                "example": "2.200000047683716"
+              },
+              "name": {
+                "type": "string",
+                "description": "地点名称。",
+                "example": "地点名称"
+              },
+              "address": {
+                "type": "string",
+                "description": "地点地址。",
+                "example": "地点地址"
+              },
+              "latitude": {
+                "type": "number",
+                "description": "地点坐标纬度信息。;- 对于国内的地点，采用 GCJ-02 标准;- 对于海外的地点，采用 WGS84 标准",
+                "example": "1.100000023841858"
+              }
+            }
+          },
+          "recurring_event_id": {
+            "type": "string",
+            "description": "例外日程对应的原重复日程的 event_id。",
+            "example": "1cd45aaa-fa70-4195-80b7-c93b2e208f45"
+          },
+          "create_time": {
+            "type": "string",
+            "description": "日程的创建时间（秒级时间戳）。",
+            "example": "1602504000"
+          },
+          "event_id": {
+            "type": "string",
+            "description": "日程 ID。后续可通过该 ID 查询、更新或删除日程信息。更多信息参见[日程 ID 说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/introduction)。",
+            "example": "00592a0e-7edf-4678-bc9d-1b77383ef08e_0"
+          },
+          "recurrence": {
+            "type": "string",
+            "description": "重复日程的重复性规则，规则格式可参见 [rfc5545](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.10)。",
+            "example": "FREQ=DAILY;INTERVAL=1"
+          },
+          "status": {
+            "type": "string",
+            "description": "日程状态。",
+            "enum": [
+              "tentative",
+              "confirmed",
+              "cancelled"
+            ],
+            "example": "confirmed"
+          },
+          "event_organizer": {
+            "type": "object",
+            "description": "日程组织者信息。",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "description": "日程组织者 user ID。",
+                "example": "ou_xxxxxx"
+              },
+              "display_name": {
+                "type": "string",
+                "description": "日程组织者姓名。",
+                "example": "李健"
+              }
+            }
+          },
+          "event_check_in": {
+            "type": "object",
+            "description": "日程签到设置，为空则不进行日程签到设置。",
+            "properties": {
+              "enable_check_in": {
+                "type": "boolean",
+                "description": "是否启用日程签到。",
+                "example": "true"
+              },
+              "check_in_start_time": {
+                "type": "object",
+                "description": "日程签到开始时间。"
+              },
+              "check_in_end_time": {
+                "type": "object",
+                "description": "日程签到结束时间。"
+              },
+              "need_notify_attendees": {
+                "type": "boolean",
+                "description": "签到开始时是否自动发送签到通知给参与者"
+              }
+            }
+          },
+          "visibility": {
+            "type": "string",
+            "description": "日程公开范围。新建的日程默认为 `default`，且仅在新建日程时，对所有参与人生效。如果后续更新日程时修改该参数值，则仅对当前身份生效。",
+            "enum": [
+              "default",
+              "public",
+              "private"
+            ],
+            "example": "default"
+          },
+          "color": {
+            "type": "integer",
+            "description": "日程颜色，由颜色 RGB 值的 int32 表示。;;**说明**：;- 仅对当前身份生效。;- 取值为 0 或 -1 时，表示默认跟随日历颜色。;- 客户端展示时会映射到色板上最接近的一种颜色。",
+            "example": "-1"
+          },
+          "reminders": {
+            "type": "array",
+            "description": "日程提醒列表。",
+            "items": {
+              "type": "object",
+              "properties": {
+                "minutes": {
+                  "type": "integer",
+                  "description": "日程提醒时间的偏移量。该参数仅对当前身份生效。;;- 正数时表示在日程开始前 X 分钟提醒。;- 负数时表示在日程开始后 X 分钟提醒。",
+                  "example": "5",
+                  "minimum": -20160,
+                  "maximum": 20160
+                }
+              }
+            }
+          },
+          "is_exception": {
+            "type": "boolean",
+            "description": "日程是否是一个重复日程的例外日程。了解例外日程，可参见[例外日程](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/introduction#71c5ec78)。",
+            "example": "false"
+          },
+          "schemas": {
+            "type": "array",
+            "description": "日程自定义信息，控制日程详情页的 UI 展示。",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ui_name": {
+                  "type": "string",
+                  "description": "UI 名称。可能值： ;- ForwardIcon：日程转发按钮 ;- MeetingChatIcon：会议群聊按钮 ;- MeetingMinutesIcon：会议纪要按钮 ;- MeetingVideo：视频会议区域 ;- RSVP：接受、拒绝、待定区域 ;- Attendee: 参与者区域 ;- OrganizerOrCreator：组织者或创建者区域",
+                  "example": "ForwardIcon"
+                },
+                "ui_status": {
+                  "type": "string",
+                  "description": "UI项自定义状态。",
+                  "enum": [
+                    "hide",
+                    "readonly",
+                    "editable",
+                    "unknown"
+                  ],
+                  "example": "hide"
+                },
+                "app_link": {
+                  "type": "string",
+                  "description": "按钮点击后跳转的链接。",
+                  "example": "https://applink.feishu.cn/client/calendar/event/detail?calendarId=xxxxxx\u0026key=xxxxxx\u0026originalTime=xxxxxx\u0026startTime=xxxxxx"
+                }
+              }
+            }
+          },
+          "attachments": {
+            "type": "array",
+            "description": "日程附件。",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file_token": {
+                  "type": "string",
+                  "description": "附件 Token。调用[上传素材](https://open.larkoffice.com/document/server-docs/docs/drive-v1/media/upload_all)接口，获取附件的 file_token。在调用上传素材接口时需要注意：;;- `parent_type` 需传入固定值 `calendar`。;- `parent_node` 需传入与当前接口一致的日历 ID。;;**附件校验规则**：附件总大小不超过 25 MB。",
+                  "example": "xAAAAA"
+                },
+                "file_size": {
+                  "type": "string",
+                  "description": "附件大小",
+                  "example": "2345"
+                },
+                "is_deleted": {
+                  "type": "boolean",
+                  "description": "是否删除附件",
+                  "example": "false"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "附件名称",
+                  "example": "附件.jpeg"
+                }
+              }
+            }
+          },
+          "source": {
+            "type": "string",
+            "description": "日程source",
+            "example": "source"
+          },
+          "start_time": {
+            "type": "object",
+            "description": "日程开始时间。",
+            "properties": {
+              "date": {
+                "type": "string",
+                "description": "开始时间，仅全天日程使用该字段，[RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) 格式，例如，2018-09-01。",
+                "example": "2018-09-01"
+              },
+              "timestamp": {
+                "type": "string",
+                "description": "秒级时间戳，指日程具体的开始时间。例如，1602504000 表示 2020/10/12 20:00:00（UTC +8 时区）。",
+                "example": "1602504000"
+              },
+              "timezone": {
+                "type": "string",
+                "description": "时区。使用 IANA Time Zone Database 标准。",
+                "example": "Asia/Shanghai"
+              }
+            }
+          },
+          "summary": {
+            "type": "string",
+            "description": "日程标题。",
+            "example": "日程标题"
+          },
+          "description": {
+            "type": "string",
+            "description": "日程描述。",
+            "example": "日程描述"
+          },
+          "free_busy_status": {
+            "type": "string",
+            "description": "日程占用的忙闲状态。新建日程默认为 `busy`，且仅新建日程时，对所有参与人生效。如果后续更新日程时修改了该参数值，则仅对当前身份生效。",
+            "enum": [
+              "busy",
+              "free"
+            ],
+            "example": "busy"
+          },
+          "app_link": {
+            "type": "string",
+            "description": "日程的 app_link，用于跳转到具体的某个日程。",
+            "example": "https://applink.feishu.cn/client/calendar/event/detail?calendarId=xxxxxx\u0026key=xxxxxx\u0026originalTime=xxxxxx\u0026startTime=xxxxxx"
+          },
+          "self_rsvp_status": {
+            "type": "string",
+            "description": "当前日历的RSVP状态",
+            "enum": [
+              "needs_action",
+              "accept",
+              "tentative",
+              "decline",
+              "removed"
+            ]
+          },
+          "organizer_calendar_id": {
+            "type": "string",
+            "description": "该日程组织者的日历 ID。关于日历 ID 的说明可参见[日历 ID 说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/introduction)。",
+            "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
+          }
+        }
+      }
+    }
+  },
+  "_meta": {
+    "envelope_version": "1.0",
+    "scopes": [
+      "calendar:calendar",
+      "calendar:calendar.event:create"
+    ],
+    "required_scopes": [],
+    "access_tokens": [
+      "bot",
+      "user"
+    ],
+    "danger": true,
+    "risk": "high-risk-write",
+    "doc_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/create"
+  }
+}

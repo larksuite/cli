@@ -1,0 +1,464 @@
+{
+  "name": "im chats create",
+  "description": "创建群。Identity: `bot` only (`tenant_access_token`).",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "user_id_type": {
+        "type": "string",
+        "description": "此次调用中使用的用户ID的类型",
+        "enum": [
+          "open_id",
+          "union_id",
+          "user_id"
+        ],
+        "default": "open_id",
+        "example": "open_id",
+        "x-in": "query"
+      },
+      "set_bot_manager": {
+        "type": "boolean",
+        "description": "如果在请求体的 ==owner_id== 字段指定了某个用户为群主，可以选择是否同时设置创建此群的机器人为管理员，此标志位用于标记是否设置创建群的机器人为管理员。",
+        "default": "false",
+        "example": "false",
+        "x-in": "query"
+      },
+      "uuid": {
+        "type": "string",
+        "description": "由开发者生成的唯一字符串序列，用于创建群组请求去重；持有相同 uuid + owner_id（若有） 的请求 10 小时内只可成功创建 1 个群聊。不传值表示不进行请求去重，每一次请求成功后都会创建一个群聊。",
+        "default": "",
+        "example": "b13g2t38-1jd2-458b-8djf-dtbca5104204",
+        "x-in": "query"
+      },
+      "toolkit_ids": {
+        "type": "array",
+        "description": "群快捷组件列表",
+        "x-in": "body"
+      },
+      "restricted_mode_setting": {
+        "type": "object",
+        "description": "保密模式设置;;**注意**：保密模式适用于企业旗舰版。适用版本与功能介绍参见[会话保密模式](https://www.feishu.cn/hc/zh-CN/articles/418691056559)。",
+        "properties": {
+          "status": {
+            "type": "boolean",
+            "description": "保密模式是否开启;;**可选值有**：;;- true：开启。设置为 ture 时，`screenshot_has_permission_setting`、`download_has_permission_setting`、`message_has_permission_setting` 不能全为 `all_members`。;- false：不开启。设置为 false 时，`screenshot_has_permission_setting`、`download_has_permission_setting`、`message_has_permission_setting` 不能存在 `not_anyone`。;;;**默认值**：false",
+            "example": "false"
+          },
+          "screenshot_has_permission_setting": {
+            "type": "string",
+            "description": "允许截屏录屏;;**默认值**：all_members",
+            "enum": [
+              "all_members",
+              "not_anyone"
+            ],
+            "example": "all_members"
+          },
+          "download_has_permission_setting": {
+            "type": "string",
+            "description": "允许下载消息中图片、视频和文件;;**默认值**：all_members",
+            "enum": [
+              "all_members",
+              "not_anyone"
+            ],
+            "example": "all_members"
+          },
+          "message_has_permission_setting": {
+            "type": "string",
+            "description": "允许复制和转发消息;;**默认值**：all_members",
+            "enum": [
+              "all_members",
+              "not_anyone"
+            ],
+            "example": "all_members"
+          }
+        },
+        "x-in": "body"
+      },
+      "description": {
+        "type": "string",
+        "description": "群描述，建议不超过 100 字符;;**默认值**：空",
+        "example": "测试群描述",
+        "x-in": "body"
+      },
+      "user_id_list": {
+        "type": "array",
+        "description": "创建群时邀请的群成员，不填则不邀请成员。ID 类型在查询参数 ==user_id_type== 中指定；推荐使用 OpenID，获取方式可参考文档[如何获取 Open ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid);;**注意**：;- 最多同时邀请 50 个用户;- 为便于在客户端查看效果，建议调试接口时加入开发者自身 ID;- 如果需要邀请外部用户，则外部用户必须和群主已成为飞书好友;- 如何获取外部用户的 open_id，参考[获取外部用户的 open_id](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/develop-robots/add-bot-to-external-group#c38b1d97)",
+        "x-in": "body"
+      },
+      "group_message_type": {
+        "type": "string",
+        "description": "群消息形式",
+        "enum": [
+          "chat",
+          "thread"
+        ],
+        "example": "chat",
+        "x-in": "body"
+      },
+      "leave_message_visibility": {
+        "type": "string",
+        "description": "成员退群提示消息的可见性;;**可选值有**：;- `only_owner`：仅群主和管理员可见;- `all_members`：所有成员可见;- `not_anyone`：任何人均不可见",
+        "example": "all_members",
+        "x-in": "body"
+      },
+      "membership_approval": {
+        "type": "string",
+        "description": "加群是否需要审批;;**可选值有**：;- `no_approval_required`：无需审批;- `approval_required`：需要审批",
+        "example": "no_approval_required",
+        "x-in": "body"
+      },
+      "labels": {
+        "type": "array",
+        "description": "群标签",
+        "x-in": "body"
+      },
+      "edit_permission": {
+        "type": "string",
+        "description": "谁可以编辑群信息;;**默认值**：all_members",
+        "enum": [
+          "only_owner",
+          "all_members"
+        ],
+        "example": "all_members",
+        "x-in": "body"
+      },
+      "pin_manage_setting": {
+        "type": "string",
+        "description": "谁可以管理置顶",
+        "enum": [
+          "only_owner",
+          "all_members"
+        ],
+        "example": "all_members",
+        "x-in": "body"
+      },
+      "name": {
+        "type": "string",
+        "description": "群名称;; **注意：** ;- 建议群名称不超过 60 字符;- 公开群名称的长度不得少于 2 个字符;- 私有群若未填写群名称，群名称默认设置为 `(无主题)`",
+        "example": "测试群名称",
+        "x-in": "body"
+      },
+      "external": {
+        "type": "boolean",
+        "description": "是否是外部群",
+        "example": "false",
+        "x-in": "body"
+      },
+      "join_message_visibility": {
+        "type": "string",
+        "description": "成员入群提示消息的可见性;;**可选值有**：;- `only_owner`：仅群主和管理员可见;- `all_members`：所有成员可见;- `not_anyone`：任何人均不可见",
+        "example": "all_members",
+        "x-in": "body"
+      },
+      "hide_member_count_setting": {
+        "type": "string",
+        "description": "隐藏群成员人数设置;;**默认值**：all_members",
+        "enum": [
+          "all_members",
+          "only_owner"
+        ],
+        "example": "all_members",
+        "x-in": "body"
+      },
+      "chat_mode": {
+        "type": "string",
+        "description": "群模式;;**可选值有**：;- `group`：群组",
+        "example": "group",
+        "x-in": "body"
+      },
+      "urgent_setting": {
+        "type": "string",
+        "description": "谁可以加急;;**默认值**：all_members",
+        "enum": [
+          "only_owner",
+          "all_members"
+        ],
+        "example": "all_members",
+        "x-in": "body"
+      },
+      "video_conference_setting": {
+        "type": "string",
+        "description": "谁可以发起视频会议;;**默认值**：all_members",
+        "enum": [
+          "only_owner",
+          "all_members"
+        ],
+        "example": "all_members",
+        "x-in": "body"
+      },
+      "bot_id_list": {
+        "type": "array",
+        "description": "创建群时邀请的群机器人，不填则不邀请机器人。可参考[如何获取应用的 App ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id)来获取应用的 App ID; ;**注意：**;- 操作此接口的机器人会自动入群，无需重复填写;- 拉机器人入群请使用 `app_id`;- 最多同时邀请 5 个机器人，且邀请后群组中机器人数量不能超过 15 个",
+        "x-in": "body"
+      },
+      "chat_type": {
+        "type": "string",
+        "description": "群类型;;**可选值有**：;- `private`：私有群;- `public`：公开群",
+        "example": "private",
+        "x-in": "body"
+      },
+      "chat_tags": {
+        "type": "array",
+        "description": "群标签",
+        "x-in": "body"
+      },
+      "avatar": {
+        "type": "string",
+        "description": "群头像对应的 Image Key;;- 可通过[上传图片](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create)获取（注意：上传图片的 ==image_type== 需要指定为 ==avatar==）;- 不传值则使用系统默认头像",
+        "example": "default-avatar_44ae0ca3-e140-494b-956f-78091e348435",
+        "x-in": "body"
+      },
+      "i18n_names": {
+        "type": "object",
+        "description": "群国际化名称",
+        "properties": {
+          "zh_cn": {
+            "type": "string",
+            "description": "中文名",
+            "example": "群聊"
+          },
+          "en_us": {
+            "type": "string",
+            "description": "英文名",
+            "example": "group chat"
+          },
+          "ja_jp": {
+            "type": "string",
+            "description": "日文名",
+            "example": "グループチャット"
+          }
+        },
+        "x-in": "body"
+      },
+      "owner_id": {
+        "type": "string",
+        "description": "创建群时指定的群主，不填时指定建群的机器人为群主。群主 ID 类型在查询参数 ==user_id_type== 中指定；推荐使用 OpenID，获取方式可参考文档[如何获取 Open ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid);;**注意**：开启对外共享能力的机器人在创建外部群时，机器人不能为群主，必须指定某一用户作为群主。此外，添加外部用户进群时，外部用户必须和群主已成为飞书好友。",
+        "example": "ou_7d8a6e6df7621556ce0d21922b676706ccs",
+        "x-in": "body"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "tenant_key": {
+        "type": "string",
+        "description": "租户在飞书上的唯一标识，用来换取对应的 tenant_access_token，也可以用作租户在应用里面的唯一标识",
+        "example": "736588c9260f175e"
+      },
+      "avatar": {
+        "type": "string",
+        "description": "群头像 URL",
+        "example": "https://p3-lark-file.byteimg.com/img/lark-avatar-staging/default-avatar_44ae0ca3-e140-494b-956f-78091e348435~100x100.jpg"
+      },
+      "name": {
+        "type": "string",
+        "description": "群名称",
+        "example": "测试群名称"
+      },
+      "edit_permission": {
+        "type": "string",
+        "description": "群编辑权限;;**可选值有**：;- `only_owner`：仅群主和管理员;- `all_members`：所有成员",
+        "example": "all members"
+      },
+      "at_all_permission": {
+        "type": "string",
+        "description": "谁可以 at 所有人;;**可选值有**：;- `only_owner`：仅群主和管理员;- `all_members`：所有成员",
+        "example": "all members"
+      },
+      "external": {
+        "type": "boolean",
+        "description": "是否是外部群",
+        "example": "false"
+      },
+      "moderation_permission": {
+        "type": "string",
+        "description": "发言权限;;**可选值有**：;- `only_owner`：仅群主和管理员;- `all_members`：所有成员;- `moderator_list`：指定群成员",
+        "example": "all_members"
+      },
+      "chat_tag": {
+        "type": "string",
+        "description": "群标签，如有多个，则按照下列顺序返回第一个;;**可选值有**：;- `inner`：内部群;- `tenant`：公司群;- `department`：部门群;- `edu`：教育群;- `meeting`：会议群;- `customer_service`：客服群",
+        "example": "inner"
+      },
+      "leave_message_visibility": {
+        "type": "string",
+        "description": "出群消息可见性;;**可选值有**：;- `only_owner`：仅群主和管理员可见;- `all_members`：所有成员可见;- `not_anyone`：任何人均不可见",
+        "example": "all_members"
+      },
+      "description": {
+        "type": "string",
+        "description": "群描述",
+        "example": "测试群描述"
+      },
+      "chat_id": {
+        "type": "string",
+        "description": "群 ID。建议保存该 ID，后续[向群发送消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create)、[更新群信息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/update)以及[将用户或机器人拉入群聊](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-members/create)等群组相关的操作均需使用该 ID。",
+        "example": "oc_a0553eda9014c201e6969b478895c230"
+      },
+      "add_member_permission": {
+        "type": "string",
+        "description": "谁可以邀请用户或机器人入群;;**可选值有**：;- `only_owner`：仅群主和管理员;- `all_members`：所有成员",
+        "example": "all members"
+      },
+      "toolkit_ids": {
+        "type": "array",
+        "description": "群快捷组件列表"
+      },
+      "hide_member_count_setting": {
+        "type": "string",
+        "description": "隐藏群成员人数设置",
+        "enum": [
+          "all_members",
+          "only_owner"
+        ],
+        "example": "all_members"
+      },
+      "share_card_permission": {
+        "type": "string",
+        "description": "群分享权限;;**可选值有**：;- `allowed`：允许;- `not_allowed`：不允许",
+        "example": "allowed"
+      },
+      "chat_mode": {
+        "type": "string",
+        "description": "群模式;;**可选值有**：;- `group`：群组",
+        "example": "group"
+      },
+      "labels": {
+        "type": "array",
+        "description": "群标签"
+      },
+      "owner_id_type": {
+        "type": "string",
+        "description": "群主 ID 类型，与查询参数中的 ==user_id_type== 取值相同。;;**注意**：当群主是机器人时，该字段不返回",
+        "example": "open_id"
+      },
+      "video_conference_setting": {
+        "type": "string",
+        "description": "谁可以发起视频会议",
+        "enum": [
+          "only_owner",
+          "all_members"
+        ],
+        "example": "all_members"
+      },
+      "membership_approval": {
+        "type": "string",
+        "description": "加群审批;;**可选值有**：;- `no_approval_required`：无需审批;- `approval_required`：需要审批",
+        "example": "no_approval_required"
+      },
+      "group_message_type": {
+        "type": "string",
+        "description": "群消息形式;;**可选值有**：;- `chat`：对话消息;- `thread`：话题消息",
+        "example": "chat"
+      },
+      "urgent_setting": {
+        "type": "string",
+        "description": "谁可以加急",
+        "enum": [
+          "only_owner",
+          "all_members"
+        ],
+        "example": "all_members"
+      },
+      "pin_manage_setting": {
+        "type": "string",
+        "description": "谁可以管理置顶",
+        "enum": [
+          "only_owner",
+          "all_members"
+        ],
+        "example": "all_members"
+      },
+      "join_message_visibility": {
+        "type": "string",
+        "description": "入群消息可见性;;**可选值有**：;- `only_owner`：仅群主和管理员可见;- `all_members`：所有成员可见;- `not_anyone`：任何人均不可见",
+        "example": "all_members"
+      },
+      "restricted_mode_setting": {
+        "type": "object",
+        "description": "保密模式设置;;**注意**：仅企业旗舰版支持设置保密模式。保密模式的适用版本与功能介绍，参见[会话保密模式](https://www.feishu.cn/hc/zh-CN/articles/418691056559)。",
+        "properties": {
+          "status": {
+            "type": "boolean",
+            "description": "保密模式是否开启",
+            "example": "false"
+          },
+          "screenshot_has_permission_setting": {
+            "type": "string",
+            "description": "允许截屏录屏",
+            "enum": [
+              "all_members",
+              "not_anyone"
+            ],
+            "example": "all_members"
+          },
+          "download_has_permission_setting": {
+            "type": "string",
+            "description": "允许下载消息中图片、视频和文件",
+            "enum": [
+              "all_members",
+              "not_anyone"
+            ],
+            "example": "all_members"
+          },
+          "message_has_permission_setting": {
+            "type": "string",
+            "description": "允许复制和转发消息",
+            "enum": [
+              "all_members",
+              "not_anyone"
+            ],
+            "example": "all_members"
+          }
+        }
+      },
+      "i18n_names": {
+        "type": "object",
+        "description": "群国际化名称",
+        "properties": {
+          "zh_cn": {
+            "type": "string",
+            "description": "中文名",
+            "example": "群聊"
+          },
+          "en_us": {
+            "type": "string",
+            "description": "英文名",
+            "example": "group chat"
+          },
+          "ja_jp": {
+            "type": "string",
+            "description": "日文名",
+            "example": "グループチャット"
+          }
+        }
+      },
+      "owner_id": {
+        "type": "string",
+        "description": "群主 ID，ID 类型与查询参数中的 ==user_id_type== 对应；不同 ID 的说明参见 [用户相关的 ID 概念](https://open.feishu.cn/document/home/user-identity-introduction/introduction)。;;**注意**：当群主是机器人时，该字段不返回",
+        "example": "ou_7d8a6e6df7621556ce0d21922b676706ccs"
+      },
+      "chat_type": {
+        "type": "string",
+        "description": "群类型;;**可选值有**：;- `private`：私有群;- `public`：公开群",
+        "example": "private"
+      }
+    }
+  },
+  "_meta": {
+    "envelope_version": "1.0",
+    "scopes": [
+      "im:chat",
+      "im:chat:create",
+      "im:chat:create_by_user"
+    ],
+    "required_scopes": [],
+    "access_tokens": [
+      "bot"
+    ],
+    "danger": true,
+    "risk": "write",
+    "doc_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create"
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "name": "drive files copy",
+  "description": "复制文件",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "file_token",
+      "folder_token",
+      "name"
+    ],
+    "properties": {
+      "file_token": {
+        "type": "string",
+        "description": "被复制的源文件的 token。了解如何获取文件 token，参考[文件概述](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/file-overview)。",
+        "example": "doccngpahSdXrFPIBD4XdIabcef",
+        "x-in": "path"
+      },
+      "user_id_type": {
+        "type": "string",
+        "description": "此次调用中使用的用户ID的类型",
+        "enum": [
+          "open_id",
+          "union_id",
+          "user_id"
+        ],
+        "default": "",
+        "x-in": "query"
+      },
+      "name": {
+        "type": "string",
+        "description": "复制的新文件的名称;;**数据校验规则**：最大长度为 `256` 字节",
+        "example": "Demo copy",
+        "x-in": "body"
+      },
+      "type": {
+        "type": "string",
+        "description": "被复制的源文件的类型。必须与 `file_token` 对应的源文件实际类型一致。;;;;**注意**：该参数为必填，请忽略左侧必填列的“否”。若该参数值为空或与实际文件类型不匹配，接口将返回失败。",
+        "enum": [
+          "file",
+          "doc",
+          "sheet",
+          "bitable",
+          "docx",
+          "mindnote",
+          "slides"
+        ],
+        "example": "docx",
+        "x-in": "body"
+      },
+      "folder_token": {
+        "type": "string",
+        "description": "目标文件夹的 token。若传入根文件夹 token，表示复制的新文件将被创建在云空间根目录。了解如何获取文件夹 token，参考[文件夹概述](https://open.feishu.cn/document/ukTMukTMukTM/ugTNzUjL4UzM14CO1MTN/folder-overview)。",
+        "example": "fldbcO1UuPz8VwnpPx5a92abcef",
+        "x-in": "body"
+      },
+      "extra": {
+        "type": "array",
+        "description": "自定义请求附加参数，用于实现特殊的复制语义",
+        "items": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string",
+              "description": "自定义属性值对象",
+              "example": "docx"
+            },
+            "key": {
+              "type": "string",
+              "description": "自定义属性键对象",
+              "example": "target_type"
+            }
+          }
+        },
+        "x-in": "body"
+      },
+      "yes": {
+        "type": "boolean",
+        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
+        "default": false
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "file": {
+        "type": "object",
+        "description": "复制的新文件信息",
+        "properties": {
+          "parent_token": {
+            "type": "string",
+            "description": "父文件夹标识",
+            "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
+          },
+          "url": {
+            "type": "string",
+            "description": "在浏览器中查看的链接",
+            "example": "https://bytedance.feishu.cn/drive/folder/fldcnP8B5Fpr3UwVi24JykpuOic"
+          },
+          "shortcut_info": {
+            "type": "object",
+            "description": "快捷方式文件信息（该参数不会返回）",
+            "properties": {
+              "target_token": {
+                "type": "string",
+                "description": "快捷方式指向的原文件 Token",
+                "example": "docxaO1UuPz8VwnpPx5a9abcef"
+              },
+              "target_type": {
+                "type": "string",
+                "description": "快捷方式指向的源文件类型",
+                "example": "docx"
+              }
+            }
+          },
+          "modified_time": {
+            "type": "string",
+            "description": "文件最近修改时间",
+            "example": "1686125119"
+          },
+          "owner_id": {
+            "type": "string",
+            "description": "文件所有者",
+            "example": "ou_b13d41c02edc52ce66aaae67bf1abcef"
+          },
+          "token": {
+            "type": "string",
+            "description": "文件标识符",
+            "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
+          },
+          "name": {
+            "type": "string",
+            "description": "文件名",
+            "example": "测试"
+          },
+          "type": {
+            "type": "string",
+            "description": "文件类型",
+            "example": "docx"
+          },
+          "created_time": {
+            "type": "string",
+            "description": "文件创建时间",
+            "example": "1686125119"
+          }
+        }
+      }
+    }
+  },
+  "_meta": {
+    "envelope_version": "1.0",
+    "scopes": [
+      "drive:drive",
+      "docs:document:copy"
+    ],
+    "required_scopes": [],
+    "access_tokens": [
+      "bot",
+      "user"
+    ],
+    "danger": true,
+    "risk": "high-risk-write",
+    "doc_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/copy"
+  }
+}
