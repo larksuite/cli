@@ -41,7 +41,9 @@ func TestGoldenEnvelopes(t *testing.T) {
 			methodName := parts[len(parts)-1]
 			resourcePath := parts[1 : len(parts)-1]
 
-			spec := registry.LoadFromMeta(service)
+			// Use embedded data only (Task 17b): envelope assembly is overlay-
+			// independent, so goldens must compare against embedded specs.
+			spec := registry.EmbeddedSpec(service)
 			if spec == nil {
 				t.Fatalf("unknown service: %s", service)
 			}

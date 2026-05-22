@@ -594,10 +594,12 @@ func AssembleService(serviceName string, spec map[string]interface{}, filter Met
 }
 
 // AssembleAll assembles every embedded service into one big sorted slice.
+// Uses embedded data only (bypasses remote overlay) so envelope output is
+// deterministic across machines (CI vs dev vs different user brands).
 func AssembleAll(filter MethodFilter) []Envelope {
 	var out []Envelope
-	for _, svc := range registry.ListFromMetaProjects() {
-		spec := registry.LoadFromMeta(svc)
+	for _, svc := range registry.EmbeddedServiceNames() {
+		spec := registry.EmbeddedSpec(svc)
 		out = append(out, AssembleService(svc, spec, filter)...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

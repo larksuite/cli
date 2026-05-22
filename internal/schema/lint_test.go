@@ -289,23 +289,26 @@ func TestMeasureCoverage_Counts(t *testing.T) {
 }
 
 // isKnownDataInconsistency returns true for lint errors that originate from
-// meta_data quality issues (typeless arrays) or the local remote-cache overlay
-// (`~/.lark-cli/cache/remote_meta.json`) stripping the `risk` field while
-// preserving `danger`. These are real signals for downstream meta_data
-// improvements but should not block the assembler-level lint test in PR-1.
+// real meta_data quality issues we still have to ship around in PR-1. With
+// Task 17b the assembler walks embedded data only, so overlay-induced
+// inconsistencies (risk-stripping) no longer appear; only the true embedded
+// meta_data data-quality patterns remain.
 //
-// As meta_data quality improves and the overlay catches up, this filter should
-// be removed so TestAllEnvelopesPass becomes a hard gate again.
+// As meta_data quality improves this filter should be tightened/removed so
+// TestAllEnvelopesPass becomes a hard gate again.
 func isKnownDataInconsistency(msg string) bool {
 	switch {
-	case strings.Contains(msg, `L3: _meta.danger=true inconsistent with risk="read"`):
-		// Overlay strips `risk` to default "read" but keeps `danger=true`.
-		return true
 	case strings.Contains(msg, `L3: _meta.danger=false inconsistent with risk="write"`):
 		// Embedded meta_data has ~7 envelopes (e.g. attendance.user_tasks.query,
 		// drive.user.subscription, mail.user_mailbox.event.subscribe) where
 		// `risk="write"` but `danger` is missing (defaults to false). Needs a
 		// meta_data fix to set danger=true on these write methods.
+		return true
+	case strings.Contains(msg, `L3: _meta.danger=true inconsistent with risk="read"`):
+		// Embedded meta_data has ~9 envelopes (e.g. calendar.events.search_event,
+		// drive.metas.batch_query, mail.user_mailbox.templates.create) where
+		// `danger=true` but `risk` is missing (defaults to "read"). Needs a
+		// meta_data fix to set the proper risk level on these methods.
 		return true
 	case strings.Contains(msg, "L1: array property") && strings.Contains(msg, "missing items"):
 		// Embedded meta_data has arrays without element schema (e.g. arrays of
@@ -328,8 +331,10 @@ func TestAllEnvelopesPass(t *testing.T) {
 	failCount := 0
 	knownWarnings := 0
 	knownEnvelopes := map[string]bool{}
-	for _, svc := range registry.ListFromMetaProjects() {
-		spec := registry.LoadFromMeta(svc)
+	// Use embedded data only so the gate is deterministic across machines
+	// (matches Task 17b: envelope assembly is overlay-independent).
+	for _, svc := range registry.EmbeddedServiceNames() {
+		spec := registry.EmbeddedSpec(svc)
 		envs := AssembleService(svc, spec, nil)
 		for _, env := range envs {
 			errs := lintEnvelope(env)

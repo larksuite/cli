@@ -544,6 +544,8 @@ func schemaRun(opts *SchemaOptions) error {
 }
 
 // runJSONMode dispatches list/single envelope output based on parts.
+// JSON mode uses embedded data only (bypasses remote overlay) so envelope
+// output is deterministic across machines.
 func runJSONMode(out io.Writer, parts []string, mode core.StrictMode) error {
 	filter := strictModeFilter(mode)
 
@@ -553,9 +555,9 @@ func runJSONMode(out io.Writer, parts []string, mode core.StrictMode) error {
 		output.PrintJson(out, envs)
 		return nil
 	case 1:
-		spec := registry.LoadFromMeta(parts[0])
+		spec := registry.EmbeddedSpec(parts[0])
 		if spec == nil {
-			return errUnknownService(parts[0])
+			return errUnknownEmbeddedService(parts[0])
 		}
 		envs := schema.AssembleService(parts[0], spec, filter)
 		output.PrintJson(out, envs)
@@ -566,12 +568,12 @@ func runJSONMode(out io.Writer, parts []string, mode core.StrictMode) error {
 }
 
 // runJSONForPath handles len(parts) >= 2: try resource match first, fallback
-// to single-method match.
+// to single-method match. Uses embedded data only.
 func runJSONForPath(out io.Writer, parts []string, filter schema.MethodFilter) error {
 	serviceName := parts[0]
-	spec := registry.LoadFromMeta(serviceName)
+	spec := registry.EmbeddedSpec(serviceName)
 	if spec == nil {
-		return errUnknownService(serviceName)
+		return errUnknownEmbeddedService(serviceName)
 	}
 	resources, _ := spec["resources"].(map[string]interface{})
 	resource, resName, remaining := findResourceByPath(resources, parts[1:])
@@ -718,6 +720,16 @@ func errUnknownService(name string) error {
 	return output.ErrWithHint(output.ExitValidation, "validation",
 		fmt.Sprintf("Unknown service: %s", name),
 		fmt.Sprintf("Available: %s", strings.Join(registry.ListFromMetaProjects(), ", ")))
+}
+
+// errUnknownEmbeddedService is the JSON-mode variant: it lists only embedded
+// services (no overlay) because JSON mode itself bypasses overlay; suggesting
+// overlay-only services would mislead callers when those services subsequently
+// fail to resolve in envelope output.
+func errUnknownEmbeddedService(name string) error {
+	return output.ErrWithHint(output.ExitValidation, "validation",
+		fmt.Sprintf("Unknown service: %s", name),
+		fmt.Sprintf("Available: %s", strings.Join(registry.EmbeddedServiceNames(), ", ")))
 }
 
 // filterSpecByStrictMode returns a shallow copy of spec with each resource's methods

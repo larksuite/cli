@@ -67,8 +67,8 @@ func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &envs); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if len(envs) < 180 {
-		t.Errorf("envelopes count = %d, want >= 180", len(envs))
+	if len(envs) < 193 {
+		t.Errorf("envelopes count = %d, want >= 193", len(envs))
 	}
 }
 

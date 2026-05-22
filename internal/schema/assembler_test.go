@@ -594,12 +594,10 @@ func TestAssembleService_FilterByAccessToken(t *testing.T) {
 
 func TestAssembleAll_AtLeast193(t *testing.T) {
 	envs := AssembleAll(nil)
-	// Threshold lowered from 193 (embedded count) to 180 because the local
-	// remote-cache overlay (~/.lark-cli/cache/remote_meta.json) may strip a
-	// handful of methods (e.g. `bots`) from merged services. A robust lower
-	// bound still proves the batch walker enumerates the full registry.
-	if len(envs) < 180 {
-		t.Errorf("AssembleAll returned %d envelopes, expected >= 180", len(envs))
+	// Envelope assembly is overlay-independent (Task 17b): AssembleAll walks the
+	// embedded meta_data.json directly, so the count is stable across machines.
+	if len(envs) < 193 {
+		t.Errorf("AssembleAll returned %d envelopes, expected >= 193", len(envs))
 	}
 	// Spot check: im reactions list should be present
 	found := false
