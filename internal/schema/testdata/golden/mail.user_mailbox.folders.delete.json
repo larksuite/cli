@@ -1,5 +1,5 @@
 {
-  "name": "mail user_mailbox folders delete",
+  "name": "mail user_mailbox.folders delete",
   "description": "删除邮箱文件夹",
   "inputSchema": {
     "type": "object",

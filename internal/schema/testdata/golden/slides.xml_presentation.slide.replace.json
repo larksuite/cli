@@ -1,5 +1,5 @@
 {
-  "name": "slides xml_presentation slide replace",
+  "name": "slides xml_presentation.slide replace",
   "description": "对指定 XML 演示文稿页面进行元素级别的局部替换",
   "inputSchema": {
     "type": "object",

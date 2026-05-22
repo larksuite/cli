@@ -1,5 +1,5 @@
 {
-  "name": "mail user_mailbox template attachments download_url",
+  "name": "mail user_mailbox.template.attachments download_url",
   "description": "获取模板附件下载链接",
   "inputSchema": {
     "type": "object",

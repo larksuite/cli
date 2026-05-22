@@ -39,7 +39,7 @@ func TestGoldenEnvelopes(t *testing.T) {
 			}
 			service := parts[0]
 			methodName := parts[len(parts)-1]
-			resourcePath := parts[1 : len(parts)-1]
+			lookupPath := parts[1 : len(parts)-1]
 
 			// Use embedded data only (Task 17b): envelope assembly is overlay-
 			// independent, so goldens must compare against embedded specs.
@@ -47,11 +47,15 @@ func TestGoldenEnvelopes(t *testing.T) {
 			if spec == nil {
 				t.Fatalf("unknown service: %s", service)
 			}
-			method := findMethodInSpec(spec, resourcePath, methodName)
+			method := findMethodInSpec(spec, lookupPath, methodName)
 			if method == nil {
-				t.Fatalf("method not found: %s.%s.%s", service, strings.Join(resourcePath, "."), methodName)
+				t.Fatalf("method not found: %s.%s.%s", service, strings.Join(lookupPath, "."), methodName)
 			}
 
+			// resourcePath passed to AssembleEnvelope mirrors how the CLI dispatches:
+			// the dotted resource key from meta_data is one argv segment. This keeps
+			// the golden name in lock-step with the actual `lark-cli schema` output.
+			resourcePath := []string{strings.Join(lookupPath, ".")}
 			got := AssembleEnvelope(service, resourcePath, methodName, method)
 			gotBytes, err := json.MarshalIndent(got, "", "  ")
 			if err != nil {

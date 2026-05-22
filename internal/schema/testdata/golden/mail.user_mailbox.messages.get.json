@@ -1,5 +1,5 @@
 {
-  "name": "mail user_mailbox messages get",
+  "name": "mail user_mailbox.messages get",
   "description": "获取邮件详情",
   "inputSchema": {
     "type": "object",

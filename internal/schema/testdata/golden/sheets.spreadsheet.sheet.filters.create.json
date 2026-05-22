@@ -1,5 +1,5 @@
 {
-  "name": "sheets spreadsheet sheet filters create",
+  "name": "sheets spreadsheet.sheet.filters create",
   "description": "创建筛选",
   "inputSchema": {
     "type": "object",

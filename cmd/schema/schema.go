@@ -612,15 +612,14 @@ func runJSONForPath(out io.Writer, parts []string, filter schema.MethodFilter) e
 			fmt.Sprintf("Method %s.%s.%s not available in current identity mode", serviceName, resName, methodName),
 			"Use --as user / --as bot to switch")
 	}
-	resourcePath := strings.Split(resName, ".")
-	env := schema.AssembleEnvelope(serviceName, resourcePath, methodName, method)
+	env := schema.AssembleEnvelope(serviceName, []string{resName}, methodName, method)
 	output.PrintJson(out, env)
 	return nil
 }
 
 func assembleResource(serviceName, resName string, resource map[string]interface{}, filter schema.MethodFilter) []schema.Envelope {
 	methods, _ := resource["methods"].(map[string]interface{})
-	resourcePath := strings.Split(resName, ".")
+	resourcePath := []string{resName}
 	var envs []schema.Envelope
 	for methodName, raw := range methods {
 		method, ok := raw.(map[string]interface{})
