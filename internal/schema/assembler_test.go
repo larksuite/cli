@@ -5,7 +5,10 @@ package schema
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/registry"
 )
 
 func TestKeyOrderIndex_ImReactionsList(t *testing.T) {
@@ -210,4 +213,143 @@ func TestConvertProperty_DescriptionDefaultExample(t *testing.T) {
 	if got.Example != "ex" {
 		t.Errorf("Example = %v, want \"ex\"", got.Example)
 	}
+}
+
+func TestBuildInputSchema_ReactionsList(t *testing.T) {
+	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
+	currentMethodOrder = mko
+	defer func() { currentMethodOrder = nil }()
+
+	is := buildInputSchema(method)
+
+	if is.Type != "object" {
+		t.Errorf("Type = %q, want \"object\"", is.Type)
+	}
+	// required is alphabetical
+	if !reflect.DeepEqual(is.Required, []string{"message_id"}) {
+		t.Errorf("Required = %v, want [message_id]", is.Required)
+	}
+	// properties preserves meta_data order: message_id, reaction_type, page_token, page_size, user_id_type
+	wantOrder := []string{"message_id", "reaction_type", "page_token", "page_size", "user_id_type"}
+	if !reflect.DeepEqual(is.Properties.Order, wantOrder) {
+		t.Errorf("properties order = %v, want %v", is.Properties.Order, wantOrder)
+	}
+	// message_id has x-in: path
+	if is.Properties.Map["message_id"].XIn != "path" {
+		t.Errorf("message_id.XIn = %q, want \"path\"", is.Properties.Map["message_id"].XIn)
+	}
+	// reaction_type has x-in: query
+	if is.Properties.Map["reaction_type"].XIn != "query" {
+		t.Errorf("reaction_type.XIn = %q, want \"query\"", is.Properties.Map["reaction_type"].XIn)
+	}
+}
+
+func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
+	method := loadMethodFromRegistry(t, "im", []string{"images"}, "create")
+	mko := lookupKeyOrder("im", []string{"images"}, "create")
+	currentMethodOrder = mko
+	defer func() { currentMethodOrder = nil }()
+
+	is := buildInputSchema(method)
+
+	// required is alphabetical: image, image_type
+	if !reflect.DeepEqual(is.Required, []string{"image", "image_type"}) {
+		t.Errorf("Required = %v, want [image, image_type]", is.Required)
+	}
+	// properties preserves meta_data order: image_type, image
+	wantOrder := []string{"image_type", "image"}
+	if !reflect.DeepEqual(is.Properties.Order, wantOrder) {
+		t.Errorf("properties order = %v, want %v", is.Properties.Order, wantOrder)
+	}
+	// image field: string + binary + body
+	img := is.Properties.Map["image"]
+	if img.Type != "string" {
+		t.Errorf("image.Type = %q, want \"string\"", img.Type)
+	}
+	if img.Format != "binary" {
+		t.Errorf("image.Format = %q, want \"binary\"", img.Format)
+	}
+	if img.XIn != "body" {
+		t.Errorf("image.XIn = %q, want \"body\"", img.XIn)
+	}
+	// image_type: enum present, body
+	if it := is.Properties.Map["image_type"]; it.XIn != "body" || !reflect.DeepEqual(it.Enum, []string{"message", "avatar"}) {
+		t.Errorf("image_type unexpected: %+v", it)
+	}
+}
+
+func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
+	// Synthesized method to avoid registry-overlay variance (remote cache may
+	// strip `risk` field); buildInputSchema only cares about the method map.
+	method := map[string]interface{}{
+		"risk": "high-risk-write",
+		"parameters": map[string]interface{}{
+			"message_id": map[string]interface{}{
+				"type":     "string",
+				"location": "path",
+				"required": true,
+			},
+		},
+	}
+	currentMethodOrder = nil
+	defer func() { currentMethodOrder = nil }()
+
+	is := buildInputSchema(method)
+
+	yes, ok := is.Properties.Map["yes"]
+	if !ok {
+		t.Fatal("expected `yes` property in high-risk-write envelope, not found")
+	}
+	if yes.Type != "boolean" {
+		t.Errorf("yes.Type = %q, want \"boolean\"", yes.Type)
+	}
+	if v, _ := yes.Default.(bool); v != false {
+		t.Errorf("yes.Default = %v, want false", yes.Default)
+	}
+	// yes must NOT be in required
+	for _, r := range is.Required {
+		if r == "yes" {
+			t.Errorf("`yes` should not appear in required")
+		}
+	}
+	// yes is appended to properties.Order
+	last := is.Properties.Order[len(is.Properties.Order)-1]
+	if last != "yes" {
+		t.Errorf("`yes` should be last in properties.Order, got: %v", is.Properties.Order)
+	}
+}
+
+func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
+	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
+	currentMethodOrder = mko
+	defer func() { currentMethodOrder = nil }()
+
+	is := buildInputSchema(method)
+	if _, ok := is.Properties.Map["yes"]; ok {
+		t.Errorf("`yes` must not be injected for risk=read")
+	}
+}
+
+// loadMethodFromRegistry is a test helper that pulls one method's spec from the
+// real embedded meta_data.json via the registry package.
+func loadMethodFromRegistry(t *testing.T, service string, resourcePath []string, methodName string) map[string]interface{} {
+	t.Helper()
+	spec := registry.LoadFromMeta(service)
+	if spec == nil {
+		t.Fatalf("service %q not found in registry", service)
+	}
+	resources, _ := spec["resources"].(map[string]interface{})
+	resKey := strings.Join(resourcePath, ".")
+	res, ok := resources[resKey].(map[string]interface{})
+	if !ok {
+		t.Fatalf("resource %q.%s not found", service, resKey)
+	}
+	methods, _ := res["methods"].(map[string]interface{})
+	m, ok := methods[methodName].(map[string]interface{})
+	if !ok {
+		t.Fatalf("method %q.%s.%s not found", service, resKey, methodName)
+	}
+	return m
 }

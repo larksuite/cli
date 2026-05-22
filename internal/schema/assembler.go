@@ -388,6 +388,58 @@ func buildOrderedProps(raw map[string]interface{}, nestedPath string) *OrderedPr
 // It is set inside AssembleEnvelope (under assembleMu) and reset on return.
 var currentMethodOrder *MethodKeyOrder
 
+// buildInputSchema produces the inputSchema for one API method.
+// Caller must set currentMethodOrder for property-order preservation.
+func buildInputSchema(method map[string]interface{}) *InputSchema {
+	is := &InputSchema{
+		Type:       "object",
+		Properties: &OrderedProps{Map: make(map[string]Property)},
+	}
+
+	// Path/query parameters
+	paramsRaw, _ := method["parameters"].(map[string]interface{})
+	for _, k := range orderedKeys(paramsRaw, "parameters") {
+		field, _ := paramsRaw[k].(map[string]interface{})
+		prop := convertProperty(field, "parameters."+k+".properties")
+		if loc, _ := field["location"].(string); loc == "path" || loc == "query" {
+			prop.XIn = loc
+		}
+		is.Properties.Order = append(is.Properties.Order, k)
+		is.Properties.Map[k] = prop
+		if req, _ := field["required"].(bool); req {
+			is.Required = append(is.Required, k)
+		}
+	}
+
+	// Request body fields
+	bodyRaw, _ := method["requestBody"].(map[string]interface{})
+	for _, k := range orderedKeys(bodyRaw, "requestBody") {
+		field, _ := bodyRaw[k].(map[string]interface{})
+		prop := convertProperty(field, "requestBody."+k+".properties")
+		prop.XIn = "body"
+		is.Properties.Order = append(is.Properties.Order, k)
+		is.Properties.Map[k] = prop
+		if req, _ := field["required"].(bool); req {
+			is.Required = append(is.Required, k)
+		}
+	}
+
+	// high-risk-write injects `yes`
+	if risk, _ := method["risk"].(string); risk == "high-risk-write" {
+		is.Properties.Order = append(is.Properties.Order, "yes")
+		falseVal := false
+		is.Properties.Map["yes"] = Property{
+			Type:        "boolean",
+			Default:     falseVal,
+			Description: "Must be true to execute; CLI rejects with confirmation_required if absent",
+		}
+		// yes is intentionally NOT added to Required.
+	}
+
+	sort.Strings(is.Required) // alphabetical
+	return is
+}
+
 // orderedKeys returns the keys of raw in their meta_data natural order if
 // the current per-method key-order context has them recorded; otherwise
 // alphabetical fallback.
