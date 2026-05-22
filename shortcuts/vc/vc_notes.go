@@ -414,6 +414,9 @@ func fetchInlineArtifacts(runtime *common.RuntimeContext, minuteToken string, re
 	if chapters, ok := data["minute_chapters"].([]any); ok && len(chapters) > 0 {
 		result["chapters"] = chapters
 	}
+	if keywords, ok := data["keywords"].([]any); ok && len(keywords) > 0 {
+		result["keywords"] = keywords
+	}
 }
 
 // parseArtifactType extracts artifact_type as int from varying JSON number representations.
