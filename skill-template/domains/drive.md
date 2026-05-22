@@ -61,7 +61,7 @@ lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
    | `docx` | 新版云文档 | `drive file.comments.*`、`docx.*` |
    | `doc` | 旧版云文档 | `drive file.comments.*` |
    | `sheet` | 电子表格 | `sheets.*` |
-   | `bitable` | 多维表格 | `bitable.*` |
+   | `bitable` | 多维表格 / Base | `drive file.comments.*`、`bitable.*` |
    | `slides` | 幻灯片 | `drive.*` |
    | `file` | 文件 | `drive.*` |
    | `mindnote` | 思维导图 | `drive.*` |
@@ -124,8 +124,9 @@ Drive Folder (云空间文件夹)
 - 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
 - 局部评论：传 `--block-id` 时启用；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL。block ID 可通过 `docs +fetch --api-version v2 --detail with-ids` 获取。
 - `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
-- 如果 wiki 解析后不是 `doc`/`docx`，不要用 `+add-comment`。
-- 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`，局部评论传 `anchor.block_id`。
+- Base 记录局部评论使用 `--type bitable` / `--type base` 或 `/base/`、`/bitable/`、wiki Base 链接；裸 token 推荐传 `bitable`，`base` 仅作为兼容别名兜底。Base 不支持全局评论，所有评论都挂在记录上；定位信息必须是 file token（base token）+ `--block-id <table-id>!<record-id>!<view-id>`，其中 table/record/view ID 通常分别以 `tbl`/`rec`/`vew` 开头。view_id 只决定被提及时点击通知打开哪个视图，不影响评论挂载点，但必须传；ID 可通过 [`lark-base`](../../skills/lark-base/SKILL.md) 获取。
+- 如果 wiki 解析后不是 `doc`/`docx`/`bitable`，不要用 `+add-comment`。
+- 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`；docx/sheet/slides 局部评论传 `anchor.block_id`，Base 记录局部评论传 `anchor.block_id`（table_id）、`anchor.base_record_id`、`anchor.base_view_id`。
 
 ### 评论查询与统计口径（关键！）
 
@@ -189,7 +190,7 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 |----------|------|----------|
 | `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
-| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet） |
+| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides/bitable） |
 
 ### 授权当前应用访问文档
 
