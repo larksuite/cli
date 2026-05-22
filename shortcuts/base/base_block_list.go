@@ -18,10 +18,12 @@ var BaseBaseBlockList = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "parent-id", Desc: "optional folder base block id; when omitted, list all base blocks"},
+		{Name: "parent-id", Desc: "folder base block id; when omitted, list all base blocks"},
 	},
 	Tips: []string{
 		"Base blocks are entries managed by the Base container, such as folder, table, docx, dashboard, and workflow.",
+		"This command returns the full backend list. It intentionally does not expose limit or offset.",
+		"Pass --parent-id to list only direct children of a folder base block.",
 		"Dashboard blocks are chart/widget blocks inside a dashboard; use +dashboard-block-* for those.",
 	},
 	DryRun: dryRunBaseBlockList,

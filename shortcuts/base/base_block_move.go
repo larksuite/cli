@@ -23,6 +23,11 @@ var BaseBaseBlockMove = common.Shortcut{
 		{Name: "before-id", Desc: "place before this sibling base block id"},
 		{Name: "after-id", Desc: "place after this sibling base block id"},
 	},
+	Tips: []string{
+		"Omit --parent-id to move the block to the base root; do not pass null.",
+		"--before-id and --after-id are mutually exclusive.",
+		"When moving a folder, its children remain under that folder.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateBaseBlockMove(runtime)
 	},

@@ -21,6 +21,10 @@ var BaseBaseBlockRename = common.Shortcut{
 		baseBlockIDFlag(true),
 		{Name: "name", Desc: "new base block name", Required: true},
 	},
+	Tips: []string{
+		"Renames the Base container entry identified by --block-id.",
+		"Use +base-block-list first when you need to resolve the target block id from a visible name.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateBaseBlockRename(runtime)
 	},

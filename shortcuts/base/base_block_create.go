@@ -23,7 +23,9 @@ var BaseBaseBlockCreate = common.Shortcut{
 		{Name: "parent-id", Desc: "folder base block id; when omitted, create at the base root"},
 	},
 	Tips: []string{
-		"Use this for Base container entries. Use table/field/record/docx/dashboard/workflow commands for content inside the created entity.",
+		"Creates a Base container entry for folder, table, docx, dashboard, or workflow.",
+		"Do not pass null for --parent-id. Omit it to create at the root level.",
+		"Created resources still use their own commands for content operations, such as table/field/record/docx/dashboard/workflow commands.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateBaseBlockCreate(runtime)
