@@ -1,6 +1,6 @@
 # base +base-block-*
 
-管理 Base 容器里的一级资源入口。Base block 是 Base 侧边栏/容器管理的条目，包括 folder、table、docx、dashboard、workflow。
+管理 Base 容器里的一级资源入口。这里的 block 是 Base 侧边栏/容器管理的条目，包括 folder、table、docx、dashboard、workflow。
 
 > 注意：`base-block` 和 `dashboard-block` 不是同一个概念。`base-block` 是 Base 容器条目；`dashboard-block` 是仪表盘内部的图表/组件。
 
@@ -17,8 +17,8 @@
 ## 通用约束
 
 - `--block-id` 是 Base 容器里的 block id，不是 docx token，也不是 dashboard 内部 chart/widget id。
-- `--parent-id` 是目标 folder 的 base block id；创建和移动时不传表示根层级；list 时不传表示列出全部。
-- 当前 CLI 不暴露分页参数。Base block 总数上限由后端控制，默认一次返回完整列表。
+- `--parent-id` 是目标 folder 的 block id；创建和移动时不传表示根层级；list 时不传表示列出全部。
+- 当前 CLI 不暴露分页参数。block 总数上限由后端控制，默认一次返回完整列表。
 - 移动时 `--before-id` 和 `--after-id` 互斥。
 - 当前不支持递归删除文件夹。删除非空 folder 时，先移动或删除其子项。
 - 创建出的 docx/dashboard/workflow/table 的具体内容，需要继续用对应模块命令操作。

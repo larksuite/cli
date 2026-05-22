@@ -12,17 +12,17 @@ import (
 var BaseBaseBlockRename = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-block-rename",
-	Description: "Rename a base block",
+	Description: "Rename a block",
 	Risk:        "write",
 	Scopes:      []string{"base:block:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		baseBlockIDFlag(true),
-		{Name: "name", Desc: "new base block name", Required: true},
+		{Name: "name", Desc: "new block name", Required: true},
 	},
 	Tips: []string{
-		"Renames the Base container entry identified by --block-id.",
+		"Renames the block identified by --block-id.",
 		"Use +base-block-list first when you need to resolve the target block id from a visible name.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

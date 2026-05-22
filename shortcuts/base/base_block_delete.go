@@ -12,7 +12,7 @@ import (
 var BaseBaseBlockDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-block-delete",
-	Description: "Delete a base block",
+	Description: "Delete a block",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"base:block:delete"},
 	AuthTypes:   authTypes(),
@@ -21,9 +21,9 @@ var BaseBaseBlockDelete = common.Shortcut{
 		baseBlockIDFlag(true),
 	},
 	Tips: []string{
-		"Deletes the Base container entry identified by --block-id.",
+		"Deletes the block identified by --block-id.",
 		"Recursive folder deletion is not supported. If a folder is not empty, move or delete its children first.",
-		"Different block types may have independent backing resources; deletion follows backend Base block semantics.",
+		"Different block types may have independent backing resources; deletion follows backend semantics.",
 		"Use +base-block-list first when you need to confirm the target block id.",
 	},
 	DryRun: dryRunBaseBlockDelete,

@@ -13,7 +13,7 @@ import (
 var baseBlockTypeEnums = []string{"folder", "table", "docx", "dashboard", "workflow"}
 
 func baseBlockIDFlag(required bool) common.Flag {
-	return common.Flag{Name: "block-id", Desc: "base block id", Required: required}
+	return common.Flag{Name: "block-id", Desc: "block id", Required: required}
 }
 
 func dryRunBaseBlockList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
