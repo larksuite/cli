@@ -14,12 +14,20 @@ import (
 
 // TestMultipartWriter_CreateFormFile_EscapesFilename verifies that filenames
 // containing characters that require escaping in a Content-Disposition header
-// round-trip correctly through the multipart body.
+// are properly encoded on the wire.
 //
 // Regression test: an earlier custom CreateFormFile concatenated raw strings
 // without escaping, so a filename like `report "draft".pdf` produced a
 // malformed header that servers parsed as `filename="report "` (truncated at
 // the first internal quote).
+//
+// The stdlib's quoteEscaper applies two different schemes:
+//   - backslash and double-quote use backslash escaping (quoted-pair), which
+//     mime.ParseMediaType reverses on read, so they round-trip exactly.
+//   - CR and LF use percent encoding (to prevent header injection, since a
+//     literal CRLF would break the header). The MIME parser does NOT decode
+//     percent escapes, so on read the filename param contains the literal
+//     "%0D"/"%0A" — server-side code is expected to URL-decode it.
 //
 // Filename parameters are read via mime.ParseMediaType on the raw
 // Content-Disposition header — Part.FileName runs the result through
@@ -31,12 +39,16 @@ func TestMultipartWriter_CreateFormFile_EscapesFilename(t *testing.T) {
 		name        string
 		filename    string
 		wantEncoded string // expected escaped form embedded in the header
+		wantParsed  string // what mime.ParseMediaType returns; differs from filename only when percent-encoded
 	}{
-		{"plain", "report.pdf", "report.pdf"},
-		{"with double quote", `report "draft" v2.pdf`, `report \"draft\" v2.pdf`},
-		{"with backslash", `report\draft.pdf`, `report\\draft.pdf`},
-		{"with both", `path\to "weird" file.bin`, `path\\to \"weird\" file.bin`},
-		{"unicode", "报告 v2.pdf", "报告 v2.pdf"},
+		{"plain", "report.pdf", "report.pdf", "report.pdf"},
+		{"with double quote", `report "draft" v2.pdf`, `report \"draft\" v2.pdf`, `report "draft" v2.pdf`},
+		{"with backslash", `report\draft.pdf`, `report\\draft.pdf`, `report\draft.pdf`},
+		{"with both", `path\to "weird" file.bin`, `path\\to \"weird\" file.bin`, `path\to "weird" file.bin`},
+		{"unicode", "报告 v2.pdf", "报告 v2.pdf", "报告 v2.pdf"},
+		{"with CR", "file\rname.pdf", "file%0Dname.pdf", "file%0Dname.pdf"},
+		{"with LF", "file\nname.pdf", "file%0Aname.pdf", "file%0Aname.pdf"},
+		{"with CRLF", "file\r\nname.pdf", "file%0D%0Aname.pdf", "file%0D%0Aname.pdf"},
 	}
 
 	for _, tc := range cases {
@@ -69,8 +81,8 @@ func TestMultipartWriter_CreateFormFile_EscapesFilename(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParseMediaType on Content-Disposition: %v", err)
 			}
-			if got := params["filename"]; got != tc.filename {
-				t.Errorf("filename round-trip: got %q, want %q", got, tc.filename)
+			if got := params["filename"]; got != tc.wantParsed {
+				t.Errorf("filename round-trip: got %q, want %q", got, tc.wantParsed)
 			}
 			if got := params["name"]; got != "file" {
 				t.Errorf("name: got %q, want %q", got, "file")
