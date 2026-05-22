@@ -14,7 +14,7 @@ var BaseBaseBlockDelete = common.Shortcut{
 	Command:     "+base-block-delete",
 	Description: "Delete a base block",
 	Risk:        "high-risk-write",
-	Scopes:      []string{"base:block:write"},
+	Scopes:      []string{"base:block:delete"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),

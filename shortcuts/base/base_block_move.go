@@ -14,7 +14,7 @@ var BaseBaseBlockMove = common.Shortcut{
 	Command:     "+base-block-move",
 	Description: "Move a base block",
 	Risk:        "write",
-	Scopes:      []string{"base:block:write"},
+	Scopes:      []string{"base:block:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
