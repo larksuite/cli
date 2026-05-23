@@ -5,7 +5,8 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync, execFile } = require("child_process");
-const p = require("@clack/prompts");
+const isTestMode = process.env.LARK_CLI_INSTALL_WIZARD_TEST === "1";
+const p = isTestMode ? null : require("@clack/prompts");
 
 const PKG = "@larksuite/cli";
 const SKILLS_REPO = "https://open.feishu.cn";
@@ -29,7 +30,7 @@ const messages = {
     step2Skip:      "已安装，跳过",
     step2Spinner:   "正在安装 Skills...",
     step2Done:      "Skills 已安装",
-    step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
+    step2Fail:      "Skills 安装失败。运行以下命令重试: %s",
     step3:          "正在配置应用...",
     step3NotFound:  "未找到 lark-cli，终止",
     step3Found:     "发现已配置应用 (App ID: %s)，继续使用？",
@@ -58,7 +59,7 @@ const messages = {
     step2Skip:      "Already installed. Skipped",
     step2Spinner:   "Installing skills...",
     step2Done:      "Skills installed",
-    step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
+    step2Fail:      "Failed to install skills. Run manually: %s",
     step3:          "Configuring app...",
     step3NotFound:  "lark-cli not found. Aborting",
     step3Found:     "Found existing app (App ID: %s). Use this app?",
@@ -211,6 +212,24 @@ function parseLangArg() {
   return null;
 }
 
+/** Parse --project from process.argv. Default remains global skill install. */
+function parseProjectArg() {
+  const args = process.argv.slice(2);
+  return args.includes("--project");
+}
+
+function skillsScopeFlag(projectScope) {
+  return projectScope ? "-p" : "-g";
+}
+
+function skillsAddArgs(source, projectScope) {
+  return ["-y", "skills", "add", source, "-y", skillsScopeFlag(projectScope)];
+}
+
+function skillsAddCommand(source, projectScope) {
+  return ["npx", ...skillsAddArgs(source, projectScope)].join(" ");
+}
+
 // ---------------------------------------------------------------------------
 // Steps
 // ---------------------------------------------------------------------------
@@ -255,9 +274,9 @@ async function stepInstallGlobally(msg) {
   }
 }
 
-async function skillsAlreadyInstalled() {
+async function skillsAlreadyInstalled(projectScope) {
   try {
-    const out = await runSilentAsync("npx", ["-y", "skills", "ls", "-g"], {
+    const out = await runSilentAsync("npx", ["-y", "skills", "ls", skillsScopeFlag(projectScope)], {
       timeout: 120000,
     });
     return /^lark-/m.test(out.toString());
@@ -266,26 +285,26 @@ async function skillsAlreadyInstalled() {
   }
 }
 
-async function stepInstallSkills(msg) {
+async function stepInstallSkills(msg, projectScope) {
   const s = p.spinner();
   s.start(msg.step2Spinner);
   try {
-    if (await skillsAlreadyInstalled()) {
+    if (await skillsAlreadyInstalled(projectScope)) {
       s.stop(msg.step2Skip);
       return;
     }
     try {
-      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO, "-y", "-g"], {
+      await runSilentAsync("npx", skillsAddArgs(SKILLS_REPO, projectScope), {
         timeout: 120000,
       });
     } catch (_) {
-      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO_FALLBACK, "-y", "-g"], {
+      await runSilentAsync("npx", skillsAddArgs(SKILLS_REPO_FALLBACK, projectScope), {
         timeout: 120000,
       });
     }
     s.stop(msg.step2Done);
   } catch (_) {
-    s.stop(fmt(msg.step2Fail, SKILLS_REPO_FALLBACK));
+    s.stop(fmt(msg.step2Fail, skillsAddCommand(SKILLS_REPO_FALLBACK, projectScope)));
     process.exit(1);
   }
 }
@@ -357,24 +376,34 @@ async function stepAuthLogin(msg) {
 async function main() {
   const isInteractive = !!process.stdin.isTTY;
   const lang = isInteractive ? await stepSelectLang() : (parseLangArg() || "en");
+  const projectScope = parseProjectArg();
   const msg = messages[lang];
 
   if (isInteractive) {
     p.intro(msg.setup);
     await stepInstallGlobally(msg);
-    await stepInstallSkills(msg);
+    await stepInstallSkills(msg, projectScope);
     await stepConfigInit(msg, lang);
     await stepAuthLogin(msg);
     p.outro(msg.done);
   } else {
     console.log(msg.setup);
     await stepInstallGlobally(msg);
-    await stepInstallSkills(msg);
+    await stepInstallSkills(msg, projectScope);
     console.log(msg.nonTtyHint);
   }
 }
 
-main().catch((err) => {
-  p.cancel("Unexpected error: " + (err.message || err));
-  process.exit(1);
-});
+if (isTestMode) {
+  module.exports = {
+    parseProjectArg,
+    skillsAddArgs,
+    skillsAddCommand,
+    skillsScopeFlag,
+  };
+} else {
+  main().catch((err) => {
+    p.cancel("Unexpected error: " + (err.message || err));
+    process.exit(1);
+  });
+}
