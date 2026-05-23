@@ -379,12 +379,12 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 	if v, ok := field["default"]; ok {
 		// Coerce default literal to match the declared JSON Schema type so
 		// validators do not reject e.g. {type:"integer", default:"500"}.
-		// Same idea as enum coercion above. Unparseable values pass through
-		// to keep observability — lint will flag them.
+		// When coercion fails (e.g. default:"" on an integer field, which
+		// meta_data uses to mean "no default"), omit the field entirely
+		// instead of emitting a type-mismatched default — the result is a
+		// missing `default` key rather than a contract violation.
 		if coerced, ok := coerceEnumValue(p.Type, v); ok {
 			p.Default = coerced
-		} else {
-			p.Default = v
 		}
 	}
 	if v, ok := field["example"]; ok {

@@ -17,14 +17,22 @@ import (
 // the suite gives the same answer on every machine. Without this, a stale
 // local remote_meta.json could surface methods that aren't in the embedded
 // snapshot (or alter their data) depending on the contributor's environment.
+//
+// Note: os.Exit skips deferred functions, so cleanup is done explicitly
+// after m.Run before exiting.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "schema-test-cfg-*")
-	if err == nil {
-		os.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-		os.Setenv("LARKSUITE_CLI_REMOTE_META", "off") // never touch network
-		defer os.RemoveAll(dir)
+	if err != nil {
+		// Surface the failure rather than silently running against the host
+		// cache — that defeats the whole purpose of this isolation.
+		println("schema test setup: MkdirTemp failed:", err.Error())
+		os.Exit(2)
 	}
-	os.Exit(m.Run())
+	os.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	os.Setenv("LARKSUITE_CLI_REMOTE_META", "off") // never touch network
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 func TestKeyOrderIndex_ImReactionsList(t *testing.T) {

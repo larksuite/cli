@@ -30,7 +30,6 @@
       "page_size": {
         "type": "integer",
         "description": "分页大小，用于限制一次请求返回的数据条目数。;;**默认值**：20",
-        "default": "",
         "example": "10",
         "maximum": 50,
         "x-in": "query"
