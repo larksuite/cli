@@ -83,7 +83,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		return fmt.Errorf("handshake failed: %w", err)
 	}
 
-	var cleanup func()
+	var cleanup func() error
 	if ack.FirstForKey && keyDef.PreConsume != nil {
 		if !opts.Quiet {
 			fmt.Fprintf(errOut, "[event] running pre-consume setup...\n")
@@ -106,12 +106,12 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 			switch {
 			case r != nil:
 				fmt.Fprintf(errOut, "WARN: panic recovered; running cleanup unconditionally (may affect other consumers of %s)\n", opts.EventKey)
-				cleanup()
+				_ = cleanup() // proper error handling added in Task 9
 			case lastForKey:
 				if !opts.Quiet {
 					fmt.Fprintf(errOut, "[event] running cleanup...\n")
 				}
-				cleanup()
+				_ = cleanup() // proper error handling added in Task 9
 				if !opts.Quiet {
 					fmt.Fprintf(errOut, "[event] cleanup done.\n")
 				}

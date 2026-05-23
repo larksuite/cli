@@ -55,6 +55,16 @@ type ParamDef struct {
 	Default     string       `json:"default,omitempty"`
 	Description string       `json:"description"`
 	Values      []ParamValue `json:"values,omitempty"`
+
+	// SubscriptionKey marks this param as part of the subscription identity.
+	// Two consumers of the same EventKey but different values for any
+	// SubscriptionKey-marked param are treated as DISTINCT subscriptions:
+	// PreConsume runs once per (EventKey, SubscriptionID), cleanup runs once per
+	// (EventKey, SubscriptionID).
+	//
+	// Default false = the param is a filter / formatting / metadata param
+	// and does not affect subscription identity.
+	SubscriptionKey bool `json:"subscription_key,omitempty"`
 }
 
 type ProcessFunc = func(ctx context.Context, rt APIClient, raw *RawEvent, params map[string]string) (json.RawMessage, error)
@@ -83,10 +93,46 @@ type KeyDefinition struct {
 
 	Schema SchemaDef `json:"schema"`
 
+	// NormalizeParams canonicalizes param values BEFORE fingerprint compute,
+	// PreConsume, Match, and Process. Mutates the params map in place.
+	// May call OAPI; runs once per consumer at startup.
+	//
+	// Use cases: resolve aliases like mail "me" -> real email, name -> ID
+	// lookups, trim whitespace. On error, consume fails (no retry); caller
+	// gets the wrapped error.
+	//
+	// Default nil = no normalization, params pass through unchanged.
+	NormalizeParams func(ctx context.Context, rt APIClient, params map[string]string) error `json:"-"`
+
 	// Process required when Schema.Custom is Processed output; must be nil when Native is used.
+	//
+	// Convention: returning (nil, nil) signals "drop this event" — the
+	// consumer loop will skip writing it to sink and not advance the
+	// emitted counter. Useful for async filtering (e.g. fetch metadata,
+	// drop if folder doesn't match). For sync filters that don't need
+	// OAPI, use Match instead.
 	Process func(ctx context.Context, rt APIClient, raw *RawEvent, params map[string]string) (json.RawMessage, error) `json:"-"`
 
-	PreConsume func(ctx context.Context, rt APIClient, params map[string]string) (cleanup func(), err error) `json:"-"`
+	// Match is a synchronous payload filter run on every received event
+	// BEFORE Process. Return false to drop the event without further work.
+	//
+	// Signature deliberately omits ctx/rt to physically enforce "no OAPI
+	// calls in Match". For filters that need metadata fetch (e.g. mail
+	// folders/labels resolution), use Process and return nil to drop.
+	//
+	// Default nil = accept all events.
+	Match func(raw *RawEvent, params map[string]string) bool `json:"-"`
+
+	// PreConsume runs once per (EventKey, SubscriptionID) when this consumer
+	// is first for that scope. Returns a cleanup function that the framework
+	// invokes when this consumer is the last for its scope.
+	//
+	// cleanup signature: func() error.
+	//   - The error return is honored by the framework: on nil, stderr prints
+	//     "[event] cleanup done."; on non-nil, stderr prints WARN with an
+	//     idempotency note. (Branching wired in Task 9; pre-Task-9 stub
+	//     ignores the error.)
+	PreConsume func(ctx context.Context, rt APIClient, params map[string]string) (cleanup func() error, err error) `json:"-"`
 
 	Scopes []string `json:"scopes,omitempty"`
 
