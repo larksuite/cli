@@ -278,7 +278,7 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 	bc.SetOnClose(func(c *Conn) {
 		b.hub.UnregisterAndIsLast(c)
 		// Release is idempotent and must fire on every disconnect path so waiters don't block forever.
-		b.hub.ReleaseCleanupLock(c.EventKey())
+		b.hub.ReleaseCleanupLock(c.SubscriptionID())
 		b.mu.Lock()
 		delete(b.conns, c)
 		remaining := len(b.conns)
