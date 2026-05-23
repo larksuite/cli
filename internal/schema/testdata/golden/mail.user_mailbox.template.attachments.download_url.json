@@ -22,9 +22,10 @@
         "x-in": "path"
       },
       "attachment_ids": {
-        "type": "list",
+        "type": "array",
         "description": "待获取下载链接的附件 id 列表",
         "default": "",
+        "items": {},
         "x-in": "query"
       }
     }

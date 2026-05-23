@@ -130,8 +130,8 @@
                   "type": "integer",
                   "description": "附件类型",
                   "enum": [
-                    "1",
-                    "2"
+                    1,
+                    2
                   ],
                   "example": "1",
                   "minimum": 1,

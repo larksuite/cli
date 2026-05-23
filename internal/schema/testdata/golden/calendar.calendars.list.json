@@ -3,6 +3,7 @@
   "description": "查询日历列表",
   "inputSchema": {
     "type": "object",
+    "required": [],
     "properties": {
       "page_size": {
         "type": "integer",

@@ -3,6 +3,7 @@
   "description": "创建知识空间",
   "inputSchema": {
     "type": "object",
+    "required": [],
     "properties": {
       "name": {
         "type": "string",

@@ -291,6 +291,68 @@ func skipValueAfterToken(dec *json.Decoder, tok json.Token) {
 	}
 }
 
+// coerceEnumValue converts a meta_data enum literal to the JSON Schema type
+// declared by the field (integer/number/boolean/string). meta_data stores
+// every enum literal as a string, so without coercion an `integer` field
+// would emit string enums and fail any standard validator. Already-typed
+// values pass through unchanged. Returns (value, true) on success, or
+// (nil, false) when the literal cannot be coerced (caller should drop it).
+func coerceEnumValue(fieldType string, raw interface{}) (interface{}, bool) {
+	s, isStr := raw.(string)
+	if !isStr {
+		// Already typed (e.g. meta_data emitted a JSON number/bool directly).
+		return raw, true
+	}
+	switch fieldType {
+	case "integer":
+		if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return v, true
+		}
+		return nil, false
+	case "number":
+		if v, err := strconv.ParseFloat(s, 64); err == nil {
+			return v, true
+		}
+		return nil, false
+	case "boolean":
+		switch s {
+		case "true":
+			return true, true
+		case "false":
+			return false, true
+		}
+		return nil, false
+	default: // "string", "" (nested objects), or unknown
+		return s, true
+	}
+}
+
+// sortEnum sorts an enum slice in-place using a comparator appropriate for
+// the declared JSON Schema type, so integer enums end up [1, 2, 10] rather
+// than the lexicographic [1, 10, 2].
+func sortEnum(fieldType string, vals []interface{}) {
+	sort.SliceStable(vals, func(i, j int) bool {
+		switch fieldType {
+		case "integer":
+			ai, _ := vals[i].(int64)
+			bi, _ := vals[j].(int64)
+			return ai < bi
+		case "number":
+			af, _ := vals[i].(float64)
+			bf, _ := vals[j].(float64)
+			return af < bf
+		case "boolean":
+			ab, _ := vals[i].(bool)
+			bb, _ := vals[j].(bool)
+			return !ab && bb // false < true
+		default:
+			as, _ := vals[i].(string)
+			bs, _ := vals[j].(string)
+			return as < bs
+		}
+	})
+}
+
 // convertProperty recursively converts one meta_data field map into a Property.
 // nestedPath is the dotted lookup key into the current method's NestedKeys map
 // (e.g. "responseBody.items.properties"). Empty path = top-level, no nested
@@ -303,6 +365,10 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 	case "file":
 		p.Type = "string"
 		p.Format = "binary"
+	case "list":
+		// meta_data uses non-standard "list" on a couple of fields;
+		// translate to JSON Schema "array" so validators accept it.
+		p.Type = "array"
 	default:
 		p.Type = rawType
 	}
@@ -329,12 +395,21 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 		}
 	}
 
-	// enum: prefer existing "enum" array; else extract from options[].value
+	// enum: prefer existing "enum" array; else extract from options[].value.
+	// Values are typed per p.Type so integer fields get integer enums, etc.
+	// (JSON Schema 2020-12 requires enum value types to match the declared
+	// type — meta_data stores everything as strings.)
 	if enumRaw, ok := field["enum"].([]interface{}); ok && len(enumRaw) > 0 {
 		for _, e := range enumRaw {
-			if s, ok := e.(string); ok {
-				p.Enum = append(p.Enum, s)
+			if v, ok := coerceEnumValue(p.Type, e); ok {
+				p.Enum = append(p.Enum, v)
 			}
+		}
+		// Numeric/boolean enums get sorted (no inherent meaning in meta_data
+		// order); string enums keep meta_data order, which sometimes carries
+		// semantic priority (e.g. image_type ["message","avatar"]).
+		if p.Type != "string" && p.Type != "" {
+			sortEnum(p.Type, p.Enum)
 		}
 	} else if optsRaw, ok := field["options"].([]interface{}); ok && len(optsRaw) > 0 {
 		seen := make(map[string]bool)
@@ -343,18 +418,22 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 			if !ok {
 				continue
 			}
-			if v, ok := om["value"].(string); ok && !seen[v] {
-				seen[v] = true
+			raw, ok := om["value"].(string)
+			if !ok || seen[raw] {
+				continue
+			}
+			seen[raw] = true
+			if v, ok := coerceEnumValue(p.Type, raw); ok {
 				p.Enum = append(p.Enum, v)
 			}
 		}
-		sort.Strings(p.Enum)
+		sortEnum(p.Type, p.Enum)
 	}
 
 	// nested properties: recurse
 	if propsRaw, ok := field["properties"].(map[string]interface{}); ok && len(propsRaw) > 0 {
 		nested := buildOrderedProps(propsRaw, nestedPath)
-		if rawType == "array" {
+		if p.Type == "array" {
 			// meta_data quirk: array element schema is wrapped in "properties".
 			// Unfold into Items: { type: "object", properties: <nested> }
 			p.Items = &Property{
@@ -368,6 +447,12 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 			}
 			p.Properties = nested
 		}
+	}
+
+	// list→array fallback: emit `items: {}` (any schema) when meta_data does
+	// not describe element shape, so the result is still JSON Schema valid.
+	if rawType == "list" && p.Type == "array" && p.Items == nil {
+		p.Items = &Property{}
 	}
 
 	return p
@@ -474,6 +559,7 @@ func buildMeta(method map[string]interface{}, service string, resourcePath []str
 func buildInputSchema(method map[string]interface{}) *InputSchema {
 	is := &InputSchema{
 		Type:       "object",
+		Required:   []string{}, // never nil — stable envelope shape
 		Properties: &OrderedProps{Map: make(map[string]Property)},
 	}
 

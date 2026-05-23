@@ -314,10 +314,6 @@ func isKnownDataInconsistency(msg string) bool {
 		// Embedded meta_data has arrays without element schema (e.g. arrays of
 		// option_guid strings). Needs a meta_data fix to add items info.
 		return true
-	case strings.Contains(msg, `has invalid type "list"`):
-		// meta_data uses non-standard "list" instead of "array" on some fields
-		// (e.g. mail.user_mailbox.message.attachments.download_url.attachment_ids).
-		return true
 	case strings.Contains(msg, "L2: field") && strings.Contains(msg, "minimum") && strings.Contains(msg, "maximum"):
 		// meta_data sets min == max on some fields (e.g.
 		// mail.user_mailbox.event.subscribe.event_type), which the lint reads

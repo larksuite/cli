@@ -91,7 +91,7 @@ func TestConvertProperty_OptionsToEnum(t *testing.T) {
 		},
 	}
 	got := convertProperty(input, "")
-	want := []string{"apple", "banana"} // sorted + deduped
+	want := []interface{}{"apple", "banana"} // sorted + deduped
 	if !reflect.DeepEqual(got.Enum, want) {
 		t.Errorf("Enum = %v, want %v", got.Enum, want)
 	}
@@ -103,9 +103,39 @@ func TestConvertProperty_EnumPassThrough(t *testing.T) {
 		"enum": []interface{}{"x", "y"},
 	}
 	got := convertProperty(input, "")
-	want := []string{"x", "y"} // pass through, no sort
+	want := []interface{}{"x", "y"} // pass through, no sort
 	if !reflect.DeepEqual(got.Enum, want) {
 		t.Errorf("Enum = %v, want %v", got.Enum, want)
+	}
+}
+
+func TestConvertProperty_EnumIntegerCoerce(t *testing.T) {
+	input := map[string]interface{}{
+		"type": "integer",
+		"options": []interface{}{
+			map[string]interface{}{"value": "10"},
+			map[string]interface{}{"value": "1"},
+			map[string]interface{}{"value": "2"},
+		},
+	}
+	got := convertProperty(input, "")
+	want := []interface{}{int64(1), int64(2), int64(10)} // typed + numerically sorted
+	if !reflect.DeepEqual(got.Enum, want) {
+		t.Errorf("Enum = %v, want %v", got.Enum, want)
+	}
+}
+
+func TestConvertProperty_ListTypeFallback(t *testing.T) {
+	input := map[string]interface{}{
+		"type":        "list",
+		"description": "ids",
+	}
+	got := convertProperty(input, "")
+	if got.Type != "array" {
+		t.Errorf("Type = %q, want %q", got.Type, "array")
+	}
+	if got.Items == nil {
+		t.Fatalf("Items = nil, want non-nil (any-schema fallback)")
 	}
 }
 
@@ -275,7 +305,7 @@ func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 		t.Errorf("image.XIn = %q, want \"body\"", img.XIn)
 	}
 	// image_type: enum present, body
-	if it := is.Properties.Map["image_type"]; it.XIn != "body" || !reflect.DeepEqual(it.Enum, []string{"message", "avatar"}) {
+	if it := is.Properties.Map["image_type"]; it.XIn != "body" || !reflect.DeepEqual(it.Enum, []interface{}{"message", "avatar"}) {
 		t.Errorf("image_type unexpected: %+v", it)
 	}
 }

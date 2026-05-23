@@ -3,6 +3,7 @@
   "description": "创建群。Identity: `bot` only (`tenant_access_token`).",
   "inputSchema": {
     "type": "object",
+    "required": [],
     "properties": {
       "user_id_type": {
         "type": "string",

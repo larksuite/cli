@@ -19,9 +19,13 @@ type Envelope struct {
 }
 
 // InputSchema is JSON Schema Draft 2020-12 flattened.
+//
+// Required is intentionally rendered (no omitempty) so the envelope shape
+// stays stable for AI consumers — an empty []string means "no required
+// fields" rather than "schema is missing the field".
 type InputSchema struct {
 	Type       string        `json:"type"`
-	Required   []string      `json:"required,omitempty"`
+	Required   []string      `json:"required"`
 	Properties *OrderedProps `json:"properties"`
 }
 
@@ -35,7 +39,7 @@ type OutputSchema struct {
 type Property struct {
 	Type        string        `json:"type,omitempty"`
 	Description string        `json:"description,omitempty"`
-	Enum        []string      `json:"enum,omitempty"`
+	Enum        []interface{} `json:"enum,omitempty"`
 	Default     interface{}   `json:"default,omitempty"`
 	Example     interface{}   `json:"example,omitempty"`
 	Minimum     *float64      `json:"minimum,omitempty"`

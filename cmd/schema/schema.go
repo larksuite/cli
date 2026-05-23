@@ -594,6 +594,15 @@ func runJSONForPath(out io.Writer, parts []string, filter schema.MethodFilter) e
 		return nil
 	}
 	methodName := remaining[0]
+	if len(remaining) > 1 {
+		// Reject trailing segments so callers don't silently get a sibling
+		// method's schema when they typo'd a longer path.
+		return output.ErrWithHint(output.ExitValidation, "validation",
+			fmt.Sprintf("Unknown path: %s.%s.%s",
+				serviceName, resName, strings.Join(remaining, ".")),
+			fmt.Sprintf("Method %q exists but the trailing segments %q do not resolve",
+				methodName, strings.Join(remaining[1:], ".")))
+	}
 	methods, _ := resource["methods"].(map[string]interface{})
 	method, ok := methods[methodName].(map[string]interface{})
 	if !ok {
@@ -677,6 +686,13 @@ func runPrettyMode(out io.Writer, parts []string, mode core.StrictMode) error {
 		return nil
 	}
 	methodName := remaining[0]
+	if len(remaining) > 1 {
+		return output.ErrWithHint(output.ExitValidation, "validation",
+			fmt.Sprintf("Unknown path: %s.%s.%s",
+				serviceName, resName, strings.Join(remaining, ".")),
+			fmt.Sprintf("Method %q exists but the trailing segments %q do not resolve",
+				methodName, strings.Join(remaining[1:], ".")))
+	}
 	methods, _ := resource["methods"].(map[string]interface{})
 	methods = filterMethodsByStrictMode(methods, mode)
 	method, ok := methods[methodName].(map[string]interface{})
