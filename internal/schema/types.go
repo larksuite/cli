@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 )
 
 // Envelope is the MCP Tool spec contract for a single API method command.
@@ -85,14 +86,24 @@ type OrderedProps struct {
 	Map   map[string]Property
 }
 
-// MarshalJSON emits keys in Order, not alphabetical.
+// MarshalJSON emits keys in Order, not alphabetical. If Order is empty but
+// Map has entries, fall back to alphabetical key order over Map so callers
+// that only populated Map (no explicit ordering) still see their fields.
 func (o *OrderedProps) MarshalJSON() ([]byte, error) {
-	if o == nil || len(o.Order) == 0 {
+	if o == nil || (len(o.Order) == 0 && len(o.Map) == 0) {
 		return []byte("{}"), nil
+	}
+	keys := o.Order
+	if len(keys) == 0 {
+		keys = make([]string, 0, len(o.Map))
+		for k := range o.Map {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 	}
 	var buf bytes.Buffer
 	buf.WriteByte('{')
-	for i, k := range o.Order {
+	for i, k := range keys {
 		if i > 0 {
 			buf.WriteByte(',')
 		}

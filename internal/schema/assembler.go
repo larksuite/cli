@@ -377,7 +377,15 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 		p.Description = s
 	}
 	if v, ok := field["default"]; ok {
-		p.Default = v
+		// Coerce default literal to match the declared JSON Schema type so
+		// validators do not reject e.g. {type:"integer", default:"500"}.
+		// Same idea as enum coercion above. Unparseable values pass through
+		// to keep observability — lint will flag them.
+		if coerced, ok := coerceEnumValue(p.Type, v); ok {
+			p.Default = coerced
+		} else {
+			p.Default = v
+		}
 	}
 	if v, ok := field["example"]; ok {
 		p.Example = v
@@ -427,7 +435,12 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 				p.Enum = append(p.Enum, v)
 			}
 		}
-		sortEnum(p.Type, p.Enum)
+		// Same policy as the `enum` branch: numeric/boolean enums get sorted
+		// (no semantic meaning in source order); string enums keep meta_data
+		// order, which may carry semantic priority.
+		if p.Type != "string" && p.Type != "" {
+			sortEnum(p.Type, p.Enum)
+		}
 	}
 
 	// nested properties: recurse

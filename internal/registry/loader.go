@@ -72,9 +72,12 @@ func EmbeddedSpec(serviceName string) map[string]interface{} {
 }
 
 // EmbeddedServiceNames returns sorted embedded service names (no overlay).
+// Returns a defensive copy — callers must not mutate the package-level slice.
 func EmbeddedServiceNames() []string {
 	parseEmbeddedServices()
-	return embeddedServiceNames
+	out := make([]string, len(embeddedServiceNames))
+	copy(out, embeddedServiceNames)
+	return out
 }
 
 var (

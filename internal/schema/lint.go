@@ -150,9 +150,29 @@ func validatePropertyTypes(props *OrderedProps, isInputTop bool, errs *[]error) 
 		if p.Properties != nil {
 			validatePropertyTypes(p.Properties, false, errs)
 		}
-		if p.Items != nil && p.Items.Properties != nil {
-			validatePropertyTypes(p.Items.Properties, false, errs)
+		// Validate the array-element schema itself, not only its child
+		// properties — a primitive element with an invalid type (e.g.
+		// `items.type = "list"`) would otherwise slip past lint.
+		if p.Items != nil {
+			validateItemSchema(k, p.Items, errs)
 		}
+	}
+}
+
+// validateItemSchema checks a single array element schema for invalid types,
+// then recurses into any further nested properties/items.
+func validateItemSchema(parentKey string, item *Property, errs *[]error) {
+	if item.Type != "" && !validJSONSchemaTypes[item.Type] {
+		*errs = append(*errs, fmt.Errorf("L1: array property %q items has invalid type %q", parentKey, item.Type))
+	}
+	if item.Type == "array" && item.Items == nil {
+		*errs = append(*errs, fmt.Errorf("L1: array property %q items (nested array) missing items", parentKey))
+	}
+	if item.Properties != nil {
+		validatePropertyTypes(item.Properties, false, errs)
+	}
+	if item.Items != nil {
+		validateItemSchema(parentKey, item.Items, errs)
 	}
 }
 
