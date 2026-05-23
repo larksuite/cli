@@ -262,7 +262,11 @@ func (b *Bus) handleConn(conn net.Conn) {
 
 // handleHello registers a consume connection with the hub; reader carries bytes already pulled off conn.
 func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.Hello) {
-	bc := NewConn(conn, reader, hello.EventKey, hello.EventTypes, hello.PID)
+	subID := hello.SubscriptionID
+	if subID == "" {
+		subID = hello.EventKey
+	}
+	bc := NewConn(conn, reader, hello.EventKey, hello.EventTypes, hello.PID, subID)
 	bc.SetLogger(b.logger)
 
 	// Register + isFirst under one lock; blocks on any in-progress cleanup lock for the same EventKey.

@@ -29,6 +29,7 @@ type Conn struct {
 	writeMu         sync.Mutex // serialises all net.Conn writes (Encode+SetWriteDeadline is a 2-call sequence)
 	eventKey        string
 	eventTypes      []string
+	subID           string
 	pid             int
 	onClose         func(*Conn)
 	checkLastForKey func(eventKey string) bool
@@ -41,7 +42,7 @@ type Conn struct {
 }
 
 // NewConn creates a Conn; pass a reader with pre-buffered bytes (handoff from Bus.handleConn) or nil for a fresh one.
-func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []string, pid int) *Conn {
+func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []string, pid int, subID string) *Conn {
 	if reader == nil {
 		reader = bufio.NewReader(conn)
 	}
@@ -52,8 +53,18 @@ func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []
 		eventKey:   eventKey,
 		eventTypes: eventTypes,
 		pid:        pid,
+		subID:      subID,
 		closed:     make(chan struct{}),
 	}
+}
+
+// SubscriptionID returns the subscription identity. Falls back to EventKey
+// when the stored subID is empty (legacy clients / no-SubscriptionKey EventKeys).
+func (c *Conn) SubscriptionID() string {
+	if c.subID == "" {
+		return c.eventKey
+	}
+	return c.subID
 }
 
 func (c *Conn) SetOnClose(fn func(*Conn)) { c.onClose = fn }
@@ -136,9 +147,13 @@ func (c *Conn) handleControlMessage(msg interface{}) {
 	case *protocol.Bye:
 		c.shutdown()
 	case *protocol.PreShutdownCheck:
+		scope := m.SubscriptionID
+		if scope == "" {
+			scope = m.EventKey
+		}
 		lastForKey := true
 		if c.checkLastForKey != nil {
-			lastForKey = c.checkLastForKey(m.EventKey)
+			lastForKey = c.checkLastForKey(scope)
 		}
 		ack := protocol.NewPreShutdownAck(lastForKey)
 		if err := c.writeFrame(ack); err != nil && c.logger != nil {

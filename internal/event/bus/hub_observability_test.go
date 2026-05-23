@@ -17,7 +17,7 @@ func TestHubDroppedCountIncrements(t *testing.T) {
 	server, client := testNetPipe(t)
 	defer server.Close()
 	defer client.Close()
-	c := NewConn(server, nil, "k", []string{"t"}, 1)
+	c := NewConn(server, nil, "k", []string{"t"}, 1, "")
 	c.sendCh = make(chan interface{}, 1)
 	h.RegisterAndIsFirst(c)
 
@@ -35,7 +35,7 @@ func TestPublishAssignsIncrementalSeq(t *testing.T) {
 	server, client := testNetPipe(t)
 	defer server.Close()
 	defer client.Close()
-	c := NewConn(server, nil, "k", []string{"t"}, 1)
+	c := NewConn(server, nil, "k", []string{"t"}, 1, "")
 	c.sendCh = make(chan interface{}, 10)
 	h.RegisterAndIsFirst(c)
 
@@ -60,7 +60,7 @@ func TestPublishPopulatesEventIDAndSourceTime(t *testing.T) {
 	server, client := testNetPipe(t)
 	defer server.Close()
 	defer client.Close()
-	c := NewConn(server, nil, "k", []string{"t"}, 1)
+	c := NewConn(server, nil, "k", []string{"t"}, 1, "")
 	c.sendCh = make(chan interface{}, 1)
 	h.RegisterAndIsFirst(c)
 
@@ -87,7 +87,7 @@ func TestPublishSourceTimeTakesPrecedence(t *testing.T) {
 	server, client := testNetPipe(t)
 	defer server.Close()
 	defer client.Close()
-	c := NewConn(server, nil, "k", []string{"t"}, 1)
+	c := NewConn(server, nil, "k", []string{"t"}, 1, "")
 	c.sendCh = make(chan interface{}, 1)
 	h.RegisterAndIsFirst(c)
 
@@ -111,7 +111,7 @@ func TestPublishSourceTimeFallback(t *testing.T) {
 	server, client := testNetPipe(t)
 	defer server.Close()
 	defer client.Close()
-	c := NewConn(server, nil, "k", []string{"t"}, 1)
+	c := NewConn(server, nil, "k", []string{"t"}, 1, "")
 	c.sendCh = make(chan interface{}, 1)
 	h.RegisterAndIsFirst(c)
 
