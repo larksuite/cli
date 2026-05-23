@@ -18,22 +18,22 @@
         "type": "string",
         "description": "语言",
         "enum": [
-          "de-DE",
+          "zh-CN",
           "en-US",
+          "ja-JP",
+          "zh-HK",
+          "zh-TW",
+          "de-DE",
           "es-ES",
           "fr-FR",
           "id-ID",
           "it-IT",
-          "ja-JP",
           "ko-KR",
-          "ms-MY",
           "pt-BR",
-          "ru-RU",
           "th-TH",
           "vi-VN",
-          "zh-CN",
-          "zh-HK",
-          "zh-TW"
+          "ms-MY",
+          "ru-RU"
         ],
         "default": "",
         "example": "zh-CN",
@@ -43,9 +43,9 @@
         "type": "string",
         "description": "此次调用中使用的用户ID的类型",
         "enum": [
-          "open_id",
+          "user_id",
           "union_id",
-          "user_id"
+          "open_id"
         ],
         "default": "",
         "x-in": "query"
@@ -55,178 +55,78 @@
   "outputSchema": {
     "type": "object",
     "properties": {
-      "operation_records": {
+      "tasks": {
         "type": "array",
-        "description": "审批动态",
+        "description": "审批任务列表",
         "items": {
           "type": "object",
           "properties": {
+            "node_name": {
+              "type": "string",
+              "description": "task 所属节点名称",
+              "example": "开始"
+            },
             "type": {
               "type": "string",
-              "description": "事件类型",
+              "description": "审批方式",
               "enum": [
-                "START",
-                "PASS",
-                "REJECT",
+                "AND",
+                "OR",
                 "AUTO_PASS",
                 "AUTO_REJECT",
-                "REMOVE_REPEAT",
-                "TRANSFER",
-                "ADD_APPROVER_BEFORE",
-                "ADD_APPROVER",
-                "ADD_APPROVER_AFTER",
-                "DELETE_APPROVER",
-                "ROLLBACK_SELECTED",
-                "ROLLBACK",
-                "CANCEL",
-                "DELETE",
-                "CC"
+                "SEQUENTIAL"
               ],
-              "example": "PASS"
+              "example": "AND"
             },
-            "create_time": {
+            "start_time": {
               "type": "string",
-              "description": "发生时间",
+              "description": "task 开始时间",
               "example": "1564590532967"
+            },
+            "end_time": {
+              "type": "string",
+              "description": "task 完成时间, 未完成为 0",
+              "example": "0"
+            },
+            "id": {
+              "type": "string",
+              "description": "审批任务id",
+              "example": "1234"
             },
             "user_id": {
               "type": "string",
-              "description": "动态产生用户",
-              "example": "123456789"
+              "description": "审批人的用户id，自动通过、自动拒绝 时为空",
+              "example": "12345"
             },
-            "cc_user_ids": {
-              "type": "array",
-              "description": "被抄送人列表"
-            },
-            "task_id": {
+            "status": {
               "type": "string",
-              "description": "产生动态关联的task_id",
-              "example": "1234"
-            },
-            "comment": {
-              "type": "string",
-              "description": "理由",
-              "example": "ok"
+              "description": "instance 状态",
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "TRANSFERRED",
+                "DONE"
+              ],
+              "example": "PENDING"
             },
             "node_id": {
               "type": "string",
-              "description": "产生task的节点key",
-              "example": "APPROVAL_240330_4058663"
-            },
-            "files": {
-              "type": "array",
-              "description": "审批附件",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "url": {
-                    "type": "string",
-                    "description": "附件路径",
-                    "example": "https://p3-approval-sign.byteimg.com/lark-approval-attachment/image/20220714/1/332f3596-0845-4746-a4bc-818d54ad435b.png~tplv-ottatrvjsm-image.image?x-expires=1659033558\u0026x-signature=6edF3k%2BaHeAuvfcBRGOkbckoUl4%3D#.png"
-                  },
-                  "file_size": {
-                    "type": "integer",
-                    "description": "附件大小。单位：字节",
-                    "example": "186823"
-                  },
-                  "title": {
-                    "type": "string",
-                    "description": "附件标题",
-                    "example": "e018906140ed9388234bd03b0.png"
-                  },
-                  "type": {
-                    "type": "string",
-                    "description": "附件类别;;- image：图片;- attachment：附件，与上传时选择的类型一致",
-                    "example": "image"
-                  }
-                }
-              }
+              "description": "task 所属节点 id",
+              "example": "46e6d96cfa756980907209209ec03b64"
             }
           }
         }
       },
-      "start_time": {
+      "definition_code": {
         "type": "string",
-        "description": "审批创建时间",
-        "example": "1564590532967"
+        "description": "审批定义 Code",
+        "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
       },
-      "end_time": {
+      "serial_number": {
         "type": "string",
-        "description": "审批完成时间，未完成为 0",
-        "example": "1564590532967"
-      },
-      "form": {
-        "type": "string",
-        "description": "json字符串，控件值",
-        "example": "[{\\\"id\\\": \\\"widget1\\\",\\\"custom_id\\\": \\\"user_info\\\",\\\"name\\\": \\\"Item application\\\",\\\"type\\\": \\\"textarea\\\"},\\\"value\\\":\\\"aaaa\\\"]"
-      },
-      "comments": {
-        "type": "array",
-        "description": "评论列表",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string",
-              "description": "评论 id",
-              "example": "1234"
-            },
-            "user_id": {
-              "type": "string",
-              "description": "发表评论用户",
-              "example": "f7cb567e"
-            },
-            "comment": {
-              "type": "string",
-              "description": "评论内容",
-              "example": "ok"
-            },
-            "create_time": {
-              "type": "string",
-              "description": "评论时间",
-              "example": "评论时间"
-            },
-            "files": {
-              "type": "array",
-              "description": "评论附件",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "url": {
-                    "type": "string",
-                    "description": "附件路径",
-                    "example": "https://p3-approval-sign.byteimg.com/lark-approval-attachment/image/20220714/1/332f3596-0845-4746-a4bc-818d54ad435b.png~tplv-ottatrvjsm-image.image?x-expires=1659033558\u0026x-signature=6edF3k%2BaHeAuvfcBRGOkbckoUl4%3D#.png"
-                  },
-                  "file_size": {
-                    "type": "integer",
-                    "description": "附件大小。单位：字节",
-                    "example": "186823"
-                  },
-                  "title": {
-                    "type": "string",
-                    "description": "附件标题",
-                    "example": "e018906140ed9388234bd03b0.png"
-                  },
-                  "type": {
-                    "type": "string",
-                    "description": "附件类别;;- image：图片;- attachment：附件，与上传时选择的类型一致",
-                    "example": "image"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "definition_name": {
-        "type": "string",
-        "description": "审批名称",
-        "example": "Payment"
-      },
-      "user_id": {
-        "type": "string",
-        "description": "发起审批用户",
-        "example": "f3ta757q"
+        "description": "审批单编号",
+        "example": "202102060002"
       },
       "instance_code": {
         "type": "string",
@@ -282,6 +182,26 @@
           }
         }
       },
+      "department_id": {
+        "type": "string",
+        "description": "发起审批用户所在部门",
+        "example": "123456"
+      },
+      "start_time": {
+        "type": "string",
+        "description": "审批创建时间",
+        "example": "1564590532967"
+      },
+      "end_time": {
+        "type": "string",
+        "description": "审批完成时间，未完成为 0",
+        "example": "1564590532967"
+      },
+      "definition_name": {
+        "type": "string",
+        "description": "审批名称",
+        "example": "Payment"
+      },
       "status": {
         "type": "string",
         "description": "审批实例状态",
@@ -294,80 +214,155 @@
         ],
         "example": "PENDING"
       },
-      "definition_code": {
+      "form": {
         "type": "string",
-        "description": "审批定义 Code",
-        "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+        "description": "json字符串，控件值",
+        "example": "[{\\\"id\\\": \\\"widget1\\\",\\\"custom_id\\\": \\\"user_info\\\",\\\"name\\\": \\\"Item application\\\",\\\"type\\\": \\\"textarea\\\"},\\\"value\\\":\\\"aaaa\\\"]"
       },
-      "serial_number": {
-        "type": "string",
-        "description": "审批单编号",
-        "example": "202102060002"
-      },
-      "department_id": {
-        "type": "string",
-        "description": "发起审批用户所在部门",
-        "example": "123456"
-      },
-      "tasks": {
+      "comments": {
         "type": "array",
-        "description": "审批任务列表",
+        "description": "评论列表",
         "items": {
           "type": "object",
           "properties": {
-            "status": {
+            "create_time": {
               "type": "string",
-              "description": "instance 状态",
-              "enum": [
-                "PENDING",
-                "APPROVED",
-                "REJECTED",
-                "TRANSFERRED",
-                "DONE"
-              ],
-              "example": "PENDING"
+              "description": "评论时间",
+              "example": "评论时间"
             },
-            "node_id": {
-              "type": "string",
-              "description": "task 所属节点 id",
-              "example": "46e6d96cfa756980907209209ec03b64"
-            },
-            "node_name": {
-              "type": "string",
-              "description": "task 所属节点名称",
-              "example": "开始"
-            },
-            "type": {
-              "type": "string",
-              "description": "审批方式",
-              "enum": [
-                "AND",
-                "OR",
-                "AUTO_PASS",
-                "AUTO_REJECT",
-                "SEQUENTIAL"
-              ],
-              "example": "AND"
-            },
-            "start_time": {
-              "type": "string",
-              "description": "task 开始时间",
-              "example": "1564590532967"
-            },
-            "end_time": {
-              "type": "string",
-              "description": "task 完成时间, 未完成为 0",
-              "example": "0"
+            "files": {
+              "type": "array",
+              "description": "评论附件",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "附件路径",
+                    "example": "https://p3-approval-sign.byteimg.com/lark-approval-attachment/image/20220714/1/332f3596-0845-4746-a4bc-818d54ad435b.png~tplv-ottatrvjsm-image.image?x-expires=1659033558\u0026x-signature=6edF3k%2BaHeAuvfcBRGOkbckoUl4%3D#.png"
+                  },
+                  "file_size": {
+                    "type": "integer",
+                    "description": "附件大小。单位：字节",
+                    "example": "186823"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "附件标题",
+                    "example": "e018906140ed9388234bd03b0.png"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "附件类别;;- image：图片;- attachment：附件，与上传时选择的类型一致",
+                    "example": "image"
+                  }
+                }
+              }
             },
             "id": {
               "type": "string",
-              "description": "审批任务id",
+              "description": "评论 id",
               "example": "1234"
             },
             "user_id": {
               "type": "string",
-              "description": "审批人的用户id，自动通过、自动拒绝 时为空",
-              "example": "12345"
+              "description": "发表评论用户",
+              "example": "f7cb567e"
+            },
+            "comment": {
+              "type": "string",
+              "description": "评论内容",
+              "example": "ok"
+            }
+          }
+        }
+      },
+      "operation_records": {
+        "type": "array",
+        "description": "审批动态",
+        "items": {
+          "type": "object",
+          "properties": {
+            "create_time": {
+              "type": "string",
+              "description": "发生时间",
+              "example": "1564590532967"
+            },
+            "user_id": {
+              "type": "string",
+              "description": "动态产生用户",
+              "example": "123456789"
+            },
+            "cc_user_ids": {
+              "type": "array",
+              "description": "被抄送人列表"
+            },
+            "task_id": {
+              "type": "string",
+              "description": "产生动态关联的task_id",
+              "example": "1234"
+            },
+            "comment": {
+              "type": "string",
+              "description": "理由",
+              "example": "ok"
+            },
+            "node_id": {
+              "type": "string",
+              "description": "产生task的节点key",
+              "example": "APPROVAL_240330_4058663"
+            },
+            "files": {
+              "type": "array",
+              "description": "审批附件",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "file_size": {
+                    "type": "integer",
+                    "description": "附件大小。单位：字节",
+                    "example": "186823"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "附件标题",
+                    "example": "e018906140ed9388234bd03b0.png"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "附件类别;;- image：图片;- attachment：附件，与上传时选择的类型一致",
+                    "example": "image"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "附件路径",
+                    "example": "https://p3-approval-sign.byteimg.com/lark-approval-attachment/image/20220714/1/332f3596-0845-4746-a4bc-818d54ad435b.png~tplv-ottatrvjsm-image.image?x-expires=1659033558\u0026x-signature=6edF3k%2BaHeAuvfcBRGOkbckoUl4%3D#.png"
+                  }
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "description": "事件类型",
+              "enum": [
+                "START",
+                "PASS",
+                "REJECT",
+                "AUTO_PASS",
+                "AUTO_REJECT",
+                "REMOVE_REPEAT",
+                "TRANSFER",
+                "ADD_APPROVER_BEFORE",
+                "ADD_APPROVER",
+                "ADD_APPROVER_AFTER",
+                "DELETE_APPROVER",
+                "ROLLBACK_SELECTED",
+                "ROLLBACK",
+                "CANCEL",
+                "DELETE",
+                "CC"
+              ],
+              "example": "PASS"
             }
           }
         }
@@ -376,6 +371,11 @@
         "type": "boolean",
         "description": "单据是否被撤销",
         "example": "单据是否被撤销"
+      },
+      "user_id": {
+        "type": "string",
+        "description": "发起审批用户",
+        "example": "f3ta757q"
       }
     }
   },

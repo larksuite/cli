@@ -39,10 +39,6 @@
         "type": "object",
         "description": "设置筛选条件。",
         "properties": {
-          "expected": {
-            "type": "array",
-            "description": "筛选参数"
-          },
           "filter_type": {
             "type": "string",
             "description": "筛选类型，枚举值如下所示。了解更多，参考[筛选指南](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet-filter/filter-user-guide)。;- multiValue ：多值筛选;- number ：数字筛选;- text ：文本筛选;- color ：颜色筛选",
@@ -52,14 +48,13 @@
             "type": "string",
             "description": "比较类型",
             "example": "less"
+          },
+          "expected": {
+            "type": "array",
+            "description": "筛选参数"
           }
         },
         "x-in": "body"
-      },
-      "yes": {
-        "type": "boolean",
-        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
-        "default": false
       }
     }
   },
@@ -80,7 +75,7 @@
       "user"
     ],
     "danger": true,
-    "risk": "high-risk-write",
+    "risk": "write",
     "doc_url": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet-filter/create"
   }
 }

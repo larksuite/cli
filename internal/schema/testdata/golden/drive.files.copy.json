@@ -19,9 +19,9 @@
         "type": "string",
         "description": "此次调用中使用的用户ID的类型",
         "enum": [
-          "open_id",
+          "user_id",
           "union_id",
-          "user_id"
+          "open_id"
         ],
         "default": "",
         "x-in": "query"
@@ -59,24 +59,19 @@
         "items": {
           "type": "object",
           "properties": {
-            "value": {
-              "type": "string",
-              "description": "自定义属性值对象",
-              "example": "docx"
-            },
             "key": {
               "type": "string",
               "description": "自定义属性键对象",
               "example": "target_type"
+            },
+            "value": {
+              "type": "string",
+              "description": "自定义属性值对象",
+              "example": "docx"
             }
           }
         },
         "x-in": "body"
-      },
-      "yes": {
-        "type": "boolean",
-        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
-        "default": false
       }
     }
   },
@@ -87,10 +82,15 @@
         "type": "object",
         "description": "复制的新文件信息",
         "properties": {
-          "parent_token": {
+          "token": {
             "type": "string",
-            "description": "父文件夹标识",
+            "description": "文件标识符",
             "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
+          },
+          "type": {
+            "type": "string",
+            "description": "文件类型",
+            "example": "docx"
           },
           "url": {
             "type": "string",
@@ -101,21 +101,21 @@
             "type": "object",
             "description": "快捷方式文件信息（该参数不会返回）",
             "properties": {
-              "target_token": {
-                "type": "string",
-                "description": "快捷方式指向的原文件 Token",
-                "example": "docxaO1UuPz8VwnpPx5a9abcef"
-              },
               "target_type": {
                 "type": "string",
                 "description": "快捷方式指向的源文件类型",
                 "example": "docx"
+              },
+              "target_token": {
+                "type": "string",
+                "description": "快捷方式指向的原文件 Token",
+                "example": "docxaO1UuPz8VwnpPx5a9abcef"
               }
             }
           },
-          "modified_time": {
+          "created_time": {
             "type": "string",
-            "description": "文件最近修改时间",
+            "description": "文件创建时间",
             "example": "1686125119"
           },
           "owner_id": {
@@ -123,24 +123,19 @@
             "description": "文件所有者",
             "example": "ou_b13d41c02edc52ce66aaae67bf1abcef"
           },
-          "token": {
-            "type": "string",
-            "description": "文件标识符",
-            "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
-          },
           "name": {
             "type": "string",
             "description": "文件名",
             "example": "测试"
           },
-          "type": {
+          "parent_token": {
             "type": "string",
-            "description": "文件类型",
-            "example": "docx"
+            "description": "父文件夹标识",
+            "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
           },
-          "created_time": {
+          "modified_time": {
             "type": "string",
-            "description": "文件创建时间",
+            "description": "文件最近修改时间",
             "example": "1686125119"
           }
         }
@@ -159,7 +154,7 @@
       "user"
     ],
     "danger": true,
-    "risk": "high-risk-write",
+    "risk": "write",
     "doc_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/copy"
   }
 }

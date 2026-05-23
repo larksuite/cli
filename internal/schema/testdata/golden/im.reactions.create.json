@@ -31,22 +31,6 @@
   "outputSchema": {
     "type": "object",
     "properties": {
-      "action_time": {
-        "type": "string",
-        "description": "添加消息表情回复的时间。Unix 时间戳，单位：ms",
-        "example": "1663054162546"
-      },
-      "reaction_type": {
-        "type": "object",
-        "description": "表情类型",
-        "properties": {
-          "emoji_type": {
-            "type": "string",
-            "description": "emoji 类型。emoji_type 值对应的表情参考[表情文案说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)。",
-            "example": "SMILE"
-          }
-        }
-      },
       "reaction_id": {
         "type": "string",
         "description": "表情回复 ID。为消息添加表情回复后，会获得该表情回复的唯一标识 ID，后续使用该 ID 可以[删除消息表情回复](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/delete)。",
@@ -69,6 +53,22 @@
               "user"
             ],
             "example": "app/user"
+          }
+        }
+      },
+      "action_time": {
+        "type": "string",
+        "description": "添加消息表情回复的时间。Unix 时间戳，单位：ms",
+        "example": "1663054162546"
+      },
+      "reaction_type": {
+        "type": "object",
+        "description": "表情类型",
+        "properties": {
+          "emoji_type": {
+            "type": "string",
+            "description": "emoji 类型。emoji_type 值对应的表情参考[表情文案说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)。",
+            "example": "SMILE"
           }
         }
       }

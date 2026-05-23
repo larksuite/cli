@@ -41,6 +41,11 @@
         "type": "object",
         "description": "知识空间",
         "properties": {
+          "name": {
+            "type": "string",
+            "description": "知识空间名称",
+            "example": "知识空间"
+          },
           "description": {
             "type": "string",
             "description": "知识空间描述",
@@ -78,11 +83,6 @@
               "closed"
             ],
             "example": "open"
-          },
-          "name": {
-            "type": "string",
-            "description": "知识空间名称",
-            "example": "知识空间"
           }
         }
       }

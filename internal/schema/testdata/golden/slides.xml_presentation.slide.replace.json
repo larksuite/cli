@@ -9,12 +9,6 @@
       "xml_presentation_id"
     ],
     "properties": {
-      "xml_presentation_id": {
-        "type": "string",
-        "description": "演示文稿唯一标识",
-        "example": "zTqAwsEb4clrjOLd3drAcNZabcef",
-        "x-in": "path"
-      },
       "slide_id": {
         "type": "string",
         "description": "页面唯一标识",
@@ -25,7 +19,7 @@
       "revision_id": {
         "type": "integer",
         "description": "演示文稿的版本号，-1 表示最新版本",
-        "default": "-1",
+        "default": -1,
         "example": "-1",
         "minimum": -1,
         "maximum": 2147483647,
@@ -38,12 +32,23 @@
         "example": "idMock",
         "x-in": "query"
       },
+      "xml_presentation_id": {
+        "type": "string",
+        "description": "演示文稿唯一标识",
+        "example": "zTqAwsEb4clrjOLd3drAcNZabcef",
+        "x-in": "path"
+      },
       "parts": {
         "type": "array",
         "description": "替换操作列表，每项包含一个元素级别的编辑操作，最少1条，最多200条",
         "items": {
           "type": "object",
           "properties": {
+            "pattern": {
+              "type": "string",
+              "description": "查找的字符串模式，str_replace 时使用",
+              "example": "test from"
+            },
             "replacement": {
               "type": "string",
               "description": "替换内容，str_replace 和 block_replace 时使用",
@@ -73,11 +78,6 @@
               "type": "string",
               "description": "操作类型：str_replace（字符串替换）、block_replace（块替换）、block_insert（块插入）",
               "example": "str_replace"
-            },
-            "pattern": {
-              "type": "string",
-              "description": "查找的字符串模式，str_replace 时使用",
-              "example": "test from"
             }
           }
         },
@@ -88,11 +88,6 @@
         "description": "操作备注",
         "example": "批量替换文本内容",
         "x-in": "body"
-      },
-      "yes": {
-        "type": "boolean",
-        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
-        "default": false
       }
     }
   },
@@ -128,7 +123,7 @@
       "user"
     ],
     "danger": true,
-    "risk": "high-risk-write",
+    "risk": "write",
     "doc_url": "https://open.feishu.cn/api-explorer?from=op_doc_tab\u0026apiName=replace\u0026project=slides_ai\u0026resource=xml_presentation.slide\u0026version=v1"
   }
 }

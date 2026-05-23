@@ -8,16 +8,16 @@
       "user_mailbox_id"
     ],
     "properties": {
-      "folder_id": {
-        "type": "string",
-        "description": "文件夹 id，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
-        "example": "7620003644728938013",
-        "x-in": "path"
-      },
       "user_mailbox_id": {
         "type": "string",
         "description": "用户邮箱地址。当使用用户身份访问时，可以输入\"me\"代表当前调用接口用户",
         "example": "user@xxx.xx 或 me",
+        "x-in": "path"
+      },
+      "folder_id": {
+        "type": "string",
+        "description": "文件夹 id，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+        "example": "7620003644728938013",
         "x-in": "path"
       },
       "yes": {

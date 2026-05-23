@@ -25,8 +25,8 @@
         "description": "需要获取的邮件内容。支持选择full/plain_text_full/metadata",
         "enum": [
           "full",
-          "metadata",
-          "plain_text_full"
+          "plain_text_full",
+          "metadata"
         ],
         "default": "",
         "example": "full",
@@ -41,24 +41,74 @@
         "type": "object",
         "description": "邮件体",
         "properties": {
-          "body_html": {
+          "priority_type": {
             "type": "string",
-            "description": "正文(base64url)",
-            "example": "xxxx"
+            "description": "邮件优先级",
+            "enum": [
+              "0",
+              "1",
+              "3",
+              "5"
+            ],
+            "example": "0"
+          },
+          "cc": {
+            "type": "array",
+            "description": "抄送",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mail_address": {
+                  "type": "string",
+                  "description": "邮件地址",
+                  "example": "user@xxx.xx"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "名称",
+                  "example": "Mike"
+                }
+              }
+            }
+          },
+          "bcc": {
+            "type": "array",
+            "description": "密送",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mail_address": {
+                  "type": "string",
+                  "description": "邮件地址",
+                  "example": "user@xxx.xx"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "名称",
+                  "example": "Mike"
+                }
+              }
+            }
+          },
+          "head_from": {
+            "type": "object",
+            "description": "发件人",
+            "properties": {
+              "mail_address": {
+                "type": "string",
+                "description": "邮件地址",
+                "example": "user@xxx.xx"
+              },
+              "name": {
+                "type": "string",
+                "description": "名称",
+                "example": "Mike"
+              }
+            }
           },
           "label_ids": {
             "type": "array",
             "description": "标签ID"
-          },
-          "folder_id": {
-            "type": "string",
-            "description": "文件夹ID",
-            "example": "INBOX"
-          },
-          "thread_id": {
-            "type": "string",
-            "description": "会话id",
-            "example": "tfuh9N4WnzU6jdDw="
           },
           "in_reply_to": {
             "type": "string",
@@ -89,71 +139,48 @@
               }
             }
           },
-          "head_from": {
-            "type": "object",
-            "description": "发件人",
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "名称",
-                "example": "Mike"
-              },
-              "mail_address": {
-                "type": "string",
-                "description": "邮件地址",
-                "example": "user@xxx.xx"
-              }
-            }
-          },
-          "message_id": {
+          "body_plain_text": {
             "type": "string",
-            "description": "邮件id",
-            "example": "tfuh9N4WnzU6jdDw="
+            "description": "正文纯文本(base64url)",
+            "example": "xxxxx"
           },
-          "attachments": {
-            "type": "array",
-            "description": "邮件附件列表",
-            "items": {
-              "type": "object",
-              "properties": {
-                "filename": {
-                  "type": "string",
-                  "description": "附件文件名",
-                  "example": "helloworld.txt"
-                },
-                "id": {
-                  "type": "string",
-                  "description": "附件 id",
-                  "example": "YQqYbQHoQoDqXjxWKhJbo8Gicjf"
-                },
-                "attachment_type": {
-                  "type": "integer",
-                  "description": "附件类型",
-                  "enum": [
-                    1,
-                    2
-                  ],
-                  "example": "1",
-                  "minimum": 1,
-                  "maximum": 2
-                },
-                "is_inline": {
-                  "type": "boolean",
-                  "description": "是否为内联图片，true 表示是内联图片",
-                  "example": "false"
-                },
-                "cid": {
-                  "type": "string",
-                  "description": "内容 ID，HTML 中通过 cid: 协议引用该图片",
-                  "example": "image1@example.com"
-                }
-              }
-            }
+          "thread_id": {
+            "type": "string",
+            "description": "会话id",
+            "example": "tfuh9N4WnzU6jdDw="
           },
           "security_level": {
             "type": "object",
             "description": "安全信息",
             "properties": {
+              "via_domain": {
+                "type": "string",
+                "description": "代发或伪造邮件展示SPF或DKIM域名",
+                "example": "larksuite.com"
+              },
+              "spam_banner_type": {
+                "type": "string",
+                "description": "垃圾邮件原因",
+                "enum": [
+                  "USER_REPORT",
+                  "USER_BLOCK",
+                  "ANTI_SPAM",
+                  "USER_RULE",
+                  "BLOCK_DOMIN",
+                  "BLOCK_ADDRESS"
+                ],
+                "example": "USER_REPORT"
+              },
+              "spam_user_rule_id": {
+                "type": "string",
+                "description": "命中的收信规则ID",
+                "example": "7618365627924925388"
+              },
+              "spam_banner_info": {
+                "type": "string",
+                "description": "命中用户黑名单的地址或域名信息",
+                "example": "larksuite.com"
+              },
               "is_risk": {
                 "type": "boolean",
                 "description": "是否风险邮件",
@@ -189,34 +216,6 @@
                 "type": "boolean",
                 "description": "发件人是否外部邮件",
                 "example": "false"
-              },
-              "via_domain": {
-                "type": "string",
-                "description": "代发或伪造邮件展示SPF或DKIM域名",
-                "example": "larksuite.com"
-              },
-              "spam_banner_type": {
-                "type": "string",
-                "description": "垃圾邮件原因",
-                "enum": [
-                  "USER_REPORT",
-                  "USER_BLOCK",
-                  "ANTI_SPAM",
-                  "USER_RULE",
-                  "BLOCK_DOMIN",
-                  "BLOCK_ADDRESS"
-                ],
-                "example": "USER_REPORT"
-              },
-              "spam_user_rule_id": {
-                "type": "string",
-                "description": "命中的收信规则ID",
-                "example": "7618365627924925388"
-              },
-              "spam_banner_info": {
-                "type": "string",
-                "description": "命中用户黑名单的地址或域名信息",
-                "example": "larksuite.com"
               }
             }
           },
@@ -225,89 +224,90 @@
             "description": "日历邀请内容(base64url)。当邮件包含标准RFC 5545格式的日历邀请时返回，解码后为ICS文本。",
             "example": "QkVHSU46VkNBTEVOREFSDQpWRVJTSU9OOjIuMA0KLi4uDQpFTkQ6VkNBTEVOREFS"
           },
-          "cc": {
-            "type": "array",
-            "description": "抄送",
-            "items": {
-              "type": "object",
-              "properties": {
-                "mail_address": {
-                  "type": "string",
-                  "description": "邮件地址",
-                  "example": "user@xxx.xx"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "名称",
-                  "example": "Mike"
-                }
-              }
-            }
-          },
-          "internal_date": {
+          "subject": {
             "type": "string",
-            "description": "创建/收/发信时间（毫秒）",
-            "example": "1682377086000"
+            "description": "主题",
+            "example": "邮件标题"
           },
-          "body_plain_text": {
+          "smtp_message_id": {
             "type": "string",
-            "description": "正文纯文本(base64url)",
-            "example": "xxxxx"
-          },
-          "body_preview": {
-            "type": "string",
-            "description": "邮件正文纯文本内容的前100个字符，基于base64url编码，用于快速预览邮件核心内容，无需解码完整正文",
-            "example": "xxxxx"
+            "description": "RFC协议id",
+            "example": "ay0azrJDvbs3FJAg@outlook.com"
           },
           "reply_to": {
             "type": "string",
             "description": "Reply-To邮件头",
             "example": "06d20.dbf451a3.808a.475a.acc9.1363dfd20f36@larksuite.com"
           },
-          "priority_type": {
+          "message_id": {
             "type": "string",
-            "description": "邮件优先级",
-            "enum": [
-              "0",
-              "1",
-              "3",
-              "5"
-            ],
-            "example": "0"
+            "description": "邮件id",
+            "example": "tfuh9N4WnzU6jdDw="
           },
-          "subject": {
-            "type": "string",
-            "description": "主题",
-            "example": "邮件标题"
-          },
-          "bcc": {
+          "attachments": {
             "type": "array",
-            "description": "密送",
+            "description": "邮件附件列表",
             "items": {
               "type": "object",
               "properties": {
-                "name": {
+                "id": {
                   "type": "string",
-                  "description": "名称",
-                  "example": "Mike"
+                  "description": "附件 id",
+                  "example": "YQqYbQHoQoDqXjxWKhJbo8Gicjf"
                 },
-                "mail_address": {
+                "attachment_type": {
+                  "type": "integer",
+                  "description": "附件类型",
+                  "enum": [
+                    1,
+                    2
+                  ],
+                  "example": "1",
+                  "minimum": 1,
+                  "maximum": 2
+                },
+                "is_inline": {
+                  "type": "boolean",
+                  "description": "是否为内联图片，true 表示是内联图片",
+                  "example": "false"
+                },
+                "cid": {
                   "type": "string",
-                  "description": "邮件地址",
-                  "example": "user@xxx.xx"
+                  "description": "内容 ID，HTML 中通过 cid: 协议引用该图片",
+                  "example": "image1@example.com"
+                },
+                "filename": {
+                  "type": "string",
+                  "description": "附件文件名",
+                  "example": "helloworld.txt"
                 }
               }
             }
+          },
+          "body_preview": {
+            "type": "string",
+            "description": "邮件正文纯文本内容的前100个字符，基于base64url编码，用于快速预览邮件核心内容，无需解码完整正文",
+            "example": "xxxxx"
+          },
+          "folder_id": {
+            "type": "string",
+            "description": "文件夹ID",
+            "example": "INBOX"
+          },
+          "body_html": {
+            "type": "string",
+            "description": "正文(base64url)",
+            "example": "xxxx"
+          },
+          "internal_date": {
+            "type": "string",
+            "description": "创建/收/发信时间（毫秒）",
+            "example": "1682377086000"
           },
           "message_state": {
             "type": "integer",
             "description": "邮件状态，1为收信，2为发信，3为草稿",
             "example": "1"
-          },
-          "smtp_message_id": {
-            "type": "string",
-            "description": "RFC协议id",
-            "example": "ay0azrJDvbs3FJAg@outlook.com"
           }
         }
       }
