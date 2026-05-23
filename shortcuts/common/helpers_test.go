@@ -21,11 +21,11 @@ import (
 // malformed header that servers parsed as `filename="report "` (truncated at
 // the first internal quote).
 //
-// The stdlib's quoteEscaper applies two different schemes:
+// The stdlib applies two different schemes when serializing a filename:
 //   - backslash and double-quote use backslash escaping (quoted-pair), which
 //     mime.ParseMediaType reverses on read, so they round-trip exactly.
-//   - CR and LF use percent encoding (to prevent header injection, since a
-//     literal CRLF would break the header). The MIME parser does NOT decode
+//   - CR and LF use percent encoding to prevent header injection (a literal
+//     CRLF would break the header). mime.ParseMediaType does NOT decode
 //     percent escapes, so on read the filename param contains the literal
 //     "%0D"/"%0A" — server-side code is expected to URL-decode it.
 //
@@ -41,14 +41,19 @@ func TestMultipartWriter_CreateFormFile_EscapesFilename(t *testing.T) {
 		wantEncoded string // expected escaped form embedded in the header
 		wantParsed  string // what mime.ParseMediaType returns; differs from filename only when percent-encoded
 	}{
-		{"plain", "report.pdf", "report.pdf", "report.pdf"},
-		{"with double quote", `report "draft" v2.pdf`, `report \"draft\" v2.pdf`, `report "draft" v2.pdf`},
-		{"with backslash", `report\draft.pdf`, `report\\draft.pdf`, `report\draft.pdf`},
-		{"with both", `path\to "weird" file.bin`, `path\\to \"weird\" file.bin`, `path\to "weird" file.bin`},
+		// happy path: no characters need escaping
+		{"plain ASCII", "report.pdf", "report.pdf", "report.pdf"},
 		{"unicode", "报告 v2.pdf", "报告 v2.pdf", "报告 v2.pdf"},
-		{"with CR", "file\rname.pdf", "file%0Dname.pdf", "file%0Dname.pdf"},
-		{"with LF", "file\nname.pdf", "file%0Aname.pdf", "file%0Aname.pdf"},
-		{"with CRLF", "file\r\nname.pdf", "file%0D%0Aname.pdf", "file%0D%0Aname.pdf"},
+
+		// backslash escaping: round-trips exactly through mime.ParseMediaType
+		{"double quote", `report "draft" v2.pdf`, `report \"draft\" v2.pdf`, `report "draft" v2.pdf`},
+		{"backslash", `report\draft.pdf`, `report\\draft.pdf`, `report\draft.pdf`},
+		{"backslash and quote", `path\to "weird" file.bin`, `path\\to \"weird\" file.bin`, `path\to "weird" file.bin`},
+
+		// percent encoding: on-wire %0D/%0A is not decoded by mime.ParseMediaType
+		{"carriage return", "file\rname.pdf", "file%0Dname.pdf", "file%0Dname.pdf"},
+		{"line feed", "file\nname.pdf", "file%0Aname.pdf", "file%0Aname.pdf"},
+		{"CRLF", "file\r\nname.pdf", "file%0D%0Aname.pdf", "file%0D%0Aname.pdf"},
 	}
 
 	for _, tc := range cases {

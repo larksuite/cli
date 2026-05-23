@@ -10,10 +10,10 @@ import (
 )
 
 // MultipartWriter wraps multipart.Writer for file uploads. CreateFormFile is
-// promoted from the embedded *multipart.Writer so that special characters in
-// the filename (`"`, `\`, CR, LF) are properly escaped per the stdlib's
-// quoteEscaper — otherwise filenames like `report "draft".pdf` would produce
-// a malformed Content-Disposition header.
+// promoted from the embedded *multipart.Writer, which escapes special
+// characters in the field name and filename — a filename like
+// `report "draft".pdf` therefore round-trips through the Content-Disposition
+// header instead of being truncated at the first unescaped quote.
 type MultipartWriter struct {
 	*multipart.Writer
 }
