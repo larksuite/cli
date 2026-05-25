@@ -52,7 +52,7 @@ var AppsHTMLPublish = common.Shortcut{
 		}
 		var hits []string
 		for _, c := range candidates {
-			if isSensitiveCandidate(c) {
+			if isSensitiveCandidate(path, c) {
 				hits = append(hits, c.RelPath)
 			}
 		}
@@ -95,7 +95,7 @@ var AppsHTMLPublish = common.Shortcut{
 		if rctx.Bool("allow-sensitive") {
 			var waived []string
 			for _, c := range candidates {
-				if isSensitiveCandidate(c) {
+				if isSensitiveCandidate(path, c) {
 					waived = append(waived, c.RelPath)
 				}
 			}

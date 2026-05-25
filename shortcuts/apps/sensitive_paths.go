@@ -60,25 +60,66 @@ func isSensitiveRelPath(rel string) bool {
 	return false
 }
 
-// isSensitiveCandidate is the call-site wrapper used by +html-publish. It
-// catches the cloud-SDK matchers (.aws/credentials, .docker/config.json,
-// .kube/config) when --path itself is the conventional parent dir, in which
-// case walker strips that segment via filepath.Rel and RelPath alone no
-// longer carries enough context for isSensitiveRelPath to anchor on.
+// hasParentAnchoredCredentialPair scans a "/"-delimited path for the
+// cloud-SDK matchers that depend on a conventional parent dir:
+// .aws/credentials, .docker/config.json, .kube/config. The leaf-name
+// matchers (.env / .npmrc / ...) intentionally do NOT run here, so callers
+// can probe a path that includes surrounding root context without risking
+// a leaf-rule false-positive on the context segment itself (e.g. a literal
+// ".env" directory somewhere in --path's ancestry).
+func hasParentAnchoredCredentialPair(path string) bool {
+	parts := strings.Split(path, "/")
+	for i := 1; i < len(parts); i++ {
+		switch parts[i-1] {
+		case ".aws":
+			if parts[i] == "credentials" {
+				return true
+			}
+		case ".docker":
+			if parts[i] == "config.json" {
+				return true
+			}
+		case ".kube":
+			if parts[i] == "config" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isSensitiveCandidate is the call-site wrapper used by +html-publish.
 //
-// Strategy: scan RelPath first (covers the common in-tree case and is the
-// only path with stable, user-facing semantics); on miss, fall back to the
-// absolute filesystem path so the parent segment becomes visible again.
-// The element-wise matcher inside isSensitiveRelPath only fires on adjacent
-// "parent/file" pairs, so unrelated absolute prefixes (e.g. /Users/alice)
-// can't cause false positives.
-func isSensitiveCandidate(c htmlPublishCandidate) bool {
+// Two passes:
+//
+//  1. Scan RelPath with the full matcher (isSensitiveRelPath). Handles the
+//     common in-tree case (e.g. ./site/.env, ./dist/.docker/config.json).
+//  2. Re-probe at the boundary between rootPath and the candidate, using
+//     ONLY hasParentAnchoredCredentialPair. walker strips the root segment
+//     via filepath.Rel, so when --path is itself the conventional parent
+//     dir (e.g. ./.aws) RelPath comes back as a bare "credentials" and
+//     step 1 has no parent to anchor on. Re-prepending the root's basename
+//     — or, for the single-file form, the parent dir's basename of
+//     rootPath — exposes the missing segment. Leaf matchers are NOT re-run
+//     in this pass, so an ancestor like /home/alice/.env/dist can't
+//     false-positive every file beneath it just because ".env" appears in
+//     the root context.
+//
+// Pure string-level reasoning over rootPath — no filesystem access, no
+// reliance on cwd — so it composes with the project's fileio sandbox and
+// stays inside the shortcuts-layer constraint against direct fs lookups.
+func isSensitiveCandidate(rootPath string, c htmlPublishCandidate) bool {
 	if isSensitiveRelPath(c.RelPath) {
 		return true
 	}
-	abs, err := filepath.Abs(c.AbsPath)
-	if err != nil {
-		return false
+	for _, ctx := range []string{filepath.Base(rootPath), filepath.Base(filepath.Dir(rootPath))} {
+		switch ctx {
+		case "", ".", "..", "/":
+			continue
+		}
+		if hasParentAnchoredCredentialPair(filepath.ToSlash(filepath.Join(ctx, c.RelPath))) {
+			return true
+		}
 	}
-	return isSensitiveRelPath(filepath.ToSlash(abs))
+	return false
 }
