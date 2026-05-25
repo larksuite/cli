@@ -138,6 +138,27 @@ Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common val
 
 **Aside**: `--param`'s valid parameters also live in the schema — the `params` section lists `name` / `type` / `required` / `enum` / `default` / `description`; **section missing = this key accepts no `--param`**.
 
+## Per-EventKey subscription identity
+
+Some EventKeys subscribe at the **resource** level rather than app-globally — e.g. `mail.user_mailbox.event.message_received_v1` subscribes per-mailbox. For these, the framework distinguishes consumers by `(EventKey, params marked SubscriptionKey)`:
+
+- Two `event consume mail.xxx` processes with different `-p mailbox=...` open **independent** server-side subscriptions and receive **independent** event streams.
+- `event schema <EventKey>` shows a `SUB-KEY` column flagging which params participate in subscription identity.
+- `event status` shows a `SUB` column distinguishing co-existing subscriptions.
+
+Concrete: `lark-cli event consume mail.user_mailbox.event.message_received_v1 -p mailbox=alice@x.com` and `... -p mailbox=bob@x.com` against the same `lark-cli` profile produce two distinct subscription scopes; each gets its own subscribe/unsubscribe lifecycle.
+
+For EventKeys without any `SUB-KEY` param (e.g. all IM EventKeys), every `event consume` of that EventKey shares one subscription scope — today's behavior.
+
+## Cleanup error reporting
+
+When the consumer exits gracefully and is the last for its subscription scope, the framework runs the cleanup (unsubscribe) callback. Two stderr outcomes:
+
+- Success: `[event] cleanup done.`
+- Failure: `WARN: cleanup failed: <reason> (server-side subscribe is idempotent — residual record will be overwritten on next subscribe)`
+
+**Important**: do NOT manually call unsubscribe APIs as a recovery action. Subscriptions are reference-counted implicitly by Lark's server (one record per `(app, user, event_type)`), so a stray unsubscribe will silently affect other co-living consumers. The WARN is informational; the next consumer's subscribe call self-heals.
+
 ## Topic index
 
 | Topic | Reference | Coverage |

@@ -92,3 +92,16 @@ lark-cli mail +watch --print-output-schema
 - [lark-mail](../SKILL.md) — 邮箱域总览
 - [lark-mail-triage](lark-mail-triage.md) — 邮件摘要列表
 - [lark-event-subscribe](../../lark-event/references/lark-event-subscribe.md) — 通用事件订阅
+
+## When to prefer `event consume mail.xxx` vs `mail +watch`
+
+Both paths receive the same upstream events (share the server-side subscription record). Choose based on agent needs:
+
+| Need | Use |
+|------|-----|
+| Unified entry across IM + mail + future domains | `lark-cli event consume mail.user_mailbox.event.message_received_v1` |
+| Multiple mailboxes from one agent session | `event consume` (each `-p mailbox=...` gets independent stream) |
+| Pinned to `mail +watch` workflows in older scripts | `mail +watch` (no behavior change) |
+| Need `--output-dir` writing per-message JSON files | `mail +watch` (this flag stays on `+watch` for now) |
+
+Both paths support `-p msg-format=event|metadata|plain_text_full|full` and folder/label filtering via `-p folders=…,-p labels=...`. Field coverage is identical.
