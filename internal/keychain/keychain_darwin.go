@@ -360,7 +360,7 @@ func MasterKeyFilePath(service string) string {
 // previously-encrypted credential files (anything with a .enc suffix written
 // by safeFileName). Returns (false, nil) when the directory does not exist.
 func hasEncryptedCredentials(dir string) (bool, error) {
-	entries, err := vfs.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
