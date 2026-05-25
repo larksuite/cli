@@ -606,6 +606,12 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>", objType)
 	}
 	if objType == "bitable" || objType == "base" {
+		if runtime.Bool("full-comment") {
+			return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --full-comment is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>", objType).WithParam("--full-comment")
+		}
+		if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
+			return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>", objType).WithParam("--selection-with-ellipsis")
+		}
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to base: %s\n", common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,

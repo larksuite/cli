@@ -1923,6 +1923,50 @@ func TestResolveWikiToBaseComment(t *testing.T) {
 	}
 }
 
+func TestResolveWikiToBaseRejectsIncompatibleFlags(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "full comment",
+			args:    []string{"--full-comment"},
+			wantErr: "--full-comment is not applicable for base(bitable) comments",
+		},
+		{
+			name:    "selection",
+			args:    []string{"--selection-with-ellipsis", "some text"},
+			wantErr: "--selection-with-ellipsis is not applicable for base(bitable) comments",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "success",
+					"data": map[string]interface{}{
+						"node": map[string]interface{}{"obj_type": "bitable", "obj_token": "bitToken"},
+					},
+				},
+			})
+			args := []string{
+				"+add-comment",
+				"--doc", "https://example.larksuite.com/wiki/wikiToken",
+				"--content", `[{"type":"text","text":"test"}]`,
+				"--as", "user",
+			}
+			args = append(args, tc.args...)
+			err := mountAndRunDrive(t, DriveAddComment, args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected %q error, got: %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestResolveWikiToSlidesFullCommentRejected(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
