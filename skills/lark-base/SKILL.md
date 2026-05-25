@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.0
+version: 1.2.1
 description: "当需要用 lark-cli 操作飞书多维表格（Base）时调用：搜索 Base、建表、字段管理、记录读写、记录分享链接、视图配置、历史查询，以及角色/表单/仪表盘管理/工作流；也适用于把旧的 +table / +field / +record 写法改成当前命令写法。涉及字段设计、公式字段、查找引用、跨表计算、行级派生指标、数据分析需求时也必须使用本 skill。"
 metadata:
   requires:
@@ -216,6 +216,7 @@ metadata:
 |----------|------|-----------------------------------------------------------|------|
 | 存储字段 | 真实存用户输入的数据 | 可以 | 常见如文本、数字、日期、单选、多选、人员、关联 |
 | 附件字段 | 存储文件附件 | 不应直接按普通字段写 | 上传附件走 `+record-upload-attachment`；下载附件走 `+record-download-attachment`；删除附件走 `+record-remove-attachment` |
+| 地理位置字段 | 存储坐标并由平台解析地址 | 可以 | 写入必须使用 `{lng,lat}`；读取、筛选和转文本等场景使用 `full_address` 字符串；只有公式能访问坐标 |
 | 系统字段 | 平台自动维护 | 不可以 | 常见如创建时间、更新时间、创建人、修改人、自动编号 |
 | `formula` 字段 | 通过表达式计算 | 不可以 | 只读字段 |
 | `lookup` 字段 | 通过跨表规则查找引用 | 不可以 | 只读字段 |
@@ -230,6 +231,7 @@ metadata:
 | 读取原始记录明细 / 关键词检索 / 导出 | `+record-search / +record-list / +record-get` | 不要拿 `+data-query` 当取数命令 |
 | 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | 下载记录里的附件文件 | `+record-download-attachment --record-id <record_id> --output <dir>`，可加 `--file-token <file_token>` 只下指定附件 | Base 附件必须用这个命令下载；用其他下载入口可能失败 |
+| 写入地理位置 | `+record-upsert` / `+record-batch-*` 传 `{lng,lat}` | 不要把纯地址文本当成 CellValue |
 | 基于视图做筛选读取 | `+view-set-filter` + `+record-list` | 不要跳过视图筛选直接猜条件 |
 | 本地 Excel / CSV / `.base` 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
 

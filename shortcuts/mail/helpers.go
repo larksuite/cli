@@ -2331,15 +2331,15 @@ func validateSendTime(runtime *common.RuntimeContext) error {
 		return nil
 	}
 	if !runtime.Bool("confirm-send") {
-		return fmt.Errorf("--send-time requires --confirm-send to be set")
+		return output.ErrValidation("--send-time requires --confirm-send to be set")
 	}
 	ts, err := strconv.ParseInt(sendTime, 10, 64)
 	if err != nil {
-		return fmt.Errorf("--send-time must be a valid Unix timestamp in seconds, got %q", sendTime)
+		return output.ErrValidation("--send-time must be a valid Unix timestamp in seconds, got %q", sendTime)
 	}
 	minTime := time.Now().Unix() + 5*60
 	if ts < minTime {
-		return fmt.Errorf("--send-time must be at least 5 minutes in the future (minimum: %d, got: %d)", minTime, ts)
+		return output.ErrValidation("--send-time must be at least 5 minutes in the future (minimum: %d, got: %d)", minTime, ts)
 	}
 	return nil
 }
@@ -2444,10 +2444,10 @@ func validateRecipientCount(to, cc, bcc string) error {
 func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
-			return fmt.Errorf("--inline is not supported with --plain-text (inline images require HTML body)")
+			return output.ErrValidation("--inline is not supported with --plain-text (inline images require HTML body)")
 		}
 		if body != "" && !bodyIsHTML(body) {
-			return fmt.Errorf("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
+			return output.ErrValidation("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
 		}
 	}
 	inlineSpecs, err := parseInlineSpecs(inlineFlag)
@@ -2529,7 +2529,7 @@ func validateEventFlags(runtime *common.RuntimeContext) error {
 	hasAll := summary != "" && start != "" && end != ""
 
 	if hasAny && !hasAll {
-		return fmt.Errorf("--event-summary, --event-start, and --event-end must all be provided together")
+		return output.ErrValidation("--event-summary, --event-start, and --event-end must all be provided together")
 	}
 	if summary == "" {
 		return nil

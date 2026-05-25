@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -389,8 +388,8 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if exitErr.Detail == nil || exitErr.Detail.Type != "permission" {
 		return
 	}
-	// Extract required scopes from API error detail
-	scopes := extractRequiredScopes(exitErr.Detail.Detail)
+	// Extract required scopes from API error detail (shared helper)
+	scopes := registry.ExtractRequiredScopes(exitErr.Detail.Detail)
 	if len(scopes) == 0 {
 		return
 	}
@@ -401,21 +400,10 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	}
 
 	// Select the recommended (least-privilege) scope
-	scopeIfaces := make([]interface{}, len(scopes))
-	for i, s := range scopes {
-		scopeIfaces[i] = s
-	}
-	recommended := registry.SelectRecommendedScope(scopeIfaces, "tenant")
-	if recommended == "" {
-		recommended = scopes[0]
-	}
+	recommended := registry.SelectRecommendedScopeFromStrings(scopes, "tenant")
 
 	// Build admin console URL with the recommended scope
-	host := "open.feishu.cn"
-	if cfg.Brand == "lark" {
-		host = "open.larksuite.com"
-	}
-	consoleURL := fmt.Sprintf("https://%s/page/scope-apply?clientID=%s&scopes=%s", host, url.QueryEscape(cfg.AppID), url.QueryEscape(recommended))
+	consoleURL := registry.BuildConsoleScopeURL(cfg.Brand, cfg.AppID, recommended)
 
 	// Clear raw API detail — useful info is now in message/hint/console_url
 	exitErr.Detail.Detail = nil
@@ -451,27 +439,4 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 		}
 		exitErr.Detail.ConsoleURL = consoleURL
 	}
-}
-
-// extractRequiredScopes extracts scope names from the API error's permission_violations field.
-func extractRequiredScopes(detail interface{}) []string {
-	m, ok := detail.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	violations, ok := m["permission_violations"].([]interface{})
-	if !ok {
-		return nil
-	}
-	var scopes []string
-	for _, v := range violations {
-		vm, ok := v.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if subject, ok := vm["subject"].(string); ok {
-			scopes = append(scopes, subject)
-		}
-	}
-	return scopes
 }

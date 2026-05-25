@@ -21,7 +21,7 @@ import (
 var DriveExport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+export",
-	Description: "Export a doc/docx/sheet/bitable to a local file with limited polling",
+	Description: "Export a doc/docx/sheet/bitable/slides to a local file with limited polling",
 	Risk:        "read",
 	Scopes: []string{
 		"docs:document.content:read",
@@ -32,8 +32,8 @@ var DriveExport = common.Shortcut{
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "token", Desc: "source document token", Required: true},
-		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable"}},
-		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base"}},
+		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable | slides", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable", "slides"}},
+		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only) | pptx (slides only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx"}},
 		{Name: "sub-id", Desc: "sub-table/sheet ID, required when exporting sheet/bitable as csv"},
 		{Name: "file-name", Desc: "preferred output filename (optional)"},
 		{Name: "output-dir", Default: ".", Desc: "local output directory (default: current directory)"},

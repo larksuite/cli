@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -1130,6 +1132,33 @@ func TestFanoutAssemble_AllFailed_ReturnsError(t *testing.T) {
 	// Document the count is part of the message — agents grep for it.
 	if !strings.Contains(err.Error(), "all 2 queries failed") {
 		t.Errorf("expected 'all 2 queries failed' substring; got %v", err)
+	}
+}
+
+// When all queries fail with no structured Lark API code (transport, parse,
+// panic, ctx-canceled), the returned ExitError must carry an actionable
+// hint so the calling agent has a next step to try instead of giving up.
+func TestFanoutAssemble_AllFailed_NoCode_HasActionableHint(t *testing.T) {
+	results := []fanoutResult{
+		{Index: 0, Query: "alice", ErrMsg: "transport: connection refused"},
+		{Index: 1, Query: "bob", ErrMsg: "transport: timeout"},
+	}
+	_, err := buildFanoutResponse([]string{"alice", "bob"}, results)
+	if err == nil {
+		t.Fatalf("expected error when all queries failed")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Detail == nil {
+		t.Fatalf("expected Detail, got nil")
+	}
+	if exitErr.Detail.Hint == "" {
+		t.Errorf("expected non-empty Hint so agents have a next step; got empty")
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "retry") {
+		t.Errorf("hint should suggest retry as the first action; got %q", exitErr.Detail.Hint)
 	}
 }
 
