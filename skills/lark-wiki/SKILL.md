@@ -52,7 +52,7 @@ metadata:
 - `我的文档库` / `My Document Library` / `我的知识库` / `个人知识库` / `my_library` 都应视为 **Wiki personal library**，不是 Drive 根目录
 - 处理这类目标时，先解析 `my_library` 对应的真实 `space_id`，再执行 `wiki +move`、`wiki +node-create` 或其他 Wiki 写操作
 - 不要因为缺少显式 `space_id` 就退化成 `drive +move`
-- 如果用户明确说的是 Drive 文件夹、云空间根目录、`我的空间`，才进入 Drive 域处理
+- 如果用户明确说的是 Drive 文件夹、云空间（云盘/云存储）根目录、`我的空间`，才进入 Drive 域处理
 
 ## Shortcuts（推荐优先使用）
 

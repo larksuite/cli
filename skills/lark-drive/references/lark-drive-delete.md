@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-删除云空间内的文件或文件夹。删除后资源会进入回收站。
+删除云空间（云盘/云存储）内的文件或文件夹。删除后资源会进入回收站。
 
 > [!CAUTION]
 > 这是**高风险写操作**。CLI 层要求显式传 `--yes`；如果用户已经明确要求删除且目标明确，直接执行并带上 `--yes`。
@@ -63,7 +63,7 @@ lark-cli drive +task_result \
 
 ## 限制
 
-- 该 shortcut 仅支持云空间文件或文件夹，不支持 wiki 文档
+- 该 shortcut 仅支持云空间（云盘/云存储）文件或文件夹，不支持 wiki 文档
 - 该接口不支持并发调用
 - 调用频率上限为 5 QPS 且 10000 次/天
 
@@ -75,5 +75,5 @@ lark-cli drive +task_result \
 
 ## 参考
 
-- [lark-drive](../SKILL.md) -- 云空间全部命令
+- [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

@@ -1,9 +1,9 @@
 
-# drive +search（云空间搜索：扁平 flag，面向自然语言场景）
+# drive +search（云空间/云盘/云存储搜索：扁平 flag，面向自然语言场景）
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，以**用户身份**统一搜索云空间对象。
+基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，以**用户身份**统一搜索云空间（云盘/云存储）对象。
 
 核心特性：
 
@@ -12,7 +12,7 @@
 - 自动处理 `my_edit_time` / `my_comment_time` 的小时级聚合（服务端存储粒度）：亚小时输入会向整点 snap，并在 stderr 打出提示
 - `--mine` 一键从当前登录用户的 open_id 填 `creator_ids`，不必再先去查 contact（注意 `creator_ids` 服务端按 **owner / 文档归属人** 语义匹配，不是“最初创建人”，详见下文「身份维度」）
 
-> **资源发现入口统一**：`drive +search` 同样返回 `SHEET` / `Base` / `FOLDER` 等全部云空间对象，不只是文档 / Wiki。用户说"找一个表格"、"找报表"、"最近打开的表格"时，也从这里开始；定位后再切到对应业务 skill（如 `lark-sheets`）做对象内部操作。
+> **资源发现入口统一**：`drive +search` 同样返回 `SHEET` / `Base` / `FOLDER` 等全部云空间（云盘/云存储）对象，不只是文档 / Wiki。用户说"找一个表格"、"找报表"、"最近打开的表格"时，也从这里开始；定位后再切到对应业务 skill（如 `lark-sheets`）做对象内部操作。
 
 ## 命令
 
@@ -216,7 +216,7 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
 
 | 操作 | 所需 scope |
 |---|---|
-| 搜索云空间对象（文档 / Wiki / 表格等资源发现） | `search:docs:read` |
+| 搜索云空间（云盘/云存储）对象（文档 / Wiki / 表格等资源发现） | `search:docs:read` |
 
 ## 常见错误
 

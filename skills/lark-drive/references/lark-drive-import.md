@@ -56,7 +56,7 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
 |------|------|------|
 | `--file` | 是 | 本地文件路径，根据文件后缀名自动推断 `file_extension`；文件需满足对应格式的导入大小限制，超过 20MB 且仍在允许范围内时会自动切换分片上传 |
 | `--type` | 是 | 导入目标云文档格式。可选值：`docx` (新版文档)、`sheet` (电子表格)、`bitable` (多维表格) |
-| `--folder-token` | 否 | 目标文件夹 token，不传则请求中的 `point.mount_key` 为空字符串，Import API 会将其解释为导入到云空间根目录 |
+| `--folder-token` | 否 | 目标文件夹 token，不传则请求中的 `point.mount_key` 为空字符串，Import API 会将其解释为导入到云空间（云盘/云存储）根目录 |
 | `--name` | 否 | 导入后的在线云文档名称，不传默认使用本地文件名去掉扩展名后的结果 |
 | `--target-token` | 否 | 已有的多维表格 token，将数据导入到该多维表格中（**仅支持 `--type bitable`**）；传入后数据会挂载到目标多维表格而非新建一个 |
 
@@ -155,5 +155,5 @@ lark-cli drive +task_result --scenario import --ticket <TICKET>
 
 ## 参考
 
-- [lark-drive](../SKILL.md) -- 云空间全部命令
+- [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数
