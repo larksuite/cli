@@ -131,11 +131,15 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 	if len(def.Params) > 0 {
 		fmt.Fprintf(out, "\nParameters:\n")
 		w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-		fmt.Fprintf(w, "  NAME\tTYPE\tREQUIRED\tDEFAULT\tDESCRIPTION\n")
+		fmt.Fprintf(w, "  NAME\tTYPE\tREQUIRED\tSUB-KEY\tDEFAULT\tDESCRIPTION\n")
 		for _, p := range def.Params {
 			required := "no"
 			if p.Required {
 				required = "yes"
+			}
+			subKey := "no"
+			if p.SubscriptionKey {
+				subKey = "yes"
 			}
 			defaultVal := p.Default
 			if defaultVal == "" {
@@ -145,7 +149,7 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 			if desc == "" {
 				desc = "-"
 			}
-			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", p.Name, p.Type, required, defaultVal, desc)
+			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\t%s\n", p.Name, p.Type, required, subKey, defaultVal, desc)
 		}
 		w.Flush()
 
