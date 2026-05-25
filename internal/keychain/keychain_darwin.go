@@ -360,7 +360,7 @@ func MasterKeyFilePath(service string) string {
 // previously-encrypted credential files (anything with a .enc suffix written
 // by safeFileName). Returns (false, nil) when the directory does not exist.
 func hasEncryptedCredentials(dir string) (bool, error) {
-	entries, err := os.ReadDir(dir)
+	entries, err := vfs.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
@@ -420,7 +420,11 @@ func DowngradeMasterKeyToFile(service string) (DowngradeResult, error) {
 		// random key cannot decrypt them. The file is still written so
 		// future config init has a working fallback, but signal the
 		// orphan state so the cmd layer can surface it to the user.
-		if hasEnc, scanErr := hasEncryptedCredentials(dir); scanErr == nil && hasEnc {
+		hasEnc, scanErr := hasEncryptedCredentials(dir)
+		if scanErr != nil {
+			return 0, scanErr
+		}
+		if hasEnc {
 			result = DowngradeCreatedNewKeyOrphaned
 		}
 	}
