@@ -48,7 +48,6 @@ type Property struct {
 	Format      string        `json:"format,omitempty"`
 	Properties  *OrderedProps `json:"properties,omitempty"`
 	Items       *Property     `json:"items,omitempty"`
-	XIn         string        `json:"x-in,omitempty"`
 }
 
 // Meta is the Lark-specific extension namespace.

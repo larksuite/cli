@@ -11,8 +11,7 @@
       "message_id": {
         "type": "string",
         "description": "待添加表情回复的消息 ID。ID 获取方式：;  ;- 调用[发送消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create)接口后，从响应结果的 `message_id` 参数获取。;- 监听[接收消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive)事件，当触发该事件后可以从事件体内获取消息的 `message_id`。;- 调用[获取会话历史消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list)接口，从响应结果的 `message_id` 参数获取。",
-        "example": "om_a8f2294b************a1a38afaac9d",
-        "x-in": "path"
+        "example": "om_a8f2294b************a1a38afaac9d"
       },
       "reaction_type": {
         "type": "object",
@@ -23,8 +22,7 @@
             "description": "emoji 类型。支持的表情与对应的 emoji_type 值参见[表情文案说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)。;",
             "example": "SMILE"
           }
-        },
-        "x-in": "body"
+        }
       }
     }
   },

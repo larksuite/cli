@@ -82,7 +82,7 @@ func TestLintEnvelope_L1_StructuralChecks(t *testing.T) {
 			name: "invalid property type",
 			mutate: func(e *Envelope) {
 				e.InputSchema.Properties.Order = []string{"x"}
-				e.InputSchema.Properties.Map["x"] = Property{Type: "unknown_type", XIn: "body"}
+				e.InputSchema.Properties.Map["x"] = Property{Type: "unknown_type"}
 			},
 			wantSub: "invalid type",
 		},
@@ -90,25 +90,9 @@ func TestLintEnvelope_L1_StructuralChecks(t *testing.T) {
 			name: "array missing items",
 			mutate: func(e *Envelope) {
 				e.InputSchema.Properties.Order = []string{"x"}
-				e.InputSchema.Properties.Map["x"] = Property{Type: "array", XIn: "body"} // no Items
+				e.InputSchema.Properties.Map["x"] = Property{Type: "array"} // no Items
 			},
 			wantSub: "items",
-		},
-		{
-			name: "top-level missing x-in",
-			mutate: func(e *Envelope) {
-				e.InputSchema.Properties.Order = []string{"x"}
-				e.InputSchema.Properties.Map["x"] = Property{Type: "string"} // no XIn
-			},
-			wantSub: "x-in",
-		},
-		{
-			name: "invalid x-in value",
-			mutate: func(e *Envelope) {
-				e.InputSchema.Properties.Order = []string{"x"}
-				e.InputSchema.Properties.Map["x"] = Property{Type: "string", XIn: "header"}
-			},
-			wantSub: "x-in",
 		},
 	}
 	for _, tt := range tests {
@@ -140,19 +124,10 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 		wantSub string
 	}{
 		{
-			name: "path field not in required",
-			mutate: func(e *Envelope) {
-				e.InputSchema.Properties.Order = []string{"id"}
-				e.InputSchema.Properties.Map["id"] = Property{Type: "string", XIn: "path"}
-				// Note: Required is empty — path must be in required
-			},
-			wantSub: "path field",
-		},
-		{
 			name: "format binary on non-string",
 			mutate: func(e *Envelope) {
 				e.InputSchema.Properties.Order = []string{"f"}
-				e.InputSchema.Properties.Map["f"] = Property{Type: "integer", Format: "binary", XIn: "body"}
+				e.InputSchema.Properties.Map["f"] = Property{Type: "integer", Format: "binary"}
 			},
 			wantSub: "format: binary",
 		},
@@ -168,7 +143,7 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 			mutate: func(e *Envelope) {
 				min, max := 50.0, 10.0
 				e.InputSchema.Properties.Order = []string{"n"}
-				e.InputSchema.Properties.Map["n"] = Property{Type: "integer", Minimum: &min, Maximum: &max, XIn: "query"}
+				e.InputSchema.Properties.Map["n"] = Property{Type: "integer", Minimum: &min, Maximum: &max}
 			},
 			wantSub: "minimum",
 		},

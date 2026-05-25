@@ -11,8 +11,7 @@
         "type": "string",
         "description": "审批实例 Code",
         "default": "",
-        "example": "81D31358-93AF-92D6-7425-01A5D67C4E71",
-        "x-in": "query"
+        "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
       },
       "locale": {
         "type": "string",
@@ -36,8 +35,7 @@
           "ru-RU"
         ],
         "default": "",
-        "example": "zh-CN",
-        "x-in": "query"
+        "example": "zh-CN"
       },
       "user_id_type": {
         "type": "string",
@@ -47,8 +45,7 @@
           "union_id",
           "open_id"
         ],
-        "default": "",
-        "x-in": "query"
+        "default": ""
       }
     }
   },

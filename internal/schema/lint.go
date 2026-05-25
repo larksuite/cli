@@ -17,12 +17,6 @@ var validJSONSchemaTypes = map[string]bool{
 	"object":  true,
 }
 
-var validXIn = map[string]bool{
-	"path":  true,
-	"query": true,
-	"body":  true,
-}
-
 var validAccessTokens = map[string]bool{
 	"user": true,
 	"bot":  true,
@@ -65,20 +59,16 @@ func lintEnvelope(env Envelope) []error {
 
 	// L1: validate every Property type recursively
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
-		validatePropertyTypes(env.InputSchema.Properties, true, &errs)
+		validatePropertyTypes(env.InputSchema.Properties, &errs)
 	}
 	if env.OutputSchema != nil && env.OutputSchema.Properties != nil {
-		validatePropertyTypes(env.OutputSchema.Properties, false, &errs)
+		validatePropertyTypes(env.OutputSchema.Properties, &errs)
 	}
 
 	// ---- L2: type-level consistency ----
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
-		// path fields must be in required
 		for _, k := range env.InputSchema.Properties.Order {
 			p := env.InputSchema.Properties.Map[k]
-			if p.XIn == "path" && !contains(env.InputSchema.Required, k) {
-				errs = append(errs, fmt.Errorf("L2: path field %q must be in required", k))
-			}
 			if p.Format == "binary" && p.Type != "string" {
 				errs = append(errs, fmt.Errorf("L2: field %q has format: binary but type = %q (want string)", k, p.Type))
 			}
@@ -124,10 +114,9 @@ func lintEnvelope(env Envelope) []error {
 // validatePropertyTypes walks an OrderedProps tree and asserts:
 //   - every Property.Type is in validJSONSchemaTypes (or empty for nested objects with only properties)
 //   - array Properties have Items
-//   - top-level Properties (isInputTop=true) have a valid XIn value
 //
 // Errors are appended to *errs.
-func validatePropertyTypes(props *OrderedProps, isInputTop bool, errs *[]error) {
+func validatePropertyTypes(props *OrderedProps, errs *[]error) {
 	if props == nil {
 		return
 	}
@@ -139,16 +128,8 @@ func validatePropertyTypes(props *OrderedProps, isInputTop bool, errs *[]error) 
 		if p.Type == "array" && p.Items == nil {
 			*errs = append(*errs, fmt.Errorf("L1: array property %q missing items", k))
 		}
-		if isInputTop && k != "yes" {
-			if p.XIn == "" {
-				*errs = append(*errs, fmt.Errorf("L1: top-level property %q missing x-in", k))
-			} else if !validXIn[p.XIn] {
-				*errs = append(*errs, fmt.Errorf("L1: top-level property %q has invalid x-in %q", k, p.XIn))
-			}
-		}
-		// Recurse into nested properties (NOT input-top anymore)
 		if p.Properties != nil {
-			validatePropertyTypes(p.Properties, false, errs)
+			validatePropertyTypes(p.Properties, errs)
 		}
 		// Validate the array-element schema itself, not only its child
 		// properties — a primitive element with an invalid type (e.g.
@@ -169,20 +150,11 @@ func validateItemSchema(parentKey string, item *Property, errs *[]error) {
 		*errs = append(*errs, fmt.Errorf("L1: array property %q items (nested array) missing items", parentKey))
 	}
 	if item.Properties != nil {
-		validatePropertyTypes(item.Properties, false, errs)
+		validatePropertyTypes(item.Properties, errs)
 	}
 	if item.Items != nil {
 		validateItemSchema(parentKey, item.Items, errs)
 	}
-}
-
-func contains(slice []string, s string) bool {
-	for _, x := range slice {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // coverageBaseline is the per-metric warn threshold for L4 coverage checks.

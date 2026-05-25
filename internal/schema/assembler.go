@@ -591,9 +591,6 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 	for _, k := range orderedKeys(paramsRaw, "parameters") {
 		field, _ := paramsRaw[k].(map[string]interface{})
 		prop := convertProperty(field, "parameters."+k+".properties")
-		if loc, _ := field["location"].(string); loc == "path" || loc == "query" {
-			prop.XIn = loc
-		}
 		is.Properties.Order = append(is.Properties.Order, k)
 		is.Properties.Map[k] = prop
 		if req, _ := field["required"].(bool); req {
@@ -606,7 +603,6 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 	for _, k := range orderedKeys(bodyRaw, "requestBody") {
 		field, _ := bodyRaw[k].(map[string]interface{})
 		prop := convertProperty(field, "requestBody."+k+".properties")
-		prop.XIn = "body"
 		is.Properties.Order = append(is.Properties.Order, k)
 		is.Properties.Map[k] = prop
 		if req, _ := field["required"].(bool); req {

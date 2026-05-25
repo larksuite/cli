@@ -8,14 +8,12 @@
       "name": {
         "type": "string",
         "description": "知识空间名称",
-        "example": "知识空间",
-        "x-in": "body"
+        "example": "知识空间"
       },
       "description": {
         "type": "string",
         "description": "知识空间描述",
-        "example": "知识空间描述",
-        "x-in": "body"
+        "example": "知识空间描述"
       },
       "open_sharing": {
         "type": "string",
@@ -24,8 +22,7 @@
           "open",
           "closed"
         ],
-        "example": "open",
-        "x-in": "body"
+        "example": "open"
       },
       "yes": {
         "type": "boolean",

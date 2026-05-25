@@ -14,40 +14,34 @@
           "open_id"
         ],
         "default": "open_id",
-        "example": "open_id",
-        "x-in": "query"
+        "example": "open_id"
       },
       "set_bot_manager": {
         "type": "boolean",
         "description": "如果在请求体的 ==owner_id== 字段指定了某个用户为群主，可以选择是否同时设置创建此群的机器人为管理员，此标志位用于标记是否设置创建群的机器人为管理员。",
         "default": false,
-        "example": "false",
-        "x-in": "query"
+        "example": "false"
       },
       "uuid": {
         "type": "string",
         "description": "由开发者生成的唯一字符串序列，用于创建群组请求去重；持有相同 uuid + owner_id（若有） 的请求 10 小时内只可成功创建 1 个群聊。不传值表示不进行请求去重，每一次请求成功后都会创建一个群聊。",
         "default": "",
-        "example": "b13g2t38-1jd2-458b-8djf-dtbca5104204",
-        "x-in": "query"
+        "example": "b13g2t38-1jd2-458b-8djf-dtbca5104204"
       },
       "avatar": {
         "type": "string",
         "description": "群头像对应的 Image Key;;- 可通过[上传图片](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create)获取（注意：上传图片的 ==image_type== 需要指定为 ==avatar==）;- 不传值则使用系统默认头像",
-        "example": "default-avatar_44ae0ca3-e140-494b-956f-78091e348435",
-        "x-in": "body"
+        "example": "default-avatar_44ae0ca3-e140-494b-956f-78091e348435"
       },
       "name": {
         "type": "string",
         "description": "群名称;; **注意：** ;- 建议群名称不超过 60 字符;- 公开群名称的长度不得少于 2 个字符;- 私有群若未填写群名称，群名称默认设置为 `(无主题)`",
-        "example": "测试群名称",
-        "x-in": "body"
+        "example": "测试群名称"
       },
       "description": {
         "type": "string",
         "description": "群描述，建议不超过 100 字符;;**默认值**：空",
-        "example": "测试群描述",
-        "x-in": "body"
+        "example": "测试群描述"
       },
       "i18n_names": {
         "type": "object",
@@ -68,24 +62,20 @@
             "description": "日文名",
             "example": "グループチャット"
           }
-        },
-        "x-in": "body"
+        }
       },
       "owner_id": {
         "type": "string",
         "description": "创建群时指定的群主，不填时指定建群的机器人为群主。群主 ID 类型在查询参数 ==user_id_type== 中指定；推荐使用 OpenID，获取方式可参考文档[如何获取 Open ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid);;**注意**：开启对外共享能力的机器人在创建外部群时，机器人不能为群主，必须指定某一用户作为群主。此外，添加外部用户进群时，外部用户必须和群主已成为飞书好友。",
-        "example": "ou_7d8a6e6df7621556ce0d21922b676706ccs",
-        "x-in": "body"
+        "example": "ou_7d8a6e6df7621556ce0d21922b676706ccs"
       },
       "user_id_list": {
         "type": "array",
-        "description": "创建群时邀请的群成员，不填则不邀请成员。ID 类型在查询参数 ==user_id_type== 中指定；推荐使用 OpenID，获取方式可参考文档[如何获取 Open ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid);;**注意**：;- 最多同时邀请 50 个用户;- 为便于在客户端查看效果，建议调试接口时加入开发者自身 ID;- 如果需要邀请外部用户，则外部用户必须和群主已成为飞书好友;- 如何获取外部用户的 open_id，参考[获取外部用户的 open_id](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/develop-robots/add-bot-to-external-group#c38b1d97)",
-        "x-in": "body"
+        "description": "创建群时邀请的群成员，不填则不邀请成员。ID 类型在查询参数 ==user_id_type== 中指定；推荐使用 OpenID，获取方式可参考文档[如何获取 Open ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid);;**注意**：;- 最多同时邀请 50 个用户;- 为便于在客户端查看效果，建议调试接口时加入开发者自身 ID;- 如果需要邀请外部用户，则外部用户必须和群主已成为飞书好友;- 如何获取外部用户的 open_id，参考[获取外部用户的 open_id](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/develop-robots/add-bot-to-external-group#c38b1d97)"
       },
       "bot_id_list": {
         "type": "array",
-        "description": "创建群时邀请的群机器人，不填则不邀请机器人。可参考[如何获取应用的 App ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id)来获取应用的 App ID; ;**注意：**;- 操作此接口的机器人会自动入群，无需重复填写;- 拉机器人入群请使用 `app_id`;- 最多同时邀请 5 个机器人，且邀请后群组中机器人数量不能超过 15 个",
-        "x-in": "body"
+        "description": "创建群时邀请的群机器人，不填则不邀请机器人。可参考[如何获取应用的 App ID？](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id)来获取应用的 App ID; ;**注意：**;- 操作此接口的机器人会自动入群，无需重复填写;- 拉机器人入群请使用 `app_id`;- 最多同时邀请 5 个机器人，且邀请后群组中机器人数量不能超过 15 个"
       },
       "group_message_type": {
         "type": "string",
@@ -94,54 +84,45 @@
           "chat",
           "thread"
         ],
-        "example": "chat",
-        "x-in": "body"
+        "example": "chat"
       },
       "chat_mode": {
         "type": "string",
         "description": "群模式;;**可选值有**：;- `group`：群组",
-        "example": "group",
-        "x-in": "body"
+        "example": "group"
       },
       "chat_type": {
         "type": "string",
         "description": "群类型;;**可选值有**：;- `private`：私有群;- `public`：公开群",
-        "example": "private",
-        "x-in": "body"
+        "example": "private"
       },
       "external": {
         "type": "boolean",
         "description": "是否是外部群",
-        "example": "false",
-        "x-in": "body"
+        "example": "false"
       },
       "join_message_visibility": {
         "type": "string",
         "description": "成员入群提示消息的可见性;;**可选值有**：;- `only_owner`：仅群主和管理员可见;- `all_members`：所有成员可见;- `not_anyone`：任何人均不可见",
-        "example": "all_members",
-        "x-in": "body"
+        "example": "all_members"
       },
       "leave_message_visibility": {
         "type": "string",
         "description": "成员退群提示消息的可见性;;**可选值有**：;- `only_owner`：仅群主和管理员可见;- `all_members`：所有成员可见;- `not_anyone`：任何人均不可见",
-        "example": "all_members",
-        "x-in": "body"
+        "example": "all_members"
       },
       "membership_approval": {
         "type": "string",
         "description": "加群是否需要审批;;**可选值有**：;- `no_approval_required`：无需审批;- `approval_required`：需要审批",
-        "example": "no_approval_required",
-        "x-in": "body"
+        "example": "no_approval_required"
       },
       "labels": {
         "type": "array",
-        "description": "群标签",
-        "x-in": "body"
+        "description": "群标签"
       },
       "toolkit_ids": {
         "type": "array",
-        "description": "群快捷组件列表",
-        "x-in": "body"
+        "description": "群快捷组件列表"
       },
       "restricted_mode_setting": {
         "type": "object",
@@ -179,8 +160,7 @@
             ],
             "example": "all_members"
           }
-        },
-        "x-in": "body"
+        }
       },
       "urgent_setting": {
         "type": "string",
@@ -189,8 +169,7 @@
           "only_owner",
           "all_members"
         ],
-        "example": "all_members",
-        "x-in": "body"
+        "example": "all_members"
       },
       "video_conference_setting": {
         "type": "string",
@@ -199,8 +178,7 @@
           "only_owner",
           "all_members"
         ],
-        "example": "all_members",
-        "x-in": "body"
+        "example": "all_members"
       },
       "edit_permission": {
         "type": "string",
@@ -209,13 +187,11 @@
           "only_owner",
           "all_members"
         ],
-        "example": "all_members",
-        "x-in": "body"
+        "example": "all_members"
       },
       "chat_tags": {
         "type": "array",
-        "description": "群标签",
-        "x-in": "body"
+        "description": "群标签"
       },
       "pin_manage_setting": {
         "type": "string",
@@ -224,8 +200,7 @@
           "only_owner",
           "all_members"
         ],
-        "example": "all_members",
-        "x-in": "body"
+        "example": "all_members"
       },
       "hide_member_count_setting": {
         "type": "string",
@@ -234,8 +209,7 @@
           "all_members",
           "only_owner"
         ],
-        "example": "all_members",
-        "x-in": "body"
+        "example": "all_members"
       }
     }
   },

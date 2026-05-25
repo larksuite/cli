@@ -11,8 +11,7 @@
       "user_mailbox_id": {
         "type": "string",
         "description": "用户邮箱地址。使用 user_access_token 时可使用 me",
-        "example": "user@xxx.xx 或 me",
-        "x-in": "path"
+        "example": "user@xxx.xx 或 me"
       },
       "template": {
         "type": "object",
@@ -135,8 +134,7 @@
               }
             }
           }
-        },
-        "x-in": "body"
+        }
       }
     }
   },

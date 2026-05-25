@@ -12,15 +12,13 @@
       "xml_presentation_id": {
         "type": "string",
         "description": "演示文稿唯一标识",
-        "example": "zTqAwsEb4clrjOLd3drAcNZabcef",
-        "x-in": "path"
+        "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
       },
       "slide_id": {
         "type": "string",
         "description": "页面唯一标识",
         "default": "",
-        "example": "slidecn20m4XJ1hJXXxXXX",
-        "x-in": "query"
+        "example": "slidecn20m4XJ1hJXXxXXX"
       },
       "revision_id": {
         "type": "integer",
@@ -28,15 +26,13 @@
         "default": -1,
         "example": "-1",
         "minimum": -1,
-        "maximum": 2147483647,
-        "x-in": "query"
+        "maximum": 2147483647
       },
       "tid": {
         "type": "string",
         "description": "锁的事务 ID，用于并发控制",
         "default": "",
-        "example": "idMock",
-        "x-in": "query"
+        "example": "idMock"
       },
       "parts": {
         "type": "array",
@@ -80,14 +76,12 @@
               "example": "baa"
             }
           }
-        },
-        "x-in": "body"
+        }
       },
       "comment": {
         "type": "string",
         "description": "操作备注",
-        "example": "批量替换文本内容",
-        "x-in": "body"
+        "example": "批量替换文本内容"
       }
     }
   },

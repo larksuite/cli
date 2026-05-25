@@ -10,8 +10,7 @@
       "objective_id": {
         "type": "string",
         "description": "目标 ID",
-        "example": "1",
-        "x-in": "path"
+        "example": "1"
       },
       "yes": {
         "type": "boolean",

@@ -11,14 +11,12 @@
       "user_mailbox_id": {
         "type": "string",
         "description": "用户邮箱地址 或 输入me代表当前调用接口用户",
-        "example": "user@xxx.xx 或 me",
-        "x-in": "path"
+        "example": "user@xxx.xx 或 me"
       },
       "message_id": {
         "type": "string",
         "description": "用户邮件 id，获取方式见 [列出邮件](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-message/list)",
-        "example": "TUlHc1NoWFhJMXgyUi9VZTNVL3h6UnlkRUdzPQ==",
-        "x-in": "path"
+        "example": "TUlHc1NoWFhJMXgyUi9VZTNVL3h6UnlkRUdzPQ=="
       },
       "format": {
         "type": "string",
@@ -29,8 +27,7 @@
           "metadata"
         ],
         "default": "",
-        "example": "full",
-        "x-in": "query"
+        "example": "full"
       }
     }
   },

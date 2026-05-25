@@ -12,8 +12,7 @@
       "file_token": {
         "type": "string",
         "description": "被复制的源文件的 token。了解如何获取文件 token，参考[文件概述](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/file-overview)。",
-        "example": "doccngpahSdXrFPIBD4XdIabcef",
-        "x-in": "path"
+        "example": "doccngpahSdXrFPIBD4XdIabcef"
       },
       "user_id_type": {
         "type": "string",
@@ -23,14 +22,12 @@
           "union_id",
           "open_id"
         ],
-        "default": "",
-        "x-in": "query"
+        "default": ""
       },
       "name": {
         "type": "string",
         "description": "复制的新文件的名称;;**数据校验规则**：最大长度为 `256` 字节",
-        "example": "Demo copy",
-        "x-in": "body"
+        "example": "Demo copy"
       },
       "type": {
         "type": "string",
@@ -44,14 +41,12 @@
           "mindnote",
           "slides"
         ],
-        "example": "docx",
-        "x-in": "body"
+        "example": "docx"
       },
       "folder_token": {
         "type": "string",
         "description": "目标文件夹的 token。若传入根文件夹 token，表示复制的新文件将被创建在云空间根目录。了解如何获取文件夹 token，参考[文件夹概述](https://open.feishu.cn/document/ukTMukTMukTM/ugTNzUjL4UzM14CO1MTN/folder-overview)。",
-        "example": "fldbcO1UuPz8VwnpPx5a92abcef",
-        "x-in": "body"
+        "example": "fldbcO1UuPz8VwnpPx5a92abcef"
       },
       "extra": {
         "type": "array",
@@ -70,8 +65,7 @@
               "example": "docx"
             }
           }
-        },
-        "x-in": "body"
+        }
       }
     }
   },

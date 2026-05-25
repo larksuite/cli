@@ -10,8 +10,7 @@
       "instance_code": {
         "type": "string",
         "description": "审批实例 Code",
-        "example": "81D31358-93AF-92D6-7425-01A5D67C4E71",
-        "x-in": "body"
+        "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
       },
       "yes": {
         "type": "boolean",

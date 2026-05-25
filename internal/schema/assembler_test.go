@@ -309,14 +309,6 @@ func TestBuildInputSchema_ReactionsList(t *testing.T) {
 		t.Errorf("properties order = %v, want (from key index) %v",
 			is.Properties.Order, mko.Parameters)
 	}
-	// message_id has x-in: path
-	if is.Properties.Map["message_id"].XIn != "path" {
-		t.Errorf("message_id.XIn = %q, want \"path\"", is.Properties.Map["message_id"].XIn)
-	}
-	// reaction_type has x-in: query
-	if is.Properties.Map["reaction_type"].XIn != "query" {
-		t.Errorf("reaction_type.XIn = %q, want \"query\"", is.Properties.Map["reaction_type"].XIn)
-	}
 }
 
 func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
@@ -337,7 +329,7 @@ func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 		t.Errorf("properties order = %v, want (from key index) %v",
 			is.Properties.Order, mko.RequestBody)
 	}
-	// image field: string + binary + body
+	// image field: string + binary
 	img := is.Properties.Map["image"]
 	if img.Type != "string" {
 		t.Errorf("image.Type = %q, want \"string\"", img.Type)
@@ -345,11 +337,8 @@ func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 	if img.Format != "binary" {
 		t.Errorf("image.Format = %q, want \"binary\"", img.Format)
 	}
-	if img.XIn != "body" {
-		t.Errorf("image.XIn = %q, want \"body\"", img.XIn)
-	}
-	// image_type: enum present, body
-	if it := is.Properties.Map["image_type"]; it.XIn != "body" || !reflect.DeepEqual(it.Enum, []interface{}{"message", "avatar"}) {
+	// image_type: enum present
+	if it := is.Properties.Map["image_type"]; !reflect.DeepEqual(it.Enum, []interface{}{"message", "avatar"}) {
 		t.Errorf("image_type unexpected: %+v", it)
 	}
 }

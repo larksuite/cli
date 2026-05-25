@@ -10,8 +10,7 @@
       "task_guid": {
         "type": "string",
         "description": "要删除的任务guid",
-        "example": "e297ddff-06ca-4166-b917-4ce57cd3a7a0",
-        "x-in": "path"
+        "example": "e297ddff-06ca-4166-b917-4ce57cd3a7a0"
       },
       "yes": {
         "type": "boolean",

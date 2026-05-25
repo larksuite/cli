@@ -12,15 +12,13 @@
       "calendar_id": {
         "type": "string",
         "description": "日历 ID。;;创建共享日历时会返回日历 ID。你也可以调用以下接口获取某一日历的 ID。;- [查询主日历信息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/primary);- [查询日历列表](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list);- [搜索日历](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/search)",
-        "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn",
-        "x-in": "path"
+        "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
       },
       "idempotency_key": {
         "type": "string",
         "description": "创建日程的幂等 key，该 key 在应用和日历维度下唯一，用于避免重复创建资源。建议按照示例值的格式进行取值。",
         "default": "",
-        "example": "25fdf41b-8c80-2ce1-e94c-de8b5e7aa7e6",
-        "x-in": "query"
+        "example": "25fdf41b-8c80-2ce1-e94c-de8b5e7aa7e6"
       },
       "user_id_type": {
         "type": "string",
@@ -30,26 +28,22 @@
           "union_id",
           "open_id"
         ],
-        "default": "",
-        "x-in": "query"
+        "default": ""
       },
       "summary": {
         "type": "string",
         "description": "日程标题。;;**注意**：为确保数据安全，系统会自动检测日程标题内容，当包含 **晋升、绩效、述职、调薪、调级、复议、申诉、校准、答辩** 中任一关键词时，该日程不会生成会议纪要。",
-        "example": "日程标题",
-        "x-in": "body"
+        "example": "日程标题"
       },
       "description": {
         "type": "string",
         "description": "日程描述。支持解析Html标签。;;**注意**：可以通过Html标签来实现部分富文本格式，但是客户端生成的富文本格式并不是通过Html标签实现，如果通过客户端生成富文本描述后，再通过API更新描述，会导致客户端原来的富文本格式丢失。",
-        "example": "日程描述",
-        "x-in": "body"
+        "example": "日程描述"
       },
       "need_notification": {
         "type": "boolean",
         "description": "更新日程时，是否给日程参与人发送 Bot 通知。;;**可选值有**：;- true：发送通知;- false：不发送通知;;**默认值**：true",
-        "example": "false",
-        "x-in": "body"
+        "example": "false"
       },
       "start_time": {
         "type": "object",
@@ -70,8 +64,7 @@
             "description": "时区。使用 IANA Time Zone Database 标准，例如 Asia/Shanghai。;;- 全天日程时区固定为UTC +0;- 非全天日程时区默认为 Asia/Shanghai",
             "example": "Asia/Shanghai"
           }
-        },
-        "x-in": "body"
+        }
       },
       "end_time": {
         "type": "object",
@@ -92,8 +85,7 @@
             "description": "时区。使用 IANA Time Zone Database 标准，例如 Asia/Shanghai。;;- 全天日程时区固定为UTC +0;- 非全天日程时区默认为 Asia/Shanghai",
             "example": "Asia/Shanghai"
           }
-        },
-        "x-in": "body"
+        }
       },
       "vchat": {
         "type": "object",
@@ -228,8 +220,7 @@
               }
             }
           }
-        },
-        "x-in": "body"
+        }
       },
       "visibility": {
         "type": "string",
@@ -239,8 +230,7 @@
           "public",
           "private"
         ],
-        "example": "default",
-        "x-in": "body"
+        "example": "default"
       },
       "attendee_ability": {
         "type": "string",
@@ -251,8 +241,7 @@
           "can_invite_others",
           "can_modify_event"
         ],
-        "example": "can_see_others",
-        "x-in": "body"
+        "example": "can_see_others"
       },
       "free_busy_status": {
         "type": "string",
@@ -261,8 +250,7 @@
           "busy",
           "free"
         ],
-        "example": "busy",
-        "x-in": "body"
+        "example": "busy"
       },
       "location": {
         "type": "object",
@@ -288,14 +276,12 @@
             "description": "地点坐标经度信息。;- 对于国内的地点，采用 GCJ-02 标准。;- 对于海外的地点，采用 WGS84 标准。",
             "example": "2.200000047683716"
           }
-        },
-        "x-in": "body"
+        }
       },
       "color": {
         "type": "integer",
         "description": "日程颜色，取值通过颜色 RGB 值的 int32 表示。;;**注意**：;- 该参数仅对当前身份生效。;- 客户端展示时会映射到色板上最接近的一种颜色。;- 取值为 0 或 -1 时，默认跟随日历颜色。",
-        "example": "-1",
-        "x-in": "body"
+        "example": "-1"
       },
       "reminders": {
         "type": "array",
@@ -311,14 +297,12 @@
               "maximum": 20160
             }
           }
-        },
-        "x-in": "body"
+        }
       },
       "recurrence": {
         "type": "string",
         "description": "重复日程的重复性规则，规则设置方式参考[rfc5545](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.10)。;;**默认值**：空，表示当前日程不是重复日程。;;**注意**：;- COUNT 和 ; UNTIL 不支持同时出现。;- 预定会议室重复日程长度不得超过两年。",
-        "example": "FREQ=DAILY;INTERVAL=1",
-        "x-in": "body"
+        "example": "FREQ=DAILY;INTERVAL=1"
       },
       "schemas": {
         "type": "array",
@@ -348,8 +332,7 @@
               "example": "https://applink.feishu.cn/client/calendar/event/detail?calendarId=xxxxxx\u0026key=xxxxxx\u0026originalTime=xxxxxx\u0026startTime=xxxxxx"
             }
           }
-        },
-        "x-in": "body"
+        }
       },
       "attachments": {
         "type": "array",
@@ -363,8 +346,7 @@
               "example": "xAAAAA"
             }
           }
-        },
-        "x-in": "body"
+        }
       },
       "event_check_in": {
         "type": "object",
@@ -423,14 +405,12 @@
             "type": "boolean",
             "description": "签到开始时是否自动发送签到通知给参与者"
           }
-        },
-        "x-in": "body"
+        }
       },
       "source": {
         "type": "string",
         "description": "日程source",
-        "example": "source",
-        "x-in": "body"
+        "example": "source"
       }
     }
   },
