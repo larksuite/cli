@@ -58,6 +58,18 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		}
 	}
 
+	// Normalize params (resolve aliases like "me" -> real email) before fingerprint
+	// compute, PreConsume, Match, Process. Must happen BEFORE doHello so the
+	// SubscriptionID we send to bus reflects canonical values.
+	if keyDef.NormalizeParams != nil {
+		if err := keyDef.NormalizeParams(ctx, opts.Runtime, opts.Params); err != nil {
+			return fmt.Errorf("normalize params for %s: %w", opts.EventKey, err)
+		}
+	}
+
+	// Compute subscription identity from normalized params + SubscriptionKey flags.
+	subscriptionID := ComputeSubscriptionID(keyDef, opts.Params)
+
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
@@ -78,7 +90,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 	}
 	defer conn.Close()
 
-	ack, br, err := doHello(conn, opts.EventKey, []string{keyDef.EventType})
+	ack, br, err := doHello(conn, opts.EventKey, []string{keyDef.EventType}, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("handshake failed: %w", err)
 	}
