@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.40] - 2026-05-25
+
+### Features
+
+- **wiki**: Add exponential backoff retry for `+node-create` lock contention (#1012)
+- **auth**: Add `auth qrcode` subcommand and update auth docs/hints (#968)
+
+### Bug Fixes
+
+- **wiki**: Rename `+node-get --token` to `--node-token`, keep alias (#1074)
+- **output**: Classify wiki lock-contention error (131009) with retry hint (#1014)
+- **contact**: Add actionable hint when fanout search all-fail with no API code (#1054)
+- **permission**: Annotate auto-grant permission failures with `required_scope` and `console_url` (#1045)
+- **validation**: Use `ErrValidation` instead of `fmt.Errorf` in `Validate` paths (#1001)
+
+### Documentation
+
+- **skills**: Add 云盘/云存储 alias alongside 云空间 for agent clarity (#1073)
+- **task**: Refresh `lark-task` shortcut docs (#1057)
+
 ## [v1.0.39] - 2026-05-22
 
 ### Features
@@ -840,6 +860,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.40]: https://github.com/larksuite/cli/releases/tag/v1.0.40
 [v1.0.39]: https://github.com/larksuite/cli/releases/tag/v1.0.39
 [v1.0.38]: https://github.com/larksuite/cli/releases/tag/v1.0.38
 [v1.0.37]: https://github.com/larksuite/cli/releases/tag/v1.0.37
