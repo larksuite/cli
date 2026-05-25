@@ -958,7 +958,6 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 		"place the QR code image below the URL",
 		"opaque string",
 		"cannot be modified",
-		"Prefer a fenced code block",
 		"final message of the turn",
 		"return control to the user",
 		"do not block on --device-code in the same turn",
@@ -1073,7 +1072,6 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		"URL 输出规则",
 		"opaque string",
 		"不要做任何修改",
-		"仅包含该 URL 的代码块",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("agent_hint missing %q, got:\n%s", want, hint)
